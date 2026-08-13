@@ -9,7 +9,11 @@ on top of it, and assert the screenshot is still that colour everywhere except
 the hint. Any pixel that is neither the backdrop colour nor the hint means the
 overlay is obscuring something.
 
-Not topmost, so the (topmost) overlay always composites above it.
+Topmost so the backdrop is not occluded by windows already open on the desktop.
+A non-topmost backdrop can be hidden by user windows, which silently invalidates
+all assertions made against it. The overlay, created after the backdrop, still
+composites above it because among topmost windows the more recently shown one
+renders on top.
 """
 
 import win32api
@@ -63,7 +67,7 @@ def create_backdrop(
     left, top, width, height = rect if rect else dpi.virtual_screen_rect()
 
     hwnd = win32gui.CreateWindowEx(
-        win32con.WS_EX_TOOLWINDOW,
+        win32con.WS_EX_TOOLWINDOW | win32con.WS_EX_TOPMOST,
         _CLASS_NAME,
         title or "GhostCursorTestBackdrop",
         win32con.WS_POPUP,

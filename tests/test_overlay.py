@@ -106,10 +106,22 @@ def run() -> None:
     hwnd = None
     try:
         settle()
-        h, w = grab().shape[:2]
+        frame = grab()
+        h, w = frame.shape[:2]
         target = (w // 2, h // 2)
         moved = (w // 2 + 300, h // 2 + 150)
         radius = 24
+
+        # Check backdrop coverage before creating the overlay. If another window
+        # is occluding the test backdrop, assertions will silently fail.
+        classified = classify(frame)
+        backdrop_coverage = classified["backdrop"].mean()
+        if backdrop_coverage < 0.98:
+            raise EnvironmentUnavailable(
+                f"backdrop covers only {100 * backdrop_coverage:.2f}% of the screen "
+                "(expected ~100%); another window is occluding the test backdrop. "
+                "Close other windows and try again."
+            )
 
         hwnd = ov.create_overlay_window()
         settle()
