@@ -24,9 +24,10 @@ an observation came from, which is the data that later selection will need.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 from ghostcursor.perception.uia import Element, iter_elements
-from ghostcursor.reasoning.schema import Step
+from ghostcursor.reasoning.schema import ConfirmedObservation, Step
 
 RUNG_AUTOMATION_ID = 1
 RUNG_TYPE_AND_NAME = 2
@@ -133,3 +134,48 @@ def ground(
             return _as_target(_disambiguate(matches, step), RUNG_FUZZY_NAME)
 
     return None
+
+
+def promote(
+    step: Step,
+    grounded: GroundedTarget | None,
+    app_version: str,
+    locale: str,
+) -> bool:
+    """Record what grounding just learned, so later runs use rung 1.
+
+    Documentation cannot supply an AutomationId — no tutorial has ever named
+    one — so the only way to get it is to observe the real application. This
+    is what makes a recipe more robust every time it is used, and what lets a
+    recipe confirmed by an English user ground for a Hindi one.
+
+    Returns True when the step was modified.
+    """
+    if grounded is None or not grounded.automation_id:
+        return False
+
+    for observation in step.target_descriptor.confirmed:
+        if (
+            observation.app_version == app_version
+            and observation.automation_id == grounded.automation_id
+        ):
+            if locale not in observation.locales_observed:
+                observation.locales_observed.append(locale)
+            observation.last_seen_at = _now()
+            return True
+
+    step.target_descriptor.confirmed.append(
+        ConfirmedObservation(
+            app_version=app_version,
+            locales_observed=[locale],
+            automation_id=grounded.automation_id,
+            control_type=grounded.control_type,
+            accessibility_path_hint=[],
+            last_seen_at=_now(),
+        )
+    )
+    return True
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
