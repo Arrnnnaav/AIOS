@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Tooling caches
+.ruff_cache/
+.pytest_cache/
+pytest-cache-files-*/
+
+# Local agent/editor settings
+.claude/settings.local.json
+
+# User data — the knowledge base lives in %LOCALAPPDATA%, never in the repo,
+# but guard against a stray local copy.
+*.sqlite
+*.sqlite3
+kb.sqlite*
+
+# Secrets (search/LLM API keys land here once the KB pipeline exists)
+.env
+.env.*
+!.env.example
