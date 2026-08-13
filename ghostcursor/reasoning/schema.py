@@ -140,14 +140,20 @@ class Recipe:
     @classmethod
     def from_dict(cls, data: dict) -> "Recipe":
         steps = []
-        for raw in data["steps"]:
-            leaked = _FORBIDDEN_KEYS & set(raw)
+        for i, raw in enumerate(data["steps"]):
+            # Check for coordinates anywhere in the step, recursively
+            leaked = _has_forbidden_keys(raw)
             if leaked:
                 raise ValueError(
-                    f"step stores coordinates {sorted(leaked)}; recipes store "
+                    "step stores coordinates; recipes store "
                     "intent only, coordinates are resolved live"
                 )
-            steps.append(_step_from_dict(raw))
+            step = _step_from_dict(raw)
+            # Validate the step before accepting it
+            errors = validate_step(step)
+            if errors:
+                raise ValueError(f"step {i} is invalid: {'; '.join(errors)}")
+            steps.append(step)
         return cls(app_id=data["app_id"], intent=data["intent"], steps=steps)
 
     def save(self, path: str | Path) -> None:
@@ -158,6 +164,27 @@ class Recipe:
     @classmethod
     def load(cls, path: str | Path) -> "Recipe":
         return cls.from_dict(json.loads(Path(path).read_text(encoding="utf-8")))
+
+
+def _has_forbidden_keys(obj: object) -> str | None:
+    """Recursively search obj for any forbidden coordinate keys.
+
+    Returns the first forbidden key found, or None if clean.
+    """
+    if isinstance(obj, dict):
+        leaked = _FORBIDDEN_KEYS & set(obj)
+        if leaked:
+            return sorted(leaked)[0]
+        for value in obj.values():
+            result = _has_forbidden_keys(value)
+            if result:
+                return result
+    elif isinstance(obj, list):
+        for item in obj:
+            result = _has_forbidden_keys(item)
+            if result:
+                return result
+    return None
 
 
 def _step_from_dict(raw: dict) -> Step:

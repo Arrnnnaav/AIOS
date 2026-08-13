@@ -106,3 +106,66 @@ def test_recipe_rejects_a_step_that_stores_coordinates():
                 "steps": [{**_step().to_dict(), "bbox": [1, 2, 3, 4]}],
             }
         )
+
+
+def test_recipe_rejects_coordinates_nested_in_verification_rule_args():
+    step_dict = _step().to_dict()
+    step_dict["verification_rule"]["args"]["bbox"] = [1, 2, 3, 4]
+    with pytest.raises(ValueError, match="coordinates"):
+        Recipe.from_dict(
+            {
+                "app_id": "notepad",
+                "intent": "x",
+                "steps": [step_dict],
+            }
+        )
+
+
+def test_recipe_rejects_coordinates_nested_in_provenance():
+    step_dict = _step().to_dict()
+    step_dict["provenance"]["rect"] = [1, 2, 3, 4]
+    with pytest.raises(ValueError, match="coordinates"):
+        Recipe.from_dict(
+            {
+                "app_id": "notepad",
+                "intent": "x",
+                "steps": [step_dict],
+            }
+        )
+
+
+def test_recipe_rejects_coordinates_nested_in_confirmed_observation():
+
+    step_dict = _step().to_dict()
+    step_dict["target_descriptor"]["confirmed"] = [
+        {
+            "app_version": "1.0",
+            "automation_id": "Save",
+            "accessibility_path_hint": {"x": 100},
+        }
+    ]
+    with pytest.raises(ValueError, match="coordinates"):
+        Recipe.from_dict(
+            {
+                "app_id": "notepad",
+                "intent": "x",
+                "steps": [step_dict],
+            }
+        )
+
+
+def test_recipe_rejects_invalid_step_elevated_risk_with_any_meaningful_change():
+    step_dict = _step(
+        risk=Risk.ELEVATED,
+        verification_rule=VerificationRule(
+            kind=VerificationKind.ANY_MEANINGFUL_CHANGE, args={"scope": {}}
+        ),
+    ).to_dict()
+    with pytest.raises(ValueError, match="invalid"):
+        Recipe.from_dict(
+            {
+                "app_id": "notepad",
+                "intent": "x",
+                "steps": [step_dict],
+            }
+        )
