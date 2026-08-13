@@ -49,8 +49,10 @@ def test_rung1_prefers_confirmed_automation_id():
 def test_rung1_ignores_locale_mismatch():
     # AutomationId is language-independent: an observation recorded in en-US
     # must still ground for a hi-IN user, or promotion is pointless.
+    # Use a claimed name that matches no element to ensure the only route
+    # to grounding is through the confirmed automation_id.
     step = _step(
-        claimed=ClaimedDescriptor(name="Export"),
+        claimed=ClaimedDescriptor(name="Something Else"),
         confirmed=[
             ConfirmedObservation(
                 app_version="1.0", automation_id="1001", locales_observed=["en-US"]
@@ -66,6 +68,24 @@ def test_rung2_matches_control_type_and_exact_name():
     result = ground(step, ".*", elements=ELEMENTS)
     assert result.rung == RUNG_TYPE_AND_NAME
     assert result.automation_id == "1002"
+
+
+def test_rung2_falls_back_to_exact_name_when_type_is_stale():
+    # When a confirmed observation carries a stale control_type that does not
+    # match the live element, rung 2 should retry without the type constraint
+    # rather than demoting to rung 3's risky fuzzy match.
+    step = _step(
+        claimed=ClaimedDescriptor(name="Export"),
+        confirmed=[
+            ConfirmedObservation(
+                app_version="1.0",
+                control_type="Hyperlink",  # Stale: live element is Button
+            )
+        ],
+    )
+    result = ground(step, ".*", elements=ELEMENTS)
+    assert result.rung == RUNG_TYPE_AND_NAME
+    assert result.automation_id == "1001"
 
 
 def test_rung3_matches_a_synonym():

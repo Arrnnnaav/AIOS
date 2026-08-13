@@ -107,6 +107,7 @@ def ground(
         None,
     )
     if claimed.name:
+        # First try: exact name with type constraint (if available).
         matches = [
             e
             for e in elements
@@ -115,6 +116,13 @@ def ground(
         ]
         if matches:
             return _as_target(_disambiguate(matches, step), RUNG_TYPE_AND_NAME)
+
+        # Fallback: exact name without type constraint if type was stale.
+        # The displayed name is stronger evidence than a remembered type hint.
+        if wanted_type:
+            matches = [e for e in elements if e.name == claimed.name]
+            if matches:
+                return _as_target(_disambiguate(matches, step), RUNG_TYPE_AND_NAME)
 
     # Rung 3 — synonyms and case-insensitive substring.
     candidates = [claimed.name, *claimed.name_synonyms]
