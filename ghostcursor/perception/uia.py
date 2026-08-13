@@ -5,6 +5,7 @@ D:\\tracker\\docs\\ghostcursor\\pywinauto-windows-gui-automation-with-python.doc
 """
 
 import re
+from dataclasses import dataclass, field
 
 import win32gui
 from pywinauto import Desktop
@@ -104,9 +105,6 @@ def window_bbox(title_re: str) -> tuple[int, int, int, int] | None:
         # Covers minimized, degenerate and off-desktop rects alike.
         return _raw_window_rect(title_re)
     return bbox
-
-
-from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)
