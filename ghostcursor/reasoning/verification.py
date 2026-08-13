@@ -25,10 +25,27 @@ class Snapshot:
     focused_automation_id: str = ""
 
 
+def _sort_elements(
+    elements: list[Element] | tuple[Element, ...],
+) -> tuple[Element, ...]:
+    """Sort elements by a stable key to ensure order-independent comparisons.
+
+    UIA tree walks have no ordering guarantee. Sorting by (automation_id,
+    control_type, name, bbox) ensures two Snapshots with the same elements
+    compare equal even if UIA returns them in different orders.
+    """
+    return tuple(
+        sorted(
+            elements,
+            key=lambda e: (e.automation_id, e.control_type, e.name, e.bbox),
+        )
+    )
+
+
 def take_snapshot(title_re: str) -> Snapshot:
     import win32gui
 
-    elements = tuple(iter_elements(title_re))
+    elements = _sort_elements(iter_elements(title_re))
     try:
         title = win32gui.GetWindowText(win32gui.GetForegroundWindow())
     except Exception:

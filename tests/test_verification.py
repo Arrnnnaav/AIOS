@@ -1,6 +1,6 @@
 from ghostcursor.perception.uia import Element
 from ghostcursor.reasoning.schema import VerificationKind, VerificationRule
-from ghostcursor.reasoning.verification import Snapshot, verify
+from ghostcursor.reasoning.verification import Snapshot, verify, _sort_elements
 
 A = Element("Export", "Button", "1001", (10, 10, 110, 40))
 B = Element("Save", "Button", "1002", (10, 50, 110, 80))
@@ -80,5 +80,33 @@ def test_any_meaningful_change_ignores_pure_movement():
 
 def test_user_confirms_is_never_satisfied_by_observation():
     # It is resolved by the user pressing a key, not by inspecting the screen.
+    # This test uses a before/after that WOULD satisfy ELEMENT_APPEARS, proving
+    # that USER_CONFIRMS returns False even when other conditions are met.
+    # Deleting the explicit USER_CONFIRMS branch would cause this test to fail.
     rule = VerificationRule(kind=VerificationKind.USER_CONFIRMS)
-    assert verify(rule, snap(), snap(elements=(A, B))) is False
+    assert verify(rule, snap(elements=(A,)), snap(elements=(A, B))) is False
+
+
+def test_snapshot_elements_order_independence():
+    # UIA tree walks have no ordering guarantee. Snapshots with the same
+    # elements in different orders must compare equal (value equality, not
+    # reference). This matters because the next task detects "user did
+    # something unexpected" with after != before on Snapshots.
+    elements_order1 = (A, B)
+    elements_order2 = (B, A)
+
+    snap1 = Snapshot(title="App", elements=_sort_elements(elements_order1))
+    snap2 = Snapshot(title="App", elements=_sort_elements(elements_order2))
+
+    assert snap1 == snap2
+
+
+def test_any_meaningful_change_with_reordered_elements():
+    # Reordering the same elements is not meaningful change; it's a side effect
+    # of how UIA enumerates the tree. This test ensures _sort_elements makes
+    # Snapshot equality robust to UIA enumeration order.
+    moved_to_back = (B, A)  # Same elements, different order
+    rule = VerificationRule(
+        kind=VerificationKind.ANY_MEANINGFUL_CHANGE, args={"scope": {}}
+    )
+    assert verify(rule, snap(elements=(A, B)), snap(elements=moved_to_back)) is False
