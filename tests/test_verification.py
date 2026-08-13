@@ -1,3 +1,6 @@
+import pytest
+from unittest import mock
+
 from ghostcursor.perception.uia import Element
 from ghostcursor.reasoning.schema import VerificationKind, VerificationRule
 from ghostcursor.reasoning.verification import Snapshot, verify, _sort_elements
@@ -82,7 +85,8 @@ def test_user_confirms_is_never_satisfied_by_observation():
     # It is resolved by the user pressing a key, not by inspecting the screen.
     # This test uses a before/after that WOULD satisfy ELEMENT_APPEARS, proving
     # that USER_CONFIRMS returns False even when other conditions are met.
-    # Deleting the explicit USER_CONFIRMS branch would cause this test to fail.
+    # Deleting the explicit USER_CONFIRMS branch would cause an unhandled-kind
+    # ValueError to be raised, which is what makes this branch load-bearing.
     rule = VerificationRule(kind=VerificationKind.USER_CONFIRMS)
     assert verify(rule, snap(elements=(A,)), snap(elements=(A, B))) is False
 
@@ -110,3 +114,14 @@ def test_any_meaningful_change_with_reordered_elements():
         kind=VerificationKind.ANY_MEANINGFUL_CHANGE, args={"scope": {}}
     )
     assert verify(rule, snap(elements=(A, B)), snap(elements=moved_to_back)) is False
+
+
+def test_unhandled_verification_kind_raises():
+    # Unhandled kinds must raise loudly, not silently return False. This
+    # prevents a tour mysteriously stalling with no error hint when a
+    # new verification kind is added but not implemented.
+    rule = VerificationRule(kind=VerificationKind.ELEMENT_APPEARS, args={})
+    # Monkeypatch the kind to an unsupported sentinel value
+    with mock.patch.object(rule, "kind", "unsupported_kind"):
+        with pytest.raises(ValueError, match="unhandled verification kind"):
+            verify(rule, snap(), snap())

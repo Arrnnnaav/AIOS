@@ -112,4 +112,4 @@ def verify(rule: VerificationRule, before: Snapshot, after: Snapshot) -> bool:
     if kind is VerificationKind.ANY_MEANINGFUL_CHANGE:
         return _identity(before) != _identity(after)
 
-    return False
+    raise ValueError(f"unhandled verification kind: {kind}")
