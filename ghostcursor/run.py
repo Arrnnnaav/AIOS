@@ -53,6 +53,59 @@ def escape_pressed() -> bool:
     return bool(win32api.GetAsyncKeyState(VK_ESCAPE) & 0x8000)
 
 
+def run_tour(recipe_path: str, title_re: str, seconds: float) -> int:
+    """Drive a hand-authored recipe against a live window."""
+    from ghostcursor.reasoning import grounding
+    from ghostcursor.reasoning.loop import GuidedTour, State
+    from ghostcursor.reasoning.renderer import OverlayRenderer
+    from ghostcursor.reasoning.schema import Recipe
+    from ghostcursor.reasoning.verification import take_snapshot, verify
+
+    recipe = Recipe.load(recipe_path)
+    hwnd = window.create_overlay_window()
+    print(f"Guided tour: {recipe.intent!r}. ESC to quit.")
+
+    deadline = time.monotonic() + seconds
+    last_printed: str | None = None
+    try:
+        tour = GuidedTour(
+            recipe=recipe,
+            grounder=lambda step, i: grounding.ground(step, title_re),
+            snapshotter=lambda: take_snapshot(title_re),
+            verifier=verify,
+            renderer=OverlayRenderer(hwnd),
+        )
+        while time.monotonic() < deadline:
+            if escape_pressed():
+                print("ESC pressed — exiting.")
+                break
+            if win32api.GetAsyncKeyState(win32con.VK_SPACE) & 0x8000:
+                tour.confirm()
+
+            state = tour.tick()
+            if state is State.DONE:
+                print("Tour complete.")
+                break
+            if state is State.FAILED:
+                print(f"Stopped: {tour.failure_reason}")
+                break
+            # Only print when the instruction changes — this loop runs at
+            # 4 ticks/sec and the instruction is unchanged across most of
+            # them (AWAITING_USER_ACTION dwells while polling).
+            instruction = tour.renderer.last_instruction
+            if instruction and instruction != last_printed:
+                print(f"  step {tour.step_index + 1}: {instruction}")
+                last_printed = instruction
+
+            window.pump_messages_nonblocking()
+            time.sleep(REFRESH_SECONDS)
+        else:
+            print("Time limit reached — exiting.")
+    finally:
+        window.destroy_overlay_window(hwnd)
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Ghost Cursor static hint overlay")
     parser.add_argument("--target", default=DEFAULT_TARGET, help="window title regex")
@@ -67,7 +120,13 @@ def main() -> int:
         default=60.0,
         help="stop automatically after this long (safety net)",
     )
+    parser.add_argument(
+        "--recipe", help="path to a recipe JSON to run as a guided tour"
+    )
     args = parser.parse_args()
+
+    if args.recipe:
+        return run_tour(args.recipe, args.target, args.seconds)
 
     hwnd = window.create_overlay_window()
     print(

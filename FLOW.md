@@ -85,21 +85,59 @@ Also confirmed against a real Notepad window: 440 ring pixels, 49x49 diameter,
 centroid within 1px of the requested coordinate.
 
 ### You are here
-Beginner milestone is complete and verified. The overlay is transparent when
-idle, click-through, draws exactly where told, leaves no stale pixels, and
-always tears down.
+Intermediate milestone (Single-App Guided Tour) is **in progress**. The
+`IDLE → OBSERVING → DECIDING → RENDERING_HINT → AWAITING_USER_ACTION →
+VERIFYING` state machine, the grounding ladder, live UIA verification, the
+Win32 renderer adapter, and the `run.py --recipe` entry point are all built
+and wired together end-to-end against the synthetic test app. The knowledge
+base (spec sections 8-10 — persisting confirmed observations across runs,
+locale/version-scoped lookup) is **not built yet**; `promote()` writes
+learned `automation_id`s back onto the in-memory `Step`, but nothing
+persists them to disk between processes.
 
-Next: the Intermediate Project from the build doc — a single-app guided tour
-driven by the `IDLE → OBSERVING → DECIDING → RENDERING_HINT →
-AWAITING_USER_ACTION → VERIFYING` state machine in `ghostcursor/reasoning/`,
-with UIA-based verification of whether the user actually performed the step.
-That is the first milestone that needs `reasoning/` to exist at all.
+### Runtime call graph — guided tour (as built)
+
+```
+run.main()
+  run.run_tour(recipe_path, title_re, seconds)
+      schema.Recipe.load(recipe_path)
+      window.create_overlay_window()
+      GuidedTour(recipe, grounder=grounding.ground, snapshotter=verification.take_snapshot,
+                 verifier=verification.verify, renderer=OverlayRenderer(hwnd))
+
+      loop every REFRESH_SECONDS (0.25s), until ESC, --seconds, DONE, or FAILED:
+          run.escape_pressed()                 GetAsyncKeyState(VK_ESCAPE)
+          GetAsyncKeyState(VK_SPACE)            polled -> tour.confirm() for user_confirms steps
+          tour.tick()                           the state machine, one transition per tick
+              [DECIDING]    grounding.ground(step, title_re)
+                                perception.uia.iter_elements()   rung 1: automation_id
+                                                                  rung 2: control_type+name
+                                                                  rung 3: fuzzy name
+                                -> GroundedTarget | None  (None => FAILED, never a guessed coordinate)
+              [RENDERING_HINT]  OverlayRenderer.show(grounded, instruction_text)
+                                    window.set_hint(hwnd, centre-of-bbox)
+                                    .last_instruction = instruction_text   <-- run.py dedupes prints on this
+              [AWAITING_USER_ACTION]  verification.take_snapshot(title_re)   (each tick, this is "after")
+                                       verification.verify(rule, before, after)
+                                           world-state check, not method (D014)
+              [VERIFYING]   step_index += 1; renderer.clear(); back to OBSERVING
+          run.py prints "step N: <instruction>" only when it changed since the last tick
+          window.pump_messages_nonblocking()
+
+  finally:
+      window.destroy_overlay_window(hwnd)   always runs, even on exception
+```
+
+Next: persist confirmed observations (the knowledge base) so a promoted
+`automation_id` survives across process runs and can be selected by
+`(user_id, app_id, app_version, locale)` instead of being re-learned every
+launch — the last piece of the Intermediate milestone's scope per the build
+doc.
 
 ---
 
 ## Future milestones (not yet started)
-1. Intermediate Project — Single-App Guided Tour (state machine + live UIA verify)
-2. Ghost Cursor MVP capstone — full tiered perception (UIA → OCR → VLM),
+1. Ghost Cursor MVP capstone — full tiered perception (UIA → OCR → VLM),
    streaming local inference, entity-scoped memory, Tauri packaging
 See the build doc's checklist for the exhaustive list; this file grows a
 section per milestone as they're started.

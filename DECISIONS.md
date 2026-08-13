@@ -202,3 +202,47 @@ invisible to a glance at a static screenshot.
 **Result:** 18/18 checks pass, and the ring was additionally confirmed on a
 real Notepad window — 440 ring pixels, 49x49 diameter, centroid within 1px of
 the requested coordinate.
+
+## D013 — The grounding ladder is a promotion mechanism, not just a fallback chain
+**Decision:** `grounding.ground()` tries rung 1 (confirmed `automation_id`),
+then rung 2 (control_type + exact name), then rung 3 (fuzzy name), and a
+successful match at rung 2 or 3 is *promoted* — written back onto the step as
+a confirmed `automation_id` — rather than just used once and discarded.
+Locale gates rungs 2-3 (text matchers) only; rung 1 is never filtered by
+locale.
+**Alternatives considered:** Treating the ladder as a pure fallback (try each
+rung fresh every time, keep nothing); requiring recipe authors to supply an
+`automation_id` up front.
+**Why:** An `automation_id` cannot come from documentation or a recipe
+author's inspection session — it's an implementation detail of the live app,
+and recipes are meant to be hand-authored from a description of what the UI
+looks like, not from a debugger. So the *first successful grounding* is the
+only place a trustworthy `automation_id` can come from, and recording it
+there means every later run of the same recipe against the same app can
+resolve at rung 1 — fast and language-independent — even though the first
+run had to fall back to fuzzy text matching. Locale must gate rungs 2-3
+because displayed text changes with the UI's language, but rung 1 is an
+opaque identifier the app itself assigns and is stable across translations
+by construction; filtering it by locale would silently break the exact
+mechanism promotion exists to enable. Persisting the promotion across
+process runs (rather than just within one `GuidedTour`) is knowledge-base
+territory and is deliberately out of scope for this milestone (see FLOW.md).
+
+## D014 — Verification checks world state, never the method used to get there
+**Decision:** `verification.verify(rule, before, after)` inspects the live
+UIA snapshot after the user's action and compares it against the rule's
+predicted post-condition. It never inspects *how* the user got there — no
+keystroke log, no click trace, no check that a specific menu was opened.
+**Alternatives considered:** Recording the exact interaction path implied by
+`instruction_text` (e.g. "open File > Save") and verifying the user followed
+those literal steps.
+**Why:** A step can say "click File > Export" and be legitimately satisfied
+by the user pressing Ctrl+Shift+E instead — the goal is the exported file
+existing / the dialog appearing, not the sequence of clicks that produced it.
+Grading the route rather than the outcome makes the tour wrong exactly when
+the user is more efficient than the recipe author anticipated, which is the
+opposite of what a teaching tool should do. This mirrors OSWorld's
+execution-based grading (inspect real state, don't grade a transcript) and is
+the same reasoning D012 already applied to testing the overlay itself:
+measure what actually happened, not the expected sequence of calls that was
+supposed to produce it.
