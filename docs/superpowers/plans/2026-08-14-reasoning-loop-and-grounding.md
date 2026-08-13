@@ -863,6 +863,15 @@ Cheapest and most stable matcher first, mirroring the perception ladder
 Rungs 2-3 match on displayed text and are therefore locale-scoped. Rung 1 is
 language-independent by construction and must never be filtered by locale —
 doing so would defeat the promotion mechanism it exists to enable.
+
+Scope note for this milestone: `locale` is threaded through but does not
+filter live matching, and that is correct rather than incomplete. The live UI
+renders in whatever language the app is running in, so rungs 2-3 match the
+text actually on screen — there is nothing to filter against. Locale becomes
+load-bearing when *selecting between stored observations and recipe variants*,
+which is knowledge-base territory (spec sections 8-10) and deliberately out of
+scope here. The parameter exists now so that `promote()` records which locale
+an observation came from, which is the data that later selection will need.
 """
 
 from __future__ import annotations
@@ -1405,7 +1414,7 @@ Collaborators are injected, so every transition is testable with no UI at all.
 
 ```python
 # tests/test_loop.py
-from ghostcursor.perception.uia import Element
+from ghostcursor.perception.uia import Element  # noqa: F401  used in CHANGED
 from ghostcursor.reasoning.grounding import GroundedTarget
 from ghostcursor.reasoning.loop import GuidedTour, State
 from ghostcursor.reasoning.schema import (
@@ -1447,12 +1456,16 @@ def _step(kind=VerificationKind.ELEMENT_APPEARS, text="Click Export."):
     )
 
 
-def _tour(steps=None, grounder=None, verifier=None, clock=None):
+STILL = Snapshot("App", ())
+CHANGED = Snapshot("App", (Element("Dialog", "Window", "9001", (0, 0, 50, 50)),))
+
+
+def _tour(steps=None, grounder=None, verifier=None, clock=None, snapshotter=None):
     recipe = Recipe(app_id="test", intent="t", steps=steps or [_step(), _step()])
     return GuidedTour(
         recipe=recipe,
         grounder=grounder or (lambda step, i: TARGET),
-        snapshotter=lambda: Snapshot("App", ()),
+        snapshotter=snapshotter or (lambda: STILL),
         verifier=verifier or (lambda rule, before, after: True),
         renderer=FakeRenderer(),
         clock=clock or (lambda: 0.0),
@@ -1467,6 +1480,18 @@ def test_reaches_awaiting_user_action_and_renders_the_hint():
     assert tour.renderer.shown[0][1] == "Click Export."
 
 
+def test_awaiting_is_a_dwelling_state_not_a_pass_through():
+    # The user has not acted and nothing changed, so the tour must sit still.
+    # Falling through to VERIFYING every tick is what previously made the
+    # idle timer reset forever and the re-hint unreachable.
+    tour = _tour(verifier=lambda rule, before, after: False)
+    for _ in range(10):
+        tour.tick()
+    assert tour.state is State.AWAITING_USER_ACTION
+    assert tour.step_index == 0
+    assert len(tour.renderer.shown) == 1  # hint drawn once, not redrawn per tick
+
+
 def test_successful_verification_advances_to_the_next_step():
     tour = _tour()
     for _ in range(6):
@@ -1474,9 +1499,15 @@ def test_successful_verification_advances_to_the_next_step():
     assert tour.step_index == 1
 
 
-def test_failed_verification_reobserves_instead_of_retrying():
-    tour = _tour(verifier=lambda rule, before, after: False)
-    for _ in range(6):
+def test_unexpected_change_reobserves_instead_of_advancing():
+    # The user did something other than what was suggested. Re-plan from real
+    # state rather than retrying a hint whose target may have moved.
+    snaps = iter([STILL, CHANGED, CHANGED, CHANGED, CHANGED, CHANGED, CHANGED])
+    tour = _tour(
+        verifier=lambda rule, before, after: False,
+        snapshotter=lambda: next(snaps, CHANGED),
+    )
+    for _ in range(5):
         tour.tick()
     assert tour.step_index == 0
     assert tour.state is State.OBSERVING
@@ -1516,6 +1547,7 @@ def test_idle_timeout_rehints_once_then_goes_quiet():
     for _ in range(4):
         tour.tick()
     assert tour.state is State.AWAITING_USER_ACTION
+    assert tour.rehint_count == 0
 
     now["t"] = 31.0
     tour.tick()
@@ -1524,6 +1556,26 @@ def test_idle_timeout_rehints_once_then_goes_quiet():
     now["t"] = 62.0
     tour.tick()
     assert tour.rehint_count == 1  # never nags twice
+
+
+def test_idle_timer_survives_a_reobserve_cycle():
+    # Regression: re-entering RENDERING_HINT for the SAME step must not reset
+    # the idle clock, or the timeout can never elapse in a real run.
+    now = {"t": 0.0}
+    snaps = iter([STILL, CHANGED])
+    tour = _tour(
+        verifier=lambda rule, before, after: False,
+        clock=lambda: now["t"],
+        snapshotter=lambda: next(snaps, CHANGED),
+    )
+    for _ in range(5):
+        tour.tick()
+    assert tour.state is State.OBSERVING  # unexpected change sent us back
+
+    now["t"] = 31.0
+    for _ in range(4):  # OBSERVING -> DECIDING -> RENDERING_HINT -> AWAITING
+        tour.tick()
+    assert tour.rehint_count == 1, "idle clock was reset by the re-observe cycle"
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -1601,6 +1653,10 @@ class GuidedTour:
         self._grounded: GroundedTarget | None = None
         self._waiting_since = 0.0
         self._confirmed = False
+        #: Which step the idle clock belongs to. Re-rendering the same step
+        #: after a re-observe must NOT restart it, or the timeout can never
+        #: elapse during a normal poll cycle.
+        self._hint_step_index: int | None = None
 
     @property
     def current_step(self) -> Step | None:
@@ -1643,37 +1699,46 @@ class GuidedTour:
         elif self.state is State.RENDERING_HINT:
             step = self.current_step
             self.renderer.show(self._grounded, step.instruction_text)
-            self._waiting_since = self.clock()
-            self.rehint_count = 0
-            self._confirmed = False
+            if self._hint_step_index != self.step_index:
+                # Genuinely a new step: start its idle clock.
+                self._waiting_since = self.clock()
+                self.rehint_count = 0
+                self._confirmed = False
+                self._hint_step_index = self.step_index
             self.state = State.AWAITING_USER_ACTION
 
         elif self.state is State.AWAITING_USER_ACTION:
-            self.state = State.VERIFYING
-
-        elif self.state is State.VERIFYING:
+            # A dwelling state, not a pass-through. The user acts on their own
+            # schedule, so this polls and stays put until something happens.
             step = self.current_step
             after = self.snapshotter()
 
-            satisfied = self.verifier(step.verification_rule, self._before, after)
             if step.verification_rule.kind is VerificationKind.USER_CONFIRMS:
                 satisfied = self._confirmed
+            else:
+                satisfied = self.verifier(step.verification_rule, self._before, after)
 
             if satisfied:
-                self.step_index += 1
-                self.renderer.clear()
+                self.state = State.VERIFYING
+            elif after != self._before:
+                # The world changed, but not into what we predicted — the user
+                # did something else. Re-observe and re-ground: the target may
+                # have moved or be gone. AndroidWorld-style interrupt handling.
                 self.state = State.OBSERVING
             elif self.clock() - self._waiting_since >= self.idle_timeout_s:
                 # Clippy lesson: re-hint once, then go quiet. Never nag.
                 if self.rehint_count == 0:
-                    self.renderer.show(self._grounded, self.current_step.instruction_text)
+                    self.renderer.show(self._grounded, step.instruction_text)
                     self.rehint_count += 1
                 self._waiting_since = self.clock()
-                self.state = State.AWAITING_USER_ACTION
-            else:
-                # The user may have done something else entirely — re-observe
-                # and re-plan from real state rather than retrying blindly.
-                self.state = State.OBSERVING
+            # else: keep waiting, and let the idle clock keep accumulating.
+
+        elif self.state is State.VERIFYING:
+            # Commit: the predicted post-condition held.
+            self.step_index += 1
+            self.renderer.clear()
+            self._confirmed = False
+            self.state = State.OBSERVING
 
         return self.state
 ```
@@ -1681,7 +1746,7 @@ class GuidedTour:
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `python -m pytest tests/test_loop.py -v`
-Expected: 7 passed
+Expected: 9 passed
 
 - [ ] **Step 5: Commit**
 
