@@ -1,7 +1,7 @@
 # Ghost Cursor — Reasoning Loop and Knowledge Base Design
 
 Date: 2026-08-14
-Status: approved, ready for implementation planning
+Status: reviewed, pending implementation plan
 Supersedes: nothing. Extends the Beginner milestone shipped in commit `9da25cb`.
 
 ---
@@ -82,14 +82,22 @@ step = {
             "ocr_text": "Export",
             "visual_description": "toolbar button, top right, arrow icon",
         },
-        # what we learned by grounding successfully — authoritative, per
-        # (app_version, locale). Populated at runtime, never by distillation.
-        "confirmed": {
-            "automation_id": "ExportBtn",
-            "control_type": "Button",
-            "runtime_path": ["Window", "ToolBar", "Button[3]"],
-        },
+        # what we learned by grounding successfully. A log of observations,
+        # not a single value — the same element can differ across versions.
+        # Populated at runtime, never by distillation.
+        "confirmed": [
+            {
+                "app_version": "1.2.7",
+                "locales_observed": ["en-US", "hi-IN"],
+                "automation_id": "ExportBtn",
+                "control_type": "Button",
+                "accessibility_path_hint": ["Window", "ToolBar", "Button[3]"],
+                "last_seen_at": "...",
+            },
+        ],
     },
+
+    "risk": "normal" | "elevated",   # elevated = destructive or hard to undo
 
     "instruction_text": "Click Export to open the export dialog.",
 
@@ -121,18 +129,30 @@ because most updates move things rather than rename them.
 AutomationId; no tutorial has ever named one. It can only be learned by
 observing the real application. Keeping them separate is what makes §5 work.
 
+**`accessibility_path_hint` is never identity.** A tree path breaks whenever
+layout changes, so it may only be used to *disambiguate between several
+otherwise-equal matches* — three buttons all named "Delete" — and never as a
+matcher on its own.
+
 ## 5. Grounding ladder, and promotion
 
 Grounding turns a `target_descriptor` into a live screen rectangle. Cheapest
 and most stable first, mirroring the perception ladder in DECISIONS.md D005:
 
-| Rung | Matcher | Survives rename? | Survives translation? |
-|---|---|---|---|
-| 1 | `confirmed.automation_id` | yes | yes |
-| 2 | `control_type` + exact `name` | no | no |
-| 3 | fuzzy `name` / `name_synonyms` | sometimes | no |
-| 4 | OCR text match | no | no |
-| 5 | VLM pointing | often | often |
+| Rung | Matcher | Survives rename? | Survives translation? | Locale-scoped? |
+|---|---|---|---|---|
+| 1 | `confirmed.automation_id` | yes | yes | **no** |
+| 2 | `control_type` + exact `name` | no | no | yes |
+| 3 | fuzzy `name` / `name_synonyms` | sometimes | no | yes |
+| 4 | OCR text match | no | no | yes |
+| 5 | VLM pointing | often | often | no |
+
+**Locale gates text matchers only.** Rungs 2–4 match on displayed text, so an
+observation recorded under `en-US` says nothing about what a `hi-IN` user
+sees, and those rungs are filtered by locale. Rung 1 is language-independent
+by construction: an AutomationId confirmed by an English user grounds
+perfectly for a Hindi user, so locale there is provenance, not a filter.
+Filtering rung 1 by locale would defeat the entire promotion mechanism.
 
 **Promotion is the important part.** The top rung is unavailable at
 distillation time, so it gets filled in by use:
@@ -140,7 +160,8 @@ distillation time, so it gets filled in by use:
 ```
 first run   ground via rung 2/3 (name from docs)
             → element found → read its AutomationId
-            → write into confirmed[app_version, locale]
+            → append an observation to confirmed[], recording the
+              app_version and adding this locale to locales_observed
 later runs  ground via rung 1 → immune to localisation and renames
 ```
 
@@ -208,6 +229,24 @@ user_confirms                          { }
 `any_meaningful_change` compares a signature of the named UIA subtree before
 and after, ignoring known-noisy properties (clock text, scrollbar position).
 It is a weak signal and is only chosen when nothing better can be expressed.
+
+### Verification strength policy
+
+`any_meaningful_change` fires on unrelated activity — a tooltip, a toast, a
+background refresh — so it can wrongly declare a step complete. Two rules
+bound that:
+
+1. **A step with `risk: elevated` may never be completed by
+   `any_meaningful_change`.** It requires an element-level rule
+   (`element_appears`/`element_disappears`/`property_changes`) or, failing
+   that, `user_confirms`. Elevated risk means destructive or hard to undo:
+   delete, overwrite, send, publish, purchase, format, permission changes.
+   Distillation sets this from the action verb; when uncertain it must choose
+   `elevated`.
+2. **For `risk: normal` steps, prefer `user_confirms` over
+   `any_meaningful_change`** when no strong rule can be expressed. Asking the
+   user costs one keypress; silently advancing past a step they never
+   performed breaks the lesson and is harder to notice.
 
 When no programmatic rule can be expressed — "observe the canvas", "pick a
 colour you like" — the step degrades to `user_confirms`: the hint carries a
@@ -366,7 +405,7 @@ is designed against real requirements, not so they get built first.
 - Which cloud model for distillation, and its cost ceiling per app ingest.
 - Curated doc sources per app: llms.txt where available, official help sites
   otherwise. Needs a per-app source registry.
-- Whether `runtime_path` is stable enough to be worth storing, or whether
-  AutomationId alone suffices.
+- Whether `accessibility_path_hint` earns its place at all, or whether
+  AutomationId plus control type disambiguates well enough on its own.
 - Multi-monitor: hints are already virtual-desktop aware, but recipes have not
   been exercised across monitors.
