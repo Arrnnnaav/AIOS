@@ -104,3 +104,53 @@ def window_bbox(title_re: str) -> tuple[int, int, int, int] | None:
         # Covers minimized, degenerate and off-desktop rects alike.
         return _raw_window_rect(title_re)
     return bbox
+
+
+from dataclasses import dataclass, field
+
+
+@dataclass(frozen=True)
+class Element:
+    """One on-screen UI element, normalised across perception tiers."""
+
+    name: str
+    control_type: str
+    automation_id: str
+    bbox: tuple[int, int, int, int]
+    path: tuple[str, ...] = field(default=())
+
+
+def iter_elements(title_re: str) -> list[Element]:
+    """Every on-screen element inside the window matching title_re.
+
+    Off-screen and degenerate elements are filtered out — window chrome
+    frequently reports (0, 0, 0, 0), which would otherwise ground a hint into
+    the corner of the desktop.
+    """
+    try:
+        window = Desktop(backend="uia").window(title_re=title_re)
+        window.wait("exists", timeout=3)
+        descendants = window.descendants()
+    except Exception:
+        return []
+
+    elements: list[Element] = []
+    for ctrl in descendants:
+        try:
+            rect = ctrl.rectangle()
+            bbox = (rect.left, rect.top, rect.right, rect.bottom)
+            if not is_on_screen(bbox):
+                continue
+            info = ctrl.element_info
+            elements.append(
+                Element(
+                    name=ctrl.window_text() or "",
+                    control_type=info.control_type or "",
+                    automation_id=info.automation_id or "",
+                    bbox=bbox,
+                    path=(info.control_type or "",),
+                )
+            )
+        except Exception:
+            continue  # elements can vanish mid-enumeration
+    return elements
