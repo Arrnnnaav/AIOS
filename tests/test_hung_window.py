@@ -123,23 +123,26 @@ def test_a_uia_walk_against_a_hung_window_blocks_far_past_the_tick_ceiling():
 def test_hung_window_cleans_up_child_when_handshake_fails(tmp_path, monkeypatch):
     """Verify no child survives when the handshake fails.
 
-    This ensures that if the child crashes or never prints 'ready',
+    This ensures that if the child sends wrong handshake or crashes,
     the process is cleaned up and does not poison later test runs.
     """
-    # Write a stub child that exits immediately without printing 'ready'
-    stub_child = tmp_path / "exit_immediately.py"
-    stub_child.write_text("import sys; sys.exit(0)")
+    # Write a stub child that prints wrong handshake then sleeps (stays alive after error)
+    stub_child = tmp_path / "wrong_handshake.py"
+    stub_child.write_text(
+        'import sys, time; print("error", flush=True); time.sleep(600)'
+    )
 
     # Monkeypatch CHILD to point to the stub
     monkeypatch.setattr("tests.test_hung_window.CHILD", stub_child)
 
     hung = HungWindow()
-    # Call the real __enter__() which should raise AssertionError
+    # Call the real __enter__() which should raise AssertionError (wrong handshake)
     with pytest.raises(AssertionError, match="child did not start"):
         hung.__enter__()
 
     # Verify the child is dead and reaped by the real __enter__
     time.sleep(0.1)
+    # Child should be killed and reaped, so poll() returns non-None (the exit code)
     assert hung._child.poll() is not None, "child process should have been cleaned up"
 
 
