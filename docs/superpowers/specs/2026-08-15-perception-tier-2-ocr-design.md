@@ -205,14 +205,34 @@ elements**, after rungs 1–3 have failed:
 
 | Rung | Match | Applies to |
 |---|---|---|
-| 1 | `automation_id`, exact | uia |
-| 2 | `name`, exact | uia (ocr elements may incidentally hit this) |
-| 3 | synonyms, exact | uia |
+| 1 | `automation_id`, exact | uia only (OCR has no id) |
+| 2 | `name`, exact (+ control_type when known) | uia; OCR may hit it |
+| 3 | synonyms, **case-insensitive substring** | **uia only — OCR excluded** |
 | **4** | **fuzzy text, score ≥ 95** | **ocr only** |
 
-Rungs 1–3 stay exact. Loosening them to fuzzy-for-everyone would let an app
-that grounds cleanly today start accepting a wrong confident match tomorrow,
-paying a regression risk on working applications to solve an OCR-only problem.
+Rungs 1–2 stay exact and are unchanged. Loosening them to fuzzy-for-everyone
+would let an app that grounds cleanly today start accepting a wrong confident
+match tomorrow, paying a regression risk on working applications to solve an
+OCR-only problem.
+
+### OCR elements must be excluded from rung 3
+
+Rung 3 is not exact — it is a case-insensitive **substring** test
+(`needle in e.name.casefold()`), inherited from the UIA-era ladder where names
+are authoritative. Left unfiltered, OCR elements would reach it **before**
+rung 4 and match with no score threshold whatsoever, making the measured floor
+of 95 decorative: the target `Edit` substring-matches OCR reads of
+`Edit a PDF`, `Magic Edit` and `Editor` alike, and rung 3 would return the
+first the disambiguator picks.
+
+That is the same confident-wrong failure the spike found (`Magic Expand` ←
+`Magic Edit`), reintroduced through a rung the design had assumed was strict.
+**Rung 3 therefore filters to `source == "uia"`.** OCR text gets exactly one
+route into grounding — rung 4, at 95 — and no path that bypasses it.
+
+Rung 2 stays open to OCR because exact equality is strictly stronger evidence
+than a 95 fuzzy score, so an OCR element that matches exactly has already
+cleared a higher bar than rung 4 imposes.
 
 An OCR element whose text happens to match exactly will be matched at rung 2,
 since exact is strictly stronger than fuzzy and there is no reason to reject
@@ -354,6 +374,10 @@ the painter distinguishes only `FRESH` from everything else.
 - Rung 4 matches at 95 and rejects at 94, against fixtures built from the
   spike's real reads — including `Uploads`/`upload` at 92.3, which must NOT
   match.
+- Rung 3 never sees an OCR element. Given an OCR read of `Edit a PDF` and a
+  step claiming `Edit`, grounding must NOT return a rung-3 substring match;
+  the only route to a match is rung 4 at 95. This is the guard that keeps the
+  floor from being bypassed, so it is mutation-verified.
 - Multi-line reassembly recovers `Magic Eraser`, `BG Generator` and
   `Magic Expand` from their real component reads, and `Magic Expand` must not
   match `Magic Edit`.
