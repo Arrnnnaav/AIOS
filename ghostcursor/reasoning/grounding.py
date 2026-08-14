@@ -26,6 +26,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
+from ghostcursor.perception.appinfo import parse_version
 from ghostcursor.perception.uia import Element, iter_elements
 from ghostcursor.reasoning.schema import ConfirmedObservation, Step
 
@@ -73,11 +74,50 @@ def _disambiguate(matches: list[Element], step: Step) -> Element:
     return matches[0]
 
 
+def select_observations(
+    confirmed: list[ConfirmedObservation], app_version: str | None
+) -> list[tuple[ConfirmedObservation, bool]]:
+    """Which stored observations apply to the running app, and which are exact.
+
+    Spec §9's ladder: exact version, else nearest LOWER verified version, else
+    unknown/global. Never a newer version — an id learned on 3.0 says nothing
+    about what 2.0 displays.
+
+    Strict equality was considered and rejected: AutomationIds survive version
+    changes far more often than they break, so requiring an exact match would
+    discard every learned id on each patch bump and re-learn from scratch.
+    Non-exact reuse is made safe by the cross-check in ground() instead.
+    """
+    running = parse_version(app_version or "")
+
+    if running is not None:
+        exact = [o for o in confirmed if o.app_version == app_version]
+        if exact:
+            return [(o, True) for o in exact]
+
+        lower = [
+            (parse_version(o.app_version), o)
+            for o in confirmed
+            if parse_version(o.app_version) is not None
+            and parse_version(o.app_version) < running
+        ]
+        if lower:
+            nearest = max(v for v, _ in lower)
+            return [(o, False) for v, o in lower if v == nearest]
+
+        return [(o, False) for o in confirmed if parse_version(o.app_version) is None]
+
+    # We do not know what is running, so nothing can be an exact match and
+    # every observation is subject to the cross-check.
+    return [(o, False) for o in confirmed]
+
+
 def ground(
     step: Step,
     title_re: str,
     locale: str = "en-US",
     elements: list[Element] | None = None,
+    app_version: str | None = None,
 ) -> GroundedTarget | None:
     """Resolve step's target to a live rectangle, or None if not found."""
     if elements is None:
@@ -88,13 +128,25 @@ def ground(
     claimed = step.target_descriptor.claimed
 
     # Rung 1 — confirmed AutomationId. Locale-independent on purpose.
-    known_ids = {
-        obs.automation_id
-        for obs in step.target_descriptor.confirmed
-        if obs.automation_id
-    }
-    if known_ids:
-        matches = [e for e in elements if e.automation_id in known_ids]
+    #
+    # Version-scoped (spec §9): observations from a DIFFERENT app version are
+    # usable, but only if the live element's control_type still agrees with
+    # what was recorded. A stale id whose control has been reassigned would
+    # otherwise produce a confident hint on the wrong element — and failing to
+    # ground is recoverable, whereas mis-grounding teaches the user something
+    # false with no signal that anything went wrong.
+    #
+    # An observation with no recorded control_type cannot be cross-checked and
+    # is allowed through; promote() always records one, so this only affects
+    # incomplete legacy rows.
+    for observation, is_exact in select_observations(
+        step.target_descriptor.confirmed, app_version
+    ):
+        if not observation.automation_id:
+            continue
+        matches = [e for e in elements if e.automation_id == observation.automation_id]
+        if not is_exact and observation.control_type:
+            matches = [e for e in matches if e.control_type == observation.control_type]
         if matches:
             return _as_target(_disambiguate(matches, step), RUNG_AUTOMATION_ID)
 
