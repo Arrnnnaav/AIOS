@@ -73,6 +73,9 @@ class ScriptedService:
     published before is still sitting there.
     """
 
+    #: The real worker throttles its walks; it does not publish once per read.
+    INTERVAL_S = 0.2
+
     def __init__(self, clock, elements=(EXPORT,)):
         self._clock = clock
         self._elements = elements
@@ -80,12 +83,15 @@ class ScriptedService:
         self.heartbeat = 0
         self.restarts = 0
         self._slot = None
+        self._last_published = None
 
     def start(self):
         # Only seeds the slot if it is publishing — a worker wedged on FIRST
         # contact has never published anything, and `latest()` must return
         # None for that case rather than a fabricated observation.
         if self.publishing:
+            self.heartbeat += 1
+            self._last_published = self._clock()
             self._observe()
 
     def stop(self):
@@ -107,8 +113,27 @@ class ScriptedService:
         )
 
     def latest(self):
-        self.heartbeat += 1
-        if self.publishing:
+        """A pure read of the slot, as the real one is.
+
+        Publishing is deliberately NOT a side effect of reading. The real
+        worker publishes asynchronously on its own throttle, so the loop
+        routinely reads the same observation twice — which is the exact
+        condition `last_fed_to_ladder` exists to handle. A fake that published
+        once per read would couple them 1:1 and leave that guard's healthy
+        path untested.
+
+        The heartbeat advances on the WORKER, not on reads, and freezes while
+        the worker is wedged. That freeze is the entire diagnostic value the
+        heartbeat claims to have, so inverting it here would model the
+        opposite of reality.
+        """
+        now = self._clock()
+        if self.publishing and (
+            self._last_published is None
+            or now - self._last_published >= self.INTERVAL_S
+        ):
+            self.heartbeat += 1
+            self._last_published = now
             self._observe()
         return self._slot
 
@@ -128,6 +153,15 @@ def _run(monkeypatch, tmp_path, clock, service, seconds, script=None):
     monkeypatch.setattr(run_module, "key_was_pressed", lambda vk: False)
 
     printed = []
+    # WorkerHealth default-binds `print` at import time (health.py), so
+    # monkeypatching builtins.print does NOT capture what health logs — it
+    # goes straight to real stdout and any assertion over `printed` silently
+    # never sees it. Patch the name health actually calls.
+    monkeypatch.setattr(
+        "ghostcursor.perception.health.print",
+        lambda *a, **k: printed.append(" ".join(map(str, a))),
+        raising=False,
+    )
     monkeypatch.setattr(
         "builtins.print", lambda *a, **k: printed.append(" ".join(map(str, a)))
     )
@@ -167,15 +201,6 @@ def _freshness_sequence(calls):
     return story
 
 
-def _contains_in_order(story, expected):
-    """True if `expected` appears in `story` in order, gaps allowed."""
-    remaining = list(expected)
-    for state in story:
-        if remaining and state == remaining[0]:
-            remaining.pop(0)
-    return not remaining
-
-
 def test_a_hang_dims_then_hides_then_restores_the_hint(tmp_path, monkeypatch):
     """The composed timeline, asserted as an ordered sequence.
 
@@ -195,18 +220,25 @@ def test_a_hang_dims_then_hides_then_restores_the_hint(tmp_path, monkeypatch):
     )
     story = _freshness_sequence(calls)
 
-    # The whole point: assert the ORDER, not just that each state occurred.
-    # A test that only checked membership would pass if the hint hid before it
-    # dimmed, or never came back.
+    # EXACT equality, not a subsequence or a membership check.
     #
-    # An ordered subsequence rather than exact equality, because the loop emits
-    # one no-op `clear_hint` on its very first tick: IDLE -> OBSERVING does not
-    # snapshot, so the ladder has not been fed yet and reads HIDDEN. Clearing
-    # an overlay that has never drawn anything is invisible to the user, so it
-    # is not part of the story being asserted.
-    assert _contains_in_order(
-        story, [Freshness.FRESH, Freshness.DIMMED, "CLEARED", Freshness.FRESH]
-    ), (
+    # Membership would pass if the hint hid before it dimmed, or never came
+    # back. A subsequence would additionally permit trailing garbage — a
+    # recovery that flickers back and dies again within the remaining fake
+    # seconds would still match, and that is a plausible regression shape.
+    #
+    # The leading CLEARED is real and expected, not noise being absorbed: the
+    # loop emits one no-op clear on its first tick, because IDLE -> OBSERVING
+    # does not snapshot, so the ladder has not been fed yet and reads HIDDEN.
+    # It clears an overlay that has never drawn anything, so the user sees
+    # nothing — but it IS what the code does, so the assertion says so.
+    assert story == [
+        "CLEARED",
+        Freshness.FRESH,
+        Freshness.DIMMED,
+        "CLEARED",
+        Freshness.FRESH,
+    ], (
         "the user did not see hint -> dimmed -> nothing -> hint again over a "
         f"10s hang and recovery. Actual sequence: {story}"
     )

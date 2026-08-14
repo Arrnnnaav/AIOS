@@ -695,9 +695,23 @@ suite: it converts absence of evidence into confidence. Membership assertions
 hint hides before it dims, or never comes back.
 
 **In practice:** `tests/test_freshness_timeline.py`. One shared injected clock
-(never two — the loop's "now" and the ladder's must not drift), the sequence
-read from what the overlay was actually told to draw, and the known bugs
-carried as named regression cases rather than folded into a generic happy path.
-Because the clock is injected, the whole timeline runs in half a second and
-nothing sleeps.
+— never two. The loop's deadline, the health budget, the staleness ladder, the
+perception worker's throttle and `GuidedTour`'s grounding grace and idle
+timeout all read the same source. That is not pedantry: a review of the first
+draft found `GuidedTour` still on its own real-time clock, which silently froze
+the grace-vs-health interaction — the THIRD composition bug of this milestone —
+out of the very tests written to catch composition bugs.
+
+The sequence is read from what the overlay was actually told to draw, asserted
+as exact equality (a subsequence would permit a recovery that flickers back and
+dies again), and the known bugs are carried as named regression cases rather
+than folded into a generic happy path. Because the clock is injected, the whole
+timeline runs in half a second and nothing sleeps.
+
+**Fakes are part of the claim.** A hand-written fake that is more convenient
+than reality makes the whole test theatre. The one here publishes on the
+worker's own throttle rather than once per read — so the loop genuinely reads
+the same observation twice, which is the condition the staleness guard exists
+for — and freezes its heartbeat while wedged, because that freeze is the
+heartbeat's entire diagnostic value.
 

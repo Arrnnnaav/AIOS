@@ -18,12 +18,24 @@ from ghostcursor.perception.service import PerceptionService
 from ghostcursor.perception.uia import iter_elements
 from tests.test_hung_window import HungWindow
 
-#: Ceiling on the gap between two consecutive ESC polls. D020 caps a tick at
-#: 0.5s; this doubles it so ordinary scheduling jitter on a loaded machine
-#: cannot flake the test, while still catching any regression that puts real
-#: work back on the UI thread. A hung UIA walk costs ~41s, so there is no
-#: overlap between "slightly slow" and "blocked".
-MAX_TICK_GAP_S = 1.0
+#: Ceiling on the gap between two consecutive ESC polls.
+#:
+#: Derived, not picked: REFRESH_SECONDS (0.25) + D020's 0.5s ceiling on the
+#: work a tick may do. The gap IS the tick, so a larger ceiling would silently
+#: permit a tick that is itself a D020 violation. Measured steady state on this
+#: machine against a real hung window is 0.25s, so this keeps 3x headroom while
+#: a genuine block costs 10-41s — there is no overlap between "slightly slow"
+#: and "blocked". The 16x UIA slowdown a hung window inflicts elsewhere does not
+#: touch this loop, because no walk runs on the UI thread; that is the property
+#: under test.
+MAX_TICK_GAP_S = 0.75
+
+#: Loose upper bound on the WHOLE call. Max-gap cannot see work done after the
+#: final ESC poll — teardown currently spends ~2.0s in `service.stop()`'s join
+#: against a worker wedged in UIA. That is acceptable (the overlay is already
+#: destroyed by then) but it must not grow unnoticed into a second blocking
+#: path, and only a total-elapsed bound can catch that.
+MAX_TOTAL_S = 10.0
 
 
 def test_reading_the_slot_stays_fast_while_the_target_is_hung():
@@ -188,6 +200,11 @@ def test_esc_stops_the_tour_promptly_while_the_target_is_hung(tmp_path, monkeypa
         f"window (ceiling {MAX_TICK_GAP_S}s) — a tick is blocking, so the user "
         "cannot dismiss a window covering their entire screen. All gaps: "
         f"{[f'{g:.2f}' for g in gaps]}"
+    )
+    assert elapsed < MAX_TOTAL_S, (
+        f"run_tour took {elapsed:.1f}s in total (bound {MAX_TOTAL_S}s). The "
+        "per-tick gaps were fine, so this is work done AFTER the last ESC poll "
+        "— teardown, most likely a join against a wedged worker."
     )
     assert calls and calls[-1] == ("destroy", 4242), "the overlay was not torn down"
 

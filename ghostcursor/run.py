@@ -247,9 +247,11 @@ def run_tour(
     deadline, the health budget and the staleness ladder all read `clock`, and
     `sleeper` is what advances it. Two independently-driftable clocks here
     would be worse than none — the whole point of the staleness ladder is that
-    its notion of "now" agrees with the loop's.
+    its notion of "now" agrees with the loop's. Everything with a sense of time
+    reads it: the deadline, the health budget, the staleness ladder, the
+    perception worker's throttle, and `GuidedTour`'s grounding grace and idle
+    timeout.
     """
-    """Drive a hand-authored recipe against a live window."""
     from ghostcursor.memory.store import ObservationStore
     from ghostcursor.perception.appinfo import app_info_for_window
     from ghostcursor.perception.health import WorkerHealth
@@ -305,7 +307,7 @@ def run_tour(
         # is polled BETWEEN ticks — so a walk on this thread is 40s in which
         # the user cannot dismiss a window covering their whole screen. The
         # worker absorbs that block; the UI thread only ever reads a slot.
-        service = PerceptionService(title_re)
+        service = PerceptionService(title_re, clock=clock)
         ladder = StalenessLadder(clock=clock)
         health = WorkerHealth(service=service, ladder=ladder)
         service.start()
@@ -383,6 +385,12 @@ def run_tour(
                 # report. The race is now removed at its source instead — see
                 # the `service.latest() is None` guard in the tick loop below.
                 grounding_grace_s=DEFAULT_GROUNDING_GRACE_S,
+                # Same clock as the ladder and the loop. GuidedTour owns the
+                # 10s grounding grace and the 30s idle timeout; left on its
+                # own default those run on real time while everything else
+                # runs on the injected one, so a timeline test could never
+                # exercise the grace-vs-health interaction at all.
+                clock=clock,
             )
             while clock() < deadline:
                 if escape_pressed():
