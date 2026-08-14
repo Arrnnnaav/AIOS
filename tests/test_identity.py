@@ -1,4 +1,4 @@
-from ghostcursor.reasoning.identity import step_key
+from ghostcursor.reasoning.identity import step_key, _normalize
 from ghostcursor.reasoning.schema import (
     ClaimedDescriptor,
     Risk,
@@ -63,3 +63,35 @@ def test_key_normalizes_whitespace_and_case():
     assert step_key("export a file", _step(name="Export")) == step_key(
         "export a file", _step(name="  export  ")
     )
+
+
+def test_normalize_strips_the_field_separator_so_the_join_stays_injective():
+    """The key's collision resistance depends on _normalize stripping \x1f.
+
+    \x1f (unit separator) is treated as whitespace by str.split(), so
+    _normalize removes it. If someone later changes normalization to preserve
+    control characters, the separator would appear in normalized fields,
+    different field combinations could produce identical concatenations, and
+    two different steps would silently share learned observations.
+    This test ensures the stripping invariant is maintained.
+    """
+    assert "\x1f" not in _normalize("a\x1fb")
+    assert "\x1f" not in _normalize("test\x1fvalue")
+    assert "\x1f" not in _normalize("\x1f")
+    assert "\x1f" not in _normalize("x\x1fy\x1fz")
+
+
+def test_field_separator_distribution_does_not_collide():
+    """Demonstrate that _normalize's stripping prevents field-separator collisions.
+
+    These steps have the separator in different field positions. Because _normalize
+    treats \x1f as whitespace via split(), they normalize to identical fields
+    and produce the same key. This is correct: they describe the same target
+    despite different input distributions of the separator character.
+    """
+    # Separator at the end of name
+    step1 = _step(name="a\x1f", ocr_text="b")
+    # Same normalized result, separator in ocr_text
+    step2 = _step(name="a", ocr_text="\x1fb")
+    # They normalize to the same fields, so they must produce the same key
+    assert step_key("intent", step1) == step_key("intent", step2)

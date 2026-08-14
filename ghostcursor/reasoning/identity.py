@@ -38,6 +38,9 @@ def step_key(intent: str, step: Step) -> str:
         _normalize(claimed.ocr_text),
         _normalize(claimed.visual_description),
     ]
-    # \x1f (unit separator) cannot appear in normalized text, so distinct
-    # field values can never combine into the same digest input.
+    # \x1f (unit separator) cannot appear in normalized text because _normalize
+    # uses str.split(), which treats \x1f as whitespace, stripping it. The join
+    # is injective only while that remains true; changing normalization to preserve
+    # control characters would allow field combinations to collide, causing
+    # two different steps to silently share learned observations.
     return hashlib.sha256("\x1f".join(parts).encode("utf-8")).hexdigest()
