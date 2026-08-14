@@ -28,6 +28,7 @@ import win32gui
 # mss can flip it underneath us — see ghostcursor/overlay/dpi.py.
 from ghostcursor.overlay import dpi
 from ghostcursor.overlay import window as ov
+from ghostcursor.reasoning.staleness import Freshness
 from tests import backdrop
 
 RING_SLACK = 6  # GDI pen width spill around the nominal radius
@@ -92,11 +93,21 @@ def settle() -> None:
 
 def classify(frame: np.ndarray) -> dict[str, np.ndarray]:
     b, g, r = frame[:, :, 0], frame[:, :, 1], frame[:, :, 2]
+    # DIMMED_RING_COLOR pulled from the real constant, not hardcoded, so this
+    # tracks the implementation rather than duplicating a magic number — but
+    # it's still a *different* colour band from "ring" below, so a mutation
+    # that draws the dim ring in the fresh colour lands in "ring", not here.
+    dim_r = ov.DIMMED_RING_COLOR & 0xFF
+    dim_g = (ov.DIMMED_RING_COLOR >> 8) & 0xFF
+    dim_b = (ov.DIMMED_RING_COLOR >> 16) & 0xFF
     return {
         "backdrop": (np.abs(b.astype(int) - backdrop.BACKDROP_BGR[0]) < 24)
         & (np.abs(g.astype(int) - backdrop.BACKDROP_BGR[1]) < 24)
         & (np.abs(r.astype(int) - backdrop.BACKDROP_BGR[2]) < 24),
         "ring": (r < 80) & (g > 150) & (b > 190),
+        "dim_ring": (np.abs(r.astype(int) - dim_r) < 30)
+        & (np.abs(g.astype(int) - dim_g) < 30)
+        & (np.abs(b.astype(int) - dim_b) < 30),
         "magenta": (r > 200) & (g < 60) & (b > 200),
     }
 
@@ -194,6 +205,18 @@ def run() -> None:
             non_backdrop < 4 * ring_px + 500,
             f"{non_backdrop} px are neither backdrop nor negligible "
             f"(ring is {ring_px} px)",
+        )
+
+        # --- dimmed hint renders in the dim colour, not the fresh colour -----
+        ov.set_hint(hwnd, *target, radius=radius, freshness=Freshness.DIMMED)
+        settle()
+        dimmed = classify(grab())
+        dim_px = int(dimmed["dim_ring"].sum())
+        fresh_coloured_px = int(dimmed["ring"].sum())
+        check(
+            "dimmed hint renders in the dim colour, not the fresh colour",
+            dim_px > 50 and fresh_coloured_px == 0,
+            f"dim_ring={dim_px} px, fresh-coloured px while dimmed={fresh_coloured_px}",
         )
 
         # --- moving a hint must not leave the old one behind -----------------

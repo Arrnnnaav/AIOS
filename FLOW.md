@@ -83,20 +83,40 @@ run.main()
 | `ghostcursor/perception/appinfo.py` | identifies the app owning a window (HWND -> PID -> exe path -> file/Appx version) for version-scoped observation lookup |
 | `ghostcursor/reasoning/identity.py` | `step_key()` — durable hash of intent + claimed descriptor, the key observations are stored/retrieved under |
 | `ghostcursor/memory/store.py` | `ObservationStore` — local SQLite knowledge base of learned observations, keyed by `(step_key, app_id, app_version, automation_id)` |
+| `ghostcursor/perception/service.py` | `PerceptionService` — runs the UI-tree walk on a worker thread that owns its COM apartment, and publishes one timestamped `Observation` into a single overwritten slot |
+| `ghostcursor/perception/health.py` | `WorkerHealth.check()` — notices a dead or stalled worker, restarts it exactly once, then ends the tour with a reason |
+| `ghostcursor/reasoning/staleness.py` | `StalenessLadder` — how old the last confirmed-fresh walk is, as `Freshness.FRESH / DIMMED / HIDDEN`, with debounced recovery |
 | `tests/backdrop.py` | controlled solid-colour window used as a test surface |
-| `tests/test_overlay.py` | 14 checks: styles, click-through, transparency, hint placement, stale pixels, teardown |
+| `tests/hung_window.py` | child process that creates a window and then stops pumping messages — reproduces the 41s UIA block deterministically |
+| `tests/test_hung_window.py` | `HungWindow` context manager + the block measurement; the fixture Tasks 5-7 are built on |
+| `tests/test_run_threaded.py` | ESC stays responsive while the target is hung — the property this whole design exists for |
+| `tests/test_overlay.py` | 15 checks: styles, click-through, transparency, hint placement, dimmed-ring colour, stale pixels, teardown |
 | `tests/test_end_to_end.py` | 8 checks: perception -> coordinate -> ring lands on the window, off-screen rejection |
 | `tests/uia_app.py` | real Win32 window with known AutomationIds, used as deterministic grounding target |
 | `ghostcursor/inference/` | empty; later milestones |
 
+**A hung window is a desktop-wide side effect.** Any UIA enumeration that
+touches a non-pumping window pays the SendMessage timeout, no matter which
+process started the walk. Measured: the same two test files take **6.28s
+normally and 100.13s** while a hung window sits on the desktop. So the three
+hung-window files above must never run concurrently with another test
+session, and `HungWindow` must reap its child unconditionally — a fixture
+that outlives its test turns that 16x tax permanent. Two "flaky" failures in
+this repo were exactly this and nothing else.
+
 ### Verification status
 ```
-python -m tests.test_overlay        14/14 pass
-python -m tests.test_end_to_end      8/8  pass
-python -m pytest tests/             134 passed
+python -m tests.test_overlay         15/15 pass
+python -m tests.test_end_to_end       8/8  pass
+python -m pytest tests/ (fast)      165 passed   excludes the three slow files below
+python -m pytest tests/test_run_threaded.py \
+                tests/test_perception_service_hung.py \
+                tests/test_hung_window.py            11 passed in 88s
 ```
 The first two (pixel harnesses) have their own runner and are not collected by
-pytest. Also confirmed against a real Notepad window: 440 ring pixels, 49x49
+pytest. The three files in the second group each park a real non-pumping
+window on the desktop, which is why they are slow and why they must not run
+concurrently with anything else — see the note under Files. Also confirmed against a real Notepad window: 440 ring pixels, 49x49
 diameter, centroid within 1px of the requested coordinate. And confirmed
 against a real persistence run: a UI AutomationId learned by one process was
 reused by a completely separate later process (rung 2 -> rung 1 across
@@ -104,8 +124,32 @@ process boundaries), and deleting the database file returned behaviour to
 rung 2 — see the persistence call graph above.
 
 ### You are here
-Intermediate milestone (Single-App Guided Tour) is **COMPLETE** — verified
-end-to-end on a real, non-synthetic application, not only the test harness.
+Perception now runs **off the UI thread** (D021-D024). The escapability
+guarantee is structural rather than test-enforced: a hung target can no
+longer block the tick loop, so ESC keeps being polled no matter how slow
+perception becomes. Proven by driving the real `run_tour` against a real
+hung window; making perception synchronous again fails that test with
+`ESC was only polled 7 times before run_tour returned`, and the run takes
+95.6s instead of 16s.
+
+What that milestone added: a worker thread owning its COM apartment
+(`service.py`), a single timestamped slot, the staleness ladder
+(`staleness.py`) and its dimmed ring, worker-death detection with
+restart-once (`health.py`), and the freshness gate that keeps
+`AWAITING_USER_ACTION` from verifying against an observation no newer than
+the one `OBSERVING` used.
+
+Two bugs found only where those pieces compose, both fixed:
+- a dead worker used to be reported as `cannot find 'Export' on screen`,
+  because the 10s grounding grace expired before the 15s health budget —
+  pointing the user at their own application instead of at ours;
+- "restart once, then give up" degenerated into "give up", because the
+  staleness clock measures observations, not workers, so a replacement
+  inherited the staleness of the worker it replaced and died 0.25s later.
+
+The Intermediate milestone (Single-App Guided Tour) remains **COMPLETE** —
+verified end-to-end on a real, non-synthetic application, not only the test
+harness.
 
 Closing evidence, a guided tour run twice against live Notepad (a Store app,
 `notepad.exe` 11.2606.15.0 resolved through the Appx package path, 39 UIA
@@ -139,35 +183,75 @@ OCR, and VLM (spec sections outside 9-10).
 run.main()
   run.run_tour(recipe_path, title_re, seconds)
       schema.Recipe.load(recipe_path)
+
+      --- perception moves OFF this thread, before the overlay exists ---
+      service.PerceptionService(title_re).start()
+          worker thread: CoInitializeEx, then forever:
+              uia.iter_elements(title_re)                  ~40s against a hung target
+              verification.take_snapshot(..., observed_at)  timestamped from the service clock
+              -> publishes ONE Observation into a slot (overwrite; no queue, no history)
+      staleness.StalenessLadder()      how old the last CONFIRMED-FRESH walk is
+      health.WorkerHealth(service, ladder)   restart once, then end the tour
+
       window.create_overlay_window()
-      GuidedTour(recipe, grounder=run.make_grounder(title_re), snapshotter=verification.take_snapshot,
+      GuidedTour(recipe, grounder=run.grounder_from_slot, snapshotter=run.snapshotter,
                  verifier=verification.verify, renderer=OverlayRenderer(hwnd))
 
-      loop every REFRESH_SECONDS (0.25s), until ESC, --seconds, DONE, or FAILED:
-          run.escape_pressed()                 GetAsyncKeyState(VK_ESCAPE)
+          run.snapshotter()          service.latest() -> Observation | None
+                                     None -> empty Snapshot (observed_at 0.0, reads as FRESH)
+                                     ladder.observed() ONLY when observed_at ADVANCES —
+                                     re-reading the same slot must not reset the clock
+          run.grounder_from_slot()   uses the elements the LOOP passed in (the ones OBSERVING
+                                     snapshotted), so OBSERVING and DECIDING describe the SAME
+                                     instant (D019); falls back to service.latest() only when
+                                     the loop passes none. Grounds the LAST observation, so a
+                                     merely-stale slot keeps succeeding and the loop's
+                                     grounding grace never starts
+
+      loop every REFRESH_SECONDS (0.25s), until ESC, --seconds, DONE, FAILED, or health:
+          run.escape_pressed()                 GetAsyncKeyState(VK_ESCAPE) — never blocked now
           GetAsyncKeyState(VK_SPACE)            polled -> tour.confirm() for user_confirms steps
+          health.check()                        once per tick; suppressed until the first
+                                                observation lands or dead_after_s from tour start
+                                                (ladder.age() is inf before then)
+          service.latest() is None?             SKIP the tick entirely (still pumps + polls ESC).
+                                                Spec §9: stay in OBSERVING. Ticking here would
+                                                let the empty placeholder snapshot become a
+                                                VERIFICATION BASELINE and mark a step complete
+                                                the user never performed (D006)
           tour.tick()                           the state machine, one transition per tick
-              [DECIDING]    grounder(step, i) = run.make_grounder(title_re)()
-                                grounding.ground(step, title_re, locale=ui_locale)
-                                  perception.uia.iter_elements()   rung 1: automation_id
+              [DECIDING]    grounder(step, i, elements)
+                                grounding.ground(step, title_re, elements=obs.elements)
+                                                                    rung 1: automation_id
                                                                     rung 2: control_type+name
                                                                     rung 3: fuzzy name
-                                -> GroundedTarget | None
-                                grounding.promote(step, grounded, app_version="unknown", locale=ui_locale)
-                                  (writes automation_id back to in-memory Step; persists to disk later)
-                                -> GroundedTarget | None  (None => FAILED, never a guessed coordinate)
+                                grounding.promote(step, grounded, app_version, locale=ui_locale)
+                                  (writes automation_id back to in-memory Step; persists to disk)
+                                -> GroundedTarget | None  (None => clear hint, 10s grounding
+                                   grace, then FAILED; never a guessed coordinate.
+                                   Only reachable once a real observation exists — the tick
+                                   loop skips entirely until then — so a grounding failure
+                                   means perception WORKS and the element is genuinely absent)
               [RENDERING_HINT]  OverlayRenderer.show(grounded, instruction_text)
                                     window.set_hint(hwnd, centre-of-bbox)
                                     .last_instruction = instruction_text   <-- run.py dedupes prints on this
-              [AWAITING_USER_ACTION]  verification.take_snapshot(title_re)   (each tick, this is "after")
+              [AWAITING_USER_ACTION]  run.snapshotter()   (this is "after")
+                                       loop._is_newer(after, before) — a slot that has not
+                                       advanced is NO verification attempt, not a failed one
                                        verification.verify(rule, before, after)
                                            world-state check, not method (D014)
               [VERIFYING]   step_index += 1; renderer.clear(); back to OBSERVING
+          ladder.freshness()                    applied AFTER the DONE/FAILED breaks:
+              HIDDEN  -> window.clear_hint(hwnd)      (never passed to set_hint: _paint_ring
+                                                       treats everything-not-FRESH as dimmed)
+              DIMMED/FRESH -> window.set_hint(..., freshness=)  only while the renderer is
+                                                       still showing something
           run.py prints "step N: <instruction>" only when it changed since the last tick
           window.pump_messages_nonblocking()
 
   finally:
       window.destroy_overlay_window(hwnd)   always runs, even on exception
+      service.stop()                        before the store closes
 ```
 
 ### Runtime call graph — persistence (as built)

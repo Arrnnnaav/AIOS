@@ -26,6 +26,18 @@ from ghostcursor.reasoning.verification import Snapshot, elements_changed
 DEFAULT_GROUNDING_GRACE_S = 10.0
 
 
+def _is_newer(after: Snapshot, before: Snapshot | None) -> bool:
+    """Whether `after` describes a genuinely later moment than `before`.
+
+    An untimestamped snapshot (0.0) is treated as fresh: that is what a
+    synchronous or faked perception is, and gating those would break every
+    existing collaborator fake.
+    """
+    if before is None or after.observed_at == 0.0 or before.observed_at == 0.0:
+        return True
+    return after.observed_at > before.observed_at
+
+
 class State(Enum):
     IDLE = auto()
     OBSERVING = auto()
@@ -156,6 +168,13 @@ class GuidedTour:
             # schedule, so this polls and stays put until something happens.
             step = self.current_step
             after = self.snapshotter()
+
+            # A slot that has not advanced is NO verification attempt, not a
+            # failed one. Verifying against the same observation OBSERVING
+            # used would compare a state against itself, so the rule would
+            # never fire and the tour would stall on this step forever.
+            if not _is_newer(after, self._before):
+                return self.state
 
             if step.verification_rule.kind is VerificationKind.USER_CONFIRMS:
                 satisfied = self._confirmed

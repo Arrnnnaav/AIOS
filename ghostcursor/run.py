@@ -60,9 +60,9 @@ def resolve_target(title_re: str, control_name: str | None) -> tuple[int, int] |
 
 #: GetAsyncKeyState's low-order bit: set when the key was pressed at any
 #: point since the previous call, even if it is no longer down. Without this,
-#: a tick that runs long (run_tour performs three UIA tree walks per tick,
-#: each able to block, and a tick can exceed a second) can miss a tap
-#: entirely — the "currently down" bit alone requires the user to hold the
+#: a tick that runs long (perception is now on a worker thread, but grounding,
+#: persistence and the message pump still run here and a tick can exceed a
+#: second) can miss a tap entirely — the "currently down" bit alone requires the user to hold the
 #: key for the whole tick. ESC is the escape hatch and must not require
 #: holding.
 _PRESSED_SINCE_LAST_CALL = 0x0001
@@ -187,7 +187,10 @@ def make_grounder(
         nonlocal warned
         # `elements` is the tree walk OBSERVING already did this tick.
         grounded = grounding.ground(
-            step, title_re, locale=ui_locale, app_version=app_version,
+            step,
+            title_re,
+            locale=ui_locale,
+            app_version=app_version,
             elements=elements,
         )
         if grounded is not None:
@@ -234,10 +237,17 @@ def run_tour(recipe_path: str, title_re: str, seconds: float) -> int:
     """Drive a hand-authored recipe against a live window."""
     from ghostcursor.memory.store import ObservationStore
     from ghostcursor.perception.appinfo import app_info_for_window
-    from ghostcursor.reasoning.loop import GuidedTour, State
+    from ghostcursor.perception.health import WorkerHealth
+    from ghostcursor.perception.service import PerceptionService
+    from ghostcursor.reasoning.loop import (
+        DEFAULT_GROUNDING_GRACE_S,
+        GuidedTour,
+        State,
+    )
     from ghostcursor.reasoning.renderer import OverlayRenderer
     from ghostcursor.reasoning.schema import Recipe
-    from ghostcursor.reasoning.verification import take_snapshot, verify
+    from ghostcursor.reasoning.staleness import Freshness, StalenessLadder
+    from ghostcursor.reasoning.verification import Snapshot, verify
 
     recipe = Recipe.load(recipe_path)
 
@@ -259,6 +269,7 @@ def run_tour(recipe_path: str, title_re: str, seconds: float) -> int:
         return 0
 
     store = None
+    service = None
     try:
         if app_info is not None:
             store = ObservationStore()
@@ -274,22 +285,89 @@ def run_tour(recipe_path: str, title_re: str, seconds: float) -> int:
             print("ESC pressed — exiting.")
             return 0
 
+        # Perception moves off the UI thread here, before the overlay exists.
+        # A "Not Responding" target blocks a single UIA walk for ~40s, and ESC
+        # is polled BETWEEN ticks — so a walk on this thread is 40s in which
+        # the user cannot dismiss a window covering their whole screen. The
+        # worker absorbs that block; the UI thread only ever reads a slot.
+        service = PerceptionService(title_re)
+        ladder = StalenessLadder()
+        health = WorkerHealth(service=service, ladder=ladder)
+        service.start()
+
         hwnd = window.create_overlay_window()
         print(f"Guided tour: {recipe.intent!r}. ESC to quit.")
         try:
             deadline = time.monotonic() + seconds
+            tour_started = time.monotonic()
             last_printed: str | None = None
+            live_grounder = make_grounder(
+                title_re,
+                app_info=app_info,
+                store=store,
+                recipe_intent=recipe.intent,
+            )
+            #: observed_at of the newest observation the ladder has been told
+            #: about. The ladder measures time since the last CONFIRMED-FRESH
+            #: walk, so it must only be advanced by a genuinely NEW one —
+            #: re-reading the same slot every tick would reset the clock
+            #: forever and a hung target would never dim, never hide, and
+            #: never trip the health check.
+            last_fed_to_ladder = 0.0
+
+            def snapshotter():
+                nonlocal last_fed_to_ladder
+                observation = service.latest()
+                if observation is None:
+                    # No observation yet is a normal starting condition. An
+                    # empty untimestamped snapshot reads as FRESH to the loop
+                    # (observed_at 0.0), which is right: there is nothing to
+                    # call stale yet.
+                    return Snapshot(title="", elements=())
+                if observation.observed_at > last_fed_to_ladder:
+                    last_fed_to_ladder = observation.observed_at
+                    ladder.observed()
+                return observation.snapshot
+
+            def grounder_from_slot(step, i, elements=None):
+                # Grounds against the LAST observation, not a live walk. While
+                # observations are merely stale this keeps succeeding, so the
+                # loop's grounding grace never starts — the hint stays drawn
+                # and simply dims. The grace clock starts only once a new
+                # observation arrives that grounding genuinely fails against.
+                #
+                # Use the elements the LOOP passed in whenever it has them.
+                # Those came from the snapshot OBSERVING took, and D019 requires
+                # OBSERVING and DECIDING to describe the same instant. Re-reading
+                # the slot here would ground observation B while verification
+                # baselines on observation A, so the hint could point at a
+                # control the baseline never saw.
+                if elements is not None:
+                    return live_grounder(step, i, elements)
+                observation = service.latest()
+                if observation is None:
+                    return None
+                return live_grounder(step, i, observation.elements)
+
             tour = GuidedTour(
                 recipe=recipe,
-                grounder=make_grounder(
-                    title_re,
-                    app_info=app_info,
-                    store=store,
-                    recipe_intent=recipe.intent,
-                ),
-                snapshotter=lambda: take_snapshot(title_re),
+                grounder=grounder_from_slot,
+                snapshotter=snapshotter,
                 verifier=verify,
                 renderer=OverlayRenderer(hwnd),
+                # Stock grace. The two clocks used to race — a dead worker made
+                # grounding fail every tick, so the grace expired before the
+                # health budget and the tour said "cannot find 'Export' on
+                # screen" about an element sitting right there, pointing the
+                # user at their own application instead of at ours. Inflating
+                # the grace to outrun health was the first fix and was wrong
+                # twice over: health's worst case is TWO budgets (suppressed
+                # until dead_after_s from tour start, then the restart grants
+                # the replacement another), so one budget still lost the race;
+                # and inflating it made a genuinely missing element take 40s to
+                # report. The race is now removed at its source instead — see
+                # the `service.latest() is None` guard in the tick loop below.
+                grounding_grace_s=DEFAULT_GROUNDING_GRACE_S,
             )
             while time.monotonic() < deadline:
                 if escape_pressed():
@@ -300,6 +378,51 @@ def run_tour(recipe_path: str, title_re: str, seconds: float) -> int:
                 ):
                     tour.confirm()
 
+                # WorkerHealth's stall signal is ladder.age(), which is
+                # infinite until the first observation lands. Checking it
+                # unguarded would restart the worker on tick 1 and end the tour
+                # on tick 2, before perception had answered even once. Suppress
+                # it only until the same dead_after_s budget has elapsed from
+                # tour start — a worker that never produces anything at all is
+                # still caught, just from a start time that exists.
+                started_reporting = (
+                    ladder.age() != float("inf")
+                    or time.monotonic() - tour_started > health.dead_after_s
+                )
+                if started_reporting:
+                    reason = health.check()
+                    if reason is not None:
+                        print(f"Stopped: {reason}")
+                        break
+
+                # Spec §9: "no observation yet at tour start -> the loop stays
+                # in OBSERVING rather than treating it as a failure." Ticking
+                # before the first observation lands would let the empty
+                # placeholder snapshot become a VERIFICATION BASELINE: the loop
+                # advances to DECIDING, grounding can succeed off an observation
+                # that arrived between the two ticks, and then verify compares
+                # against an empty `before` — where ANY_MEANINGFUL_CHANGE is
+                # unconditionally true and ELEMENT_APPEARS matches anything
+                # already on screen. The tour would mark a step complete that
+                # the user never performed, which is the one thing D006 exists
+                # to prevent.
+                #
+                # This is also what keeps the two clocks from racing. Grounding
+                # is now only ever attempted once a real observation exists, so
+                # a grounding failure means perception IS working and the
+                # element genuinely is not there — which is exactly when
+                # "cannot find X on screen" is the correct thing to say. A dead
+                # worker leaves its last observation in the slot, so grounding
+                # keeps succeeding against it and the grace never starts at all;
+                # the health check is left to name the failure. The grace can
+                # therefore stay at its stock 10s rather than being inflated to
+                # outrun the health budget, which would have made a genuinely
+                # missing element take 40s to report.
+                if service.latest() is None:
+                    window.pump_messages_nonblocking()
+                    time.sleep(REFRESH_SECONDS)
+                    continue
+
                 state = tour.tick()
                 if state is State.DONE:
                     print("Tour complete.")
@@ -307,6 +430,34 @@ def run_tour(recipe_path: str, title_re: str, seconds: float) -> int:
                 if state is State.FAILED:
                     print(f"Stopped: {tour.failure_reason}")
                     break
+
+                # Age governs what is DRAWN, after the loop has decided what to
+                # draw. HIDDEN must CLEAR the hint rather than be handed to
+                # set_hint: _paint_ring only distinguishes FRESH from
+                # everything-else, so passing HIDDEN down would draw a DIMMED
+                # ring and the 5s rung would silently do nothing at all.
+                freshness = ladder.freshness()
+                showing = tour.renderer.last_instruction is not None
+                if freshness is Freshness.HIDDEN:
+                    # Deliberately bypasses the renderer, so `last_instruction`
+                    # stays set while the screen shows nothing. That divergence
+                    # is what lets a recovered observation put the hint straight
+                    # back without re-running the step — do not "fix" it by
+                    # routing this through renderer.clear().
+                    window.clear_hint(hwnd)
+                elif showing and tour._grounded is not None:
+                    # `showing` matters: the loop clears the hint when
+                    # grounding fails, but leaves _grounded holding the last
+                    # target. Redrawing from it alone would resurrect a ring
+                    # the loop deliberately took down.
+                    left, top, right, bottom = tour._grounded.bbox
+                    window.set_hint(
+                        hwnd,
+                        (left + right) // 2,
+                        (top + bottom) // 2,
+                        freshness=freshness,
+                    )
+
                 # Only print when the instruction changes — this loop runs
                 # at 4 ticks/sec and the instruction is unchanged across
                 # most of them (AWAITING_USER_ACTION dwells while polling).
@@ -322,6 +473,8 @@ def run_tour(recipe_path: str, title_re: str, seconds: float) -> int:
         finally:
             window.destroy_overlay_window(hwnd)
     finally:
+        if service is not None:
+            service.stop()
         if store is not None:
             store.close()
     return 0
