@@ -81,17 +81,36 @@ def test_normalize_strips_the_field_separator_so_the_join_stays_injective():
     assert "\x1f" not in _normalize("x\x1fy\x1fz")
 
 
-def test_field_separator_distribution_does_not_collide():
-    """Demonstrate that _normalize's stripping prevents field-separator collisions.
+def test_cross_field_distribution_distinguishes_steps():
+    """Text distributed across fields differently must produce different keys.
 
-    These steps have the separator in different field positions. Because _normalize
-    treats \x1f as whitespace via split(), they normalize to identical fields
-    and produce the same key. This is correct: they describe the same target
-    despite different input distributions of the separator character.
+    The field separator \x1f is what makes field boundaries meaningful. If someone
+    changes the join character or drops the separator entirely, text moved between
+    fields could merge two genuinely different steps' observations. This test ensures
+    that "a b" in one field is not treated as equivalent to "a" and "b" split across
+    two fields — the separator existence and position in the concatenation must matter.
+    """
+    same_text_one_field = _step(name="a b", ocr_text="", visual_description="x")
+    same_text_split = _step(name="a", ocr_text="b", visual_description="x")
+    # Same text distributed differently across fields must produce different keys
+    assert step_key("intent", same_text_one_field) != step_key(
+        "intent", same_text_split
+    )
+
+
+def test_separator_characters_in_input_are_normalized_away():
+    """Separator characters in field values are stripped by normalization.
+
+    This is a side effect of using str.split() as the normalizer. When a field
+    contains the separator character, it is treated as whitespace. This test
+    documents that the invariant (test 8) is sufficient: because the separator
+    is stripped, two steps with the separator in different field positions
+    normalize identically, even though the cross-field distribution test ensures
+    genuinely different distributions remain distinct.
     """
     # Separator at the end of name
     step1 = _step(name="a\x1f", ocr_text="b")
     # Same normalized result, separator in ocr_text
     step2 = _step(name="a", ocr_text="\x1fb")
-    # They normalize to the same fields, so they must produce the same key
+    # They normalize to the same fields, so they produce the same key
     assert step_key("intent", step1) == step_key("intent", step2)
