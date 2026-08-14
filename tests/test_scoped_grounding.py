@@ -106,3 +106,33 @@ def test_grounding_without_an_app_version_still_works():
     step = _step([_obs("1.0.0")])
     result = ground(step, ".*", elements=BUTTON)
     assert result is not None and result.rung == RUNG_AUTOMATION_ID
+
+
+def test_first_matching_observation_wins_when_several_apply():
+    """Pins current behaviour rather than changing it.
+
+    Rung 1 iterates the selected observations and returns on the first whose
+    automation_id matches a live element, instead of gathering matches across
+    all of them and disambiguating once. Both ids here were legitimately
+    learned by promote() for this same step, so choosing the first is
+    arbitrary rather than wrong — but it is a real narrowing of what
+    _disambiguate sees, and it was previously untested in either direction.
+
+    If this ever becomes a problem, the fix is to aggregate matches across
+    tied observations before disambiguating; this test is what will notice
+    the behaviour changing.
+    """
+    elements = [
+        Element("First", "Button", "1001", (10, 10, 110, 40)),
+        Element("Second", "Button", "2002", (10, 50, 110, 80)),
+    ]
+    step = _step([_obs("1.0.0", automation_id="1001"), _obs("1.0.0", automation_id="2002")])
+
+    result = ground(step, ".*", elements=elements, app_version="1.0.0")
+
+    assert result is not None
+    assert result.rung == RUNG_AUTOMATION_ID
+    assert result.automation_id == "1001", (
+        "rung 1 no longer returns on the first matching observation; if that "
+        "was deliberate, update this test and say why"
+    )

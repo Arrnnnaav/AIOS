@@ -127,13 +127,29 @@ def hydrate_recipe(recipe, app_id: str, store) -> int:
     return loaded
 
 
-def persist_step(recipe_intent: str, step, app_id: str, store) -> None:
-    """Write a step's confirmed observations to disk, idempotently."""
+def persist_step(
+    recipe_intent: str, step, app_id: str, store, observation=None
+) -> None:
+    """Write what this step learned to disk, idempotently.
+
+    Pass `observation` to write only that one. The grounder does, because it
+    is called on every DECIDING tick: writing the step's whole `confirmed`
+    list each time re-wrote observations hydrated from previous runs that this
+    tour never grounded, incrementing their `ok_count` on every tick and
+    issuing a write per observation per tick. `ok_count` is meant to count
+    times-observed, not times-persisted.
+
+    Omit it to write every confirmed observation — the whole-step form, for
+    callers that genuinely mean "flush this step".
+    """
     from ghostcursor.reasoning.identity import step_key
 
     key = step_key(recipe_intent, step)
-    for observation in step.target_descriptor.confirmed:
-        store.record(key, app_id, observation)
+    to_write = (
+        [observation] if observation is not None else step.target_descriptor.confirmed
+    )
+    for entry in to_write:
+        store.record(key, app_id, entry)
 
 
 def make_grounder(
@@ -175,8 +191,23 @@ def make_grounder(
         if grounded is not None:
             grounding.promote(step, grounded, app_version=app_version, locale=ui_locale)
             if store is not None and app_id is not None:
+                # Write only what promote() just recorded for this grounding —
+                # not the step's whole confirmed list. This runs every tick,
+                # and rewriting observations hydrated from earlier runs would
+                # inflate their ok_count and cost a write each per tick.
+                learned = next(
+                    (
+                        obs
+                        for obs in step.target_descriptor.confirmed
+                        if obs.automation_id == grounded.automation_id
+                        and obs.app_version == app_version
+                    ),
+                    None,
+                )
                 try:
-                    persist_step(recipe_intent, step, app_id, store)
+                    persist_step(
+                        recipe_intent, step, app_id, store, observation=learned
+                    )
                 except sqlite3.Error as exc:
                     if not warned:
                         print(f"Persistence disabled for the rest of this run: {exc}")

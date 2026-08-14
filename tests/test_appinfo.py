@@ -84,3 +84,66 @@ def test_app_info_for_a_store_app_prefers_appx_version():
         f"expected Appx package version {appx_version!r}, "
         f"but got {info.version!r} (exe VERSIONINFO is {file_version!r})"
     )
+
+
+def test_a_minimized_window_is_not_used_for_app_identity():
+    """App identity and grounding must agree on which window they mean.
+
+    perception.uia's enumeration excludes minimized and off-screen windows,
+    because a hint cannot be drawn on one. appinfo's copy did not, so a
+    minimized window could supply the app identity that observations are
+    persisted under while grounding refused that same window. Both now share
+    one enumeration helper, so they cannot drift apart again.
+    """
+    import win32con
+    import win32gui
+
+    from ghostcursor.perception.appinfo import app_info_for_window
+    from tests.uia_app import SyntheticApp
+
+    with SyntheticApp(title="GhostCursorMinimizedProbe") as app:
+        title_re = f".*{app.title}.*"
+        assert app_info_for_window(title_re) is not None, "visible window should resolve"
+
+        win32gui.ShowWindow(app.hwnd, win32con.SW_MINIMIZE)
+        app.pump()
+        try:
+            assert app_info_for_window(title_re) is None, (
+                "a minimized window supplied app identity; grounding would "
+                "have refused that same window"
+            )
+        finally:
+            win32gui.ShowWindow(app.hwnd, win32con.SW_RESTORE)
+            app.pump()
+
+
+def test_a_package_name_with_shell_metacharacters_is_refused():
+    """A path-derived value must not reach a PowerShell -Command string.
+
+    WindowsApps is system-protected, so this is defence rather than a live
+    hole — but the guard is what makes that a property of the code instead of
+    a property of the filesystem.
+    """
+    from ghostcursor.perception.appinfo import UNKNOWN, _appx_version
+
+    hostile = r"C:\Program Files\WindowsApps\Bad; Remove-Item C:\_1.0_x64__abc\app.exe"
+    assert _appx_version(hostile) == UNKNOWN
+
+
+def test_a_missing_powershell_is_reported_not_silently_unknown(capsys, monkeypatch):
+    """A broken environment must be distinguishable from an app with no version."""
+    import subprocess as subprocess_module
+
+    from ghostcursor.perception import appinfo
+
+    appinfo._warned.clear()
+
+    def _explode(*args, **kwargs):
+        raise FileNotFoundError("powershell.exe not found")
+
+    monkeypatch.setattr(subprocess_module, "run", _explode)
+    monkeypatch.setattr(appinfo.subprocess, "run", _explode)
+
+    path = r"C:\Program Files\WindowsApps\Microsoft.Something_1.0_x64__abc\app.exe"
+    assert appinfo._appx_version(path) == appinfo.UNKNOWN
+    assert "could not read the Store package version" in capsys.readouterr().out

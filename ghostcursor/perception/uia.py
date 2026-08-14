@@ -40,23 +40,39 @@ def is_on_screen(bbox: tuple[int, int, int, int] | None) -> bool:
     return overlaps_x and overlaps_y
 
 
-def _raw_window_rect(title_re: str) -> tuple[int, int, int, int] | None:
-    """Fallback: raw win32gui geometry for a visible, non-minimized top-level
-    window matching title_re, for the cases where UIA exposes no usable
-    geometry at all."""
+def windows_matching(title_re: str) -> list[int]:
+    """HWNDs of visible, non-minimized, on-screen top-level windows whose
+    title matches title_re, in z-order.
+
+    The single place this enumeration lives. It was duplicated in
+    perception/appinfo.py, and the two copies drifted: this one excluded
+    minimized and off-screen windows (a hint cannot be drawn on one) while
+    the copy did not — so a minimized window could supply the app identity
+    that observations are persisted under, while grounding refused that same
+    window. Identity and grounding must agree on which window they mean.
+    """
     pattern = re.compile(title_re)
-    matches: list[tuple[int, int, int, int]] = []
+    matches: list[int] = []
 
     def _collect(hwnd, _):
         if not win32gui.IsWindowVisible(hwnd) or win32gui.IsIconic(hwnd):
             return
-        if pattern.search(win32gui.GetWindowText(hwnd)):
-            rect = win32gui.GetWindowRect(hwnd)
-            if is_on_screen(rect):
-                matches.append(rect)
+        if pattern.search(win32gui.GetWindowText(hwnd)) and is_on_screen(
+            win32gui.GetWindowRect(hwnd)
+        ):
+            matches.append(hwnd)
 
     win32gui.EnumWindows(_collect, None)
-    return matches[0] if matches else None
+    return matches
+
+
+def _raw_window_rect(title_re: str) -> tuple[int, int, int, int] | None:
+    """Fallback: raw win32gui geometry for a visible, non-minimized top-level
+    window matching title_re, for the cases where UIA exposes no usable
+    geometry at all."""
+    for hwnd in windows_matching(title_re):
+        return win32gui.GetWindowRect(hwnd)
+    return None
 
 
 def find_element(

@@ -24,10 +24,10 @@ import subprocess
 from dataclasses import dataclass
 
 import win32api
-import win32gui
 import win32process
 
 from ghostcursor.overlay import dpi  # noqa: F401  declares DPI awareness first
+from ghostcursor.perception.uia import windows_matching
 
 UNKNOWN = "unknown"
 _PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
@@ -69,12 +69,25 @@ def _exe_path_for_pid(pid: int) -> str | None:
         ctypes.windll.kernel32.CloseHandle(handle)
 
 
+#: A package name is an identifier, not free text. Guarding it keeps a
+#: path-derived value from reaching a PowerShell -Command string. WindowsApps
+#: is system-protected so this is not currently exploitable; the guard costs a
+#: line and removes the question.
+_PACKAGE_NAME = re.compile(r"^[A-Za-z0-9._-]+$")
+
+
 def _file_version(exe_path: str) -> str:
+    """Version from the exe's VERSIONINFO resource, or UNKNOWN.
+
+    Narrow catches on purpose: a file with no version resource is ordinary and
+    yields UNKNOWN quietly, but anything else is a real failure and should not
+    be indistinguishable from it.
+    """
     try:
         info = win32api.GetFileVersionInfo(exe_path, "\\")
         ms, ls = info["FileVersionMS"], info["FileVersionLS"]
         return f"{ms >> 16}.{ms & 0xFFFF}.{ls >> 16}.{ls & 0xFFFF}"
-    except Exception:
+    except (win32api.error, KeyError, OSError):
         return UNKNOWN
 
 
@@ -84,6 +97,9 @@ def _appx_version(exe_path: str) -> str:
     if not match:
         return UNKNOWN
     package_name = match.group(1).split("_")[0]
+    if not _PACKAGE_NAME.match(package_name):
+        return UNKNOWN
+
     try:
         result = subprocess.run(
             [
@@ -96,9 +112,22 @@ def _appx_version(exe_path: str) -> str:
             text=True,
             timeout=25,
         )
-        return result.stdout.strip() or UNKNOWN
-    except Exception:
+    except (OSError, subprocess.SubprocessError) as exc:
+        # A missing powershell.exe or a timeout is a real environment
+        # problem, not "this app has no version" — say so once rather than
+        # collapsing it into the same silent UNKNOWN.
+        _warn_once(f"could not read the Store package version ({type(exc).__name__})")
         return UNKNOWN
+    return result.stdout.strip() or UNKNOWN
+
+
+_warned: set[str] = set()
+
+
+def _warn_once(message: str) -> None:
+    if message not in _warned:
+        _warned.add(message)
+        print(f"Ghost Cursor: {message}")
 
 
 def _version_for(exe_path: str, kind: str) -> str:
@@ -116,16 +145,10 @@ def _version_for(exe_path: str, kind: str) -> str:
 def app_info_for_window(title_re: str) -> AppInfo | None:
     """Identify the application owning the first visible window matching
     title_re, or None if no such window exists."""
-    pattern = re.compile(title_re)
-    found: list[int] = []
-
-    def _collect(hwnd, _):
-        if win32gui.IsWindowVisible(hwnd) and pattern.search(
-            win32gui.GetWindowText(hwnd)
-        ):
-            found.append(hwnd)
-
-    win32gui.EnumWindows(_collect, None)
+    # Shared with grounding on purpose (see uia.windows_matching): a window
+    # that grounding would refuse must not supply the app identity that
+    # observations are persisted under.
+    found = windows_matching(title_re)
     if not found:
         return None
 

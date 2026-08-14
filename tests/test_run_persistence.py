@@ -84,3 +84,58 @@ def test_persist_is_a_noop_for_a_step_that_learned_nothing(tmp_path):
             store.observations_for(step_key(recipe.intent, recipe.steps[0]), APP.app_id)
             == []
         )
+
+
+def test_persist_writes_only_the_observation_just_learned(tmp_path):
+    """A tour must not rewrite observations it did not touch.
+
+    persist_step used to loop over every confirmed observation on the step and
+    write each one. It is called from the grounder on every DECIDING tick, so
+    an observation hydrated from a previous run — for a different app version,
+    never grounded this run — had its ok_count incremented on every tick. That
+    made ok_count count persist calls rather than times-observed, and issued
+    N x M writes per tour for no reason.
+    """
+    from ghostcursor.memory.store import ObservationStore
+
+    recipe = _recipe()
+    step = recipe.steps[0]
+    stale = ConfirmedObservation(
+        app_version="0.9.0", locales_observed=["en-US"],
+        automation_id="9999", control_type="Button",
+    )
+    fresh = ConfirmedObservation(
+        app_version="1.0.0", locales_observed=["en-US"],
+        automation_id="1001", control_type="Button",
+    )
+    step.target_descriptor.confirmed.extend([stale, fresh])
+
+    key = step_key(recipe.intent, step)
+    with ObservationStore(tmp_path / "kb.sqlite") as store:
+        # three ticks, all grounding the SAME live element (1001 on 1.0.0)
+        for _ in range(3):
+            persist_step(recipe.intent, step, APP.app_id, store, observation=fresh)
+        rows = {o.automation_id: o for o in store.observations_for(key, APP.app_id)}
+
+    assert "1001" in rows, "the observation that was actually learned must be written"
+    assert "9999" not in rows, (
+        "an untouched observation from a previous run was rewritten; "
+        "persist_step must write only what this tick learned"
+    )
+
+
+def test_persist_without_an_explicit_observation_writes_them_all(tmp_path):
+    """The whole-step form stays available for callers that mean it."""
+    from ghostcursor.memory.store import ObservationStore
+
+    recipe = _recipe()
+    step = recipe.steps[0]
+    step.target_descriptor.confirmed.extend([
+        ConfirmedObservation(app_version="0.9.0", automation_id="9999"),
+        ConfirmedObservation(app_version="1.0.0", automation_id="1001"),
+    ])
+    key = step_key(recipe.intent, step)
+    with ObservationStore(tmp_path / "kb.sqlite") as store:
+        persist_step(recipe.intent, step, APP.app_id, store)
+        ids = {o.automation_id for o in store.observations_for(key, APP.app_id)}
+    assert ids == {"9999", "1001"}
