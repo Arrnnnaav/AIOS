@@ -48,7 +48,7 @@ def _tour(steps=None, grounder=None, verifier=None, clock=None, snapshotter=None
     recipe = Recipe(app_id="test", intent="t", steps=steps or [_step(), _step()])
     return GuidedTour(
         recipe=recipe,
-        grounder=grounder or (lambda step, i: TARGET),
+        grounder=grounder or (lambda step, i, elements=None: TARGET),
         snapshotter=snapshotter or (lambda: STILL),
         verifier=verifier or (lambda rule, before, after: True),
         renderer=FakeRenderer(),
@@ -111,7 +111,7 @@ def test_ungroundable_step_fails_rather_than_guessing():
     # CONTINUOUSLY past the grace period. The fake clock, not real sleeping,
     # is what makes this deterministic and fast.
     now = {"t": 0.0}
-    tour = _tour(grounder=lambda step, i: None, clock=lambda: now["t"])
+    tour = _tour(grounder=lambda step, i, elements=None: None, clock=lambda: now["t"])
     for _ in range(6):
         tour.tick()
         now["t"] += 1.0
@@ -131,7 +131,7 @@ def test_a_temporarily_ungroundable_step_recovers_within_the_grace_period():
     now = {"t": 0.0}
     attempts = iter([None, None, None, TARGET, TARGET, TARGET, TARGET, TARGET])
     tour = _tour(
-        grounder=lambda step, i: next(attempts, TARGET),
+        grounder=lambda step, i, elements=None: next(attempts, TARGET),
         verifier=lambda rule, before, after: False,
         clock=lambda: now["t"],
     )

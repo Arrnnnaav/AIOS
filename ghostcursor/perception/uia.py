@@ -141,11 +141,24 @@ def iter_elements(title_re: str) -> list[Element]:
     frequently reports (0, 0, 0, 0), which would otherwise ground a hint into
     the corner of the desktop.
     """
+    # Ask the cheap question first. windows_matching is an EnumWindows scan
+    # costing ~0.1ms; pywinauto's wait("exists", timeout=3) costs ~50ms when
+    # the window IS there and a full 3 seconds when it is not. With three
+    # perception calls per tick, an absent target — the user simply alt-tabbed
+    # — blocked a tick for ~9.1 seconds, and ESC is only polled between ticks,
+    # so the overlay sat on screen un-dismissable for that whole time.
+    #
+    # No wait() below either: existence is already established here, and the
+    # window can still vanish between this check and the walk, which the
+    # except clause handles. Waiting cannot close that race, only pay for it.
+    if not windows_matching(title_re):
+        return []
+
     try:
         window = Desktop(backend="uia").window(title_re=title_re)
-        window.wait("exists", timeout=3)
         descendants = window.descendants()
     except Exception:
+        # The window went away mid-walk, or exposes no usable UIA tree.
         return []
 
     elements: list[Element] = []

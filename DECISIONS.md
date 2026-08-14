@@ -362,3 +362,60 @@ persist/hydrate round trip. Each was confirmed to FAIL the suite when broken.
 
 **Cost:** a few minutes per property, and the discipline to break your own code
 on purpose before believing it works.
+
+## D019 — Which perception snapshots share an instant, and which must not
+**Decision:** `OBSERVING` and `DECIDING` share one UI tree walk;
+`AWAITING_USER_ACTION` always takes its own, fresh.
+
+**Why it matters, and why it is easy to break.** These two look like the same
+kind of call, and merging all three "for consistency" is a natural-looking
+refactor that would silently destroy verification:
+
+- `OBSERVING` → `DECIDING` describe **one instant**: "here is the screen, now
+  decide what to point at." Reading the tree twice was not merely slower, it
+  was slightly wrong — grounding could act on a state the snapshot never saw.
+- `AWAITING_USER_ACTION` must describe a **later** instant. Its entire job is
+  to ask whether the user has acted *since* the hint was drawn. Sharing the
+  earlier snapshot there would compare a state against itself, so verification
+  could never succeed and every tour would stall on its first step.
+
+`tests/test_tick_latency.py::test_observing_and_deciding_share_one_tree_walk`
+pins the sharing; the verification tests cover the separation.
+
+## D020 — A standing ceiling on tick latency, because the escapability rule has no other enforcement
+**Decision:** no code path on the tick path may block longer than
+`TICK_CEILING_S` (0.5s), enforced by `tests/test_tick_latency.py`.
+
+**Why a standing test rather than another point fix.** The overlay is
+full-screen, topmost, click-through, has no title bar and never takes focus,
+so ESC and `--seconds` are the only ways out — and ESC is polled *between*
+ticks. A blocking tick is therefore time the user cannot escape a window
+covering their screen. That invariant has now been broken twice by unbounded
+calls, each found only after the fact:
+
+- drawing outside `WM_PAINT` left the surface uninitialised, painting an
+  opaque wash over the desktop (D009);
+- three `wait("exists", timeout=3)` calls per tick meant an absent target —
+  the user simply alt-tabbed — blocked a tick for **9.1 seconds** measured,
+  every tick, with the overlay up.
+
+Two occurrences is a pattern, not coincidence: nothing enforced the rule
+structurally. The ceiling does. A future OCR fallback, VLM call, or a
+knowledge-base lookup that reaches the network now trips a test instead of
+shipping silently.
+
+**Why not a runtime watchdog.** A watchdog thread cannot rescue a blocked
+tick, and this was verified rather than assumed: `DestroyWindow` from a
+non-owning thread fails with `Access is denied` and the window survives, and
+`PostMessage` needs the main thread's message pump — precisely what a blocked
+tick is not running. The only real runtime fix is to keep perception off the
+UI thread so it always pumps and polls ESC. That is a genuine change and is
+deliberately not smuggled in here; until then the ceiling is the guard.
+
+**Measured effect of the fix this decision came from:**
+
+```
+absent-window tick   9,124 ms  ->  0.39 ms
+one tree walk           67.6 ms ->  26.0 ms   (dropped a redundant wait)
+observe -> hint          2 walks ->  1 walk
+```

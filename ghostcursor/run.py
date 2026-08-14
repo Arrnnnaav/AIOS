@@ -183,10 +183,12 @@ def make_grounder(
     # per tick, so a repeated failure does not spam the console.
     warned = False
 
-    def grounder(step, i):
+    def grounder(step, i, elements=None):
         nonlocal warned
+        # `elements` is the tree walk OBSERVING already did this tick.
         grounded = grounding.ground(
-            step, title_re, locale=ui_locale, app_version=app_version
+            step, title_re, locale=ui_locale, app_version=app_version,
+            elements=elements,
         )
         if grounded is not None:
             grounding.promote(step, grounded, app_version=app_version, locale=ui_locale)

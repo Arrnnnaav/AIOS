@@ -46,7 +46,7 @@ class GuidedTour:
     def __init__(
         self,
         recipe: Recipe,
-        grounder: Callable[[Step, int], GroundedTarget | None],
+        grounder: Callable[[Step, int, list], GroundedTarget | None],
         snapshotter: Callable[[], Snapshot],
         verifier: Callable[..., bool],
         renderer: Renderer,
@@ -108,7 +108,16 @@ class GuidedTour:
 
         elif self.state is State.DECIDING:
             step = self.current_step
-            self._grounded = self.grounder(step, self.step_index)
+            # Reuse the elements OBSERVING just read rather than walking the
+            # UI tree again. OBSERVING and DECIDING are meant to describe the
+            # SAME instant — "here is the screen, now decide what to point at"
+            # — so a second walk was both slower and slightly wrong, since the
+            # screen could change between them.
+            #
+            # AWAITING_USER_ACTION deliberately does NOT share this: its whole
+            # job is to observe a LATER moment and see whether the user acted.
+            # Sharing a snapshot there would compare a state against itself.
+            self._grounded = self.grounder(step, self.step_index, self._before.elements)
             if self._grounded is None:
                 # Never guess a coordinate. The target window may simply be
                 # minimized or the user alt-tabbed away (spec §11: "Target

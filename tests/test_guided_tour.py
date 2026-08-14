@@ -75,7 +75,7 @@ def test_tour_grounds_renders_and_verifies_against_a_real_window():
             renderer = OverlayRenderer(hwnd)
             tour = GuidedTour(
                 recipe=recipe,
-                grounder=lambda step, i: grounding.ground(step, title_re),
+                grounder=lambda step, i, elements=None: grounding.ground(step, title_re),
                 snapshotter=lambda: take_snapshot(title_re),
                 verifier=verify,
                 renderer=renderer,
