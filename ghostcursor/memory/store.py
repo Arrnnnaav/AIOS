@@ -84,36 +84,39 @@ class ObservationStore:
         if not observation.automation_id:
             return  # nothing learned; never invent an id
 
-        existing = self._conn.execute(
-            "SELECT locales_observed, ok_count FROM observations "
-            "WHERE step_key=? AND app_id=? AND app_version=? AND automation_id=?",
-            (step_key, app_id, observation.app_version, observation.automation_id),
-        ).fetchone()
-
-        locales = set(observation.locales_observed)
-        ok_count = 1
-        if existing:
-            locales |= set(json.loads(existing["locales_observed"]))
-            ok_count = existing["ok_count"] + 1
-
+        # One statement, deliberately. An earlier version read the row, merged
+        # locales in Python, then wrote — so two processes could both read the
+        # same row before either wrote, and the second write silently discarded
+        # the first one's merge. Nothing blocked, so busy_timeout could not
+        # help, and the window was too small to catch by racing: an earlier
+        # two-process test passed against the broken code.
+        #
+        # Merging inside ON CONFLICT removes the window rather than narrowing
+        # it — SQLite evaluates the whole statement under the write lock, so no
+        # other connection can observe a half-applied merge. `ok_count`
+        # increments from the stored value for the same reason.
         self._conn.execute(
             "INSERT INTO observations (step_key, app_id, app_version, automation_id,"
             " control_type, locales_observed, last_seen_at, ok_count)"
-            " VALUES (?,?,?,?,?,?,?,?)"
+            " VALUES (?,?,?,?,?,?,?,1)"
             " ON CONFLICT(step_key, app_id, app_version, automation_id) DO UPDATE SET"
             "   control_type=excluded.control_type,"
-            "   locales_observed=excluded.locales_observed,"
+            "   locales_observed=("
+            "     SELECT json_group_array(locale) FROM ("
+            "       SELECT value AS locale FROM json_each(observations.locales_observed)"
+            "       UNION"
+            "       SELECT value FROM json_each(excluded.locales_observed)"
+            "       ORDER BY locale)),"
             "   last_seen_at=excluded.last_seen_at,"
-            "   ok_count=excluded.ok_count",
+            "   ok_count=observations.ok_count + 1",
             (
                 step_key,
                 app_id,
                 observation.app_version,
                 observation.automation_id,
                 observation.control_type,
-                json.dumps(sorted(locales)),
+                json.dumps(sorted(set(observation.locales_observed))),
                 observation.last_seen_at,
-                ok_count,
             ),
         )
         self._conn.commit()
