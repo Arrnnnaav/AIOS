@@ -67,16 +67,10 @@ class HungWindow:
             reader.start()
 
             if not ready_event.wait(timeout=self.HANDSHAKE_TIMEOUT):
-                # Timeout: child never sent ready
-                stderr_content = ""
-                if self._child and self._child.stderr:
-                    try:
-                        stderr_content = self._child.stderr.read()
-                    except Exception:
-                        pass
+                # Timeout: child never sent ready. Do not try to read stderr
+                # as it may block if the child is still alive with open pipes.
                 raise TimeoutError(
-                    f"child did not signal 'ready' within {self.HANDSHAKE_TIMEOUT}s. "
-                    f"stderr: {stderr_content!r}"
+                    f"child did not signal 'ready' within {self.HANDSHAKE_TIMEOUT}s"
                 )
 
             line = handshake_line[0] or ""
