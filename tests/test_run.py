@@ -201,14 +201,23 @@ class _RaisingObservationStore:
         raise sqlite3.OperationalError("unable to open database file")
 
 
-def test_run_tour_destroys_overlay_when_store_construction_raises(
+def test_run_tour_never_creates_overlay_when_store_construction_raises(
     monkeypatch, tmp_path
 ):
+    # Superseded ordering: app_info_for_window/ObservationStore()/
+    # hydrate_recipe() now run BEFORE window.create_overlay_window(), so a
+    # store-construction failure can no longer strand a live overlay -- no
+    # overlay exists yet for the finally block to tear down. This replaces
+    # the old assertion that destroyed == [4242] after the raise, which
+    # encoded the previous (overlay-first) ordering.
     recipe_path = tmp_path / "recipe.json"
     recipe_path.write_text("{}", encoding="utf-8")
 
+    created = []
     destroyed = []
-    monkeypatch.setattr(window, "create_overlay_window", lambda: 4242)
+    monkeypatch.setattr(
+        window, "create_overlay_window", lambda: created.append(4242) or 4242
+    )
     monkeypatch.setattr(
         window, "destroy_overlay_window", lambda hwnd: destroyed.append(hwnd)
     )
@@ -224,21 +233,32 @@ def test_run_tour_destroys_overlay_when_store_construction_raises(
     with pytest.raises(sqlite3.OperationalError):
         run_module.run_tour(str(recipe_path), ".*", 5.0)
 
-    assert destroyed == [4242], (
-        "the overlay must always be torn down, even when ObservationStore() "
-        "raises -- a stranded full-screen overlay is the exact failure the "
-        "finally block exists to prevent"
+    assert created == [], (
+        "ObservationStore() now raises before the overlay is created, so "
+        "create_overlay_window must never be called on this path"
     )
+    assert destroyed == []
 
 
 def test_run_tour_exits_cleanly_when_esc_is_pressed_before_the_tour_starts(
     monkeypatch, tmp_path
 ):
+    # Superseded ordering: ESC is now polled only during the pre-tour phase,
+    # which now runs entirely BEFORE the overlay exists (app_info lookup,
+    # then store setup, then a final check right before
+    # window.create_overlay_window()). So an ESC press anywhere in that
+    # phase must mean create_overlay_window is never called at all --
+    # unlike the old ordering this replaces, there is no overlay to
+    # destroy on this path. The old assertion `destroyed == [4242]` encoded
+    # the previous (overlay-first) ordering and no longer applies.
     recipe_path = tmp_path / "recipe.json"
     recipe_path.write_text("{}", encoding="utf-8")
 
+    created = []
     destroyed = []
-    monkeypatch.setattr(window, "create_overlay_window", lambda: 4242)
+    monkeypatch.setattr(
+        window, "create_overlay_window", lambda: created.append(4242) or 4242
+    )
     monkeypatch.setattr(
         window, "destroy_overlay_window", lambda hwnd: destroyed.append(hwnd)
     )
@@ -249,9 +269,11 @@ def test_run_tour_exits_cleanly_when_esc_is_pressed_before_the_tour_starts(
     # if the code tried.
     monkeypatch.setattr(appinfo, "app_info_for_window", lambda title_re: None)
 
-    # False on the first pre-tour check (right after overlay creation), True
-    # on the second (right after the app-info lookup) -- proves ESC aborts a
-    # slow pre-tour phase rather than only being checked once at the top.
+    # False on the first pre-tour check (before the app-info lookup), True
+    # on the second (right after the app-info lookup, before overlay
+    # creation) -- proves ESC aborts the pre-tour phase rather than only
+    # being checked once at the top, and that it does so before any
+    # overlay is ever created.
     calls = iter([False, True])
     monkeypatch.setattr(run_module, "escape_pressed", lambda: next(calls))
 
@@ -268,4 +290,79 @@ def test_run_tour_exits_cleanly_when_esc_is_pressed_before_the_tour_starts(
     result = run_module.run_tour(str(recipe_path), ".*", 5.0)
 
     assert result == 0
-    assert destroyed == [4242]
+    assert created == [], "ESC before the overlay-creation check must prevent it"
+    assert destroyed == []
+
+
+def test_run_tour_creates_overlay_only_after_app_info_is_resolved(
+    monkeypatch, tmp_path
+):
+    # This is the residual fix itself: app_info_for_window can shell out to
+    # PowerShell for up to 25s (Store-app version lookup). If the overlay
+    # existed on screen during that call, it would be a full-screen,
+    # click-through, unfocused window with no way for the user to escape it
+    # for up to 25s -- exactly the failure class this project's hard rule
+    # (the overlay is ALWAYS escapable) exists to prevent. Recording call
+    # order proves app_info_for_window (and ObservationStore/hydrate_recipe)
+    # run strictly before window.create_overlay_window, so no overlay is
+    # ever on screen during the slow lookup.
+    recipe_path = tmp_path / "recipe.json"
+    recipe_path.write_text("{}", encoding="utf-8")
+
+    order = []
+    monkeypatch.setattr(
+        appinfo,
+        "app_info_for_window",
+        lambda title_re: (order.append("app_info_for_window"), _FakeAppInfo())[1],
+    )
+
+    import ghostcursor.memory.store as store_module
+
+    class _RecordingStore:
+        def __init__(self):
+            order.append("ObservationStore")
+
+        def observations_for(self, key, app_id):
+            return []
+
+        def close(self):
+            order.append("store.close")
+
+    monkeypatch.setattr(store_module, "ObservationStore", _RecordingStore)
+    monkeypatch.setattr(
+        window,
+        "create_overlay_window",
+        lambda: (order.append("create_overlay_window"), 4242)[1],
+    )
+    monkeypatch.setattr(
+        window, "destroy_overlay_window", lambda hwnd: order.append("destroy_overlay")
+    )
+    monkeypatch.setattr(window, "pump_messages_nonblocking", lambda: None)
+    monkeypatch.setattr(run_module, "escape_pressed", lambda: False)
+    monkeypatch.setattr(Recipe, "load", staticmethod(lambda path: _fake_recipe()))
+
+    import ghostcursor.reasoning.loop as loop_module
+
+    class _FakeTour:
+        current_step = None
+
+        def tick(self):
+            return loop_module.State.DONE
+
+        renderer = type("R", (), {"last_instruction": None})()
+        step_index = 0
+
+    monkeypatch.setattr(
+        loop_module,
+        "GuidedTour",
+        lambda **kw: (order.append("GuidedTour"), _FakeTour())[1],
+    )
+
+    result = run_module.run_tour(str(recipe_path), ".*", 5.0)
+
+    assert result == 0
+    assert order.index("app_info_for_window") < order.index("create_overlay_window")
+    assert order.index("ObservationStore") < order.index("create_overlay_window")
+    assert order.index("GuidedTour") > order.index("create_overlay_window")
+    assert order[-1] in ("store.close",), order
+    assert order.count("destroy_overlay") == 1

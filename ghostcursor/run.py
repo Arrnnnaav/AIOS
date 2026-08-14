@@ -207,31 +207,26 @@ def run_tour(recipe_path: str, title_re: str, seconds: float) -> int:
     from ghostcursor.reasoning.verification import take_snapshot, verify
 
     recipe = Recipe.load(recipe_path)
-    hwnd = window.create_overlay_window()
-    print(f"Guided tour: {recipe.intent!r}. ESC to quit.")
 
-    deadline = time.monotonic() + seconds
-    last_printed: str | None = None
+    # app_info_for_window can shell out to PowerShell (Store-app version
+    # lookup, up to 25s) and ObservationStore() can raise (corrupt/
+    # read-only db, %LOCALAPPDATA% undefined). Both now run before the
+    # overlay is created — there is no full-screen, click-through, unfocused
+    # window on screen during this slow pre-tour phase, so there is nothing
+    # to escape from yet. The overlay's own escape hatch only has to cover
+    # the tour loop below, which is what it was designed for.
+    if escape_pressed():
+        print("ESC pressed — exiting.")
+        return 0
+
+    app_info = app_info_for_window(title_re)
+
+    if escape_pressed():
+        print("ESC pressed — exiting.")
+        return 0
+
     store = None
     try:
-        # app_info_for_window can shell out to PowerShell (Store-app version
-        # lookup, up to 25s) and ObservationStore() can raise (corrupt/
-        # read-only db, %LOCALAPPDATA% undefined). Both now run inside this
-        # try so the finally below always tears the overlay down, and both
-        # are interleaved with ESC polling so the escape hatch stays alive
-        # during a slow pre-tour lookup instead of being dead for up to 25s.
-        if escape_pressed():
-            print("ESC pressed — exiting.")
-            return 0
-        window.pump_messages_nonblocking()
-
-        app_info = app_info_for_window(title_re)
-
-        if escape_pressed():
-            print("ESC pressed — exiting.")
-            return 0
-        window.pump_messages_nonblocking()
-
         if app_info is not None:
             store = ObservationStore()
             loaded = hydrate_recipe(recipe, app_info.app_id, store)
@@ -246,45 +241,54 @@ def run_tour(recipe_path: str, title_re: str, seconds: float) -> int:
             print("ESC pressed — exiting.")
             return 0
 
-        tour = GuidedTour(
-            recipe=recipe,
-            grounder=make_grounder(
-                title_re, app_info=app_info, store=store, recipe_intent=recipe.intent
-            ),
-            snapshotter=lambda: take_snapshot(title_re),
-            verifier=verify,
-            renderer=OverlayRenderer(hwnd),
-        )
-        while time.monotonic() < deadline:
-            if escape_pressed():
-                print("ESC pressed — exiting.")
-                break
-            if should_poll_space(tour.current_step) and key_was_pressed(
-                win32con.VK_SPACE
-            ):
-                tour.confirm()
+        hwnd = window.create_overlay_window()
+        print(f"Guided tour: {recipe.intent!r}. ESC to quit.")
+        try:
+            deadline = time.monotonic() + seconds
+            last_printed: str | None = None
+            tour = GuidedTour(
+                recipe=recipe,
+                grounder=make_grounder(
+                    title_re,
+                    app_info=app_info,
+                    store=store,
+                    recipe_intent=recipe.intent,
+                ),
+                snapshotter=lambda: take_snapshot(title_re),
+                verifier=verify,
+                renderer=OverlayRenderer(hwnd),
+            )
+            while time.monotonic() < deadline:
+                if escape_pressed():
+                    print("ESC pressed — exiting.")
+                    break
+                if should_poll_space(tour.current_step) and key_was_pressed(
+                    win32con.VK_SPACE
+                ):
+                    tour.confirm()
 
-            state = tour.tick()
-            if state is State.DONE:
-                print("Tour complete.")
-                break
-            if state is State.FAILED:
-                print(f"Stopped: {tour.failure_reason}")
-                break
-            # Only print when the instruction changes — this loop runs at
-            # 4 ticks/sec and the instruction is unchanged across most of
-            # them (AWAITING_USER_ACTION dwells while polling).
-            instruction = tour.renderer.last_instruction
-            if instruction and instruction != last_printed:
-                print(f"  step {tour.step_index + 1}: {instruction}")
-                last_printed = instruction
+                state = tour.tick()
+                if state is State.DONE:
+                    print("Tour complete.")
+                    break
+                if state is State.FAILED:
+                    print(f"Stopped: {tour.failure_reason}")
+                    break
+                # Only print when the instruction changes — this loop runs
+                # at 4 ticks/sec and the instruction is unchanged across
+                # most of them (AWAITING_USER_ACTION dwells while polling).
+                instruction = tour.renderer.last_instruction
+                if instruction and instruction != last_printed:
+                    print(f"  step {tour.step_index + 1}: {instruction}")
+                    last_printed = instruction
 
-            window.pump_messages_nonblocking()
-            time.sleep(REFRESH_SECONDS)
-        else:
-            print("Time limit reached — exiting.")
+                window.pump_messages_nonblocking()
+                time.sleep(REFRESH_SECONDS)
+            else:
+                print("Time limit reached — exiting.")
+        finally:
+            window.destroy_overlay_window(hwnd)
     finally:
-        window.destroy_overlay_window(hwnd)
         if store is not None:
             store.close()
     return 0
