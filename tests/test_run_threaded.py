@@ -204,3 +204,60 @@ def test_a_hung_target_does_not_end_the_tour_before_the_health_budget(
         "a target that has simply not answered yet was reported as a dead "
         f"perception worker: {printed}"
     )
+
+
+def test_a_dead_worker_is_named_as_a_perception_failure(tmp_path, monkeypatch):
+    """The element is on screen. Perception is what broke.
+
+    The two clocks race: a dead worker makes grounding fail on every tick, so
+    at the stock 10s grounding grace the tour used to give up ~5s BEFORE the
+    15s health budget could fire — and told the user "cannot find 'Export' on
+    screen" about an element sitting right there. That points them at their
+    own application instead of at ours. The grounding grace answers "is the
+    target on screen", which is only a meaningful question once perception is
+    known to be working, so it must resolve strictly after the health check.
+    """
+    import ghostcursor.run as run_module
+    from ghostcursor.perception import appinfo, service as service_module
+
+    class DeadService:
+        """Starts, never observes, and reports itself dead."""
+
+        def __init__(self, *a, **kw):
+            self.heartbeat = 0
+
+        def start(self):
+            pass
+
+        def stop(self):
+            pass
+
+        def restart(self):
+            pass
+
+        def latest(self):
+            return None
+
+        def is_alive(self):
+            return False
+
+    _fake_overlay(monkeypatch)
+    monkeypatch.setattr(service_module, "PerceptionService", DeadService)
+    monkeypatch.setattr(appinfo, "app_info_for_window", lambda _t: None)
+    monkeypatch.setattr(run_module, "escape_pressed", lambda: False)
+
+    printed = []
+    monkeypatch.setattr(
+        "builtins.print", lambda *a, **k: printed.append(" ".join(map(str, a)))
+    )
+
+    recipe = _recipe_file(tmp_path)
+    run_module.run_tour(recipe, ".*GhostCursorTestApp.*", seconds=20.0)
+
+    assert any("perception" in line.lower() for line in printed), (
+        f"a dead perception worker was not named as one: {printed}"
+    )
+    assert not any("cannot find" in line.lower() for line in printed), (
+        "a dead perception worker was misreported as a missing element, "
+        f"pointing the user at their own application: {printed}"
+    )

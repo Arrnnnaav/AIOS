@@ -85,6 +85,52 @@ def test_a_stalled_but_living_worker_is_also_treated_as_dead():
     assert service.restarts == 1, "a stalled worker was not restarted"
 
 
+def test_a_restarted_worker_gets_a_fresh_budget_before_it_is_judged():
+    """Otherwise "restart once, then give up" degenerates into "give up".
+
+    The staleness clock measures observations, not workers, so a replacement
+    inherits the staleness of the one it replaced. Judged on that, the very
+    next tick re-fires and ends the tour before the replacement has had a
+    chance to observe anything at all.
+    """
+    now = {"t": 0.0}
+    service = FakeService(alive=True)
+    health, ladder = _health(service, now, dead_after_s=15.0)
+    ladder.observed()
+
+    now["t"] = 20.0
+    assert health.check() is None, "a stalled worker should restart, not give up"
+    assert service.restarts == 1
+
+    # The very next tick. The ladder is still stale — nothing has been
+    # observed — but the replacement has had no time to observe anything.
+    now["t"] = 20.25
+    assert health.check() is None, (
+        "the replacement was judged on the dead worker's staleness"
+    )
+    assert service.restarts == 1
+
+
+def test_a_replacement_that_never_observes_is_still_caught():
+    """The fresh budget forgives the replacement, it does not exempt it."""
+    now = {"t": 0.0}
+    service = FakeService(alive=True)
+    health, ladder = _health(service, now, dead_after_s=15.0)
+    ladder.observed()
+
+    now["t"] = 20.0
+    health.check()  # stalled: restart
+    assert service.restarts == 1
+
+    # Past the replacement's own budget, still with nothing observed.
+    now["t"] = 20.0 + 15.0 + 0.1
+    reason = health.check()
+
+    assert reason is not None, "a replacement that never observed was never caught"
+    assert "perception" in reason.lower()
+    assert service.restarts == 1
+
+
 def test_the_heartbeat_is_logged_when_the_policy_fires():
     """Diagnostic only — it must never decide anything."""
     now = {"t": 0.0}

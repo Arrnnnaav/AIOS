@@ -239,7 +239,11 @@ def run_tour(recipe_path: str, title_re: str, seconds: float) -> int:
     from ghostcursor.perception.appinfo import app_info_for_window
     from ghostcursor.perception.health import WorkerHealth
     from ghostcursor.perception.service import PerceptionService
-    from ghostcursor.reasoning.loop import GuidedTour, State
+    from ghostcursor.reasoning.loop import (
+        DEFAULT_GROUNDING_GRACE_S,
+        GuidedTour,
+        State,
+    )
     from ghostcursor.reasoning.renderer import OverlayRenderer
     from ghostcursor.reasoning.schema import Recipe
     from ghostcursor.reasoning.staleness import Freshness, StalenessLadder
@@ -342,6 +346,25 @@ def run_tour(recipe_path: str, title_re: str, seconds: float) -> int:
                 snapshotter=snapshotter,
                 verifier=verify,
                 renderer=OverlayRenderer(hwnd),
+                # The two clocks must not race, and at the stock 10s grace they
+                # did. A dead perception worker makes grounding fail on every
+                # tick, so the grounding grace expired ~5s BEFORE the 15s health
+                # budget and the tour ended with "cannot find 'Export' on
+                # screen" — telling the user their own UI is missing an element
+                # that is sitting right there, and pointing them at their
+                # application instead of at ours. The two clocks answer
+                # different questions: the grounding grace answers "is the
+                # target on screen", which is only a meaningful question once
+                # perception is known to be working. So it is budgeted to
+                # resolve strictly after the health check, which means a
+                # perception failure is always NAMED as a perception failure.
+                #
+                # Chosen over suppressing the grace while no observation exists
+                # because it is one number in one place rather than a second
+                # piece of state threaded through the grounder, and because it
+                # also covers the case where observations DID arrive and then
+                # the worker died.
+                grounding_grace_s=health.dead_after_s + DEFAULT_GROUNDING_GRACE_S,
             )
             while time.monotonic() < deadline:
                 if escape_pressed():
@@ -385,6 +408,11 @@ def run_tour(recipe_path: str, title_re: str, seconds: float) -> int:
                 freshness = ladder.freshness()
                 showing = tour.renderer.last_instruction is not None
                 if freshness is Freshness.HIDDEN:
+                    # Deliberately bypasses the renderer, so `last_instruction`
+                    # stays set while the screen shows nothing. That divergence
+                    # is what lets a recovered observation put the hint straight
+                    # back without re-running the step — do not "fix" it by
+                    # routing this through renderer.clear().
                     window.clear_hint(hwnd)
                 elif showing and tour._grounded is not None:
                     # `showing` matters: the loop clears the hint when
