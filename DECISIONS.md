@@ -327,3 +327,38 @@ re-observing the same id for the same step, app and version updates one row
 (merging locales, bumping `ok_count`) instead of appending a duplicate every
 tick — this is what closes the unbounded-growth problem parked in the
 previous milestone, without needing a separate cleanup pass.
+
+## D018 — A green suite is not evidence; mutation-test the properties that matter
+**Decision:** for any property whose failure would be silent and expensive —
+identity keys, safety guards, round trips — do not accept "the tests pass" as
+proof. Deliberately break the implementation, run the suite against the broken
+copy, and confirm it notices. Only then is the property actually protected.
+
+**Why this is a decision and not a platitude.** It was learned twice on this
+project, both times on code that looked finished:
+
+- `step_key` (D016) shipped with a green suite through two review rounds. Two
+  mutations survived it: dropping `ocr_text` from the key, and replacing the
+  `\x1f` field separator with a space. Either would silently merge two
+  different steps' learned observations, so a hint learned for one instruction
+  would be reused for another — the exact mis-grounding this project exists to
+  avoid. Neither the implementer nor two reviewers caught it; a six-mutation
+  matrix did, in about a minute.
+- Earlier, a test named `test_field_separator_distribution_does_not_collide`
+  asserted that two inputs produce the *same* key. The name claimed one thing,
+  the assertion did the opposite, and it passed.
+
+**The pattern behind both:** a test can describe correct behaviour without
+being able to detect incorrect behaviour. That gap is invisible in review,
+because a reviewer reads the test and agrees with what it says. Mutation
+testing is the cheapest way to close it, and it is worth doing at the point a
+property is first introduced rather than after something has gone wrong.
+
+**How it is applied here:** every safety-critical property added in the
+persistence milestone was mutation-verified before its task was accepted — the
+`control_type` cross-check, the never-use-newer-observations rule, the store's
+idempotent primary key, the locale merge, and both halves of the
+persist/hydrate round trip. Each was confirmed to FAIL the suite when broken.
+
+**Cost:** a few minutes per property, and the discipline to break your own code
+on purpose before believing it works.

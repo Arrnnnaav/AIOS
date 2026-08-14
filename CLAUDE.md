@@ -2,6 +2,16 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Knowledge Graph (Graphify)
+Before answering any architecture question or searching for a file, read
+`graphify-out/GRAPH_REPORT.md` if it exists. It contains god nodes (highest-degree
+concepts everything routes through), community clusters, and surprising cross-file
+connections. Use `/graphify query <term>` for precise traversal. This reduces token
+cost dramatically — navigate the graph, don't grep raw files.
+
+Re-run `/graphify .` after completing each major build step to keep the graph current.
+
+
 ## What this project is
 
 This repo is building **Ghost Cursor**: a real-time, on-screen guide agent for Windows —
