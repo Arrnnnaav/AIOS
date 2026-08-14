@@ -18,6 +18,13 @@ from ghostcursor.perception.service import PerceptionService
 from ghostcursor.perception.uia import iter_elements
 from tests.test_hung_window import HungWindow
 
+#: Ceiling on the gap between two consecutive ESC polls. D020 caps a tick at
+#: 0.5s; this doubles it so ordinary scheduling jitter on a loaded machine
+#: cannot flake the test, while still catching any regression that puts real
+#: work back on the UI thread. A hung UIA walk costs ~41s, so there is no
+#: overlap between "slightly slow" and "blocked".
+MAX_TICK_GAP_S = 1.0
+
 
 def test_reading_the_slot_stays_fast_while_the_target_is_hung():
     with HungWindow() as hung:
@@ -122,9 +129,10 @@ def test_esc_stops_the_tour_promptly_while_the_target_is_hung(tmp_path, monkeypa
 
     A hung target blocks a UIA walk for ~40s. ESC is polled BETWEEN ticks, so
     if any part of the tick still walks the tree, the loop stalls inside one
-    tick and the ESC the user pressed is not seen until the walk returns. The
-    budget below is deliberately far below that block and far above a healthy
-    tick.
+    tick and the ESC the user pressed is not seen until the walk returns.
+
+    Measured per-tick, not in total: see the assertion below for why a
+    total-elapsed budget cannot express this property.
     """
     import ghostcursor.run as run_module
     from ghostcursor.perception import appinfo
@@ -139,8 +147,10 @@ def test_esc_stops_the_tour_promptly_while_the_target_is_hung(tmp_path, monkeypa
     # guards, which run while there is no overlay on screen yet), so this
     # leaves five real tick iterations before the user "presses" ESC.
     press_on = 8
+    poll_times: list[float] = []
 
     def fake_escape():
+        poll_times.append(time.perf_counter())
         polls["n"] += 1
         return polls["n"] >= press_on
 
@@ -158,13 +168,26 @@ def test_esc_stops_the_tour_promptly_while_the_target_is_hung(tmp_path, monkeypa
         f"ESC was only polled {polls['n']} times before run_tour returned — "
         "the tick loop did not keep running against a hung target"
     )
-    # press_on ticks at REFRESH_SECONDS each, plus slack. A synchronous walk
-    # against this fixture costs ~40s on first contact, so there is no overlap.
-    budget = press_on * run_module.REFRESH_SECONDS + 5.0
-    assert elapsed < budget, (
-        f"run_tour took {elapsed:.1f}s to honour ESC against a hung window "
-        f"(budget {budget:.1f}s) — perception is back on the UI thread and the "
-        "user cannot dismiss a window covering their entire screen"
+    # Assert the MAXIMUM GAP between consecutive ESC polls, not total elapsed.
+    #
+    # The property being guarded is "no single tick blocks" — ESC is polled
+    # between ticks, so one slow tick is one window the user cannot escape.
+    # A total-elapsed budget answers a different question and lets a partial
+    # regression hide inside an average: with a flat +5.0s of slack spread
+    # over five tick iterations, every tick could cost ~1.1s and the sum would
+    # still pass. That is already DOUBLE D020's 0.5s tick ceiling, and the
+    # ceiling test itself cannot cover the gap because it uses an ABSENT
+    # window while this failure only appears against a HUNG one.
+    #
+    # A max-gap assertion is scale-free: it does not care how many ticks run,
+    # and fast ticks cannot dilute a slow one.
+    gaps = [b - a for a, b in zip(poll_times, poll_times[1:])]
+    worst = max(gaps) if gaps else 0.0
+    assert worst < MAX_TICK_GAP_S, (
+        f"the longest gap between ESC polls was {worst:.2f}s against a hung "
+        f"window (ceiling {MAX_TICK_GAP_S}s) — a tick is blocking, so the user "
+        "cannot dismiss a window covering their entire screen. All gaps: "
+        f"{[f'{g:.2f}' for g in gaps]}"
     )
     assert calls and calls[-1] == ("destroy", 4242), "the overlay was not torn down"
 
