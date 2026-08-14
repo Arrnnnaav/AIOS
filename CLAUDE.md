@@ -90,7 +90,11 @@ bug in a window the user cannot close is how this locks someone out of their mac
 
 Ghost Cursor keeps a local knowledge base of what grounding has learned: UI
 AutomationIds and their control types, keyed by step, app, and app version,
-plus the app identity (`app_id`, `app_version`) used to look them up. It is
+plus the app identity (`app_id`, `app_version`) used to look them up. Only
+`python -m ghostcursor.run --recipe <path>` (the guided-tour path) populates
+it — grounding during a tour promotes what it learns and persists it via
+`ObservationStore`, and the next `--recipe` run against the same app
+hydrates the recipe's steps from what was learned before. It is
 written by `ghostcursor/memory/store.py`'s `ObservationStore` to
 `%LOCALAPPDATA%\GhostCursor\kb.sqlite`, and only ever there — no telemetry,
 no network, no cloud sync (D017 in DECISIONS.md). `GHOSTCURSOR_KB_PATH`
@@ -133,8 +137,10 @@ Dependencies: `pywin32` (win32gui/win32con/win32api), `numpy`, `ollama`, `pywina
 ghostcursor/
   run.py            # entry point for the current milestone
   overlay/          # Win32 layered/transparent window + GDI drawing (window.py)
-  perception/        # UIA queries + fallbacks (uia.py); mss/OCR/VLM tiers not yet built
-  reasoning/          # state machine loop — not yet built
+  perception/        # UIA queries (uia.py) + app identity/version (appinfo.py);
+                     # mss/OCR/VLM tiers not yet built
+  reasoning/          # observe-act-verify state machine (loop.py), grounding ladder +
+                     # promotion (grounding.py), verification, recipes, overlay renderer
   memory/             # SQLite knowledge base of learned observations (store.py); see "Stored data" above
   inference/           # local model streaming/decision — not yet built
 DECISIONS.md   # why — read first

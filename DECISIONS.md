@@ -228,6 +228,12 @@ mechanism promotion exists to enable. Persisting the promotion across
 process runs (rather than just within one `GuidedTour`) is knowledge-base
 territory and is deliberately out of scope for this milestone (see FLOW.md).
 
+**Superseded in part:** the "out of scope for this milestone" sentence above
+is no longer current — D015, D016 and D017 build exactly that: selection
+between stored observations across versions (D015), a durable cross-run
+step key (D016), and the persisted store itself (D017). The rest of this
+entry (rungs, locale gating rung 1 never rungs 2-3) still holds.
+
 ## D014 — Verification checks world state, never the method used to get there
 **Decision:** `verification.verify(rule, before, after)` inspects the live
 UIA snapshot after the user's action and compares it against the rule's

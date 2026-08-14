@@ -1,13 +1,22 @@
-"""Beginner Project milestone: static hint overlay.
+"""Entry point for Ghost Cursor.
 
-Finds a target control in a window via UIA and draws a ring around it,
-refreshed on a timer. No AI, no reasoning loop — see FLOW.md for what this
-milestone deliberately does not do yet.
+Two modes:
+
+- No `--recipe`: the original static-hint mode. Finds a target control in a
+  window via UIA and draws a ring around it, refreshed on a timer. No
+  reasoning loop.
+- `--recipe <path>`: runs a hand-authored recipe as a guided tour through
+  the observe-act-verify state machine (`ghostcursor.reasoning.loop`),
+  grounding each step against the live UI, promoting what it learns, and
+  persisting learned observations to the on-disk knowledge base
+  (`ghostcursor.memory.store`) so later runs against the same app resolve
+  faster. See FLOW.md for the full call graph and "you are here" marker.
 
 Usage:
     python -m ghostcursor.run                  # targets Notepad
     python -m ghostcursor.run --target Chrome  # any window title (regex)
     python -m ghostcursor.run --seconds 30     # auto-stop after 30s
+    python -m ghostcursor.run --recipe path/to/recipe.json --target Chrome
 
 Press ESC at any time to quit, from any application — the overlay is
 click-through and never takes focus, so a normal window-close is not
@@ -145,20 +154,33 @@ def make_grounder(
     from before — grounds and promotes in-memory only, with
     app_version="unknown".
     """
+    import sqlite3
+
     from ghostcursor.reasoning import grounding
 
     ui_locale = get_ui_locale()
     app_version = app_info.version if app_info else "unknown"
     app_id = app_info.app_id if app_info else None
+    # Persistence is best-effort: a full disk, a read-only file, or
+    # "database is locked" from a second Ghost Cursor process must degrade
+    # grounding, not end the tour on a raw traceback. Report once, not once
+    # per tick, so a repeated failure does not spam the console.
+    warned = False
 
     def grounder(step, i):
+        nonlocal warned
         grounded = grounding.ground(
             step, title_re, locale=ui_locale, app_version=app_version
         )
         if grounded is not None:
             grounding.promote(step, grounded, app_version=app_version, locale=ui_locale)
             if store is not None and app_id is not None:
-                persist_step(recipe_intent, step, app_id, store)
+                try:
+                    persist_step(recipe_intent, step, app_id, store)
+                except sqlite3.Error as exc:
+                    if not warned:
+                        print(f"Persistence disabled for the rest of this run: {exc}")
+                        warned = True
         return grounded
 
     return grounder
@@ -188,15 +210,41 @@ def run_tour(recipe_path: str, title_re: str, seconds: float) -> int:
     hwnd = window.create_overlay_window()
     print(f"Guided tour: {recipe.intent!r}. ESC to quit.")
 
-    app_info = app_info_for_window(title_re)
-    store = ObservationStore()
-
     deadline = time.monotonic() + seconds
     last_printed: str | None = None
+    store = None
     try:
+        # app_info_for_window can shell out to PowerShell (Store-app version
+        # lookup, up to 25s) and ObservationStore() can raise (corrupt/
+        # read-only db, %LOCALAPPDATA% undefined). Both now run inside this
+        # try so the finally below always tears the overlay down, and both
+        # are interleaved with ESC polling so the escape hatch stays alive
+        # during a slow pre-tour lookup instead of being dead for up to 25s.
+        if escape_pressed():
+            print("ESC pressed — exiting.")
+            return 0
+        window.pump_messages_nonblocking()
+
+        app_info = app_info_for_window(title_re)
+
+        if escape_pressed():
+            print("ESC pressed — exiting.")
+            return 0
+        window.pump_messages_nonblocking()
+
         if app_info is not None:
+            store = ObservationStore()
             loaded = hydrate_recipe(recipe, app_info.app_id, store)
             print(f"Loaded {loaded} learned observation(s) from previous runs.")
+        else:
+            print(
+                "No application identity for this window — persistence disabled "
+                "for this run."
+            )
+
+        if escape_pressed():
+            print("ESC pressed — exiting.")
+            return 0
 
         tour = GuidedTour(
             recipe=recipe,
@@ -237,7 +285,8 @@ def run_tour(recipe_path: str, title_re: str, seconds: float) -> int:
             print("Time limit reached — exiting.")
     finally:
         window.destroy_overlay_window(hwnd)
-        store.close()
+        if store is not None:
+            store.close()
     return 0
 
 

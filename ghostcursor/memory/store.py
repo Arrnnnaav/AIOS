@@ -57,6 +57,13 @@ class ObservationStore:
         self.path = Path(path) if path is not None else default_db_path()
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(self.path)
+        # Explicit rather than sqlite3's implicit 5s default: two Ghost
+        # Cursor processes (e.g. the two-process end-to-end proof, or a
+        # second tour started against the same app) can legitimately share
+        # this database, and a short, deliberate timeout here documents
+        # that instead of leaving the concurrency behaviour to an implicit
+        # library default.
+        self._conn.execute("PRAGMA busy_timeout = 2000")
         self._conn.row_factory = sqlite3.Row
         self._conn.executescript(_SCHEMA)
         self._conn.commit()

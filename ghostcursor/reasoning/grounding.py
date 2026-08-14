@@ -11,14 +11,18 @@ Rungs 2-3 match on displayed text and are therefore locale-scoped. Rung 1 is
 language-independent by construction and must never be filtered by locale —
 doing so would defeat the promotion mechanism it exists to enable.
 
-Scope note for this milestone: `locale` is threaded through but does not
-filter live matching, and that is correct rather than incomplete. The live UI
-renders in whatever language the app is running in, so rungs 2-3 match the
-text actually on screen — there is nothing to filter against. Locale becomes
-load-bearing when *selecting between stored observations and recipe variants*,
-which is knowledge-base territory (spec sections 8-10) and deliberately out of
-scope here. The parameter exists now so that `promote()` records which locale
-an observation came from, which is the data that later selection will need.
+Scope note: `locale` is threaded through but does not filter live matching,
+and that is correct rather than incomplete. The live UI renders in whatever
+language the app is running in, so rungs 2-3 match the text actually on
+screen — there is nothing to filter against. `select_observations()` below
+is where locale-adjacent selection between stored observations actually
+lives (selecting by `app_version`, per spec §9's ladder) — and even there,
+rung 1 (`automation_id`) is never filtered by locale, on purpose: an id is
+an opaque identifier the app itself assigns, stable across translations by
+construction, so filtering it by locale would silently break the exact
+promotion mechanism it exists to enable. The `locale` parameter's job is
+narrower than selection: it is what `promote()` records as the locale an
+observation came from, which is the provenance later selection logic reads.
 """
 
 from __future__ import annotations
