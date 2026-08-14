@@ -80,32 +80,40 @@ run.main()
 | `ghostcursor/reasoning/loop.py` | observe-act-verify state machine (IDLE → OBSERVING → DECIDING → RENDERING_HINT → AWAITING_USER_ACTION → VERIFYING) |
 | `ghostcursor/reasoning/renderer.py` | adapt loop's Renderer protocol onto the Win32 overlay |
 | `ghostcursor/reasoning/recipes/synthetic_export.json` | hand-authored recipe for the synthetic test app |
+| `ghostcursor/perception/appinfo.py` | identifies the app owning a window (HWND -> PID -> exe path -> file/Appx version) for version-scoped observation lookup |
+| `ghostcursor/reasoning/identity.py` | `step_key()` — durable hash of intent + claimed descriptor, the key observations are stored/retrieved under |
+| `ghostcursor/memory/store.py` | `ObservationStore` — local SQLite knowledge base of learned observations, keyed by `(step_key, app_id, app_version, automation_id)` |
 | `tests/backdrop.py` | controlled solid-colour window used as a test surface |
 | `tests/test_overlay.py` | 14 checks: styles, click-through, transparency, hint placement, stale pixels, teardown |
 | `tests/test_end_to_end.py` | 8 checks: perception -> coordinate -> ring lands on the window, off-screen rejection |
 | `tests/uia_app.py` | real Win32 window with known AutomationIds, used as deterministic grounding target |
-| `ghostcursor/memory/`, `inference/` | empty; later milestones |
+| `ghostcursor/inference/` | empty; later milestones |
 
 ### Verification status
 ```
 python -m tests.test_overlay        14/14 pass
 python -m tests.test_end_to_end      8/8  pass
-python -m pytest tests/             70 passed
+python -m pytest tests/             112 passed
 ```
 The first two (pixel harnesses) have their own runner and are not collected by
 pytest. Also confirmed against a real Notepad window: 440 ring pixels, 49x49
-diameter, centroid within 1px of the requested coordinate.
+diameter, centroid within 1px of the requested coordinate. And confirmed
+against a real persistence run: a UI AutomationId learned by one process was
+reused by a completely separate later process (rung 2 -> rung 1 across
+process boundaries), and deleting the database file returned behaviour to
+rung 2 — see the persistence call graph above.
 
 ### You are here
 Intermediate milestone (Single-App Guided Tour) is **in progress**. The
 `IDLE → OBSERVING → DECIDING → RENDERING_HINT → AWAITING_USER_ACTION →
 VERIFYING` state machine, the grounding ladder, live UIA verification, the
-Win32 renderer adapter, and the `run.py --recipe` entry point are all built
-and wired together end-to-end against the synthetic test app. The knowledge
-base (spec sections 8-10 — persisting confirmed observations across runs,
-locale/version-scoped lookup) is **not built yet**; `promote()` writes
-learned `automation_id`s back onto the in-memory `Step`, but nothing
-persists them to disk between processes.
+Win32 renderer adapter, the `run.py --recipe` entry point, and now
+persistence — promotion survives process exit via `ObservationStore`, keyed
+by `(step_key, app_id, app_version, automation_id)`, hydrated before each
+tour and written on every promotion — are all built and wired together
+end-to-end. What remains unbuilt is the doc-ingestion knowledge base: web
+search, doc ingestion, embeddings, intent matching, recipe distillation,
+OCR, and VLM (spec sections outside 9-10).
 
 ### Runtime call graph — guided tour (as built)
 
@@ -144,11 +152,57 @@ run.main()
       window.destroy_overlay_window(hwnd)   always runs, even on exception
 ```
 
-Next: persist confirmed observations (the knowledge base) so a promoted
-`automation_id` survives across process runs and can be selected by
-`(user_id, app_id, app_version, locale)` instead of being re-learned every
-launch — the last piece of the Intermediate milestone's scope per the build
-doc.
+### Runtime call graph — persistence (as built)
+
+Promotion now survives process exit. Before a tour is constructed, the recipe
+is hydrated from disk; while it runs, every promotion is written back to disk
+immediately, so a second, later process reading the same app reuses what the
+first one learned instead of re-discovering it from name matching.
+
+```
+run.run_tour(recipe_path, title_re, seconds)
+    schema.Recipe.load(recipe_path)
+    window.create_overlay_window()
+    appinfo.app_info_for_window(title_re)       -> AppInfo(app_id, exe_path, version, kind)
+                                                    HWND -> PID -> exe path -> file/Appx version
+    store.ObservationStore()                     opens/creates %LOCALAPPDATA%\GhostCursor\kb.sqlite
+
+    if app_info is not None:
+        run.hydrate_recipe(recipe, app_info.app_id, store)   <-- BEFORE the tour is built
+            for each step: identity.step_key(recipe.intent, step)
+                store.observations_for(step_key, app_id)
+                    -> replaces step.target_descriptor.confirmed (not merged; store is
+                       the single source of truth for learned data — controller ruling P2)
+
+    GuidedTour(recipe, grounder=run.make_grounder(title_re, app_info=app_info, store=store,
+               recipe_intent=recipe.intent), ...)
+
+    loop every REFRESH_SECONDS, until ESC/--seconds/DONE/FAILED:
+        tour.tick()
+            [DECIDING]  grounder(step, i)
+                grounding.ground(step, title_re, locale=ui_locale, app_version=app_info.version)
+                    rung 1: identity.step_key-scoped select_observations() picks exact
+                            version, else nearest LOWER verified, else unknown/global,
+                            then cross-checks live control_type before trusting a
+                            non-exact match
+                    rung 2/3: unchanged (control_type+name, fuzzy name)
+                grounding.promote(step, grounded, app_version=app_info.version, locale=ui_locale)
+                    writes/updates the in-memory Step's confirmed observation
+                run.persist_step(recipe.intent, step, app_id, store)
+                    identity.step_key(recipe.intent, step)
+                    store.record(step_key, app_id, observation)   upsert, PK (step_key,
+                        app_id, app_version, automation_id) -> idempotent, no unbounded growth
+
+  finally:
+      window.destroy_overlay_window(hwnd)   <-- store.close() runs in this same finally
+      store.close()
+```
+
+Verified end to end by running the same recipe as two separate child
+processes against a scratch database: run 1 grounded at rung 2 (name match,
+`hydrated=0`); run 2 grounded at rung 1 using the id run 1 learned
+(`hydrated=1`); deleting the database file returned a third run to
+`hydrated=0, rung=2` — promotion is real, disk-backed, and erasable.
 
 ---
 

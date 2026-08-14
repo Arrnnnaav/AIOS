@@ -246,3 +246,78 @@ execution-based grading (inspect real state, don't grade a transcript) and is
 the same reasoning D012 already applied to testing the overlay itself:
 measure what actually happened, not the expected sequence of calls that was
 supposed to produce it.
+
+## D015 — Observation selection: exact, else nearest lower, else unknown — never newer
+**Decision:** `grounding.select_observations()` implements spec §9's ladder: an
+exact `app_version` match if one exists; otherwise the observations from the
+nearest *lower* verified version; otherwise observations with no parseable
+version at all (unknown/global). A version newer than what's running is never
+selected. Non-exact matches are then cross-checked in `ground()` — the live
+element's `control_type` must equal the observation's, or it is rejected and
+grounding falls through to rung 2 (name matching).
+**Alternatives considered:** Requiring strict version equality before an
+`automation_id` can be trusted at all.
+**Why:** AutomationIds survive version changes far more often than they
+break — they're implementation details assigned once and rarely renumbered
+across patch releases. Strict equality would discard every learned id on
+each patch bump and force re-learning from scratch on every update, which
+defeats the entire point of promotion (D013). "Nearest lower, never newer"
+also encodes something version numbers actually mean here: an id observed
+on 3.0 says nothing reliable about what 2.0 displayed, but an id observed on
+2.0 is a reasonable guess for 2.1 or 3.0 until proven otherwise. The
+`control_type` cross-check is what makes reusing a non-exact match safe
+rather than reckless: if the id has been reassigned to a different kind of
+control, the cross-check catches that and the ladder falls through instead
+of pointing at the wrong thing. This asymmetry is deliberate — failing to
+ground is visible and recoverable (the tour can fall back to rung 2/3, or
+report nothing found), whereas mis-grounding teaches the user something
+false with no signal that anything went wrong. Given that asymmetry, it is
+correct to bias toward reuse (with a check) rather than toward safety by
+exact match alone.
+
+## D016 — Step identity: a durable key over the claimed descriptor, not position
+**Decision:** `identity.step_key(intent, step)` hashes the recipe's intent
+(as namespace) plus the step's *claimed* `name`, `ocr_text`, and
+`visual_description`. It does not use `(intent, step_index)`, and it
+excludes `name_synonyms`.
+**Alternatives considered:** Keying persisted observations by
+`(intent, step_index)`, which is simpler and was the first thing tried.
+**Why:** `(intent, step_index)` is unusable in practice — inserting a step
+anywhere before the end of a recipe silently shifts every later index, so
+observations learned for "click Export" would silently re-attach to
+whatever instruction now occupies that slot after an edit. Hashing the
+claimed descriptor instead ties learned data to *what the step describes*,
+which is stable under insertion and reordering. `name_synonyms` is
+deliberately excluded from the hash: synonyms are alternate spellings of the
+same target ("Export" vs "Save As"), and adding one is an editorial
+improvement, not a change of target — it must not discard what the step has
+already learned. `visual_description` is deliberately included: it is what
+separates two steps that share a name but differ in location ("Delete in
+the toolbar" vs. "Delete in the dialog") — exactly the collision that would
+otherwise let one step's observations mis-ground the other. The consequence
+is by design, not a gap: editing `name`, `ocr_text`, or `visual_description`
+orphans that step's previously learned observations, because the step now
+describes a different target and inherited evidence about the old one would
+be wrong.
+
+## D017 — The persisted store: local, erasable, keyed for idempotent promotion
+**Decision:** `memory/store.py`'s `ObservationStore` is a SQLite database at
+`%LOCALAPPDATA%\GhostCursor\kb.sqlite` (overridable via `GHOSTCURSOR_KB_PATH`,
+which is what lets tests and the two-process end-to-end proof share a
+scratch database without touching the real one). It is the first thing in
+the system to write screen-derived data to disk: application identity
+(`app_id`, `app_version`) and the names/AutomationIds of UI elements read
+from the user's screen. The table's primary key is
+`(step_key, app_id, app_version, automation_id)`.
+**Alternatives considered:** An append-only log of every observation ever
+seen, keeping full history.
+**Why:** Local-only, no telemetry, no network, no cloud sync — the §2
+invariant governs data *leaving* the machine and this doesn't touch it, but
+the locality is deliberate and worth stating plainly rather than leaving
+implicit. Deleting the file fully erases the knowledge base; the system
+simply re-learns from scratch on the next run, the same as a first run ever
+has. The composite primary key is what makes promotion idempotent:
+re-observing the same id for the same step, app and version updates one row
+(merging locales, bumping `ok_count`) instead of appending a duplicate every
+tick — this is what closes the unbounded-growth problem parked in the
+previous milestone, without needing a separate cleanup pass.

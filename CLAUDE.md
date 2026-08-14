@@ -86,13 +86,32 @@ has no title bar and never takes focus — ESC (polled, works from any app) and 
 `--seconds` timeout are the only ways to stop it. Never remove either; a rendering
 bug in a window the user cannot close is how this locks someone out of their machine.
 
+## Stored data
+
+Ghost Cursor keeps a local knowledge base of what grounding has learned: UI
+AutomationIds and their control types, keyed by step, app, and app version,
+plus the app identity (`app_id`, `app_version`) used to look them up. It is
+written by `ghostcursor/memory/store.py`'s `ObservationStore` to
+`%LOCALAPPDATA%\GhostCursor\kb.sqlite`, and only ever there — no telemetry,
+no network, no cloud sync (D017 in DECISIONS.md). `GHOSTCURSOR_KB_PATH`
+overrides the path, which is how tests and multi-process verification use a
+scratch database instead of the real one. Deleting the file erases the
+knowledge base entirely; the system simply re-learns from scratch on the
+next run, exactly as it would on a first run.
+
 ## Tests
 
 ```
 python -m tests.test_overlay        # 14 checks: styles, click-through, transparency,
                                     # hint placement, stale pixels, teardown
-python -m tests.test_end_to_end     # 4 checks: perception -> coordinate -> ring on screen
+python -m tests.test_end_to_end     # 8 checks: perception -> coordinate -> ring on screen
+python -m pytest tests/             # 112 checks: everything else (grounding, promotion,
+                                    # persistence, verification, the state machine, ...)
 ```
+
+`pytest` does not collect the two pixel harnesses above — they keep their own
+runner because they assert against real Win32 window state and screen pixels,
+not just Python state.
 
 These assert against pixels and Win32 state, not appearance — run them instead of
 asking a human whether the overlay looks right. Two rules they encode, both learned
@@ -116,7 +135,7 @@ ghostcursor/
   overlay/          # Win32 layered/transparent window + GDI drawing (window.py)
   perception/        # UIA queries + fallbacks (uia.py); mss/OCR/VLM tiers not yet built
   reasoning/          # state machine loop — not yet built
-  memory/             # entity-scoped SQLite memory — not yet built
+  memory/             # SQLite knowledge base of learned observations (store.py); see "Stored data" above
   inference/           # local model streaming/decision — not yet built
 DECISIONS.md   # why — read first
 FLOW.md         # how execution flows, "you are here" marker
