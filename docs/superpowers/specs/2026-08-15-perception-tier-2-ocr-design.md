@@ -99,6 +99,29 @@ loading spinner in frame, a window being resized, a video preview. Without an
 explicit floor interval and a per-step ceiling, adversarial-but-entirely-
 realistic screens turn the cheapest-first tier into unconditional OCR.
 
+### Exhausting the run cap is terminal for the step
+
+When the 20-run ceiling is reached and the step still cannot ground, **tier 2
+is finished for that step**. It stops re-running, and the step is treated as
+ungroundable — the same state a permanently unlocatable step already reaches,
+feeding the existing grounding grace and its give-up path.
+
+The rejected alternative is letting the last OCR result stand indefinitely and
+simply age. That fails two ways at once: the ring keeps pointing at a
+pixel-guess coordinate long after the system has stopped being able to confirm
+it, which is the wrong point D006 exists to prevent; and the step becomes
+incapable of ever failing, so the user waits on a hint that can never resolve
+and is never told why.
+
+Until the grace expires, the last observation continues to age normally through
+the staleness ladder — it dims, then hides — so the display degrades honestly
+in the meantime rather than freezing. The failure reason names the real cause
+("could not read *label* on screen after N attempts") rather than the generic
+"cannot find", for the same reason D024 requires a dead worker to be named as a
+perception failure: telling the user their element is missing, when in fact we
+gave up reading the screen, points them at their own application instead of at
+ours.
+
 Measured cost, `Windows.Media.Ocr` on this machine: **0.17–0.23 s** for a full
 1938×1038 window, **0.03 s** cropped, **0.01 s** cold start.
 
@@ -198,6 +221,15 @@ OCR element matched at rung 2 is still shown as `INFERRED`, because it is
 still a text match on pixels rather than a confirmed control. Rung number
 describes how it was found; `source` describes how much it can be trusted.
 
+**Duplicate labels are inherited, not newly solved.** When several elements
+carry the same name — multiple `Export` buttons in different panels is
+ordinary — rungs 2–4 fall back to whatever disambiguation the ladder already
+performs today. That logic was written against UIA, whose elements come with
+structural context OCR reads do not have, so it is weaker for tier 2 than for
+tier 1. This is a pre-existing concern rather than one this milestone
+introduces, and it is deliberately not addressed here — but it is recorded so
+it is not silently assumed to be handled.
+
 ### The floor is 95, and one bar is doing two jobs
 
 The design called for **two independent floors** — OCR read confidence and
@@ -263,6 +295,18 @@ guesses wrong cannot lose a match the unmerged read would have made. All three
 constants are tunable and expected to be revisited against a second
 application.
 
+**Reassembly introduces a second, opposite risk, and it must be measured
+rather than argued.** Offering merged candidates means a merge of two
+*unrelated but adjacent* labels could manufacture a string that matches
+something at ≥ 95 which neither original read would have matched alone —
+inventing a target out of two innocent ones. The geometry constants make that
+unlikely, but "unlikely" is the claim this project has repeatedly found
+diverging from "measured": the whole spike exists because a cold accessibility
+tree, a tick ceiling and a fuzzy floor each behaved differently than reasoning
+predicted. The false-positive direction therefore gets its own test (§11), built
+from adjacent real labels on the spike's own captured screens, not only the
+false-negative direction that motivated the feature.
+
 ## 9. Display: a third state, and no laundering
 
 Tier 2 hints get their own visual state. The overlay knows two today.
@@ -303,6 +347,7 @@ the painter distinguishes only `FRESH` from everything else.
 | OCR raises | Treated as a failed walk, not an empty one; worker keeps running |
 | OCR returns nothing | A successful observation with no elements — grounding fails, the existing grace applies |
 | Region has animated continuously | Re-run caps in §4 hold; the last OCR result stays in use and ages normally |
+| Run cap exhausted, step still ungroundable | Tier 2 stops for that step; the step is treated as ungroundable and enters the existing grounding grace, ending with a reason that names the read failure (§4) |
 
 ## 11. Testing
 
@@ -312,6 +357,12 @@ the painter distinguishes only `FRESH` from everything else.
 - Multi-line reassembly recovers `Magic Eraser`, `BG Generator` and
   `Magic Expand` from their real component reads, and `Magic Expand` must not
   match `Magic Edit`.
+- Reassembly does not MANUFACTURE a match: given an adversarial pair of
+  adjacent-but-unrelated real labels taken from the spike's captured screens
+  (for example Acrobat's vertically stacked `Redact a PDF` / `Compress a PDF`,
+  or the Canva editor's `Crop` / `Pixel Eraser`), no merged candidate may reach
+  95 against any target that neither component read matches alone. This is the
+  false-positive direction of §8 and is as load-bearing as the recall case.
 - `source` survives the worker boundary intact.
 - Tier 2 does not trigger while grounding succeeds; triggers on grounding
   failure; and resets at the step boundary.
