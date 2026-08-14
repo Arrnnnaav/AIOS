@@ -90,6 +90,7 @@ run.main()
 | `tests/hung_window.py` | child process that creates a window and then stops pumping messages — reproduces the 41s UIA block deterministically |
 | `tests/test_hung_window.py` | `HungWindow` context manager + the block measurement; the fixture Tasks 5-7 are built on |
 | `tests/test_run_threaded.py` | ESC stays responsive while the target is hung — the property this whole design exists for |
+| `tests/test_freshness_timeline.py` | the staleness ladder as an ordered sequence inside a real `run_tour`, on an injected clock (D026); carries the two composition bugs as named regressions |
 | `tests/test_overlay.py` | 15 checks: styles, click-through, transparency, hint placement, dimmed-ring colour, stale pixels, teardown |
 | `tests/test_end_to_end.py` | 8 checks: perception -> coordinate -> ring lands on the window, off-screen rejection |
 | `tests/uia_app.py` | real Win32 window with known AutomationIds, used as deterministic grounding target |

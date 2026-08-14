@@ -663,3 +663,41 @@ naive form orphans a real window on the user's screen with no cleanup path —
 and bounds its handshake so a child that never signals ready fails fast instead
 of hanging the suite. A fixture that outlives its test turns a transient 16x
 tax into a permanent one.
+
+---
+
+## D026 — Stateful and time-based interactions get a sequence test
+
+**Decision.** Where behaviour is a sequence of states over time, a test must
+assert the ordered sequence end to end, in the assembled system. Unit tests of
+each state, plus a test of the final state, do not substitute.
+
+**Why, twice over.** This project has now been bitten twice by the same shape:
+every component correct in isolation, the composition wrong.
+
+- The tour's `snapshotter` called `ladder.observed()` on every slot read. The
+  ladder was correct and unit-tested; the dimmed ring was correct and
+  pixel-tested; the health policy was correct and unit-tested. But re-reading a
+  wedged worker's stale observation re-confirmed it every tick, so the clock
+  never advanced — nothing would ever dim, nothing would ever hide, and health
+  would never fire. The whole milestone would have passed its suite and done
+  nothing in the field.
+- `WorkerHealth` read `ladder.age()` as `inf` before the first observation and
+  ended the tour on tick 2, before perception had answered once.
+
+Neither was visible to any test that existed at the time, and neither is an
+exotic edge case — both sat on the primary path.
+
+**The failure mode this guards.** A suite that passes completely while the
+assembled system does nothing is close to the worst outcome available to a test
+suite: it converts absence of evidence into confidence. Membership assertions
+("the hint dimmed at some point") are not enough either — they pass when the
+hint hides before it dims, or never comes back.
+
+**In practice:** `tests/test_freshness_timeline.py`. One shared injected clock
+(never two — the loop's "now" and the ladder's must not drift), the sequence
+read from what the overlay was actually told to draw, and the known bugs
+carried as named regression cases rather than folded into a generic happy path.
+Because the clock is injected, the whole timeline runs in half a second and
+nothing sleeps.
+
