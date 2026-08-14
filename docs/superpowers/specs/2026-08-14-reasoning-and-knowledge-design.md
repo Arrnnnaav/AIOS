@@ -308,6 +308,75 @@ and locales it has been *observed working on*:
 Selection: exact match → nearest lower verified version → highest health.
 Unknown version still matches, with lower confidence.
 
+### Observation selection, and the cross-check that makes reuse safe
+
+Added after the reasoning loop shipped, when persistence made this live.
+
+While observations lived only in memory, `ground()` unioned every confirmed
+AutomationId regardless of version — harmless within a single run. Once they
+persist, that union lets an id learned from an older UI generation match a
+control that has since been reassigned, and the tour points confidently at the
+wrong element.
+
+The correction is *not* strict version equality. AutomationIds survive version
+changes far more often than they break — that stability is the entire reason
+rung 1 exists — so requiring an exact match would discard every learned id on
+each patch bump and re-learn from scratch. Selection follows the ladder above:
+exact version, then nearest lower verified, then unknown/global.
+
+What makes the non-exact reuse safe is a cross-check, available for free
+because `ConfirmedObservation` already stores `control_type`:
+
+> When grounding through an observation whose `app_version` is **not** an exact
+> match for the running app, the live element's `control_type` must equal the
+> observation's. On mismatch the observation is rejected and grounding falls
+> through to name matching.
+
+The asymmetry is deliberate: **failing to ground is acceptable, mis-grounding
+is not**. A failure is visible, recoverable, and already handled — the hint
+clears, the loop re-observes, and the step is eventually reported. A confident
+hint over the wrong control teaches the user something false and gives them no
+signal that anything went wrong.
+
+### Step identity
+
+Persisting observations requires a durable key for "this step of this recipe".
+`(intent, step_index)` is unusable: inserting a step silently re-attaches every
+learned observation to a different instruction.
+
+The key is a hash over the intent (as namespace) plus the step's **claimed**
+descriptor — specifically `name`, `ocr_text` and `visual_description`,
+normalised:
+
+```
+step_key = hash(intent, normalize(name), normalize(ocr_text),
+                normalize(visual_description))
+```
+
+`name_synonyms` is deliberately excluded: synonyms are alternate spellings of
+the *same* target, so adding one should not discard what that step has learned.
+`visual_description` is deliberately included: it is what distinguishes two
+steps sharing a name but differing in location ("Delete in the toolbar" versus
+"Delete in the dialog"), which is precisely the collision that would otherwise
+let one step's observations mis-ground the other.
+
+Editing any of the three orphans that step's observations. That is correct
+rather than unfortunate — the step now describes a different target, and
+inherited evidence about the old one would be wrong.
+
+### Privacy of the persisted store
+
+The knowledge base is the first thing in this system to write screen-derived
+data to disk: application identity, and the names of UI elements read from the
+user's screen. The §2 invariant governs data *leaving* the machine and is not
+weakened by this, but a durable local record of what the user was looking at
+deserves stating rather than arriving as a side effect.
+
+- Local only. No telemetry, no cloud sync, no upload of any kind.
+- Stored at `%LOCALAPPDATA%\GhostCursor\kb.sqlite` and nowhere else.
+- Deleting that file fully erases it, and the system re-learns from scratch.
+- The delete path is documented for the user; a CLI affordance can come later.
+
 The loop closes itself. A successful run on 1.2.7 adds 1.2.7 to `verified`.
 A step failure triggers repair; if the repair diverges structurally, it forks
 a new variant. Small updates accumulate versions onto one variant; a genuine
@@ -342,6 +411,21 @@ variants     variant_id, intent_id, steps JSON, verified_versions,
              verified_locales, provenance, created_at
 step_health  variant_id, step_index, app_version, locale, ok_count, fail_count
 ```
+
+Only one table is needed by the persistence milestone; the rest arrive with
+doc ingestion and intent matching:
+
+```
+observations  step_key, app_id, app_version, locale, automation_id,
+              control_type, last_seen_at, ok_count
+              PRIMARY KEY (step_key, app_id, app_version, automation_id)
+```
+
+This is `ConfirmedObservation` flattened, plus the `step_key` from §9 and the
+`app_id` that scopes it. The primary key is what makes promotion idempotent:
+re-observing the same id for the same step, app and version updates a row
+rather than accumulating duplicates — the unbounded-growth problem noted
+during the reasoning-loop build.
 
 ## 11. Error handling
 
@@ -385,20 +469,46 @@ garbage; it is not a full safety net.
 
 1. ~~Git~~ — done, `9da25cb`.
 2. ~~Harden foundation~~ — offscreen guard, environment detection, 22/22.
-3. **Freeze the step contract** (§4) as `ghostcursor/reasoning/schema.py`.
-4. **Grounding ladder** (§5) against the synthetic UIA app, including promotion.
-5. **State machine** (§6, §7) driven by hand-authored recipes for one app.
-6. **KB + doc pipeline** (§8, §9, §10) producing the same frozen schema.
+3. ~~**Freeze the step contract**~~ (§4) — `ghostcursor/reasoning/schema.py`.
+4. ~~**Grounding ladder**~~ (§5) against the synthetic UIA app, incl. promotion.
+5. ~~**State machine**~~ (§6, §7) driven by hand-authored recipes.
+6. **Persist confirmed observations** (§9, §10) — this milestone.
+7. **KB + doc pipeline** (§8) producing the same frozen schema — later.
 
-Steps 4–5 prove that recipes can actually drive a real UI. Step 6 then plugs
-into a consumer already known to work.
+Steps 3–5 shipped in `b4c3af3`: 70 unit tests plus two pixel harnesses,
+verified against a real window.
 
-**Scope boundary for the first implementation plan: steps 3, 4 and 5 only.**
-That is the Intermediate milestone — a working guided tour for one app driven
-by hand-authored recipes. Step 6 (the KB and doc pipeline) is a substantial
-system in its own right and gets its own plan once the schema has been
-exercised by a real consumer. Sections 8–10 are specified here so the schema
-is designed against real requirements, not so they get built first.
+**Scope boundary for the next implementation plan: step 6 only.** Promotion
+currently works and is wired into live runs, but writes only to the in-memory
+`Step`, so a recipe grows stronger during a run and forgets at exit. This
+milestone makes exactly this true and nothing more:
+
+```
+run 1   ground by name → discover AutomationId → persist observation
+run 2   load observation → ground by AutomationId immediately
+```
+
+Explicitly NOT in this milestone: web search, doc ingestion, embeddings,
+intent matching, recipe distillation, OCR, VLM. Those are step 7. The
+knowledge base only becomes worth feeding once promotion survives a restart.
+
+The parked cross-version union problem (§9) is handled *inside* this
+milestone, not deferred past it: persistence is what makes it dangerous, so
+scoped selection and the control_type cross-check ship together with the
+store.
+
+Tasks, with step identity kept separate from the store — the first is product
+semantics and the second is plumbing, and they warrant different review:
+
+1. App identity and version detection (§9).
+2. `step_key` derivation (§9) — the durable identity.
+3. SQLite store at `%LOCALAPPDATA%\GhostCursor\kb.sqlite` (§10).
+4. Persist observations from `promote()`.
+5. Hydrate a recipe's observations before the tour starts.
+6. Scoped selection in `ground()`: exact → nearest lower → unknown, with the
+   control_type cross-check on every non-exact match.
+7. Tests: run 1 learns; run 2 grounds via rung 1; a stale id from an older
+   version does not mis-ground; a patch bump still reuses what was learned.
 
 ## 14. Open questions
 
