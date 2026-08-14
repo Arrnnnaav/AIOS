@@ -103,3 +103,65 @@ class WindowsOcr:
                     )
                 )
         return reads
+
+
+#: Geometry for deciding two reads are one wrapped label. Judgement informed
+#: by one machine and four screens (spike findings §5); tunable, and expected
+#: to be revisited against a second native application.
+MERGE_CENTRE_TOLERANCE = 0.40  # of the wider box's width
+MERGE_VERTICAL_GAP = 0.75  # of the taller box's height
+MERGE_MAX_PARTS = 3
+
+
+def _mergeable(a: OcrRead, b: OcrRead) -> bool:
+    a_left, a_top, a_right, a_bottom = a.bbox
+    b_left, b_top, b_right, b_bottom = b.bbox
+
+    a_width, b_width = a_right - a_left, b_right - b_left
+    a_height, b_height = a_bottom - a_top, b_bottom - b_top
+    if min(a_width, b_width) <= 0 or min(a_height, b_height) <= 0:
+        return False
+
+    a_centre = (a_left + a_right) / 2
+    b_centre = (b_left + b_right) / 2
+    if abs(a_centre - b_centre) > MERGE_CENTRE_TOLERANCE * max(a_width, b_width):
+        return False
+
+    gap = b_top - a_bottom
+    return 0 <= gap <= MERGE_VERTICAL_GAP * max(a_height, b_height)
+
+
+def reassemble(reads: list[OcrRead]) -> list[OcrRead]:
+    """Originals PLUS merged candidates for labels that wrapped onto lines.
+
+    Never returns fewer reads than it was given. Both the merged candidate and
+    its parts go to grounding, so a merge that guesses wrong cannot lose a
+    match an unmerged read would have made.
+
+    The inverse risk — merging two unrelated adjacent labels into a string
+    that matches something neither part would — is why the geometry is
+    deliberately tight and why the false-positive direction is tested.
+    """
+    ordered = sorted(reads, key=lambda r: (r.bbox[1], r.bbox[0]))
+    merged: list[OcrRead] = list(reads)
+
+    for i, first in enumerate(ordered):
+        parts = [first]
+        for candidate in ordered[i + 1 :]:
+            if len(parts) >= MERGE_MAX_PARTS:
+                break
+            if not _mergeable(parts[-1], candidate):
+                continue
+            parts.append(candidate)
+            merged.append(
+                OcrRead(
+                    text=" ".join(p.text for p in parts),
+                    bbox=(
+                        min(p.bbox[0] for p in parts),
+                        min(p.bbox[1] for p in parts),
+                        max(p.bbox[2] for p in parts),
+                        max(p.bbox[3] for p in parts),
+                    ),
+                )
+            )
+    return merged
