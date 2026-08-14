@@ -11,7 +11,7 @@ from ghostcursor.reasoning.schema import (
     VerificationKind,
     VerificationRule,
 )
-from ghostcursor.reasoning.verification import Snapshot
+from ghostcursor.reasoning.verification import Snapshot, verify
 
 TARGET = GroundedTarget((10, 10, 110, 40), 1, "1001", "Button", "Export")
 
@@ -106,10 +106,40 @@ def test_completing_every_step_finishes_the_tour():
 
 
 def test_ungroundable_step_fails_rather_than_guessing():
-    tour = _tour(grounder=lambda step, i: None)
-    for _ in range(4):
+    # Finding 5: a momentarily ungroundable step (minimized window, a brief
+    # alt-tab) must not fail immediately -- only once grounding has failed
+    # CONTINUOUSLY past the grace period. The fake clock, not real sleeping,
+    # is what makes this deterministic and fast.
+    now = {"t": 0.0}
+    tour = _tour(grounder=lambda step, i: None, clock=lambda: now["t"])
+    for _ in range(6):
+        tour.tick()
+        now["t"] += 1.0
+    assert tour.state is not State.FAILED  # still inside the grace period
+
+    now["t"] += 20.0
+    for _ in range(2):
         tour.tick()
     assert tour.state is State.FAILED
+    assert tour.failure_reason is not None
+
+
+def test_a_temporarily_ungroundable_step_recovers_within_the_grace_period():
+    # Finding 5: grounding fails for a few ticks (window minimized) then
+    # succeeds again (window restored) -- the tour must keep going, and must
+    # never reach FAILED.
+    now = {"t": 0.0}
+    attempts = iter([None, None, None, TARGET, TARGET, TARGET, TARGET, TARGET])
+    tour = _tour(
+        grounder=lambda step, i: next(attempts, TARGET),
+        verifier=lambda rule, before, after: False,
+        clock=lambda: now["t"],
+    )
+    for _ in range(12):
+        tour.tick()
+        now["t"] += 1.0
+        assert tour.state is not State.FAILED
+    assert tour.state is State.AWAITING_USER_ACTION
 
 
 def test_user_confirms_step_waits_for_confirm():
@@ -162,3 +192,68 @@ def test_idle_timer_survives_a_reobserve_cycle():
     for _ in range(4):  # OBSERVING -> DECIDING -> RENDERING_HINT -> AWAITING
         tour.tick()
     assert tour.rehint_count == 1, "idle clock was reset by the re-observe cycle"
+
+
+# --- finding 1: ordinary title churn must not bounce the tour to OBSERVING --
+
+EXPORT = Element("Export", "Button", "1001", (10, 10, 110, 40))
+SAVE = Element("Save", "Button", "1002", (10, 50, 110, 80))
+
+
+def _real_step():
+    # Uses the real verify() with an element_appears rule so these tests
+    # exercise the actual identity comparison, not a stubbed verifier.
+    return Step(
+        user_action=UserAction.CLICK,
+        target_descriptor=TargetDescriptor(claimed=ClaimedDescriptor(name="Export")),
+        instruction_text="Click Export.",
+        verification_rule=VerificationRule(
+            kind=VerificationKind.ELEMENT_APPEARS,
+            args={"target_descriptor": {"name": "Save"}},
+        ),
+        risk=Risk.NORMAL,
+    )
+
+
+def test_title_only_churn_does_not_bounce_to_observing():
+    # Snapshot equality includes `title`, which take_snapshot fills from
+    # GetForegroundWindow() -- so a plain alt-tab or a window retitling makes
+    # `after != before` even though no element moved. Reacting to that with
+    # a re-observe would unconditionally re-baseline `_before`, and if the
+    # user's real change lands on the same tick, it gets folded into the new
+    # baseline and can never be detected again.
+    before = Snapshot(title="App", elements=(EXPORT,))
+    churned = Snapshot(title="App - Untitled", elements=(EXPORT,))  # title only
+    snaps = iter([before, churned, churned, churned, churned])
+
+    tour = _tour(
+        steps=[_real_step(), _real_step()],
+        verifier=verify,
+        snapshotter=lambda: next(snaps, churned),
+    )
+    for _ in range(6):
+        tour.tick()
+
+    assert tour.state is State.AWAITING_USER_ACTION
+    assert tour.step_index == 0
+
+
+def test_churn_then_the_users_real_change_still_advances_the_step():
+    # Reproduces the original stall: an ordinary title tick happens first,
+    # then the user does the thing the step asked for. If churn had
+    # re-baselined `_before`, the later element_appears check would compare
+    # against a baseline that already contains "Save" and never fire.
+    before = Snapshot(title="App", elements=(EXPORT,))
+    churned = Snapshot(title="App - Untitled", elements=(EXPORT,))  # title only
+    done = Snapshot(title="App - Untitled", elements=(EXPORT, SAVE))
+    snaps = iter([before, churned, churned, done, done, done])
+
+    tour = _tour(
+        steps=[_real_step(), _real_step()],
+        verifier=verify,
+        snapshotter=lambda: next(snaps, done),
+    )
+    for _ in range(8):
+        tour.tick()
+
+    assert tour.step_index == 1

@@ -17,7 +17,13 @@ from typing import Callable, Protocol
 
 from ghostcursor.reasoning.grounding import GroundedTarget
 from ghostcursor.reasoning.schema import Recipe, Step, VerificationKind
-from ghostcursor.reasoning.verification import Snapshot
+from ghostcursor.reasoning.verification import Snapshot, elements_changed
+
+#: How long grounding may keep failing continuously (e.g. the target window is
+#: minimized or the user alt-tabbed away) before the tour gives up. Spec §11:
+#: "Target window missing / minimized / off-desktop -> clear hint, wait" — a
+#: momentary absence must not end the run.
+DEFAULT_GROUNDING_GRACE_S = 10.0
 
 
 class State(Enum):
@@ -46,6 +52,7 @@ class GuidedTour:
         renderer: Renderer,
         clock: Callable[[], float] = time.monotonic,
         idle_timeout_s: float = 30.0,
+        grounding_grace_s: float = DEFAULT_GROUNDING_GRACE_S,
     ) -> None:
         self.recipe = recipe
         self.grounder = grounder
@@ -54,6 +61,7 @@ class GuidedTour:
         self.renderer = renderer
         self.clock = clock
         self.idle_timeout_s = idle_timeout_s
+        self.grounding_grace_s = grounding_grace_s
 
         self.state = State.IDLE
         self.step_index = 0
@@ -64,6 +72,10 @@ class GuidedTour:
         self._grounded: GroundedTarget | None = None
         self._waiting_since = 0.0
         self._confirmed = False
+        #: Wall-clock time grounding started failing continuously for the
+        #: current step, or None while it is succeeding. Cleared the instant
+        #: grounding succeeds again.
+        self._grounding_fail_since: float | None = None
         #: Which step the idle clock belongs to. Re-rendering the same step
         #: after a re-observe must NOT restart it, or the timeout can never
         #: elapse during a normal poll cycle.
@@ -98,13 +110,25 @@ class GuidedTour:
             step = self.current_step
             self._grounded = self.grounder(step, self.step_index)
             if self._grounded is None:
-                # Never guess a coordinate. Say so instead.
+                # Never guess a coordinate. The target window may simply be
+                # minimized or the user alt-tabbed away (spec §11: "Target
+                # window missing / minimized / off-desktop -> clear hint,
+                # wait"), so clear the hint and keep re-observing rather than
+                # failing immediately. Only give up once grounding has failed
+                # CONTINUOUSLY past the grace period.
                 self.renderer.clear()
-                self.failure_reason = (
-                    f"cannot find {step.target_descriptor.claimed.name!r} on screen"
-                )
-                self.state = State.FAILED
+                now = self.clock()
+                if self._grounding_fail_since is None:
+                    self._grounding_fail_since = now
+                if now - self._grounding_fail_since >= self.grounding_grace_s:
+                    self.failure_reason = (
+                        f"cannot find {step.target_descriptor.claimed.name!r} on screen"
+                    )
+                    self.state = State.FAILED
+                else:
+                    self.state = State.OBSERVING
             else:
+                self._grounding_fail_since = None
                 self.state = State.RENDERING_HINT
 
         elif self.state is State.RENDERING_HINT:
@@ -131,10 +155,19 @@ class GuidedTour:
 
             if satisfied:
                 self.state = State.VERIFYING
-            elif after != self._before:
+            elif elements_changed(self._before, after):
                 # The world changed, but not into what we predicted — the user
                 # did something else. Re-observe and re-ground: the target may
                 # have moved or be gone. AndroidWorld-style interrupt handling.
+                #
+                # Compares element IDENTITY, not the whole Snapshot. Snapshot
+                # equality includes `title`, which ticks on ordinary window
+                # churn (alt-tab, a retitled window) with no element ever
+                # moving. Reacting to that would send the loop to OBSERVING,
+                # which unconditionally re-baselines `_before` — if the
+                # user's real action lands in the same tick as the churn, it
+                # gets folded into the new baseline and can never be detected
+                # again, permanently stalling a step already completed.
                 self.state = State.OBSERVING
             elif self.clock() - self._waiting_since >= self.idle_timeout_s:
                 # Clippy lesson: re-hint once, then go quiet. Never nag.

@@ -18,6 +18,7 @@ machine.
 
 import argparse
 import time
+from typing import Callable
 
 import win32api
 import win32con
@@ -26,6 +27,7 @@ import win32con
 # DPI awareness before any window exists (see ghostcursor/overlay/dpi.py).
 from ghostcursor.overlay import window
 from ghostcursor.perception import uia
+from ghostcursor.reasoning.schema import Step, VerificationKind
 
 REFRESH_SECONDS = 0.25
 DEFAULT_TARGET = ".*Notepad.*"
@@ -47,15 +49,95 @@ def resolve_target(title_re: str, control_name: str | None) -> tuple[int, int] |
     return ((left + right) // 2, (top + bottom) // 2)
 
 
+#: GetAsyncKeyState's low-order bit: set when the key was pressed at any
+#: point since the previous call, even if it is no longer down. Without this,
+#: a tick that runs long (run_tour performs three UIA tree walks per tick,
+#: each able to block, and a tick can exceed a second) can miss a tap
+#: entirely — the "currently down" bit alone requires the user to hold the
+#: key for the whole tick. ESC is the escape hatch and must not require
+#: holding.
+_PRESSED_SINCE_LAST_CALL = 0x0001
+_CURRENTLY_DOWN = 0x8000
+
+
+def key_was_pressed(vk: int, key_state=win32api.GetAsyncKeyState) -> bool:
+    """True if `vk` is down right now, or was tapped since the last poll."""
+    state = key_state(vk)
+    return bool(state & _CURRENTLY_DOWN or state & _PRESSED_SINCE_LAST_CALL)
+
+
 def escape_pressed() -> bool:
     # Polled rather than hooked: the overlay never has focus, so it cannot
     # receive key events of its own.
-    return bool(win32api.GetAsyncKeyState(VK_ESCAPE) & 0x8000)
+    return key_was_pressed(VK_ESCAPE)
+
+
+def get_ui_locale() -> str:
+    """Best-effort OS UI language as a BCP-47-ish tag, else "unknown".
+
+    Used only as promotion provenance (which locale an observation was
+    recorded under) — never to filter live matching (see grounding.py
+    module docstring). Cheap and approximate is fine; an elaborate mapping
+    is out of scope here (spec §9 is knowledge-base territory).
+    """
+    try:
+        import ctypes
+
+        lang_id = ctypes.windll.kernel32.GetUserDefaultUILanguage()
+        import locale as locale_module
+
+        name = locale_module.windows_locale.get(lang_id)
+        if name:
+            return name.replace("_", "-")
+    except Exception:
+        pass
+    return "unknown"
+
+
+def make_grounder(title_re: str) -> Callable[[object, int], object]:
+    """Build the grounder used by a live run_tour: ground, then promote.
+
+    Factored out of run_tour so it is directly testable without a live UIA
+    window. Promotion is spec §5's headline mechanism — "the recipe becomes
+    more robust every time it is used" — and previously ran only in tests
+    because run.py's grounder never called it, leaving rung 1 unreachable
+    outside the test suite.
+
+    Note: promotion writes to the in-memory Step object only. There is no
+    knowledge base yet (spec §8-10 is deferred), so these observations are
+    lost the moment the process exits — this makes today's runs individually
+    more robust (rung 1 within a single tour) but does not yet persist
+    across runs.
+    """
+    from ghostcursor.reasoning import grounding
+
+    ui_locale = get_ui_locale()
+
+    def grounder(step, i):
+        grounded = grounding.ground(step, title_re, locale=ui_locale)
+        if grounded is not None:
+            # app_version="unknown": detecting the real installed app
+            # version (exe VERSIONINFO / Appx package version) is spec §9
+            # scope, deferred along with the rest of the knowledge base.
+            grounding.promote(step, grounded, app_version="unknown", locale=ui_locale)
+        return grounded
+
+    return grounder
+
+
+def should_poll_space(current_step: Step | None) -> bool:
+    """True only while the current step is actually waiting on a user
+    confirmation. Otherwise a space typed into some other application would
+    silently advance the tour — inventing progress the user never made.
+    """
+    return (
+        current_step is not None
+        and current_step.verification_rule.kind is VerificationKind.USER_CONFIRMS
+    )
 
 
 def run_tour(recipe_path: str, title_re: str, seconds: float) -> int:
     """Drive a hand-authored recipe against a live window."""
-    from ghostcursor.reasoning import grounding
     from ghostcursor.reasoning.loop import GuidedTour, State
     from ghostcursor.reasoning.renderer import OverlayRenderer
     from ghostcursor.reasoning.schema import Recipe
@@ -70,7 +152,7 @@ def run_tour(recipe_path: str, title_re: str, seconds: float) -> int:
     try:
         tour = GuidedTour(
             recipe=recipe,
-            grounder=lambda step, i: grounding.ground(step, title_re),
+            grounder=make_grounder(title_re),
             snapshotter=lambda: take_snapshot(title_re),
             verifier=verify,
             renderer=OverlayRenderer(hwnd),
@@ -79,7 +161,9 @@ def run_tour(recipe_path: str, title_re: str, seconds: float) -> int:
             if escape_pressed():
                 print("ESC pressed — exiting.")
                 break
-            if win32api.GetAsyncKeyState(win32con.VK_SPACE) & 0x8000:
+            if should_poll_space(tour.current_step) and key_was_pressed(
+                win32con.VK_SPACE
+            ):
                 tour.confirm()
 
             state = tour.tick()

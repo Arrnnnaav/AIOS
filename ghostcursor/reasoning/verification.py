@@ -71,6 +71,20 @@ def _identity(snapshot: Snapshot) -> set[tuple[str, str, str]]:
     return {(e.automation_id, e.name, e.control_type) for e in snapshot.elements}
 
 
+def elements_changed(before: Snapshot, after: Snapshot) -> bool:
+    """Did the set of elements change, ignoring window title and position?
+
+    Used by the loop's "world changed unexpectedly" branch. Comparing whole
+    Snapshots there is wrong: `title` ticks on ordinary window-manager churn
+    (alt-tab, a retitled window) with no element ever moving, which would
+    send the loop back to OBSERVING and unconditionally re-baseline
+    `_before` — silently swallowing a user action that lands in the same
+    tick. Identity, not the whole snapshot, is what "the world changed"
+    should mean here.
+    """
+    return _identity(before) != _identity(after)
+
+
 def verify(rule: VerificationRule, before: Snapshot, after: Snapshot) -> bool:
     kind = rule.kind
     args = rule.args
@@ -95,10 +109,15 @@ def verify(rule: VerificationRule, before: Snapshot, after: Snapshot) -> bool:
         return re.search(args["pattern"], after.title) is not None
 
     if kind is VerificationKind.FOCUS_MOVES_TO:
-        wanted = args["target_descriptor"].get("automation_id")
-        return (
-            after.focused_automation_id == wanted
-            and before.focused_automation_id != wanted
+        # take_snapshot() hardcodes focused_automation_id="" — focus tracking
+        # is not implemented, so both sides of this comparison always
+        # mismatch and the rule would silently return False forever, never
+        # advancing the tour and never saying why. The codebase's own rule
+        # for unimplemented behaviour (see the raise below for unhandled
+        # kinds) is to fail loudly instead.
+        raise NotImplementedError(
+            "focus_moves_to verification is not implemented: "
+            "take_snapshot() does not populate focused_automation_id"
         )
 
     if kind is VerificationKind.PROPERTY_CHANGES:

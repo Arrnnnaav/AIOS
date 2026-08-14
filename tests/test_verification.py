@@ -45,13 +45,18 @@ def test_window_title_matches():
     assert verify(rule, snap(title="App"), snap(title="App")) is False
 
 
-def test_focus_moves_to():
+def test_focus_moves_to_raises_because_it_is_not_implemented():
+    # take_snapshot() hardcodes focused_automation_id="", so both sides of
+    # the comparison this rule would make always mismatch and it would
+    # silently return False forever — a permanent, silent stall with no
+    # error. Unimplemented behaviour must fail loudly instead (same
+    # principle as the unhandled-kind ValueError below).
     rule = VerificationRule(
         kind=VerificationKind.FOCUS_MOVES_TO,
         args={"target_descriptor": {"automation_id": "1002"}},
     )
-    assert verify(rule, snap(focus="1001"), snap(focus="1002")) is True
-    assert verify(rule, snap(focus="1001"), snap(focus="1001")) is False
+    with pytest.raises(NotImplementedError, match="focus_moves_to"):
+        verify(rule, snap(focus="1001"), snap(focus="1002"))
 
 
 def test_property_changes():
