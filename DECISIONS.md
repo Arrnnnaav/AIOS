@@ -419,3 +419,214 @@ absent-window tick   9,124 ms  ->  0.39 ms
 one tree walk           67.6 ms ->  26.0 ms   (dropped a redundant wait)
 observe -> hint          2 walks ->  1 walk
 ```
+
+---
+
+## D021 — Perception runs on a worker thread, not the UI thread
+
+**Decision.** The UI-tree walk moves onto a dedicated worker thread that owns
+its own COM apartment. The UI thread reads the worker's latest result without
+ever blocking on it, and keeps pumping messages and polling ESC no matter how
+slow perception becomes.
+
+**What forced it.** D020 capped the tick at 0.5 s and enforced it with a test,
+but that test uses an *absent* window. A window whose owner has stopped
+pumping messages — an ordinary "Not Responding" app — is a different failure
+and the ceiling test cannot see it. Measured on this machine:
+
+```
+windows_matching   1.22 ms   -> 1 window     the cheap existence check SEES it
+iter_elements     41,270 ms  -> 0 elements   81x the 0.5s tick ceiling
+repeat walks      10,100 ms  each            bounded, self-healing
+```
+
+41 seconds is 41 seconds during which ESC — polled *between* ticks — does not
+work, on a full-screen, topmost, click-through window with no title bar. This
+is more likely than the failure D020 already fixed: apps hang far more often
+than they vanish mid-tick. UIA exposes no timeout to tune, so no amount of
+care at the call site helps.
+
+**Why not a watchdog.** Verified, not assumed: `DestroyWindow` from a
+non-owning thread returns `Access is denied` and the window survives;
+`PostMessage` needs the message pump that a blocked tick is not running. A
+watchdog cannot clear the overlay while the UI thread is stuck. The only real
+fix is to stop blocking the UI thread — which D020 named as the eventual
+answer and deliberately did not smuggle in at the time.
+
+**COM ownership.** The worker calls `CoInitializeEx` and owns its `Desktop()`
+entirely. UIA objects are apartment-bound, and passing one across threads
+produces confusing intermittent failures rather than a clean error. Only
+frozen dataclasses of primitives cross the boundary — `Element`, `Snapshot`,
+and the timestamp. No COM object ever does. The perception layer already
+normalised to exactly those types, which is what made this boundary cheap.
+
+**Proof it holds.** `tests/test_run_threaded.py` drives the real `run_tour`
+against a real hung window. Putting a UIA walk back on the UI thread fails it
+with `ESC was only polled 7 times before run_tour returned`, and the run takes
+95.6 s instead of 16 s.
+
+---
+
+## D022 — A single timestamped slot, not a queue and not futures
+
+**Decision.** The worker publishes each observation by *overwriting* one slot.
+The slot holds one timestamped `Observation` and no history.
+
+**Why not a queue.** A queue drained to "take the newest and discard the rest"
+is a depth-1 buffer with extra ceremony: there is no depth to tune, no explicit
+discard step to get wrong, and overwrite *is* the discard.
+
+**Why not futures.** A future answers "which request does this answer belong
+to". A timestamp on the published observation answers the same question here,
+and the staleness ladder (D023) needs that timestamp anyway — the slot already
+had to hold a struct, so one more field is not new machinery. Futures would
+additionally force async control flow into `GuidedTour` and change every
+injected fake, breaking the collaborator contract that keeps the existing test
+suite passing unchanged.
+
+**The subtle part.** `AWAITING_USER_ACTION` must observe a strictly *later*
+moment than `OBSERVING` did (D019). With a published slot that no longer holds
+for free: if the worker has produced nothing new, `AWAITING` reads back the
+same observation `OBSERVING` used, verification compares identical states,
+concludes "nothing changed" forever, and every tour stalls on its first step.
+So a slot that has not advanced is **not a failed verification — it is no
+verification attempt yet**, and the loop keeps waiting without touching the
+idle clock. The timestamp is what makes that expressible.
+
+**Cost, accepted.** A restart can briefly leave the retired worker able to
+publish one last observation. It cannot reorder the slot: `restart()` sets the
+stop flag, joins, and only then starts the replacement, so a late orphan
+publish necessarily precedes any replacement publish.
+
+---
+
+## D023 — The staleness ladder, and why untimestamped means fresh
+
+**Decision.** How old the last *confirmed-fresh* observation is decides what
+the overlay shows:
+
+| Age | Overlay shows |
+|---|---|
+| 0 – 1.5 s | the hint, unchanged — covers ordinary tick jitter, no false alarms |
+| 1.5 – 5 s | the same hint, visibly dimmed — "last known, unconfirmed" |
+| 5 s + | nothing, until perception recovers |
+
+Past ~5 s the odds the underlying UI has actually changed are high enough that
+showing nothing beats showing an increasingly-likely-wrong ring. Recovery to
+fresh is **debounced** — a short run of consecutive successes, never one lucky
+tick — so a flaky not-quite-hung app cannot flicker between states.
+
+**"Confirmed-fresh" means the walk completed without raising**, regardless of
+how many elements it found. A window that genuinely contains nothing matchable
+is a successful observation; treating an empty result as staleness would make
+a legitimately empty target look permanently frozen.
+
+**`observed_at == 0.0` means untimestamped, and is treated as fresh.** That is
+what synchronous or faked perception is. This is not a convenience: every
+existing loop fake returns the same `Snapshot` on each call, so a strict "must
+be strictly newer" rule would mean they never verify. The escape hatch is what
+let the whole existing suite keep passing unchanged, which is the evidence
+that the collaborator contract really was preserved.
+
+**Feed the ladder only when the timestamp advances.** A hung worker leaves the
+*previous* observation sitting in the slot. Calling `observed()` on every read
+would re-confirm that stale observation every tick and reset the clock — so
+nothing would ever dim, nothing would ever hide, and the health check (whose
+stall signal is the ladder's age) would never fire either. The milestone would
+have passed its tests and done nothing in the field.
+
+**HIDDEN clears the hint; it is never passed to `set_hint`.** The painter
+distinguishes only FRESH from everything-else, so handing it HIDDEN draws a
+*dimmed* ring and the 5 s rung becomes dead code.
+
+**Thresholds are judgement, not measurement**, and are constructor parameters
+so they can be tuned against a real hanging app without a code change.
+
+---
+
+## D024 — Worker lifecycle: two signals decide, the heartbeat only explains
+
+**Decision.** A dead-but-undetected worker would be a regression dressed as a
+fix — the UI thread stays responsive and ESC still works, so nothing *looks*
+wrong while the system has silently stopped guiding. That is harder to notice
+than the freeze it replaced. Three signals, with strict roles:
+
+- **staleness clock** — time since the last confirmed-fresh observation;
+  detects "alive but not progressing";
+- **`Thread.is_alive()`**, checked per tick — distinguishes "the worker raised
+  and exited" from "still working". Without it a dead worker reports as merely
+  stale forever;
+- **heartbeat counter** — incremented every loop iteration regardless of
+  success, **logged when the policy fires and never an input to it**. It
+  separates "blocked in a slow UIA call" from "alive but looping through
+  silent failures" *after the fact*, without that distinction quietly
+  influencing behaviour.
+
+**Policy:** on detected death, log the cause and the heartbeat, restart the
+worker **exactly once**; if it dies again, end the tour with an explicit
+reason rather than sitting silently stuck.
+
+**Restart-once is load-bearing, not tidiness.** A blocked worker cannot be
+joined and keeps reporting `is_alive()`, so the service clears its thread
+reference to let a replacement start, leaving one orphaned blocked thread
+until its bounded walk returns. Restart-forever would accumulate one such
+thread per detection with nothing reaping them.
+
+**Each worker generation owns its own stop Event.** Sharing one across
+generations meant `stop()` set the flag and `start()` then *cleared it* for the
+replacement — so when the orphan's 41 s walk returned it re-evaluated a cleared
+flag and resumed looping forever. Two permanent publishers into one slot:
+doubled COM load on an already-sick app, a slot whose timestamp could go
+*backwards* (read downstream as freshness oscillating for no reason a user
+could explain), and lost heartbeat increments corrupting the one diagnostic
+meant to explain the failure afterwards.
+
+**The two clocks must not race.** The grounding grace answers "is the target on
+screen"; the health budget answers "is perception working". The second question
+must resolve first, because the first is only meaningful once perception is
+known to work. At the stock 10 s grace a dead worker made grounding fail every
+tick and the tour gave up ~5 s *before* the 15 s health budget could fire —
+telling the user `cannot find 'Export' on screen` about an element sitting
+right there, and pointing them at their own application instead of at ours. The
+grounding grace is therefore budgeted to resolve strictly after the health
+check.
+
+**A restarted worker gets its own budget.** The staleness clock measures
+observations, not workers, so a replacement inherits the staleness of the one
+it replaced; judged on that, the very next tick ends the tour ~0.25 s later and
+"restart once, then give up" degenerates into "give up". The fresh budget
+forgives the replacement but does not exempt it — a replacement that never
+observes is still caught, from a start time that exists. It deliberately does
+not apply to `is_alive()`, which is a definitive answer available immediately.
+
+**Both failures above were invisible to the tasks that introduced them** and
+appeared only where the pieces compose. That is the argument for testing the
+composed timeline, not only the rungs.
+
+---
+
+## D025 — A hung test window is a desktop-wide side effect
+
+**Decision.** The hung-window fixture must reap its child unconditionally, and
+tests that use it must never run concurrently with another test session.
+
+**Why.** Any UIA enumeration that touches a non-pumping window pays the
+SendMessage timeout, regardless of which *process* started the walk. Measured
+on this machine:
+
+```
+two UIA-dependent test files, clean desktop        5 passed in   6.28 s
+the same two, one hung window elsewhere on screen  5 passed in 100.13 s
+```
+
+A 16x tax on unrelated tests. Both tests still *passed* under it — which is the
+signature of a timing-marginal test, and exactly how it shows up in practice:
+add load and the margin disappears. Two failures in this repo were first
+reported as "pre-existing flakes" and were nothing of the kind.
+
+**Consequences.** `HungWindow` kills and reaps its child even when `__enter__`
+itself raises — Python does not call `__exit__` when `__enter__` fails, so the
+naive form orphans a real window on the user's screen with no cleanup path —
+and bounds its handshake so a child that never signals ready fails fast instead
+of hanging the suite. A fixture that outlives its test turns a transient 16x
+tax into a permanent one.

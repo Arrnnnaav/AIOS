@@ -73,6 +73,20 @@ Two other tracking files are living documents, updated on every meaningful chang
   It declares DPI awareness at import, which pins one coordinate space for window
   rects, UIA rects, hints and screen captures. Skip it and `GetSystemMetrics` silently
   changes its answer mid-run the first time anything takes a screenshot.
+- **Threading:** perception runs on a **worker thread**, never on the UI thread
+  (D021). The worker calls `CoInitializeEx` and owns its `Desktop()` entirely —
+  UIA objects are apartment-bound, and passing one across threads gives
+  confusing intermittent failures rather than a clean error. Only frozen
+  dataclasses of primitives cross the boundary (`Element`, `Snapshot`, the
+  timestamp); no COM object, ever. The worker publishes into a **single
+  timestamped slot** by overwriting (D022) — no queue, no history, no futures.
+  The UI thread reads that slot without ever blocking, so it keeps pumping
+  messages and polling ESC no matter how slow perception becomes. This is not
+  optimisation: a "Not Responding" target blocks one UIA walk for **41 seconds**
+  measured, and ESC is polled between ticks, so on the UI thread that is 41
+  seconds the user cannot dismiss a window covering their whole screen. UIA
+  exposes no timeout, and a watchdog cannot help — verified, `DestroyWindow`
+  from a non-owning thread returns `Access is denied`.
 - **Reasoning:** an explicit state machine (`IDLE → OBSERVING → DECIDING →
   RENDERING_HINT → AWAITING_USER_ACTION → VERIFYING`), observe-act-**verify** rather than
   plain ReAct — a failed verification re-observes and re-plans from real state rather than
@@ -116,16 +130,32 @@ next run, exactly as it would on a first run.
 ## Tests
 
 ```
-python -m tests.test_overlay        # 14 checks: styles, click-through, transparency,
-                                    # hint placement, stale pixels, teardown
+python -m tests.test_overlay        # 15 checks: styles, click-through, transparency,
+                                    # hint placement, dimmed-ring colour, stale pixels, teardown
 python -m tests.test_end_to_end     # 8 checks: perception -> coordinate -> ring on screen
-python -m pytest tests/             # 112 checks: everything else (grounding, promotion,
-                                    # persistence, verification, the state machine, ...)
+python -m pytest tests/ \
+  --ignore=tests/test_hung_window.py \
+  --ignore=tests/test_perception_service_hung.py \
+  --ignore=tests/test_run_threaded.py   # 165 checks, ~15s: everything fast (grounding,
+                                    # promotion, persistence, verification, staleness,
+                                    # worker health, the state machine, ...)
+python -m pytest tests/test_hung_window.py \
+                tests/test_perception_service_hung.py \
+                tests/test_run_threaded.py     # 11 checks, ~88s: the hung-target tests
 ```
 
 `pytest` does not collect the two pixel harnesses above — they keep their own
 runner because they assert against real Win32 window state and screen pixels,
 not just Python state.
+
+**Never run two test sessions at once, and never run the hung-target tests
+alongside anything else** (D025). Those three files park a real non-pumping
+window on the desktop, and any UIA enumeration that touches such a window pays
+the SendMessage timeout no matter which *process* started the walk. Measured:
+the same two UIA-dependent files take **6.28s on a clean desktop and 100.13s**
+with one hung window up. Timing-marginal tests then fail for reasons that have
+nothing to do with the code, and get misreported as pre-existing flakes — which
+has already happened here twice.
 
 These assert against pixels and Win32 state, not appearance — run them instead of
 asking a human whether the overlay looks right. Two rules they encode, both learned
@@ -148,9 +178,11 @@ ghostcursor/
   run.py            # entry point for the current milestone
   overlay/          # Win32 layered/transparent window + GDI drawing (window.py)
   perception/        # UIA queries (uia.py) + app identity/version (appinfo.py);
-                     # mss/OCR/VLM tiers not yet built
+                     # the worker thread and its published slot (service.py) and
+                     # worker-death detection (health.py); mss/OCR/VLM tiers not yet built
   reasoning/          # observe-act-verify state machine (loop.py), grounding ladder +
-                     # promotion (grounding.py), verification, recipes, overlay renderer
+                     # promotion (grounding.py), verification, staleness ladder
+                     # (staleness.py), recipes, overlay renderer
   memory/             # SQLite knowledge base of learned observations (store.py); see "Stored data" above
   inference/           # local model streaming/decision — not yet built
 DECISIONS.md   # why — read first
