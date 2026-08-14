@@ -493,10 +493,17 @@ So a slot that has not advanced is **not a failed verification — it is no
 verification attempt yet**, and the loop keeps waiting without touching the
 idle clock. The timestamp is what makes that expressible.
 
-**Cost, accepted.** A restart can briefly leave the retired worker able to
-publish one last observation. It cannot reorder the slot: `restart()` sets the
-stop flag, joins, and only then starts the replacement, so a late orphan
-publish necessarily precedes any replacement publish.
+**What actually keeps the slot ordered.** A retired worker is still inside a
+walk that may not return for tens of seconds, and `restart()` deliberately does
+**not** join it — joining would block the UI thread for the join's full timeout
+at exactly the moment the worker is wedged, which is the freeze D021 exists to
+prevent. Ordering is guaranteed instead by the worker re-checking its own stop
+Event immediately before publishing: a retired worker cannot publish at all, so
+it cannot land a stale observation after the replacement's fresh one.
+
+(An earlier draft of this entry claimed the join provided that guarantee. It
+did not — the join timed out every time, and the pre-publish check was doing
+the real work. The join has since been removed outright.)
 
 ---
 
@@ -587,9 +594,35 @@ must resolve first, because the first is only meaningful once perception is
 known to work. At the stock 10 s grace a dead worker made grounding fail every
 tick and the tour gave up ~5 s *before* the 15 s health budget could fire —
 telling the user `cannot find 'Export' on screen` about an element sitting
-right there, and pointing them at their own application instead of at ours. The
-grounding grace is therefore budgeted to resolve strictly after the health
-check.
+right there, and pointing them at their own application instead of at ours.
+
+The first fix inflated the grace to outrun health. That was wrong twice over,
+and the whole-branch review caught both halves. Health's worst case is **two**
+budgets, not one — the check is suppressed for `dead_after_s` from tour start
+(the ladder's age is infinite before the first observation), and the restart it
+then fires grants the replacement another `dead_after_s` — so one budget still
+lost the race on a target hung at *first contact*, the exact case this
+milestone was built for: the tour gave up at 25.75 s, 4.25 s before health
+could speak. And inflating the grace made a genuinely missing element take 40 s
+to report, punishing the common case to paper over the rare one.
+
+**The race is removed at its source instead.** The tick loop does not run at
+all until the first observation lands, so grounding is only ever attempted
+once a real observation exists. A grounding failure therefore means perception
+*is* working and the element genuinely is not there — precisely when `cannot
+find X on screen` is the correct thing to say. A worker that dies later leaves
+its last observation in the slot, so grounding keeps succeeding against it, the
+grace never starts, and the health check is left to name the failure. The grace
+stays at its stock 10 s.
+
+That guard is load-bearing for a second reason, and it is the more serious one:
+ticking before the first observation let the empty placeholder snapshot become
+a **verification baseline**. The loop advanced to DECIDING, grounding could
+succeed off an observation that arrived between the two ticks, and `verify`
+then compared against an empty `before` — where `ANY_MEANINGFUL_CHANGE` is
+unconditionally true and `ELEMENT_APPEARS` matches anything already on screen.
+A step could be marked complete that the user never performed. Spec §9 always
+required staying in OBSERVING here; the placeholder snapshot quietly broke it.
 
 **A restarted worker gets its own budget.** The staleness clock measures
 observations, not workers, so a replacement inherits the staleness of the one

@@ -201,9 +201,12 @@ run.main()
                                      None -> empty Snapshot (observed_at 0.0, reads as FRESH)
                                      ladder.observed() ONLY when observed_at ADVANCES —
                                      re-reading the same slot must not reset the clock
-          run.grounder_from_slot()   service.latest() -> make_grounder(...)(step, i, obs.elements)
-                                     grounds the LAST observation, so a merely-stale slot keeps
-                                     succeeding and the loop's grounding grace never starts
+          run.grounder_from_slot()   uses the elements the LOOP passed in (the ones OBSERVING
+                                     snapshotted), so OBSERVING and DECIDING describe the SAME
+                                     instant (D019); falls back to service.latest() only when
+                                     the loop passes none. Grounds the LAST observation, so a
+                                     merely-stale slot keeps succeeding and the loop's
+                                     grounding grace never starts
 
       loop every REFRESH_SECONDS (0.25s), until ESC, --seconds, DONE, FAILED, or health:
           run.escape_pressed()                 GetAsyncKeyState(VK_ESCAPE) — never blocked now
@@ -211,6 +214,11 @@ run.main()
           health.check()                        once per tick; suppressed until the first
                                                 observation lands or dead_after_s from tour start
                                                 (ladder.age() is inf before then)
+          service.latest() is None?             SKIP the tick entirely (still pumps + polls ESC).
+                                                Spec §9: stay in OBSERVING. Ticking here would
+                                                let the empty placeholder snapshot become a
+                                                VERIFICATION BASELINE and mark a step complete
+                                                the user never performed (D006)
           tour.tick()                           the state machine, one transition per tick
               [DECIDING]    grounder(step, i, elements)
                                 grounding.ground(step, title_re, elements=obs.elements)
@@ -219,10 +227,11 @@ run.main()
                                                                     rung 3: fuzzy name
                                 grounding.promote(step, grounded, app_version, locale=ui_locale)
                                   (writes automation_id back to in-memory Step; persists to disk)
-                                -> GroundedTarget | None  (None => clear hint, grounding grace
-                                   (dead_after_s + 10s, so a perception failure is always named
-                                   as one and never as a missing element), then FAILED;
-                                                           never a guessed coordinate)
+                                -> GroundedTarget | None  (None => clear hint, 10s grounding
+                                   grace, then FAILED; never a guessed coordinate.
+                                   Only reachable once a real observation exists — the tick
+                                   loop skips entirely until then — so a grounding failure
+                                   means perception WORKS and the element is genuinely absent)
               [RENDERING_HINT]  OverlayRenderer.show(grounded, instruction_text)
                                     window.set_hint(hwnd, centre-of-bbox)
                                     .last_instruction = instruction_text   <-- run.py dedupes prints on this
