@@ -6,12 +6,15 @@ the bottom shows exactly what's being built/modified right now.
 
 ---
 
-## Current milestone: Beginner Project — Static Hint Overlay  ✅ working
+## Current milestone: Intermediate Project — Single-App Guided Tour (in progress)
 
-Goal (from `D:\tracker\docs\ghostcursor\build-the-ghost-cursor-mvp-...docx`,
-"Beginner Project" tier): a Win32 layered window that draws a ring around one
-UI element found via `pywinauto`, drawn with GDI, refreshed on a timer. No AI,
-no reasoning loop yet.
+The Beginner milestone (Static Hint Overlay ✅) is complete. The Intermediate
+milestone builds the observe-act-verify state machine, the grounding ladder,
+live UIA verification, and the recipe-driven guided tour interface.
+
+Previous milestone (Beginner) goal: a Win32 layered window that draws a ring
+around one UI element found via `pywinauto`, drawn with GDI, refreshed on a
+timer. No AI, no reasoning loop.
 
 ### Import-time ordering (matters — see D010)
 
@@ -67,22 +70,31 @@ run.main()
 ### Files
 | File | Role |
 |---|---|
-| `ghostcursor/run.py` | entry point, timer loop, ESC/timeout safety, arg parsing |
+| `ghostcursor/run.py` | entry point, timer loop, ESC/timeout safety, arg parsing, grounder builder for live promotion |
 | `ghostcursor/overlay/dpi.py` | declares DPI awareness at import; one coordinate space |
 | `ghostcursor/overlay/window.py` | layered click-through window, WM_PAINT rendering |
 | `ghostcursor/perception/uia.py` | UIA element/window lookup + raw win32 fallback |
+| `ghostcursor/reasoning/schema.py` | frozen data structures: Recipe, Step, VerificationRule, enums (UserAction, VerificationKind, Risk) |
+| `ghostcursor/reasoning/grounding.py` | turn step descriptions into live screen rectangles via 3-rung matching ladder |
+| `ghostcursor/reasoning/verification.py` | check world state to decide if user completed a step |
+| `ghostcursor/reasoning/loop.py` | observe-act-verify state machine (IDLE → OBSERVING → DECIDING → RENDERING_HINT → AWAITING_USER_ACTION → VERIFYING) |
+| `ghostcursor/reasoning/renderer.py` | adapt loop's Renderer protocol onto the Win32 overlay |
+| `ghostcursor/reasoning/recipes/synthetic_export.json` | hand-authored recipe for the synthetic test app |
 | `tests/backdrop.py` | controlled solid-colour window used as a test surface |
 | `tests/test_overlay.py` | 14 checks: styles, click-through, transparency, hint placement, stale pixels, teardown |
-| `tests/test_end_to_end.py` | 4 checks: perception -> coordinate -> ring lands on the window |
-| `ghostcursor/reasoning/`, `memory/`, `inference/` | empty; later milestones |
+| `tests/test_end_to_end.py` | 8 checks: perception -> coordinate -> ring lands on the window, off-screen rejection |
+| `tests/uia_app.py` | real Win32 window with known AutomationIds, used as deterministic grounding target |
+| `ghostcursor/memory/`, `inference/` | empty; later milestones |
 
 ### Verification status
 ```
 python -m tests.test_overlay        14/14 pass
-python -m tests.test_end_to_end      4/4  pass
+python -m tests.test_end_to_end      8/8  pass
+python -m pytest tests/             70 passed
 ```
-Also confirmed against a real Notepad window: 440 ring pixels, 49x49 diameter,
-centroid within 1px of the requested coordinate.
+The first two (pixel harnesses) have their own runner and are not collected by
+pytest. Also confirmed against a real Notepad window: 440 ring pixels, 49x49
+diameter, centroid within 1px of the requested coordinate.
 
 ### You are here
 Intermediate milestone (Single-App Guided Tour) is **in progress**. The
@@ -102,17 +114,21 @@ run.main()
   run.run_tour(recipe_path, title_re, seconds)
       schema.Recipe.load(recipe_path)
       window.create_overlay_window()
-      GuidedTour(recipe, grounder=grounding.ground, snapshotter=verification.take_snapshot,
+      GuidedTour(recipe, grounder=run.make_grounder(title_re), snapshotter=verification.take_snapshot,
                  verifier=verification.verify, renderer=OverlayRenderer(hwnd))
 
       loop every REFRESH_SECONDS (0.25s), until ESC, --seconds, DONE, or FAILED:
           run.escape_pressed()                 GetAsyncKeyState(VK_ESCAPE)
           GetAsyncKeyState(VK_SPACE)            polled -> tour.confirm() for user_confirms steps
           tour.tick()                           the state machine, one transition per tick
-              [DECIDING]    grounding.ground(step, title_re)
-                                perception.uia.iter_elements()   rung 1: automation_id
-                                                                  rung 2: control_type+name
-                                                                  rung 3: fuzzy name
+              [DECIDING]    grounder(step, i) = run.make_grounder(title_re)()
+                                grounding.ground(step, title_re, locale=ui_locale)
+                                  perception.uia.iter_elements()   rung 1: automation_id
+                                                                    rung 2: control_type+name
+                                                                    rung 3: fuzzy name
+                                -> GroundedTarget | None
+                                grounding.promote(step, grounded, app_version="unknown", locale=ui_locale)
+                                  (writes automation_id back to in-memory Step; persists to disk later)
                                 -> GroundedTarget | None  (None => FAILED, never a guessed coordinate)
               [RENDERING_HINT]  OverlayRenderer.show(grounded, instruction_text)
                                     window.set_hint(hwnd, centre-of-bbox)
