@@ -103,7 +103,9 @@ def test_a_minimized_window_is_not_used_for_app_identity():
 
     with SyntheticApp(title="GhostCursorMinimizedProbe") as app:
         title_re = f".*{app.title}.*"
-        assert app_info_for_window(title_re) is not None, "visible window should resolve"
+        assert app_info_for_window(title_re) is not None, (
+            "visible window should resolve"
+        )
 
         win32gui.ShowWindow(app.hwnd, win32con.SW_MINIMIZE)
         app.pump()
@@ -124,10 +126,30 @@ def test_a_package_name_with_shell_metacharacters_is_refused():
     hole — but the guard is what makes that a property of the code instead of
     a property of the filesystem.
     """
-    from ghostcursor.perception.appinfo import UNKNOWN, _appx_version
+    from ghostcursor.perception import appinfo
 
-    hostile = r"C:\Program Files\WindowsApps\Bad; Remove-Item C:\_1.0_x64__abc\app.exe"
-    assert _appx_version(hostile) == UNKNOWN
+    # Asserting only that the result is UNKNOWN would be vacuous: with the
+    # guard removed, PowerShell runs the mangled name, produces no output, and
+    # the `or UNKNOWN` fallback returns the very same answer. The first
+    # version of this test did exactly that and survived deleting the guard.
+    # The property worth pinning is that the shell is never reached at all.
+    calls = []
+
+    def _record(*args, **kwargs):
+        calls.append(args)
+        raise AssertionError("subprocess.run must not be reached for a hostile name")
+
+    original = appinfo.subprocess.run
+    appinfo.subprocess.run = _record
+    try:
+        hostile = (
+            r"C:\Program Files\WindowsApps\Bad; Remove-Item C:\_1.0_x64__abc\app.exe"
+        )
+        assert appinfo._appx_version(hostile) == appinfo.UNKNOWN
+    finally:
+        appinfo.subprocess.run = original
+
+    assert calls == [], "a path-derived name reached the shell"
 
 
 def test_a_missing_powershell_is_reported_not_silently_unknown(capsys, monkeypatch):
