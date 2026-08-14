@@ -80,16 +80,28 @@ class PerceptionService:
         self.restarts = 0
         self._slot: Observation | None = None
         self._lock = threading.Lock()
+        #: Each worker generation gets its OWN stop Event, never a shared one
+        #: that start() clears. A worker blocked in a 41s UIA walk cannot be
+        #: joined, so restart() necessarily leaves it running; with a shared
+        #: Event, start() clearing it for the replacement would ALSO un-stop
+        #: the orphan, which then resumes looping when its walk finally
+        #: returns. Two workers would publish into one slot: observed_at
+        #: could go backwards (freshness oscillating for no reason the user
+        #: could explain), heartbeat increments would be lost, and a sick app
+        #: would take double the COM load. Set before start() so a
+        #: never-started service reads as stopped.
         self._stop = threading.Event()
+        self._stop.set()
         self._thread: threading.Thread | None = None
 
     # -- lifecycle ---------------------------------------------------------
     def start(self) -> None:
         if self.is_alive():
             return  # a second worker would fight the first for the slot
-        self._stop.clear()
+        stop = threading.Event()
+        self._stop = stop
         self._thread = threading.Thread(
-            target=self._run, name="ghostcursor-perception", daemon=True
+            target=self._run, args=(stop,), name="ghostcursor-perception", daemon=True
         )
         self._thread.start()
 
@@ -102,7 +114,14 @@ class PerceptionService:
             self._thread.join(timeout=timeout)
 
     def restart(self) -> None:
-        """Replace a worker that has died. Callers decide the policy."""
+        """Replace a worker that has died — or is wedged in a walk that will
+        not return. Callers decide the policy (how many times, when to give
+        up); this only performs one.
+
+        The old worker's own stop Event stays set forever, so when its walk
+        eventually returns it exits instead of resuming alongside the
+        replacement.
+        """
         self.stop()
         self.restarts += 1
         self._thread = None  # a still-blocked worker must not block start()
@@ -129,7 +148,10 @@ class PerceptionService:
             self._slot = observation
 
     # -- worker ------------------------------------------------------------
-    def _run(self) -> None:
+    def _run(self, stop: threading.Event) -> None:
+        # `stop` is this generation's Event, passed in rather than read from
+        # self._stop: an orphaned worker must keep checking the Event it was
+        # started with, not whatever the current generation is using.
         try:
             import pythoncom
 
@@ -141,7 +163,7 @@ class PerceptionService:
             pass
 
         try:
-            while not self._stop.is_set():
+            while not stop.is_set():
                 self.heartbeat += 1
                 try:
                     elements = tuple(self.walker(self.title_re))
@@ -149,14 +171,20 @@ class PerceptionService:
                     snapshot = take_snapshot(
                         self.title_re, elements=elements, observed_at=observed_at
                     )
-                    self._publish(
-                        Observation(
-                            snapshot=snapshot,
-                            elements=elements,
-                            observed_at=observed_at,
-                            ok=True,
+                    if not stop.is_set():
+                        # A retired worker must not publish the walk it was
+                        # already inside when it was retired: the timestamp
+                        # would be current while the contents are from
+                        # before the restart, and it could land after the
+                        # replacement's newer observation.
+                        self._publish(
+                            Observation(
+                                snapshot=snapshot,
+                                elements=elements,
+                                observed_at=observed_at,
+                                ok=True,
+                            )
                         )
-                    )
                 except Exception:
                     # A failed walk publishes nothing: the previous
                     # observation simply keeps ageing, which is exactly what
@@ -164,7 +192,7 @@ class PerceptionService:
                     # advances, so "looping through failures" stays
                     # distinguishable from "blocked in a call".
                     pass
-                self._stop.wait(self.interval_s)
+                stop.wait(self.interval_s)
         finally:
             try:
                 import pythoncom
