@@ -254,8 +254,16 @@ def test_a_dead_worker_is_named_as_a_perception_failure(tmp_path, monkeypatch):
     recipe = _recipe_file(tmp_path)
     run_module.run_tour(recipe, ".*GhostCursorTestApp.*", seconds=20.0)
 
-    assert any("perception" in line.lower() for line in printed), (
-        f"a dead perception worker was not named as one: {printed}"
+    # Must assert the tour ENDED naming perception, not merely that the word
+    # appeared: health also logs "restarted the perception worker" on its way
+    # past, which is non-terminal. Without this, a regression where health
+    # restarts once and then never fires again — letting the tour run out to
+    # --seconds having guided nobody — would still pass.
+    assert any(line.startswith("Stopped: perception") for line in printed), (
+        f"a dead perception worker was not named as the reason the tour ended: {printed}"
+    )
+    assert not any("Time limit reached" in line for line in printed), (
+        f"the tour ran to its time limit instead of naming the failure: {printed}"
     )
     assert not any("cannot find" in line.lower() for line in printed), (
         "a dead perception worker was misreported as a missing element, "
@@ -313,10 +321,80 @@ def test_a_target_hung_on_first_contact_is_named_as_a_perception_failure(
     recipe = _recipe_file(tmp_path)
     run_module.run_tour(recipe, ".*GhostCursorTestApp.*", seconds=40.0)
 
-    assert any("perception" in line.lower() for line in printed), (
-        f"a wedged perception worker was not named as one: {printed}"
+    assert any(line.startswith("Stopped: perception") for line in printed), (
+        f"a wedged perception worker was not named as the reason the tour ended: {printed}"
+    )
+    assert not any("Time limit reached" in line for line in printed), (
+        f"the tour ran to its time limit instead of naming the failure: {printed}"
     )
     assert not any("cannot find" in line.lower() for line in printed), (
         "a wedged perception worker was misreported as a missing element, "
         f"pointing the user at their own application: {printed}"
+    )
+
+
+def test_a_genuinely_absent_element_is_still_reported_as_missing(tmp_path, monkeypatch):
+    """The other side of the guard, and the one no other test covers.
+
+    The no-observation guard skips ticks until perception answers. A guard
+    that was too BROAD — skipping forever, or suppressing the grounding grace
+    outright — would pass every other test in this file, because they all
+    assert that "cannot find" does NOT appear. This asserts it still does when
+    it should: perception is working and answering, and the element genuinely
+    is not on screen.
+    """
+    import time as time_module
+
+    import ghostcursor.run as run_module
+    from ghostcursor.perception import appinfo, service as service_module
+    from ghostcursor.perception.service import Observation
+    from ghostcursor.reasoning.verification import Snapshot
+
+    class HealthyButEmptyService:
+        """Answers promptly and successfully — with nothing on screen."""
+
+        def __init__(self, *a, **kw):
+            self.heartbeat = 0
+
+        def start(self):
+            pass
+
+        def stop(self):
+            pass
+
+        def restart(self):
+            pass
+
+        def is_alive(self):
+            return True
+
+        def latest(self):
+            self.heartbeat += 1
+            now = time_module.monotonic()
+            return Observation(
+                snapshot=Snapshot(title="empty", elements=(), observed_at=now),
+                elements=(),
+                observed_at=now,
+                ok=True,
+            )
+
+    _fake_overlay(monkeypatch)
+    monkeypatch.setattr(service_module, "PerceptionService", HealthyButEmptyService)
+    monkeypatch.setattr(appinfo, "app_info_for_window", lambda _t: None)
+    monkeypatch.setattr(run_module, "escape_pressed", lambda: False)
+
+    printed = []
+    monkeypatch.setattr(
+        "builtins.print", lambda *a, **k: printed.append(" ".join(map(str, a)))
+    )
+
+    recipe = _recipe_file(tmp_path)
+    run_module.run_tour(recipe, ".*GhostCursorTestApp.*", seconds=20.0)
+
+    assert any("cannot find" in line.lower() for line in printed), (
+        "a genuinely missing element was never reported — the no-observation "
+        f"guard may be suppressing the grounding grace entirely: {printed}"
+    )
+    assert not any(line.startswith("Stopped: perception") for line in printed), (
+        f"a working perception worker was blamed for a missing element: {printed}"
     )
