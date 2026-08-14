@@ -139,35 +139,64 @@ OCR, and VLM (spec sections outside 9-10).
 run.main()
   run.run_tour(recipe_path, title_re, seconds)
       schema.Recipe.load(recipe_path)
+
+      --- perception moves OFF this thread, before the overlay exists ---
+      service.PerceptionService(title_re).start()
+          worker thread: CoInitializeEx, then forever:
+              uia.iter_elements(title_re)                  ~40s against a hung target
+              verification.take_snapshot(..., observed_at)  timestamped from the service clock
+              -> publishes ONE Observation into a slot (overwrite; no queue, no history)
+      staleness.StalenessLadder()      how old the last CONFIRMED-FRESH walk is
+      health.WorkerHealth(service, ladder)   restart once, then end the tour
+
       window.create_overlay_window()
-      GuidedTour(recipe, grounder=run.make_grounder(title_re), snapshotter=verification.take_snapshot,
+      GuidedTour(recipe, grounder=run.grounder_from_slot, snapshotter=run.snapshotter,
                  verifier=verification.verify, renderer=OverlayRenderer(hwnd))
 
-      loop every REFRESH_SECONDS (0.25s), until ESC, --seconds, DONE, or FAILED:
-          run.escape_pressed()                 GetAsyncKeyState(VK_ESCAPE)
+          run.snapshotter()          service.latest() -> Observation | None
+                                     None -> empty Snapshot (observed_at 0.0, reads as FRESH)
+                                     ladder.observed() ONLY when observed_at ADVANCES —
+                                     re-reading the same slot must not reset the clock
+          run.grounder_from_slot()   service.latest() -> make_grounder(...)(step, i, obs.elements)
+                                     grounds the LAST observation, so a merely-stale slot keeps
+                                     succeeding and the loop's 10s grounding grace never starts
+
+      loop every REFRESH_SECONDS (0.25s), until ESC, --seconds, DONE, FAILED, or health:
+          run.escape_pressed()                 GetAsyncKeyState(VK_ESCAPE) — never blocked now
           GetAsyncKeyState(VK_SPACE)            polled -> tour.confirm() for user_confirms steps
+          health.check()                        once per tick; suppressed until the first
+                                                observation lands or dead_after_s from tour start
+                                                (ladder.age() is inf before then)
           tour.tick()                           the state machine, one transition per tick
-              [DECIDING]    grounder(step, i) = run.make_grounder(title_re)()
-                                grounding.ground(step, title_re, locale=ui_locale)
-                                  perception.uia.iter_elements()   rung 1: automation_id
+              [DECIDING]    grounder(step, i, elements)
+                                grounding.ground(step, title_re, elements=obs.elements)
+                                                                    rung 1: automation_id
                                                                     rung 2: control_type+name
                                                                     rung 3: fuzzy name
-                                -> GroundedTarget | None
-                                grounding.promote(step, grounded, app_version="unknown", locale=ui_locale)
-                                  (writes automation_id back to in-memory Step; persists to disk later)
-                                -> GroundedTarget | None  (None => FAILED, never a guessed coordinate)
+                                grounding.promote(step, grounded, app_version, locale=ui_locale)
+                                  (writes automation_id back to in-memory Step; persists to disk)
+                                -> GroundedTarget | None  (None => clear hint, 10s grace, then FAILED;
+                                                           never a guessed coordinate)
               [RENDERING_HINT]  OverlayRenderer.show(grounded, instruction_text)
                                     window.set_hint(hwnd, centre-of-bbox)
                                     .last_instruction = instruction_text   <-- run.py dedupes prints on this
-              [AWAITING_USER_ACTION]  verification.take_snapshot(title_re)   (each tick, this is "after")
+              [AWAITING_USER_ACTION]  run.snapshotter()   (this is "after")
+                                       loop._is_newer(after, before) — a slot that has not
+                                       advanced is NO verification attempt, not a failed one
                                        verification.verify(rule, before, after)
                                            world-state check, not method (D014)
               [VERIFYING]   step_index += 1; renderer.clear(); back to OBSERVING
+          ladder.freshness()                    applied AFTER the DONE/FAILED breaks:
+              HIDDEN  -> window.clear_hint(hwnd)      (never passed to set_hint: _paint_ring
+                                                       treats everything-not-FRESH as dimmed)
+              DIMMED/FRESH -> window.set_hint(..., freshness=)  only while the renderer is
+                                                       still showing something
           run.py prints "step N: <instruction>" only when it changed since the last tick
           window.pump_messages_nonblocking()
 
   finally:
       window.destroy_overlay_window(hwnd)   always runs, even on exception
+      service.stop()                        before the store closes
 ```
 
 ### Runtime call graph — persistence (as built)
