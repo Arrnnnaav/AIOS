@@ -24,6 +24,9 @@ from ghostcursor.overlay import dpi
 # painted in this exact colour disappears; everything else is opaque.
 COLOR_KEY = win32api.RGB(255, 0, 255)
 RING_COLOR = win32api.RGB(0, 200, 255)
+#: A hint we can no longer confirm. Same ring, visibly muted — the user keeps
+#: their guidance and can see it may be out of date (see reasoning/staleness).
+DIMMED_RING_COLOR = win32api.RGB(0, 90, 115)
 RING_THICKNESS = 3
 
 _CLASS_NAME = "GhostCursorOverlay"
@@ -32,8 +35,8 @@ _CLASS_NAME = "GhostCursorOverlay"
 _bg_brush = None
 _class_registered = False
 
-# Current hint, in *client* coordinates: (x, y, radius) or None.
-_hint: tuple[int, int, int] | None = None
+# Current hint, in *client* coordinates: (x, y, radius, freshness) or None.
+_hint: tuple[int, int, int, "Freshness"] | None = None
 
 # Origin of the virtual screen, so callers can pass real screen coordinates
 # even on multi-monitor setups where the left/top monitor starts at a
@@ -41,8 +44,11 @@ _hint: tuple[int, int, int] | None = None
 _origin = (0, 0)
 
 
-def _paint_ring(hdc, x: int, y: int, radius: int) -> None:
-    pen = win32gui.CreatePen(win32con.PS_SOLID, RING_THICKNESS, RING_COLOR)
+def _paint_ring(hdc, x: int, y: int, radius: int, freshness) -> None:
+    from ghostcursor.reasoning.staleness import Freshness
+
+    colour = RING_COLOR if freshness is Freshness.FRESH else DIMMED_RING_COLOR
+    pen = win32gui.CreatePen(win32con.PS_SOLID, RING_THICKNESS, colour)
     old_pen = win32gui.SelectObject(hdc, pen)
     old_brush = win32gui.SelectObject(hdc, win32gui.GetStockObject(win32con.NULL_BRUSH))
     win32gui.Ellipse(hdc, x - radius, y - radius, x + radius, y + radius)
@@ -128,10 +134,20 @@ def create_overlay_window() -> int:
     return hwnd
 
 
-def set_hint(hwnd: int, screen_x: int, screen_y: int, radius: int = 24) -> None:
+def set_hint(
+    hwnd: int,
+    screen_x: int,
+    screen_y: int,
+    radius: int = 24,
+    freshness: "Freshness" = None,
+) -> None:
     """Show the hint ring centred on a *screen* coordinate, repainting now."""
+    from ghostcursor.reasoning.staleness import Freshness
+
     global _hint
-    _hint = (screen_x - _origin[0], screen_y - _origin[1], radius)
+    if freshness is None:
+        freshness = Freshness.FRESH
+    _hint = (screen_x - _origin[0], screen_y - _origin[1], radius, freshness)
     win32gui.InvalidateRect(hwnd, None, False)
     win32gui.UpdateWindow(hwnd)
 
