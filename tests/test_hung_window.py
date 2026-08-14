@@ -14,6 +14,8 @@ import threading
 import time
 from pathlib import Path
 
+import pytest
+
 REPO = Path(__file__).resolve().parents[1]
 CHILD = REPO / "tests" / "hung_window.py"
 
@@ -118,100 +120,56 @@ def test_a_uia_walk_against_a_hung_window_blocks_far_past_the_tick_ceiling():
     )
 
 
-def test_hung_window_cleans_up_child_when_handshake_fails():
+def test_hung_window_cleans_up_child_when_handshake_fails(tmp_path, monkeypatch):
     """Verify no child survives when the handshake fails.
 
     This ensures that if the child crashes or never prints 'ready',
     the process is cleaned up and does not poison later test runs.
     """
-    # Create a child that exits immediately without printing 'ready'
-    child = subprocess.Popen(
-        [sys.executable, "-c", "import sys; sys.exit(0)"],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
-    pid = child.pid
+    # Write a stub child that exits immediately without printing 'ready'
+    stub_child = tmp_path / "exit_immediately.py"
+    stub_child.write_text("import sys; sys.exit(0)")
 
-    # Simulate what __enter__ does: try to read handshake but child exits
+    # Monkeypatch CHILD to point to the stub
+    monkeypatch.setattr("tests.test_hung_window.CHILD", stub_child)
+
     hung = HungWindow()
-    hung._child = child
+    # Call the real __enter__() which should raise AssertionError
+    with pytest.raises(AssertionError, match="child did not start"):
+        hung.__enter__()
 
-    try:
-        # Manually do what __enter__ does with the child
-        ready_event = threading.Event()
-        handshake_line = [None]
-
-        def read_handshake() -> None:
-            try:
-                handshake_line[0] = hung._child.stdout.readline().strip()
-            finally:
-                ready_event.set()
-
-        reader = threading.Thread(target=read_handshake, daemon=True)
-        reader.start()
-
-        if not ready_event.wait(timeout=HungWindow.HANDSHAKE_TIMEOUT):
-            raise TimeoutError("timeout")
-
-        line = handshake_line[0] or ""
-        if line != "ready":
-            raise AssertionError(f"child did not start: {line!r}")
-    except BaseException:
-        # This is what __enter__ does on failure
-        hung._kill_and_reap()
-
-    # Verify the child is dead and reaped
-    time.sleep(0.2)
-    poll_result = hung._child.poll()
-    assert poll_result is not None, "child process should have been cleaned up"
+    # Verify the child is dead and reaped by the real __enter__
+    time.sleep(0.1)
+    assert hung._child.poll() is not None, "child process should have been cleaned up"
 
 
-def test_hung_window_times_out_if_child_never_prints_ready():
+def test_hung_window_times_out_if_child_never_prints_ready(tmp_path, monkeypatch):
     """Verify that handshake timeout raises promptly instead of hanging forever.
 
-    If the child never prints 'ready', the old code would hang forever.
-    The fix should timeout after HANDSHAKE_TIMEOUT and raise.
+    If the child never prints 'ready', the timeout should fire after
+    HANDSHAKE_TIMEOUT rather than blocking indefinitely.
     """
-    # Create a child that sleeps without printing anything
-    child = subprocess.Popen(
-        [sys.executable, "-c", "import time; time.sleep(600)"],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
+    # Write a stub that sleeps well past HANDSHAKE_TIMEOUT without printing
+    stub_child = tmp_path / "sleep_forever.py"
+    stub_child.write_text("import time; time.sleep(600)")
+
+    # Monkeypatch CHILD to point to the stub
+    monkeypatch.setattr("tests.test_hung_window.CHILD", stub_child)
 
     hung = HungWindow()
-    hung._child = child
-
     start = time.perf_counter()
-    try:
-        # Manually do what __enter__ does
-        ready_event = threading.Event()
-        handshake_line = [None]
 
-        def read_handshake() -> None:
-            try:
-                handshake_line[0] = hung._child.stdout.readline().strip()
-            finally:
-                ready_event.set()
+    # Call the real __enter__() which should raise TimeoutError
+    with pytest.raises(TimeoutError, match="did not signal 'ready'"):
+        hung.__enter__()
 
-        reader = threading.Thread(target=read_handshake, daemon=True)
-        reader.start()
+    elapsed = time.perf_counter() - start
 
-        if not ready_event.wait(timeout=HungWindow.HANDSHAKE_TIMEOUT):
-            raise TimeoutError("did not signal 'ready'")
+    # Should timeout roughly at HANDSHAKE_TIMEOUT, not hang for minutes
+    # Allow generous margin for process startup overhead
+    assert (
+        HungWindow.HANDSHAKE_TIMEOUT - 0.5 < elapsed < HungWindow.HANDSHAKE_TIMEOUT + 3
+    ), f"timeout should be ~{HungWindow.HANDSHAKE_TIMEOUT}s, but took {elapsed:.2f}s"
 
-        assert False, "should have raised TimeoutError"
-    except TimeoutError:
-        elapsed = time.perf_counter() - start
-        # Should timeout roughly at HANDSHAKE_TIMEOUT, not hang for minutes
-        assert elapsed < 10.0, (
-            f"timeout should be fast (~{HungWindow.HANDSHAKE_TIMEOUT}s), "
-            f"but took {elapsed:.2f}s"
-        )
-    finally:
-        # Clean up the child we spawned
-        if hung._child:
-            hung._child.kill()
-            hung._child.wait(timeout=5)
+    # Child should be cleaned up
+    assert hung._child.poll() is not None, "child should be cleaned up after timeout"
