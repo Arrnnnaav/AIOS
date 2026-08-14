@@ -23,6 +23,10 @@ class Snapshot:
     title: str
     elements: tuple[Element, ...]
     focused_automation_id: str = ""
+    #: When the worker completed the walk that produced this, from the
+    #: service's clock. 0.0 means untimestamped — a synchronous or faked
+    #: perception — and is treated as always fresh.
+    observed_at: float = 0.0
 
 
 def _sort_elements(
@@ -42,15 +46,25 @@ def _sort_elements(
     )
 
 
-def take_snapshot(title_re: str) -> Snapshot:
+def take_snapshot(
+    title_re: str,
+    elements: list[Element] | tuple[Element, ...] | None = None,
+    observed_at: float = 0.0,
+) -> Snapshot:
     import win32gui
 
-    elements = _sort_elements(iter_elements(title_re))
+    if elements is None:
+        elements = iter_elements(title_re)
     try:
         title = win32gui.GetWindowText(win32gui.GetForegroundWindow())
     except Exception:
         title = ""
-    return Snapshot(title=title, elements=elements, focused_automation_id="")
+    return Snapshot(
+        title=title,
+        elements=_sort_elements(elements),
+        focused_automation_id="",
+        observed_at=observed_at,
+    )
 
 
 def _matches(element: Element, descriptor: dict) -> bool:
