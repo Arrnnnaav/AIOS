@@ -59,6 +59,14 @@ def test_renaming_the_target_orphans_learning():
     )
 
 
+def test_ocr_text_participates_in_the_key():
+    # ocr_text must affect the key, or different visual text on the same button
+    # would share observations, mis-grounding the hint.
+    assert step_key("export a file", _step(ocr_text="Export")) != step_key(
+        "export a file", _step(ocr_text="Save")
+    )
+
+
 def test_key_normalizes_whitespace_and_case():
     assert step_key("export a file", _step(name="Export")) == step_key(
         "export a file", _step(name="  export  ")
@@ -86,16 +94,17 @@ def test_cross_field_distribution_distinguishes_steps():
 
     The field separator \x1f is what makes field boundaries meaningful. If someone
     changes the join character or drops the separator entirely, text moved between
-    fields could merge two genuinely different steps' observations. This test ensures
-    that "a b" in one field is not treated as equivalent to "a" and "b" split across
-    two fields — the separator existence and position in the concatenation must matter.
+    fields could merge two genuinely different steps' observations. This test uses
+    non-empty trailing fields so that changing the separator to a space would produce
+    identical digest inputs (e.g., "i a b c d" vs "i a b c d" are the same when joined
+    with space but differ with \x1f). An empty trailing field version would pass even
+    with space join due to trailing spaces, so this pair is necessary.
     """
-    same_text_one_field = _step(name="a b", ocr_text="", visual_description="x")
-    same_text_split = _step(name="a", ocr_text="b", visual_description="x")
-    # Same text distributed differently across fields must produce different keys
-    assert step_key("intent", same_text_one_field) != step_key(
-        "intent", same_text_split
-    )
+    step_a = _step(name="a", ocr_text="b c", visual_description="d")
+    step_b = _step(name="a b", ocr_text="c", visual_description="d")
+    # Same text distributed differently across fields, no empty trailing fields
+    # Must produce different keys (requires \x1f separator; space join would collide)
+    assert step_key("intent", step_a) != step_key("intent", step_b)
 
 
 def test_separator_characters_in_input_are_normalized_away():
