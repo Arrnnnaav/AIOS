@@ -233,7 +233,22 @@ def should_poll_space(current_step: Step | None) -> bool:
     )
 
 
-def run_tour(recipe_path: str, title_re: str, seconds: float) -> int:
+def run_tour(
+    recipe_path: str,
+    title_re: str,
+    seconds: float,
+    clock=time.monotonic,
+    sleeper=time.sleep,
+) -> int:
+    """Run a recipe as a guided tour.
+
+    `clock` and `sleeper` exist so a test can drive the timeline by hand
+    instead of sleeping through it. They are ONE shared time source: the
+    deadline, the health budget and the staleness ladder all read `clock`, and
+    `sleeper` is what advances it. Two independently-driftable clocks here
+    would be worse than none — the whole point of the staleness ladder is that
+    its notion of "now" agrees with the loop's.
+    """
     """Drive a hand-authored recipe against a live window."""
     from ghostcursor.memory.store import ObservationStore
     from ghostcursor.perception.appinfo import app_info_for_window
@@ -291,15 +306,15 @@ def run_tour(recipe_path: str, title_re: str, seconds: float) -> int:
         # the user cannot dismiss a window covering their whole screen. The
         # worker absorbs that block; the UI thread only ever reads a slot.
         service = PerceptionService(title_re)
-        ladder = StalenessLadder()
+        ladder = StalenessLadder(clock=clock)
         health = WorkerHealth(service=service, ladder=ladder)
         service.start()
 
         hwnd = window.create_overlay_window()
         print(f"Guided tour: {recipe.intent!r}. ESC to quit.")
         try:
-            deadline = time.monotonic() + seconds
-            tour_started = time.monotonic()
+            deadline = clock() + seconds
+            tour_started = clock()
             last_printed: str | None = None
             live_grounder = make_grounder(
                 title_re,
@@ -369,7 +384,7 @@ def run_tour(recipe_path: str, title_re: str, seconds: float) -> int:
                 # the `service.latest() is None` guard in the tick loop below.
                 grounding_grace_s=DEFAULT_GROUNDING_GRACE_S,
             )
-            while time.monotonic() < deadline:
+            while clock() < deadline:
                 if escape_pressed():
                     print("ESC pressed — exiting.")
                     break
@@ -387,7 +402,7 @@ def run_tour(recipe_path: str, title_re: str, seconds: float) -> int:
                 # still caught, just from a start time that exists.
                 started_reporting = (
                     ladder.age() != float("inf")
-                    or time.monotonic() - tour_started > health.dead_after_s
+                    or clock() - tour_started > health.dead_after_s
                 )
                 if started_reporting:
                     reason = health.check()
@@ -420,7 +435,7 @@ def run_tour(recipe_path: str, title_re: str, seconds: float) -> int:
                 # missing element take 40s to report.
                 if service.latest() is None:
                     window.pump_messages_nonblocking()
-                    time.sleep(REFRESH_SECONDS)
+                    sleeper(REFRESH_SECONDS)
                     continue
 
                 state = tour.tick()
@@ -467,7 +482,7 @@ def run_tour(recipe_path: str, title_re: str, seconds: float) -> int:
                     last_printed = instruction
 
                 window.pump_messages_nonblocking()
-                time.sleep(REFRESH_SECONDS)
+                sleeper(REFRESH_SECONDS)
             else:
                 print("Time limit reached — exiting.")
         finally:
