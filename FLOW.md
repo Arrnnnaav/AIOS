@@ -6,7 +6,7 @@ the bottom shows exactly what's being built/modified right now.
 
 ---
 
-## Current milestone: Intermediate Project — Single-App Guided Tour (in progress)
+## Current milestone: Intermediate Project — Single-App Guided Tour  ✅ complete
 
 The Beginner milestone (Static Hint Overlay ✅) is complete. The Intermediate
 milestone builds the observe-act-verify state machine, the grounding ladder,
@@ -93,7 +93,7 @@ run.main()
 ```
 python -m tests.test_overlay        14/14 pass
 python -m tests.test_end_to_end      8/8  pass
-python -m pytest tests/             112 passed
+python -m pytest tests/             134 passed
 ```
 The first two (pixel harnesses) have their own runner and are not collected by
 pytest. Also confirmed against a real Notepad window: 440 ring pixels, 49x49
@@ -104,8 +104,26 @@ process boundaries), and deleting the database file returned behaviour to
 rung 2 — see the persistence call graph above.
 
 ### You are here
-Intermediate milestone (Single-App Guided Tour) is **in progress**. The
+Intermediate milestone (Single-App Guided Tour) is **COMPLETE** — verified
+end-to-end on a real, non-synthetic application, not only the test harness.
+
+Closing evidence, a guided tour run twice against live Notepad (a Store app,
+`notepad.exe` 11.2606.15.0 resolved through the Appx package path, 39 UIA
+elements):
+
+```
+run 1   hydrated=0   rung 2 (matched by name)          learned AutomationId 'AddButton'
+run 2   hydrated=1   rung 1 (matched by that id)       same target, no re-learning
+both    state = AWAITING_USER_ACTION                   dwelling for the human, never acting
+both    440 ring pixels landed on the real button      observe -> hint 147-161 ms
+```
+
+The tour stopping at AWAITING_USER_ACTION is the design, not a failure: the
+system draws a hint and waits. Only the user can advance the step (D006).
+
+The
 `IDLE → OBSERVING → DECIDING → RENDERING_HINT → AWAITING_USER_ACTION →
+`IDLE -> OBSERVING -> DECIDING -> RENDERING_HINT -> AWAITING_USER_ACTION ->
 VERIFYING` state machine, the grounding ladder, live UIA verification, the
 Win32 renderer adapter, the `run.py --recipe` entry point, and now
 persistence — promotion survives process exit via `ObservationStore`, keyed
