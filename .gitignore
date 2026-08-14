@@ -23,3 +23,6 @@ kb.sqlite*
 .env
 .env.*
 !.env.example
+
+# pytest tmp_path scratch when TMPDIR is redirected into the repo
+.tmp_pytest/
