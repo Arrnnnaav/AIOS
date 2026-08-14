@@ -261,3 +261,62 @@ def test_a_dead_worker_is_named_as_a_perception_failure(tmp_path, monkeypatch):
         "a dead perception worker was misreported as a missing element, "
         f"pointing the user at their own application: {printed}"
     )
+
+
+def test_a_target_hung_on_first_contact_is_named_as_a_perception_failure(
+    tmp_path, monkeypatch
+):
+    """The flagship case: nothing is ever observed, because the very first
+    walk is the 41s one.
+
+    Health's worst case is TWO budgets, not one. The check is suppressed for
+    `dead_after_s` from tour start (the ladder's age is infinite before the
+    first observation), and the restart it then fires grants the replacement
+    another `dead_after_s` before the stall signal may judge it. At a grace of
+    one budget the tour gave up at 25.75s with "cannot find 'Export' on
+    screen" — 4.25s before health could name the real cause.
+    """
+    import ghostcursor.run as run_module
+    from ghostcursor.perception import appinfo, service as service_module
+
+    class NeverObservingService:
+        """Alive, running, and permanently wedged: publishes nothing, ever."""
+
+        def __init__(self, *a, **kw):
+            self.heartbeat = 0
+
+        def start(self):
+            pass
+
+        def stop(self):
+            pass
+
+        def restart(self):
+            pass
+
+        def latest(self):
+            return None
+
+        def is_alive(self):
+            return True
+
+    _fake_overlay(monkeypatch)
+    monkeypatch.setattr(service_module, "PerceptionService", NeverObservingService)
+    monkeypatch.setattr(appinfo, "app_info_for_window", lambda _t: None)
+    monkeypatch.setattr(run_module, "escape_pressed", lambda: False)
+
+    printed = []
+    monkeypatch.setattr(
+        "builtins.print", lambda *a, **k: printed.append(" ".join(map(str, a)))
+    )
+
+    recipe = _recipe_file(tmp_path)
+    run_module.run_tour(recipe, ".*GhostCursorTestApp.*", seconds=40.0)
+
+    assert any("perception" in line.lower() for line in printed), (
+        f"a wedged perception worker was not named as one: {printed}"
+    )
+    assert not any("cannot find" in line.lower() for line in printed), (
+        "a wedged perception worker was misreported as a missing element, "
+        f"pointing the user at their own application: {printed}"
+    )

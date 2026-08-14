@@ -332,9 +332,18 @@ def run_tour(recipe_path: str, title_re: str, seconds: float) -> int:
             def grounder_from_slot(step, i, elements=None):
                 # Grounds against the LAST observation, not a live walk. While
                 # observations are merely stale this keeps succeeding, so the
-                # loop's 10s grounding grace never starts — the hint stays
-                # drawn and simply dims. The grace clock starts only once a new
+                # loop's grounding grace never starts — the hint stays drawn
+                # and simply dims. The grace clock starts only once a new
                 # observation arrives that grounding genuinely fails against.
+                #
+                # Use the elements the LOOP passed in whenever it has them.
+                # Those came from the snapshot OBSERVING took, and D019 requires
+                # OBSERVING and DECIDING to describe the same instant. Re-reading
+                # the slot here would ground observation B while verification
+                # baselines on observation A, so the hint could point at a
+                # control the baseline never saw.
+                if elements is not None:
+                    return live_grounder(step, i, elements)
                 observation = service.latest()
                 if observation is None:
                     return None
@@ -346,25 +355,19 @@ def run_tour(recipe_path: str, title_re: str, seconds: float) -> int:
                 snapshotter=snapshotter,
                 verifier=verify,
                 renderer=OverlayRenderer(hwnd),
-                # The two clocks must not race, and at the stock 10s grace they
-                # did. A dead perception worker makes grounding fail on every
-                # tick, so the grounding grace expired ~5s BEFORE the 15s health
-                # budget and the tour ended with "cannot find 'Export' on
-                # screen" — telling the user their own UI is missing an element
-                # that is sitting right there, and pointing them at their
-                # application instead of at ours. The two clocks answer
-                # different questions: the grounding grace answers "is the
-                # target on screen", which is only a meaningful question once
-                # perception is known to be working. So it is budgeted to
-                # resolve strictly after the health check, which means a
-                # perception failure is always NAMED as a perception failure.
-                #
-                # Chosen over suppressing the grace while no observation exists
-                # because it is one number in one place rather than a second
-                # piece of state threaded through the grounder, and because it
-                # also covers the case where observations DID arrive and then
-                # the worker died.
-                grounding_grace_s=health.dead_after_s + DEFAULT_GROUNDING_GRACE_S,
+                # Stock grace. The two clocks used to race — a dead worker made
+                # grounding fail every tick, so the grace expired before the
+                # health budget and the tour said "cannot find 'Export' on
+                # screen" about an element sitting right there, pointing the
+                # user at their own application instead of at ours. Inflating
+                # the grace to outrun health was the first fix and was wrong
+                # twice over: health's worst case is TWO budgets (suppressed
+                # until dead_after_s from tour start, then the restart grants
+                # the replacement another), so one budget still lost the race;
+                # and inflating it made a genuinely missing element take 40s to
+                # report. The race is now removed at its source instead — see
+                # the `service.latest() is None` guard in the tick loop below.
+                grounding_grace_s=DEFAULT_GROUNDING_GRACE_S,
             )
             while time.monotonic() < deadline:
                 if escape_pressed():
@@ -391,6 +394,34 @@ def run_tour(recipe_path: str, title_re: str, seconds: float) -> int:
                     if reason is not None:
                         print(f"Stopped: {reason}")
                         break
+
+                # Spec §9: "no observation yet at tour start -> the loop stays
+                # in OBSERVING rather than treating it as a failure." Ticking
+                # before the first observation lands would let the empty
+                # placeholder snapshot become a VERIFICATION BASELINE: the loop
+                # advances to DECIDING, grounding can succeed off an observation
+                # that arrived between the two ticks, and then verify compares
+                # against an empty `before` — where ANY_MEANINGFUL_CHANGE is
+                # unconditionally true and ELEMENT_APPEARS matches anything
+                # already on screen. The tour would mark a step complete that
+                # the user never performed, which is the one thing D006 exists
+                # to prevent.
+                #
+                # This is also what keeps the two clocks from racing. Grounding
+                # is now only ever attempted once a real observation exists, so
+                # a grounding failure means perception IS working and the
+                # element genuinely is not there — which is exactly when
+                # "cannot find X on screen" is the correct thing to say. A dead
+                # worker leaves its last observation in the slot, so grounding
+                # keeps succeeding against it and the grace never starts at all;
+                # the health check is left to name the failure. The grace can
+                # therefore stay at its stock 10s rather than being inflated to
+                # outrun the health budget, which would have made a genuinely
+                # missing element take 40s to report.
+                if service.latest() is None:
+                    window.pump_messages_nonblocking()
+                    time.sleep(REFRESH_SECONDS)
+                    continue
 
                 state = tour.tick()
                 if state is State.DONE:

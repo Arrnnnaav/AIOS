@@ -121,8 +121,17 @@ class PerceptionService:
         The old worker's own stop Event stays set forever, so when its walk
         eventually returns it exits instead of resuming alongside the
         replacement.
+
+        **Never joins.** This runs on the UI thread, and it fires precisely
+        when the worker is wedged in a walk that will not return for tens of
+        seconds — so any join here always burns its full timeout, with no ESC
+        poll and no message pump, under a full-screen click-through overlay.
+        That is the exact freeze this whole design exists to prevent (D021).
+        The join is unnecessary anyway: the retired worker's Event is already
+        set, and it re-checks that Event before publishing, so it can neither
+        publish nor resume once its walk returns.
         """
-        self.stop()
+        self._stop.set()
         self.restarts += 1
         self._thread = None  # a still-blocked worker must not block start()
         self.start()

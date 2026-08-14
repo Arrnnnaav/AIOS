@@ -73,7 +73,14 @@ class WorkerHealth:
         if not (dead or stalled):
             return None
 
-        cause = "exited" if dead else f"stalled for {self.ladder.age():.1f}s"
+        if dead:
+            cause = "exited"
+        elif self.ladder.age() == float("inf"):
+            # Never observed anything at all — "stalled for inf s" is true but
+            # tells a human nothing about what went wrong.
+            cause = "never produced an observation"
+        else:
+            cause = f"stalled for {self.ladder.age():.1f}s"
         # Heartbeat is recorded, never consulted: it tells a later reader
         # whether the worker was blocked in a call or looping through
         # failures.
