@@ -94,8 +94,43 @@ def get_ui_locale() -> str:
     return "unknown"
 
 
-def make_grounder(title_re: str) -> Callable[[object, int], object]:
-    """Build the grounder used by a live run_tour: ground, then promote.
+def hydrate_recipe(recipe, app_id: str, store) -> int:
+    """Load each step's previously learned observations from disk.
+
+    This is the half that was missing: promotion already discovered
+    AutomationIds and wrote them onto the in-memory Step, but nothing read
+    them back, so every run re-learned from scratch.
+
+    Per controller ruling P2: this REPLACES a step's `confirmed` list rather
+    than merging it with whatever the recipe JSON shipped. Recipes are
+    hand-authored with `confirmed: []` because documentation cannot supply
+    an AutomationId, so there is nothing to merge, and replacing keeps the
+    store the single source of truth for learned data.
+    """
+    from ghostcursor.reasoning.identity import step_key
+
+    loaded = 0
+    for step in recipe.steps:
+        observations = store.observations_for(step_key(recipe.intent, step), app_id)
+        if observations:
+            step.target_descriptor.confirmed = observations
+            loaded += len(observations)
+    return loaded
+
+
+def persist_step(recipe_intent: str, step, app_id: str, store) -> None:
+    """Write a step's confirmed observations to disk, idempotently."""
+    from ghostcursor.reasoning.identity import step_key
+
+    key = step_key(recipe_intent, step)
+    for observation in step.target_descriptor.confirmed:
+        store.record(key, app_id, observation)
+
+
+def make_grounder(
+    title_re: str, app_info=None, store=None, recipe_intent: str = ""
+) -> Callable[[object, int], object]:
+    """Build the grounder used by a live run_tour: ground, promote, persist.
 
     Factored out of run_tour so it is directly testable without a live UIA
     window. Promotion is spec §5's headline mechanism — "the recipe becomes
@@ -103,23 +138,27 @@ def make_grounder(title_re: str) -> Callable[[object, int], object]:
     because run.py's grounder never called it, leaving rung 1 unreachable
     outside the test suite.
 
-    Note: promotion writes to the in-memory Step object only. There is no
-    knowledge base yet (spec §8-10 is deferred), so these observations are
-    lost the moment the process exits — this makes today's runs individually
-    more robust (rung 1 within a single tour) but does not yet persist
-    across runs.
+    When `store` and `app_info` are supplied, promoted observations are also
+    written to disk immediately, so they survive past this process exiting
+    and are available to `hydrate_recipe` on the next run. Backwards
+    compatible: with no store/app_info (the default), behaviour is unchanged
+    from before — grounds and promotes in-memory only, with
+    app_version="unknown".
     """
     from ghostcursor.reasoning import grounding
 
     ui_locale = get_ui_locale()
+    app_version = app_info.version if app_info else "unknown"
+    app_id = app_info.app_id if app_info else None
 
     def grounder(step, i):
-        grounded = grounding.ground(step, title_re, locale=ui_locale)
+        grounded = grounding.ground(
+            step, title_re, locale=ui_locale, app_version=app_version
+        )
         if grounded is not None:
-            # app_version="unknown": detecting the real installed app
-            # version (exe VERSIONINFO / Appx package version) is spec §9
-            # scope, deferred along with the rest of the knowledge base.
-            grounding.promote(step, grounded, app_version="unknown", locale=ui_locale)
+            grounding.promote(step, grounded, app_version=app_version, locale=ui_locale)
+            if store is not None and app_id is not None:
+                persist_step(recipe_intent, step, app_id, store)
         return grounded
 
     return grounder
@@ -138,6 +177,8 @@ def should_poll_space(current_step: Step | None) -> bool:
 
 def run_tour(recipe_path: str, title_re: str, seconds: float) -> int:
     """Drive a hand-authored recipe against a live window."""
+    from ghostcursor.memory.store import ObservationStore
+    from ghostcursor.perception.appinfo import app_info_for_window
     from ghostcursor.reasoning.loop import GuidedTour, State
     from ghostcursor.reasoning.renderer import OverlayRenderer
     from ghostcursor.reasoning.schema import Recipe
@@ -147,12 +188,21 @@ def run_tour(recipe_path: str, title_re: str, seconds: float) -> int:
     hwnd = window.create_overlay_window()
     print(f"Guided tour: {recipe.intent!r}. ESC to quit.")
 
+    app_info = app_info_for_window(title_re)
+    store = ObservationStore()
+
     deadline = time.monotonic() + seconds
     last_printed: str | None = None
     try:
+        if app_info is not None:
+            loaded = hydrate_recipe(recipe, app_info.app_id, store)
+            print(f"Loaded {loaded} learned observation(s) from previous runs.")
+
         tour = GuidedTour(
             recipe=recipe,
-            grounder=make_grounder(title_re),
+            grounder=make_grounder(
+                title_re, app_info=app_info, store=store, recipe_intent=recipe.intent
+            ),
             snapshotter=lambda: take_snapshot(title_re),
             verifier=verify,
             renderer=OverlayRenderer(hwnd),
@@ -187,6 +237,7 @@ def run_tour(recipe_path: str, title_re: str, seconds: float) -> int:
             print("Time limit reached — exiting.")
     finally:
         window.destroy_overlay_window(hwnd)
+        store.close()
     return 0
 
 
