@@ -151,7 +151,7 @@ def reassemble(reads: list[OcrRead]) -> list[OcrRead]:
             if len(parts) >= MERGE_MAX_PARTS:
                 break
             if not _mergeable(parts[-1], candidate):
-                continue
+                break
             parts.append(candidate)
             merged.append(
                 OcrRead(

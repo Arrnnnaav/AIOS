@@ -3,7 +3,12 @@
 Fixtures are the spike's REAL reads, not invented strings.
 """
 
-from ghostcursor.perception.ocr import OcrRead, reassemble
+from ghostcursor.perception.ocr import (
+    MERGE_CENTRE_TOLERANCE,
+    MERGE_VERTICAL_GAP,
+    OcrRead,
+    reassemble,
+)
 from rapidfuzz import fuzz
 
 
@@ -41,8 +46,11 @@ def test_the_original_parts_are_still_offered():
 def test_reassembly_does_not_manufacture_a_match_across_unrelated_labels():
     """The false-POSITIVE direction — as load-bearing as recall.
 
-    Acrobat's tool list stacks unrelated operations vertically at exactly the
-    spacing a wrapped label uses. Merging them must not invent a target.
+    Acrobat's tool list stacks two unrelated operations vertically, well
+    outside the merge geometry (a 32px gap against a ~13.5px threshold at
+    these box heights — not "exactly" the wrapped-label spacing, just a
+    plausible adjacent pair). Merging them must not invent a target. The
+    near-boundary tests below are what actually exercise the threshold.
     """
     acrobat = [
         OcrRead(text="Redact a PDF", bbox=(40, 700, 180, 718)),
@@ -83,3 +91,111 @@ def test_at_most_three_reads_merge_into_one_candidate():
     ]
     for read in reassemble(stack):
         assert len(read.text.split()) <= 3
+
+
+def test_a_non_mergeable_middle_read_breaks_the_chain():
+    """Finding 1 (fix round 1): a badge/icon read sitting between two lines of
+    a wrapped label must not let the chain jump over it.
+
+    'Magic' and 'Expand' are geometrically close enough that, on their own,
+    they would merge (small gap, aligned centres). 'New' sits between them
+    vertically but is offset far enough sideways to be unmergeable with
+    'Magic'. Before the fix, the loop used `continue` on a failed candidate
+    and kept walking, so 'Magic' skipped over 'New' and merged with 'Expand'
+    anyway — a bbox spanning a read whose text the merge never named. The
+    chain must stop the moment a candidate fails to continue it.
+    """
+    top = OcrRead(text="Magic", bbox=(100, 200, 160, 216))
+    badge = OcrRead(text="New", bbox=(300, 217, 330, 221))
+    bottom = OcrRead(text="Expand", bbox=(98, 222, 168, 238))
+    merged = reassemble([top, badge, bottom])
+    assert "Magic Expand" not in _texts(merged), (
+        f"chain jumped over the unmergeable middle read: {_texts(merged)}"
+    )
+
+
+# --- Near-boundary tests (Finding 2, fix round 1) ---------------------------
+#
+# The tests above prove reassembly doesn't merge OBVIOUSLY unrelated rows.
+# They sit comfortably inside the reject region, so a meaningfully looser
+# tolerance would still pass them. These derive their gaps from the actual
+# constants so a wrong retune of MERGE_VERTICAL_GAP or MERGE_CENTRE_TOLERANCE
+# fails one of these directly.
+
+_BOUNDARY_WIDTH = 60
+_BOUNDARY_HEIGHT = 20
+
+
+def _vertical_pair(gap):
+    top = OcrRead(
+        text="Alpha",
+        bbox=(100, 200, 100 + _BOUNDARY_WIDTH, 200 + _BOUNDARY_HEIGHT),
+    )
+    bottom_top = 200 + _BOUNDARY_HEIGHT + gap
+    bottom = OcrRead(
+        text="Beta",
+        bbox=(
+            100,
+            bottom_top,
+            100 + _BOUNDARY_WIDTH,
+            bottom_top + _BOUNDARY_HEIGHT,
+        ),
+    )
+    return [top, bottom]
+
+
+def _centre_offset_pair(offset):
+    top = OcrRead(
+        text="Alpha",
+        bbox=(100, 200, 100 + _BOUNDARY_WIDTH, 200 + _BOUNDARY_HEIGHT),
+    )
+    bottom = OcrRead(
+        text="Beta",
+        bbox=(
+            100 + offset,
+            200 + _BOUNDARY_HEIGHT,
+            100 + offset + _BOUNDARY_WIDTH,
+            200 + 2 * _BOUNDARY_HEIGHT,
+        ),
+    )
+    return [top, bottom]
+
+
+def test_vertical_gap_just_inside_threshold_merges():
+    threshold = MERGE_VERTICAL_GAP * _BOUNDARY_HEIGHT
+    gap = round(threshold) - 1
+    merged = reassemble(_vertical_pair(gap))
+    assert "Alpha Beta" in _texts(merged), (
+        f"gap {gap} is inside the {threshold} threshold and should merge: "
+        f"{_texts(merged)}"
+    )
+
+
+def test_vertical_gap_just_outside_threshold_does_not_merge():
+    threshold = MERGE_VERTICAL_GAP * _BOUNDARY_HEIGHT
+    gap = round(threshold) + 1
+    merged = reassemble(_vertical_pair(gap))
+    assert "Alpha Beta" not in _texts(merged), (
+        f"gap {gap} is outside the {threshold} threshold and should not "
+        f"merge: {_texts(merged)}"
+    )
+
+
+def test_centre_offset_just_inside_threshold_merges():
+    threshold = MERGE_CENTRE_TOLERANCE * _BOUNDARY_WIDTH
+    offset = round(threshold) - 1
+    merged = reassemble(_centre_offset_pair(offset))
+    assert "Alpha Beta" in _texts(merged), (
+        f"centre offset {offset} is inside the {threshold} threshold and "
+        f"should merge: {_texts(merged)}"
+    )
+
+
+def test_centre_offset_just_outside_threshold_does_not_merge():
+    threshold = MERGE_CENTRE_TOLERANCE * _BOUNDARY_WIDTH
+    offset = round(threshold) + 1
+    merged = reassemble(_centre_offset_pair(offset))
+    assert "Alpha Beta" not in _texts(merged), (
+        f"centre offset {offset} is outside the {threshold} threshold and "
+        f"should not merge: {_texts(merged)}"
+    )
