@@ -5,9 +5,10 @@ which is the class of bug that has bitten this project three times.
 """
 
 import numpy as np
+import pytest
 
 from ghostcursor.overlay import dpi  # noqa: F401
-from ghostcursor.perception.ocr import OcrRead
+from ghostcursor.perception.ocr import OcrRead, ocr_available
 from ghostcursor.perception.service import Observation
 from ghostcursor.perception.uia import Element
 from ghostcursor.reasoning.staleness import Freshness
@@ -58,6 +59,11 @@ class UiaBlindService:
         )
 
 
+#: `build_controller` consults the real engine, and only the factory and the
+#: capture are faked below. A machine with no language pack is a SUPPORTED
+#: configuration (the tour runs on UIA alone), so it must skip rather than go
+#: red — same guard as tests/test_ocr_engine.py.
+@pytest.mark.skipif(not ocr_available(), reason="no OCR language pack")
 def test_ocr_recovers_a_target_uia_cannot_see_and_it_renders_as_inferred(
     tmp_path, monkeypatch
 ):
@@ -104,4 +110,84 @@ def test_ocr_recovers_a_target_uia_cannot_see_and_it_renders_as_inferred(
     )
     assert Freshness.FRESH not in states, (
         f"a pixel guess was drawn with the authority of a confirmed control: {states}"
+    )
+    # The FIRST paint, specifically. "INFERRED appears somewhere in the
+    # sequence" passed while the renderer's own opening paint used set_hint's
+    # default of FRESH and was corrected only later in the same tick — a
+    # bright confident ring around a pixel guess, for however long it took a
+    # WM_PAINT to land.
+    assert states[0] is Freshness.INFERRED, (
+        f"the FIRST paint of an OCR-grounded hint was {states[0]!r}, not "
+        f"INFERRED — it was drawn at a confidence nobody chose: {states}"
+    )
+
+
+class ExhaustedController:
+    """A tier-2 controller that has already spent its run budget.
+
+    Stands in for the real thing so the terminal path can be driven without
+    burning 20 real OCR runs: `exhausted()` is unit-tested in
+    tests/test_tier2_controller.py, but what run_tour DOES with it is not
+    tested anywhere else.
+    """
+
+    max_runs_per_step = 20
+
+    def elements_for(self, step_index, title_re):
+        return []
+
+    def exhausted(self, step_index):
+        return True
+
+    def reset(self, step_index):
+        pass
+
+
+def test_cap_exhaustion_ends_the_step_naming_the_read_failure(tmp_path, monkeypatch):
+    """A screen that never stops changing burns the per-step cap.
+
+    The tour must stop and say we could not READ the element. Saying "cannot
+    find" instead tells the user their element is missing when in fact we gave
+    up reading the screen — pointing them at their own application instead of
+    at ours (D024).
+    """
+    import ghostcursor.run as run_module
+    from ghostcursor.perception import appinfo, service as service_module, tier2
+
+    clock = FakeClock()
+    _fake_overlay(monkeypatch)
+    monkeypatch.setattr(
+        service_module, "PerceptionService", lambda *a, **k: UiaBlindService(clock)
+    )
+    monkeypatch.setattr(appinfo, "app_info_for_window", lambda _t: None)
+    monkeypatch.setattr(run_module, "escape_pressed", lambda: False)
+    monkeypatch.setattr(run_module, "key_was_pressed", lambda vk: False)
+    monkeypatch.setattr(tier2, "build_controller", lambda _clock: ExhaustedController())
+
+    printed = []
+    monkeypatch.setattr(
+        "builtins.print", lambda *a, **k: printed.append(" ".join(map(str, a)))
+    )
+
+    run_module.run_tour(
+        _recipe_file(tmp_path),
+        ".*app.*",
+        seconds=8.0,
+        clock=clock,
+        sleeper=clock.sleeper,
+    )
+
+    stops = [line for line in printed if line.startswith("Stopped: could not read")]
+    assert stops, (
+        f"an exhausted read budget did not end the tour with a read failure: {printed}"
+    )
+    assert "'Export'" in stops[0] and "20 attempts" in stops[0], (
+        f"the reason did not name the element and the budget it spent: {stops[0]}"
+    )
+    assert not any("cannot find" in line.lower() for line in printed), (
+        "giving up on reading the screen was reported as a missing element, "
+        f"pointing the user at their own application: {printed}"
+    )
+    assert not any("Time limit reached" in line for line in printed), (
+        f"the tour ran on instead of ending the exhausted step: {printed}"
     )

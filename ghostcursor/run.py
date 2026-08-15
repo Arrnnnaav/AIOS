@@ -397,12 +397,23 @@ def run_tour(
                     grounded_source = "ocr"
                 return target
 
+            def current_display_freshness():
+                #: What the hint should be drawn AT, read at paint time.
+                #: The loop drives the renderer and knows nothing about
+                #: staleness or grounding source; this is how run.py supplies
+                #: both without teaching the loop either. Evaluated inside
+                #: `tick()`, at the same clock instant the post-tick block
+                #: below uses, so the first paint and the redraw agree.
+                return display_freshness(ladder.freshness(), grounded_source)
+
             tour = GuidedTour(
                 recipe=recipe,
                 grounder=grounder_from_slot,
                 snapshotter=snapshotter,
                 verifier=verify,
-                renderer=OverlayRenderer(hwnd),
+                renderer=OverlayRenderer(
+                    hwnd, freshness_source=current_display_freshness
+                ),
                 # Stock grace. The two clocks used to race — a dead worker made
                 # grounding fail every tick, so the grace expired before the
                 # health budget and the tour said "cannot find 'Export' on
