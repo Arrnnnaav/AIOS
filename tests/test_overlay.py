@@ -100,6 +100,13 @@ def classify(frame: np.ndarray) -> dict[str, np.ndarray]:
     dim_r = ov.DIMMED_RING_COLOR & 0xFF
     dim_g = (ov.DIMMED_RING_COLOR >> 8) & 0xFF
     dim_b = (ov.DIMMED_RING_COLOR >> 16) & 0xFF
+    # INFERRED_RING_COLOR pulled from the real constant too, for the same
+    # reason: this must track the implementation, and stay a distinct band
+    # from both "ring" and "dim_ring" so a mutation that collapses INFERRED
+    # into another colour is caught, not silently absorbed.
+    inf_r = ov.INFERRED_RING_COLOR & 0xFF
+    inf_g = (ov.INFERRED_RING_COLOR >> 8) & 0xFF
+    inf_b = (ov.INFERRED_RING_COLOR >> 16) & 0xFF
     return {
         "backdrop": (np.abs(b.astype(int) - backdrop.BACKDROP_BGR[0]) < 24)
         & (np.abs(g.astype(int) - backdrop.BACKDROP_BGR[1]) < 24)
@@ -108,6 +115,9 @@ def classify(frame: np.ndarray) -> dict[str, np.ndarray]:
         "dim_ring": (np.abs(r.astype(int) - dim_r) < 30)
         & (np.abs(g.astype(int) - dim_g) < 30)
         & (np.abs(b.astype(int) - dim_b) < 30),
+        "inferred_ring": (np.abs(r.astype(int) - inf_r) < 30)
+        & (np.abs(g.astype(int) - inf_g) < 30)
+        & (np.abs(b.astype(int) - inf_b) < 30),
         "magenta": (r > 200) & (g < 60) & (b > 200),
     }
 
@@ -217,6 +227,21 @@ def run() -> None:
             "dimmed hint renders in the dim colour, not the fresh colour",
             dim_px > 50 and fresh_coloured_px == 0,
             f"dim_ring={dim_px} px, fresh-coloured px while dimmed={fresh_coloured_px}",
+        )
+
+        # --- inferred hint renders in its own colour, not fresh or dimmed ----
+        ov.set_hint(hwnd, *target, radius=radius, freshness=Freshness.INFERRED)
+        settle()
+        inferred = classify(grab())
+        inferred_px = int(inferred["inferred_ring"].sum())
+        fresh_coloured_px_2 = int(inferred["ring"].sum())
+        dim_coloured_px_2 = int(inferred["dim_ring"].sum())
+        check(
+            "inferred hint renders in its own colour, not fresh or dimmed",
+            inferred_px > 50 and fresh_coloured_px_2 == 0 and dim_coloured_px_2 == 0,
+            f"inferred_ring={inferred_px} px, fresh-coloured px while "
+            f"inferred={fresh_coloured_px_2}, dim-coloured px while "
+            f"inferred={dim_coloured_px_2}",
         )
 
         # --- moving a hint must not leave the old one behind -----------------
