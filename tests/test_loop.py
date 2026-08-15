@@ -27,6 +27,11 @@ class FakeRenderer:
     def clear(self):
         self.cleared += 1
 
+    def settle(self):
+        # Tick boundary (D027). This fake draws nothing, so there is nothing
+        # to emit — but the loop calls it on every tick, so it must exist.
+        pass
+
 
 def _step(kind=VerificationKind.ELEMENT_APPEARS, text="Click Export."):
     return Step(

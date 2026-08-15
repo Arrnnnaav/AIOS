@@ -790,16 +790,36 @@ does not match, and what it guards is the same "unknown resolves to the most
 trusting value" shape this entry exists to remove. Close it at the type, not
 at the perimeter.
 
-**The one coupling this leaves, and how it is caught.** A driver that never
-calls `settle()` never asks the ladder what to draw. Nothing errors: the hint
-stays exactly as drawn, never dimming, never hiding, while perception hums
-along — the system looks fine and quietly stops degrading honestly, which is
-the shape that has bitten this project three times. Folding `settle()` into
-`GuidedTour.tick()` would be structural but changes the loop's Renderer
-protocol, and the loop is deliberately ignorant of staleness (D019, D023). So
-`StalenessLadder` detects it instead: it is the one object that can see both
-that observations are flowing and that nothing consumes its verdict, and after
-`unqueried_after_s` of that combination it says so, once, naming `settle()`.
+**The one coupling this leaves, and why it is closed twice.** A driver that
+never calls `settle()` never asks the ladder what to draw. Nothing errors: the
+hint stays exactly as drawn, never dimming, never hiding, while perception
+hums along — the system looks fine and quietly stops degrading honestly, which
+is the shape that has bitten this project three times.
+
+The primary closure is structural: `GuidedTour.tick()` calls
+`renderer.settle()` itself, as the last thing it does on every path. A driver
+cannot forget it, because every driver ticks by definition. This does NOT
+teach the loop about staleness — what to draw stays entirely behind the
+renderer's `freshness_source`; the loop learns only that the renderer has a
+tick boundary, which the loop already owns by being the thing that ticks. It
+runs on the DONE and FAILED ticks too: both terminal paths call
+`renderer.clear()` first, which marks the tick written, so nothing is emitted,
+and "every tick settles" is a simpler invariant to hold than "every tick
+except the last two".
+
+`StalenessLadder` keeps a second, independent detector: it is the one object
+that can see both that observations are flowing and that nothing consumes its
+verdict, and after `unqueried_after_s` of that combination it says so once,
+naming `settle()`. It is strictly narrower than the fold — it only fires for a
+driver that wires THIS ladder and feeds it `observed()` — and its report goes
+to stderr, which the user of a full-screen click-through overlay is not
+watching. It is kept because it is nearly free and catches a renderer wired to
+some other freshness source, not because it would be sufficient alone.
+
+A first attempt shipped the detector as the ONLY closure, on a cost argument
+about the protocol change. That was wrong on both counts: the change is about
+six lines including three test fakes, and a warning nobody reads is closer to
+a silent freeze than it looks.
 
 **Tested as a standing property, not a regression case**
 (`tests/test_first_paint.py`): the first paint equals the final display state

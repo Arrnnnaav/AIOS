@@ -40,6 +40,10 @@ class FakeRenderer:
     def clear(self):
         self.cleared += 1
 
+    def settle(self):
+        # Tick boundary (D027). Nothing to emit: this fake never draws.
+        pass
+
 
 def _recipe():
     return Recipe(

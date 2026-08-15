@@ -12,6 +12,7 @@ lucky observation, so a flaky application cannot flicker between states.
 
 from __future__ import annotations
 
+import sys
 import time
 from enum import Enum, auto
 from typing import Callable
@@ -34,6 +35,19 @@ DEFAULT_UNQUERIED_AFTER_S = 3.0 * DEFAULT_HIDE_AFTER_S
 DEFAULT_RECOVER_AFTER = 3
 
 
+def _warn_to_stderr(message: str) -> None:
+    """Where the unqueried-ladder report goes.
+
+    stderr, not stdout: stdout carries the tour's own step-by-step guidance,
+    and this is a developer-facing report about a driver bug, not something
+    the user did. It is also not the primary guard — `GuidedTour.tick()`
+    calls `settle()` itself, so a driver cannot omit it — which matters,
+    because the user of a full-screen click-through overlay is not watching a
+    console at all.
+    """
+    print(message, file=sys.stderr)
+
+
 class Freshness(Enum):
     FRESH = auto()  # draw the hint normally
     DIMMED = auto()  # draw it, visibly unconfirmed
@@ -49,14 +63,14 @@ class StalenessLadder:
         hide_after_s: float = DEFAULT_HIDE_AFTER_S,
         recover_after: int = DEFAULT_RECOVER_AFTER,
         unqueried_after_s: float = DEFAULT_UNQUERIED_AFTER_S,
-        warn=print,
+        warn=None,
     ) -> None:
         self.clock = clock
         self.dim_after_s = dim_after_s
         self.hide_after_s = hide_after_s
         self.recover_after = recover_after
         self.unqueried_after_s = unqueried_after_s
-        self.warn = warn
+        self.warn = warn if warn is not None else _warn_to_stderr
         #: When the display state was last asked for, or when observations
         #: started arriving if it never has been. See DEFAULT_UNQUERIED_AFTER_S.
         self._last_queried: float | None = None

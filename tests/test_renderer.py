@@ -25,12 +25,16 @@ class SpyOverlay:
 
 def test_show_points_at_the_centre_of_the_grounded_element():
     spy = SpyOverlay()
-    OverlayRenderer(hwnd=42, overlay=spy, freshness_source=CONFIRMED).show(TARGET, "Click Export.")
+    OverlayRenderer(hwnd=42, overlay=spy, freshness_source=CONFIRMED).show(
+        TARGET, "Click Export."
+    )
     assert spy.hints == [(42, 150, 220, 24)]
 
 
 def test_show_records_the_instruction_for_display():
-    renderer = OverlayRenderer(hwnd=42, overlay=SpyOverlay(), freshness_source=CONFIRMED)
+    renderer = OverlayRenderer(
+        hwnd=42, overlay=SpyOverlay(), freshness_source=CONFIRMED
+    )
     renderer.show(TARGET, "Click Export.")
     assert renderer.last_instruction == "Click Export."
 

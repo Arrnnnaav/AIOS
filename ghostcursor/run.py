@@ -517,18 +517,17 @@ def run_tour(
                     print(f"Stopped: {tour.failure_reason}")
                     break
 
-                # Close the tick's single write (D027). If the loop already
-                # drew this tick, this is a no-op; otherwise it is where a
-                # STALENESS-ONLY transition reaches the screen — the ladder
-                # would be dead code without it, since the loop only shows
-                # when it changes WHAT is displayed, not how confident it is.
+                # No drawing happens here, on purpose. `tour.tick()` closes its
+                # own tick by calling `renderer.settle()`, which is the single
+                # write path (D027): if the loop already drew, settle is a
+                # no-op; otherwise it is where a STALENESS-ONLY transition
+                # reaches the screen.
                 #
-                # There used to be a corrective `window.set_hint` here, run
-                # after the renderer had already painted. It is deleted, not
-                # merely reordered: two writes per tick, each ending in a
-                # synchronous UpdateWindow, meant the provisional frame really
-                # was displayed. Narrowing that window is not closing it.
-                tour.renderer.settle()
+                # There used to be a corrective `window.set_hint` at this point,
+                # run after the renderer had already painted. It is deleted, not
+                # reordered: two writes per tick, each ending in a synchronous
+                # UpdateWindow, meant the provisional frame really was
+                # displayed. Do not reintroduce drawing into this loop.
 
                 # Only print when the instruction changes — this loop runs
                 # at 4 ticks/sec and the instruction is unchanged across

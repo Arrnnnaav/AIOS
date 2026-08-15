@@ -53,6 +53,17 @@ class Renderer(Protocol):
     def show(self, grounded: GroundedTarget, instruction_text: str) -> None: ...
     def clear(self) -> None: ...
 
+    def settle(self) -> None:
+        """Close the tick: emit the display state if nothing else did.
+
+        The loop owns the tick boundary by definition — it is the thing that
+        ticks — so it is the only place that can guarantee the renderer is
+        told where one ends. It learns nothing about staleness by calling
+        this: what to draw stays entirely behind the renderer's own
+        `freshness_source` (D027).
+        """
+        ...
+
 
 class GuidedTour:
     def __init__(
@@ -104,6 +115,28 @@ class GuidedTour:
         self._confirmed = True
 
     def tick(self) -> State:
+        """Advance one tick, then close it.
+
+        `settle()` is called here rather than by the driver so that a driver
+        CANNOT forget it. Forgetting was silent: the hint stays exactly as it
+        was drawn, never dimming and never hiding, while perception hums along
+        and nothing errors (D027). Every driver ticks, by definition, so this
+        covers all of them — including ones that wire a different
+        `freshness_source`, or no staleness ladder at all, which the ladder's
+        own unqueried detector cannot see.
+
+        It runs on EVERY path, the DONE and FAILED ticks included. That is
+        deliberate and costs nothing: both terminal paths call
+        `renderer.clear()` first, which marks the tick written, so `settle()`
+        emits nothing. "Every tick settles" is a simpler invariant to hold
+        than "every tick except the last two", and simpler invariants survive
+        the next edit.
+        """
+        state = self._advance()
+        self.renderer.settle()
+        return state
+
+    def _advance(self) -> State:
         if self.state in (State.DONE, State.FAILED):
             return self.state
 
