@@ -98,7 +98,14 @@ def display_freshness(ladder_state: Freshness, source: str) -> Freshness:
     DIMMED, and when perception recovers this returns INFERRED, never FRESH.
     Otherwise a round trip through staleness would launder a pixel guess into
     a confirmed control.
+
+    FRESH requires a recognized confirmed source (currently only "uia").
+    Everything else—including future tiers like "vlm", unrecognized strings,
+    typos, or missing values—is deliberately treated as INFERRED rather than
+    trusted. This is the fail-safe direction: an unknown source shown as
+    slightly-cautious costs nothing; the same source shown as fully trusted
+    violates the safety rule.
     """
     if ladder_state in (Freshness.HIDDEN, Freshness.DIMMED):
         return ladder_state
-    return Freshness.INFERRED if source == "ocr" else Freshness.FRESH
+    return Freshness.FRESH if source == "uia" else Freshness.INFERRED

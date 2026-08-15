@@ -47,3 +47,29 @@ def test_precedence_is_total():
     }
     for (state, source), want in expected.items():
         assert display_freshness(state, source) is want, (state, source)
+
+
+def test_unrecognized_source_vlm_returns_inferred():
+    """An unrecognized source is deliberately treated as inferred, not trusted.
+
+    Tier 3 (VLM pointing model) is planned. If someone adds source="vlm" and
+    forgets to touch this function, FRESH here would render a model guess as
+    a confirmed control. The fail-safe default is to treat unknowns as
+    INFERRED rather than FRESH.
+    """
+    assert display_freshness(Freshness.FRESH, "vlm") is Freshness.INFERRED
+
+
+def test_case_mismatched_ocr_returns_inferred():
+    """Case-sensitive matching: "OCR" (uppercase) is not recognized as "ocr"."""
+    assert display_freshness(Freshness.FRESH, "OCR") is Freshness.INFERRED
+
+
+def test_empty_string_source_returns_inferred():
+    """An empty or missing source is treated as inferred, never trusted."""
+    assert display_freshness(Freshness.FRESH, "") is Freshness.INFERRED
+
+
+def test_uia_source_still_returns_fresh():
+    """Explicitly recognized 'uia' source still returns FRESH (unchanged)."""
+    assert display_freshness(Freshness.FRESH, "uia") is Freshness.FRESH
