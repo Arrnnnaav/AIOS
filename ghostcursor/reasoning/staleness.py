@@ -26,6 +26,7 @@ DEFAULT_RECOVER_AFTER = 3
 class Freshness(Enum):
     FRESH = auto()  # draw the hint normally
     DIMMED = auto()  # draw it, visibly unconfirmed
+    INFERRED = auto()  # draw it, but it was read off pixels, not confirmed
     HIDDEN = auto()  # draw nothing
 
 
@@ -80,3 +81,24 @@ class StalenessLadder:
         if age > self.dim_after_s:
             return Freshness.DIMMED
         return Freshness.FRESH
+
+
+def display_freshness(ladder_state: Freshness, source: str) -> Freshness:
+    """Combine the staleness axis with the source axis into what is drawn.
+
+    Two independent doubts: DIMMED is about TIME ("was this true a moment
+    ago"), INFERRED is about SOURCE ("I matched text on pixels rather than
+    confirming the control"). Collapsing them would tell the user to be
+    careful without telling them what kind of caution applies.
+
+    Precedence is strict: HIDDEN > DIMMED > INFERRED > FRESH. Staleness
+    dominates, because "possibly outdated" subsumes "possibly misread".
+
+    The source axis PERSISTS underneath the display: a stale OCR hint shows
+    DIMMED, and when perception recovers this returns INFERRED, never FRESH.
+    Otherwise a round trip through staleness would launder a pixel guess into
+    a confirmed control.
+    """
+    if ladder_state in (Freshness.HIDDEN, Freshness.DIMMED):
+        return ladder_state
+    return Freshness.INFERRED if source == "ocr" else Freshness.FRESH
