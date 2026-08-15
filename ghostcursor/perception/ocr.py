@@ -19,7 +19,13 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class OcrRead:
-    """One piece of text found on screen, in SCREEN coordinates.
+    """One piece of text found on screen, in FRAME-relative coordinates.
+
+    `bbox` is relative to the captured frame (the window's own top-left as
+    (0, 0)), not the screen. `Tier2Controller._to_elements` is what adds the
+    window's screen origin, once, so every `Element` that leaves tier 2 is
+    already in the one shared coordinate space (D010) regardless of where the
+    window sits.
 
     Frozen primitives only: this crosses the worker thread boundary (D021).
     """
