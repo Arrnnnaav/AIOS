@@ -715,3 +715,75 @@ the same observation twice, which is the condition the staleness guard exists
 for — and freezes its heartbeat while wedged, because that freeze is the
 heartbeat's entire diagnostic value.
 
+
+## D027 — One write per tick: a two-step render is a laundering bug
+
+**Decision:** the hint's display state is resolved once and emitted once per
+tick, through `OverlayRenderer` as the single write path. Nothing paints a
+provisional style and corrects it afterwards. `run_tour` no longer calls
+`window.set_hint` at all; it calls `renderer.settle()`, which emits the tick's
+state only if the loop has not already.
+
+**The general principle, which is the part worth keeping.** *Any two-step
+render where a paint can interleave with its own correction is a laundering
+bug, regardless of which states are involved.* It does not matter that the
+correction is "one tick later" or "microseconds later": the safety rule
+governs what the system EMITS, not the odds a human catches the frame. If the
+first write can differ from the settled one, the system has told the user
+something it does not believe, and the fact that it later retracts it is not
+visible to anyone.
+
+**How it showed up.** `OverlayRenderer.show()` called `set_hint` with no
+freshness, and `window.set_hint` defaults an unspecified freshness to FRESH.
+So the opening paint of every hint was the confirmed-control style, and
+`run_tour` then issued a SECOND `set_hint` later in the same tick with the
+real display state. For an OCR-grounded target that meant a bright cyan ring —
+"this is a control I have confirmed" — around a coordinate read off pixels,
+which is the precise claim D006's never-act-for-the-user boundary exists to
+stop the system making.
+
+This was not a narrow race. `set_hint` ends in `UpdateWindow`, which paints
+**synchronously**, so the provisional frame was not merely reachable — it was
+drawn, every time, on every hint.
+
+**Alternative considered and rejected: make the first write correct and leave
+the second in place.** This was the first fix, and it is what prompted the
+rule above. It makes the two writes agree *today*, which means the second one
+is dead weight that silently becomes a correction again the moment the two
+computations drift — and nothing would fail when they did. Narrowing the
+window a `WM_PAINT` can slip through is not the same as closing it. The second
+write is deleted, not synchronised.
+
+**Alternative considered and rejected: two ways to supply the state.** The
+renderer briefly accepted both an explicit `show(freshness=...)` argument and
+an injected `freshness_source` callable. Nothing ever passed the argument. Two
+ways to decide what to draw is the same defect one level up — the next reader
+has to work out which wins — so only the callable survives. It is a callable
+rather than a value because of a split in who knows what: the caller that
+KNOWS the display state is `run.py` (it owns the staleness ladder and the
+grounding source), but the caller that DRIVES the renderer is the loop, which
+must stay ignorant of both, exactly as D019 and D023 require.
+
+**Why reading the source at the write is safe rather than late.** With one
+write per tick, "decided before the paint" and "read at the paint" are the
+same instant. The clock does not advance within a tick; the grounding source
+is only ever changed by `DECIDING`, which does not paint; and the only
+mid-tick change to the ladder is `observed()`, which can only make a hint
+FRESHER. So the value read at the write is never more trusting than the truth.
+
+**Why `settle()` exists at all.** The loop calls `show()` only when it changes
+WHAT is displayed — never when it changes how confident the system is. Without
+a per-tick emission point the staleness ladder would be dead code: a hint
+drawn FRESH at step start would never dim and never hide. `settle()` is that
+point, and it is a no-op on any tick that already wrote, so "at most one write
+per tick" holds without the caller tracking which case it is in.
+
+**Tested as a standing property, not a regression case**
+(`tests/test_first_paint.py`): the first paint equals the final display state
+across the full cross-product of `Freshness` members and grounding sources —
+generated from the enum itself, and including an unrecognised source, so a new
+rung or a future perception tier is covered without anyone remembering to
+extend it. An end-to-end arm buckets every overlay write of a real `run_tour`
+by tick and asserts no bucket holds two. `test_no_production_renderer_is_built_
+without_provenance` scans the package so the permissive no-source default
+cannot reach a real screen by omission.

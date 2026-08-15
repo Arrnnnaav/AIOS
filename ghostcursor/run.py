@@ -265,7 +265,6 @@ def run_tour(
     from ghostcursor.reasoning.renderer import OverlayRenderer
     from ghostcursor.reasoning.schema import Recipe
     from ghostcursor.reasoning.staleness import (
-        Freshness,
         StalenessLadder,
         display_freshness,
     )
@@ -398,12 +397,16 @@ def run_tour(
                 return target
 
             def current_display_freshness():
-                #: What the hint should be drawn AT, read at paint time.
-                #: The loop drives the renderer and knows nothing about
-                #: staleness or grounding source; this is how run.py supplies
-                #: both without teaching the loop either. Evaluated inside
-                #: `tick()`, at the same clock instant the post-tick block
-                #: below uses, so the first paint and the redraw agree.
+                #: The tick's display state, combining both axes: TIME (the
+                #: ladder) and SOURCE (what grounded the target). The loop
+                #: drives the renderer and must stay ignorant of both, so this
+                #: is how run.py supplies them without teaching it either.
+                #:
+                #: Read at the tick's single write, and there is only ever one
+                #: (D027) — so there is no earlier provisional value for a
+                #: WM_PAINT to catch. `ladder.freshness()` also MUTATES the
+                #: ladder's recovery state, which is a second reason one call
+                #: per tick is the right number.
                 return display_freshness(ladder.freshness(), grounded_source)
 
             tour = GuidedTour(
@@ -514,36 +517,18 @@ def run_tour(
                     print(f"Stopped: {tour.failure_reason}")
                     break
 
-                # Age governs what is DRAWN, after the loop has decided what to
-                # draw. HIDDEN must CLEAR the hint rather than be handed to
-                # set_hint: _paint_ring only distinguishes FRESH from
-                # everything-else, so passing HIDDEN down would draw a DIMMED
-                # ring and the 5s rung would silently do nothing at all.
-                # Two independent axes, combined here and nowhere else: TIME
-                # (the ladder) and SOURCE (what grounded the target). Handing
-                # `ladder.freshness()` straight to set_hint would draw a pixel
-                # guess with the full authority of a confirmed control.
-                freshness = display_freshness(ladder.freshness(), grounded_source)
-                showing = tour.renderer.last_instruction is not None
-                if freshness is Freshness.HIDDEN:
-                    # Deliberately bypasses the renderer, so `last_instruction`
-                    # stays set while the screen shows nothing. That divergence
-                    # is what lets a recovered observation put the hint straight
-                    # back without re-running the step — do not "fix" it by
-                    # routing this through renderer.clear().
-                    window.clear_hint(hwnd)
-                elif showing and tour._grounded is not None:
-                    # `showing` matters: the loop clears the hint when
-                    # grounding fails, but leaves _grounded holding the last
-                    # target. Redrawing from it alone would resurrect a ring
-                    # the loop deliberately took down.
-                    left, top, right, bottom = tour._grounded.bbox
-                    window.set_hint(
-                        hwnd,
-                        (left + right) // 2,
-                        (top + bottom) // 2,
-                        freshness=freshness,
-                    )
+                # Close the tick's single write (D027). If the loop already
+                # drew this tick, this is a no-op; otherwise it is where a
+                # STALENESS-ONLY transition reaches the screen — the ladder
+                # would be dead code without it, since the loop only shows
+                # when it changes WHAT is displayed, not how confident it is.
+                #
+                # There used to be a corrective `window.set_hint` here, run
+                # after the renderer had already painted. It is deleted, not
+                # merely reordered: two writes per tick, each ending in a
+                # synchronous UpdateWindow, meant the provisional frame really
+                # was displayed. Narrowing that window is not closing it.
+                tour.renderer.settle()
 
                 # Only print when the instruction changes — this loop runs
                 # at 4 ticks/sec and the instruction is unchanged across
