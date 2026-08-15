@@ -991,3 +991,103 @@ to their image. Reassembling wrapped reads before matching removes the
 mechanism rather than thresholding above its symptom — and its false-positive
 direction is tested as hard as its recall direction, because a merge of two
 unrelated adjacent labels could invent a target neither part would match.
+
+---
+
+## D031 — An invariant must imply the property, not merely correlate with it
+
+**Decision.** Every fix in this project must state, explicitly, the property
+it protects AND the invariant it enforces — and then answer whether the
+invariant genuinely *implies* the property, or merely correlates with it
+across the cases tested so far. An invariant is accepted only alongside
+either a named case that would satisfy the invariant while violating the
+property, or a demonstration that no such case exists. This carries the same
+standing as D018's mutation testing, and is adopted for the same reason: a
+green signal that does not mean what it appears to mean.
+
+**Call the failure mode a FALSE GREEN.** The project has hit it four times,
+at four different layers, and the repetition is the argument:
+
+1. **The escapability test's flat wall-clock budget.** It asserted total
+   elapsed under 7.0 s across five ticks. The property was "no single tick
+   blocks, because ESC is polled between ticks." Total elapsed does not imply
+   that: a regression costing ~1.1 s per tick — already double D020's 0.5 s
+   ceiling — summed to under budget and passed silently. Fixed by asserting
+   the maximum gap between consecutive ESC polls, which is scale-free and
+   cannot be diluted by fast ticks.
+
+2. **The staleness ladder fed on every slot read.** Every unit test of the
+   ladder, the ring colour and the health policy passed. The property — "the
+   display degrades honestly as observations age" — held in none of them,
+   because re-reading a wedged worker's stale observation re-confirmed it
+   each tick and the clock never advanced. Nothing ever dimmed, nothing ever
+   hid, health never fired.
+
+3. **Health killing the tour on tick 2.** Each component correct in
+   isolation; the composition wrong. `ladder.age()` is infinite before the
+   first observation, so the tour ended before perception had answered once.
+
+4. **The single-write render invariant** (D027). "Exactly one `set_hint` per
+   tick" held perfectly. The property it existed to guarantee — "no paint can
+   show a pixel guess in the confirmed-control colour" — did not.
+   `grounded_source` flips in DECIDING while the renderer's centre updates a
+   tick later in RENDERING_HINT, so `settle()` repaints the OLD OCR centre at
+   the NEW UIA source: cyan, for a full ~250 ms tick, at a coordinate the UIA
+   rect may not agree with. Reproduced against the real renderer as
+   `[('set',100,100,INFERRED), ('set',100,100,FRESH)]`.
+
+**Case 4 is the sharpest one, and it is worth drawing out why.** The
+invariant was not weakened, not misimplemented, and not untested. It was
+*satisfied*, and it was the wrong invariant — it counted writes when the
+property was about what any single write could show. A counter cannot see
+that.
+
+**The structural fix that followed generalises.** The two facts had to
+become one atomically-constructed value. A hint's provenance and its
+coordinate must not be separately updatable fields, because any two fields
+updated on different ticks can be read in a combination that never
+legitimately existed.
+
+**What this does not mean.** Not that invariants are useless, and not that
+every fix needs a formal proof. The requirement is one honest paragraph
+naming the property, the invariant, and the gap between them — the same
+weight D018 already asks for a mutation.
+
+---
+
+## D032 — No task is reviewed by the agent that produced it
+
+**Decision.** Every task gets a review by someone who did not write it. Code
+and documentation alike — prose gets no exemption. A self-review supplements
+an independent review; it never replaces one.
+
+**What forced it.** During the tier-2 milestone, the controller finished the
+documentation task itself after the assigned implementer hit a hard session
+limit mid-task. It seemed low-risk: the task was prose, and every fact was
+already recorded in the working ledger.
+
+The final whole-branch review then found four documentation defects, **three
+of them in exactly that unreviewed work** — including a docstring that had
+been deferred twice, each time on an explicit promise the documentation task
+would close it, and which that task then only half-closed. The two
+docstrings that were caught earlier in the milestone had both been found by
+independent reviewers, not by their authors.
+
+**The lesson, precisely.** The author of a piece of work is the one person
+who cannot see the assumption they made while writing it. That is not about
+care or competence — the controller in question had strong context and was
+being deliberate. Fresh eyes are a different instrument, not a more diligent
+version of the same one.
+
+**Why documentation specifically is not an exception.** This project has now
+fixed three docstrings that confidently described behaviour the code did not
+have — captures said to go through a function they never call, OCR boxes
+said to be in screen coordinates when they are frame-relative, and a claim
+that OCR text has exactly one route into grounding when it has two. Each is
+the dangerous kind of wrong: a future reader could "fix" the code to match
+the document. Documentation that misdescribes behaviour is a latent code
+change waiting for someone conscientious.
+
+**Cross-reference.** D018 and D031 are the other two standing rules of the
+same family — all three exist because something looked verified and was
+not.
