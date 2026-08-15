@@ -37,6 +37,17 @@ from ghostcursor.reasoning.schema import ConfirmedObservation, Step
 RUNG_AUTOMATION_ID = 1
 RUNG_TYPE_AND_NAME = 2
 RUNG_FUZZY_NAME = 3
+RUNG_OCR_TEXT = 4
+
+#: Fuzzy-match floor for OCR text, measured across four real screens (spike
+#: findings §4). 95 is forced by `Uploads` vs the read `upload` at 92.3 — two
+#: real Canva surfaces one character apart.
+#:
+#: Deliberately conservative because it is doing TWO jobs. The design called
+#: for two independent floors, read confidence AND match score, neither
+#: borrowing slack from the other. Windows.Media.Ocr exposes no per-word
+#: confidence, so the match score carries both.
+OCR_MATCH_FLOOR = 95
 
 
 @dataclass(frozen=True)
@@ -182,12 +193,36 @@ def ground(
                 return _as_target(_disambiguate(matches, step), RUNG_TYPE_AND_NAME)
 
     # Rung 3 — synonyms and case-insensitive substring.
+    #
+    # UIA ONLY. This is a substring test, and it runs before rung 4, so an OCR
+    # element reaching it would match with no score threshold whatsoever and
+    # OCR_MATCH_FLOOR would be decorative: 'Edit' is a substring of 'Edit a
+    # PDF', 'Magic Edit' and 'Editor' alike. OCR text gets exactly one route
+    # into grounding, and it is rung 4.
     candidates = [claimed.name, *claimed.name_synonyms]
     for candidate in filter(None, candidates):
         needle = candidate.casefold()
-        matches = [e for e in elements if e.name and needle in e.name.casefold()]
+        matches = [
+            e
+            for e in elements
+            if e.source == "uia" and e.name and needle in e.name.casefold()
+        ]
         if matches:
             return _as_target(_disambiguate(matches, step), RUNG_FUZZY_NAME)
+
+    # Rung 4 — fuzzy text, OCR elements only, at a measured floor.
+    ocr_elements = [e for e in elements if e.source == "ocr" and e.name]
+    if ocr_elements:
+        from rapidfuzz import fuzz
+
+        best_score, best_element = 0.0, None
+        for candidate in filter(None, candidates):
+            for element in ocr_elements:
+                score = fuzz.ratio(element.name.casefold(), candidate.casefold())
+                if score > best_score:
+                    best_score, best_element = score, element
+        if best_element is not None and best_score >= OCR_MATCH_FLOOR:
+            return _as_target(best_element, RUNG_OCR_TEXT)
 
     return None
 
