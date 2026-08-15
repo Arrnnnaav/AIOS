@@ -18,6 +18,17 @@ from typing import Callable
 
 DEFAULT_DIM_AFTER_S = 1.5
 DEFAULT_HIDE_AFTER_S = 5.0
+#: How long observations may keep arriving with nobody ever ASKING what to
+#: draw, before the ladder says so. Deliberately longer than hide_after_s: by
+#: then the hint should certainly have dimmed and hidden at least once, so
+#: silence past this point means the display state is not being read at all.
+#:
+#: The failure this catches has no other symptom. A driver that never calls
+#: `renderer.settle()` leaves the ladder unqueried: the hint never dims, never
+#: hides, and the recovery debounce never arms — the system looks fine and
+#: quietly stops degrading honestly. That is the shape that has bitten this
+#: project three times, and it is invisible precisely because nothing errors.
+DEFAULT_UNQUERIED_AFTER_S = 3.0 * DEFAULT_HIDE_AFTER_S
 #: Consecutive observations required to leave HIDDEN. One is not enough: a
 #: half-hung app that answers occasionally would otherwise blink the hint.
 DEFAULT_RECOVER_AFTER = 3
@@ -37,11 +48,19 @@ class StalenessLadder:
         dim_after_s: float = DEFAULT_DIM_AFTER_S,
         hide_after_s: float = DEFAULT_HIDE_AFTER_S,
         recover_after: int = DEFAULT_RECOVER_AFTER,
+        unqueried_after_s: float = DEFAULT_UNQUERIED_AFTER_S,
+        warn=print,
     ) -> None:
         self.clock = clock
         self.dim_after_s = dim_after_s
         self.hide_after_s = hide_after_s
         self.recover_after = recover_after
+        self.unqueried_after_s = unqueried_after_s
+        self.warn = warn
+        #: When the display state was last asked for, or when observations
+        #: started arriving if it never has been. See DEFAULT_UNQUERIED_AFTER_S.
+        self._last_queried: float | None = None
+        self._warned_unqueried = False
         self._last_seen: float | None = None
         self._streak = 0
         # Debounced recovery only applies once we have actually gone HIDDEN
@@ -62,6 +81,30 @@ class StalenessLadder:
         self._streak += 1
         if self._needs_recovery and self._streak >= self.recover_after:
             self._needs_recovery = False
+        self._check_someone_is_reading(now)
+
+    def _check_someone_is_reading(self, now: float) -> None:
+        """Say so, once, if observations keep arriving and nobody ever asks.
+
+        Perception working while the display state is never read is a silent
+        freeze, not an error: the hint stays as it was drawn, forever. Only
+        the ladder can see it — it is the one object that knows both that
+        observations are flowing and that nothing is consuming its verdict.
+        """
+        if self._last_queried is None:
+            self._last_queried = now
+            return
+        if self._warned_unqueried:
+            return
+        if now - self._last_queried > self.unqueried_after_s:
+            self._warned_unqueried = True
+            self.warn(
+                "Ghost Cursor: the hint's display state has not been read for "
+                f"{now - self._last_queried:.0f}s while observations keep "
+                "arriving — the overlay is frozen at whatever it last drew and "
+                "will never dim or hide. Whatever drives the loop is not "
+                "calling renderer.settle() each tick (D027)."
+            )
 
     def age(self) -> float:
         if self._last_seen is None:
@@ -69,6 +112,11 @@ class StalenessLadder:
         return self.clock() - self._last_seen
 
     def freshness(self) -> Freshness:
+        # Recording the read is the whole basis of the unqueried check above:
+        # this is the only call that means "something is going to act on the
+        # verdict". Note this method also MUTATES recovery state, which is why
+        # callers must ask exactly once per tick.
+        self._last_queried = self.clock()
         if self._last_seen is None:
             return Freshness.HIDDEN
         age = self.age()

@@ -38,15 +38,16 @@ class OverlayRenderer:
     `observed()`, which can only make the hint fresher. Reading the source at
     the single write point is therefore never MORE trusting than the truth.
 
-    `freshness_source=None` means "this caller does not track provenance",
-    which leaves `set_hint` on its own default. That is a test-only
-    affordance: `test_no_production_renderer_is_built_without_provenance`
-    asserts that nothing inside the shipped package constructs one that way.
+    `freshness_source` is REQUIRED, and a source that answers None resolves to
+    INFERRED. Between them there is no way to construct a renderer that draws
+    a hint as a confirmed control without something explicitly saying it is
+    one. That used to be a permissive default guarded by a package scan; a
+    scan is a tripwire, not a guarantee — it passes the day someone adds a
+    construction it does not match, and "unknown provenance resolves to the
+    most trusting value" is the exact shape this file exists to remove.
     """
 
-    def __init__(
-        self, hwnd: int, overlay=overlay_window, freshness_source=None
-    ) -> None:
+    def __init__(self, hwnd: int, *, freshness_source, overlay=overlay_window) -> None:
         self.hwnd = hwnd
         self.overlay = overlay
         self.freshness_source = freshness_source
@@ -109,9 +110,12 @@ class OverlayRenderer:
 
     def _resolve(self):
         if not self._resolved:
-            self._freshness = (
-                self.freshness_source() if self.freshness_source is not None else None
-            )
+            state = self.freshness_source()
+            # A source that cannot answer is not evidence of confidence.
+            # INFERRED is the fail-safe floor, matching display_freshness's
+            # treatment of an unrecognised source: shown slightly cautious
+            # costs nothing, shown fully trusted violates the safety rule.
+            self._freshness = Freshness.INFERRED if state is None else state
             self._resolved = True
         return self._freshness
 
@@ -130,10 +134,8 @@ class OverlayRenderer:
             # re-running the step. Do not "fix" this by routing it through
             # clear().
             self.overlay.clear_hint(self.hwnd)
-        elif freshness is None:
-            # No provenance tracked by this caller. Call set_hint exactly as
-            # it was called before the source axis existed, rather than
-            # inventing a confidence nobody chose.
-            self.overlay.set_hint(self.hwnd, *self._centre)
         else:
+            # Always explicit. There is deliberately no branch that calls
+            # set_hint without a freshness: that path would land on set_hint's
+            # own default, which is FRESH.
             self.overlay.set_hint(self.hwnd, *self._centre, freshness=freshness)

@@ -155,6 +155,36 @@ def test_a_cleared_hint_is_not_resurrected_by_settle():
     ], f"a cleared hint came back: {overlay.writes}"
 
 
+def test_a_renderer_cannot_be_built_without_declaring_provenance():
+    """Structural, not a tripwire.
+
+    This used to be a permissive default policed by a scan over the package.
+    A scan passes the day someone adds a construction it does not match, and
+    what it was guarding is "unknown provenance draws as a confirmed control"
+    — the exact shape D027 exists to remove. The constructor now refuses.
+    """
+    with pytest.raises(TypeError):
+        OverlayRenderer(hwnd=42, overlay=RecordingOverlay())
+
+
+def test_a_source_that_cannot_answer_resolves_to_inferred_never_fresh():
+    """The other half of the closure.
+
+    Requiring the parameter stops omission; this stops a source that exists
+    but returns nothing from falling through to `set_hint`'s own default,
+    which is FRESH. There is deliberately no code path left that calls
+    set_hint without an explicit freshness.
+    """
+    overlay = RecordingOverlay()
+    renderer = OverlayRenderer(hwnd=42, overlay=overlay, freshness_source=lambda: None)
+
+    renderer.show(TARGET, "Click Export.")
+
+    assert overlay.writes == [("set_hint", Freshness.INFERRED)], (
+        f"a hint with no answerable provenance was not drawn INFERRED: {overlay.writes}"
+    )
+
+
 def test_exactly_one_hint_write_per_tick_through_a_whole_tour(tmp_path, monkeypatch):
     """The same property, end to end, against the real `run_tour`.
 
@@ -240,32 +270,4 @@ def test_exactly_one_hint_write_per_tick_through_a_whole_tour(tmp_path, monkeypa
         "a tick wrote to the overlay more than once, which is the "
         "provisional-then-corrected shape D027 forbids — set_hint paints "
         f"synchronously, so the first frame really was displayed: {per_tick}"
-    )
-
-
-def test_no_production_renderer_is_built_without_provenance():
-    """`freshness_source=None` falls through to set_hint's own default, and
-    that default is FRESH — the most trusting value, for a hint whose
-    provenance nobody declared.
-
-    It stays permitted because a renderer driven by a test fake genuinely has
-    no provenance to declare. What must never happen is shipping one: this
-    asserts every construction inside the package supplies a source, so the
-    permissive default cannot reach a real screen by omission.
-    """
-    import pathlib
-    import re
-
-    package = pathlib.Path(__file__).resolve().parent.parent / "ghostcursor"
-    offenders = []
-    for path in package.rglob("*.py"):
-        text = path.read_text(encoding="utf-8")
-        for match in re.finditer(r"OverlayRenderer\((.*?)\)", text, re.S):
-            if "freshness_source" not in match.group(1):
-                line = text[: match.start()].count("\n") + 1
-                offenders.append(f"{path.name}:{line}")
-
-    assert not offenders, (
-        "these constructions ship a renderer with no provenance, so their "
-        f"hints draw at set_hint's FRESH default: {offenders}"
     )

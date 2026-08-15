@@ -778,12 +778,36 @@ drawn FRESH at step start would never dim and never hide. `settle()` is that
 point, and it is a no-op on any tick that already wrote, so "at most one write
 per tick" holds without the caller tracking which case it is in.
 
+**Provenance is required, not defaulted.** `OverlayRenderer` takes
+`freshness_source` as a required keyword argument, and a source that answers
+None resolves to INFERRED. There is no code path left that calls `set_hint`
+without an explicit freshness, so a renderer that cannot say where its hint
+came from cannot draw one as a confirmed control. The first attempt left the
+permissive default in place and policed it with a test that scanned the
+package for constructions that omitted it — rejected, because a scan is a
+tripwire, not a guarantee: it passes the day someone adds a construction it
+does not match, and what it guards is the same "unknown resolves to the most
+trusting value" shape this entry exists to remove. Close it at the type, not
+at the perimeter.
+
+**The one coupling this leaves, and how it is caught.** A driver that never
+calls `settle()` never asks the ladder what to draw. Nothing errors: the hint
+stays exactly as drawn, never dimming, never hiding, while perception hums
+along — the system looks fine and quietly stops degrading honestly, which is
+the shape that has bitten this project three times. Folding `settle()` into
+`GuidedTour.tick()` would be structural but changes the loop's Renderer
+protocol, and the loop is deliberately ignorant of staleness (D019, D023). So
+`StalenessLadder` detects it instead: it is the one object that can see both
+that observations are flowing and that nothing consumes its verdict, and after
+`unqueried_after_s` of that combination it says so, once, naming `settle()`.
+
 **Tested as a standing property, not a regression case**
 (`tests/test_first_paint.py`): the first paint equals the final display state
 across the full cross-product of `Freshness` members and grounding sources —
 generated from the enum itself, and including an unrecognised source, so a new
 rung or a future perception tier is covered without anyone remembering to
 extend it. An end-to-end arm buckets every overlay write of a real `run_tour`
-by tick and asserts no bucket holds two. `test_no_production_renderer_is_built_
-without_provenance` scans the package so the permissive no-source default
-cannot reach a real screen by omission.
+by tick and asserts no bucket holds two, and the constructor and None-source
+closures have their own cases. The unqueried signal is covered in
+`tests/test_staleness.py`, in both directions — a driver that never reads is
+reported exactly once, and a driver that reads every tick never is.
