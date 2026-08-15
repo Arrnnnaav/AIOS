@@ -254,6 +254,7 @@ def run_tour(
     """
     from ghostcursor.memory.store import ObservationStore
     from ghostcursor.perception.appinfo import app_info_for_window
+    from ghostcursor.perception import tier2
     from ghostcursor.perception.health import WorkerHealth
     from ghostcursor.perception.service import PerceptionService
     from ghostcursor.reasoning.loop import (
@@ -263,7 +264,11 @@ def run_tour(
     )
     from ghostcursor.reasoning.renderer import OverlayRenderer
     from ghostcursor.reasoning.schema import Recipe
-    from ghostcursor.reasoning.staleness import Freshness, StalenessLadder
+    from ghostcursor.reasoning.staleness import (
+        Freshness,
+        StalenessLadder,
+        display_freshness,
+    )
     from ghostcursor.reasoning.verification import Snapshot, verify
 
     recipe = Recipe.load(recipe_path)
@@ -310,6 +315,16 @@ def run_tour(
         service = PerceptionService(title_re, clock=clock)
         ladder = StalenessLadder(clock=clock)
         health = WorkerHealth(service=service, ladder=ladder)
+        # Same clock as everything else with a sense of time. Tier 2's
+        # min-interval floor and the loop's ticks must agree on "now", or the
+        # floor throttles against a clock the tour is not running on.
+        tier2_controller = tier2.build_controller(clock)
+        if tier2_controller is None:
+            print("Ghost Cursor: OCR unavailable on this machine — UIA only.")
+        #: Which source the LAST successful grounding came from. Drives the
+        #: display, and persists across staleness so a recovered OCR hint
+        #: returns to INFERRED and never launders into FRESH.
+        grounded_source = "uia"
         service.start()
 
         hwnd = window.create_overlay_window()
@@ -347,6 +362,7 @@ def run_tour(
                 return observation.snapshot
 
             def grounder_from_slot(step, i, elements=None):
+                nonlocal grounded_source
                 # Grounds against the LAST observation, not a live walk. While
                 # observations are merely stale this keeps succeeding, so the
                 # loop's grounding grace never starts — the hint stays drawn
@@ -359,12 +375,27 @@ def run_tour(
                 # the slot here would ground observation B while verification
                 # baselines on observation A, so the hint could point at a
                 # control the baseline never saw.
-                if elements is not None:
-                    return live_grounder(step, i, elements)
-                observation = service.latest()
-                if observation is None:
+                if elements is None:
+                    observation = service.latest()
+                    elements = observation.elements if observation else ()
+
+                target = live_grounder(step, i, elements)
+                if target is not None:
+                    grounded_source = "uia"
+                    return target
+
+                # Tier 2. Triggered by GROUNDING FAILURE for this step, never
+                # by an empty walk: Chrome returned 43 elements containing zero
+                # page content, so "UIA returned nothing" would never fire.
+                if tier2_controller is None:
                     return None
-                return live_grounder(step, i, observation.elements)
+                ocr_elements = tier2_controller.elements_for(i, title_re)
+                if not ocr_elements:
+                    return None
+                target = live_grounder(step, i, list(elements) + ocr_elements)
+                if target is not None:
+                    grounded_source = "ocr"
+                return target
 
             tour = GuidedTour(
                 recipe=recipe,
@@ -446,6 +477,24 @@ def run_tour(
                     sleeper(REFRESH_SECONDS)
                     continue
 
+                # Cap exhaustion is terminal for the step: it stops reading and
+                # the step is treated as ungroundable, feeding the existing
+                # grace. Naming the read failure matters -- telling the user
+                # their element is missing, when we in fact gave up reading the
+                # screen, points them at their own application instead of ours
+                # (D024).
+                if (
+                    tier2_controller is not None
+                    and tour.current_step is not None
+                    and tier2_controller.exhausted(tour.step_index)
+                ):
+                    print(
+                        f"Stopped: could not read "
+                        f"'{tour.current_step.target_descriptor.claimed.name}' "
+                        f"on screen after {tier2_controller.max_runs_per_step} attempts"
+                    )
+                    break
+
                 state = tour.tick()
                 if state is State.DONE:
                     print("Tour complete.")
@@ -459,7 +508,11 @@ def run_tour(
                 # set_hint: _paint_ring only distinguishes FRESH from
                 # everything-else, so passing HIDDEN down would draw a DIMMED
                 # ring and the 5s rung would silently do nothing at all.
-                freshness = ladder.freshness()
+                # Two independent axes, combined here and nowhere else: TIME
+                # (the ladder) and SOURCE (what grounded the target). Handing
+                # `ladder.freshness()` straight to set_hint would draw a pixel
+                # guess with the full authority of a confirmed control.
+                freshness = display_freshness(ladder.freshness(), grounded_source)
                 showing = tour.renderer.last_instruction is not None
                 if freshness is Freshness.HIDDEN:
                     # Deliberately bypasses the renderer, so `last_instruction`

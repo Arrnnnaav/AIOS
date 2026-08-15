@@ -50,6 +50,41 @@ def _to_elements(reads: list[OcrRead], origin: tuple[int, int]) -> list[Element]
     ]
 
 
+def _default_ocr():
+    from ghostcursor.perception.ocr import WindowsOcr
+
+    return WindowsOcr()
+
+
+def _default_capture(title_re: str):
+    from ghostcursor.perception.capture import capture_window
+
+    return capture_window(title_re)
+
+
+#: Seams, so a test can drive tier 2 without a real screen or a real engine.
+_DEFAULT_OCR_FACTORY = _default_ocr
+_DEFAULT_CAPTURE = _default_capture
+
+
+def build_controller(clock) -> "Tier2Controller | None":
+    """A controller, or None if this machine cannot OCR at all.
+
+    Returning None rather than raising is deliberate: a machine with no OCR
+    language pack must still run Ghost Cursor on UIA alone (spec §10).
+    """
+    from ghostcursor.perception.ocr import ocr_available
+
+    if not ocr_available():
+        return None
+    try:
+        return Tier2Controller(
+            ocr=_DEFAULT_OCR_FACTORY(), capture=_DEFAULT_CAPTURE, clock=clock
+        )
+    except Exception:
+        return None
+
+
 class _StepState:
     __slots__ = ("runs", "last_run_at", "last_frame", "elements")
 
