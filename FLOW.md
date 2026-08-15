@@ -85,13 +85,16 @@ run.main()
 | `ghostcursor/memory/store.py` | `ObservationStore` — local SQLite knowledge base of learned observations, keyed by `(step_key, app_id, app_version, automation_id)` |
 | `ghostcursor/perception/service.py` | `PerceptionService` — runs the UI-tree walk on a worker thread that owns its COM apartment, and publishes one timestamped `Observation` into a single overwritten slot |
 | `ghostcursor/perception/health.py` | `WorkerHealth.check()` — notices a dead or stalled worker, restarts it exactly once, then ends the tour with a reason |
-| `ghostcursor/reasoning/staleness.py` | `StalenessLadder` — how old the last confirmed-fresh walk is, as `Freshness.FRESH / DIMMED / HIDDEN`, with debounced recovery |
+| `ghostcursor/reasoning/staleness.py` | `StalenessLadder` — how old the last confirmed-fresh walk is, as `Freshness.FRESH / DIMMED / INFERRED / HIDDEN`, with debounced recovery; `display_freshness()` combines age with provenance |
+| `ghostcursor/perception/ocr.py` | `WindowsOcr` wrapper over `Windows.Media.Ocr`, `ocr_available()`, and `reassemble()` for labels that wrap onto two lines |
+| `ghostcursor/perception/capture.py` | DPI-correct per-window pixel capture and frame differencing |
+| `ghostcursor/perception/tier2.py` | `Tier2Controller` — when OCR runs and when it stops: per-step stickiness, a 1.0s floor, a 20-run ceiling, terminal exhaustion |
 | `tests/backdrop.py` | controlled solid-colour window used as a test surface |
 | `tests/hung_window.py` | child process that creates a window and then stops pumping messages — reproduces the 41s UIA block deterministically |
 | `tests/test_hung_window.py` | `HungWindow` context manager + the block measurement; the fixture Tasks 5-7 are built on |
 | `tests/test_run_threaded.py` | ESC stays responsive while the target is hung — the property this whole design exists for |
 | `tests/test_freshness_timeline.py` | the staleness ladder as an ordered sequence inside a real `run_tour`, on an injected clock (D026); carries the two composition bugs as named regressions |
-| `tests/test_overlay.py` | 15 checks: styles, click-through, transparency, hint placement, dimmed-ring colour, stale pixels, teardown |
+| `tests/test_overlay.py` | 16 checks: styles, click-through, transparency, hint placement, dimmed AND inferred ring colours, stale pixels, teardown |
 | `tests/test_end_to_end.py` | 8 checks: perception -> coordinate -> ring lands on the window, off-screen rejection |
 | `tests/uia_app.py` | real Win32 window with known AutomationIds, used as deterministic grounding target |
 | `ghostcursor/inference/` | empty; later milestones |
@@ -107,12 +110,12 @@ this repo were exactly this and nothing else.
 
 ### Verification status
 ```
-python -m tests.test_overlay         15/15 pass
+python -m tests.test_overlay         16/16 pass
 python -m tests.test_end_to_end       8/8  pass
-python -m pytest tests/ (fast)      165 passed   excludes the three slow files below
+python -m pytest tests/ (fast)      264 passed   excludes the three slow files below
 python -m pytest tests/test_run_threaded.py \
                 tests/test_perception_service_hung.py \
-                tests/test_hung_window.py            11 passed in 88s
+                tests/test_hung_window.py            13 passed in 128s
 ```
 The first two (pixel harnesses) have their own runner and are not collected by
 pytest. The three files in the second group each park a real non-pumping
@@ -125,7 +128,32 @@ process boundaries), and deleting the database file returned behaviour to
 rung 2 — see the persistence call graph above.
 
 ### You are here
-Perception now runs **off the UI thread** (D021-D024). The escapability
+**Perception tier 2 (OCR) is built** (D028-D030). When UIA cannot see the
+control a step names, the screen is read with `Windows.Media.Ocr` and the
+hint renders amber (`INFERRED`) rather than cyan, so a pixel guess never
+wears the confirmed-control ring.
+
+What forced it, measured on real screens: Adobe Acrobat exposes **0 of 16**
+tool labels to UIA — 20 elements, 17 of them anonymous Panes — while OCR
+reads 24 of 24. The Canva photo editor exposes **4 of 13** even with a fully
+warm Chromium accessibility tree.
+
+What it deliberately does NOT cover: Electron apps are *blind-until-asked*,
+not blind — Chromium enables its accessibility tree on demand, and the first
+UIA probe switches it on. They want a **warm-up retry**, which is cheaper
+than OCR and is its own separate milestone. Icon-only controls carry no text
+and are unreachable by any OCR; that is tier 3, the VLM.
+
+Photoshop itself was never measured. Acrobat was a proxy for its shape.
+
+Two bugs found only where the pieces compose, both fixed and both now
+guarded by tests: an OCR hint was painted once in confirmed-control cyan
+before being corrected in the same tick (D027 — any two-step render where
+paint can interleave with correction is a laundering bug); and an
+unrecognised `source` resolved to the most trusting label, which a future
+VLM tier would have walked straight into.
+
+Previously: perception moved **off the UI thread** (D021-D024). The escapability
 guarantee is structural rather than test-enforced: a hung target can no
 longer block the tick loop, so ESC keeps being polled no matter how slow
 perception becomes. Proven by driving the real `run_tour` against a real
@@ -209,6 +237,18 @@ run.main()
                                      merely-stale slot keeps succeeding and the loop's
                                      grounding grace never starts
 
+                                     --- TIER 2, only if that grounding FAILED (D028) ---
+                                     tier2.Tier2Controller.elements_for(step_index, title_re)
+                                         capture.capture_window()      per-window pixels, DPI-correct
+                                         capture.frames_differ()       skip if nothing visibly changed
+                                         ocr.WindowsOcr.read()         word-level reads, frame-relative
+                                         ocr.reassemble()              rejoin labels that wrapped
+                                         -> Elements with source="ocr", window origin ADDED
+                                     then re-grounds with UIA elements + OCR elements. Rung 3
+                                     excludes OCR, so the only route in is rung 4 at floor 95.
+                                     Stickiness is per STEP; 1.0s floor, 20-run ceiling; hitting
+                                     the ceiling ends the step rather than freezing the hint.
+
       loop every REFRESH_SECONDS (0.25s), until ESC, --seconds, DONE, FAILED, or health:
           run.escape_pressed()                 GetAsyncKeyState(VK_ESCAPE) — never blocked now
           GetAsyncKeyState(VK_SPACE)            polled -> tour.confirm() for user_confirms steps
@@ -220,7 +260,13 @@ run.main()
                                                 let the empty placeholder snapshot become a
                                                 VERIFICATION BASELINE and mark a step complete
                                                 the user never performed (D006)
-          tour.tick()                           the state machine, one transition per tick
+          tour.tick()                           _advance() then renderer.settle() — the loop
+                                                closes its own tick so a driver cannot forget,
+                                                and AWAITING's early return cannot skip it
+              OverlayRenderer resolves display state ONCE per tick via freshness_source
+                  staleness.display_freshness(ladder.freshness(), grounded_source)
+                  -> exactly one set_hint/clear_hint emission per tick, so no WM_PAINT can
+                     observe a provisional state and launder a pixel guess into FRESH (D027)
               [DECIDING]    grounder(step, i, elements)
                                 grounding.ground(step, title_re, elements=obs.elements)
                                                                     rung 1: automation_id

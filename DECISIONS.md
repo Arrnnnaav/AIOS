@@ -178,8 +178,9 @@ any application precisely *because* it doesn't require focus, and the timeout
 means even a hung loop releases the screen.
 
 ## D012 — Verify with measurement, not by asking a human to look
-**Decision:** correctness is checked by `tests/test_overlay.py` (14 checks) and
-`tests/test_end_to_end.py` (4 checks), which assert against pixels and Win32
+**Decision:** correctness is checked by `tests/test_overlay.py` and
+`tests/test_end_to_end.py` — 14 and 4 checks when this was written, more since,
+as each new visual state earns one — which assert against pixels and Win32
 state rather than a person's judgement:
 - click-through is proven with `WindowFromPoint`, which performs real
   hit-testing — the point must resolve to the window *underneath* the overlay;
@@ -831,3 +832,162 @@ by tick and asserts no bucket holds two, and the constructor and None-source
 closures have their own cases. The unqueried signal is covered in
 `tests/test_staleness.py`, in both directions — a driver that never reads is
 reported exactly once, and a driver that reads every tick never is.
+
+---
+
+## D028 — Tier 2 triggers on grounding failure, never on an empty walk
+
+**Decision.** OCR turns on when grounding fails for the CURRENT STEP — not
+when a UIA walk returns few elements. Stickiness is per step and resets at the
+step boundary. Two caps bound the cost, and exhausting the run cap ends the
+step rather than freezing its last result.
+
+**Why not "UIA returned nothing".** That trigger would never fire. Measured:
+Chrome returned **43 elements in 0.31 s containing zero page content** — no
+`Document` node, not one word of the page anywhere in the tree. UIA reported
+success while being useless. Any trigger keyed on emptiness sees a healthy
+walk and stands down.
+
+This also avoids colliding with D023, which requires an empty walk to count as
+a *successful observation* for staleness. The two never conflict because they
+answer different questions: staleness asks "did perception complete recently",
+grounding asks "can this step be located".
+
+**Why stickiness resets at the step boundary.** An app-wide flag would keep OCR
+running for the rest of the tour after a single failure — paying full OCR cost
+on steps that would have grounded through UIA in 0.3 ms, while still calling
+itself a cheapest-first tier. Photoshop's text menus ground cheaply through
+whatever UIA does expose even though its tool palette does not; the next step
+must get to try tier 1 again.
+
+**Why both caps, not one.** "Re-run only when the region changed" degrades into
+"re-run every tick" against anything that animates — a loading spinner in
+frame, a window being dragged, a video preview. A floor interval alone lets a
+slow animation pace OCR forever; a run ceiling alone lets a fast one burn its
+whole budget in a second. Both: **1.0 s minimum between runs, 20 runs per
+step.**
+
+**Why exhaustion is terminal.** When the ceiling is reached and the step still
+cannot ground, tier 2 stops and the step is treated as ungroundable, feeding
+the existing grounding grace and its give-up path.
+
+The rejected alternative — let the last OCR result stand and simply age —
+fails twice over. The ring keeps pointing at a coordinate the system has
+stopped being able to confirm, which is the wrong point D006 exists to
+prevent. And the step becomes **incapable of ever failing**: the user waits on
+a hint that can never resolve and is never told why. A clean failure beats a
+hint that cannot die.
+
+The failure reason names the read failure rather than the generic "cannot
+find", for the same reason D024 requires a dead worker to be named as one:
+telling users their element is missing, when in fact we gave up reading the
+screen, points them at their own application instead of at ours.
+
+---
+
+## D029 — `Windows.Media.Ocr`, and the floor of 95
+
+**Decision.** Tier 2 reads with `Windows.Media.Ocr`, and a fuzzy match must
+score **95** or better to ground.
+
+**The engine, settled by measurement rather than argument.** Both candidates
+run against identical captures of four real application screens:
+
+| | cold start | full 1938x1038 frame | cropped | recall @90 |
+|---|---|---|---|---|
+| `Windows.Media.Ocr` | **0.01 s** | **0.17-0.23 s** | **0.03 s** | **22/23** |
+| RapidOCR (onnxruntime) | 0.68 s | **39-66 s** | 1.6-2.8 s | 16/23 |
+
+RapidOCR is not slower — it is disqualified. 39 seconds on a window is roughly
+200x the estimate, and even cropped it exceeds a tick. `Windows.Media.Ocr`
+wins on every axis and ships with the OS, so there is no model download and no
+network (D017).
+
+**Stock PaddleOCR was ruled out WITHOUT measuring it.** A few-hundred-megabyte
+deep-learning runtime plus a first-run network fetch, inside an application
+that otherwise touches no network, conflicts with D017 regardless of how
+accurate it is. No accuracy number could have changed that, so spiking it
+would have meant installing the heaviest candidate available purely to reject
+a decision already made on principle. This refines D003's engine choice; it
+does not reverse its tiering.
+
+**The floor is measured, and it could not have been guessed.** Sweeping the
+fuzzy threshold across all four screens, the binding case is a step claiming
+`Uploads` against an OCR read of `upload`, scoring **92.3**. Those are two
+real, different Canva surfaces one character apart. The OCR documentation's
+suggested 0.85 would have pointed at the wrong one on the first real screen
+tested. At 95, zero false matches across every screen.
+
+**One bar is doing two jobs, and that is why 95 is conservative.** The design
+called for two independent floors — read confidence AND match score, neither
+able to borrow slack from the other, because a weak read and a loose match
+otherwise average into something that looks acceptable and is not.
+**`Windows.Media.Ocr` exposes no per-word confidence.** That is stated plainly
+rather than quietly dropped: the two-floor design cannot be built on this
+engine, the match score carries both jobs, and the threshold is set high for
+that reason rather than tuned for recall.
+
+**The language-pack risk was gated before implementation started.** The engine
+needs an OCR recognizer pack, and installing a missing one requires
+administrator rights — "end users need admin to use a fallback tier" would be
+a distribution blocker independent of accuracy. Verified on a SECOND Windows
+machine before any code was written: `en-GB` and `en-US` present, both engine
+constructors returning objects, no elevation required. Two machines is not a
+distribution study. If tier 2 ever reports itself unavailable in the field,
+this is the first thing to check.
+
+---
+
+## D030 — OCR results are never promoted, and rung 3 excludes them
+
+**Decision.** Nothing tier 2 produces is ever written to the knowledge base,
+and OCR elements are barred from grounding rung 3.
+
+**Promotion is impossible by construction, not by policy.** OCR yields text, a
+box and (on this engine) no confidence. The box cannot be stored — `schema.py`
+recursively rejects `{"bbox", "x", "y", "coordinates", "rect", "point"}`
+because a persisted pixel is a lie the moment a window moves (D012). The text
+is the claimed name the recipe already had. Nothing durable is left to write.
+
+So the knowledge base stays UIA-only and provably clean, and tier 2 is pure
+runtime fallback. A user who deletes the database loses nothing OCR produced,
+because OCR produced nothing that outlives the tick.
+
+**Why rung 3 must exclude OCR — the floor is decorative without it.** Rung 3
+is not an exact match. It is a case-insensitive **substring** test inherited
+from an era when every element came from UIA and names were authoritative, and
+it runs BEFORE rung 4.
+
+Left unfiltered, an OCR element reaches it and matches with no score threshold
+whatsoever. A step claiming `Edit` substring-matches OCR reads of
+`Edit a PDF`, `Magic Edit` and `Editor` alike, and rung 3 returns whichever the
+disambiguator happens to pick — with D029's floor of 95 never consulted.
+
+Rung 3 therefore filters to `source == "uia"`. **OCR text gets exactly one
+route into grounding, rung 4 at 95, and no path that bypasses it.** Rung 2
+stays open to OCR because exact equality is a strictly higher bar than a 95
+fuzzy score.
+
+This was found while writing the implementation plan, not while designing: the
+spec asserted rungs 1-3 were all exact and built the safety argument on rung 4
+being the only loose one. Reading the code showed rung 3 had been a substring
+test all along.
+
+**The failure this guards against is not hypothetical.** Multi-line labels
+were the dominant OCR failure across all four screens — single-line labels
+read perfectly (`BG Remover`, `Magic Edit`, `Upscale`, `Blur`, `Select area`
+all scored 100.0) while wrapped ones failed systematically, and failed in the
+worst available way:
+
+```
+Magic Eraser  ->  read as 'Eraser'      66.7
+BG Generator  ->  read as 'Generator'   85.7
+Magic Expand  ->  read as 'Magic Edit'  72.7   <-- a DIFFERENT REAL TOOL
+```
+
+`Magic Expand` matching `Magic Edit` is two real buttons side by side in
+Canva's photo editor. A user following that hint applies the wrong operation
+to their image. Reassembling wrapped reads before matching removes the
+mechanism rather than thresholding above its symptom — and its false-positive
+direction is tested as hard as its recall direction, because a merge of two
+unrelated adjacent labels could invent a target neither part would match.

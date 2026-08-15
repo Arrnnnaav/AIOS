@@ -59,8 +59,21 @@ Two other tracking files are living documents, updated on every meaningful chang
   separate decision — don't introduce it into the core agent loop.
 - **Language:** Python throughout the core agent (perception, overlay, reasoning, memory).
 - **Perception:** tiered, cheapest-first — `pywinauto` (Windows UI Automation) first,
-  `mss` + `PaddleOCR` for text-only fallback, a VLM pointing model (MolmoPoint-style)
-  only as a last resort. Never run a VLM on every frame.
+  then OCR on captured pixels, then a VLM pointing model (MolmoPoint-style) only as a
+  last resort. Never run a VLM on every frame.
+- **Tier 2 (OCR), see D028-D030:** the engine is **`Windows.Media.Ocr`**, not PaddleOCR —
+  0.17-0.23s per window against RapidOCR's 39-66s, and it ships with the OS, so there is
+  no model download and no network (D017). It runs on the perception worker thread, never
+  the UI thread. It is triggered by **grounding failure for the current step**, never by
+  an empty walk: Chrome returned 43 UIA elements containing zero page content, so
+  "UIA returned nothing" would never fire. Stickiness resets at the step boundary, a 1.0s
+  floor and a 20-run ceiling bound the cost, and exhausting that ceiling ends the step
+  rather than freezing a hint that can never resolve. OCR text reaches grounding only
+  through rung 4 at a **measured floor of 95** — rung 3 is a substring test and excludes
+  OCR, or the floor would be decorative. **Nothing OCR produces is ever persisted**:
+  the schema forbids storing coordinates, so there is nothing durable to write. OCR-derived
+  hints render in their own colour (`INFERRED`) so a pixel guess never wears the
+  confirmed-control ring (D006).
 - **Overlay:** raw `win32gui`/`win32con`/`win32api` (pywin32) — `WS_EX_LAYERED |
   WS_EX_TRANSPARENT | WS_EX_TOPMOST | WS_EX_TOOLWINDOW`, colorkey transparency via
   `SetLayeredWindowAttributes`, GDI for drawing. The overlay must always stay click-through
@@ -130,18 +143,20 @@ next run, exactly as it would on a first run.
 ## Tests
 
 ```
-python -m tests.test_overlay        # 15 checks: styles, click-through, transparency,
-                                    # hint placement, dimmed-ring colour, stale pixels, teardown
+python -m tests.test_overlay        # 16 checks: styles, click-through, transparency, hint
+                                    # placement, dimmed and inferred ring colours, stale
+                                    # pixels, teardown
 python -m tests.test_end_to_end     # 8 checks: perception -> coordinate -> ring on screen
 python -m pytest tests/ \
   --ignore=tests/test_hung_window.py \
   --ignore=tests/test_perception_service_hung.py \
-  --ignore=tests/test_run_threaded.py   # 165 checks, ~15s: everything fast (grounding,
+  --ignore=tests/test_run_threaded.py   # 264 checks, ~19s: everything fast (grounding,
                                     # promotion, persistence, verification, staleness,
-                                    # worker health, the state machine, ...)
+                                    # worker health, OCR, the state machine, ...)
 python -m pytest tests/test_hung_window.py \
                 tests/test_perception_service_hung.py \
-                tests/test_run_threaded.py     # 11 checks, ~88s: the hung-target tests
+                tests/test_run_threaded.py     # 13 checks, ~128s: the hung-target tests.
+                                    # Run these ALONE — never beside another pytest session
 ```
 
 `pytest` does not collect the two pixel harnesses above — they keep their own
