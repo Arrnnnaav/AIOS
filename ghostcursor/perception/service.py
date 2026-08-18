@@ -58,10 +58,14 @@ class Tier2Request:
     `grounded` is the UI thread reporting that the LAST read produced a usable
     target, which resets the controller's fruitless-run budget; the worker
     takes it and clears it.
+
+    There is no `wanted` flag: the ABSENCE of a request is "not wanted".
+    A flag would have to be set to False by exactly the callers that can
+    instead clear the slot, and a False request still carries a step index and
+    a stale `grounded` that nothing would ever clear.
     """
 
     step_index: int
-    wanted: bool = True
     grounded: bool = False
 
 
@@ -202,7 +206,7 @@ class PerceptionService:
         with self._lock:
             return self._slot
 
-    def request_tier2(self, step_index: int, wanted: bool = True) -> None:
+    def request_tier2(self, step_index: int) -> None:
         """Ask the worker to read the screen for `step_index`. Never blocks.
 
         Overwrite, not enqueue: a second request for the same step while the
@@ -217,9 +221,33 @@ class PerceptionService:
                 and previous.step_index == step_index
                 and previous.grounded
             )
-            self._tier2_request = Tier2Request(
-                step_index=step_index, wanted=wanted, grounded=carried
-            )
+            self._tier2_request = Tier2Request(step_index=step_index, grounded=carried)
+
+    def cancel_tier2(self, step_index: int | None = None) -> None:
+        """Stop reading the screen. Never blocks.
+
+        A standing request is a STANDING COST: capture plus OCR, 0.14-0.23s,
+        as often as the 1.0s floor allows. Nothing but this ends it, so the UI
+        thread must say when tier 2 stopped being wanted -- when grounding
+        succeeded without it, and when the tour left the step that asked. Left
+        uncancelled, a request for step 3 keeps being serviced through all of
+        step 4, delaying the UIA observations for the step the user is
+        actually on and pushing the staleness ladder toward DIMMED; the 20-run
+        cap is not a substitute, because a `grounded` report consumed after
+        the advance resets even that.
+
+        Pass `step_index` to cancel only if the standing request is for THAT
+        step -- so a late cancel from a step already left cannot silently
+        discard the current step's request. Pass nothing to cancel whatever is
+        there, which is what a step boundary means.
+        """
+        with self._lock:
+            request = self._tier2_request
+            if request is None:
+                return
+            if step_index is not None and request.step_index != step_index:
+                return
+            self._tier2_request = None
 
     def report_tier2_grounded(self, step_index: int) -> None:
         """Report that the last OCR read produced a usable target.
@@ -231,27 +259,26 @@ class PerceptionService:
         with self._lock:
             previous = self._tier2_request
             if previous is not None and previous.step_index == step_index:
-                self._tier2_request = Tier2Request(
-                    step_index=step_index, wanted=previous.wanted, grounded=True
-                )
+                self._tier2_request = Tier2Request(step_index=step_index, grounded=True)
 
     def _take_tier2_request(self) -> "Tier2Request | None":
         """The current request, with `grounded` consumed.
 
-        `wanted` persists -- it is a standing state for the step -- while
-        `grounded` is a one-shot event, so leaving it set would reset the
-        budget forever off a single successful read.
+        The request itself persists -- it is a standing state for the step,
+        ended only by `cancel_tier2` -- while `grounded` is a one-shot event,
+        so leaving it set would reset the budget forever off a single
+        successful read.
         """
         with self._lock:
             request = self._tier2_request
             if request is not None and request.grounded:
                 self._tier2_request = Tier2Request(
-                    step_index=request.step_index, wanted=request.wanted, grounded=False
+                    step_index=request.step_index, grounded=False
                 )
             return request
 
     def _tier2_payload(self) -> tuple:
-        """Run tier 2 if it is wanted, and describe the result.
+        """Run tier 2 if a request is standing, and describe the result.
 
         Returns the tier-2 fields the observation carries. Failure here never
         costs the UIA observation it travels with: an OCR engine that raises
@@ -260,7 +287,7 @@ class PerceptionService:
         """
         empty = ((), -1, False, False, 0)
         request = self._take_tier2_request()
-        if self.tier2 is None or request is None or not request.wanted:
+        if self.tier2 is None or request is None:
             return empty
         step = request.step_index
         try:
@@ -301,37 +328,17 @@ class PerceptionService:
         try:
             while not stop.is_set():
                 self.heartbeat += 1
+                walked = None
                 try:
                     elements = tuple(self.walker(self.title_re))
                     observed_at = self.clock()
-                    snapshot = take_snapshot(
-                        self.title_re, elements=elements, observed_at=observed_at
+                    walked = (
+                        take_snapshot(
+                            self.title_re, elements=elements, observed_at=observed_at
+                        ),
+                        elements,
+                        observed_at,
                     )
-                    # Tier 2 runs HERE, after the walk, on this thread -- never
-                    # on the UI thread. Capture plus OCR measured 0.14-0.23s on
-                    # a 976x1028 window and scales with captured AREA, which on
-                    # a full 4K screen alone would eat D020's 0.5s tick ceiling
-                    # and reintroduce the freeze D021 exists to prevent.
-                    ocr = self._tier2_payload()
-                    if not stop.is_set():
-                        # A retired worker must not publish the walk it was
-                        # already inside when it was retired: the timestamp
-                        # would be current while the contents are from
-                        # before the restart, and it could land after the
-                        # replacement's newer observation.
-                        self._publish(
-                            Observation(
-                                snapshot=snapshot,
-                                elements=elements,
-                                observed_at=observed_at,
-                                ok=True,
-                                ocr_elements=ocr[0],
-                                tier2_step=ocr[1],
-                                tier2_engaged=ocr[2],
-                                tier2_exhausted=ocr[3],
-                                tier2_max_runs=ocr[4],
-                            )
-                        )
                 except Exception:
                     # A failed walk publishes nothing: the previous
                     # observation simply keeps ageing, which is exactly what
@@ -339,6 +346,40 @@ class PerceptionService:
                     # advances, so "looping through failures" stays
                     # distinguishable from "blocked in a call".
                     pass
+
+                # Tier 2 runs HERE, on this thread -- never on the UI thread.
+                # Capture plus OCR measured 0.14-0.23s on a 976x1028 window and
+                # scales with captured AREA, which on a full 4K screen alone
+                # would eat D020's 0.5s tick ceiling and reintroduce the freeze
+                # D021 exists to prevent.
+                #
+                # OUTSIDE the walk's try, deliberately. Tier 2 needs only a
+                # capture, so a walker that raises every iteration -- the
+                # window transiently gone, a COM hiccup -- must not silently
+                # suppress OCR: that is precisely the situation OCR exists for.
+                # The two halves fail independently; only publication is joint.
+                ocr = self._tier2_payload()
+
+                if walked is not None and not stop.is_set():
+                    # A retired worker must not publish the walk it was
+                    # already inside when it was retired: the timestamp
+                    # would be current while the contents are from
+                    # before the restart, and it could land after the
+                    # replacement's newer observation.
+                    snapshot, elements, observed_at = walked
+                    self._publish(
+                        Observation(
+                            snapshot=snapshot,
+                            elements=elements,
+                            observed_at=observed_at,
+                            ok=True,
+                            ocr_elements=ocr[0],
+                            tier2_step=ocr[1],
+                            tier2_engaged=ocr[2],
+                            tier2_exhausted=ocr[3],
+                            tier2_max_runs=ocr[4],
+                        )
+                    )
                 stop.wait(self.interval_s)
         finally:
             try:

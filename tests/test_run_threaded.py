@@ -412,7 +412,10 @@ def test_a_genuinely_absent_element_is_still_reported_as_missing(tmp_path, monke
         # the worker reads) — accepted and ignored here: this fixture is about
         # a healthy worker that sees an empty screen, and OCR finding nothing
         # is the same story.
-        def request_tier2(self, step_index, wanted=True):
+        def request_tier2(self, step_index):
+            pass
+
+        def cancel_tier2(self, step_index=None):
             pass
 
         def report_tier2_grounded(self, step_index):

@@ -228,6 +228,18 @@ def test_exactly_one_hint_write_per_tick_through_a_whole_tour(tmp_path, monkeypa
         def is_alive(self):
             return True
 
+        # Tier 2 is asked for and called off through the service now, and a
+        # step that grounds through UIA calls it off. Accepted and ignored:
+        # this test is about the first paint, not about OCR.
+        def request_tier2(self, step_index):
+            pass
+
+        def cancel_tier2(self, step_index=None):
+            pass
+
+        def report_tier2_grounded(self, step_index):
+            pass
+
         def latest(self):
             now = clock()
             elements = (Element("Export", "Button", "btn_export", (10, 20, 110, 44)),)

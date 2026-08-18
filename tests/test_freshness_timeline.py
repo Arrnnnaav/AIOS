@@ -103,6 +103,18 @@ class ScriptedService:
     def is_alive(self):
         return True
 
+    # Tier 2 is asked for and called off through the service now (the UI
+    # thread decides, the worker reads). Accepted and ignored: these tests
+    # are about freshness and painting, not about OCR.
+    def request_tier2(self, step_index):
+        pass
+
+    def cancel_tier2(self, step_index=None):
+        pass
+
+    def report_tier2_grounded(self, step_index):
+        pass
+
     def _observe(self):
         now = self._clock()
         self._slot = Observation(

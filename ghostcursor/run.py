@@ -353,10 +353,19 @@ def run_tour(
             #: forever and a hung target would never dim, never hide, and
             #: never trip the health check.
             last_fed_to_ladder = 0.0
+            #: The observation THIS tick is reasoning about — the one
+            #: OBSERVING took its snapshot from. DECIDING reads it instead of
+            #: re-reading the slot, so the UIA half and the OCR half always
+            #: come from the same instant (D019). Re-reading gave grounding
+            #: observation B's `ocr_elements` alongside observation A's UIA
+            #: elements, merged into one list, which is exactly the
+            #: same-instant rule the snapshot exists to keep.
+            current_observation = None
 
             def snapshotter():
-                nonlocal last_fed_to_ladder
+                nonlocal last_fed_to_ladder, current_observation
                 observation = service.latest()
+                current_observation = observation
                 if observation is None:
                     # No observation yet is a normal starting condition. An
                     # empty untimestamped snapshot reads as FRESH to the loop
@@ -380,13 +389,20 @@ def run_tour(
                 # OBSERVING and DECIDING to describe the same instant. Re-reading
                 # the slot here would ground observation B while verification
                 # baselines on observation A, so the hint could point at a
-                # control the baseline never saw.
-                observation = service.latest()
+                # control the baseline never saw. `current_observation` is that
+                # same observation, captured by the snapshotter — so the OCR
+                # half below comes from the instant these elements do.
+                observation = current_observation
                 if elements is None:
                     elements = observation.elements if observation else ()
 
                 target = live_grounder(step, i, elements)
                 if target is not None:
+                    # UIA answered, so tier 2 is not wanted for this step. A
+                    # standing request costs capture + OCR on the worker as
+                    # often as the 1.0s floor allows, delaying the UIA
+                    # observations this step is actually being grounded from.
+                    service.cancel_tier2(i)
                     return target
 
                 # Tier 2. Triggered by GROUNDING FAILURE for this step, never
@@ -500,10 +516,24 @@ def run_tour(
                 clock=clock,
                 ungroundable_reason=read_failure_reason,
             )
+            #: The step the standing tier-2 request (if any) belongs to. The
+            #: worker cannot notice a step boundary — only this thread knows
+            #: which step is current — and nothing else ends a request, so a
+            #: step that asked for OCR and was then LEFT would keep the worker
+            #: reading the screen for it through every later step, whether or
+            #: not those steps ever call the grounder (AWAITING_USER_ACTION
+            #: dwells for many ticks without one).
+            tier2_step_on_screen = tour.step_index
             while clock() < deadline:
                 if escape_pressed():
                     print("ESC pressed — exiting.")
                     break
+
+                if tour.step_index != tier2_step_on_screen:
+                    # The tour left the step that asked. Cancel unconditionally
+                    # — whatever is standing belongs to a step nobody is on.
+                    service.cancel_tier2()
+                    tier2_step_on_screen = tour.step_index
                 if should_poll_space(tour.current_step) and key_was_pressed(
                     win32con.VK_SPACE
                 ):
