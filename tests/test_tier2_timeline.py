@@ -139,17 +139,24 @@ class ExhaustedController:
     def exhausted(self, step_index):
         return True
 
-    def reset(self, step_index):
+    def engaged(self, step_index):
+        return True
+
+    def grounded(self, step_index):
         pass
 
 
 def test_cap_exhaustion_ends_the_step_naming_the_read_failure(tmp_path, monkeypatch):
     """A screen that never stops changing burns the per-step cap.
 
-    The tour must stop and say we could not READ the element. Saying "cannot
-    find" instead tells the user their element is missing when in fact we gave
-    up reading the screen — pointing them at their own application instead of
-    at ours (D024).
+    Two properties, and the second is the one that changed. The tour must stop
+    and say we could not READ the element — saying "cannot find" tells the user
+    their element is missing when in fact we gave up reading the screen,
+    pointing them at their own application instead of at ours (D024). And it
+    must reach that through the GROUNDING GRACE rather than aborting on the
+    exhaustion tick: spec §4 says an exhausted step is treated as ungroundable,
+    so the last observation goes on ageing normally and the user keeps those
+    seconds to act. The tour used to `break` the instant the budget was spent.
     """
     import ghostcursor.run as run_module
     from ghostcursor.perception import appinfo, service as service_module, tier2
@@ -169,12 +176,24 @@ def test_cap_exhaustion_ends_the_step_naming_the_read_failure(tmp_path, monkeypa
         "builtins.print", lambda *a, **k: printed.append(" ".join(map(str, a)))
     )
 
+    from ghostcursor.reasoning.loop import DEFAULT_GROUNDING_GRACE_S
+
+    # Longer than the old 8s, because the tour no longer dies on the
+    # exhaustion tick: it has to outlive the grounding grace to fail at all.
     run_module.run_tour(
         _recipe_file(tmp_path),
         ".*app.*",
-        seconds=8.0,
+        seconds=20.0,
         clock=clock,
         sleeper=clock.sleeper,
+    )
+
+    elapsed = clock.t - FakeClock.START
+    assert elapsed >= DEFAULT_GROUNDING_GRACE_S, (
+        "the tour ended after {:.1f}s, before the {:.0f}s grounding grace could "
+        "run — an exhausted step aborted the tour instead of feeding the "
+        "grace, so the user lost the seconds the ring was still correct "
+        "for".format(elapsed, DEFAULT_GROUNDING_GRACE_S)
     )
 
     stops = [line for line in printed if line.startswith("Stopped: could not read")]

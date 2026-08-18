@@ -13,7 +13,7 @@ from ghostcursor.reasoning.schema import (
 )
 from ghostcursor.reasoning.verification import Snapshot, verify
 
-TARGET = GroundedTarget((10, 10, 110, 40), 1, "1001", "Button", "Export")
+TARGET = GroundedTarget((10, 10, 110, 40), 1, "1001", "Button", "Export", "uia")
 
 
 class FakeRenderer:

@@ -76,6 +76,7 @@ class GuidedTour:
         clock: Callable[[], float] = time.monotonic,
         idle_timeout_s: float = 30.0,
         grounding_grace_s: float = DEFAULT_GROUNDING_GRACE_S,
+        ungroundable_reason: Callable[[Step, int], str | None] | None = None,
     ) -> None:
         self.recipe = recipe
         self.grounder = grounder
@@ -85,6 +86,14 @@ class GuidedTour:
         self.clock = clock
         self.idle_timeout_s = idle_timeout_s
         self.grounding_grace_s = grounding_grace_s
+        #: Optional: asked, when the grace expires, for a reason better than
+        #: "cannot find X on screen". The loop knows only that grounding kept
+        #: failing; the driver may know WHY — that a perception tier was
+        #: engaged and could not read the screen, say — and the difference
+        #: decides whether the user is pointed at their own application or at
+        #: ours (D024). It stays a callable so the loop learns nothing about
+        #: perception tiers, exactly as with `freshness_source` (D027).
+        self.ungroundable_reason = ungroundable_reason
 
         self.state = State.IDLE
         self.step_index = 0
@@ -175,7 +184,12 @@ class GuidedTour:
                 if self._grounding_fail_since is None:
                     self._grounding_fail_since = now
                 if now - self._grounding_fail_since >= self.grounding_grace_s:
-                    self.failure_reason = (
+                    reason = (
+                        self.ungroundable_reason(step, self.step_index)
+                        if self.ungroundable_reason is not None
+                        else None
+                    )
+                    self.failure_reason = reason or (
                         f"cannot find {step.target_descriptor.claimed.name!r} on screen"
                     )
                     self.state = State.FAILED

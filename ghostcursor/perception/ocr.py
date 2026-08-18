@@ -66,7 +66,11 @@ class WindowsOcr:
             )
 
     def read(self, frame_bgr) -> list[OcrRead]:
-        """Every word found in a BGR frame, with screen-relative boxes.
+        """Every word found in a BGR frame, with FRAME-relative boxes.
+
+        Relative to the captured frame's own top-left, not the screen:
+        `Tier2Controller._to_elements` is the one place that adds the window
+        origin (D010).
 
         Words rather than lines: a wrapped label arrives as separate reads,
         and reassembling them is `reassemble()`'s job, which needs the parts.

@@ -22,7 +22,7 @@ from ghostcursor.reasoning.grounding import GroundedTarget
 from ghostcursor.reasoning.renderer import OverlayRenderer
 from ghostcursor.reasoning.staleness import Freshness, display_freshness
 
-TARGET = GroundedTarget((100, 200, 200, 240), 1, "1001", "Button", "Export")
+TARGET = GroundedTarget((100, 200, 200, 240), 1, "1001", "Button", "Export", "uia")
 
 #: Every source the system can attribute a grounding to, plus one that does
 #: not exist yet. `display_freshness` is fail-safe by design — an unrecognised

@@ -20,7 +20,10 @@ from ghostcursor.perception.uia import Element
 #: quietly becomes unconditional OCR.
 DEFAULT_MIN_INTERVAL_S = 1.0
 
-#: Ceiling per step. Same reason, for a region that never stops changing.
+#: Ceiling of CONSECUTIVE FRUITLESS reads per step. Same reason, for a region
+#: that never stops changing. Reads that produce a groundable target reset it
+#: (`grounded()`): the budget is there to stop unproductive re-reading, and a
+#: churning page that keeps re-grounding correctly is the tier doing its job.
 DEFAULT_MAX_RUNS_PER_STEP = 20
 
 
@@ -86,10 +89,18 @@ def build_controller(clock) -> "Tier2Controller | None":
 
 
 class _StepState:
-    __slots__ = ("runs", "last_run_at", "last_frame", "elements")
+    __slots__ = ("runs", "engaged", "last_run_at", "last_frame", "elements")
 
     def __init__(self) -> None:
+        #: CONSECUTIVE reads that did not yield a groundable target. Reset by
+        #: `grounded()`, so the ceiling bounds fruitless work rather than
+        #: total work.
         self.runs = 0
+        #: Whether OCR has read for this step at all, ever. Survives the reset
+        #: above, because it answers a different question: not "should we keep
+        #: reading" but "if this step ends up ungroundable, was reading the
+        #: screen part of why".
+        self.engaged = False
         self.last_run_at: float | None = None
         self.last_frame = None
         self.elements: list[Element] = []
@@ -115,18 +126,44 @@ class Tier2Controller:
         return self._steps.setdefault(step_index, _StepState())
 
     def exhausted(self, step_index: int) -> bool:
-        """True once this step has spent its run budget.
+        """True once this step has spent its budget of FRUITLESS reads.
 
-        Terminal for the step: the caller treats it as ungroundable and lets
-        the existing grounding grace end the tour with a reason. The rejected
-        alternative -- let the last result stand and age -- leaves the ring
-        pointing at a coordinate the system can no longer confirm AND makes
-        the step incapable of ever failing.
+        Terminal for the step in the sense spec §4 means: reading stops and
+        the step becomes ungroundable, which feeds the existing grounding
+        grace. It does NOT end the tour on the spot -- until the grace
+        expires the last observation keeps ageing through the staleness
+        ladder, so the display degrades honestly instead of vanishing.
+
+        The rejected alternative -- let the last OCR result stand and age
+        forever -- leaves the ring pointing at a coordinate the system can no
+        longer confirm AND makes the step incapable of ever failing.
         """
-        return self._state(step_index).runs >= self.max_runs_per_step
+        state = self._steps.get(step_index)
+        return state is not None and state.runs >= self.max_runs_per_step
 
-    def reset(self, step_index: int) -> None:
-        self._steps.pop(step_index, None)
+    def engaged(self, step_index: int) -> bool:
+        """True if OCR has read the screen for this step at all.
+
+        What the failure reason keys off. Exhaustion cannot carry that job:
+        the grace is 10s and the read floor 1.0s, so an unreadable screen
+        gives up long before 20 reads, and a message keyed on exhaustion
+        appeared only when reading intermittently worked -- exactly inverted.
+        """
+        state = self._steps.get(step_index)
+        return state is not None and state.engaged
+
+    def grounded(self, step_index: int) -> None:
+        """Report that the last read produced a usable target.
+
+        A productive read does not spend the budget. The caps exist to stop a
+        never-settling region turning the cheapest-first tier into
+        unconditional OCR (D028); a step that keeps RE-GROUNDING off OCR is
+        the tier working, and counting those reads killed tours whose amber
+        ring was sitting correctly on the target the whole time.
+        """
+        state = self._steps.get(step_index)
+        if state is not None:
+            state.runs = 0
 
     def elements_for(self, step_index: int, title_re: str) -> list[Element]:
         state = self._state(step_index)
@@ -150,6 +187,7 @@ class Tier2Controller:
             return state.elements
 
         state.runs += 1
+        state.engaged = True
         state.last_run_at = now
         state.last_frame = frame
         state.elements = _to_elements(

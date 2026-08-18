@@ -33,6 +33,7 @@ from datetime import datetime, timezone
 from ghostcursor.perception.appinfo import parse_version
 from ghostcursor.perception.uia import Element, iter_elements
 from ghostcursor.reasoning.schema import ConfirmedObservation, Step
+from ghostcursor.reasoning.staleness import CONFIRMED_SOURCE
 
 RUNG_AUTOMATION_ID = 1
 RUNG_TYPE_AND_NAME = 2
@@ -52,11 +53,25 @@ OCR_MATCH_FLOOR = 95
 
 @dataclass(frozen=True)
 class GroundedTarget:
+    """A live rectangle, and everything needed to say how much to trust it.
+
+    `source` is REQUIRED and carries the perception tier the rectangle came
+    from ("uia" for a confirmed control, "ocr" for text read off pixels). It
+    is part of the target rather than tracked beside it because provenance
+    that lives next to a coordinate can drift out of step with it: the
+    renderer used to read a module-level `grounded_source` at paint time,
+    which DECIDING had already advanced to the NEXT step's source while the
+    hint on screen was still the previous one's — a pixel guess wearing the
+    confirmed-control ring for a whole tick. A rectangle and the confidence
+    it may be drawn at must not be separately updatable.
+    """
+
     bbox: tuple[int, int, int, int]
     rung: int
     automation_id: str
     control_type: str
     name: str
+    source: str
 
 
 def _as_target(element: Element, rung: int) -> GroundedTarget:
@@ -66,6 +81,7 @@ def _as_target(element: Element, rung: int) -> GroundedTarget:
         automation_id=element.automation_id,
         control_type=element.control_type,
         name=element.name,
+        source=element.source,
     )
 
 
@@ -197,8 +213,13 @@ def ground(
     # UIA ONLY. This is a substring test, and it runs before rung 4, so an OCR
     # element reaching it would match with no score threshold whatsoever and
     # OCR_MATCH_FLOOR would be decorative: 'Edit' is a substring of 'Edit a
-    # PDF', 'Magic Edit' and 'Editor' alike. OCR text gets exactly one route
-    # into grounding, and it is rung 4.
+    # PDF', 'Magic Edit' and 'Editor' alike. Rung 3 is therefore the one rung
+    # OCR text is barred from.
+    #
+    # It is not the only rung OCR can reach — rung 2 admits it too, on
+    # BYTE-EXACT name equality, which is a strictly higher bar than a 95 fuzzy
+    # score and so needs no exclusion. What rung 3 excludes is loose matching
+    # on unconfirmed text, not OCR as such.
     candidates = [claimed.name, *claimed.name_synonyms]
     for candidate in filter(None, candidates):
         needle = candidate.casefold()
@@ -241,8 +262,17 @@ def promote(
     recipe confirmed by an English user ground for a Hindi one.
 
     Returns True when the step was modified.
+
+    Nothing tier 2 produced is ever recorded (D030). That used to be true only
+    incidentally — an OCR element carries no AutomationId, so the guard below
+    caught it — which made "never promoted by construction" a claim resting on
+    a coincidence of empty strings. It is now checked directly, on the
+    target's own provenance, so a future tier that DID supply an id could not
+    quietly start writing pixel-derived rows into the knowledge base.
     """
-    if grounded is None or not grounded.automation_id:
+    if grounded is None or grounded.source != CONFIRMED_SOURCE:
+        return False
+    if not grounded.automation_id:
         return False
 
     for observation in step.target_descriptor.confirmed:

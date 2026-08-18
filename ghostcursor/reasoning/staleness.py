@@ -48,6 +48,13 @@ def _warn_to_stderr(message: str) -> None:
     print(message, file=sys.stderr)
 
 
+#: The ONE perception tier whose output may be drawn as a confirmed control.
+#: Everything else — "ocr", a future "vlm", a typo, an empty string — is
+#: INFERRED. Named rather than repeated as a literal so the fail-safe test is
+#: in one place.
+CONFIRMED_SOURCE = "uia"
+
+
 class Freshness(Enum):
     FRESH = auto()  # draw the hint normally
     DIMMED = auto()  # draw it, visibly unconfirmed
@@ -170,4 +177,4 @@ def display_freshness(ladder_state: Freshness, source: str) -> Freshness:
     """
     if ladder_state in (Freshness.HIDDEN, Freshness.DIMMED):
         return ladder_state
-    return Freshness.FRESH if source == "uia" else Freshness.INFERRED
+    return Freshness.FRESH if source == CONFIRMED_SOURCE else Freshness.INFERRED

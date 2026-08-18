@@ -2,7 +2,7 @@ from ghostcursor.reasoning.grounding import GroundedTarget
 from ghostcursor.reasoning.renderer import OverlayRenderer
 from ghostcursor.reasoning.staleness import Freshness
 
-TARGET = GroundedTarget((100, 200, 200, 240), 1, "1001", "Button", "Export")
+TARGET = GroundedTarget((100, 200, 200, 240), 1, "1001", "Button", "Export", "uia")
 
 #: OverlayRenderer requires a provenance source (D027): a renderer that cannot
 #: say where its hint came from must not be able to draw one at all. These

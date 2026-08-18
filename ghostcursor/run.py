@@ -195,7 +195,14 @@ def make_grounder(
         )
         if grounded is not None:
             grounding.promote(step, grounded, app_version=app_version, locale=ui_locale)
-            if store is not None and app_id is not None:
+            # Second half of the same guard as promote()'s: nothing tier 2
+            # produced reaches the knowledge base (D030). Without this, the
+            # lookup below matches on `automation_id`, which for an OCR target
+            # is "" — so the only thing keeping pixel-derived rows out of the
+            # database was that no stored row happened to have an empty id.
+            # That is a coincidence, not a construction.
+            confirmed_source = grounded.source == grounding.CONFIRMED_SOURCE
+            if store is not None and app_id is not None and confirmed_source:
                 # Write only what promote() just recorded for this grounding —
                 # not the step's whole confirmed list. This runs every tick,
                 # and rewriting observations hydrated from earlier runs would
@@ -266,7 +273,6 @@ def run_tour(
     from ghostcursor.reasoning.schema import Recipe
     from ghostcursor.reasoning.staleness import (
         StalenessLadder,
-        display_freshness,
     )
     from ghostcursor.reasoning.verification import Snapshot, verify
 
@@ -320,10 +326,6 @@ def run_tour(
         tier2_controller = tier2.build_controller(clock)
         if tier2_controller is None:
             print("Ghost Cursor: OCR unavailable on this machine — UIA only.")
-        #: Which source the LAST successful grounding came from. Drives the
-        #: display, and persists across staleness so a recovered OCR hint
-        #: returns to INFERRED and never launders into FRESH.
-        grounded_source = "uia"
         service.start()
 
         hwnd = window.create_overlay_window()
@@ -361,7 +363,6 @@ def run_tour(
                 return observation.snapshot
 
             def grounder_from_slot(step, i, elements=None):
-                nonlocal grounded_source
                 # Grounds against the LAST observation, not a live walk. While
                 # observations are merely stale this keeps succeeding, so the
                 # loop's grounding grace never starts — the hint stays drawn
@@ -380,7 +381,6 @@ def run_tour(
 
                 target = live_grounder(step, i, elements)
                 if target is not None:
-                    grounded_source = "uia"
                     return target
 
                 # Tier 2. Triggered by GROUNDING FAILURE for this step, never
@@ -393,21 +393,56 @@ def run_tour(
                     return None
                 target = live_grounder(step, i, list(elements) + ocr_elements)
                 if target is not None:
-                    grounded_source = "ocr"
+                    # A read that produced a usable target is not a fruitless
+                    # one, so it does not spend the step's budget (D028). A
+                    # churning page can re-ground the same OCR target for
+                    # minutes; the budget is there to stop UNPRODUCTIVE
+                    # re-reads, and counting productive ones killed a tour
+                    # whose amber ring was sitting correctly on the target.
+                    tier2_controller.grounded(i)
                 return target
 
             def current_display_freshness():
-                #: The tick's display state, combining both axes: TIME (the
-                #: ladder) and SOURCE (what grounded the target). The loop
-                #: drives the renderer and must stay ignorant of both, so this
-                #: is how run.py supplies them without teaching it either.
+                #: The AGE half of the tick's display state. The SOURCE half is
+                #: no longer supplied here on purpose: it belongs to the hint
+                #: (see renderer._Hint). Tracked beside the renderer, as a
+                #: variable DECIDING could advance while the previous step's
+                #: ring was still on screen, it laundered an OCR centre into
+                #: the confirmed-control colour for one full tick.
                 #:
-                #: Read at the tick's single write, and there is only ever one
-                #: (D027) — so there is no earlier provisional value for a
-                #: WM_PAINT to catch. `ladder.freshness()` also MUTATES the
-                #: ladder's recovery state, which is a second reason one call
-                #: per tick is the right number.
-                return display_freshness(ladder.freshness(), grounded_source)
+                #: `ladder.freshness()` MUTATES the ladder's recovery state, so
+                #: exactly one call per tick is the right number; the renderer
+                #: caches it for the tick.
+                return ladder.freshness()
+
+            def read_failure_reason(step, index):
+                """Why this step is ungroundable, when tier 2 knows better.
+
+                Called only once the grounding grace has expired, and only
+                the loop's generic "cannot find X on screen" is replaced.
+                Whether the run cap or the grace ran out first is deliberately
+                NOT what decides the wording: with a 10s grace and a 1.0s
+                floor between reads, a screen nobody can read reaches the
+                grace after ~10 reads and never gets near the 20-run cap, so a
+                message keyed on exhaustion described the opposite case from
+                the one it was written for — it appeared only when reading
+                intermittently WORKED. What decides it is whether tier 2 was
+                engaged for this step at all: if we ran OCR and still could
+                not locate the target, the honest report is that we could not
+                read the screen (D024, D028). Saying "cannot find" there
+                points the user at their own application instead of at ours.
+                """
+                if tier2_controller is None:
+                    return None
+                name = step.target_descriptor.claimed.name
+                if tier2_controller.exhausted(index):
+                    return (
+                        f"could not read {name!r} on screen after "
+                        f"{tier2_controller.max_runs_per_step} attempts"
+                    )
+                if tier2_controller.engaged(index):
+                    return f"could not read {name!r} on screen"
+                return None
 
             tour = GuidedTour(
                 recipe=recipe,
@@ -436,6 +471,7 @@ def run_tour(
                 # runs on the injected one, so a timeline test could never
                 # exercise the grace-vs-health interaction at all.
                 clock=clock,
+                ungroundable_reason=read_failure_reason,
             )
             while clock() < deadline:
                 if escape_pressed():
@@ -491,24 +527,17 @@ def run_tour(
                     sleeper(REFRESH_SECONDS)
                     continue
 
-                # Cap exhaustion is terminal for the step: it stops reading and
-                # the step is treated as ungroundable, feeding the existing
-                # grace. Naming the read failure matters -- telling the user
-                # their element is missing, when we in fact gave up reading the
-                # screen, points them at their own application instead of ours
-                # (D024).
-                if (
-                    tier2_controller is not None
-                    and tour.current_step is not None
-                    and tier2_controller.exhausted(tour.step_index)
-                ):
-                    print(
-                        f"Stopped: could not read "
-                        f"'{tour.current_step.target_descriptor.claimed.name}' "
-                        f"on screen after {tier2_controller.max_runs_per_step} attempts"
-                    )
-                    break
-
+                # No exhaustion check here, on purpose. There used to be one,
+                # and it ended the tour the instant tier 2 spent its budget.
+                # Spec §4 says the opposite: an exhausted step is TREATED AS
+                # UNGROUNDABLE, feeding the existing grounding grace, so the
+                # last observation keeps ageing normally through the staleness
+                # ladder — it dims, then hides — and the user gets those
+                # seconds to act instead of the tour dying under a ring that
+                # is still correct. `elements_for` already returns nothing once
+                # the budget is spent, so grounding fails on its own and the
+                # grace does the rest; `read_failure_reason` above is what
+                # makes the grace name the read failure.
                 state = tour.tick()
                 if state is State.DONE:
                     print("Tour complete.")
