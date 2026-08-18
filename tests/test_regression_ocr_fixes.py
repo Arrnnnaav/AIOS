@@ -375,3 +375,60 @@ def test_ocr_grounded_target_writes_nothing_to_the_knowledge_base(
         "an OCR-grounded target was written to the UIA-only knowledge base: "
         f"{[dict(r) for r in rows]} (log: {printed})"
     )
+
+
+# ---------------------------------------------------------------------------
+# TEST 4 — the source guard itself, isolated from the empty-id backstop
+# ---------------------------------------------------------------------------
+
+
+def test_promote_refuses_a_fabricated_non_empty_id_from_a_non_uia_source():
+    """Test 3 above proves the end-to-end property, but not this mechanism:
+    every real OCR `Element` is hard-coded with `automation_id=""`
+    (tier2.py::_to_elements), so `ObservationStore.record()`'s own
+    pre-existing `if not observation.automation_id: return` guard
+    (store.py:84) already keeps the database clean regardless of
+    `promote()`'s source check. That backstop cannot be exercised by real
+    OCR at all, so it proves nothing about the source guard specifically.
+
+    D003 plans tier 3, a VLM pointing model. If a future tier ever attaches a
+    synthetic non-empty id to what it reads, the empty-id backstop stops
+    covering it and `promote()`'s `grounded.source != CONFIRMED_SOURCE` check
+    becomes the ONLY thing standing between a model's guess and the knowledge
+    base. This fabricates exactly that case -- a "vlm"-sourced target
+    carrying a non-empty id, which no current code path produces -- to prove
+    the guard holds on its own, isolated from the backstop that happens to
+    cover today's actual tier 2.
+    """
+    from ghostcursor.reasoning.grounding import promote
+
+    step = Step(
+        user_action=UserAction.CLICK,
+        target_descriptor=TargetDescriptor(claimed=ClaimedDescriptor(name="Export")),
+        instruction_text="Click Export.",
+        verification_rule=VerificationRule(kind=VerificationKind.USER_CONFIRMS),
+        risk=Risk.NORMAL,
+    )
+
+    # Not reachable through any real perception tier today -- deliberately
+    # fabricated to isolate the guard from the empty-id backstop that
+    # coincidentally covers OCR.
+    fabricated = GroundedTarget(
+        bbox=(10, 10, 110, 40),
+        rung=4,
+        automation_id="9999",
+        control_type="Button",
+        name="Export",
+        source="vlm",
+    )
+
+    assert promote(step, fabricated, app_version="1.0.0", locale="en-US") is False, (
+        "promote() recorded a non-uia-sourced target that carried a "
+        "non-empty automation_id -- the source guard did not hold on its "
+        "own, independent of the empty-id backstop"
+    )
+    assert step.target_descriptor.confirmed == [], (
+        "a fabricated vlm-sourced observation reached the step's confirmed "
+        f"list despite promote() being asked to refuse it: "
+        f"{step.target_descriptor.confirmed}"
+    )
