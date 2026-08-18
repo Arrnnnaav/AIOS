@@ -1110,4 +1110,94 @@ change waiting for someone conscientious.
 
 **Cross-reference.** D018 and D031 are the other two standing rules of the
 same family — all three exist because something looked verified and was
-not.
+not. **D033** carries the concrete evidence for this entry — the specific
+ruling that produced it and what that cost — and
+`docs/superpowers/ledgers/2026-08-15-perception-tier-2-ocr-ledger.md` holds
+the full execution record, kept outside the throwaway workspace precisely so
+this evidence cannot be deleted by routine cleanup.
+
+---
+
+## D033 — What the tier-2 milestone's rulings cost, and where they live
+
+**Decision.** Execution rulings — the calls made on the human partner's behalf
+while a plan is running, without stopping to ask — are preserved in
+`docs/superpowers/ledgers/`, not only in the throwaway execution workspace.
+The load-bearing ones are summarised here.
+
+**Why this entry exists at all.** The tier-2 milestone produced thirteen such
+rulings. They lived in `.superpowers/sdd/<plan>/progress.md`, a directory whose
+entire lifecycle is designed to be deleted once a branch merges. The single
+most valuable thing that milestone learned — that self-review has a
+demonstrated, repeated blind spot — was sitting in a file the normal process
+would have removed by habit. That is a bad place for evidence. The ledger is
+now copied into `docs/superpowers/ledgers/` and committed.
+
+### The ruling that was wrong, and what it cost
+
+**P9 — the controller finished a task itself rather than dispatching it.**
+The documentation task's implementer hit a hard capacity limit mid-task. The
+work remaining was prose, every fact was already in the ledger, and dispatching
+a fresh agent would have meant re-deriving context the controller already held.
+Finishing it directly looked obviously correct.
+
+The final whole-branch review then found four documentation defects. **Three
+were in exactly that unreviewed work** — including a docstring that had been
+deferred twice, each time on an explicit promise the documentation task would
+close it, and which that task then only half-closed. The two docstrings caught
+earlier in the same milestone had both been found by independent reviewers,
+never by their authors.
+
+This is the evidence D032 cites. It is recorded here rather than left implicit
+because "no self-review" is easy to agree with in the abstract and easy to
+rationalise away in the moment — the rationalisation that produced it was
+sound-sounding and specific, and it was still wrong.
+
+### The rulings that carry forward
+
+**P12 — a surviving mutation is a finding, not an inconvenience.** A test
+asserting that nothing OCR-derived reaches the knowledge base passed even with
+both new guards removed, because a pre-existing empty-id check in
+`ObservationStore.record()` covered the same cases. The property held; the new
+invariant was merely correlated with it. The agent reported this plainly
+instead of adjusting the test. One more unit test now isolates the guard using
+a fabricated non-empty-id, non-`uia` target — the case that matters the day a
+VLM tier (D003) produces elements with synthetic ids and the empty-id backstop
+stops covering them. See D031.
+
+**P7 — process escalation rules are heuristics, not laws.** The convention is
+that a fix loop surviving three rounds goes to a fresh implementer on a
+stronger model, because a loop that long usually means the implementer cannot
+see its own problem. That was not the situation: each round had found real
+defects beyond what it was asked for, including a mutating query called twice
+per painting tick that nobody had pointed at. Keeping it was right, and the
+deviation is recorded so the next person can weigh the same call.
+
+**P8 — a reviewer's disagreement is worth more than a tidy loop.** An
+implementer rejected a structural fix on cost and substituted detection. The
+reviewer priced the structural option at roughly six lines and showed detection
+closed a strictly narrower set. The structural fix won, and implementing it
+surfaced something neither had anticipated: the fold had to happen inside a
+helper rather than per-branch, because the branch it would otherwise have
+missed was the one the tour *dwells* in.
+
+**P11 — stopping is sometimes the work.** With capacity exhausted and three
+regression tests unwritten, the branch was left unmergeable overnight rather
+than have the controller write and solely review the tests guarding the
+milestone's most dangerous defect. A green suite that does not guard its
+properties is a false green (D031); shipping one to avoid a delay trades a
+day for a permanent hole.
+
+**P13 — documentation drift blocks a merge.** The final re-review found that
+D027, D028 and D030 had come to state the opposite of the code they document —
+D027 still asserting the very claim the milestone's worst defect disproved. A
+decision record that contradicts the code is worse than none, because it is the
+artefact a future reader trusts most. Fixed before merge, by an agent that had
+written neither the code nor the entries.
+
+### What this does not license
+
+Recording a ruling is not the same as it being right. P9 is in this list
+precisely because it was wrong, and the honest lesson is that its reasoning
+felt sound while being made. The value of the ledger is that the calls are
+inspectable afterwards — not that making them unilaterally is costless.
