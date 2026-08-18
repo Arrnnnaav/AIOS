@@ -765,12 +765,27 @@ KNOWS the display state is `run.py` (it owns the staleness ladder and the
 grounding source), but the caller that DRIVES the renderer is the loop, which
 must stay ignorant of both, exactly as D019 and D023 require.
 
-**Why reading the source at the write is safe rather than late.** With one
-write per tick, "decided before the paint" and "read at the paint" are the
-same instant. The clock does not advance within a tick; the grounding source
-is only ever changed by `DECIDING`, which does not paint; and the only
-mid-tick change to the ladder is `observed()`, which can only make a hint
-FRESHER. So the value read at the write is never more trusting than the truth.
+**Why "one write per tick" was not, by itself, the safety property.** An
+earlier draft of this entry argued that reading the source at the write is
+safe because the grounding source "is only ever changed by `DECIDING`, which
+does not paint." That is false, and it is the sharpest case in D031's list:
+`GuidedTour.tick()` ends in `settle()`, and `settle()` DOES paint on any tick
+that did not already write. So a step whose source flipped `ocr` -> `uia` in
+DECIDING had its old OCR centre repainted at the new UIA source by `settle()`
+in RENDERING_HINT — a pixel guess drawn in the confirmed-control colour for a
+full tick. One write per tick held perfectly; the property it was meant to
+guarantee did not.
+
+**What actually makes this safe.** Provenance is bound into the hint itself.
+`renderer.py`'s `_Hint` is a frozen dataclass pairing a centre with the source
+it was created with, and `show()` constructs both from the same
+`GroundedTarget` in one statement — there is no window in which the centre is
+this hint's and the source is another's. `run.py` no longer owns or supplies
+the grounding source to the renderer at all: every repaint, including
+`settle()`'s, resolves freshness by folding in `hint.source` (via
+`display_freshness`), never whatever the wider system's grounding source says
+now. A repaint can therefore only ever reproduce the display state its hint
+was created with, not borrow a later step's confidence.
 
 **Why `settle()` exists at all.** The loop calls `show()` only when it changes
 WHAT is displayed — never when it changes how confident the system is. Without
@@ -864,8 +879,11 @@ must get to try tier 1 again.
 "re-run every tick" against anything that animates — a loading spinner in
 frame, a window being dragged, a video preview. A floor interval alone lets a
 slow animation pace OCR forever; a run ceiling alone lets a fast one burn its
-whole budget in a second. Both: **1.0 s minimum between runs, 20 runs per
-step.**
+whole budget in a second. Both: **1.0 s minimum between runs, a ceiling of 20
+CONSECUTIVE FRUITLESS runs per step.** A read that produces a groundable
+target resets the count (`grounded()`), so the ceiling bounds unproductive
+re-reading, not total work — a churning page that keeps re-grounding
+correctly on OCR is the tier doing its job, not exhausting its budget.
 
 **Why exhaustion is terminal.** When the ceiling is reached and the step still
 cannot ground, tier 2 stops and the step is treated as ungroundable, feeding
@@ -963,10 +981,12 @@ whatsoever. A step claiming `Edit` substring-matches OCR reads of
 `Edit a PDF`, `Magic Edit` and `Editor` alike, and rung 3 returns whichever the
 disambiguator happens to pick — with D029's floor of 95 never consulted.
 
-Rung 3 therefore filters to `source == "uia"`. **OCR text gets exactly one
-route into grounding, rung 4 at 95, and no path that bypasses it.** Rung 2
-stays open to OCR because exact equality is a strictly higher bar than a 95
-fuzzy score.
+Rung 3 therefore filters to `source == "uia"`. That leaves two rungs OCR can
+still reach, and both stay safe under the floor: rung 4 applies
+`OCR_MATCH_FLOOR` at 95 directly, and rung 2 admits OCR only on byte-exact
+name equality — a strictly higher bar than a 95 fuzzy score, so it never
+undercuts the floor. What rung 3's exclusion removes is loose, unscored
+matching on unconfirmed text, not OCR as such.
 
 This was found while writing the implementation plan, not while designing: the
 spec asserted rungs 1-3 were all exact and built the safety argument on rung 4
