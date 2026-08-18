@@ -241,6 +241,8 @@ def test_the_ui_thread_is_never_blocked_by_a_slow_walk():
         f"50 slot reads took {elapsed:.2f}s while the worker was blocked — "
         "the UI thread is still coupled to perception"
     )
+
+
 # ---------------------------------------------------------------------------
 # The tier-2 request slot: the UI thread's ask, crossing the other way.
 #
@@ -321,7 +323,12 @@ def test_a_grounded_report_resets_the_fruitless_run_budget():
         frames["n"] += 1
         # A different frame every time, so `frames_differ` never short-circuits
         # the read -- this test is about the budget, not change detection.
-        return (np.full((4, 4, 3), frames["n"] % 251, dtype=np.uint8), (0, 0, 4, 4))
+        # Alternating black and white, not a small increment: `frames_differ`
+        # ignores changes below a per-pixel threshold, and a frame that reads
+        # as unchanged is not a run at all -- the test would then pass by
+        # never spending the budget it claims to be testing.
+        shade = 0 if frames["n"] % 2 else 255
+        return (np.full((4, 4, 3), shade, dtype=np.uint8), (0, 0, 4, 4))
 
     class _Ocr:
         def read(self, frame):
@@ -334,18 +341,20 @@ def test_a_grounded_report_resets_the_fruitless_run_budget():
         title_re=".*Whatever.*", walker=lambda t: [], tier2=controller
     )
 
+    # Two fruitless reads, out of a budget of three.
     service.request_tier2(0)
     for _ in range(2):
         service._tier2_payload()
     assert not controller.exhausted(0)
 
     # A read that DID produce a usable target, reported the only way the UI
-    # thread can: through the request slot.
+    # thread can: through the request slot. This worker iteration resets the
+    # count and then reads, so it is read 1 of a fresh budget.
     service.report_tier2_grounded(0)
     service._tier2_payload()
 
-    for _ in range(2):
-        service._tier2_payload()
+    # One more fruitless read: 2 of 3 with the reset, 4 of 3 without it.
+    service._tier2_payload()
     assert not controller.exhausted(0), (
         "the step exhausted its budget of 3 despite a productive read in the "
         "middle -- the grounded report never reset the count, so a correctly "
