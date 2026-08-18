@@ -44,6 +44,28 @@ DEFAULT_INTERVAL_S = 0.2
 
 
 @dataclass(frozen=True)
+class Tier2Request:
+    """The UI thread's ask, crossing the boundary the other way.
+
+    Tier 2's TRIGGER is inherently a UI-thread concept -- only the loop knows
+    which step is current and whether grounding just failed -- while its COST
+    (capture + OCR, 0.14-0.23s measured on a 976x1028 window, scaling with
+    captured area) belongs anywhere but the tick. So the UI thread decides and
+    the worker executes, through one overwritten slot, exactly as results
+    travel the other way (D022).
+
+    Primitives only (D021): no controller, no COM object, nothing live.
+    `grounded` is the UI thread reporting that the LAST read produced a usable
+    target, which resets the controller's fruitless-run budget; the worker
+    takes it and clears it.
+    """
+
+    step_index: int
+    wanted: bool = True
+    grounded: bool = False
+
+
+@dataclass(frozen=True)
 class Observation:
     """One completed look at the target. Crosses the thread boundary, so
     every field is a primitive or a frozen dataclass of primitives."""
@@ -52,6 +74,22 @@ class Observation:
     elements: tuple[Element, ...]
     observed_at: float
     ok: bool
+    #: What tier 2 read, if it was asked to read at all this iteration.
+    #: Empty when tier 2 was not wanted, is unavailable on this machine, or
+    #: found nothing.
+    ocr_elements: tuple[Element, ...] = ()
+    #: The step `ocr_elements` and the two flags below describe. -1 when tier
+    #: 2 did not run: a consumer must check this before trusting them, or it
+    #: would read one step's exhaustion as another's.
+    tier2_step: int = -1
+    #: Worker-owned tier-2 state, published rather than reached into. The UI
+    #: thread needs `exhausted` to name a READ failure instead of the generic
+    #: "cannot find" (D024, D028), and `engaged` to know tier 2 ran at all.
+    tier2_engaged: bool = False
+    tier2_exhausted: bool = False
+    #: The controller's per-step run cap, echoed so the failure message can
+    #: quote it without the UI thread holding the controller.
+    tier2_max_runs: int = 0
 
 
 class PerceptionService:
@@ -61,9 +99,17 @@ class PerceptionService:
         walker: Callable[[str], list[Element]] = iter_elements,
         clock: Callable[[], float] = time.monotonic,
         interval_s: float = DEFAULT_INTERVAL_S,
+        tier2=None,
     ) -> None:
         self.title_re = title_re
         self.walker = walker
+        #: The tier-2 controller, owned entirely by this side of the boundary
+        #: from here on. It is built on the UI thread (it has to report "no
+        #: OCR on this machine" before the overlay exists) and then handed
+        #: over; nothing on the UI thread may call it again. None means OCR is
+        #: unavailable, which is a supported configuration -- the tour runs on
+        #: UIA alone.
+        self.tier2 = tier2
         self.clock = clock
         #: Throttle. Perception costs ~26ms against a 250ms tick, so an
         #: unthrottled loop would spin ~10x faster than anything consumes.
@@ -79,6 +125,12 @@ class PerceptionService:
         self.heartbeat = 0
         self.restarts = 0
         self._slot: Observation | None = None
+        #: The request slot: one overwritten value, same shape as the result
+        #: slot. Setting it never blocks and never waits for OCR -- the answer
+        #: turns up in a LATER observation, and grounding failing for a tick
+        #: or two meanwhile is already handled by the grounding grace and the
+        #: staleness ladder.
+        self._tier2_request: Tier2Request | None = None
         self._lock = threading.Lock()
         #: Each worker generation gets its OWN stop Event, never a shared one
         #: that start() clears. A worker blocked in a 41s UIA walk cannot be
@@ -150,6 +202,81 @@ class PerceptionService:
         with self._lock:
             return self._slot
 
+    def request_tier2(self, step_index: int, wanted: bool = True) -> None:
+        """Ask the worker to read the screen for `step_index`. Never blocks.
+
+        Overwrite, not enqueue: a second request for the same step while the
+        first is still being read IS the same request. The `grounded` flag is
+        carried across only within one step -- a new step starts with a clean
+        one, which is where tier 2's stickiness resets (D028).
+        """
+        with self._lock:
+            previous = self._tier2_request
+            carried = (
+                previous is not None
+                and previous.step_index == step_index
+                and previous.grounded
+            )
+            self._tier2_request = Tier2Request(
+                step_index=step_index, wanted=wanted, grounded=carried
+            )
+
+    def report_tier2_grounded(self, step_index: int) -> None:
+        """Report that the last OCR read produced a usable target.
+
+        A productive read must not spend the step's fruitless-run budget
+        (D028), but that budget lives on the worker side now, so the UI thread
+        can only say so through the same slot.
+        """
+        with self._lock:
+            previous = self._tier2_request
+            if previous is not None and previous.step_index == step_index:
+                self._tier2_request = Tier2Request(
+                    step_index=step_index, wanted=previous.wanted, grounded=True
+                )
+
+    def _take_tier2_request(self) -> "Tier2Request | None":
+        """The current request, with `grounded` consumed.
+
+        `wanted` persists -- it is a standing state for the step -- while
+        `grounded` is a one-shot event, so leaving it set would reset the
+        budget forever off a single successful read.
+        """
+        with self._lock:
+            request = self._tier2_request
+            if request is not None and request.grounded:
+                self._tier2_request = Tier2Request(
+                    step_index=request.step_index, wanted=request.wanted, grounded=False
+                )
+            return request
+
+    def _tier2_payload(self) -> tuple:
+        """Run tier 2 if it is wanted, and describe the result.
+
+        Returns the tier-2 fields the observation carries. Failure here never
+        costs the UIA observation it travels with: an OCR engine that raises
+        degrades to "no OCR elements this time", which grounding already
+        treats as a normal outcome.
+        """
+        empty = ((), -1, False, False, 0)
+        request = self._take_tier2_request()
+        if self.tier2 is None or request is None or not request.wanted:
+            return empty
+        step = request.step_index
+        try:
+            if request.grounded:
+                self.tier2.grounded(step)
+            elements = tuple(self.tier2.elements_for(step, self.title_re))
+            return (
+                elements,
+                step,
+                bool(self.tier2.engaged(step)),
+                bool(self.tier2.exhausted(step)),
+                int(getattr(self.tier2, "max_runs_per_step", 0)),
+            )
+        except Exception:
+            return empty
+
     def _publish(self, observation: Observation) -> None:
         # Overwrite. There is no history and no append anywhere in this
         # class — that is the whole architectural claim of the slot.
@@ -180,6 +307,12 @@ class PerceptionService:
                     snapshot = take_snapshot(
                         self.title_re, elements=elements, observed_at=observed_at
                     )
+                    # Tier 2 runs HERE, after the walk, on this thread -- never
+                    # on the UI thread. Capture plus OCR measured 0.14-0.23s on
+                    # a 976x1028 window and scales with captured AREA, which on
+                    # a full 4K screen alone would eat D020's 0.5s tick ceiling
+                    # and reintroduce the freeze D021 exists to prevent.
+                    ocr = self._tier2_payload()
                     if not stop.is_set():
                         # A retired worker must not publish the walk it was
                         # already inside when it was retired: the timestamp
@@ -192,6 +325,11 @@ class PerceptionService:
                                 elements=elements,
                                 observed_at=observed_at,
                                 ok=True,
+                                ocr_elements=ocr[0],
+                                tier2_step=ocr[1],
+                                tier2_engaged=ocr[2],
+                                tier2_exhausted=ocr[3],
+                                tier2_max_runs=ocr[4],
                             )
                         )
                 except Exception:

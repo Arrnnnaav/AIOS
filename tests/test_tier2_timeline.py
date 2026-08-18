@@ -9,7 +9,7 @@ import pytest
 
 from ghostcursor.overlay import dpi  # noqa: F401
 from ghostcursor.perception.ocr import OcrRead, ocr_available
-from ghostcursor.perception.service import Observation
+from ghostcursor.perception.service import Observation, PerceptionService
 from ghostcursor.perception.uia import Element
 from ghostcursor.reasoning.staleness import Freshness
 from ghostcursor.reasoning.verification import Snapshot
@@ -29,17 +29,28 @@ class FakeClock:
         self.t += seconds
 
 
-class UiaBlindService:
-    """A worker that sees the window but never the control the step names."""
+class UiaBlindService(PerceptionService):
+    """A worker that sees the window but never the control the step names.
 
-    def __init__(self, clock):
-        self._clock = clock
-        self.heartbeat = 0
+    Subclasses the real service rather than reimplementing it, because tier 2
+    now runs on the WORKER side: the request slot, the `grounded` one-shot and
+    `_tier2_payload` are the real ones, and only the UIA walk and the thread
+    are replaced. `latest()` synthesises one worker iteration per clock
+    instant -- the payload is computed once per tick and cached, exactly as a
+    real worker publishes once per loop -- so a tour driven on a fake clock
+    still exercises the real request/publish plumbing.
+    """
+
+    def __init__(self, clock, tier2=None):
+        super().__init__(".*app.*", walker=lambda _t: [], clock=clock, tier2=tier2)
+        self._clock_fn = clock
+        self._cached_at = None
+        self._cached = ((), -1, False, False, 0)
 
     def start(self):
         pass
 
-    def stop(self):
+    def stop(self, timeout=2.0):
         pass
 
     def restart(self):
@@ -49,13 +60,22 @@ class UiaBlindService:
         return True
 
     def latest(self):
-        now = self._clock()
+        now = self._clock_fn()
+        if self._cached_at != now:
+            self._cached_at = now
+            self._cached = self._tier2_payload()
+        ocr = self._cached
         furniture = (Element("Minimise", "Button", "view_1", (0, 0, 20, 20)),)
         return Observation(
             snapshot=Snapshot(title="app", elements=furniture, observed_at=now),
             elements=furniture,
             observed_at=now,
             ok=True,
+            ocr_elements=ocr[0],
+            tier2_step=ocr[1],
+            tier2_engaged=ocr[2],
+            tier2_exhausted=ocr[3],
+            tier2_max_runs=ocr[4],
         )
 
 
@@ -73,7 +93,9 @@ def test_ocr_recovers_a_target_uia_cannot_see_and_it_renders_as_inferred(
     clock = FakeClock()
     calls = _fake_overlay(monkeypatch)
     monkeypatch.setattr(
-        service_module, "PerceptionService", lambda *a, **k: UiaBlindService(clock)
+        service_module,
+        "PerceptionService",
+        lambda *a, **k: UiaBlindService(clock, k.get("tier2")),
     )
     monkeypatch.setattr(appinfo, "app_info_for_window", lambda _t: None)
     monkeypatch.setattr(run_module, "escape_pressed", lambda: False)
@@ -164,7 +186,9 @@ def test_cap_exhaustion_ends_the_step_naming_the_read_failure(tmp_path, monkeypa
     clock = FakeClock()
     _fake_overlay(monkeypatch)
     monkeypatch.setattr(
-        service_module, "PerceptionService", lambda *a, **k: UiaBlindService(clock)
+        service_module,
+        "PerceptionService",
+        lambda *a, **k: UiaBlindService(clock, k.get("tier2")),
     )
     monkeypatch.setattr(appinfo, "app_info_for_window", lambda _t: None)
     monkeypatch.setattr(run_module, "escape_pressed", lambda: False)

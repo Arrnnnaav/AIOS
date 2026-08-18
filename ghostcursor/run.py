@@ -317,15 +317,21 @@ def run_tour(
         # is polled BETWEEN ticks — so a walk on this thread is 40s in which
         # the user cannot dismiss a window covering their whole screen. The
         # worker absorbs that block; the UI thread only ever reads a slot.
-        service = PerceptionService(title_re, clock=clock)
-        ladder = StalenessLadder(clock=clock)
-        health = WorkerHealth(service=service, ladder=ladder)
         # Same clock as everything else with a sense of time. Tier 2's
         # min-interval floor and the loop's ticks must agree on "now", or the
         # floor throttles against a clock the tour is not running on.
         tier2_controller = tier2.build_controller(clock)
         if tier2_controller is None:
             print("Ghost Cursor: OCR unavailable on this machine — UIA only.")
+        # The controller is HANDED OVER here and never touched again from this
+        # thread. Capture + OCR measured 0.14-0.23s on a 976x1028 window and
+        # scales with captured area; on the tick path that is D020's 0.5s
+        # ceiling gone and the D021 freeze back. The UI thread keeps the
+        # DECIDING half (only it knows the current step and whether grounding
+        # just failed) and asks through a request slot; the worker executes.
+        service = PerceptionService(title_re, clock=clock, tier2=tier2_controller)
+        ladder = StalenessLadder(clock=clock)
+        health = WorkerHealth(service=service, ladder=ladder)
         service.start()
 
         hwnd = window.create_overlay_window()
@@ -375,8 +381,8 @@ def run_tour(
                 # the slot here would ground observation B while verification
                 # baselines on observation A, so the hint could point at a
                 # control the baseline never saw.
+                observation = service.latest()
                 if elements is None:
-                    observation = service.latest()
                     elements = observation.elements if observation else ()
 
                 target = live_grounder(step, i, elements)
@@ -386,12 +392,23 @@ def run_tour(
                 # Tier 2. Triggered by GROUNDING FAILURE for this step, never
                 # by an empty walk: Chrome returned 43 elements containing zero
                 # page content, so "UIA returned nothing" would never fire.
-                if tier2_controller is None:
-                    return None
-                ocr_elements = tier2_controller.elements_for(i, title_re)
+                #
+                # The trigger is all that happens here. Setting the request is
+                # a lock-and-assign; the READING happens on the perception
+                # worker and its result turns up in a later observation. There
+                # is deliberately no wait, join or future: this thread is the
+                # one polling ESC. Grounding may therefore fail for a tick or
+                # two before OCR elements arrive, which the 10s grounding grace
+                # and the staleness ladder already cover.
+                service.request_tier2(i)
+                ocr_elements = (
+                    observation.ocr_elements
+                    if observation is not None and observation.tier2_step == i
+                    else ()
+                )
                 if not ocr_elements:
                     return None
-                target = live_grounder(step, i, list(elements) + ocr_elements)
+                target = live_grounder(step, i, list(elements) + list(ocr_elements))
                 if target is not None:
                     # A read that produced a usable target is not a fruitless
                     # one, so it does not spend the step's budget (D028). A
@@ -399,7 +416,9 @@ def run_tour(
                     # minutes; the budget is there to stop UNPRODUCTIVE
                     # re-reads, and counting productive ones killed a tour
                     # whose amber ring was sitting correctly on the target.
-                    tier2_controller.grounded(i)
+                    # The budget lives with the reader now, so this says so
+                    # through the same slot instead of calling the controller.
+                    service.report_tier2_grounded(i)
                 return target
 
             def current_display_freshness():
@@ -432,15 +451,23 @@ def run_tour(
                 read the screen (D024, D028). Saying "cannot find" there
                 points the user at their own application instead of at ours.
                 """
-                if tier2_controller is None:
+                # Read from the published observation, never from the
+                # controller: the controller's per-step state is now worker-
+                # owned mutable state, and the UI thread reaching into it
+                # across a thread boundary is the sort of racy read this
+                # design exists to avoid. `tier2_step` is checked first — the
+                # flags describe ONE step, and trusting them for another would
+                # report the previous step's exhaustion as this step's.
+                observation = service.latest()
+                if observation is None or observation.tier2_step != index:
                     return None
                 name = step.target_descriptor.claimed.name
-                if tier2_controller.exhausted(index):
+                if observation.tier2_exhausted:
                     return (
                         f"could not read {name!r} on screen after "
-                        f"{tier2_controller.max_runs_per_step} attempts"
+                        f"{observation.tier2_max_runs} attempts"
                     )
-                if tier2_controller.engaged(index):
+                if observation.tier2_engaged:
                     return f"could not read {name!r} on screen"
                 return None
 

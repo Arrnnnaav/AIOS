@@ -21,6 +21,7 @@ import pytest
 from ghostcursor.overlay import dpi  # noqa: F401  DPI awareness before any window
 from ghostcursor.perception.ocr import OcrRead, ocr_available
 from ghostcursor.perception.uia import Element
+from ghostcursor.perception.service import Observation, PerceptionService
 from ghostcursor.reasoning.grounding import GroundedTarget
 from ghostcursor.reasoning.loop import DEFAULT_GROUNDING_GRACE_S, GuidedTour
 from ghostcursor.reasoning.renderer import OverlayRenderer
@@ -55,22 +56,32 @@ class FakeClock:
         self.t += seconds
 
 
-class UiaBlindService:
+class UiaBlindService(PerceptionService):
     """A worker that sees the window but never the control the step names.
 
     Identical in shape to test_tier2_timeline.py's fixture of the same name:
     UIA is permanently blind to "Export", so any grounding of that target can
     only have come from tier 2 (OCR).
+
+    Subclasses the real service rather than reimplementing it, because tier 2
+    now runs on the WORKER side: the request slot, the `grounded` one-shot and
+    `_tier2_payload` are the real ones, and only the UIA walk and the thread
+    are replaced. `latest()` synthesises one worker iteration per clock
+    instant -- the payload is computed once per tick and cached, exactly as a
+    real worker publishes once per loop -- so a tour driven on a fake clock
+    still exercises the real request/publish plumbing.
     """
 
-    def __init__(self, clock):
-        self._clock = clock
-        self.heartbeat = 0
+    def __init__(self, clock, tier2=None):
+        super().__init__(".*app.*", walker=lambda _t: [], clock=clock, tier2=tier2)
+        self._clock_fn = clock
+        self._cached_at = None
+        self._cached = ((), -1, False, False, 0)
 
     def start(self):
         pass
 
-    def stop(self):
+    def stop(self, timeout=2.0):
         pass
 
     def restart(self):
@@ -80,15 +91,22 @@ class UiaBlindService:
         return True
 
     def latest(self):
-        from ghostcursor.perception.service import Observation
-
-        now = self._clock()
+        now = self._clock_fn()
+        if self._cached_at != now:
+            self._cached_at = now
+            self._cached = self._tier2_payload()
+        ocr = self._cached
         furniture = (Element("Minimise", "Button", "view_1", (0, 0, 20, 20)),)
         return Observation(
             snapshot=Snapshot(title="app", elements=furniture, observed_at=now),
             elements=furniture,
             observed_at=now,
             ok=True,
+            ocr_elements=ocr[0],
+            tier2_step=ocr[1],
+            tier2_engaged=ocr[2],
+            tier2_exhausted=ocr[3],
+            tier2_max_runs=ocr[4],
         )
 
 
@@ -251,7 +269,9 @@ def test_a_churning_but_successfully_grounding_page_does_not_end_the_tour(
     clock = FakeClock()
     calls = _fake_overlay(monkeypatch)
     monkeypatch.setattr(
-        service_module, "PerceptionService", lambda *a, **k: UiaBlindService(clock)
+        service_module,
+        "PerceptionService",
+        lambda *a, **k: UiaBlindService(clock, k.get("tier2")),
     )
     monkeypatch.setattr(appinfo, "app_info_for_window", lambda _t: None)
     monkeypatch.setattr(run_module, "escape_pressed", lambda: False)
@@ -328,7 +348,9 @@ def test_ocr_grounded_target_writes_nothing_to_the_knowledge_base(
     clock = FakeClock()
     _fake_overlay(monkeypatch)
     monkeypatch.setattr(
-        service_module, "PerceptionService", lambda *a, **k: UiaBlindService(clock)
+        service_module,
+        "PerceptionService",
+        lambda *a, **k: UiaBlindService(clock, k.get("tier2")),
     )
     app_info = AppInfo(
         app_id="app.exe", exe_path=r"C:\app.exe", version="1.0.0", kind="win32"

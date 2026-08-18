@@ -408,6 +408,16 @@ def test_a_genuinely_absent_element_is_still_reported_as_missing(tmp_path, monke
         def is_alive(self):
             return True
 
+        # Tier 2 is requested through the service now (the UI thread decides,
+        # the worker reads) — accepted and ignored here: this fixture is about
+        # a healthy worker that sees an empty screen, and OCR finding nothing
+        # is the same story.
+        def request_tier2(self, step_index, wanted=True):
+            pass
+
+        def report_tier2_grounded(self, step_index):
+            pass
+
         def latest(self):
             self.heartbeat += 1
             now = time_module.monotonic()
