@@ -485,6 +485,14 @@ additionally force async control flow into `GuidedTour` and change every
 injected fake, breaking the collaborator contract that keeps the existing test
 suite passing unchanged.
 
+**The same shape, both directions.** Tier 2's request travels UI thread ->
+worker through a second slot of exactly this kind (D028): one overwritten
+`Tier2Request`, no queue, no future. A second request for the same step while
+the first is still being read IS the same request, so overwrite is again the
+discard. The asymmetry is that a result slot is self-expiring — a newer
+observation replaces it — while a request STANDS until cancelled, which is why
+`cancel_tier2` exists and the result direction needs no equivalent.
+
 **The subtle part.** `AWAITING_USER_ACTION` must observe a strictly *later*
 moment than `OBSERVING` did (D019). With a published slot that no longer holds
 for free: if the worker has produced nothing new, `AWAITING` reads back the
@@ -868,6 +876,25 @@ a *successful observation* for staleness. The two never conflict because they
 answer different questions: staleness asks "did perception complete recently",
 grounding asks "can this step be located".
 
+**Who decides and who reads.** The trigger is inherently a UI-thread concept —
+only the tick loop knows which step is current and whether grounding just
+failed — while the COST (capture plus OCR, 0.14-0.23 s measured on a 976x1028
+window, scaling with captured AREA) belongs anywhere but the tick, where on a
+4K screen it would eat D020's 0.5 s ceiling outright and bring back the D021
+freeze. So the UI thread **decides and requests**, through a `Tier2Request` in
+a second overwritten slot running opposite to the observation slot (D022), and
+the perception worker **executes and publishes** — the read arrives as
+`ocr_elements` on a LATER observation, tagged with `tier2_step`. No wait, no
+join, no future: grounding may fail for a tick or two until the read lands,
+which the grounding grace and the staleness ladder already cover. There is no
+`wanted` flag; the ABSENCE of a request means "not wanted", because a flag
+would have to be set False by exactly the callers that could instead clear the
+slot, and a False request still carries a step index and a stale `grounded`
+nothing would ever clear. Because nothing else ends a standing request, the UI
+thread must cancel it when UIA answered and at every step boundary — a request
+for step 3 serviced through all of step 4 delays the observations the user's
+actual step is being grounded from.
+
 **Why stickiness resets at the step boundary.** An app-wide flag would keep OCR
 running for the rest of the tour after a single failure — paying full OCR cost
 on steps that would have grounded through UIA in 0.3 ms, while still calling
@@ -1137,7 +1164,8 @@ now copied into `docs/superpowers/ledgers/` and committed.
 
 **P9 — the controller finished a task itself rather than dispatching it.**
 The documentation task's implementer hit a hard capacity limit mid-task. The
-work remaining was prose, every fact was already in the ledger, and dispatching
+work remaining was prose **plus a one-line `re.escape` fix**, every fact was
+already in the ledger, and dispatching
 a fresh agent would have meant re-deriving context the controller already held.
 Finishing it directly looked obviously correct.
 
@@ -1176,7 +1204,13 @@ deviation is recorded so the next person can weigh the same call.
 **P8 — a reviewer's disagreement is worth more than a tidy loop.** An
 implementer rejected a structural fix on cost and substituted detection. The
 reviewer priced the structural option at roughly six lines and showed detection
-closed a strictly narrower set. The structural fix won, and implementing it
+closed a strictly narrower set — it fires only for a driver that wires THIS
+ladder and feeds it `observed()`, so a future driver with a different
+`freshness_source`, or none, freezes with no signal at all. The structural fix
+won **without displacing the detector: the ruling was to fold `settle()` into
+`GuidedTour.tick()` as the primary closure AND KEEP the detector as
+belt-and-braces**, which is why `staleness.py` still carries its
+unqueried-ladder warning. Implementing it
 surfaced something neither had anticipated: the fold had to happen inside a
 helper rather than per-branch, because the branch it would otherwise have
 missed was the one the tour *dwells* in.

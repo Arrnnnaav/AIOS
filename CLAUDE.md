@@ -63,14 +63,25 @@ Two other tracking files are living documents, updated on every meaningful chang
   last resort. Never run a VLM on every frame.
 - **Tier 2 (OCR), see D028-D030:** the engine is **`Windows.Media.Ocr`**, not PaddleOCR —
   0.17-0.23s per window against RapidOCR's 39-66s, and it ships with the OS, so there is
-  no model download and no network (D017). It runs on the perception worker thread, never
-  the UI thread. It is triggered by **grounding failure for the current step**, never by
-  an empty walk: Chrome returned 43 UIA elements containing zero page content, so
-  "UIA returned nothing" would never fire. Stickiness resets at the step boundary, a 1.0s
-  floor and a 20-run ceiling bound the cost, and exhausting that ceiling ends the step
-  rather than freezing a hint that can never resolve. OCR text reaches grounding only
-  through rung 4 at a **measured floor of 95** — rung 3 is a substring test and excludes
-  OCR, or the floor would be decorative. **Nothing OCR produces is ever persisted**:
+  no model download and no network (D017). It is triggered by **grounding failure for the
+  current step**, never by an empty walk: Chrome returned 43 UIA elements containing zero
+  page content, so "UIA returned nothing" would never fire. **The UI thread decides and
+  requests; the perception worker executes and publishes.** Only the tick loop knows which
+  step is current and whether grounding just failed, so it sets a `Tier2Request` in a
+  single overwritten request slot (`PerceptionService.request_tier2` /
+  `cancel_tier2` / `report_tier2_grounded`) — a lock-and-assign that never blocks and never
+  waits. The worker performs the capture and the OCR read on its own thread and publishes
+  the result as `ocr_elements` on a *later* `Observation`; capture plus OCR measured
+  0.14-0.23s on a 976x1028 window and scales with captured area, which on the tick path
+  would eat D020's 0.5s ceiling and reintroduce the D021 freeze. Absence of a request means
+  "not wanted" — there is no `wanted` flag — so the UI thread must cancel when grounding
+  succeeds without OCR and at every step boundary. Stickiness resets at the step boundary, a
+  1.0s floor and a ceiling of **20 consecutive fruitless runs** (reset by a read that
+  grounds) bound the cost, and exhausting that ceiling ends the step rather than freezing a
+  hint that can never resolve. OCR text reaches grounding at rung 4 on a fuzzy match at a
+  **measured floor of 95**, and at rung 2 on byte-exact name equality — a strictly higher
+  bar, so it never undercuts the floor. Rung 3 is a substring test and is the one rung OCR
+  is barred from, or the floor would be decorative. **Nothing OCR produces is ever persisted**:
   the schema forbids storing coordinates, so there is nothing durable to write. OCR-derived
   hints render in their own colour (`INFERRED`) so a pixel guess never wears the
   confirmed-control ring (D006).
@@ -150,7 +161,7 @@ python -m tests.test_end_to_end     # 8 checks: perception -> coordinate -> ring
 python -m pytest tests/ \
   --ignore=tests/test_hung_window.py \
   --ignore=tests/test_perception_service_hung.py \
-  --ignore=tests/test_run_threaded.py   # 264 checks, ~19s: everything fast (grounding,
+  --ignore=tests/test_run_threaded.py   # 280 checks, ~22s: everything fast (grounding,
                                     # promotion, persistence, verification, staleness,
                                     # worker health, OCR, the state machine, ...)
 python -m pytest tests/test_hung_window.py \
@@ -183,7 +194,9 @@ from real bugs (D009, D010, D012 in DECISIONS.md):
   doesn't correspond to the desktop, which produces convincing but meaningless images.
 
 Dependencies: `pywin32` (win32gui/win32con/win32api), `numpy`, `ollama`, `pywinauto`,
-`mss` — installed via the system Python at
+`mss`, plus the tier-2 stack — `winsdk` (the `Windows.Media.Ocr` binding), `Pillow` (the
+PNG encode `BitmapDecoder` is fed from), and `rapidfuzz` (rung 4's `fuzz.ratio`). Without
+those three the OCR tier cannot run at all. Installed via the system Python at
 `/c/Users/user/AppData/Local/Programs/Python/Python312/python` (no venv set up yet).
 
 ## Repo layout
@@ -192,9 +205,12 @@ Dependencies: `pywin32` (win32gui/win32con/win32api), `numpy`, `ollama`, `pywina
 ghostcursor/
   run.py            # entry point for the current milestone
   overlay/          # Win32 layered/transparent window + GDI drawing (window.py)
-  perception/        # UIA queries (uia.py) + app identity/version (appinfo.py);
-                     # the worker thread and its published slot (service.py) and
-                     # worker-death detection (health.py); mss/OCR/VLM tiers not yet built
+  perception/        # tier 1: UIA queries (uia.py) + app identity/version (appinfo.py);
+                     # the worker thread and its published slot + tier-2 request slot
+                     # (service.py) and worker-death detection (health.py);
+                     # tier 2: mss window capture/diffing (capture.py), Windows.Media.Ocr
+                     # (ocr.py), cadence and caps (tier2.py) — built and wired.
+                     # Tier 3 (VLM) not yet built
   reasoning/          # observe-act-verify state machine (loop.py), grounding ladder +
                      # promotion (grounding.py), verification, staleness ladder
                      # (staleness.py), recipes, overlay renderer
