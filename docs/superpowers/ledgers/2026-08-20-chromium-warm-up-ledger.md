@@ -220,3 +220,83 @@ E       assert []
 
 Full command output for all six mutations is in
 `.superpowers/sdd/2026-08-20-chromium-warm-up/task-3-report.md`.
+
+# Mutation ledger — Final review fix wave (2026-08-20)
+
+Plan: whole-branch review fix wave, `.superpowers/sdd/2026-08-20-chromium-warm-up/final-fix-report.md`
+Branch: `chromium-warm-up`
+Files: `ghostcursor/run.py`, `tests/test_warmup_tour.py`
+Baseline (297 passed, no mutation applied): `02f3ae7`
+
+## Real defect fixed
+
+The review found that warm-up suppressed NEW tier-2 requests per window but
+never retracted a STANDING one across a WINDOW boundary (only at a step
+boundary or on UIA grounding success). `run.py`'s tier-2 request site now
+calls `service.cancel_tier2(i)` whenever `warmup.allows_tier2(target_hwnd)`
+is false, immediately before returning `None`.
+
+The original `test_a_splash_window_does_not_spend_the_real_windows_budget`
+passed identically with and without this fix, because
+`_ScriptedService.cancel_tier2` was a no-op and the test only inspected
+`tier2_requests` after explicitly clearing it right where the defect would
+have shown up. Per D018, `_ScriptedService` was given a `standing: int |
+None` attribute that `request_tier2` sets and `cancel_tier2` clears, and the
+test now asserts `h.service.standing is None` right after the real window's
+first-sight tick — the exact point a standing splash request must have been
+retracted.
+
+## Results
+
+| # | Mutation | Must fail | Actually failed | Result |
+|---|---|---|---|---|
+| 1 | Remove `service.cancel_tier2(i)` from the `not warmup.allows_tier2(...)` branch in `run.py` (leave the `return None` in place) | `test_a_splash_window_does_not_spend_the_real_windows_budget` | that test — `h.service.standing` was `0` (the splash's request) instead of `None` right after the real window's first-sight tick | PASS |
+
+Per D018, the mutation was applied by editing `ghostcursor/run.py` directly,
+verified to fail `python -m pytest
+tests/test_warmup_tour.py::test_a_splash_window_does_not_spend_the_real_windows_budget
+-q`, then reverted with `git checkout -- ghostcursor/run.py` and reverified
+clean (`git status --porcelain ghostcursor/run.py` empty, full
+`test_warmup_tour.py` back to 6 passed).
+
+### Mutation 1 failure output (verbatim)
+
+```
+F                                                                        [100%]
+================================== FAILURES ===================================
+_________ test_a_splash_window_does_not_spend_the_real_windows_budget _________
+
+warmup_harness = <function warmup_harness.<locals>.factory at 0x000002E72265C540>
+
+    def test_a_splash_window_does_not_spend_the_real_windows_budget(warmup_harness):
+        """The measured Discord case, end to end: 'Discord Updater' (hwnd 329088)
+        for ~5s, then the real window (hwnd 1638728) whose tree is ready in 0.92s."""
+        h = warmup_harness(budget_s=2.0, hwnd=329088)
+
+        h.tick()  # t=0.0  splash seen
+        h.advance(5.0)
+        h.tick()  # t=5.0  splash budget long expired -- standing request now open
+        assert h.service.standing == 0, "splash never got its expected request"
+        h.set_hwnd(1638728)  # the real window replaces it
+        h.tier2_requests.clear()
+        h.tick()  # t=5.0  real window, first sight
+>       assert h.service.standing is None, (
+            "the splash's standing request was never retracted -- it outlives "
+            "the real window's own warm-up and keeps costing capture+OCR"
+        )
+E       AssertionError: the splash's standing request was never retracted -- it outlives the real window's own warm-up and keeps costing capture+OCR
+E       assert 0 is None
+E        +  where 0 = <tests.test_warmup_tour._ScriptedService object at 0x000002E723134EC0>.standing
+E        +    where <tests.test_warmup_tour._ScriptedService object at 0x000002E723134EC0> = <tests.test_warmup_tour._WarmupHarness object at 0x000002E7231360F0>.service
+
+tests\test_warmup_tour.py:365: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_warmup_tour.py::test_a_splash_window_does_not_spend_the_real_windows_budget
+1 failed in 0.83s
+```
+
+After reverting, `python -m pytest tests/test_warmup_tour.py -q` again
+reported 6 passed, and `python -m pytest tests/
+--ignore=tests/test_hung_window.py --ignore=tests/test_perception_service_hung.py
+--ignore=tests/test_run_threaded.py -q` reported 297 passed, confirming the
+working tree was restored cleanly to the committed baseline (`02f3ae7`).
