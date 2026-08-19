@@ -1359,15 +1359,20 @@ to detect convergence is unsound. What the system already has is a perfect
 readiness signal — grounding itself succeeding — so the fix is patience, not
 a new detector.
 
-**The budget: 2.0 s, and its measured basis.** Per the findings document
-above: VS Code grounded its targets 0.57 s and 0.39 s after the window
-appeared, across two cold runs. Discord, measured from the real window (its
-splash excluded — see below), grounded all six targets 0.92 s after it
-appeared. No element in either app was ever observed to ground
-slowly-but-eventually — it was either fast or never — so a larger budget buys
-nothing; it cannot rescue a target that is simply absent. `2.0 s` gives
-roughly double Discord's figure as margin, not headroom for a slow-but-real
-case that has never been observed.
+**The budget: 2.0 s, and its measured basis.** VS Code grounded four targets
+(`File`, `Edit`, `Explorer`, `DECISIONS.md`) 0.57 s after the window appeared
+in one cold run and 0.39 s in another, per the targeted-grounding sweep in
+`docs/superpowers/specs/2026-08-19-chromium-warm-up-design.md` §"The budget
+was swept, not guessed" — a fifth target, `Terminal`, grounded at 1.75 s in
+the first run and never within 14 s in the second, which the same section
+treats as absent rather than slow. Discord, measured from the real window
+(its splash excluded — see below), grounded all six targets 0.92 s after it
+appeared, per `docs/superpowers/specs/2026-08-19-cold-electron-probe-findings.md`
+§6.4. No element in either app was ever observed to ground
+slowly-but-eventually — it was either fast (within ~2 s) or absent — so a
+larger budget buys nothing; it cannot rescue a target that is simply absent.
+2.0 s covers every target that grounded at all in the VS Code sweep and gives
+roughly double Discord's figure as margin.
 
 **Keyed by window HANDLE, not by the title regex — and the reason is
 measured, not defensive.** Discord's cold start puts up a window titled
