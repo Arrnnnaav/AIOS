@@ -43,3 +43,18 @@ tree on demand and the first UIA probe switches it on. A first walk returning wi
 furniture but no document content is NOT-YET-READY rather than empty, and currently
 reads as a successful observation. Cheaper than OCR and fixes a real bug. Deliberately
 excluded from tier 2 — see the tier-2 design doc section 1.
+
+## Deferred infrastructure — revisit on a second occurrence
+
+### Mechanical enforcement of D032 and D034
+Both are currently rules that rely on being read. Real teeth would be a pre-commit
+hook scanning documentation for figures with no cited source (D034), and the SDD
+skill refusing to mark controller-authored work complete without an independent
+read (D032).
+
+Deliberately NOT built yet. One occurrence of a failure shape justifies writing the
+rule down; it does not yet justify the build cost of automating enforcement. The
+trigger for revisiting is a SECOND incident of this specific shape — evidence
+laundering, a number entering the record with no durable source — as distinct from
+ordinary documentation drift, which D032 already covers and which has occurred many
+times. Do not count drift incidents toward this trigger; they are the other failure.
