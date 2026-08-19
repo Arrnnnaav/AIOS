@@ -130,7 +130,7 @@ draws an amber hint, which is today's behaviour.
 2×, which the ~10 % steady-state fluctuation could not fake). It would cut the
 Acrobat delay, but it reintroduces exactly the consecutive-observation
 comparison §2 rules out, for a saving the measurements do not yet justify.
-Revisit if the 5 s delay is felt.
+Revisit if the 2 s delay is felt.
 
 ## 4. Staleness — a third case, and an honest note on its reach
 
