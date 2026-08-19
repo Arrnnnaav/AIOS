@@ -73,6 +73,14 @@ class _ScriptedService:
         self.heartbeat = 1
         self.restarts = 0
         self._tier2_requests = tier2_requests
+        #: The one currently-standing request, if any -- set by request_tier2,
+        #: cleared by cancel_tier2. Unlike `_tier2_requests` (an append-only
+        #: log used to see WHEN a request was made), this is the thing a
+        #: standing-request bug actually leaves behind: a request nothing
+        #: retracted. `request_tier2` was a no-op append and `cancel_tier2`
+        #: was a no-op `pass`, so no assertion here could ever have told a
+        #: cancelled request apart from one that was simply never cancelled.
+        self.standing: int | None = None
 
     def start(self):
         pass
@@ -88,9 +96,10 @@ class _ScriptedService:
 
     def request_tier2(self, step_index):
         self._tier2_requests.append(step_index)
+        self.standing = step_index
 
     def cancel_tier2(self, step_index=None):
-        pass
+        self.standing = None
 
     def report_tier2_grounded(self, step_index):
         pass
@@ -348,10 +357,15 @@ def test_a_splash_window_does_not_spend_the_real_windows_budget(warmup_harness):
 
     h.tick()  # t=0.0  splash seen
     h.advance(5.0)
-    h.tick()  # t=5.0  splash budget long expired
+    h.tick()  # t=5.0  splash budget long expired -- standing request now open
+    assert h.service.standing == 0, "splash never got its expected request"
     h.set_hwnd(1638728)  # the real window replaces it
     h.tier2_requests.clear()
     h.tick()  # t=5.0  real window, first sight
+    assert h.service.standing is None, (
+        "the splash's standing request was never retracted -- it outlives "
+        "the real window's own warm-up and keeps costing capture+OCR"
+    )
     h.advance(0.9)
     h.ground_from_now_on()
     h.tick()  # t=5.9  grounds, as measured
@@ -359,3 +373,4 @@ def test_a_splash_window_does_not_spend_the_real_windows_budget(warmup_harness):
     assert h.tier2_requests == [], (
         "the splash's expired budget was reused for the real window"
     )
+    assert h.service.standing is None, "grounding succeeded but a request stood"

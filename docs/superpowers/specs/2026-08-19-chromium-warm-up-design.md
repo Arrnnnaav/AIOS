@@ -67,8 +67,8 @@ signal: *grounding succeeded*. What is missing is patience before escalating.
 
 A **warm-up window** per target window:
 
-- It opens at the first observation of a target **window handle** — not of
-  a matching title. That distinction is load-bearing; see below.
+- It opens at the first **failed grounding** for a target **window handle** —
+  not of a matching title. That distinction is load-bearing; see below.
 - While it is open, **grounding failure does not request tier 2.** The loop
   keeps waiting, exactly as it does for any step it cannot yet ground.
 - It closes permanently the first time grounding **succeeds** for that target —

@@ -347,8 +347,8 @@ class PerceptionService:
                 self.heartbeat += 1
                 walked = None
                 try:
-                    elements = tuple(self.walker(self.title_re))
                     target_hwnd = self._safe_hwnd()
+                    elements = tuple(self.walker(self.title_re))
                     observed_at = self.clock()
                     walked = (
                         take_snapshot(

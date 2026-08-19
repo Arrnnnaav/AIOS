@@ -433,8 +433,14 @@ def run_tour(
                 # confirmed control was half a second away. Keyed by HANDLE, not
                 # title -- Discord's 'Discord Updater' splash matches the same
                 # regex and is a different window.
+
                 target_hwnd = observation.target_hwnd if observation is not None else 0
                 if not warmup.allows_tier2(target_hwnd):
+                    # A standing request from a previous window (or from the
+                    # ticks before this one existed) is a standing COST on the
+                    # worker; nothing but this ends it, and warm-up means we do
+                    # not want it. Same argument as the UIA-success path above.
+                    service.cancel_tier2(i)
                     return None
                 service.request_tier2(i)
                 ocr_elements = (
