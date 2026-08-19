@@ -147,14 +147,15 @@ rung 2 — see the persistence call graph above.
 ### You are here
 **Chromium warm-up is built** (D035). A `WarmUp` object
 (`ghostcursor/perception/warmup.py`) suppresses the tier-2 request for a
-budget (`DEFAULT_WARMUP_BUDGET_S = 2.0`) after a window is first seen, and
-closes permanently for that handle the first time grounding succeeds against
-it. The tier-2 request site in `run.py`'s `grounder_from_slot` (around line
-436-439) now calls `warmup.allows_tier2(target_hwnd)` before
-`service.request_tier2(i)`; the UIA-success path (around line 413) calls
-`warmup.note_grounded(target_hwnd)`. `Observation` (`service.py`) now carries
-`target_hwnd: int`, published by the worker (D021 — an apartment-bound HWND
-value read on the worker thread, crossed as a plain int, never a COM object).
+budget (`DEFAULT_WARMUP_BUDGET_S = 2.0`) after a window's first failed
+grounding, and closes permanently for that handle the first time UIA
+grounding succeeds against it. The tier-2 request site in `run.py`'s
+`grounder_from_slot` (around line 436-439) now calls
+`warmup.allows_tier2(target_hwnd)` before `service.request_tier2(i)`; the
+UIA-success path (around line 413) calls `warmup.note_grounded(target_hwnd)`.
+`Observation` (`service.py`) now carries `target_hwnd: int`, published by the
+worker (D021 — read from an apartment-bound UIA object on the worker thread
+and crossed as a plain int, never a COM object).
 Keyed by HANDLE, not the title regex a step matches against, because
 Discord's cold start puts up a distinct-HWND `Discord Updater` splash that
 fully matches the same regex and would otherwise consume the whole budget

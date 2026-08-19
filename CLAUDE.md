@@ -92,8 +92,8 @@ return of anything tried on this project.
   no model download and no network (D017). It is triggered by **grounding failure for the
   current step, outside a new window's warm-up** (D035) — a `WarmUp` keyed by window handle
   suppresses the tier-2 request for a budget (`DEFAULT_WARMUP_BUDGET_S = 2.0`) after a
-  window is first seen, so a cold Chromium accessibility tree gets a chance to populate
-  before OCR engages — never by an empty walk: Chrome returned 43 UIA elements containing zero
+  window's first failed grounding, so a cold Chromium accessibility tree gets a chance to
+  populate before OCR engages — never by an empty walk: Chrome returned 43 UIA elements containing zero
   page content, so "UIA returned nothing" would never fire. **The UI thread decides and
   requests; the perception worker executes and publishes.** Only the tick loop knows which
   step is current and whether grounding just failed, so it sets a `Tier2Request` in a

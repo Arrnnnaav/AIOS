@@ -1339,9 +1339,9 @@ and was not.
 **Decision.** `run.py` escalated to tier 2 the instant grounding failed for the
 current step — including the first tick of a cold start, before a Chromium
 application's accessibility tree has finished populating. A `WarmUp` object
-now suppresses `service.request_tier2()` for a budget after a window is first
-seen, and closes permanently for that handle the moment grounding succeeds
-against it (`WarmUp.allows_tier2` / `WarmUp.note_grounded`,
+now suppresses `service.request_tier2()` for a budget after a window's first
+failed grounding, and closes permanently for that handle the moment UIA
+grounding succeeds against it (`WarmUp.allows_tier2` / `WarmUp.note_grounded`,
 `ghostcursor/perception/warmup.py`). `run.py`'s tier-2 request site now calls
 `warmup.allows_tier2(target_hwnd)` before `service.request_tier2(i)`, and the
 UIA-success path calls `warmup.note_grounded(target_hwnd)`. `Observation` now
@@ -1405,8 +1405,9 @@ suppressed permanently, with no other visible symptom. This scenario has never
 been produced or measured; it is named here so it is checked first, not
 rediscovered by debugging OCR from scratch.
 
-**Measurement limitations, carried forward from the findings document so a
-future reader does not have to go find it:**
+**Measurement limitations, carried forward from the design spec's §8 "What
+the measurements do not establish" so a future reader does not have to go
+find it:**
 - Slack and Teams were not tested. Only VS Code and Discord were measured.
 - The Discord figure (0.92 s, all six targets) rests on a **single** valid
   run. Two earlier runs measured the `Discord Updater` splash window instead
