@@ -78,19 +78,53 @@ non-monotonicity of §2 because it never compares two observations.
 
 | Parameter | Value | Basis |
 |---|---|---|
-| `WARMUP_BUDGET_S` | **5.0 s** | Content first seen at 3.29 s, tree stable by ~5 s, across three cold VS Code starts |
+| `WARMUP_BUDGET_S` | **2.0 s** | Swept — see below |
+
+### The budget was swept, not guessed
+
+An earlier draft of this spec set 5.0 s, reverse-engineered from the ~5 s
+tree-stabilisation figure. That was the wrong quantity. The budget does not have
+to cover the tree finishing; it has to cover **the specific target a step names
+becoming groundable**, which is a different and much smaller number.
+
+Measured by running the real `grounding.ground()` against two cold VS Code
+starts, once per 0.2 s poll, for six realistic targets:
+
+| Run | Window at | Targets grounded | Latency after window |
+|---|---|---|---|
+| 1 | 2.01 s | `File`, `Edit`, `Explorer`, `DECISIONS.md` | **0.57 s** |
+| 1 | | `Terminal` | 1.75 s |
+| 3 | 2.21 s | `File`, `Edit`, `Explorer`, `DECISIONS.md` | **0.39 s** |
+| 3 | | `Terminal` | never, within 14 s |
+
+| Candidate budget | Covers every target that grounds at all |
+|---|---|
+| 1.0 s | no (misses run 1's `Terminal` at 1.75 s) |
+| **2.0 s** | **yes, both runs** |
+| 5.0 s | yes, at 2.5× the necessary delay |
+
+**The decisive finding is the shape, not the timing.** `run.py` never grounded
+in either run, and `Terminal` grounded at 1.75 s in one and never in the other.
+Those targets are not slow — they are *absent*: `run.py` is not visible in the
+collapsed Explorer tree, and the menu item's exposure varies with window layout.
+**No element was observed to ground slowly-but-eventually.** Either it resolves
+within roughly half a second of the window appearing, or waiting longer does not
+help at all.
+
+So a larger budget buys nothing. It cannot rescue an absent element, and every
+element that does appear has already appeared.
 
 ### The cost, stated plainly
 
 A genuinely UIA-blind application — the Acrobat case, which is tier 2's whole
-reason for existing — now waits the full 5 s before OCR engages. Its first hint
-arrives about five seconds later than it does today.
+reason for existing — waits the full budget before OCR engages, on every cold
+start, permanently. At 2.0 s that is a real but bounded tax on tier 2's primary
+use case; at the 5.0 s originally drafted it would have been 2.5× larger for no
+measured benefit.
 
-That is a real regression for the tier-2 target case, accepted because the
-alternative is a readiness heuristic that §2 shows cannot be made sound. The
-budget is a constructor parameter, and if the Acrobat delay proves worse in use
-than the wasted-OCR problem it solves, lowering it is a one-line change with a
-measurable trade-off in both directions.
+The budget is a constructor parameter. If 2.0 s proves too tight on slower
+hardware the failure is visible and benign — tier 2 engages slightly early and
+draws an amber hint, which is today's behaviour.
 
 **Not chosen:** ending warm-up early when the element count grows sharply (say
 2×, which the ~10 % steady-state fluctuation could not fake). It would cut the
@@ -149,8 +183,12 @@ median and zero walks over 5 s, so it is not treated here as a defect.
 
 ## 8. What the measurements do not establish
 
-- One application was measured cold. Slack, Discord and Teams were unavailable
-  and may ramp differently; the 5 s budget is fitted to VS Code.
+- One application was measured cold, twice. Slack, Discord and Teams were
+  unavailable and may ramp differently; the 2 s budget is fitted to VS Code.
+- A third sweep run was DISCARDED as invalid: it matched an already-open warm
+  VS Code window rather than the cold one it launched, and reported every target
+  grounding at 0.00 s. Recorded here because a run that appears to confirm the
+  conclusion is exactly the one worth checking hardest.
 - Chrome's steady-state result came from an already-loaded page with a cold
   accessibility tree, not a cold application start, so it speaks to fluctuation
   and not to ramp duration.
