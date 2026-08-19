@@ -87,3 +87,72 @@ committed baseline before this ledger was written.
 
 Full command output for all four mutations and the clean baseline is in
 `.superpowers/sdd/2026-08-20-chromium-warm-up/task-1-report.md`.
+
+# Mutation ledger — Task 3: wiring `WarmUp` into `run_tour`
+
+Plan: `.superpowers/sdd/2026-08-20-chromium-warm-up/task-3-brief.md`
+Branch: `chromium-warm-up`
+Files: `ghostcursor/run.py`, `tests/test_warmup_tour.py`
+Baseline (all 5 tests passing, no mutation applied): `414837c`
+
+Per D018, each mutation below was applied to `ghostcursor/run.py` alone, one
+at a time, verified to fail the named test under
+`python -m pytest tests/test_warmup_tour.py::<name> -q`, then reverted from a
+saved copy of the committed file before the next mutation. After all four,
+`git status --porcelain ghostcursor/run.py` was empty and
+`python -m pytest tests/test_warmup_tour.py -q` again reported 5 passed,
+confirming the working tree was restored cleanly to the committed baseline.
+
+## Results
+
+| # | Mutation | Must fail | Actually failed | Result |
+|---|---|---|---|---|
+| 1 | Delete the `if not warmup.allows_tier2(...): return None` guard (leave `service.request_tier2(i)` unconditional) | `test_a_cold_window_that_grounds_inside_the_budget_never_asks_for_tier2` | that test — `tier2_requests` became `[0, 0]` instead of `[]` | PASS |
+| 2 | Make the guard permanent — `if True: return None` in its place | `test_a_window_that_never_grounds_asks_once_the_budget_expires` | that test — `tier2_requests` stayed `[]` even after the 2.0s budget expired | PASS |
+| 3 | Delete the `warmup.note_grounded(...)` call on the grounding-success path | `test_warm_up_does_not_reopen_after_a_successful_grounding` | that test — a later grounding failure for the same hwnd got a second warm-up allowance instead of escalating immediately | PASS |
+| 4 | Pass a constant instead of the handle: `warmup.allows_tier2(1)` | `test_a_splash_window_does_not_spend_the_real_windows_budget` | that test — the splash's already-open-and-expired warm-up (keyed to the constant `1`) was reused for the real window, suppressing its tier-2 request | PASS |
+
+Mutation 4 is the load-bearing one, per the brief: it reproduces the measured
+Discord defect where a splash window (`Discord Updater`) and the real window
+share a title regex but are different HWNDs. Keying `allows_tier2` on
+anything other than the real per-window handle collapses the two windows'
+warm-up state into one entry, so the splash's long-expired budget gets
+credited to the real window and its first-sight allowance is silently lost.
+It failed exactly the test the brief names as required, confirming that
+HWND-keying (not a constant, and not the title regex) is what this task's
+wiring actually depends on — not merely asserted in a comment.
+
+### Mutation 4 failure output (verbatim)
+
+```
+tests/test_warmup_tour.py::test_a_splash_window_does_not_spend_the_real_windows_budget FAILED
+
+    def test_a_splash_window_does_not_spend_the_real_windows_budget(warmup_harness):
+        h = warmup_harness(budget_s=2.0, hwnd=329088)
+
+        h.tick()                 # t=0.0  splash seen
+        h.advance(5.0)
+        h.tick()                 # t=5.0  splash budget long expired
+        h.set_hwnd(1638728)      # the real window replaces it
+        h.tier2_requests.clear()
+        h.tick()                 # t=5.0  real window, first sight
+        h.advance(0.9)
+        h.ground_from_now_on()
+        h.tick()                 # t=5.9  grounds, as measured
+
+>       assert h.tier2_requests == [], (
+            "the splash's expired budget was reused for the real window"
+        )
+E       AssertionError: the splash's expired budget was reused for the real window
+E       assert [0] == []
+E
+E         Left contains one more item: 0
+
+tests\test_warmup_tour.py:298: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_warmup_tour.py::test_a_splash_window_does_not_spend_the_real_windows_budget
+1 failed in 1.13s
+```
+
+Full command output for all four mutations is in
+`.superpowers/sdd/2026-08-20-chromium-warm-up/task-3-report.md`.
