@@ -195,7 +195,14 @@ def make_grounder(
         )
         if grounded is not None:
             grounding.promote(step, grounded, app_version=app_version, locale=ui_locale)
-            if store is not None and app_id is not None:
+            # Second half of the same guard as promote()'s: nothing tier 2
+            # produced reaches the knowledge base (D030). Without this, the
+            # lookup below matches on `automation_id`, which for an OCR target
+            # is "" — so the only thing keeping pixel-derived rows out of the
+            # database was that no stored row happened to have an empty id.
+            # That is a coincidence, not a construction.
+            confirmed_source = grounded.source == grounding.CONFIRMED_SOURCE
+            if store is not None and app_id is not None and confirmed_source:
                 # Write only what promote() just recorded for this grounding —
                 # not the step's whole confirmed list. This runs every tick,
                 # and rewriting observations hydrated from earlier runs would
@@ -254,6 +261,7 @@ def run_tour(
     """
     from ghostcursor.memory.store import ObservationStore
     from ghostcursor.perception.appinfo import app_info_for_window
+    from ghostcursor.perception import tier2
     from ghostcursor.perception.health import WorkerHealth
     from ghostcursor.perception.service import PerceptionService
     from ghostcursor.reasoning.loop import (
@@ -263,7 +271,9 @@ def run_tour(
     )
     from ghostcursor.reasoning.renderer import OverlayRenderer
     from ghostcursor.reasoning.schema import Recipe
-    from ghostcursor.reasoning.staleness import Freshness, StalenessLadder
+    from ghostcursor.reasoning.staleness import (
+        StalenessLadder,
+    )
     from ghostcursor.reasoning.verification import Snapshot, verify
 
     recipe = Recipe.load(recipe_path)
@@ -307,7 +317,19 @@ def run_tour(
         # is polled BETWEEN ticks — so a walk on this thread is 40s in which
         # the user cannot dismiss a window covering their whole screen. The
         # worker absorbs that block; the UI thread only ever reads a slot.
-        service = PerceptionService(title_re, clock=clock)
+        # Same clock as everything else with a sense of time. Tier 2's
+        # min-interval floor and the loop's ticks must agree on "now", or the
+        # floor throttles against a clock the tour is not running on.
+        tier2_controller = tier2.build_controller(clock)
+        if tier2_controller is None:
+            print("Ghost Cursor: OCR unavailable on this machine — UIA only.")
+        # The controller is HANDED OVER here and never touched again from this
+        # thread. Capture + OCR measured 0.14-0.23s on a 976x1028 window and
+        # scales with captured area; on the tick path that is D020's 0.5s
+        # ceiling gone and the D021 freeze back. The UI thread keeps the
+        # DECIDING half (only it knows the current step and whether grounding
+        # just failed) and asks through a request slot; the worker executes.
+        service = PerceptionService(title_re, clock=clock, tier2=tier2_controller)
         ladder = StalenessLadder(clock=clock)
         health = WorkerHealth(service=service, ladder=ladder)
         service.start()
@@ -331,10 +353,19 @@ def run_tour(
             #: forever and a hung target would never dim, never hide, and
             #: never trip the health check.
             last_fed_to_ladder = 0.0
+            #: The observation THIS tick is reasoning about — the one
+            #: OBSERVING took its snapshot from. DECIDING reads it instead of
+            #: re-reading the slot, so the UIA half and the OCR half always
+            #: come from the same instant (D019). Re-reading gave grounding
+            #: observation B's `ocr_elements` alongside observation A's UIA
+            #: elements, merged into one list, which is exactly the
+            #: same-instant rule the snapshot exists to keep.
+            current_observation = None
 
             def snapshotter():
-                nonlocal last_fed_to_ladder
+                nonlocal last_fed_to_ladder, current_observation
                 observation = service.latest()
+                current_observation = observation
                 if observation is None:
                     # No observation yet is a normal starting condition. An
                     # empty untimestamped snapshot reads as FRESH to the loop
@@ -358,20 +389,112 @@ def run_tour(
                 # OBSERVING and DECIDING to describe the same instant. Re-reading
                 # the slot here would ground observation B while verification
                 # baselines on observation A, so the hint could point at a
-                # control the baseline never saw.
-                if elements is not None:
-                    return live_grounder(step, i, elements)
-                observation = service.latest()
-                if observation is None:
+                # control the baseline never saw. `current_observation` is that
+                # same observation, captured by the snapshotter — so the OCR
+                # half below comes from the instant these elements do.
+                observation = current_observation
+                if elements is None:
+                    elements = observation.elements if observation else ()
+
+                target = live_grounder(step, i, elements)
+                if target is not None:
+                    # UIA answered, so tier 2 is not wanted for this step. A
+                    # standing request costs capture + OCR on the worker as
+                    # often as the 1.0s floor allows, delaying the UIA
+                    # observations this step is actually being grounded from.
+                    service.cancel_tier2(i)
+                    return target
+
+                # Tier 2. Triggered by GROUNDING FAILURE for this step, never
+                # by an empty walk: Chrome returned 43 elements containing zero
+                # page content, so "UIA returned nothing" would never fire.
+                #
+                # The trigger is all that happens here. Setting the request is
+                # a lock-and-assign; the READING happens on the perception
+                # worker and its result turns up in a later observation. There
+                # is deliberately no wait, join or future: this thread is the
+                # one polling ESC. Grounding may therefore fail for a tick or
+                # two before OCR elements arrive, which the 10s grounding grace
+                # and the staleness ladder already cover.
+                service.request_tier2(i)
+                ocr_elements = (
+                    observation.ocr_elements
+                    if observation is not None and observation.tier2_step == i
+                    else ()
+                )
+                if not ocr_elements:
                     return None
-                return live_grounder(step, i, observation.elements)
+                target = live_grounder(step, i, list(elements) + list(ocr_elements))
+                if target is not None:
+                    # A read that produced a usable target is not a fruitless
+                    # one, so it does not spend the step's budget (D028). A
+                    # churning page can re-ground the same OCR target for
+                    # minutes; the budget is there to stop UNPRODUCTIVE
+                    # re-reads, and counting productive ones killed a tour
+                    # whose amber ring was sitting correctly on the target.
+                    # The budget lives with the reader now, so this says so
+                    # through the same slot instead of calling the controller.
+                    service.report_tier2_grounded(i)
+                return target
+
+            def current_display_freshness():
+                #: The AGE half of the tick's display state. The SOURCE half is
+                #: no longer supplied here on purpose: it belongs to the hint
+                #: (see renderer._Hint). Tracked beside the renderer, as a
+                #: variable DECIDING could advance while the previous step's
+                #: ring was still on screen, it laundered an OCR centre into
+                #: the confirmed-control colour for one full tick.
+                #:
+                #: `ladder.freshness()` MUTATES the ladder's recovery state, so
+                #: exactly one call per tick is the right number; the renderer
+                #: caches it for the tick.
+                return ladder.freshness()
+
+            def read_failure_reason(step, index):
+                """Why this step is ungroundable, when tier 2 knows better.
+
+                Called only once the grounding grace has expired, and only
+                the loop's generic "cannot find X on screen" is replaced.
+                Whether the run cap or the grace ran out first is deliberately
+                NOT what decides the wording: with a 10s grace and a 1.0s
+                floor between reads, a screen nobody can read reaches the
+                grace after ~10 reads and never gets near the 20-run cap, so a
+                message keyed on exhaustion described the opposite case from
+                the one it was written for — it appeared only when reading
+                intermittently WORKED. What decides it is whether tier 2 was
+                engaged for this step at all: if we ran OCR and still could
+                not locate the target, the honest report is that we could not
+                read the screen (D024, D028). Saying "cannot find" there
+                points the user at their own application instead of at ours.
+                """
+                # Read from the published observation, never from the
+                # controller: the controller's per-step state is now worker-
+                # owned mutable state, and the UI thread reaching into it
+                # across a thread boundary is the sort of racy read this
+                # design exists to avoid. `tier2_step` is checked first — the
+                # flags describe ONE step, and trusting them for another would
+                # report the previous step's exhaustion as this step's.
+                observation = service.latest()
+                if observation is None or observation.tier2_step != index:
+                    return None
+                name = step.target_descriptor.claimed.name
+                if observation.tier2_exhausted:
+                    return (
+                        f"could not read {name!r} on screen after "
+                        f"{observation.tier2_max_runs} attempts"
+                    )
+                if observation.tier2_engaged:
+                    return f"could not read {name!r} on screen"
+                return None
 
             tour = GuidedTour(
                 recipe=recipe,
                 grounder=grounder_from_slot,
                 snapshotter=snapshotter,
                 verifier=verify,
-                renderer=OverlayRenderer(hwnd),
+                renderer=OverlayRenderer(
+                    hwnd, freshness_source=current_display_freshness
+                ),
                 # Stock grace. The two clocks used to race — a dead worker made
                 # grounding fail every tick, so the grace expired before the
                 # health budget and the tour said "cannot find 'Export' on
@@ -391,11 +514,26 @@ def run_tour(
                 # runs on the injected one, so a timeline test could never
                 # exercise the grace-vs-health interaction at all.
                 clock=clock,
+                ungroundable_reason=read_failure_reason,
             )
+            #: The step the standing tier-2 request (if any) belongs to. The
+            #: worker cannot notice a step boundary — only this thread knows
+            #: which step is current — and nothing else ends a request, so a
+            #: step that asked for OCR and was then LEFT would keep the worker
+            #: reading the screen for it through every later step, whether or
+            #: not those steps ever call the grounder (AWAITING_USER_ACTION
+            #: dwells for many ticks without one).
+            tier2_step_on_screen = tour.step_index
             while clock() < deadline:
                 if escape_pressed():
                     print("ESC pressed — exiting.")
                     break
+
+                if tour.step_index != tier2_step_on_screen:
+                    # The tour left the step that asked. Cancel unconditionally
+                    # — whatever is standing belongs to a step nobody is on.
+                    service.cancel_tier2()
+                    tier2_step_on_screen = tour.step_index
                 if should_poll_space(tour.current_step) and key_was_pressed(
                     win32con.VK_SPACE
                 ):
@@ -446,6 +584,17 @@ def run_tour(
                     sleeper(REFRESH_SECONDS)
                     continue
 
+                # No exhaustion check here, on purpose. There used to be one,
+                # and it ended the tour the instant tier 2 spent its budget.
+                # Spec §4 says the opposite: an exhausted step is TREATED AS
+                # UNGROUNDABLE, feeding the existing grounding grace, so the
+                # last observation keeps ageing normally through the staleness
+                # ladder — it dims, then hides — and the user gets those
+                # seconds to act instead of the tour dying under a ring that
+                # is still correct. `elements_for` already returns nothing once
+                # the budget is spent, so grounding fails on its own and the
+                # grace does the rest; `read_failure_reason` above is what
+                # makes the grace name the read failure.
                 state = tour.tick()
                 if state is State.DONE:
                     print("Tour complete.")
@@ -454,32 +603,17 @@ def run_tour(
                     print(f"Stopped: {tour.failure_reason}")
                     break
 
-                # Age governs what is DRAWN, after the loop has decided what to
-                # draw. HIDDEN must CLEAR the hint rather than be handed to
-                # set_hint: _paint_ring only distinguishes FRESH from
-                # everything-else, so passing HIDDEN down would draw a DIMMED
-                # ring and the 5s rung would silently do nothing at all.
-                freshness = ladder.freshness()
-                showing = tour.renderer.last_instruction is not None
-                if freshness is Freshness.HIDDEN:
-                    # Deliberately bypasses the renderer, so `last_instruction`
-                    # stays set while the screen shows nothing. That divergence
-                    # is what lets a recovered observation put the hint straight
-                    # back without re-running the step — do not "fix" it by
-                    # routing this through renderer.clear().
-                    window.clear_hint(hwnd)
-                elif showing and tour._grounded is not None:
-                    # `showing` matters: the loop clears the hint when
-                    # grounding fails, but leaves _grounded holding the last
-                    # target. Redrawing from it alone would resurrect a ring
-                    # the loop deliberately took down.
-                    left, top, right, bottom = tour._grounded.bbox
-                    window.set_hint(
-                        hwnd,
-                        (left + right) // 2,
-                        (top + bottom) // 2,
-                        freshness=freshness,
-                    )
+                # No drawing happens here, on purpose. `tour.tick()` closes its
+                # own tick by calling `renderer.settle()`, which is the single
+                # write path (D027): if the loop already drew, settle is a
+                # no-op; otherwise it is where a STALENESS-ONLY transition
+                # reaches the screen.
+                #
+                # There used to be a corrective `window.set_hint` at this point,
+                # run after the renderer had already painted. It is deleted, not
+                # reordered: two writes per tick, each ending in a synchronous
+                # UpdateWindow, meant the provisional frame really was
+                # displayed. Do not reintroduce drawing into this loop.
 
                 # Only print when the instruction changes — this loop runs
                 # at 4 ticks/sec and the instruction is unchanged across

@@ -241,3 +241,260 @@ def test_the_ui_thread_is_never_blocked_by_a_slow_walk():
         f"50 slot reads took {elapsed:.2f}s while the worker was blocked — "
         "the UI thread is still coupled to perception"
     )
+
+
+# ---------------------------------------------------------------------------
+# The tier-2 request slot: the UI thread's ask, crossing the other way.
+#
+# These exist because the `grounded` round trip -- the longest piece of new
+# plumbing across the boundary -- had no coverage at all: replacing
+# `report_tier2_grounded` with a no-op left the whole suite green, so nothing
+# guarded that a productive OCR read spares the step's fruitless-run budget
+# (D028). The budget lives on the worker now, and this slot is the only way
+# the UI thread can reach it.
+# ---------------------------------------------------------------------------
+
+
+class _RecordingTier2:
+    """A tier-2 controller that records what the worker asked it to do."""
+
+    max_runs_per_step = 20
+
+    def __init__(self, elements=()):
+        self.elements = list(elements)
+        self.reads: list[int] = []
+        self.grounded_calls: list[int] = []
+
+    def elements_for(self, step_index, title_re):
+        self.reads.append(step_index)
+        return self.elements
+
+    def grounded(self, step_index):
+        self.grounded_calls.append(step_index)
+
+    def engaged(self, step_index):
+        return bool(self.reads)
+
+    def exhausted(self, step_index):
+        return False
+
+
+def _tier2_service(controller):
+    return PerceptionService(
+        title_re=".*Whatever.*", walker=lambda t: [], tier2=controller
+    )
+
+
+def test_a_grounded_report_reaches_the_controller_for_the_step_it_names():
+    controller = _RecordingTier2([EXPORT])
+    service = _tier2_service(controller)
+
+    service.request_tier2(7)
+    service.report_tier2_grounded(7)
+    service._tier2_payload()
+
+    assert controller.grounded_calls == [7], (
+        "a productive OCR read was never reported to the controller, so it "
+        f"spent the step's fruitless-run budget anyway: {controller.grounded_calls}"
+    )
+
+
+def test_a_grounded_report_resets_the_fruitless_run_budget():
+    """The property the round trip exists for, through the REAL controller.
+
+    Asserted against `exhausted()` rather than a recorded call, because what
+    matters is the budget, not the message: a tour whose amber ring is sitting
+    correctly on an OCR target must not be killed by the cap meant for
+    unproductive re-reading.
+    """
+    import numpy as np
+
+    from ghostcursor.perception.tier2 import Tier2Controller
+
+    ticks = {"t": 0.0}
+
+    def clock():
+        ticks["t"] += 10.0  # always past the 1.0s floor
+        return ticks["t"]
+
+    frames = {"n": 0}
+
+    def capture(title_re):
+        frames["n"] += 1
+        # A different frame every time, so `frames_differ` never short-circuits
+        # the read -- this test is about the budget, not change detection.
+        # Alternating black and white, not a small increment: `frames_differ`
+        # ignores changes below a per-pixel threshold, and a frame that reads
+        # as unchanged is not a run at all -- the test would then pass by
+        # never spending the budget it claims to be testing.
+        shade = 0 if frames["n"] % 2 else 255
+        return (np.full((4, 4, 3), shade, dtype=np.uint8), (0, 0, 4, 4))
+
+    class _Ocr:
+        def read(self, frame):
+            return []
+
+    controller = Tier2Controller(
+        ocr=_Ocr(), capture=capture, clock=clock, max_runs_per_step=3
+    )
+    service = PerceptionService(
+        title_re=".*Whatever.*", walker=lambda t: [], tier2=controller
+    )
+
+    # Two fruitless reads, out of a budget of three.
+    service.request_tier2(0)
+    for _ in range(2):
+        service._tier2_payload()
+    assert not controller.exhausted(0)
+
+    # A read that DID produce a usable target, reported the only way the UI
+    # thread can: through the request slot. This worker iteration resets the
+    # count and then reads, so it is read 1 of a fresh budget.
+    service.report_tier2_grounded(0)
+    service._tier2_payload()
+
+    # One more fruitless read: 2 of 3 with the reset, 4 of 3 without it.
+    service._tier2_payload()
+    assert not controller.exhausted(0), (
+        "the step exhausted its budget of 3 despite a productive read in the "
+        "middle -- the grounded report never reset the count, so a correctly "
+        "placed OCR hint is killed by the cap meant for fruitless re-reads"
+    )
+
+
+def test_the_grounded_flag_is_consumed_once_not_re_applied_every_iteration():
+    controller = _RecordingTier2([EXPORT])
+    service = _tier2_service(controller)
+
+    service.request_tier2(3)
+    service.report_tier2_grounded(3)
+    service._tier2_payload()
+    service._tier2_payload()
+    service._tier2_payload()
+
+    assert controller.grounded_calls == [3], (
+        "one productive read reset the budget on every later worker iteration "
+        f"-- the budget would never be spendable again: {controller.grounded_calls}"
+    )
+
+
+def test_a_grounded_report_for_a_step_that_is_not_the_standing_one_is_ignored():
+    """It must be matched to the step, not merely to the slot.
+
+    A late report from a step the tour has left would otherwise reset the
+    CURRENT step's budget, silently uncapping the tier for a step that never
+    read anything successfully.
+    """
+    controller = _RecordingTier2([EXPORT])
+    service = _tier2_service(controller)
+
+    service.request_tier2(4)
+    service.report_tier2_grounded(1)  # the previous step, reporting late
+    service._tier2_payload()
+
+    assert controller.grounded_calls == [], (
+        "a report from a step the tour had left reset the current step's "
+        f"budget: {controller.grounded_calls}"
+    )
+    assert controller.reads == [4], (
+        f"the late report also disturbed which step is read: {controller.reads}"
+    )
+
+
+def test_the_grounded_flag_survives_a_repeated_request_for_the_same_step():
+    """The UI thread re-requests every ungrounded tick, which must not lose a
+    report made between two of them -- that would spend the budget of exactly
+    the productive reads it exists to spare."""
+    controller = _RecordingTier2([EXPORT])
+    service = _tier2_service(controller)
+
+    service.request_tier2(2)
+    service.report_tier2_grounded(2)
+    service.request_tier2(2)
+    service._tier2_payload()
+
+    assert controller.grounded_calls == [2]
+
+
+def test_a_new_step_starts_with_a_clean_grounded_flag():
+    controller = _RecordingTier2([EXPORT])
+    service = _tier2_service(controller)
+
+    service.request_tier2(2)
+    service.report_tier2_grounded(2)
+    service.request_tier2(3)  # the tour moved on before the worker ran
+    service._tier2_payload()
+
+    assert controller.grounded_calls == [], (
+        "step 2's productive read reset step 3's budget -- tier 2's stickiness "
+        f"must reset at the step boundary (D028): {controller.grounded_calls}"
+    )
+
+
+def test_cancelling_stops_the_worker_reading_the_screen():
+    """The blocker: nothing else ends a request.
+
+    A standing request costs capture plus OCR (0.14-0.23s) as often as the
+    1.0s floor allows, for as long as it stands. Left uncancelled it goes on
+    delaying the UIA observations of whatever step the user is actually on.
+    """
+    controller = _RecordingTier2([EXPORT])
+    service = _tier2_service(controller)
+
+    service.request_tier2(0)
+    service._tier2_payload()
+    assert controller.reads == [0]
+
+    service.cancel_tier2()
+    for _ in range(5):
+        assert service._tier2_payload() == ((), -1, False, False, 0)
+
+    assert controller.reads == [0], (
+        f"the worker kept reading the screen for a cancelled step: {controller.reads}"
+    )
+
+
+def test_cancelling_a_step_already_left_cannot_discard_the_current_request():
+    controller = _RecordingTier2([EXPORT])
+    service = _tier2_service(controller)
+
+    service.request_tier2(5)
+    service.cancel_tier2(4)  # the previous step, cancelling late
+    service._tier2_payload()
+
+    assert controller.reads == [5], (
+        f"a late cancel from a step already left threw step 5's away: {controller.reads}"
+    )
+
+
+def test_a_failing_walk_does_not_suppress_tier_2():
+    """Tier 2 needs a capture, not a tree walk.
+
+    The two failed together once: `_tier2_payload` sat inside the walker's
+    `try`, so a window that transiently vanished, or one COM hiccup, silently
+    disabled OCR -- in precisely the situation OCR exists for. The UIA half
+    still publishes nothing (the previous observation ages, which is what the
+    staleness ladder is for); that is a separate decision.
+    """
+
+    def broken_walker(title_re):
+        raise RuntimeError("the window went away")
+
+    controller = _RecordingTier2([EXPORT])
+    service = PerceptionService(
+        title_re=".*Whatever.*",
+        walker=broken_walker,
+        interval_s=0.01,
+        tier2=controller,
+    )
+    service.request_tier2(0)
+    service.start()
+    try:
+        _wait_until(lambda: len(controller.reads) >= 3, what="tier 2 reading anyway")
+    finally:
+        service.stop()
+
+    assert service.latest() is None, (
+        "a failed walk published an observation -- the previous one must "
+        "simply age instead"
+    )

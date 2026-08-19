@@ -126,6 +126,7 @@ def test_observing_and_deciding_share_one_tree_walk():
     class NullRenderer:
         def show(self, grounded, instruction_text): pass
         def clear(self): pass
+        def settle(self): pass  # tick boundary (D027)
 
     recipe = Recipe(app_id="synthetic", intent="i", steps=[Step(
         user_action=UserAction.CLICK,

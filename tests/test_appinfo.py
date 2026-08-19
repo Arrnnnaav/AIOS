@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 
 import pytest
@@ -71,7 +72,7 @@ def test_app_info_for_a_store_app_prefers_appx_version():
         pytest.skip("No Store app window found in the environment")
 
     exe_path, title = found_appx[0]
-    info = app_info_for_window(f".*{title}.*")
+    info = app_info_for_window(f".*{re.escape(title)}.*")
     assert info is not None
     assert info.kind == "appx"
     assert parse_version(info.version) is not None

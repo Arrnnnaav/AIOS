@@ -5,9 +5,10 @@ Cheapest and most stable matcher first, mirroring the perception ladder
 
     rung 1  confirmed automation_id   survives renames AND translation
     rung 2  control_type + exact name
-    rung 3  fuzzy name / synonyms
+    rung 3  UIA-only case-insensitive substring match; OCR elements are barred
+    rung 4  OCR fuzzy text match, floor 95 (measured, spike findings §4)
 
-Rungs 2-3 match on displayed text and are therefore locale-scoped. Rung 1 is
+Rungs 2-4 match on displayed text and are therefore locale-scoped. Rung 1 is
 language-independent by construction and must never be filtered by locale —
 doing so would defeat the promotion mechanism it exists to enable.
 
@@ -33,19 +34,45 @@ from datetime import datetime, timezone
 from ghostcursor.perception.appinfo import parse_version
 from ghostcursor.perception.uia import Element, iter_elements
 from ghostcursor.reasoning.schema import ConfirmedObservation, Step
+from ghostcursor.reasoning.staleness import CONFIRMED_SOURCE
 
 RUNG_AUTOMATION_ID = 1
 RUNG_TYPE_AND_NAME = 2
 RUNG_FUZZY_NAME = 3
+RUNG_OCR_TEXT = 4
+
+#: Fuzzy-match floor for OCR text, measured across four real screens (spike
+#: findings §4). 95 is forced by `Uploads` vs the read `upload` at 92.3 — two
+#: real Canva surfaces one character apart.
+#:
+#: Deliberately conservative because it is doing TWO jobs. The design called
+#: for two independent floors, read confidence AND match score, neither
+#: borrowing slack from the other. Windows.Media.Ocr exposes no per-word
+#: confidence, so the match score carries both.
+OCR_MATCH_FLOOR = 95
 
 
 @dataclass(frozen=True)
 class GroundedTarget:
+    """A live rectangle, and everything needed to say how much to trust it.
+
+    `source` is REQUIRED and carries the perception tier the rectangle came
+    from ("uia" for a confirmed control, "ocr" for text read off pixels). It
+    is part of the target rather than tracked beside it because provenance
+    that lives next to a coordinate can drift out of step with it: the
+    renderer used to read a module-level `grounded_source` at paint time,
+    which DECIDING had already advanced to the NEXT step's source while the
+    hint on screen was still the previous one's — a pixel guess wearing the
+    confirmed-control ring for a whole tick. A rectangle and the confidence
+    it may be drawn at must not be separately updatable.
+    """
+
     bbox: tuple[int, int, int, int]
     rung: int
     automation_id: str
     control_type: str
     name: str
+    source: str
 
 
 def _as_target(element: Element, rung: int) -> GroundedTarget:
@@ -55,6 +82,7 @@ def _as_target(element: Element, rung: int) -> GroundedTarget:
         automation_id=element.automation_id,
         control_type=element.control_type,
         name=element.name,
+        source=element.source,
     )
 
 
@@ -182,12 +210,41 @@ def ground(
                 return _as_target(_disambiguate(matches, step), RUNG_TYPE_AND_NAME)
 
     # Rung 3 — synonyms and case-insensitive substring.
+    #
+    # UIA ONLY. This is a substring test, and it runs before rung 4, so an OCR
+    # element reaching it would match with no score threshold whatsoever and
+    # OCR_MATCH_FLOOR would be decorative: 'Edit' is a substring of 'Edit a
+    # PDF', 'Magic Edit' and 'Editor' alike. Rung 3 is therefore the one rung
+    # OCR text is barred from.
+    #
+    # It is not the only rung OCR can reach — rung 2 admits it too, on
+    # BYTE-EXACT name equality, which is a strictly higher bar than a 95 fuzzy
+    # score and so needs no exclusion. What rung 3 excludes is loose matching
+    # on unconfirmed text, not OCR as such.
     candidates = [claimed.name, *claimed.name_synonyms]
     for candidate in filter(None, candidates):
         needle = candidate.casefold()
-        matches = [e for e in elements if e.name and needle in e.name.casefold()]
+        matches = [
+            e
+            for e in elements
+            if e.source == "uia" and e.name and needle in e.name.casefold()
+        ]
         if matches:
             return _as_target(_disambiguate(matches, step), RUNG_FUZZY_NAME)
+
+    # Rung 4 — fuzzy text, OCR elements only, at a measured floor.
+    ocr_elements = [e for e in elements if e.source == "ocr" and e.name]
+    if ocr_elements:
+        from rapidfuzz import fuzz
+
+        best_score, best_element = 0.0, None
+        for candidate in filter(None, candidates):
+            for element in ocr_elements:
+                score = fuzz.ratio(element.name.casefold(), candidate.casefold())
+                if score > best_score:
+                    best_score, best_element = score, element
+        if best_element is not None and best_score >= OCR_MATCH_FLOOR:
+            return _as_target(best_element, RUNG_OCR_TEXT)
 
     return None
 
@@ -206,8 +263,17 @@ def promote(
     recipe confirmed by an English user ground for a Hindi one.
 
     Returns True when the step was modified.
+
+    Nothing tier 2 produced is ever recorded (D030). That used to be true only
+    incidentally — an OCR element carries no AutomationId, so the guard below
+    caught it — which made "never promoted by construction" a claim resting on
+    a coincidence of empty strings. It is now checked directly, on the
+    target's own provenance, so a future tier that DID supply an id could not
+    quietly start writing pixel-derived rows into the knowledge base.
     """
-    if grounded is None or not grounded.automation_id:
+    if grounded is None or grounded.source != CONFIRMED_SOURCE:
+        return False
+    if not grounded.automation_id:
         return False
 
     for observation in step.target_descriptor.confirmed:

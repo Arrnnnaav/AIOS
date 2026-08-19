@@ -53,6 +53,17 @@ class Renderer(Protocol):
     def show(self, grounded: GroundedTarget, instruction_text: str) -> None: ...
     def clear(self) -> None: ...
 
+    def settle(self) -> None:
+        """Close the tick: emit the display state if nothing else did.
+
+        The loop owns the tick boundary by definition — it is the thing that
+        ticks — so it is the only place that can guarantee the renderer is
+        told where one ends. It learns nothing about staleness by calling
+        this: what to draw stays entirely behind the renderer's own
+        `freshness_source` (D027).
+        """
+        ...
+
 
 class GuidedTour:
     def __init__(
@@ -65,6 +76,7 @@ class GuidedTour:
         clock: Callable[[], float] = time.monotonic,
         idle_timeout_s: float = 30.0,
         grounding_grace_s: float = DEFAULT_GROUNDING_GRACE_S,
+        ungroundable_reason: Callable[[Step, int], str | None] | None = None,
     ) -> None:
         self.recipe = recipe
         self.grounder = grounder
@@ -74,6 +86,14 @@ class GuidedTour:
         self.clock = clock
         self.idle_timeout_s = idle_timeout_s
         self.grounding_grace_s = grounding_grace_s
+        #: Optional: asked, when the grace expires, for a reason better than
+        #: "cannot find X on screen". The loop knows only that grounding kept
+        #: failing; the driver may know WHY — that a perception tier was
+        #: engaged and could not read the screen, say — and the difference
+        #: decides whether the user is pointed at their own application or at
+        #: ours (D024). It stays a callable so the loop learns nothing about
+        #: perception tiers, exactly as with `freshness_source` (D027).
+        self.ungroundable_reason = ungroundable_reason
 
         self.state = State.IDLE
         self.step_index = 0
@@ -104,6 +124,28 @@ class GuidedTour:
         self._confirmed = True
 
     def tick(self) -> State:
+        """Advance one tick, then close it.
+
+        `settle()` is called here rather than by the driver so that a driver
+        CANNOT forget it. Forgetting was silent: the hint stays exactly as it
+        was drawn, never dimming and never hiding, while perception hums along
+        and nothing errors (D027). Every driver ticks, by definition, so this
+        covers all of them — including ones that wire a different
+        `freshness_source`, or no staleness ladder at all, which the ladder's
+        own unqueried detector cannot see.
+
+        It runs on EVERY path, the DONE and FAILED ticks included. That is
+        deliberate and costs nothing: both terminal paths call
+        `renderer.clear()` first, which marks the tick written, so `settle()`
+        emits nothing. "Every tick settles" is a simpler invariant to hold
+        than "every tick except the last two", and simpler invariants survive
+        the next edit.
+        """
+        state = self._advance()
+        self.renderer.settle()
+        return state
+
+    def _advance(self) -> State:
         if self.state in (State.DONE, State.FAILED):
             return self.state
 
@@ -142,7 +184,12 @@ class GuidedTour:
                 if self._grounding_fail_since is None:
                     self._grounding_fail_since = now
                 if now - self._grounding_fail_since >= self.grounding_grace_s:
-                    self.failure_reason = (
+                    reason = (
+                        self.ungroundable_reason(step, self.step_index)
+                        if self.ungroundable_reason is not None
+                        else None
+                    )
+                    self.failure_reason = reason or (
                         f"cannot find {step.target_descriptor.claimed.name!r} on screen"
                     )
                     self.state = State.FAILED

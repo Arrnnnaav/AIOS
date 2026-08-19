@@ -132,6 +132,15 @@ class Element:
     automation_id: str
     bbox: tuple[int, int, int, int]
     path: tuple[str, ...] = field(default=())
+    #: Which perception tier produced this element. "uia" is a confirmed
+    #: control; "ocr" is text read off pixels, which carries no AutomationId,
+    #: no control_type, and no structural context. Everything downstream that
+    #: decides how much to trust an element keys off THIS, not off which
+    #: grounding rung matched it.
+    #:
+    #: Last field on purpose: existing call sites construct Element
+    #: positionally, so an earlier insertion would silently shift them.
+    source: str = field(default="uia")
 
 
 def iter_elements(title_re: str) -> list[Element]:

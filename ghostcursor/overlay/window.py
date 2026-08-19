@@ -27,6 +27,11 @@ RING_COLOR = win32api.RGB(0, 200, 255)
 #: A hint we can no longer confirm. Same ring, visibly muted — the user keeps
 #: their guidance and can see it may be out of date (see reasoning/staleness).
 DIMMED_RING_COLOR = win32api.RGB(0, 90, 115)
+#: Amber. Deliberately a different HUE from the cyan family, not a dimmer
+#: shade of it: DIMMED already means "possibly out of date", and INFERRED means
+#: "possibly misread". A user who cannot tell those apart cannot calibrate
+#: trust, which is what D006 depends on.
+INFERRED_RING_COLOR = win32api.RGB(255, 170, 0)
 RING_THICKNESS = 3
 
 _CLASS_NAME = "GhostCursorOverlay"
@@ -44,10 +49,23 @@ _hint: tuple[int, int, int, "Freshness"] | None = None
 _origin = (0, 0)
 
 
-def _paint_ring(hdc, x: int, y: int, radius: int, freshness) -> None:
+def ring_colour_for(freshness) -> int:
+    """The ring colour for a drawable freshness state.
+
+    HIDDEN never reaches here: the caller clears the hint instead, because
+    this function must always return a colour and a hidden hint has none.
+    """
     from ghostcursor.reasoning.staleness import Freshness
 
-    colour = RING_COLOR if freshness is Freshness.FRESH else DIMMED_RING_COLOR
+    if freshness is Freshness.INFERRED:
+        return INFERRED_RING_COLOR
+    if freshness is Freshness.DIMMED:
+        return DIMMED_RING_COLOR
+    return RING_COLOR
+
+
+def _paint_ring(hdc, x: int, y: int, radius: int, freshness) -> None:
+    colour = ring_colour_for(freshness)
     pen = win32gui.CreatePen(win32con.PS_SOLID, RING_THICKNESS, colour)
     old_pen = win32gui.SelectObject(hdc, pen)
     old_brush = win32gui.SelectObject(hdc, win32gui.GetStockObject(win32con.NULL_BRUSH))

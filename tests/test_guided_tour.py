@@ -12,6 +12,7 @@ from ghostcursor.reasoning import grounding
 from ghostcursor.reasoning.loop import GuidedTour, State
 from ghostcursor.reasoning.renderer import OverlayRenderer
 from ghostcursor.reasoning.schema import Recipe
+from ghostcursor.reasoning.staleness import Freshness
 from ghostcursor.reasoning.verification import take_snapshot, verify
 from tests.uia_app import BTN_EXPORT, SyntheticApp
 
@@ -72,10 +73,15 @@ def test_tour_grounds_renders_and_verifies_against_a_real_window():
         title_re = f".*{app.title}.*"
         hwnd = ov.create_overlay_window()
         try:
-            renderer = OverlayRenderer(hwnd)
+            # The target is a UIA-confirmed control, so the confirmed-control
+            # display state is the factually correct one to declare here.
+            # OverlayRenderer requires it to be declared (D027).
+            renderer = OverlayRenderer(hwnd, freshness_source=lambda: Freshness.FRESH)
             tour = GuidedTour(
                 recipe=recipe,
-                grounder=lambda step, i, elements=None: grounding.ground(step, title_re),
+                grounder=lambda step, i, elements=None: grounding.ground(
+                    step, title_re
+                ),
                 snapshotter=lambda: take_snapshot(title_re),
                 verifier=verify,
                 renderer=renderer,

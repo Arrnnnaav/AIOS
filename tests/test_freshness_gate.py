@@ -26,7 +26,7 @@ from ghostcursor.reasoning.schema import (
 )
 from ghostcursor.reasoning.verification import Snapshot
 
-TARGET = GroundedTarget((10, 10, 110, 40), 1, "1001", "Button", "Export")
+TARGET = GroundedTarget((10, 10, 110, 40), 1, "1001", "Button", "Export", "uia")
 EXPORT = Element("Export", "Button", "1001", (10, 10, 110, 40))
 
 
@@ -39,6 +39,10 @@ class FakeRenderer:
 
     def clear(self):
         self.cleared += 1
+
+    def settle(self):
+        # Tick boundary (D027). Nothing to emit: this fake never draws.
+        pass
 
 
 def _recipe():

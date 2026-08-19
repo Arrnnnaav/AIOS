@@ -178,8 +178,9 @@ any application precisely *because* it doesn't require focus, and the timeout
 means even a hung loop releases the screen.
 
 ## D012 — Verify with measurement, not by asking a human to look
-**Decision:** correctness is checked by `tests/test_overlay.py` (14 checks) and
-`tests/test_end_to_end.py` (4 checks), which assert against pixels and Win32
+**Decision:** correctness is checked by `tests/test_overlay.py` and
+`tests/test_end_to_end.py` — 14 and 4 checks when this was written, more since,
+as each new visual state earns one — which assert against pixels and Win32
 state rather than a person's judgement:
 - click-through is proven with `WindowFromPoint`, which performs real
   hit-testing — the point must resolve to the window *underneath* the overlay;
@@ -484,6 +485,14 @@ additionally force async control flow into `GuidedTour` and change every
 injected fake, breaking the collaborator contract that keeps the existing test
 suite passing unchanged.
 
+**The same shape, both directions.** Tier 2's request travels UI thread ->
+worker through a second slot of exactly this kind (D028): one overwritten
+`Tier2Request`, no queue, no future. A second request for the same step while
+the first is still being read IS the same request, so overwrite is again the
+discard. The asymmetry is that a result slot is self-expiring — a newer
+observation replaces it — while a request STANDS until cancelled, which is why
+`cancel_tier2` exists and the result direction needs no equivalent.
+
 **The subtle part.** `AWAITING_USER_ACTION` must observe a strictly *later*
 moment than `OBSERVING` did (D019). With a published slot that no longer holds
 for free: if the worker has produced nothing new, `AWAITING` reads back the
@@ -715,3 +724,520 @@ the same observation twice, which is the condition the staleness guard exists
 for — and freezes its heartbeat while wedged, because that freeze is the
 heartbeat's entire diagnostic value.
 
+
+## D027 — One write per tick: a two-step render is a laundering bug
+
+**Decision:** the hint's display state is resolved once and emitted once per
+tick, through `OverlayRenderer` as the single write path. Nothing paints a
+provisional style and corrects it afterwards. `run_tour` no longer calls
+`window.set_hint` at all; it calls `renderer.settle()`, which emits the tick's
+state only if the loop has not already.
+
+**The general principle, which is the part worth keeping.** *Any two-step
+render where a paint can interleave with its own correction is a laundering
+bug, regardless of which states are involved.* It does not matter that the
+correction is "one tick later" or "microseconds later": the safety rule
+governs what the system EMITS, not the odds a human catches the frame. If the
+first write can differ from the settled one, the system has told the user
+something it does not believe, and the fact that it later retracts it is not
+visible to anyone.
+
+**How it showed up.** `OverlayRenderer.show()` called `set_hint` with no
+freshness, and `window.set_hint` defaults an unspecified freshness to FRESH.
+So the opening paint of every hint was the confirmed-control style, and
+`run_tour` then issued a SECOND `set_hint` later in the same tick with the
+real display state. For an OCR-grounded target that meant a bright cyan ring —
+"this is a control I have confirmed" — around a coordinate read off pixels,
+which is the precise claim D006's never-act-for-the-user boundary exists to
+stop the system making.
+
+This was not a narrow race. `set_hint` ends in `UpdateWindow`, which paints
+**synchronously**, so the provisional frame was not merely reachable — it was
+drawn, every time, on every hint.
+
+**Alternative considered and rejected: make the first write correct and leave
+the second in place.** This was the first fix, and it is what prompted the
+rule above. It makes the two writes agree *today*, which means the second one
+is dead weight that silently becomes a correction again the moment the two
+computations drift — and nothing would fail when they did. Narrowing the
+window a `WM_PAINT` can slip through is not the same as closing it. The second
+write is deleted, not synchronised.
+
+**Alternative considered and rejected: two ways to supply the state.** The
+renderer briefly accepted both an explicit `show(freshness=...)` argument and
+an injected `freshness_source` callable. Nothing ever passed the argument. Two
+ways to decide what to draw is the same defect one level up — the next reader
+has to work out which wins — so only the callable survives. It is a callable
+rather than a value because of a split in who knows what: the caller that
+KNOWS the display state is `run.py` (it owns the staleness ladder and the
+grounding source), but the caller that DRIVES the renderer is the loop, which
+must stay ignorant of both, exactly as D019 and D023 require.
+
+**Why "one write per tick" was not, by itself, the safety property.** An
+earlier draft of this entry argued that reading the source at the write is
+safe because the grounding source "is only ever changed by `DECIDING`, which
+does not paint." That is false, and it is the sharpest case in D031's list:
+`GuidedTour.tick()` ends in `settle()`, and `settle()` DOES paint on any tick
+that did not already write. So a step whose source flipped `ocr` -> `uia` in
+DECIDING had its old OCR centre repainted at the new UIA source by `settle()`
+in RENDERING_HINT — a pixel guess drawn in the confirmed-control colour for a
+full tick. One write per tick held perfectly; the property it was meant to
+guarantee did not.
+
+**What actually makes this safe.** Provenance is bound into the hint itself.
+`renderer.py`'s `_Hint` is a frozen dataclass pairing a centre with the source
+it was created with, and `show()` constructs both from the same
+`GroundedTarget` in one statement — there is no window in which the centre is
+this hint's and the source is another's. `run.py` no longer owns or supplies
+the grounding source to the renderer at all: every repaint, including
+`settle()`'s, resolves freshness by folding in `hint.source` (via
+`display_freshness`), never whatever the wider system's grounding source says
+now. A repaint can therefore only ever reproduce the display state its hint
+was created with, not borrow a later step's confidence.
+
+**Why `settle()` exists at all.** The loop calls `show()` only when it changes
+WHAT is displayed — never when it changes how confident the system is. Without
+a per-tick emission point the staleness ladder would be dead code: a hint
+drawn FRESH at step start would never dim and never hide. `settle()` is that
+point, and it is a no-op on any tick that already wrote, so "at most one write
+per tick" holds without the caller tracking which case it is in.
+
+**Provenance is required, not defaulted.** `OverlayRenderer` takes
+`freshness_source` as a required keyword argument, and a source that answers
+None resolves to INFERRED. There is no code path left that calls `set_hint`
+without an explicit freshness, so a renderer that cannot say where its hint
+came from cannot draw one as a confirmed control. The first attempt left the
+permissive default in place and policed it with a test that scanned the
+package for constructions that omitted it — rejected, because a scan is a
+tripwire, not a guarantee: it passes the day someone adds a construction it
+does not match, and what it guards is the same "unknown resolves to the most
+trusting value" shape this entry exists to remove. Close it at the type, not
+at the perimeter.
+
+**The one coupling this leaves, and why it is closed twice.** A driver that
+never calls `settle()` never asks the ladder what to draw. Nothing errors: the
+hint stays exactly as drawn, never dimming, never hiding, while perception
+hums along — the system looks fine and quietly stops degrading honestly, which
+is the shape that has bitten this project three times.
+
+The primary closure is structural: `GuidedTour.tick()` calls
+`renderer.settle()` itself, as the last thing it does on every path. A driver
+cannot forget it, because every driver ticks by definition. This does NOT
+teach the loop about staleness — what to draw stays entirely behind the
+renderer's `freshness_source`; the loop learns only that the renderer has a
+tick boundary, which the loop already owns by being the thing that ticks. It
+runs on the DONE and FAILED ticks too: both terminal paths call
+`renderer.clear()` first, which marks the tick written, so nothing is emitted,
+and "every tick settles" is a simpler invariant to hold than "every tick
+except the last two".
+
+`StalenessLadder` keeps a second, independent detector: it is the one object
+that can see both that observations are flowing and that nothing consumes its
+verdict, and after `unqueried_after_s` of that combination it says so once,
+naming `settle()`. It is strictly narrower than the fold — it only fires for a
+driver that wires THIS ladder and feeds it `observed()` — and its report goes
+to stderr, which the user of a full-screen click-through overlay is not
+watching. It is kept because it is nearly free and catches a renderer wired to
+some other freshness source, not because it would be sufficient alone.
+
+A first attempt shipped the detector as the ONLY closure, on a cost argument
+about the protocol change. That was wrong on both counts: the change is about
+six lines including three test fakes, and a warning nobody reads is closer to
+a silent freeze than it looks.
+
+**Tested as a standing property, not a regression case**
+(`tests/test_first_paint.py`): the first paint equals the final display state
+across the full cross-product of `Freshness` members and grounding sources —
+generated from the enum itself, and including an unrecognised source, so a new
+rung or a future perception tier is covered without anyone remembering to
+extend it. An end-to-end arm buckets every overlay write of a real `run_tour`
+by tick and asserts no bucket holds two, and the constructor and None-source
+closures have their own cases. The unqueried signal is covered in
+`tests/test_staleness.py`, in both directions — a driver that never reads is
+reported exactly once, and a driver that reads every tick never is.
+
+---
+
+## D028 — Tier 2 triggers on grounding failure, never on an empty walk
+
+**Decision.** OCR turns on when grounding fails for the CURRENT STEP — not
+when a UIA walk returns few elements. Stickiness is per step and resets at the
+step boundary. Two caps bound the cost, and exhausting the run cap ends the
+step rather than freezing its last result.
+
+**Why not "UIA returned nothing".** That trigger would never fire. Measured:
+Chrome returned **43 elements in 0.31 s containing zero page content** — no
+`Document` node, not one word of the page anywhere in the tree. UIA reported
+success while being useless. Any trigger keyed on emptiness sees a healthy
+walk and stands down.
+
+This also avoids colliding with D023, which requires an empty walk to count as
+a *successful observation* for staleness. The two never conflict because they
+answer different questions: staleness asks "did perception complete recently",
+grounding asks "can this step be located".
+
+**Who decides and who reads.** The trigger is inherently a UI-thread concept —
+only the tick loop knows which step is current and whether grounding just
+failed — while the COST (capture plus OCR, 0.14-0.23 s measured on a 976x1028
+window, scaling with captured AREA) belongs anywhere but the tick, where on a
+4K screen it would eat D020's 0.5 s ceiling outright and bring back the D021
+freeze. So the UI thread **decides and requests**, through a `Tier2Request` in
+a second overwritten slot running opposite to the observation slot (D022), and
+the perception worker **executes and publishes** — the read arrives as
+`ocr_elements` on a LATER observation, tagged with `tier2_step`. No wait, no
+join, no future: grounding may fail for a tick or two until the read lands,
+which the grounding grace and the staleness ladder already cover. There is no
+`wanted` flag; the ABSENCE of a request means "not wanted", because a flag
+would have to be set False by exactly the callers that could instead clear the
+slot, and a False request still carries a step index and a stale `grounded`
+nothing would ever clear. Because nothing else ends a standing request, the UI
+thread must cancel it when UIA answered and at every step boundary — a request
+for step 3 serviced through all of step 4 delays the observations the user's
+actual step is being grounded from.
+
+**Why stickiness resets at the step boundary.** An app-wide flag would keep OCR
+running for the rest of the tour after a single failure — paying full OCR cost
+on steps that would have grounded through UIA in 0.3 ms, while still calling
+itself a cheapest-first tier. Photoshop's text menus ground cheaply through
+whatever UIA does expose even though its tool palette does not; the next step
+must get to try tier 1 again.
+
+**Why both caps, not one.** "Re-run only when the region changed" degrades into
+"re-run every tick" against anything that animates — a loading spinner in
+frame, a window being dragged, a video preview. A floor interval alone lets a
+slow animation pace OCR forever; a run ceiling alone lets a fast one burn its
+whole budget in a second. Both: **1.0 s minimum between runs, a ceiling of 20
+CONSECUTIVE FRUITLESS runs per step.** A read that produces a groundable
+target resets the count (`grounded()`), so the ceiling bounds unproductive
+re-reading, not total work — a churning page that keeps re-grounding
+correctly on OCR is the tier doing its job, not exhausting its budget.
+
+**Why exhaustion is terminal.** When the ceiling is reached and the step still
+cannot ground, tier 2 stops and the step is treated as ungroundable, feeding
+the existing grounding grace and its give-up path.
+
+The rejected alternative — let the last OCR result stand and simply age —
+fails twice over. The ring keeps pointing at a coordinate the system has
+stopped being able to confirm, which is the wrong point D006 exists to
+prevent. And the step becomes **incapable of ever failing**: the user waits on
+a hint that can never resolve and is never told why. A clean failure beats a
+hint that cannot die.
+
+The failure reason names the read failure rather than the generic "cannot
+find", for the same reason D024 requires a dead worker to be named as one:
+telling users their element is missing, when in fact we gave up reading the
+screen, points them at their own application instead of at ours.
+
+---
+
+## D029 — `Windows.Media.Ocr`, and the floor of 95
+
+**Decision.** Tier 2 reads with `Windows.Media.Ocr`, and a fuzzy match must
+score **95** or better to ground.
+
+**The engine, settled by measurement rather than argument.** Both candidates
+run against identical captures of four real application screens:
+
+| | cold start | full 1938x1038 frame | cropped | recall @90 |
+|---|---|---|---|---|
+| `Windows.Media.Ocr` | **0.01 s** | **0.17-0.23 s** | **0.03 s** | **22/23** |
+| RapidOCR (onnxruntime) | 0.68 s | **39-66 s** | 1.6-2.8 s | 16/23 |
+
+RapidOCR is not slower — it is disqualified. 39 seconds on a window is roughly
+200x the estimate, and even cropped it exceeds a tick. `Windows.Media.Ocr`
+wins on every axis and ships with the OS, so there is no model download and no
+network (D017).
+
+**Stock PaddleOCR was ruled out WITHOUT measuring it.** A few-hundred-megabyte
+deep-learning runtime plus a first-run network fetch, inside an application
+that otherwise touches no network, conflicts with D017 regardless of how
+accurate it is. No accuracy number could have changed that, so spiking it
+would have meant installing the heaviest candidate available purely to reject
+a decision already made on principle. This refines D003's engine choice; it
+does not reverse its tiering.
+
+**The floor is measured, and it could not have been guessed.** Sweeping the
+fuzzy threshold across all four screens, the binding case is a step claiming
+`Uploads` against an OCR read of `upload`, scoring **92.3**. Those are two
+real, different Canva surfaces one character apart. The OCR documentation's
+suggested 0.85 would have pointed at the wrong one on the first real screen
+tested. At 95, zero false matches across every screen.
+
+**One bar is doing two jobs, and that is why 95 is conservative.** The design
+called for two independent floors — read confidence AND match score, neither
+able to borrow slack from the other, because a weak read and a loose match
+otherwise average into something that looks acceptable and is not.
+**`Windows.Media.Ocr` exposes no per-word confidence.** That is stated plainly
+rather than quietly dropped: the two-floor design cannot be built on this
+engine, the match score carries both jobs, and the threshold is set high for
+that reason rather than tuned for recall.
+
+**The language-pack risk was gated before implementation started.** The engine
+needs an OCR recognizer pack, and installing a missing one requires
+administrator rights — "end users need admin to use a fallback tier" would be
+a distribution blocker independent of accuracy. Verified on a SECOND Windows
+machine before any code was written: `en-GB` and `en-US` present, both engine
+constructors returning objects, no elevation required. Two machines is not a
+distribution study. If tier 2 ever reports itself unavailable in the field,
+this is the first thing to check.
+
+---
+
+## D030 — OCR results are never promoted, and rung 3 excludes them
+
+**Decision.** Nothing tier 2 produces is ever written to the knowledge base,
+and OCR elements are barred from grounding rung 3.
+
+**Promotion is blocked by an explicit provenance guard, not by construction.**
+`promote()` in `ghostcursor/reasoning/grounding.py` checks the grounded
+target's `source` directly and refuses anything that did not come from a
+confirmed UIA control. It used to be true only incidentally, because OCR
+elements carry no AutomationId and an earlier guard on that field caught them
+as a side effect — which made "never promoted by construction" a claim
+resting on a coincidence of empty strings, not a real barrier. A future tier
+that DID supply an id (tier 3, the VLM, is exactly this case) could have
+quietly started writing pixel-derived rows into the knowledge base. The
+provenance check is what actually closes that; `tests/test_regression_ocr_fixes.py`
+isolates the guard.
+
+So the knowledge base stays UIA-only and provably clean, and tier 2 is pure
+runtime fallback. A user who deletes the database loses nothing OCR produced,
+because OCR produced nothing that outlives the tick.
+
+**Why rung 3 must exclude OCR — the floor is decorative without it.** Rung 3
+is not an exact match. It is a case-insensitive **substring** test inherited
+from an era when every element came from UIA and names were authoritative, and
+it runs BEFORE rung 4.
+
+Left unfiltered, an OCR element reaches it and matches with no score threshold
+whatsoever. A step claiming `Edit` substring-matches OCR reads of
+`Edit a PDF`, `Magic Edit` and `Editor` alike, and rung 3 returns whichever the
+disambiguator happens to pick — with D029's floor of 95 never consulted.
+
+Rung 3 therefore filters to `source == "uia"`. That leaves two rungs OCR can
+still reach, and both stay safe under the floor: rung 4 applies
+`OCR_MATCH_FLOOR` at 95 directly, and rung 2 admits OCR only on byte-exact
+name equality — a strictly higher bar than a 95 fuzzy score, so it never
+undercuts the floor. What rung 3's exclusion removes is loose, unscored
+matching on unconfirmed text, not OCR as such.
+
+This was found while writing the implementation plan, not while designing: the
+spec asserted rungs 1-3 were all exact and built the safety argument on rung 4
+being the only loose one. Reading the code showed rung 3 had been a substring
+test all along.
+
+**The failure this guards against is not hypothetical.** Multi-line labels
+were the dominant OCR failure across all four screens — single-line labels
+read perfectly (`BG Remover`, `Magic Edit`, `Upscale`, `Blur`, `Select area`
+all scored 100.0) while wrapped ones failed systematically, and failed in the
+worst available way:
+
+```
+Magic Eraser  ->  read as 'Eraser'      66.7
+BG Generator  ->  read as 'Generator'   85.7
+Magic Expand  ->  read as 'Magic Edit'  72.7   <-- a DIFFERENT REAL TOOL
+```
+
+`Magic Expand` matching `Magic Edit` is two real buttons side by side in
+Canva's photo editor. A user following that hint applies the wrong operation
+to their image. Reassembling wrapped reads before matching removes the
+mechanism rather than thresholding above its symptom — and its false-positive
+direction is tested as hard as its recall direction, because a merge of two
+unrelated adjacent labels could invent a target neither part would match.
+
+---
+
+## D031 — An invariant must imply the property, not merely correlate with it
+
+**Decision.** Every fix in this project must state, explicitly, the property
+it protects AND the invariant it enforces — and then answer whether the
+invariant genuinely *implies* the property, or merely correlates with it
+across the cases tested so far. An invariant is accepted only alongside
+either a named case that would satisfy the invariant while violating the
+property, or a demonstration that no such case exists. This carries the same
+standing as D018's mutation testing, and is adopted for the same reason: a
+green signal that does not mean what it appears to mean.
+
+**Call the failure mode a FALSE GREEN.** The project has hit it four times,
+at four different layers, and the repetition is the argument:
+
+1. **The escapability test's flat wall-clock budget.** It asserted total
+   elapsed under 7.0 s across five ticks. The property was "no single tick
+   blocks, because ESC is polled between ticks." Total elapsed does not imply
+   that: a regression costing ~1.1 s per tick — already double D020's 0.5 s
+   ceiling — summed to under budget and passed silently. Fixed by asserting
+   the maximum gap between consecutive ESC polls, which is scale-free and
+   cannot be diluted by fast ticks.
+
+2. **The staleness ladder fed on every slot read.** Every unit test of the
+   ladder, the ring colour and the health policy passed. The property — "the
+   display degrades honestly as observations age" — held in none of them,
+   because re-reading a wedged worker's stale observation re-confirmed it
+   each tick and the clock never advanced. Nothing ever dimmed, nothing ever
+   hid, health never fired.
+
+3. **Health killing the tour on tick 2.** Each component correct in
+   isolation; the composition wrong. `ladder.age()` is infinite before the
+   first observation, so the tour ended before perception had answered once.
+
+4. **The single-write render invariant** (D027). "Exactly one `set_hint` per
+   tick" held perfectly. The property it existed to guarantee — "no paint can
+   show a pixel guess in the confirmed-control colour" — did not.
+   `grounded_source` flips in DECIDING while the renderer's centre updates a
+   tick later in RENDERING_HINT, so `settle()` repaints the OLD OCR centre at
+   the NEW UIA source: cyan, for a full ~250 ms tick, at a coordinate the UIA
+   rect may not agree with. Reproduced against the real renderer as
+   `[('set',100,100,INFERRED), ('set',100,100,FRESH)]`.
+
+**Case 4 is the sharpest one, and it is worth drawing out why.** The
+invariant was not weakened, not misimplemented, and not untested. It was
+*satisfied*, and it was the wrong invariant — it counted writes when the
+property was about what any single write could show. A counter cannot see
+that.
+
+**The structural fix that followed generalises.** The two facts had to
+become one atomically-constructed value. A hint's provenance and its
+coordinate must not be separately updatable fields, because any two fields
+updated on different ticks can be read in a combination that never
+legitimately existed.
+
+**What this does not mean.** Not that invariants are useless, and not that
+every fix needs a formal proof. The requirement is one honest paragraph
+naming the property, the invariant, and the gap between them — the same
+weight D018 already asks for a mutation.
+
+---
+
+## D032 — No task is reviewed by the agent that produced it
+
+**Decision.** Every task gets a review by someone who did not write it. Code
+and documentation alike — prose gets no exemption. A self-review supplements
+an independent review; it never replaces one.
+
+**What forced it.** During the tier-2 milestone, the controller finished the
+documentation task itself after the assigned implementer hit a hard session
+limit mid-task. It seemed low-risk: the task was prose, and every fact was
+already recorded in the working ledger.
+
+The final whole-branch review then found four documentation defects, **three
+of them in exactly that unreviewed work** — including a docstring that had
+been deferred twice, each time on an explicit promise the documentation task
+would close it, and which that task then only half-closed. The two
+docstrings that were caught earlier in the milestone had both been found by
+independent reviewers, not by their authors.
+
+**The lesson, precisely.** The author of a piece of work is the one person
+who cannot see the assumption they made while writing it. That is not about
+care or competence — the controller in question had strong context and was
+being deliberate. Fresh eyes are a different instrument, not a more diligent
+version of the same one.
+
+**Why documentation specifically is not an exception.** This project has now
+fixed three docstrings that confidently described behaviour the code did not
+have — captures said to go through a function they never call, OCR boxes
+said to be in screen coordinates when they are frame-relative, and a claim
+that OCR text has exactly one route into grounding when it has two. Each is
+the dangerous kind of wrong: a future reader could "fix" the code to match
+the document. Documentation that misdescribes behaviour is a latent code
+change waiting for someone conscientious.
+
+**Cross-reference.** D018 and D031 are the other two standing rules of the
+same family — all three exist because something looked verified and was
+not. **D033** carries the concrete evidence for this entry — the specific
+ruling that produced it and what that cost — and
+`docs/superpowers/ledgers/2026-08-15-perception-tier-2-ocr-ledger.md` holds
+the full execution record, kept outside the throwaway workspace precisely so
+this evidence cannot be deleted by routine cleanup.
+
+---
+
+## D033 — What the tier-2 milestone's rulings cost, and where they live
+
+**Decision.** Execution rulings — the calls made on the human partner's behalf
+while a plan is running, without stopping to ask — are preserved in
+`docs/superpowers/ledgers/`, not only in the throwaway execution workspace.
+The load-bearing ones are summarised here.
+
+**Why this entry exists at all.** The tier-2 milestone produced thirteen such
+rulings. They lived in `.superpowers/sdd/<plan>/progress.md`, a directory whose
+entire lifecycle is designed to be deleted once a branch merges. The single
+most valuable thing that milestone learned — that self-review has a
+demonstrated, repeated blind spot — was sitting in a file the normal process
+would have removed by habit. That is a bad place for evidence. The ledger is
+now copied into `docs/superpowers/ledgers/` and committed.
+
+### The ruling that was wrong, and what it cost
+
+**P9 — the controller finished a task itself rather than dispatching it.**
+The documentation task's implementer hit a hard capacity limit mid-task. The
+work remaining was prose **plus a one-line `re.escape` fix**, every fact was
+already in the ledger, and dispatching
+a fresh agent would have meant re-deriving context the controller already held.
+Finishing it directly looked obviously correct.
+
+The final whole-branch review then found four documentation defects. **Three
+were in exactly that unreviewed work** — including a docstring that had been
+deferred twice, each time on an explicit promise the documentation task would
+close it, and which that task then only half-closed. The two docstrings caught
+earlier in the same milestone had both been found by independent reviewers,
+never by their authors.
+
+This is the evidence D032 cites. It is recorded here rather than left implicit
+because "no self-review" is easy to agree with in the abstract and easy to
+rationalise away in the moment — the rationalisation that produced it was
+sound-sounding and specific, and it was still wrong.
+
+### The rulings that carry forward
+
+**P12 — a surviving mutation is a finding, not an inconvenience.** A test
+asserting that nothing OCR-derived reaches the knowledge base passed even with
+both new guards removed, because a pre-existing empty-id check in
+`ObservationStore.record()` covered the same cases. The property held; the new
+invariant was merely correlated with it. The agent reported this plainly
+instead of adjusting the test. One more unit test now isolates the guard using
+a fabricated non-empty-id, non-`uia` target — the case that matters the day a
+VLM tier (D003) produces elements with synthetic ids and the empty-id backstop
+stops covering them. See D031.
+
+**P7 — process escalation rules are heuristics, not laws.** The convention is
+that a fix loop surviving three rounds goes to a fresh implementer on a
+stronger model, because a loop that long usually means the implementer cannot
+see its own problem. That was not the situation: each round had found real
+defects beyond what it was asked for, including a mutating query called twice
+per painting tick that nobody had pointed at. Keeping it was right, and the
+deviation is recorded so the next person can weigh the same call.
+
+**P8 — a reviewer's disagreement is worth more than a tidy loop.** An
+implementer rejected a structural fix on cost and substituted detection. The
+reviewer priced the structural option at roughly six lines and showed detection
+closed a strictly narrower set — it fires only for a driver that wires THIS
+ladder and feeds it `observed()`, so a future driver with a different
+`freshness_source`, or none, freezes with no signal at all. The structural fix
+won **without displacing the detector: the ruling was to fold `settle()` into
+`GuidedTour.tick()` as the primary closure AND KEEP the detector as
+belt-and-braces**, which is why `staleness.py` still carries its
+unqueried-ladder warning. Implementing it
+surfaced something neither had anticipated: the fold had to happen inside a
+helper rather than per-branch, because the branch it would otherwise have
+missed was the one the tour *dwells* in.
+
+**P11 — stopping is sometimes the work.** With capacity exhausted and three
+regression tests unwritten, the branch was left unmergeable overnight rather
+than have the controller write and solely review the tests guarding the
+milestone's most dangerous defect. A green suite that does not guard its
+properties is a false green (D031); shipping one to avoid a delay trades a
+day for a permanent hole.
+
+**P13 — documentation drift blocks a merge.** The final re-review found that
+D027, D028 and D030 had come to state the opposite of the code they document —
+D027 still asserting the very claim the milestone's worst defect disproved. A
+decision record that contradicts the code is worse than none, because it is the
+artefact a future reader trusts most. Fixed before merge, by an agent that had
+written neither the code nor the entries.
+
+### What this does not license
+
+Recording a ruling is not the same as it being right. P9 is in this list
+precisely because it was wrong, and the honest lesson is that its reasoning
+felt sound while being made. The value of the ledger is that the calls are
+inspectable afterwards — not that making them unilaterally is costless.
