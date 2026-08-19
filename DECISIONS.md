@@ -1331,3 +1331,89 @@ Related: **D018** (mutation-verify rather than assume), **D026** (sequence tests
 for stateful behaviour), **D031** (an invariant must imply the property),
 **D032** (independent review). All five exist because something looked verified
 and was not.
+
+---
+
+## D035 — A warm-up grace period before tier 2 may be requested, keyed by window handle
+
+**Decision.** `run.py` escalated to tier 2 the instant grounding failed for the
+current step — including the first tick of a cold start, before a Chromium
+application's accessibility tree has finished populating. A `WarmUp` object
+now suppresses `service.request_tier2()` for a budget after a window is first
+seen, and closes permanently for that handle the moment grounding succeeds
+against it (`WarmUp.allows_tier2` / `WarmUp.note_grounded`,
+`ghostcursor/perception/warmup.py`). `run.py`'s tier-2 request site now calls
+`warmup.allows_tier2(target_hwnd)` before `service.request_tier2(i)`, and the
+UIA-success path calls `warmup.note_grounded(target_hwnd)`. `Observation` now
+carries `target_hwnd: int`, published by the perception worker, so the UI
+thread can key warm-up state without crossing an apartment-bound UIA object
+across the thread boundary (D021).
+
+**Why not readiness detection.** Every attempt to tell "not yet ready" apart
+from "will never have content" was ruled out by measurement, not preference —
+see `docs/superpowers/specs/2026-08-19-cold-electron-probe-findings.md` (D034).
+"Window furniture present, no content" is TRANSIENT in a cold VS Code and
+TERMINAL in Adobe Acrobat, the same shape at any threshold. The element count
+is not even monotonic in steady state, so comparing consecutive observations
+to detect convergence is unsound. What the system already has is a perfect
+readiness signal — grounding itself succeeding — so the fix is patience, not
+a new detector.
+
+**The budget: 2.0 s, and its measured basis.** Per the findings document
+above: VS Code grounded its targets 0.57 s and 0.39 s after the window
+appeared, across two cold runs. Discord, measured from the real window (its
+splash excluded — see below), grounded all six targets 0.92 s after it
+appeared. No element in either app was ever observed to ground
+slowly-but-eventually — it was either fast or never — so a larger budget buys
+nothing; it cannot rescue a target that is simply absent. `2.0 s` gives
+roughly double Discord's figure as margin, not headroom for a slow-but-real
+case that has never been observed.
+
+**Keyed by window HANDLE, not by the title regex — and the reason is
+measured, not defensive.** Discord's cold start puts up a window titled
+`Discord Updater` that fully matches the same title regex as the real Discord
+window — visible, non-minimised, on-screen — and lives for roughly five
+seconds before the real window exists, as a distinct HWND (see the findings
+addendum, §6.3). A warm-up keyed by title would open on the splash, spend its
+entire budget there, and leave the real window — whose tree is ready in
+0.92 s — with no allowance at all: escalating straight to OCR, exactly the
+failure this design exists to prevent. This was found by deliberately probing
+an application chosen to falsify the design (Discord loads content over the
+network, so a slow-but-eventual arrival should have shown up there if it
+existed anywhere), not by review.
+
+**The accepted cost.** A genuinely UIA-blind application — Adobe Acrobat,
+tier 2's entire reason for existing (D028) — now waits the full budget before
+OCR engages, on every cold start, permanently; it will never ground and so
+never close its own warm-up. This is why the budget is 2.0 s and not the 5.0 s
+an earlier draft proposed — every second here is a second Acrobat's user waits
+staring at an unringed screen.
+
+**Window-churn risk — unmeasured, and a diagnostic instruction, not a
+caveat.** If tier 2 ever appears not to fire on some application, check
+`WarmUp.opens` before anything else. It is a diagnostic-only counter, read by
+nothing that decides policy — the same shape as the worker heartbeat under
+D024 — incremented once per distinct handle that opens a warm-up. A count in
+the dozens means the application is recreating its top-level window faster
+than the budget, so warm-up keeps re-opening on each new handle and tier 2 is
+suppressed permanently, with no other visible symptom. This scenario has never
+been produced or measured; it is named here so it is checked first, not
+rediscovered by debugging OCR from scratch.
+
+**Measurement limitations, carried forward from the findings document so a
+future reader does not have to go find it:**
+- Slack and Teams were not tested. Only VS Code and Discord were measured.
+- The Discord figure (0.92 s, all six targets) rests on a **single** valid
+  run. Two earlier runs measured the `Discord Updater` splash window instead
+  of the real application and were discarded once the cause was found — they
+  are not corroborating data points for the real window's figure.
+- Chrome's element-count fluctuation data (used to rule out readiness
+  detection) came from an already-loaded page with a cold accessibility tree,
+  not from a cold application start; it speaks to steady-state noise, not to
+  the cold-start shape this decision is about.
+
+Related: **D021** (perception worker thread, apartment-bound UIA objects),
+**D024** (a diagnostic-only counter, not read by policy), **D028** (tier 2
+triggers on grounding failure — this decision narrows *when* that trigger is
+armed, not what it is), **D034** (this entry's every measured figure is cited
+to the document that recorded it).
