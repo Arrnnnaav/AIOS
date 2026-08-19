@@ -36,6 +36,7 @@ import win32con
 # DPI awareness before any window exists (see ghostcursor/overlay/dpi.py).
 from ghostcursor.overlay import window
 from ghostcursor.perception import uia
+from ghostcursor.perception.warmup import DEFAULT_WARMUP_BUDGET_S, WarmUp
 from ghostcursor.reasoning.schema import Step, VerificationKind
 
 REFRESH_SECONDS = 0.25
@@ -246,6 +247,7 @@ def run_tour(
     seconds: float,
     clock=time.monotonic,
     sleeper=time.sleep,
+    warmup_budget_s: float = DEFAULT_WARMUP_BUDGET_S,
 ) -> int:
     """Run a recipe as a guided tour.
 
@@ -330,6 +332,11 @@ def run_tour(
         # DECIDING half (only it knows the current step and whether grounding
         # just failed) and asks through a request slot; the worker executes.
         service = PerceptionService(title_re, clock=clock, tier2=tier2_controller)
+        #: Patience before escalating to tier 2 on a freshly-seen window. Same
+        #: clock as the deadline, the health budget and the staleness ladder;
+        #: two independently-driftable clocks here is the D026 failure
+        #: exactly.
+        warmup = WarmUp(budget_s=warmup_budget_s, clock=clock)
         ladder = StalenessLadder(clock=clock)
         health = WorkerHealth(service=service, ladder=ladder)
         service.start()
@@ -403,6 +410,9 @@ def run_tour(
                     # often as the 1.0s floor allows, delaying the UIA
                     # observations this step is actually being grounded from.
                     service.cancel_tier2(i)
+                    warmup.note_grounded(
+                        observation.target_hwnd if observation is not None else 0
+                    )
                     return target
 
                 # Tier 2. Triggered by GROUNDING FAILURE for this step, never
@@ -416,6 +426,16 @@ def run_tour(
                 # one polling ESC. Grounding may therefore fail for a tick or
                 # two before OCR elements arrive, which the 10s grounding grace
                 # and the staleness ladder already cover.
+                # Warm-up. A cold Chromium tree is populating, not blind: VS
+                # Code grounded its targets 0.57s after the window appeared and
+                # Discord 0.92s. Escalating inside that window burns OCR reads
+                # and risks drawing an amber INFERRED ring when a cyan one off a
+                # confirmed control was half a second away. Keyed by HANDLE, not
+                # title -- Discord's 'Discord Updater' splash matches the same
+                # regex and is a different window.
+                target_hwnd = observation.target_hwnd if observation is not None else 0
+                if not warmup.allows_tier2(target_hwnd):
+                    return None
                 service.request_tier2(i)
                 ocr_elements = (
                     observation.ocr_elements
