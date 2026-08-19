@@ -147,6 +147,20 @@ def test_absent_window_does_not_suppress():
 
 def test_default_budget_is_two_seconds():
     assert DEFAULT_WARMUP_BUDGET_S == 2.0
+
+
+def test_opens_counts_distinct_handles_only():
+    """Diagnostic only -- nothing reads it to decide. It exists so that the
+    one unmeasured risk in this design (an app recreating its window faster
+    than the budget, suppressing tier 2 forever) is visible as a number rather
+    than rediscovered by wondering why OCR never fires."""
+    warm = WarmUp(budget_s=2.0, clock=FakeClock())
+    assert warm.opens == 0
+    warm.allows_tier2(1001)
+    warm.allows_tier2(1001)
+    assert warm.opens == 1, "re-checking one handle is not a new window"
+    warm.allows_tier2(2002)
+    assert warm.opens == 2
 ```
 
 - [ ] **Step 2: Run the tests and verify they fail**
@@ -208,6 +222,16 @@ class WarmUp:
         #: they never need the allowance again -- a later step that fails to
         #: ground escalates immediately, as it does today.
         self._closed: set[int] = set()
+        #: How many distinct handles have opened a warm-up. DIAGNOSTIC ONLY --
+        #: never read by policy, exactly like the worker heartbeat under D024.
+        #: The one unmeasured risk in this design is an application that
+        #: destroys and recreates its top-level window faster than the budget,
+        #: which would re-open warm-up forever and suppress tier 2 for good. It
+        #: is invisible from the outside -- tier 2 simply never fires -- so this
+        #: counter is what makes it legible. Every measured run saw 2 (Discord:
+        #: its updater, then the app); dozens means window churn, and that is
+        #: the FIRST thing to check if tier 2 ever seems not to fire.
+        self.opens = 0
 
     def allows_tier2(self, hwnd: int) -> bool:
         """True when tier 2 may be requested for `hwnd` right now.
@@ -223,6 +247,7 @@ class WarmUp:
         opened = self._opened.get(hwnd)
         if opened is None:
             self._opened[hwnd] = self._clock()
+            self.opens += 1
             return False
         return (self._clock() - opened) >= self._budget_s
 
@@ -233,12 +258,14 @@ class WarmUp:
             self._opened.pop(hwnd, None)
 ```
 
+`opens` is deliberately a plain public attribute, not a property: it is read by humans and by the diagnostic test, never by policy.
+
 **Two accepted limitations, stated rather than discovered later.** `_opened` and `_closed` grow with the number of distinct matching top-level windows seen during one run — two, in every Discord run measured — and are not evicted. And Windows recycles handle values, so a recycled handle could inherit a closed warm-up; that degrades to today's behaviour (tier 2 allowed immediately), not to a new failure.
 
 - [ ] **Step 4: Run the tests and verify they pass**
 
 Run: `python -m pytest tests/test_warmup.py -v`
-Expected: 7 passed.
+Expected: 8 passed.
 
 - [ ] **Step 5: Commit — do this now, before the mutation work below**
 
@@ -686,6 +713,11 @@ Expected: 16 and 8 checks pass.
 - [ ] **Step 1: Add the decision entry**
 
 Append to `DECISIONS.md` as the next free number (D035 at time of writing — **check, do not assume**). It must state: the trigger (`run.py` escalating on the first failing tick of a cold start); that readiness detection was ruled out by measurement, not preference; the budget with its measured basis (VS Code 0.57 s / 0.39 s, Discord 0.92 s) citing `docs/superpowers/specs/2026-08-19-cold-electron-probe-findings.md` per D034; that it is keyed by HWND, with the Discord updater as the reason; and the accepted cost — a UIA-blind app waits the budget on every cold start, and an app that recreates its window faster than the budget could suppress tier 2 indefinitely.
+
+  **Two things must land in `DECISIONS.md` itself, not only in the spec.** This project has already lost hard-won findings to disposable workspaces (D033), and a spec can be archived while `DECISIONS.md` is the file the next person reads first.
+
+  1. **The window-churn risk, written as a diagnostic instruction, not a caveat.** State it as: *if tier 2 ever appears not to fire on some application, check `WarmUp.opens` before anything else — a count in the dozens means the app is recreating its top-level window faster than the budget and warm-up is re-opening forever.* Unmeasured, and named as unmeasured. It must not be rediscovered by debugging OCR.
+  2. **The measurement limitations, migrated verbatim in substance from spec §8:** Slack and Teams untested; the Discord figure rests on a **single** valid run (the two that preceded it measured the updater window, not the app); Chrome's fluctuation data came from an already-loaded page with a cold accessibility tree, not from a cold application start. A future reader must be able to see what the 2.0 s number does and does not rest on without going to the spec folder.
 
 - [ ] **Step 2: Update `FLOW.md`**
 
