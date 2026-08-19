@@ -1110,6 +1110,23 @@ weight D018 already asks for a mutation.
 
 ## D032 — No task is reviewed by the agent that produced it
 
+**Status: ENFORCED GATE, not an aspiration.** Promoted after a SECOND
+independent occurrence on the same milestone, and the second was worse than the
+first. Occurrence one (P9): the controller finished a documentation task itself
+and three of four later-found defects were in that work. Occurrence two (D034):
+the controller asserted an unrecorded measurement into a brief, and it reached
+the documentation as a cited fact arguing to weaken a safety floor. Both
+bypassed the normal task review — one by the controller writing the work, the
+other by the controller supplying the facts.
+
+**The gate names the controller explicitly**, because the subagent workflow
+already reviews every dispatched task; a rule phrased only as "tasks get
+reviewed" reads as already-satisfied and changes nothing. What must be reviewed
+is any output the controller produced or any fact the controller supplied,
+including prose, documentation, and figures written into a dispatch brief.
+Nothing the controller authored is ground truth until something else has read
+it.
+
 **Decision.** Every task gets a review by someone who did not write it. Code
 and documentation alike — prose gets no exemption. A self-review supplements
 an independent review; it never replaces one.
@@ -1241,3 +1258,76 @@ Recording a ruling is not the same as it being right. P9 is in this list
 precisely because it was wrong, and the honest lesson is that its reasoning
 felt sound while being made. The value of the ledger is that the calls are
 inspectable afterwards — not that making them unilaterally is costless.
+
+---
+
+## D034 — A measured number in documentation must name where it is recorded
+
+**Decision.** Any figure presented in documentation as measured — a timing, a
+count, a score, a threshold — must point to where that measurement is written
+down. If it is not in a committed document, it is not citable, and the prose
+must either record it properly first or not present it as evidence.
+
+This applies with equal force to the instructions given to another agent.
+Asserting a number into a brief is publishing it: whoever receives it will
+write it down as fact, correctly trusting the person who said it.
+
+### The incident
+
+The tier-2 milestone set OCR's fuzzy-match floor at 95, a number the spike
+measured and argued for at length. While briefing a documentation pass, the
+controller wrote that the spike recorded Acrobat reading **"24 of 24 at floor
+85"**, and that 85 was rejected because it admits `Magic Expand` matching a
+read of `Magic Edit`.
+
+The findings document records only **21 of 24, at floor 95**. It says nothing
+about 24 of 24 and nothing about floor 85 for Acrobat recall. The agent, having
+no reason to doubt the brief, wrote the citation faithfully.
+
+**The number was not invented.** It came from a real scoring run earlier in the
+same session — measured, correct, and never written into any document. That is
+precisely what makes this worth its own entry: "but I did measure it" feels like
+a defence and is not one. The failure was **laundering ephemeral evidence into
+cited authority** — taking something true but unrecorded and presenting it as
+though the written record supported it. A rule against fabrication would not
+have caught it, because nothing was fabricated.
+
+**And the justification attached to it was inverted.** `Magic Expand` ←
+`Magic Edit` scores 72.7, so a floor of 85 *excludes* it. The findings table
+gives Acrobat `>= 85` for a different pair entirely, and the binding case
+against 85 is Canva Home's `Uploads` ← `upload` at 92.3.
+
+### Why this is not D032
+
+D032 exists because documentation drifts from code when nobody independently
+checks it. That is an ordinary failure and the tier-2 milestone produced ten
+instances of it in a single unreviewed slice — stale claims that were true when
+written.
+
+This is a different shape and a worse one. Nothing had drifted. A specific
+number entered the record with no source, in a direction that **erodes a safety
+threshold**: a future engineer tuning `OCR_MATCH_FLOOR` would check the spike,
+find that 85 catches the example cited against it, and conclude 95 is
+over-conservative. They would be citing this project's own documentation as
+authority for weakening the exact protection the spike existed to establish.
+
+The two need different fixes. D032's is *review the unreviewed*. This one's is
+*a number must carry its provenance* — a rule about what may be written, not
+about who checks it afterwards. Review caught this one, but only because it was
+specifically hunted; a provenance rule prevents it being written at all.
+
+### In practice
+
+- Before stating a measurement, locate it in a committed document and cite it.
+- If it exists only in a session, a scratch run or a conversation, record it
+  first — or write "not recorded" rather than implying a source.
+- The same rule binds instructions to another agent. A number asserted in a
+  brief is a number published.
+- When rejecting an option on measured grounds, cite the measurement that
+  actually rejects it. A plausible-sounding wrong reason is worse than none: it
+  survives scrutiny long enough to be repeated.
+
+Related: **D018** (mutation-verify rather than assume), **D026** (sequence tests
+for stateful behaviour), **D031** (an invariant must imply the property),
+**D032** (independent review). All five exist because something looked verified
+and was not.

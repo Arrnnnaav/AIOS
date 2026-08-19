@@ -53,6 +53,32 @@ Two other tracking files are living documents, updated on every meaningful chang
   a "you are here" marker showing exactly what's built vs. planned. Update it whenever
   the call graph changes, not just at the end of a milestone.
 
+## Standing rules — read before doing any work
+
+Five process rules, each adopted after a measured failure on this project, not
+written speculatively. They are scattered through DECISIONS.md by number; this
+is the index, because a rule nobody can find is not enforcing anything.
+
+| Rule | What it requires | What it cost to learn |
+|---|---|---|
+| **D018** | Mutation-verify safety-critical properties: break the code deliberately, confirm a test notices. | A passing suite hid three vacuous tests. |
+| **D026** | Stateful or time-based behaviour gets an ordered-sequence test on an injected clock, never end-state assertions. | Every component correct in isolation while the assembled system did nothing — twice. |
+| **D031** | State the property a fix protects AND the invariant enforcing it, then say whether the invariant *implies* the property or merely correlates with it. | Four separate "false greens", most sharply a one-write-per-tick counter that held perfectly while a pixel guess was painted in the confirmed-control colour. |
+| **D032** | **ENFORCED GATE.** Nothing the controller authored or asserted — code, prose, documentation, or a figure written into a dispatch brief — is ground truth until something else has read it. | Two occurrences on one milestone: three of four documentation defects in the one self-reviewed slice, then an uncited number reaching the docs as fact. |
+| **D034** | A measured number in documentation must name where it is recorded. If it exists only in a session or a scratch run, record it first or do not present it as evidence. | An unrecorded-but-real measurement was cited as spike-sourced, with an inverted justification pointing toward lowering a safety floor. |
+
+### Dispatching work to subagents
+
+**Instruct every implementer to commit as soon as its tests pass, before any
+mutation or verification work.** Five agents were lost to capacity limits
+mid-task during one milestone. Every one that had committed early kept its work;
+the one that had not lost a full task, and a second died before writing a single
+line. For read-only work — reviews, audits — the equivalent is to write findings
+to a scratch file incrementally rather than reporting only at the end.
+
+This is cheap, and it is the single instruction with the best measured
+return of anything tried on this project.
+
 ## Tech stack (decided, see DECISIONS.md D002–D005)
 
 - **Platform:** Windows-first, not cross-platform (v1). Packaging with Tauri is a later,
