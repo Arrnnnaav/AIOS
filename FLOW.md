@@ -164,9 +164,10 @@ costing 0.14-0.23s of worker time as often as the 1.0s floor allows.
 
 What forced it, measured on real screens: Adobe Acrobat exposes **0 of 16**
 tool labels to UIA — 20 elements, 17 of them anonymous Panes — while OCR reads
-**21 of 24** labels at the shipped floor of 95 (24 of 24 only at a floor of 85,
-which the spike rejected: 85 admits `Magic Expand` matching a read of
-`Magic Edit`, two different real tools). The Canva photo editor exposes
+**21 of 24** labels at the shipped floor of 95. A floor of 85 was rejected, but
+not for anything on this Acrobat screen: the binding case was Canva Home,
+where `Uploads` scored 92.3 against a read of `upload` — two different real
+Canva surfaces one character apart. The Canva photo editor exposes
 **4 of 13** even with a fully warm Chromium accessibility tree.
 
 What it deliberately does NOT cover: Electron apps are *blind-until-asked*,
@@ -252,9 +253,13 @@ run.main()
           worker thread: CoInitializeEx, then forever:
               uia.iter_elements(title_re)                  ~40s against a hung target
               verification.take_snapshot(..., observed_at)  timestamped from the service clock
-              service._tier2_payload()                     OUTSIDE the walk's try — a walker
-                                                           that raises must not suppress the
-                                                           very tier that exists for it
+              service._tier2_payload()                     OUTSIDE the walk's try, so a raising
+                                                           walker cannot skip the OCR run itself
+                                                           — but publication only happens after
+                                                           the walk succeeds, so on a raising
+                                                           walk OCR still runs (spending the
+                                                           one-shot `grounded` flag) and its
+                                                           result is simply discarded, unpublished
                   _take_tier2_request()                    consumes `grounded`; the request
                                                            itself STANDS until cancelled
                   tier2.Tier2Controller.elements_for(step, title_re)

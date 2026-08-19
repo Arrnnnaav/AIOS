@@ -82,7 +82,13 @@ Two other tracking files are living documents, updated on every meaningful chang
   **measured floor of 95**, and at rung 2 on byte-exact name equality — a strictly higher
   bar, so it never undercuts the floor. Rung 3 is a substring test and is the one rung OCR
   is barred from, or the floor would be decorative. **Nothing OCR produces is ever persisted**:
-  the schema forbids storing coordinates, so there is nothing durable to write. OCR-derived
+  `promote()` in `ghostcursor/reasoning/grounding.py` guards explicitly on the grounded
+  target's provenance and refuses anything not sourced from a confirmed UIA control. That
+  guard used to be redundant with OCR elements simply lacking an AutomationId, but that was
+  "never promoted by construction" resting on a coincidence of empty strings, not a real
+  barrier — a future tier (the VLM, tier 3) could supply a non-empty id, and the empty-id
+  check alone would stop covering that case. The explicit provenance guard is what actually
+  closes it now, and `tests/test_regression_ocr_fixes.py` isolates it. OCR-derived
   hints render in their own colour (`INFERRED`) so a pixel guess never wears the
   confirmed-control ring (D006).
 - **Overlay:** raw `win32gui`/`win32con`/`win32api` (pywin32) — `WS_EX_LAYERED |

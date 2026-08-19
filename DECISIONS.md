@@ -988,11 +988,17 @@ this is the first thing to check.
 **Decision.** Nothing tier 2 produces is ever written to the knowledge base,
 and OCR elements are barred from grounding rung 3.
 
-**Promotion is impossible by construction, not by policy.** OCR yields text, a
-box and (on this engine) no confidence. The box cannot be stored — `schema.py`
-recursively rejects `{"bbox", "x", "y", "coordinates", "rect", "point"}`
-because a persisted pixel is a lie the moment a window moves (D012). The text
-is the claimed name the recipe already had. Nothing durable is left to write.
+**Promotion is blocked by an explicit provenance guard, not by construction.**
+`promote()` in `ghostcursor/reasoning/grounding.py` checks the grounded
+target's `source` directly and refuses anything that did not come from a
+confirmed UIA control. It used to be true only incidentally, because OCR
+elements carry no AutomationId and an earlier guard on that field caught them
+as a side effect — which made "never promoted by construction" a claim
+resting on a coincidence of empty strings, not a real barrier. A future tier
+that DID supply an id (tier 3, the VLM, is exactly this case) could have
+quietly started writing pixel-derived rows into the knowledge base. The
+provenance check is what actually closes that; `tests/test_regression_ocr_fixes.py`
+isolates the guard.
 
 So the knowledge base stays UIA-only and provably clean, and tier 2 is pure
 runtime fallback. A user who deletes the database loses nothing OCR produced,

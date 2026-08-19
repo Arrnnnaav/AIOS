@@ -5,9 +5,10 @@ Cheapest and most stable matcher first, mirroring the perception ladder
 
     rung 1  confirmed automation_id   survives renames AND translation
     rung 2  control_type + exact name
-    rung 3  fuzzy name / synonyms
+    rung 3  UIA-only case-insensitive substring match; OCR elements are barred
+    rung 4  OCR fuzzy text match, floor 95 (measured, spike findings §4)
 
-Rungs 2-3 match on displayed text and are therefore locale-scoped. Rung 1 is
+Rungs 2-4 match on displayed text and are therefore locale-scoped. Rung 1 is
 language-independent by construction and must never be filtered by locale —
 doing so would defeat the promotion mechanism it exists to enable.
 
