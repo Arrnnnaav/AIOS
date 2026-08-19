@@ -2,8 +2,11 @@
 
 Date: 2026-08-19
 Status: reviewed, pending implementation plan
-Measurements: `2026-08-19-cold-electron-probe-findings.md` — every number below
-comes from that document, not from estimation (D034)
+Measurements: `2026-08-19-cold-electron-probe-findings.md`, EXCEPT two sets
+recorded in this document and nowhere else — the targeted-grounding sweep in
+§3 "The budget was swept, not guessed" (VS Code runs 1 and 3), and the Chrome
+static-page fluctuation sample in §2 (zero drops over 64 samples). Nothing
+below is estimated (D034).
 Builds on: `2026-08-15-perception-tier-2-ocr-design.md`, which deliberately
 excluded this and named it as its own milestone
 
