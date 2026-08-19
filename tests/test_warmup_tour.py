@@ -118,6 +118,12 @@ class _WarmupHarness:
         self._ground_calls = 0
         self._thread_exc: BaseException | None = None
         self._started = False
+        #: Set by `target()`'s `finally`, so a CLEAN `run_tour` return (DONE,
+        #: FAILED, health.check() ending the tour, or the deadline falling
+        #: through) is visible to `tick()` too -- not just an exception.
+        #: Without this, any of those exits leaves `_done` unfilled forever
+        #: and `tick()`'s wait blocks with no output (Important finding 1).
+        self._exited = False
 
         # Spy on grounding.ground rather than replacing it: real grounding
         # logic decides success/failure from `self.service.grounding_enabled`
@@ -170,6 +176,12 @@ class _WarmupHarness:
                 )
             except BaseException as exc:  # surfaced by the next tick()
                 self._thread_exc = exc
+            finally:
+                # Covers a CLEAN return too (DONE, FAILED, health ending the
+                # tour, or the deadline falling through) -- not just an
+                # exception. `tick()` treats `_exited` as loud proof the tour
+                # ended mid-tick rather than silently hanging.
+                self._exited = True
                 try:
                     self._done.put_nowait(True)
                 except queue.Full:
@@ -189,7 +201,7 @@ class _WarmupHarness:
     def advance(self, dt: float) -> None:
         self.clock.t += dt
 
-    def tick(self) -> None:
+    def tick(self, timeout: float = 10.0, max_pumps: int = 50) -> None:
         """Pump the background `run_tour` thread through outer iterations
         until `grounding.ground` has been called one more time than before,
         then leave it paused right after that iteration.
@@ -198,20 +210,49 @@ class _WarmupHarness:
         parked at the barrier from the PREVIOUS `tick()` -- it must be
         released before this call can wait for the next one, or the two
         threads deadlock each waiting on the other's queue.
+
+        Three properties a bare, unbounded version of this used to lack
+        (Important finding 1 on this file's first review):
+
+        * every wait is bounded (`timeout`), so a stalled `run_tour` fails
+          loudly instead of hanging CI forever with no output;
+        * a CLEAN `run_tour` return -- DONE, FAILED, health ending the tour,
+          or the deadline falling through -- is caught via `_exited` and
+          raises, rather than leaving `_done` unfilled and the wait blocked;
+        * the pump loop itself is bounded (`max_pumps`), so a state machine
+          that dwells without ever grounding again (AWAITING_USER_ACTION,
+          per run.py's own comment, "dwells for many ticks without
+          [calling the grounder]") cannot spin the pump forever -- the
+          clock is frozen between `tick()` calls, so nothing else would
+          ever stop it.
         """
         start_calls = self._ground_calls
         if not self._started:
             self._started = True
             self._thread.start()
         else:
-            self._go.put(True)
-        while True:
-            self._done.get()
+            self._go.put(True, timeout=timeout)
+        for _ in range(max_pumps):
+            try:
+                self._done.get(timeout=timeout)
+            except queue.Empty:
+                raise AssertionError(
+                    f"run_tour stalled: no sleeper() call in {timeout}s "
+                    f"(ground calls {self._ground_calls}, started at {start_calls})"
+                )
             if self._thread_exc is not None:
                 raise self._thread_exc
+            if self._exited:
+                raise AssertionError(
+                    "run_tour exited before grounding ran again -- the tour "
+                    "ended (DONE/FAILED/health/deadline) mid-tick; the "
+                    "assertions this tick() call was set up for would have "
+                    "measured nothing"
+                )
             if self._ground_calls > start_calls:
                 return
-            self._go.put(True)
+            self._go.put(True, timeout=timeout)
+        raise AssertionError(f"grounder not reached in {max_pumps} outer iterations")
 
 
 @pytest.fixture
@@ -278,6 +319,26 @@ def test_warm_up_does_not_reopen_after_a_successful_grounding(warmup_harness):
     h.tick()  # fails again, 0.1s later
 
     assert h.tier2_requests, "a second allowance was granted after the tree was proven"
+
+
+def test_the_budget_parameter_is_what_warm_up_actually_uses(warmup_harness):
+    """A non-default budget, so a hardcoded DEFAULT_WARMUP_BUDGET_S (2.0) at
+    the `WarmUp(...)` call site in run.py fails here instead of passing
+    everything -- every other test in this file happens to pass budget_s=2.0,
+    which is indistinguishable from the default, so none of them can tell
+    "the parameter was used" apart from "2.0 was baked in" (D031)."""
+    h = warmup_harness(budget_s=0.5, hwnd=1638728)
+
+    h.tick()  # t=0.0  warm-up opens
+    h.advance(0.4)
+    h.tick()  # t=0.4  inside a 0.5s budget
+    inside = list(h.tier2_requests)
+    h.advance(0.2)
+    h.tick()  # t=0.6  expired
+    after = list(h.tier2_requests)
+
+    assert inside == [], "asked before the 0.5s budget expired"
+    assert after, "0.5s budget never expired -- 2.0s is hardcoded at the call site"
 
 
 def test_a_splash_window_does_not_spend_the_real_windows_budget(warmup_harness):

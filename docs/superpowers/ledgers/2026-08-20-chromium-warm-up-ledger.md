@@ -103,6 +103,12 @@ saved copy of the committed file before the next mutation. After all four,
 `python -m pytest tests/test_warmup_tour.py -q` again reported 5 passed,
 confirming the working tree was restored cleanly to the committed baseline.
 
+Mutations 5 and 6 were added after review (see
+`.superpowers/sdd/2026-08-20-chromium-warm-up/task-3-report.md`, "Fix report"
+section) once `test_the_budget_parameter_is_what_warm_up_actually_uses` made
+the suite 6 tests; they were verified against that 6-test baseline the same
+way, then reverted the same way.
+
 ## Results
 
 | # | Mutation | Must fail | Actually failed | Result |
@@ -111,6 +117,17 @@ confirming the working tree was restored cleanly to the committed baseline.
 | 2 | Make the guard permanent — `if True: return None` in its place | `test_a_window_that_never_grounds_asks_once_the_budget_expires` | that test — `tier2_requests` stayed `[]` even after the 2.0s budget expired | PASS |
 | 3 | Delete the `warmup.note_grounded(...)` call on the grounding-success path | `test_warm_up_does_not_reopen_after_a_successful_grounding` | that test — a later grounding failure for the same hwnd got a second warm-up allowance instead of escalating immediately | PASS |
 | 4 | Pass a constant instead of the handle: `warmup.allows_tier2(1)` | `test_a_splash_window_does_not_spend_the_real_windows_budget` | that test — the splash's already-open-and-expired warm-up (keyed to the constant `1`) was reused for the real window, suppressing its tier-2 request | PASS |
+| 5 | Hardcode the budget: `WarmUp(budget_s=2.0, clock=clock)` instead of `warmup_budget_s` | `test_the_budget_parameter_is_what_warm_up_actually_uses` (and nothing else) | exactly that test — a 0.5s budget never expired because 2.0s was baked in; the other 5 tests all pass `budget_s=2.0`, indistinguishable from the hardcoded literal, so none of them noticed | PASS |
+| 6 | Break the shared clock: `WarmUp(budget_s=warmup_budget_s, clock=time.monotonic)` instead of `clock` | `test_a_window_that_never_grounds_asks_once_the_budget_expires` (reviewer-predicted) | that test, plus `test_the_budget_parameter_is_what_warm_up_actually_uses` (2 of 6) — a real wall clock never advances under the test's `advance()` calls on the fake clock, so the budget appeared never to expire | PASS |
+
+Mutation 5 is the direct answer to Important finding 2: it shows the four
+original behavioural tests (all run at `budget_s=2.0`, the same value as
+`DEFAULT_WARMUP_BUDGET_S`) cannot tell "the parameter was threaded through"
+apart from "2.0 is hardcoded at the call site" — only the new non-default-
+budget test can, and does. Mutation 6 is the shared-clock constraint's
+evidence, exactly as the reviewer predicted: `test_a_window_that_never_
+grounds_asks_once_the_budget_expires` already catches a `WarmUp` built on a
+clock other than `run_tour`'s own, with no new test needed for that half.
 
 Mutation 4 is the load-bearing one, per the brief: it reproduces the measured
 Discord defect where a splash window (`Discord Updater`) and the real window
@@ -154,5 +171,52 @@ FAILED tests/test_warmup_tour.py::test_a_splash_window_does_not_spend_the_real_w
 1 failed in 1.13s
 ```
 
-Full command output for all four mutations is in
+### Mutation 5 failure output (verbatim)
+
+```
+================================== FAILURES ===================================
+___________ test_the_budget_parameter_is_what_warm_up_actually_uses ___________
+
+    def test_the_budget_parameter_is_what_warm_up_actually_uses(warmup_harness):
+        h = warmup_harness(budget_s=0.5, hwnd=1638728)
+
+        h.tick()  # t=0.0  warm-up opens
+        h.advance(0.4)
+        h.tick()  # t=0.4  inside a 0.5s budget
+        inside = list(h.tier2_requests)
+        h.advance(0.2)
+        h.tick()  # t=0.6  expired
+        after = list(h.tier2_requests)
+
+        assert inside == [], "asked before the 0.5s budget expired"
+>       assert after, "0.5s budget never expired -- 2.0s is hardcoded at the call site"
+E       AssertionError: 0.5s budget never expired -- 2.0s is hardcoded at the call site
+E       assert []
+
+tests\test_warmup_tour.py:341: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_warmup_tour.py::test_the_budget_parameter_is_what_warm_up_actually_uses
+1 failed, 5 passed in 0.84s
+```
+
+### Mutation 6 failure output (verbatim)
+
+```
+=========================== short test summary info ===========================
+FAILED tests/test_warmup_tour.py::test_a_window_that_never_grounds_asks_once_the_budget_expires
+FAILED tests/test_warmup_tour.py::test_the_budget_parameter_is_what_warm_up_actually_uses
+2 failed, 4 passed in 0.89s
+```
+
+`test_a_window_that_never_grounds_asks_once_the_budget_expires`'s relevant
+assertion:
+
+```
+        assert inside == [], "asked before the budget expired"
+>       assert after, "never asked after the budget expired -- tier 2 is dead"
+E       AssertionError: never asked after the budget expired -- tier 2 is dead
+E       assert []
+```
+
+Full command output for all six mutations is in
 `.superpowers/sdd/2026-08-20-chromium-warm-up/task-3-report.md`.
