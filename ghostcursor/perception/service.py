@@ -37,7 +37,7 @@ import time
 from dataclasses import dataclass
 from typing import Callable
 
-from ghostcursor.perception.uia import Element, iter_elements
+from ghostcursor.perception.uia import Element, first_matching_hwnd, iter_elements
 from ghostcursor.reasoning.verification import Snapshot, take_snapshot
 
 DEFAULT_INTERVAL_S = 0.2
@@ -94,6 +94,12 @@ class Observation:
     #: The controller's per-step run cap, echoed so the failure message can
     #: quote it without the UI thread holding the controller.
     tier2_max_runs: int = 0
+    #: The target window this observation was walked against, or 0 if none was
+    #: found. A plain int by design -- only primitives cross the worker
+    #: boundary (D021). Warm-up is keyed on it because a title regex cannot
+    #: distinguish Discord's 'Discord Updater' splash from Discord itself, and
+    #: those are different HWNDs.
+    target_hwnd: int = 0
 
 
 class PerceptionService:
@@ -101,12 +107,14 @@ class PerceptionService:
         self,
         title_re: str,
         walker: Callable[[str], list[Element]] = iter_elements,
+        hwnd_source: Callable[[str], int] = first_matching_hwnd,
         clock: Callable[[], float] = time.monotonic,
         interval_s: float = DEFAULT_INTERVAL_S,
         tier2=None,
     ) -> None:
         self.title_re = title_re
         self.walker = walker
+        self.hwnd_source = hwnd_source
         #: The tier-2 controller, owned entirely by this side of the boundary
         #: from here on. It is built on the UI thread (it has to report "no
         #: OCR on this machine" before the overlay exists) and then handed
@@ -304,6 +312,15 @@ class PerceptionService:
         except Exception:
             return empty
 
+    def _safe_hwnd(self) -> int:
+        """The handle is a nicety; the walk is the product. A failure here
+        degrades to 0 rather than discarding an observation that is otherwise
+        perfectly good."""
+        try:
+            return int(self.hwnd_source(self.title_re))
+        except Exception:
+            return 0
+
     def _publish(self, observation: Observation) -> None:
         # Overwrite. There is no history and no append anywhere in this
         # class — that is the whole architectural claim of the slot.
@@ -331,6 +348,7 @@ class PerceptionService:
                 walked = None
                 try:
                     elements = tuple(self.walker(self.title_re))
+                    target_hwnd = self._safe_hwnd()
                     observed_at = self.clock()
                     walked = (
                         take_snapshot(
@@ -338,6 +356,7 @@ class PerceptionService:
                         ),
                         elements,
                         observed_at,
+                        target_hwnd,
                     )
                 except Exception:
                     # A failed walk publishes nothing: the previous
@@ -366,7 +385,7 @@ class PerceptionService:
                     # would be current while the contents are from
                     # before the restart, and it could land after the
                     # replacement's newer observation.
-                    snapshot, elements, observed_at = walked
+                    snapshot, elements, observed_at, target_hwnd = walked
                     self._publish(
                         Observation(
                             snapshot=snapshot,
@@ -378,6 +397,7 @@ class PerceptionService:
                             tier2_engaged=ocr[2],
                             tier2_exhausted=ocr[3],
                             tier2_max_runs=ocr[4],
+                            target_hwnd=target_hwnd,
                         )
                     )
                 stop.wait(self.interval_s)
