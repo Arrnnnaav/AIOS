@@ -64,7 +64,8 @@ signal: *grounding succeeded*. What is missing is patience before escalating.
 
 A **warm-up window** per target window:
 
-- It opens at the first observation of a target.
+- It opens at the first observation of a target **window handle** — not of
+  a matching title. That distinction is load-bearing; see below.
 - While it is open, **grounding failure does not request tier 2.** The loop
   keeps waiting, exactly as it does for any step it cannot yet ground.
 - It closes permanently the first time grounding **succeeds** for that target —
@@ -72,13 +73,36 @@ A **warm-up window** per target window:
 - It closes on expiry after `WARMUP_BUDGET_S`, after which grounding failure
   escalates to tier 2 as it does today.
 
+### Keyed to the HWND, not to the title regex
+
+Measured on Discord, recorded in the probe findings §6.3. A cold Discord launch
+puts up a window titled `Discord Updater` — visible, non-minimised, on-screen,
+and therefore a full match for `windows_matching(".*Discord.*")` — which lives
+about five seconds before the real window exists. The two are **different
+HWNDs**: 329088 for the updater, 1638728 for the application.
+
+A warm-up keyed to the title regex opens on the updater, spends its entire
+budget on a window that will be destroyed, and has already expired when the real
+window appears. The real window then gets no allowance at all and escalates
+straight to tier 2 — the exact failure this design exists to prevent, on an
+application whose tree is in fact ready in 0.92 s.
+
+So warm-up is keyed to the HWND. A window handle never seen before opens a fresh
+warm-up, which makes the updater's budget irrelevant rather than harmful.
+
+**The cost of that choice, stated:** an application that destroys and recreates
+its top-level window faster than the budget would keep re-opening warm-up and
+could suppress tier 2 indefinitely. No such application has been measured, and
+the alternative — keying to the title — has a measured failure on an application
+the user actually runs. Taking the unobserved risk over the observed one.
+
 This sidesteps the entire "what counts as content" question, reuses the
 grounding-failure trigger tier 2 already uses, and is immune to the
 non-monotonicity of §2 because it never compares two observations.
 
 | Parameter | Value | Basis |
 |---|---|---|
-| `WARMUP_BUDGET_S` | **2.0 s** | Swept — see below |
+| `WARMUP_BUDGET_S` | **2.0 s** | Swept on two applications — see below |
 
 ### The budget was swept, not guessed
 
@@ -157,7 +181,8 @@ and it is written that way rather than claiming a benefit it does not deliver.
 | Target absent during warm-up | No observation; warm-up clock keeps running. An app that never appears is the existing absent-window case |
 | Grounding succeeds during warm-up | Warm-up closes permanently for that target |
 | Warm-up expires, grounding still failing | Tier 2 escalates exactly as today |
-| Target genuinely has no UIA content (Acrobat) | Warm-up expires after 5 s, tier 2 engages, unchanged behaviour thereafter |
+| Target genuinely has no UIA content (Acrobat) | Warm-up expires after the budget, tier 2 engages, unchanged behaviour thereafter |
+| A splash/updater window matches the target title | Its HWND gets its own warm-up and is then destroyed. The real window is a new HWND and gets a full, untouched budget |
 | Worker restarts mid-tour | Warm-up does NOT reopen — it is keyed to the target window, and the tree's readiness is a property of the application, not of our worker |
 
 ## 6. Testing
@@ -170,6 +195,9 @@ and it is written that way rather than claiming a benefit it does not deliver.
 - The non-monotonic element count cannot affect the decision — a fixture whose
   count rises and falls across the window changes nothing, because no comparison
   is made.
+- A splash window (matching title, its own HWND) that expires its warm-up and
+  is then destroyed must NOT consume the real window's allowance: the real
+  HWND gets a full budget. Mirrors the measured Discord case.
 - Per D018, mutation-verify: removing the warm-up suppression must fail the
   first test; making warm-up permanent must fail the second.
 - Per D026, the sequence is asserted on an injected clock, not end state.
@@ -183,8 +211,14 @@ median and zero walks over 5 s, so it is not treated here as a defect.
 
 ## 8. What the measurements do not establish
 
-- One application was measured cold, twice. Slack, Discord and Teams were
-  unavailable and may ramp differently; the 2 s budget is fitted to VS Code.
+- Two applications were measured cold: VS Code (twice) and Discord (once from
+  the real window, after two runs that measured its updater instead). Slack and
+  Teams remain untested.
+- Discord was chosen to falsify the finding, not to confirm it: it loads its
+  content over the network, where a slow-but-eventual element should appear if
+  one exists anywhere. None did — every target grounded 0.92 s after the window.
+- The Discord number rests on a **single** valid run. The 2 s budget covers it
+  with roughly 2x margin, which is why that is not treated as blocking.
 - A third sweep run was DISCARDED as invalid: it matched an already-open warm
   VS Code window rather than the cold one it launched, and reported every target
   grounding at 0.00 s. Recorded here because a run that appears to confirm the
