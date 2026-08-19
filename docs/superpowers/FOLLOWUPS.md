@@ -58,3 +58,56 @@ trigger for revisiting is a SECOND incident of this specific shape — evidence
 laundering, a number entering the record with no durable source — as distinct from
 ordinary documentation drift, which D032 already covers and which has occurred many
 times. Do not count drift incidents toward this trigger; they are the other failure.
+
+## Scoped, deliberately not started (2026-08-19)
+
+Order fixed by the human partner. Each is a separate brainstorm, not a variation
+on something built.
+
+### 1. Wrong-action feedback — next after Chromium warm-up
+The system verifies that the WORLD reached the expected state, never that the
+USER did the expected thing. If the user clicks the wrong control and then the
+right one, verification passes silently; on a wrong click today the loop simply
+keeps dwelling and says nothing. Closing that needs no new perception tier —
+before/after snapshots are already taken every tick — it needs the loop to
+notice a change that is not the expected one and name it. Small, and it sharpens
+the one thing this product exists to do.
+
+Explicitly NOT the way to solve this: borrowing the perception half of a
+computer-use agent (screenshot, ask a VLM "did that work"). That replaces a
+structured UIA state-diff with a pixel guess, and D003 says reach for tier 3
+last, not first.
+
+### 2. Control bar and intent input — its own brainstorm
+The only entry point today is `--target/--recipe/--seconds`. A user cannot say
+what they want to learn. A visible bar with a stop button is also a SAFETY
+improvement: ESC is currently the only escape from a full-screen click-through
+overlay, and it is invisible.
+
+Architecturally new territory, not a variation: the overlay is
+`WS_EX_TRANSPARENT | WS_EX_NOACTIVATE` and must never take focus or receive
+clicks (D006, D009), while a bar with a text box must do both. It has to be a
+SECOND, focusable window coexisting with the click-through one. Nothing in this
+codebase does that yet.
+
+### 3. Recipe packs — last, and one decision comes before design
+Per-app packs of pre-distilled recipes, downloaded at install. Strongest product
+story: it solves cold-start latency and is a sellable unit.
+
+One correction to the objection raised against video sources: the critique was
+that transcripts give narration, not click coordinates. But `schema.py` forbids
+storing coordinates at all — `_FORBIDDEN_KEYS` rejects bbox/x/y/rect/point
+recursively, because a persisted pixel is a lie the moment a window moves. What
+a recipe stores is `claimed.name`, `name_synonyms`, `control_type` and step
+ORDER, which is close to what narration actually provides. Video is a poor
+source for the thing we never keep and a fair source for the thing we do.
+
+DECIDE BEFORE DESIGNING, not during: the licensing posture of deriving shipped
+pack content from scraped video transcripts. A tool that works around a
+platform's terms is one risk profile for personal research and another when
+bundled into a product. The safer shape is likely distilled text steps derived
+from a transcript, never redistributing the transcript or video — but that is a
+decision to make deliberately, not to inherit by default.
+
+Also unowned: pack staleness. `verified_on` version-scoping exists in the KB
+schema, but a shipped offline pack needs its own refresh story.
