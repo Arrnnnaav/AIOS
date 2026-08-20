@@ -340,3 +340,121 @@ Exactly one test now stands between that regression and a green build.
 Reverted; `git diff` clean; the test passes again (1 passed in 0.78s), and it
 ran green four consecutive times before the mutation (1.18s, 0.76s, 0.71s,
 0.73s), so it is not timing-flaky against a real window.
+
+## Mutation — the tick-loop wiring test (`tests/test_warmup_real_window.py::test_the_tick_loop_suppresses_tier2_through_the_real_wiring`)
+
+First round applied by the controller (D032), who found a real defect in the
+test itself, not the code: the suppression assertion anchored its budget
+window to `time.monotonic()` captured immediately before the background
+thread launched, not to when warm-up actually opened. Between those two
+events `run_tour` must construct a `PerceptionService`, start its worker,
+complete a real UIA walk, and publish an observation before it ever reaches
+its first failed grounding — the moment `warmup.allows_tier2` is first
+consulted. That startup cost alone can exceed a short budget, so the window
+could read empty because nothing had happened yet, not because anything was
+suppressed.
+
+**Mutation applied to `ghostcursor/run.py`:** delete the whole suppression
+branch —
+
+```python
+target_hwnd = observation.target_hwnd if observation is not None else 0
+if not warmup.allows_tier2(target_hwnd):
+    # A standing request from a previous window (or from the
+    # ticks before this one existed) is a standing COST on the
+    # worker; nothing but this ends it, and warm-up means we do
+    # not want it. Same argument as the UIA-success path above.
+    service.cancel_tier2(i)
+    return None
+service.request_tier2(i)
+```
+
+reduced to
+
+```python
+target_hwnd = observation.target_hwnd if observation is not None else 0
+service.request_tier2(i)
+```
+
+i.e. `service.request_tier2(i)` now fires unconditionally on the very first
+failed grounding — warm-up does not exist at all.
+
+**Result against the thread-launch-anchored version (round 1, before the
+fix):** `2 passed in 4.30s`. The test proved nothing about warm-up; this was
+the false green.
+
+**Fix:** spy `ghostcursor.reasoning.grounding.ground` the same way
+`PerceptionService.request_tier2` is spied (module-level monkeypatch,
+timestamped with `time.monotonic()`), and anchor the suppression window to
+the timestamp of the first call that returned `None` (a failed grounding) —
+the real moment `allows_tier2` is first consulted, not thread-launch. Widened
+`budget_s`/`total_seconds` from 0.5s/3.0s to 1.5s/5.0s for margin.
+
+**Result against the fixed, event-anchored version (round 2):**
+
+```
+FAILED tests/test_warmup_real_window.py::test_the_tick_loop_suppresses_tier2_through_the_real_wiring
+1 failed, 7 warnings in 6.19s
+```
+
+Verbatim failure, at the suppression assertion (the one the mutation targets):
+
+```
+        requested_at = [t for t, _ in requests]
+
+        suppressed_window = [t for t in requested_at if t < budget_expires_at]
+>       assert suppressed_window == [], (
+            f"tier 2 was requested at t={[t - warmup_opened_at for t in suppressed_window]}s "
+            f"relative to warm-up opening, before the {budget_s}s budget "
+            "expired -- warm-up did not suppress for a real, "
+            "production-sourced window handle"
+        )
+E       AssertionError: tier 2 was requested at t=[0.0, 0.5, 1.0309999999954016]s relative to warm-up opening, before the 1.5s budget expired -- warm-up did not suppress for a real, production-sourced window handle
+E       assert [36512.078, 3...78, 36513.109] == []
+E
+E         Left contains 3 more items, first extra item: 36512.078
+E           Use -v to get more diff
+
+tests\test_warmup_real_window.py:296: AssertionError
+```
+
+The first tier-2 request landed at t=0.0s relative to warm-up opening —
+i.e. in the very same tick grounding first failed — which is exactly what
+"the guard is gone" looks like, and is unambiguous against a 1.5s budget.
+
+Reverted with `git checkout -- ghostcursor/run.py`; `git diff --stat
+ghostcursor/run.py` empty, confirming a clean restore. Re-ran green:
+`2 passed` for the file, `299 passed` for the fast suite
+(`--ignore=tests/test_hung_window.py --ignore=tests/test_perception_service_hung.py
+--ignore=tests/test_run_threaded.py`).
+
+### 5 consecutive stability runs (event-anchored version, post-fix, run.py restored)
+
+Each run: `python -m pytest
+tests/test_warmup_real_window.py::test_the_tick_loop_suppresses_tier2_through_the_real_wiring
+-q`, run alone, never alongside another pytest session.
+
+1. `1 passed` — 5.84s
+2. `1 passed` — 5.88s
+3. `1 passed` — 5.74s
+4. `1 passed` — 6.05s
+5. `1 passed` — 6.13s
+
+## What this test now proves, and what it does not
+
+Proves, through the real production wiring (`ghostcursor.run.run_tour`, a
+real `PerceptionService` with the default `hwnd_source=first_matching_hwnd`,
+a real UIA walk against a real `SyntheticApp` window, the real tick loop):
+
+- **Suppression**: no `request_tier2` call lands before the warm-up budget,
+  measured from the real event (first failed grounding), expires.
+- **Release**: at least one `request_tier2` call lands after that budget
+  expires, within the tour's deadline — so the test cannot pass for the
+  trivial reason that tier 2 was never going to fire at all.
+
+Does not prove: anything about the OCR read itself (tier-2's `elements_for`,
+`engaged`, `exhausted` — covered elsewhere), or behavior across a window
+transition (splash-to-real-window; covered by
+`test_warmup_tour.py::test_a_splash_window_does_not_spend_the_real_windows_budget`
+on the scripted service). Those remain out of scope for this file, whose job
+is only the real-handle x real-tick-loop seam.
