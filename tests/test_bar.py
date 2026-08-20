@@ -54,7 +54,12 @@ def test_destroying_the_bar_does_not_end_the_message_loop():
     overlay = ov.create_overlay_window()
     try:
         bar_hwnd = bar.create_bar_window()
-        bar.destroy_bar_window(bar_hwnd)
+        # DestroyWindow directly, not bar.destroy_bar_window(): that helper
+        # already calls pump_messages_nonblocking() internally, which would
+        # silently dequeue a WM_QUIT before this test's own pump ever saw it,
+        # making the assertion below blind to exactly the regression it
+        # exists to catch.
+        win32gui.DestroyWindow(bar_hwnd)
         # PumpWaitingMessages returns True when it dequeued WM_QUIT.
         assert win32gui.PumpWaitingMessages() != 1, (
             "destroying the bar posted WM_QUIT -- the tour's own loop would end"
