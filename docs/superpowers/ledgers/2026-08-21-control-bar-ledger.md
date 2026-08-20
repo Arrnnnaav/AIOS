@@ -79,3 +79,48 @@ assert (1920 - 0) < (1920 // 2)
 All four mutations were reverted after being observed to fail their test, and
 the full `test_bar.py` suite (4 passed) plus the full fast suite (341 passed)
 were confirmed green again before this ledger was written.
+
+# Mutation ledger — Task 3: Stop, Pause, Ask
+
+Plan: `.superpowers/sdd/2026-08-21-control-bar/task-3-brief.md`
+Branch: `control-bar`
+Files: `ghostcursor/overlay/bar.py`, `tests/test_bar.py`
+Baseline (all 7 `test_bar.py` tests + full fast suite passing, no mutation applied): `2889ae5`
+
+Per D018, each mutation below was applied to `ghostcursor/overlay/bar.py`
+one at a time, verified to fail `python -m pytest tests/test_bar.py -v`,
+then reverted before the next mutation. Reverts were verified clean against
+`2889ae5` (`git diff --stat` showed no outstanding changes) and the full
+fast suite was re-run green (344 passed) before this section was written.
+
+## Results
+
+| # | Mutation | Must fail | Actually failed | Result |
+|---|---|---|---|---|
+| 1 | Make `clear_requests` a no-op (`pass` instead of resetting state) | `test_requests_clear_so_one_click_is_one_request` | same test only (6 passed, 1 failed) | PASS |
+| 2 | Have `_on_command` call `win32gui.SetForegroundWindow(hwnd)` | `test_clicking_stop_sets_the_request_without_taking_focus` | same test only (6 passed, 1 failed) | PASS |
+
+### Mutation 1 failure output (verbatim)
+
+```
+AssertionError: a single click would be read as a request on every later poll
+assert True is False
+ +  where True = BarState(stop_requested=False, pause_requested=True, ask_requested=False).pause_requested
+ +    where BarState(stop_requested=False, pause_requested=True, ask_requested=False) = <function bar_state at 0x00000236DBB339C0>(1704860)
+ +      where <function bar_state at 0x00000236DBB339C0> = bar.bar_state
+1 failed, 6 passed in 0.75s
+```
+
+### Mutation 2 failure output (verbatim)
+
+```
+AssertionError: clicking a bar button stole foreground from the user's app
+assert 2491292 == 131708
+ +  where 2491292 = <built-in function GetForegroundWindow>()
+ +    where <built-in function GetForegroundWindow> = win32gui.GetForegroundWindow
+1 failed, 6 passed in 0.82s
+```
+
+Both mutations were reverted after being observed to fail their test, and
+the full `test_bar.py` suite (7 passed) plus the full fast suite (344 passed)
+were confirmed green again before this section was written.
