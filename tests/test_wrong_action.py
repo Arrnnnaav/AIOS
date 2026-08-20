@@ -246,6 +246,70 @@ def test_wrong_action_focus_source_is_read_once_per_tick():
     )
 
 
+def test_falls_through_to_elements_changed_after_the_rehint_cap():
+    """Past the wrong-action re-hint cap, a tick must still reach the
+    elements_changed arm below it in the elif chain. Short-circuiting on
+    `touched is not None` past the cap stopped the loop re-grounding at all,
+    so a wrong click that moved the target would go unnoticed forever.
+
+    Built by hand rather than with Harness because it needs precise control
+    over which of the seven OBSERVING/AWAITING_USER_ACTION cycles'
+    snapshotter() calls returns which value: calls 1-7 are identical (so
+    elements_changed stays False while the cap ramps up from 0 to 3), and
+    call 8 -- the AWAITING_USER_ACTION check made AFTER the cap is already
+    reached -- introduces a new element, so elements_changed is True only on
+    that final check.
+
+    MUTATION-VERIFY (D018): restoring the short-circuit (`elif touched is
+    not None:` with the cap check inside, and no separate `elif
+    elements_changed(...)` reachable once `touched` is non-None) makes this
+    test fail -- the state stays AWAITING_USER_ACTION instead of reaching
+    OBSERVING via elements_changed.
+    """
+    recipe = Recipe(app_id="test", intent="t", steps=[_step(), _step()])
+    target = GroundedTarget((10, 10, 110, 40), 1, "1001", "Button", "Export", "uia")
+
+    snaps = [STILL] * 7 + [CHANGED]
+    calls = {"n": 0}
+
+    def snapshotter():
+        i = calls["n"]
+        calls["n"] += 1
+        return snaps[i] if i < len(snaps) else CHANGED
+
+    wrong_actions: list[tuple[str, str]] = []
+    tour = GuidedTour(
+        recipe=recipe,
+        grounder=lambda step, i, elements=None: target,
+        snapshotter=snapshotter,
+        verifier=lambda rule, before, after: False,
+        renderer=FakeRenderer(),
+        clock=lambda: 0.0,
+        focus_visited_source=lambda: ("1002",),
+        on_wrong_action=lambda touched, tid: wrong_actions.append((touched, tid)),
+    )
+
+    # 16 ticks: three full wrong-action rehint cycles (ticks 1-13, ending
+    # with wrong_action_rehints == 3), then a fourth cycle's OBSERVING ->
+    # DECIDING -> RENDERING_HINT -> AWAITING_USER_ACTION (ticks 14-16),
+    # arriving back at AWAITING_USER_ACTION with the cap already spent.
+    for _ in range(16):
+        tour.tick()
+
+    assert tour.wrong_action_rehints == 3, "cap not reached as expected by tick 16"
+    assert tour.state is State.AWAITING_USER_ACTION
+    assert len(wrong_actions) == 3, "unexpected message count before the capped tick"
+
+    tour.tick()  # tick 17: the capped AWAITING_USER_ACTION check
+
+    assert tour.state is State.OBSERVING, (
+        "a capped wrong-action tick did not fall through to elements_changed "
+        "-- the loop stopped re-grounding entirely"
+    )
+    assert tour.wrong_action_rehints == 3, "the cap incremented past its bound"
+    assert len(wrong_actions) == 4, "the message stopped firing past the cap"
+
+
 def test_the_counter_resets_on_a_new_step(wrong_action_tour):
     h = wrong_action_tour(target_id="1001")
     h.arrive_at_awaiting()

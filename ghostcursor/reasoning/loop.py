@@ -245,15 +245,24 @@ class GuidedTour:
             # name a different control than the one that satisfied the check.
             touched = self._wrong_action(step)
 
+            # The message is bounded by real user actions, not by a clock, so
+            # it is deliberately uncapped: capping it would tell a user who
+            # keeps trying and failing LESS the harder they struggle. It is
+            # hoisted above the elif chain below so that a CAPPED tick still
+            # falls through to the elements_changed and idle-timeout arms --
+            # short-circuiting on `touched` past the cap stopped the loop
+            # re-grounding at all, so a wrong click that moved the target
+            # went unnoticed and the idle re-hint never fired either.
+            if (
+                touched is not None
+                and not satisfied
+                and self.on_wrong_action is not None
+            ):
+                self.on_wrong_action(touched, self._target_automation_id())
+
             if satisfied:
                 self.state = State.VERIFYING
-            elif touched is not None:
-                # Speak every time -- the message is bounded by real user
-                # actions, not by a clock, so it cannot nag the way an idle
-                # timer can. Capping it would tell a user who keeps trying
-                # and failing LESS the harder they struggle.
-                if self.on_wrong_action is not None:
-                    self.on_wrong_action(touched, self._target_automation_id())
+            elif touched is not None and self.wrong_action_rehints < 3:
                 # Re-hint by going back through OBSERVING, NOT by calling
                 # renderer.show() here. A second overlay write path is what
                 # D027 exists to prevent: set_hint ends in UpdateWindow, which
@@ -261,9 +270,8 @@ class GuidedTour:
                 # the screen. OBSERVING also re-grounds, which is right on its
                 # own terms -- a wrong click may have opened a dialog and
                 # moved the target.
-                if self.wrong_action_rehints < 3:
-                    self.wrong_action_rehints += 1
-                    self.state = State.OBSERVING
+                self.wrong_action_rehints += 1
+                self.state = State.OBSERVING
             elif elements_changed(self._before, after):
                 # The world changed, but not into what we predicted — the user
                 # did something else. Re-observe and re-ground: the target may
