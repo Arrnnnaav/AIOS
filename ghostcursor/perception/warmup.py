@@ -63,9 +63,13 @@ class WarmUp:
     def allows_tier2(self, hwnd: int) -> bool:
         """True when tier 2 may be requested for `hwnd` right now.
 
-        Opens the warm-up as a side effect the first time a handle is seen,
-        which is the only moment 'first observation of this window' is
-        observable from here.
+        Opens the warm-up as a side effect the first time a handle reaches
+        this gate. That is NOT the first time the window is seen: `run.py`
+        consults this only after grounding has already failed for the current
+        step, so the budget starts at the window's first FAILED GROUNDING.
+        A window that grounds on its first tick never opens a warm-up at all.
+        Stated this way to match D035 and the design spec, which are anchored
+        to the same event.
         """
         if hwnd <= 0:
             return True

@@ -94,11 +94,18 @@ class Observation:
     #: The controller's per-step run cap, echoed so the failure message can
     #: quote it without the UI thread holding the controller.
     tier2_max_runs: int = 0
-    #: The target window this observation was walked against, or 0 if none was
-    #: found. A plain int by design -- only primitives cross the worker
-    #: boundary (D021). Warm-up is keyed on it because a title regex cannot
-    #: distinguish Discord's 'Discord Updater' splash from Discord itself, and
-    #: those are different HWNDs.
+    #: The topmost window matching `title_re` when this observation was taken,
+    #: or 0 if none was found. NOT guaranteed to be the window the walk itself
+    #: enumerated: `hwnd_source` and `walker` are resolved independently, and
+    #: while both are gated by the same `windows_matching`, `iter_elements`
+    #: hands its final selection to pywinauto. With several matching windows
+    #: the two can name different ones -- bounded, because a sibling handle
+    #: among the matches still gets its own warm-up patience. See
+    #: `uia.first_matching_hwnd`.
+    #: A plain int by design -- only primitives cross the worker boundary
+    #: (D021). Warm-up is keyed on it because a title regex cannot distinguish
+    #: Discord's 'Discord Updater' splash from Discord itself, and those are
+    #: different HWNDs.
     target_hwnd: int = 0
 
 
