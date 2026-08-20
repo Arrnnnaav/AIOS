@@ -300,3 +300,43 @@ reported 6 passed, and `python -m pytest tests/
 --ignore=tests/test_hung_window.py --ignore=tests/test_perception_service_hung.py
 --ignore=tests/test_run_threaded.py -q` reported 297 passed, confirming the
 working tree was restored cleanly to the committed baseline (`02f3ae7`).
+
+## Mutation — the real-window wiring test (`tests/test_warmup_real_window.py`)
+
+Applied by the controller, not by the test's author, so the check and the code
+under it have different provenance (D032).
+
+**Mutation:** `first_matching_hwnd` in `ghostcursor/perception/uia.py` forced to
+`return 0`, simulating a regression where the production `hwnd_source` stops
+seeing a window that is plainly on screen.
+
+**Result — the whole point of this test, quantified:**
+
+```
+FAILED tests/test_warmup_real_window.py::test_a_real_windows_handle_reaches_warmup_and_is_not_the_zero_bypass
+1 failed, 297 passed in 18.98s
+```
+
+Verbatim failure, at the intended assertion:
+
+```
+>               assert observation.target_hwnd != 0, (
+E               AssertionError: PerceptionService published target_hwnd=0 for a window
+                that is demonstrably on screen -- first_matching_hwnd (the production
+                hwnd_source default) is not seeing it, which silently disables warm-up
+                for every application
+E               assert 0 != 0
+E                +  where 0 = Observation(..., target_hwnd=0).target_hwnd
+tests\test_warmup_real_window.py:91: AssertionError
+```
+
+**297 pre-existing tests pass while warm-up is completely disabled in
+production.** That is not a coverage shortfall — it is a suite that would have
+certified a broken build as correct, because every one of those tests
+constructs `Observation` with the default `target_hwnd = 0` and therefore
+exercises `WarmUp`'s deliberate `hwnd <= 0` bypass rather than the real path.
+Exactly one test now stands between that regression and a green build.
+
+Reverted; `git diff` clean; the test passes again (1 passed in 0.78s), and it
+ran green four consecutive times before the mutation (1.18s, 0.76s, 0.71s,
+0.73s), so it is not timing-flaky against a real window.
