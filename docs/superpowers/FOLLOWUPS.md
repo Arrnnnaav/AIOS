@@ -148,3 +148,20 @@ gives confusing intermittent failures rather than clean errors.
 
 **Trigger:** evidence that real use is missing wrong actions. NOT the
 theoretical existence of the gap, which is already known and accepted.
+
+### `test_appinfo.py::test_app_info_for_a_store_app_prefers_appx_version` fails on a real desktop
+Discovered during the wrong-action feedback milestone, 2026-08-20, and verified
+as PRE-EXISTING rather than assumed: it fails identically on `main`
+(`1 failed, 7 passed`) and on the feature branch, and `appinfo.py` is byte-identical
+between them. The test enumerates live Store-app windows, so it depends on what
+happens to be running on the machine.
+
+Verified by checking out `main` and running it there, not by inspection. This
+project's CLAUDE.md records that timing-marginal failures have twice been
+misreported here as pre-existing flakes when they were not, so "unrelated" is a
+claim that has to be measured.
+
+**Trigger:** any work that touches `ghostcursor/perception/appinfo.py`, or the
+next time the fast suite's pass count is quoted as authoritative — the suite is
+not currently green on a real desktop, and a documented count that silently
+excludes a failure is the kind of number D034 exists to stop.
