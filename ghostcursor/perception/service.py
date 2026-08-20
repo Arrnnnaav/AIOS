@@ -37,10 +37,19 @@ import time
 from dataclasses import dataclass
 from typing import Callable
 
+from ghostcursor.perception.focus import read_focused_automation_id
 from ghostcursor.perception.uia import Element, first_matching_hwnd, iter_elements
 from ghostcursor.reasoning.verification import Snapshot, take_snapshot
 
 DEFAULT_INTERVAL_S = 0.2
+#: How often focus is sampled during the inter-walk wait. Focus reads cost a
+#: 2.66ms median, so this is cheap; it is 50ms because the case worth catching
+#: is a wrong click the user corrects themselves, which happens far slower
+#: than that. See the design spec, section 2.3.
+DEFAULT_FOCUS_SLICE_S = 0.05
+#: Ceiling on ids carried per observation, so a control that cycles focus
+#: cannot grow the published payload without bound.
+MAX_FOCUS_VISITED = 8
 
 
 @dataclass(frozen=True)
@@ -107,6 +116,13 @@ class Observation:
     #: Discord's 'Discord Updater' splash from Discord itself, and those are
     #: different HWNDs.
     target_hwnd: int = 0
+    #: Distinct in-process AutomationIds that focus VISITED since the previous
+    #: observation -- not where focus rests now. Resting is not enough: the
+    #: case this exists for is a wrong click the user corrects before the next
+    #: walk completes. Plain strings, because only primitives cross the worker
+    #: boundary (D021). Empty ids are never recorded: "" means focus is
+    #: somewhere we cannot name, and naming is the point.
+    focus_visited: tuple[str, ...] = ()
 
 
 class PerceptionService:
@@ -118,10 +134,14 @@ class PerceptionService:
         clock: Callable[[], float] = time.monotonic,
         interval_s: float = DEFAULT_INTERVAL_S,
         tier2=None,
+        focus_reader: Callable[[int], str] = read_focused_automation_id,
+        focus_slice_s: float = DEFAULT_FOCUS_SLICE_S,
     ) -> None:
         self.title_re = title_re
         self.walker = walker
         self.hwnd_source = hwnd_source
+        self.focus_reader = focus_reader
+        self.focus_slice_s = focus_slice_s
         #: The tier-2 controller, owned entirely by this side of the boundary
         #: from here on. It is built on the UI thread (it has to report "no
         #: OCR on this machine" before the overlay exists) and then handed
@@ -328,6 +348,37 @@ class PerceptionService:
         except Exception:
             return 0
 
+    def _safe_focus(self, hwnd: int) -> str:
+        """Never let a focus failure cost an observation."""
+        try:
+            return self.focus_reader(hwnd)
+        except Exception:
+            return ""
+
+    def _sample_focus_while_waiting(
+        self, stop: threading.Event, hwnd: int, visited: list[str]
+    ) -> None:
+        """Wait out `interval_s`, sampling focus in slices as it passes.
+
+        Replaces a single `stop.wait(interval_s)`. Sampling at the WALK's
+        cadence would land every 0.4-1.0s, and a user who clicks the wrong
+        control and corrects themselves does it in well under a second -- the
+        first of the two cases this feature exists for. Slicing the wait
+        catches it for 1-3ms a sample.
+
+        Still honours `stop` promptly: each slice is its own bounded wait, so
+        a stopping worker leaves within one slice.
+        """
+        remaining = self.interval_s
+        while remaining > 0 and not stop.is_set():
+            slice_s = min(self.focus_slice_s, remaining)
+            if stop.wait(slice_s):
+                return
+            remaining -= slice_s
+            focused = self._safe_focus(hwnd)
+            if focused and focused not in visited and len(visited) < MAX_FOCUS_VISITED:
+                visited.append(focused)
+
     def _publish(self, observation: Observation) -> None:
         # Overwrite. There is no history and no append anywhere in this
         # class — that is the whole architectural claim of the slot.
@@ -350,16 +401,23 @@ class PerceptionService:
             pass
 
         try:
+            visited: list[str] = []
             while not stop.is_set():
                 self.heartbeat += 1
                 walked = None
+                target_hwnd_for_wait = 0
                 try:
                     target_hwnd = self._safe_hwnd()
+                    target_hwnd_for_wait = target_hwnd
+                    focused_now = self._safe_focus(target_hwnd)
                     elements = tuple(self.walker(self.title_re))
                     observed_at = self.clock()
                     walked = (
                         take_snapshot(
-                            self.title_re, elements=elements, observed_at=observed_at
+                            self.title_re,
+                            elements=elements,
+                            observed_at=observed_at,
+                            focused_automation_id=focused_now,
                         ),
                         elements,
                         observed_at,
@@ -405,9 +463,11 @@ class PerceptionService:
                             tier2_exhausted=ocr[3],
                             tier2_max_runs=ocr[4],
                             target_hwnd=target_hwnd,
+                            focus_visited=tuple(visited),
                         )
                     )
-                stop.wait(self.interval_s)
+                visited.clear()
+                self._sample_focus_while_waiting(stop, target_hwnd_for_wait, visited)
         finally:
             try:
                 import pythoncom

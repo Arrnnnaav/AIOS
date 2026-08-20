@@ -50,6 +50,7 @@ def take_snapshot(
     title_re: str,
     elements: list[Element] | tuple[Element, ...] | None = None,
     observed_at: float = 0.0,
+    focused_automation_id: str = "",
 ) -> Snapshot:
     import win32gui
 
@@ -62,7 +63,7 @@ def take_snapshot(
     return Snapshot(
         title=title,
         elements=_sort_elements(elements),
-        focused_automation_id="",
+        focused_automation_id=focused_automation_id,
         observed_at=observed_at,
     )
 
