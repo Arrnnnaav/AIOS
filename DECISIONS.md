@@ -1458,6 +1458,7 @@ of defect the layer inside it cannot see, by construction:
 | Whole-branch review | A standing tier-2 request never retracted across a window change — an interaction between three tasks each individually correct and each individually reviewed as correct. Task-scoped review cannot see a seam. |
 | Controller mutation | A tick-loop test that passed with the warm-up gate deleted from `run.py`. Five green stability runs, a docstring explicitly claiming non-triviality, and a passing suite all missed it. Only mutating the GATE — not re-running the test — exposed it. |
 | Outside review (PR) | The sibling docstring above, in a fix the whole-branch review had itself produced and closed. |
+| Whole-branch review, again | `focus_visited` recording RESTING focus rather than focus that MOVED (D038). It passed every task gate that could have seen it, including a dedicated worker review on a stronger model, because at task level the code did exactly what it claimed. The defect existed only in the relationship BETWEEN intervals — and the suite certified it, since the dedup test fed a constant reader and asserted the id was still reported. |
 
 The generalisation is that **no review layer can audit its own blind spot**, which
 is the same argument D026 made about components ("every component correct in
@@ -1629,6 +1630,14 @@ applied to the project's own prior draft).
 
 ## D038 — The brief is the least-reviewed artefact, so reviewers must verify it rather than defer to it
 
+**Later correction.** The nine below is the count as of this entry being
+written. External review of the pull request then found two more — an empty
+`automation_id` that validated and then stalled a tour silently, and its worse
+sibling, `window_title_matches` with an empty pattern auto-satisfying on no
+evidence. Those are implementation and validation gaps, not brief-authorship
+errors, so they do not change the ratio this entry argues from; they belong to
+D036's pattern. The milestone total is eleven, not nine.
+
 **Decision.** When dispatching a reviewer, state explicitly that the requirements
 brief is a claim to verify, not authority, and that the code should be judged
 against the spec and the codebase. Name the controller as the brief's author.
@@ -1636,8 +1645,9 @@ A reviewer told to check work *against* a document will not check the document.
 
 **What it cost to learn.** The wrong-action-feedback milestone produced nine
 defects. Not one was visible to inspection — every one came from mutation
-testing or review. **Four of the nine originated in the plan or the spec**, both
-controller-authored:
+testing or review. **Five of the nine originated in the plan or the spec**, both
+controller-authored — a majority, and an earlier draft of this entry said four
+because it omitted the §7 row below:
 
 | Defect | Consequence had it shipped |
 |---|---|
@@ -1645,10 +1655,13 @@ controller-authored:
 | `_wrong_action` read twice in one branch | Two reads of an unlocked slot can disagree, so the message could name a control the user never touched, or pass `None` into a `Callable[[str, str], None]`. **No test could catch it** — the harness's source was a static tuple. |
 | Spec §3.5 contradicting spec §3.4 | §3.4 makes the re-hint *be* the OBSERVING transition; §3.5 said the cap still transitions. Both cannot hold. `FLOW.md` faithfully copied the wrong half. |
 | Spec §3.3 promising a console line on the satisfied path | The code deliberately does not emit it. The spec was the lone stale document — and the one that calls itself the design of record. |
+| Spec §7 deferring native focus events on a 50 ms figure | Wrong by an order of magnitude: 50 ms was the slice interval, not the gap the slicing leaves open, which is 0.18–0.93 s. It was the stated basis for NOT building something, which is the worst place for a wrong number. Listed here as well as in D037 because it is a brief-authorship error by the same test as the other four, and omitting it understated this table's own point. |
 
 Two were caught only because an implementer checked instead of complying: the
-`SetForegroundWindow` tests, and a dispatch that named the wrong file for a set
-of figures on the previous milestone. An agent that defers to the brief inherits
+`SetForegroundWindow` tests (this milestone), and a dispatch that named the
+wrong file for a set of figures on the PREVIOUS milestone — recorded in
+`docs/superpowers/ledgers/2026-08-15-perception-tier-2-ocr-ledger.md`. Two
+different milestones, cited so the pattern is checkable rather than asserted. An agent that defers to the brief inherits
 the brief's errors silently.
 
 **Why the existing rules do not cover this.** D032 requires an independent read
@@ -1661,9 +1674,11 @@ itself is in scope for review.
 **The fourth layer data point, reinforcing D036 and D026.** `focus_visited`
 recorded RESTING focus rather than focus that MOVED, so a control focus never
 left was re-reported on every observation and the loop would have nagged a user
-who had done nothing — the exact failure the design forbids. It passed **six
-task-level gates**, including a dedicated review of the perception worker on a
-more capable model. At task level the code did precisely what it said: publish
+who had done nothing — the exact failure the design forbids. It passed every task-level gate that could have seen it — five of the
+milestone's six, since the defect did not exist until Task 2 created it —
+including a dedicated review of the perception worker on a more capable model.
+"Six" in an earlier draft was the milestone's task count, not the number of
+chances this defect had to be caught. At task level the code did precisely what it said: publish
 the ids focus visited during this interval. The defect existed only in the
 relationship *between* intervals, which no task-scoped review can see.
 
