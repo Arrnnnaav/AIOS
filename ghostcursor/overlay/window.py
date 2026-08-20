@@ -38,7 +38,30 @@ _CLASS_NAME = "GhostCursorOverlay"
 
 # Module-level so the GDI handles outlive every call that uses them.
 _bg_brush = None
-_class_registered = False
+
+#: Window classes registered by this process, by name. A dict rather than a
+#: per-class boolean: two globals tracking two classes is how a third one gets
+#: forgotten, and RegisterClass fails if called twice for the same name.
+_registered_classes: dict[str, bool] = {}
+
+
+def ensure_class(name: str, wnd_proc, background_brush) -> None:
+    """Register a window class once per process.
+
+    Public (no leading underscore): both the overlay and the bar call this
+    across module boundaries, and a "private" name imported by another module
+    is not actually private -- naming it publicly says so honestly.
+    """
+    if _registered_classes.get(name):
+        return
+    wnd_class = win32gui.WNDCLASS()
+    wnd_class.lpfnWndProc = wnd_proc
+    wnd_class.hInstance = win32api.GetModuleHandle(None)
+    wnd_class.lpszClassName = name
+    wnd_class.hbrBackground = background_brush
+    win32gui.RegisterClass(wnd_class)
+    _registered_classes[name] = True
+
 
 # Current hint, in *client* coordinates: (x, y, radius, freshness) or None.
 _hint: tuple[int, int, int, "Freshness"] | None = None
@@ -98,21 +121,14 @@ def _wnd_proc(hwnd, msg, wparam, lparam):
 def create_overlay_window() -> int:
     """Create a click-through, topmost, taskbar-hidden overlay spanning the
     whole virtual desktop (all monitors). Returns its HWND."""
-    global _bg_brush, _class_registered, _origin
+    global _bg_brush, _origin
 
     h_instance = win32api.GetModuleHandle(None)
 
     if _bg_brush is None:
         _bg_brush = win32gui.CreateSolidBrush(COLOR_KEY)
 
-    if not _class_registered:
-        wnd_class = win32gui.WNDCLASS()
-        wnd_class.lpfnWndProc = _wnd_proc
-        wnd_class.hInstance = h_instance
-        wnd_class.lpszClassName = _CLASS_NAME
-        wnd_class.hbrBackground = _bg_brush
-        win32gui.RegisterClass(wnd_class)
-        _class_registered = True
+    ensure_class(_CLASS_NAME, _wnd_proc, _bg_brush)
 
     # Physical-pixel virtual-screen rect so the overlay covers every monitor,
     # including ones positioned left of / above the primary (negative origin).
