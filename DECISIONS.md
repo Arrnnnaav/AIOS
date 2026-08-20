@@ -1473,3 +1473,108 @@ alone), **D018** (mutation-verification, which caught the false green), **D026**
 (components correct in isolation while the assembly is not; this applies the same
 shape to review layers), **D034** (the failure family both PR comments landed in:
 prose asserting a guarantee the code does not enforce).
+
+---
+
+## D037 — Wrong-action feedback fires on focus, never on element churn, and only the tick loop decides
+
+**Decision.** The perception worker samples UI Automation focus in ~50ms
+slices during its inter-walk wait and publishes `Observation.focus_visited` —
+the distinct in-app AutomationIds focus **visited** since the last
+observation, not merely the one it rests on. In `AWAITING_USER_ACTION`, if
+verification is unsatisfied and `focus_visited` names a control that is not
+the step's grounded target, the loop prints one line naming what was touched
+and returns to `OBSERVING`, which re-grounds and re-shows the ring through the
+existing render path. Satisfied verification always wins first: a step that
+completed despite a detour is not interrupted to be criticised for it.
+
+**Why focus, not `elements_changed`.** The loop already had a signal for "the
+world changed unexpectedly" — the `elements_changed` branch already
+re-observes on any element-identity change. It cannot be the wrong-action
+signal, because element identity drifts with no user action at all: VS
+Code's element set was measured churning roughly 10% in steady state, on a
+real workload, well after startup finished
+(`docs/superpowers/specs/2026-08-19-cold-electron-probe-findings.md` §3).
+Announcing "you did the wrong thing" on application churn is the Clippy
+failure this whole loop exists to avoid. Focus changes because a user acted
+on a control; it does not drift on its own the way the element set does.
+
+**The measured numbers, and where they live.** Per D034, every figure below
+is cited to the document that recorded it, not restated from memory.
+`docs/superpowers/specs/2026-08-20-wrong-action-feedback-design.md` declares
+itself the PRIMARY RECORD for the focus numbers — they come from two
+throwaway probes, not kept in the repo, and are written down there first:
+
+- `IUIAutomation::GetFocusedElement`, 40 samples: median **2.66ms**, none over
+  100ms or over 500ms (D020's tick ceiling) — design spec §2.1.
+- Re-probed against `tests.uia_app.SyntheticApp`'s real controls, the id
+  `GetFocusedElement` reports matches the id a tree walk reports exactly —
+  Export button `1001`, Delete button `1002`, filename edit `1004`, all three
+  — design spec §2.2. This is what makes the comparison against the grounded
+  target meaningful rather than approximate; an earlier probe against a
+  console window returned empty AutomationIds for all 40 samples and looked
+  fatal until re-pointed at real controls.
+- Walk duration **0.18–0.70s**, tier-2 capture+OCR **0.14–0.23s** (the latter
+  already recorded at D028) — design spec §2.3.
+
+**The worker perceives, the loop decides — D028's split, applied again.** The
+worker filters on exactly two perception facts: focus is inside the target
+process, and the focused element has a non-empty AutomationId. It does not
+know which step is current or what it is grounded to — only the tick loop
+does, the same division D028 drew for tier 2 (UI thread decides and requests,
+worker executes and publishes). Only primitives cross the thread boundary
+(D021): `focus_visited` is a `tuple[str, ...]`, never a retained COM element.
+
+**The re-hint reuses `OBSERVING`, not a second write path (D027).** No
+`renderer.show()` call was added to the wrong-action branch. `set_hint` ends
+in `UpdateWindow`, which paints synchronously — a second corrective write is
+not a narrow race, it is a second frame that definitely reaches the screen.
+Routing the re-hint back through `OBSERVING` keeps the single-write-per-tick
+invariant D027 exists to protect, and re-grounds first on its own merits: a
+wrong click may have opened a dialog and moved the target.
+
+**Two different caps, because they are two different situations.** Wrong-
+action re-hints cap at **3** per step; the idle re-hint cap stays **1**,
+unchanged. Idle means the user is doing nothing, and a second nudge on top of
+the first is nagging. A wrong action means the user is actively trying, and
+answering each attempt is help. The console MESSAGE, unlike the re-hint, is
+deliberately **uncapped** — it is bounded by real user actions, not by wall
+clock, so it cannot produce the unbounded nagging the re-hint cap exists to
+prevent. Capping the message too would tell a user who keeps genuinely trying
+and failing LESS the harder they struggle, which is backwards for a system
+whose whole purpose is teaching.
+
+**The OCR blind spot, stated plainly.** Wrong-action feedback does not exist
+on OCR-grounded steps. OCR elements carry no AutomationId, so there is
+nothing to compare `focus_visited` against, and the loop stays silent by
+construction rather than by a special case. This is not a gap discovered
+later — it falls out of the firing policy and is recorded here so it is
+known rather than rediscovered.
+
+**The deferred alternative, and the honest reason it stays deferred.** Native
+UIA focus-change events (`AddFocusChangedEventListener`) would close the
+sampling gap entirely and are not built. An earlier draft of the design
+justified the deferral on the gap being "inside 50ms, faster than a human
+performs two deliberate clicks" — wrong by roughly an order of magnitude: 50ms
+is the slice interval, not the gap the slicing leaves open. Focus is not
+sampled during the walk or during a standing tier-2 request at all, so the
+real contiguous blind window is **0.18–0.93s** (walk plus tier 2), covering
+roughly **18–53%** of wall time against the 0.2s sampled interval — a
+wrong-then-right round trip landing inside that window is well within normal
+human click speed, not faster than it (design spec §7, corrected during this
+milestone; the corrected figure is itself the kind of number D034 exists to
+keep honest). The deferral still stands, but for the real reason: native
+events arrive as COM callbacks on RPC-managed threads and would need
+marshalling into the worker's apartment — exactly the D021 area this project
+has already paid to avoid, not because the gap is negligible.
+
+**`FOCUS_MOVES_TO`.** The verification kind that had always raised
+`NotImplementedError` because focus was never tracked is enabled by this
+milestone, with its own tests, rather than riding in silently on a feature
+that merely happened to unblock it.
+
+Related: **D021** (only primitives cross the worker/UI thread boundary),
+**D027** (one write per tick — why the re-hint reuses `OBSERVING`), **D028**
+(the worker-perceives / loop-decides split, applied a second time), **D034**
+(every number above named to its record; the §7 correction is this rule
+applied to the project's own prior draft).

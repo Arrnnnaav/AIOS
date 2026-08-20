@@ -150,6 +150,11 @@ return of anything tried on this project.
   RENDERING_HINT → AWAITING_USER_ACTION → VERIFYING`), observe-act-**verify** rather than
   plain ReAct — a failed verification re-observes and re-plans from real state rather than
   blindly retrying, because the user can change the world between observation and action.
+  `AWAITING_USER_ACTION` also names a wrong action: if verification is unsatisfied and UI
+  Automation focus visited a control other than the step's grounded target, the loop prints
+  what was touched and re-asserts the hint via `OBSERVING` (see D037). The signal is focus,
+  not element churn — element identity was measured drifting with no user action at all —
+  and it is silent on OCR-grounded steps, which carry no AutomationId to compare against.
 - **Local inference:** small local model on the hot path (SmolLM-class via Ollama,
   sub-second budget, streamed and parsed incrementally), a larger local model reserved for
   rare/complex reasoning.

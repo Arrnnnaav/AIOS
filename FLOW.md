@@ -6,7 +6,9 @@ the bottom shows exactly what's being built/modified right now.
 
 ---
 
-## Current milestone: Chromium warm-up  ✅ built — see "You are here"
+## Current milestone: Wrong-action feedback  ✅ built — see "You are here"
+
+## Previous milestone: Chromium warm-up  ✅ complete
 
 ## Previous milestone: Perception tier 2 (OCR)  ✅ complete
 
@@ -87,7 +89,8 @@ run.main()
 | `ghostcursor/perception/appinfo.py` | identifies the app owning a window (HWND -> PID -> exe path -> file/Appx version) for version-scoped observation lookup |
 | `ghostcursor/reasoning/identity.py` | `step_key()` — durable hash of intent + claimed descriptor, the key observations are stored/retrieved under |
 | `ghostcursor/memory/store.py` | `ObservationStore` — local SQLite knowledge base of learned observations, keyed by `(step_key, app_id, app_version, automation_id)` |
-| `ghostcursor/perception/service.py` | `PerceptionService` — runs the UI-tree walk AND tier 2 on a worker thread that owns its COM apartment, publishes one timestamped `Observation` into a single overwritten slot, and receives the UI thread's `Tier2Request` through a second overwritten slot going the other way |
+| `ghostcursor/perception/service.py` | `PerceptionService` — runs the UI-tree walk AND tier 2 on a worker thread that owns its COM apartment, publishes one timestamped `Observation` into a single overwritten slot, and receives the UI thread's `Tier2Request` through a second overwritten slot going the other way. Also samples focus in `focus_slice_s` slices during the inter-walk wait (`_sample_focus_while_waiting`) and publishes the distinct in-app AutomationIds visited as `Observation.focus_visited` |
+| `ghostcursor/perception/focus.py` | `read_focused_automation_id(hwnd)` — the in-process focused control's AutomationId, or `""`; knows nothing about steps or grounding, only "what has focus right now" |
 | `ghostcursor/perception/health.py` | `WorkerHealth.check()` — notices a dead or stalled worker, restarts it exactly once, then ends the tour with a reason |
 | `ghostcursor/reasoning/staleness.py` | `StalenessLadder` — how old the last confirmed-fresh walk is, as `Freshness.FRESH / DIMMED / INFERRED / HIDDEN`, with debounced recovery; `display_freshness()` combines age with provenance |
 | `ghostcursor/perception/ocr.py` | `WindowsOcr` wrapper over `Windows.Media.Ocr`, `ocr_available()`, and `reassemble()` for labels that wrap onto two lines |
@@ -145,6 +148,50 @@ process boundaries), and deleting the database file returned behaviour to
 rung 2 — see the persistence call graph above.
 
 ### You are here
+**Wrong-action feedback is built** (D037). The perception worker
+(`ghostcursor/perception/service.py`) now samples focus in `focus_slice_s`
+(default 0.05s) slices during its inter-walk wait, via
+`_sample_focus_while_waiting`, reading through
+`ghostcursor/perception/focus.py`'s `read_focused_automation_id(hwnd)` — the
+in-process focused control's AutomationId, filtered to the target process and
+non-empty ids, or `""`. It accumulates the distinct ids focus VISITED (not
+merely rested on) into a list, capped at `MAX_FOCUS_VISITED`, and publishes
+them as `Observation.focus_visited: tuple[str, ...]` on the next successful
+walk — cleared only on a successful publish, so a raising walk does not
+silently drop an interval's ids. `Snapshot.focused_automation_id` is filled
+the same way at walk time.
+
+`ghostcursor/reasoning/loop.py`'s `AWAITING_USER_ACTION` arm gained one new
+branch, ordered between the satisfied check and the existing
+`elements_changed` branch: `GuidedTour._wrong_action(step)` compares
+`focus_visited_source()` against the grounded target's AutomationId. Satisfied
+verification always wins first — a step that completed despite a detour is
+never interrupted to be criticised for it, and that path does not count
+toward the re-hint cap. If unsatisfied and a non-target in-app id was
+touched, `on_wrong_action(touched, target)` fires (uncapped — capping the
+console line would tell a struggling user less the harder they try) and the
+loop returns to `State.OBSERVING`, which re-grounds and flows back through
+`RENDERING_HINT` to re-show the ring — deliberately the existing path, not a
+second `renderer.show()` call, because `set_hint` ends in a synchronous
+`UpdateWindow` and a second write is a second frame that reaches the screen
+(D027). `wrong_action_rehints` caps that re-assertion at 3 per step, distinct
+from the unrelated 1-cap on the idle re-hint (idle is inaction; a wrong
+action is an active attempt worth answering, up to a bound). The branch is
+silent by construction whenever the grounded target itself has no
+AutomationId — every OCR-grounded step, since OCR elements never carry one —
+so wrong-action feedback does not exist there.
+
+`ghostcursor/run.py` wires two new closures into the `GuidedTour(...)`
+construction (around its `focus_visited_source`/`on_wrong_action` keyword
+arguments): `focus_visited_source()` reads `service.latest().focus_visited`
+off the same published slot everything else reads, and `on_wrong_action`
+prints the one console line. Native UIA focus-change events remain
+deliberately unbuilt — the sampling gap they would close is real
+(0.18-0.93s, measured, D037/D034), but closing it needs COM callbacks
+marshalled into the worker's apartment, the D021 area already paid down once.
+`FOCUS_MOVES_TO` verification, previously `NotImplementedError`, is enabled.
+Details and every measured number: D037.
+
 **Chromium warm-up is built** (D035). A `WarmUp` object
 (`ghostcursor/perception/warmup.py`) suppresses the tier-2 request for a
 budget (`DEFAULT_WARMUP_BUDGET_S = 2.0`) after a window's first failed
@@ -401,6 +448,24 @@ run.main()
                                        advanced is NO verification attempt, not a failed one
                                        verification.verify(rule, before, after)
                                            world-state check, not method (D014)
+                                       satisfied? -> VERIFYING (a detour is never criticised
+                                           after the fact -- interrupting success is Clippy)
+                                       else loop._wrong_action(step)   run.focus_visited_source()
+                                           -> service.latest().focus_visited, compared against
+                                           the grounded target's automation_id. A non-target
+                                           in-app id -> run.on_wrong_action(touched, target)
+                                           prints one uncapped console line, then back to
+                                           OBSERVING (re-grounds; NOT a second renderer.show()
+                                           call -- D027) up to 3 times per step
+                                           (wrong_action_rehints); past the cap the loop still
+                                           transitions and still prints, it just stops
+                                           re-asserting the ring. Silent when the target has no
+                                           AutomationId of its own -- true for every OCR-grounded
+                                           step, since OCR elements carry none (D037)
+                                       else elements_changed(before, after) -> OBSERVING
+                                           (unchanged; the churn-not-focus case D037 explains)
+                                       else idle timeout -> re-hint ONCE (rehint_count),
+                                           unchanged from before this milestone
               [VERIFYING]   step_index += 1; renderer.clear(); back to OBSERVING
           ladder.freshness()                    applied AFTER the DONE/FAILED breaks:
               HIDDEN  -> window.clear_hint(hwnd)      (never passed to set_hint: _paint_ring
