@@ -157,7 +157,11 @@ A separate counter, capped at **3** wrong-action re-hints per step, after which
 the ring stops re-asserting and only the console records. The cap counts
 **re-hints, not messages**: past the cap the loop still transitions to
 OBSERVING and still prints, it simply stops re-asserting the ring. Silence
-about a wrong action would be worse than a quiet one. The idle-timeout cap
+about a wrong action would be worse than a quiet one — and capping the message
+too would mean a user who keeps genuinely trying and failing gets told LESS the
+harder they are struggling, which is backwards for a system whose whole purpose
+is teaching. The print is bounded by real user actions, not by wall clock, so it
+cannot produce the unbounded nagging the re-hint cap exists to prevent. The idle-timeout cap
 of 1 is unchanged.
 
 Different caps because they are different situations. Idle means the user is

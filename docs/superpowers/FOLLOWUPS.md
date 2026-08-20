@@ -111,3 +111,40 @@ decision to make deliberately, not to inherit by default.
 
 Also unowned: pack staleness. `verified_on` version-scoping exists in the KB
 schema, but a shipped offline pack needs its own refresh story.
+
+## Unmeasured risks with named triggers
+
+Risks accepted deliberately, with the evidence that would justify acting on
+them stated up front. A risk recorded only in a spec's prose is one that
+evaporates the moment implementation starts; these live here so they stay
+findable. Do not act on the theoretical existence of the gap — each entry names
+what evidence fires it.
+
+### `GetFocusedElement` against a non-pumping window
+From `2026-08-20-wrong-action-feedback-design.md` §9. Focus reads cost a 2.66 ms
+median on an idle machine, but were **never tested against a "Not Responding"
+window**. D025's hung-window tax — 6.28 s versus 100.13 s for the same two files
+— applies to UIA calls generally, and whether focus reads pay it is unknown.
+
+Worst case is contained by placement rather than by measurement: the read is on
+the perception worker, never the UI thread, so a block degrades perception
+exactly as a slow walk already does. The UI thread keeps pumping and polling ESC
+(D021), and the staleness ladder ages the hint. It cannot produce a frozen
+overlay the user cannot dismiss. That containment argument is why shipping the
+unmeasured risk is acceptable — it is not a claim the risk is small.
+
+**Trigger:** unexplained perception stalls with wrong-action feedback enabled,
+particularly on Chromium-heavy or OCR-blind applications. Then measure
+`GetFocusedElement` against a deliberately hung window, reusing
+`tests/hung_window.py`.
+
+### Native UIA focus-change events
+From `2026-08-20-wrong-action-feedback-design.md` §7. `AddFocusChangedEventListener`
+would remove the focus sampling gap entirely. Not built: at 50 ms slices the
+missed window is a wrong-then-right round trip completing inside 50 ms, faster
+than a human performs two deliberate clicks, and the cost is COM callbacks on
+RPC-managed threads marshalled into the worker's apartment — the area D021 warns
+gives confusing intermittent failures rather than clean errors.
+
+**Trigger:** evidence that real use is missing wrong actions. NOT the
+theoretical existence of the gap, which is already known and accepted.
