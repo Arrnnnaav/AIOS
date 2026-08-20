@@ -197,3 +197,85 @@ def test_a_raising_focus_reader_does_not_kill_the_walk():
         service.stop()
     assert observation.ok is True
     assert observation.focus_visited == ()
+
+
+def test_focus_visited_survives_a_failed_walk():
+    """An id visited during the interval before a failed walk must still
+    reach the next SUCCESSFUL observation -- not be silently discarded by
+    the failed walk in between.
+
+    `Observation.focus_visited`'s own docstring (and design spec section
+    3.2) define the contract as "since the previous observation". An
+    earlier version cleared `visited` unconditionally on every loop
+    iteration, whether or not a walk succeeded. That discards ids the
+    instant a walk fails, even though nothing was published to carry them
+    -- so a user's wrong click during a failed-walk interval was invisible
+    to consumers forever, silently violating the documented contract.
+
+    Three walks are needed to expose this, not two: walk #1 succeeds (and
+    publishes an empty focus_visited, since nothing has been sampled yet);
+    "wrongclick" is sampled during walk #1's wait; walk #2 FAILS, so
+    nothing is published this round and, under the bug, the unconditional
+    clear wipes "wrongclick" before it ever reaches an Observation; walk #3
+    succeeds and publishes. Under the fix, the clear only ever runs
+    alongside a successful publish, so "wrongclick" survives walk #2's
+    failure intact and shows up in walk #3's observation.
+    """
+    walk_calls = {"n": 0}
+
+    def walker(_):
+        walk_calls["n"] += 1
+        if walk_calls["n"] == 2:
+            raise RuntimeError("walk failed")
+        return []
+
+    # "" covers every walk-start sample; "wrongclick" is consumed exactly
+    # once, during walk #1's post-walk wait.
+    focus_sequence = iter(["", "wrongclick"])
+
+    def reader(_hwnd):
+        try:
+            return next(focus_sequence)
+        except StopIteration:
+            return ""
+
+    service = PerceptionService(
+        title_re=".*Target.*",
+        walker=walker,
+        hwnd_source=lambda _: 4242,
+        focus_reader=reader,
+        focus_slice_s=0.001,
+        interval_s=0.05,
+    )
+    service.start()
+    try:
+        first = _wait_for(service, lambda o: o.observed_at > 0)
+        second = _wait_for(service, lambda o: o.observed_at > first.observed_at)
+    finally:
+        service.stop()
+    assert "wrongclick" in second.focus_visited
+
+
+def test_focused_automation_id_reaches_the_snapshot():
+    """`take_snapshot`'s new `focused_automation_id` parameter must actually
+    be wired to what the worker read, not left at its default.
+
+    Reverting `focused_automation_id=focused_now` in `_run` back to the old
+    hardcoded `""` leaves every other test in this file green -- nothing
+    else in the suite asserts on `Snapshot.focused_automation_id` coming out
+    of a real worker. This is the wiring's only guard.
+    """
+    service = PerceptionService(
+        title_re=".*Target.*",
+        walker=lambda _: [],
+        hwnd_source=lambda _: 4242,
+        focus_reader=lambda _hwnd: "1001",
+        focus_slice_s=0.001,
+        interval_s=0.05,
+    )
+    service.start()
+    try:
+        observation = _wait_for(service, lambda o: o.observed_at > 0)
+    finally:
+        service.stop()
+    assert observation.snapshot.focused_automation_id == "1001"

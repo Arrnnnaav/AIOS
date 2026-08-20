@@ -140,14 +140,32 @@ particularly on Chromium-heavy or OCR-blind applications. Then measure
 
 ### Native UIA focus-change events
 From `2026-08-20-wrong-action-feedback-design.md` §7. `AddFocusChangedEventListener`
-would remove the focus sampling gap entirely. Not built: at 50 ms slices the
-missed window is a wrong-then-right round trip completing inside 50 ms, faster
-than a human performs two deliberate clicks, and the cost is COM callbacks on
-RPC-managed threads marshalled into the worker's apartment — the area D021 warns
-gives confusing intermittent failures rather than clean errors.
+would remove the focus sampling gap entirely. Not built.
 
-**Trigger:** evidence that real use is missing wrong actions. NOT the
-theoretical existence of the gap, which is already known and accepted.
+**Corrected 2026-08-20, post-implementation review.** An earlier version of
+this entry (and of spec §7) said the missed window was 50 ms — that number was
+the SLICE interval, not the blind window it leaves open, and understated the
+real gap by roughly an order of magnitude (a D034 case: a documented figure
+the implementation did not support, cited as the basis for a deferral
+decision). Focus is sampled only during the inter-walk wait; it is not
+sampled during the walk itself (0.18–0.70 s measured) or during tier 2 when
+standing (0.14–0.23 s measured). The real blind window is walk plus tier 2,
+**0.18–0.93 s**, giving roughly **18–53% coverage** of wall time, not a 50 ms
+gap "faster than a human performs two deliberate clicks" — a wrong-then-right
+round trip completing inside that window is ordinary human click speed.
+
+Polling is kept anyway: the cost of native events is still real (COM
+callbacks on RPC-managed threads marshalled into the worker's apartment, the
+area D021 warns gives confusing intermittent failures rather than clean
+errors), and this project has already paid once to avoid that area. But the
+reason for keeping polling now has to be stated as "avoid a real
+COM-marshalling risk", not "the gap is small".
+
+**Trigger:** any report of a wrong action going unremarked — not "evidence
+that real use is missing wrong actions" as this entry previously said, which
+reads as a materially higher bar than a sub-second gap warrants. NOT the
+theoretical existence of the gap, which is already known, measured, and
+accepted.
 
 ### `test_appinfo.py::test_app_info_for_a_store_app_prefers_appx_version` fails on a real desktop
 Discovered during the wrong-action feedback milestone, 2026-08-20, and verified

@@ -48,7 +48,17 @@ DEFAULT_INTERVAL_S = 0.2
 #: than that. See the design spec, section 2.3.
 DEFAULT_FOCUS_SLICE_S = 0.05
 #: Ceiling on ids carried per observation, so a control that cycles focus
-#: cannot grow the published payload without bound.
+#: cannot grow the published payload without bound. At the DEFAULTs this is a
+#: backstop, not the primary bound: interval_s / focus_slice_s = 0.2 / 0.05 =
+#: 4 samples per wait, plus the one walk-start sample, is already well under
+#: this cap. It starts doing real work only if either constant is retuned
+#: toward a much longer interval or a much finer slice. When it fires, the
+#: ids that survive are the EARLIEST distinct ones seen this interval: the
+#: append guard in `_sample_focus_while_waiting` (and the walk-start sample in
+#: `_run`) checks `len(visited) < MAX_FOCUS_VISITED` before appending, so once
+#: the cap is hit later distinct ids are silently dropped rather than
+#: evicting an earlier one. Documented, not changed: recency vs. earliest-seen
+#: is a real tradeoff and this task does not decide it.
 MAX_FOCUS_VISITED = 8
 
 
@@ -366,12 +376,24 @@ class PerceptionService:
         first of the two cases this feature exists for. Slicing the wait
         catches it for 1-3ms a sample.
 
-        Still honours `stop` promptly: each slice is its own bounded wait, so
-        a stopping worker leaves within one slice.
+        `stop` is still honoured promptly, but "within one slice" is not
+        exact: a stopping worker leaves after at most one slice's wait PLUS
+        one focus read, because `stop.wait` is checked before the read and
+        not after it. That read's cost against a non-pumping window is
+        unmeasured (design spec section 9) -- unlike the walk, it is not
+        covered by a hung-window test. This still cannot freeze the overlay:
+        `stop()` joins with a timeout rather than blocking on it, so the UI
+        thread never waits on this worker either way (D021).
         """
         remaining = self.interval_s
-        while remaining > 0 and not stop.is_set():
-            slice_s = min(self.focus_slice_s, remaining)
+        while remaining > 1e-9 and not stop.is_set():
+            # Floor guards focus_slice_s <= 0: zero would make every
+            # iteration's wait a no-op stop.wait(0), spinning the loop into
+            # back-to-back focus reads with no pacing; negative would make
+            # `remaining` grow instead of shrink. min(..., remaining) still
+            # wins over the floor near the end of the interval, so the last
+            # slice does not overshoot.
+            slice_s = max(min(self.focus_slice_s, remaining), 1e-3)
             if stop.wait(slice_s):
                 return
             remaining -= slice_s
@@ -410,6 +432,21 @@ class PerceptionService:
                     target_hwnd = self._safe_hwnd()
                     target_hwnd_for_wait = target_hwnd
                     focused_now = self._safe_focus(target_hwnd)
+                    if (
+                        focused_now
+                        and focused_now not in visited
+                        and len(visited) < MAX_FOCUS_VISITED
+                    ):
+                        # Recovers the walk-start sample that would otherwise
+                        # be read and discarded: this is the ONE moment focus
+                        # is read outside `_sample_focus_while_waiting`, and
+                        # until now it went only to the snapshot, never into
+                        # `visited`. Does not close the blind window -- the
+                        # walk itself (0.18-0.70s) and tier 2 when standing
+                        # (0.14-0.23s) still pass with no sampling at all --
+                        # but it is one line and strictly better. See design
+                        # spec section 7's corrected trigger.
+                        visited.append(focused_now)
                     elements = tuple(self.walker(self.title_re))
                     observed_at = self.clock()
                     walked = (
@@ -466,7 +503,21 @@ class PerceptionService:
                             focus_visited=tuple(visited),
                         )
                     )
-                visited.clear()
+                    # Cleared only here, on a SUCCESSFUL publish -- not on
+                    # every iteration. A walk that raises must not discard
+                    # this interval's ids: nothing was published to carry
+                    # them, so the next successful observation is the first
+                    # chance the contract (see `Observation.focus_visited`'s
+                    # docstring: "since the previous observation") has to
+                    # report them. The competing risk -- a long failure
+                    # streak eventually reporting a detour from several
+                    # seconds ago -- is real but bounded by
+                    # MAX_FOCUS_VISITED, and Task 3 only fires while the step
+                    # is still unsatisfied, so a stale-but-unresolved wrong
+                    # action is still a true statement about a step the user
+                    # has not completed. Losing evidence of a real user
+                    # action is the worse failure.
+                    visited.clear()
                 self._sample_focus_while_waiting(stop, target_hwnd_for_wait, visited)
         finally:
             try:

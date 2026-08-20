@@ -212,15 +212,35 @@ riding in on a feature that merely happens to unblock it.
 **Native UIA focus-change events** (`AddFocusChangedEventListener`) would remove
 the sampling gap entirely. Not built.
 
-At 50 ms slices, the missed window is a wrong-then-right round trip completing
-inside 50 ms, which is faster than a human performs two deliberate clicks. The
-cost of closing it is COM event callbacks arriving on RPC-managed threads and
-being marshalled into the worker's apartment — precisely the area D021 warns
-gives "confusing intermittent failures rather than a clean error".
+**Corrected figure (an earlier version of this section understated the gap by
+roughly an order of magnitude; see D034 — a documented number the
+implementation did not support, cited as the basis for this exact deferral).**
+Focus is sampled ONLY during the inter-walk wait, in `focus_slice_s` slices
+(50 ms by default) plus one extra sample recovered at the start of each walk
+(section 3.2). It is NOT sampled during the walk itself (0.18–0.70 s,
+measured, section 2.3) or during tier 2 when a request is standing (capture
+plus OCR, 0.14–0.23 s measured, D028–D030). The real contiguous blind window
+is therefore **walk plus tier 2, 0.18–0.93 s**, not the 50 ms this section
+previously claimed — that 50 ms was the slice interval, not the gap the
+slicing leaves open. Against a cadence of `interval_s` (0.2 s) sampled plus
+that 0.18–0.93 s unsampled, coverage is roughly **18–53% of wall time**, not
+"faster than a human performs two deliberate clicks". A wrong-then-right
+round trip completing inside the blind window is well within normal human
+click speed, not faster than it.
 
-**Trigger for revisiting:** evidence that real use is missing wrong actions —
-not the theoretical existence of the gap, which is already known and accepted
-here. Do not count "it is possible in principle" toward this trigger.
+The cost of closing the gap with native events is unchanged and still real:
+COM event callbacks arrive on RPC-managed threads and would need marshalling
+into the worker's apartment — precisely the area D021 warns gives "confusing
+intermittent failures rather than a clean error", and an area this project has
+already paid the cost of avoiding once. Polling is kept anyway, but the
+justification for keeping it has to be honest about what it costs: it is
+"avoid a real COM-marshalling risk", not "the gap is negligible".
+
+**Trigger for revisiting:** any report of a wrong action going unremarked —
+not "evidence that real use is missing wrong actions" as this section
+previously said, which reads as a much higher bar than a gap this size
+warrants, and not the theoretical existence of the gap, which is already
+known, measured, and accepted here.
 
 ## 8. Out of scope
 
