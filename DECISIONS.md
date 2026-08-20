@@ -1449,7 +1449,8 @@ independent reviewer. D018 mutation-verifies behaviour, which a comment has none
 of. Neither rule says anything about the scope of a fix once a finding is
 correctly identified, and that is the gap this closes.
 
-**The pattern this is the third instance of.** Each review layer catches a class
+**The pattern this is the third instance of** (a fourth was added by the
+wrong-action milestone — see D038). Each review layer catches a class
 of defect the layer inside it cannot see, by construction:
 
 | Layer | What it caught that the inner layer structurally could not |
@@ -1624,3 +1625,65 @@ Related: **D021** (only primitives cross the worker/UI thread boundary),
 (the seeding branch's own mutation-survivable shape), **D034**
 (every number above named to its record; the §7 correction is this rule
 applied to the project's own prior draft).
+
+
+## D038 — The brief is the least-reviewed artefact, so reviewers must verify it rather than defer to it
+
+**Decision.** When dispatching a reviewer, state explicitly that the requirements
+brief is a claim to verify, not authority, and that the code should be judged
+against the spec and the codebase. Name the controller as the brief's author.
+A reviewer told to check work *against* a document will not check the document.
+
+**What it cost to learn.** The wrong-action-feedback milestone produced nine
+defects. Not one was visible to inspection — every one came from mutation
+testing or review. **Four of the nine originated in the plan or the spec**, both
+controller-authored:
+
+| Defect | Consequence had it shipped |
+|---|---|
+| Tests requiring `SetForegroundWindow` | Could never pass reliably; Windows' foreground lock refuses a non-frontmost process. The task was never green, and a mutation table built on that red baseline recorded a kill that proved nothing. |
+| `_wrong_action` read twice in one branch | Two reads of an unlocked slot can disagree, so the message could name a control the user never touched, or pass `None` into a `Callable[[str, str], None]`. **No test could catch it** — the harness's source was a static tuple. |
+| Spec §3.5 contradicting spec §3.4 | §3.4 makes the re-hint *be* the OBSERVING transition; §3.5 said the cap still transitions. Both cannot hold. `FLOW.md` faithfully copied the wrong half. |
+| Spec §3.3 promising a console line on the satisfied path | The code deliberately does not emit it. The spec was the lone stale document — and the one that calls itself the design of record. |
+
+Two were caught only because an implementer checked instead of complying: the
+`SetForegroundWindow` tests, and a dispatch that named the wrong file for a set
+of figures on the previous milestone. An agent that defers to the brief inherits
+the brief's errors silently.
+
+**Why the existing rules do not cover this.** D032 requires an independent read
+of what the controller authored — and it works, but it is aimed at *documentation
+of finished work*, not at the requirements that shaped the work. D034 governs
+citations. D018 mutation-verifies behaviour, and a wrong requirement produces
+code and tests that agree with each other perfectly. Nothing said the brief
+itself is in scope for review.
+
+**The fourth layer data point, reinforcing D036 and D026.** `focus_visited`
+recorded RESTING focus rather than focus that MOVED, so a control focus never
+left was re-reported on every observation and the loop would have nagged a user
+who had done nothing — the exact failure the design forbids. It passed **six
+task-level gates**, including a dedicated review of the perception worker on a
+more capable model. At task level the code did precisely what it said: publish
+the ids focus visited during this interval. The defect existed only in the
+relationship *between* intervals, which no task-scoped review can see.
+
+Worse, the suite certified it: `test_focus_visited_deduplicates` fed a constant
+reader and asserted the id was still reported, so the fixture modelled the wrong
+property as correct. A test that models the wrong property does not merely fail
+to catch a defect — it vouches for it.
+
+This is the fourth instance of D036's generalisation, that **no review layer can
+audit its own blind spot**, and the second where whole-branch review caught a
+seam every inner gate had passed. Treat that layer as a standing gate, never a
+courtesy to skip when everything upstream looks clean.
+
+**Not adopted:** a rule that the controller should not author briefs. Someone has
+to, and the alternative — briefs written by an agent with less context — trades a
+reviewable error for an unreviewable one. The fix is that the brief gets read
+adversarially, not that it gets written by someone else.
+
+Related: **D036** (fix the class, not the instance; its layer table gains this as
+a fourth row), **D026** (components correct in isolation while the assembly is
+not — this applies the same shape to requirements), **D032** (independent read —
+necessary, and shown here not to reach the brief), **D018** (mutation-verification,
+which cannot see a defect where code and tests agree on a wrong requirement).
