@@ -155,8 +155,12 @@ rung 2 — see the persistence call graph above.
 `_sample_focus_while_waiting`, reading through
 `ghostcursor/perception/focus.py`'s `read_focused_automation_id(hwnd)` — the
 in-process focused control's AutomationId, filtered to the target process and
-non-empty ids, or `""`. It accumulates the distinct ids focus VISITED (not
-merely rested on) into a list, capped at `MAX_FOCUS_VISITED`, plus one sample
+non-empty ids, or `""`. It accumulates the distinct ids focus MOVED TO (not
+where it merely rests) into a list, via `_record_focus`: an id already
+holding focus at the interval boundary is deliberately never reported, only
+a change away from it, and the first non-empty read of the worker's
+lifetime only seeds that comparison rather than being reported itself.
+Capped at `MAX_FOCUS_VISITED`, plus one sample
 recovered at the start of each walk (`_run`), and publishes them as
 `Observation.focus_visited: tuple[str, ...]` on the next successful
 walk — cleared only on a successful publish, so a raising walk does not
@@ -165,7 +169,7 @@ the same way at walk time.
 
 `ghostcursor/reasoning/loop.py`'s `AWAITING_USER_ACTION` arm gained one new
 branch, ordered between the satisfied check and the existing
-`elements_changed` branch: `GuidedTour._wrong_action(step)` compares
+`elements_changed` branch: `GuidedTour._wrong_action(self)` compares
 `focus_visited_source()` against the grounded target's AutomationId. Satisfied
 verification always wins first — a step that completed despite a detour is
 never interrupted to be criticised for it, and that path does not count
@@ -185,8 +189,10 @@ so wrong-action feedback does not exist there.
 
 `ghostcursor/run.py` wires two new closures into the `GuidedTour(...)`
 construction (around its `focus_visited_source`/`on_wrong_action` keyword
-arguments): `focus_visited_source()` reads `service.latest().focus_visited`
-off the same published slot everything else reads, and `on_wrong_action`
+arguments): `focus_visited_source()` reads `current_observation.focus_visited`
+— the same already-bound observation `snapshotter()` produced earlier in the
+tick, never a fresh `service.latest()` call (D019), so `touched` and the
+tick's `after` always come from the same observation — and `on_wrong_action`
 prints the one console line. Native UIA focus-change events remain
 deliberately unbuilt — the sampling gap they would close is real
 (0.18-0.93s, measured, D037/D034), but closing it needs COM callbacks
@@ -454,8 +460,8 @@ run.main()
                                            after the fact -- interrupting success is Clippy)
                                        (message hoisted above this chain: fires on every
                                            non-target touch while unsatisfied, uncapped, so a
-                                           capped tick is never silenced) loop._wrong_action(step)
-                                           run.focus_visited_source() -> service.latest()
+                                           capped tick is never silenced) loop._wrong_action(self)
+                                           run.focus_visited_source() -> current_observation
                                            .focus_visited, compared against the grounded
                                            target's automation_id. A non-target in-app id ->
                                            run.on_wrong_action(touched, target) prints one

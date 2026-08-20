@@ -315,6 +315,29 @@ def test_focus_visited_survives_a_failed_walk():
     assert "wrongclick" in second.focus_visited
 
 
+def test_the_first_focus_read_only_seeds_and_is_never_reported():
+    """Whatever holds focus when the worker starts is not a 'visit'.
+
+    interval_s is long so exactly one observation is published inside the
+    test window: the walk-start read of iteration 1 is the worker's first
+    ever read, and it must seed `last_focus` without entering `visited`.
+    """
+    service = PerceptionService(
+        title_re=".*Target.*",
+        walker=lambda _: [],
+        hwnd_source=lambda _: 4242,
+        focus_reader=lambda _hwnd: "held",
+        focus_slice_s=0.001,
+        interval_s=5.0,
+    )
+    service.start()
+    try:
+        first = _wait_for(service, lambda o: o.observed_at > 0)
+    finally:
+        service.stop()
+    assert first.focus_visited == ()
+
+
 def test_focused_automation_id_reaches_the_snapshot():
     """`take_snapshot`'s new `focused_automation_id` parameter must actually
     be wired to what the worker read, not left at its default.

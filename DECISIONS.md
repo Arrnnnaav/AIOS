@@ -1583,8 +1583,44 @@ focus move entirely, while the wrong-action path samples 4x more finely from
 the same worker. No recipe uses the rule today, so the asymmetry is inert in
 production, but it is recorded here rather than left to be discovered.
 
+**Only a focus TRANSITION is reported, never a resting hold — and the first
+read only seeds.** A Critical defect, found and fixed within this milestone:
+`focus_visited` originally recorded whatever focus was found to be on at each
+sample, so a control that never lost focus at all was re-appended on every
+single observation for as long as it held focus, and the loop nagged a user
+who had done nothing since the last tick. The fix, in
+`PerceptionService._record_focus` (`ghostcursor/perception/service.py`), is
+to compare each read against a `last_focus_holder` that survives
+`visited.clear()` at every successful publish — it lives for the whole worker
+generation, not just one interval — and append only when the read differs
+from what that holder last saw. Two consequences follow directly and both are
+worth stating plainly rather than leaving them to be found in a docstring:
+
+- The id already holding focus when the worker starts is not a "visit" at
+  all. The very first non-empty focus read of the worker's lifetime only
+  seeds `last_focus_holder`; it is never appended to `visited`. Whatever the
+  user happened to be focused on before the tour began is not reported as
+  having been touched.
+- **Re-clicking a control that already has focus produces no transition.** If
+  a user's wrong click lands on the same wrong control twice in a row with no
+  intervening focus change, the second click is invisible to this mechanism —
+  it is told once, on the first transition onto that control, and then not
+  again for as long as focus stays there. This is the correct side of the
+  Clippy tradeoff (repeating "that's still wrong" on every tick the user
+  hasn't moved on would be exactly the nagging D037's design set out to
+  avoid), but it is a real behaviour, not a hypothetical edge case, and
+  nobody had written it down before this fix.
+
+`tests/test_focus_service.py::test_the_first_focus_read_only_seeds_and_is_never_reported`
+guards the seeding rule specifically — mutating the early-return in
+`_record_focus` away (so the first read appends instead of only seeding)
+passed all nine of the file's pre-existing tests and is caught only by this
+one, which is the exact D018/D031 shape (a real invariant with no failing
+test behind it) this project has been burned by repeatedly on this milestone.
+
 Related: **D021** (only primitives cross the worker/UI thread boundary),
 **D027** (one write per tick — why the re-hint reuses `OBSERVING`), **D028**
-(the worker-perceives / loop-decides split, applied a second time), **D034**
+(the worker-perceives / loop-decides split, applied a second time), **D031**
+(the seeding branch's own mutation-survivable shape), **D034**
 (every number above named to its record; the §7 correction is this rule
 applied to the project's own prior draft).

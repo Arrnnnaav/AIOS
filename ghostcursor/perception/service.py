@@ -54,11 +54,11 @@ DEFAULT_FOCUS_SLICE_S = 0.05
 #: this cap. It starts doing real work only if either constant is retuned
 #: toward a much longer interval or a much finer slice. When it fires, the
 #: ids that survive are the EARLIEST distinct ones seen this interval: the
-#: append guard in `_sample_focus_while_waiting` (and the walk-start sample in
-#: `_run`) checks `len(visited) < MAX_FOCUS_VISITED` before appending, so once
-#: the cap is hit later distinct ids are silently dropped rather than
-#: evicting an earlier one. Documented, not changed: recency vs. earliest-seen
-#: is a real tradeoff and this task does not decide it.
+#: append guard in `_record_focus` (called from both `_sample_focus_while_waiting`
+#: and the walk-start sample in `_run`) checks `len(visited) < MAX_FOCUS_VISITED`
+#: before appending, so once the cap is hit later distinct ids are silently
+#: dropped rather than evicting an earlier one. Documented, not changed:
+#: recency vs. earliest-seen is a real tradeoff and this task does not decide it.
 MAX_FOCUS_VISITED = 8
 
 
@@ -126,10 +126,15 @@ class Observation:
     #: Discord's 'Discord Updater' splash from Discord itself, and those are
     #: different HWNDs.
     target_hwnd: int = 0
-    #: Distinct in-process AutomationIds that focus VISITED since the previous
-    #: observation -- not where focus rests now. Resting is not enough: the
-    #: case this exists for is a wrong click the user corrects before the next
-    #: walk completes. Plain strings, because only primitives cross the worker
+    #: Distinct in-process AutomationIds that focus MOVED TO since the
+    #: previous observation -- not where focus rests now, and not merely
+    #: where it was found to be at any one sample. An id already holding
+    #: focus at the interval boundary is deliberately excluded: only a
+    #: TRANSITION away from the previously-held id is reported, so a control
+    #: focus never left is never re-reported on every observation while it
+    #: holds focus (see `PerceptionService._record_focus`). The case this
+    #: exists for is a wrong click the user corrects before the next walk
+    #: completes. Plain strings, because only primitives cross the worker
     #: boundary (D021). Empty ids are never recorded: "" means focus is
     #: somewhere we cannot name, and naming is the point.
     focus_visited: tuple[str, ...] = ()

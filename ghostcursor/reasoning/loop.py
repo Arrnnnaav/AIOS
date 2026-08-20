@@ -237,12 +237,14 @@ class GuidedTour:
             else:
                 satisfied = self.verifier(step.verification_rule, self._before, after)
 
-            # Bound once, like `after` above: focus_visited_source reads a slot
-            # the perception worker overwrites without a lock (D021/D022), so
-            # two calls in the same tick are not guaranteed to agree. Calling
-            # it once in the `elif` guard and again to bind `touched` could
-            # observe a non-None result then bind None for the message, or
-            # name a different control than the one that satisfied the check.
+            # Bound once, like `after` above: `focus_visited_source` reads
+            # `current_observation`, not a fresh `service.latest()` call (see
+            # its docstring in run.py), so within one tick it is stable -- but
+            # the bind-once discipline still matters, because `_wrong_action`
+            # walks that same tuple and calling it twice would do the walk
+            # twice for no reason. One evaluation per tick keeps the condition
+            # that gates `on_wrong_action` and the message it prints from ever
+            # disagreeing with each other.
             touched = self._wrong_action()
 
             # The message is bounded by real user actions, not by a clock, so
