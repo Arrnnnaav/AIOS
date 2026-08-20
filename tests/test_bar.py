@@ -81,3 +81,40 @@ def test_the_bar_is_not_full_screen():
         )
     finally:
         bar.destroy_bar_window(bar_hwnd)
+
+
+def test_clicking_stop_sets_the_request_without_taking_focus():
+    """The button must work by mouse alone. Focus is not required, and taking
+    it would pull the user out of the app they are being taught."""
+    bar_hwnd = bar.create_bar_window()
+    try:
+        before = win32gui.GetForegroundWindow()
+        bar._on_command(bar_hwnd, bar.ID_STOP)
+        assert bar.bar_state(bar_hwnd).stop_requested is True
+        assert win32gui.GetForegroundWindow() == before, (
+            "clicking a bar button stole foreground from the user's app"
+        )
+    finally:
+        bar.destroy_bar_window(bar_hwnd)
+
+
+def test_requests_clear_so_one_click_is_one_request():
+    bar_hwnd = bar.create_bar_window()
+    try:
+        bar._on_command(bar_hwnd, bar.ID_PAUSE)
+        assert bar.bar_state(bar_hwnd).pause_requested is True
+        bar.clear_requests(bar_hwnd)
+        assert bar.bar_state(bar_hwnd).pause_requested is False, (
+            "a single click would be read as a request on every later poll"
+        )
+    finally:
+        bar.destroy_bar_window(bar_hwnd)
+
+
+def test_status_text_round_trips():
+    bar_hwnd = bar.create_bar_window()
+    try:
+        bar.set_status(bar_hwnd, "step 2 of 5")
+        assert bar.get_status(bar_hwnd) == "step 2 of 5"
+    finally:
+        bar.destroy_bar_window(bar_hwnd)
