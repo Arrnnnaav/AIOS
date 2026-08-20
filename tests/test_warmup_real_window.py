@@ -137,9 +137,26 @@ def test_the_tick_loop_suppresses_tier2_through_the_real_wiring(monkeypatch, tmp
     instance `run_tour` constructs internally) and every call is timestamped
     against `time.monotonic()`, the same clock `run_tour` itself defaults to.
 
-    This proves BOTH halves: no request lands before the warm-up budget
-    expires, AND at least one lands after -- so the test cannot pass for the
-    trivial reason that tier 2 was never going to fire at all.
+    This proves BOTH halves: no request lands inside [first failed grounding,
+    first failed grounding + budget_s), AND at least one lands after that
+    interval -- so the test cannot pass for the trivial reason that tier 2
+    was never going to fire at all.
+
+    The suppression window is anchored to the first FAILED call of
+    `ghostcursor.reasoning.grounding.ground` (spied the same way
+    `request_tier2` is), not to when this test's thread launches. Anchoring
+    to thread-launch was tried first and was a false green: `run_tour` has
+    to construct a `PerceptionService`, start its worker, have that worker
+    complete a real UIA walk and publish an observation (`run.py` skips the
+    tick entirely while `service.latest()` is None), and only THEN reach its
+    first failed grounding -- which is the moment `warmup.allows_tier2` is
+    first consulted and the budget clock actually starts. That startup cost
+    alone can exceed a short budget, so a thread-launch-anchored
+    `before_budget == []` can be empty because nothing had happened yet, not
+    because anything was suppressed -- confirmed by mutation: deleting the
+    `if not warmup.allows_tier2(...): ... return None` guard in `run.py`
+    entirely still passed a thread-launch-anchored version of this test.
+    Anchoring to the real event closes that gap.
     """
     import json
     import threading
@@ -147,9 +164,25 @@ def test_the_tick_loop_suppresses_tier2_through_the_real_wiring(monkeypatch, tmp
 
     from ghostcursor.overlay import window as real_window
     from ghostcursor.perception import appinfo
+    from ghostcursor.reasoning import grounding as grounding_module
 
-    budget_s = 0.5
-    total_seconds = 3.0
+    #: Longer than the original 0.5s/3.0s pairing, per the false-green fix:
+    #: room for the interval to be unambiguous rather than swallowed by
+    #: startup jitter (real UIA walk, real worker thread, real window).
+    budget_s = 1.5
+    total_seconds = 5.0
+
+    #: Every call to grounding.ground, timestamped, with whether it FAILED
+    #: (returned None). The first failure is the real "warm-up opens" event
+    #: -- not this test's thread-launch time, which precedes a real UIA
+    #: worker start, a real walk, and a real published observation.
+    ground_calls: list[tuple[float, bool]] = []
+    real_ground = grounding_module.ground
+
+    def spy_ground(*args, **kwargs):
+        result = real_ground(*args, **kwargs)
+        ground_calls.append((time_module.monotonic(), result is None))
+        return result
 
     with SyntheticApp(title="GhostCursorWarmupTickLoopProbe") as app:
         title_re = f".*{app.title}.*"
@@ -200,6 +233,13 @@ def test_the_tick_loop_suppresses_tier2_through_the_real_wiring(monkeypatch, tmp
         monkeypatch.setattr(run_module, "escape_pressed", lambda: False)
         monkeypatch.setattr(run_module, "key_was_pressed", lambda vk: False)
 
+        # Patched on the module -- `make_grounder`'s `grounder()` closure
+        # (in run.py) does `from ghostcursor.reasoning import grounding` and
+        # then calls `grounding.ground(...)`, an attribute lookup at call
+        # time, so patching the module attribute here reaches it regardless
+        # of which function object closed over the name first.
+        monkeypatch.setattr(grounding_module, "ground", spy_ground)
+
         requests: list[tuple[float, int]] = []
         real_request_tier2 = PerceptionService.request_tier2
 
@@ -212,7 +252,7 @@ def test_the_tick_loop_suppresses_tier2_through_the_real_wiring(monkeypatch, tmp
         # hwnd_source (first_matching_hwnd), which is the entire point.
         monkeypatch.setattr(PerceptionService, "request_tier2", spy_request_tier2)
 
-        start = time_module.monotonic()
+        wall_start = time_module.monotonic()
         result: dict = {}
 
         def target():
@@ -229,7 +269,7 @@ def test_the_tick_loop_suppresses_tier2_through_the_real_wiring(monkeypatch, tmp
         # perception worker's UIA walk round-trips through this process's
         # message loop, and a sleep-and-poll cadence here was measured to
         # leave it blocked indefinitely.
-        pump_deadline = start + total_seconds + 5.0
+        pump_deadline = wall_start + total_seconds + 5.0
         while thread.is_alive() and time_module.monotonic() < pump_deadline:
             app.pump()
             time_module.sleep(0.001)
@@ -237,18 +277,33 @@ def test_the_tick_loop_suppresses_tier2_through_the_real_wiring(monkeypatch, tmp
         assert not thread.is_alive(), "run_tour did not finish within its own deadline"
         assert "rc" in result, "run_tour's background thread never completed"
 
-        elapsed = [(t - start, step) for t, step in requests]
+        # The real anchor: the first FAILED grounding attempt is when
+        # `warmup.allows_tier2` is first consulted in run.py, i.e. when the
+        # budget clock actually starts -- not when this test's thread
+        # launched (see the docstring for why that was a false green).
+        failures = [t for t, failed in ground_calls if failed]
+        assert failures, (
+            "grounding.ground was never called, or never failed -- the "
+            "target must be ungroundable for warm-up to be the only thing "
+            "standing between the tick loop and a tier-2 request"
+        )
+        warmup_opened_at = failures[0]
+        budget_expires_at = warmup_opened_at + budget_s
 
-        before_budget = [t for t, _ in elapsed if t < budget_s]
-        assert before_budget == [], (
-            f"tier 2 was requested at t={before_budget}s, before the "
-            f"{budget_s}s warm-up budget expired -- warm-up did not engage "
-            "for a real, production-sourced window handle"
+        requested_at = [t for t, _ in requests]
+
+        suppressed_window = [t for t in requested_at if t < budget_expires_at]
+        assert suppressed_window == [], (
+            f"tier 2 was requested at t={[t - warmup_opened_at for t in suppressed_window]}s "
+            f"relative to warm-up opening, before the {budget_s}s budget "
+            "expired -- warm-up did not suppress for a real, "
+            "production-sourced window handle"
         )
 
-        after_budget = [t for t, _ in elapsed if t >= budget_s]
-        assert after_budget, (
+        released_after = [t for t in requested_at if t >= budget_expires_at]
+        assert released_after, (
             f"tier 2 was never requested even after the {budget_s}s warm-up "
-            f"budget expired, within a {total_seconds}s tour -- this test "
+            f"budget expired (opened at t={warmup_opened_at - wall_start:.2f}s "
+            f"into the tour), within a {total_seconds}s tour -- this test "
             "would then only prove suppression, never release"
         )
