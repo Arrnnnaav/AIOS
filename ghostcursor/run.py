@@ -513,6 +513,20 @@ def run_tour(
                     return f"could not read {name!r} on screen"
                 return None
 
+            def focus_visited_source():
+                observation = service.latest()
+                return observation.focus_visited if observation is not None else ()
+
+            def on_wrong_action(touched: str, target: str) -> None:
+                # The console is the RECORD; the ring is the correction. The
+                # user is looking at their application, not at this terminal,
+                # so the ring re-asserting through OBSERVING is what they
+                # actually see -- this line is what explains it afterwards.
+                print(
+                    f"  that was {touched!r}, not {target!r} — "
+                    "re-showing the hint on the right control"
+                )
+
             tour = GuidedTour(
                 recipe=recipe,
                 grounder=grounder_from_slot,
@@ -521,6 +535,8 @@ def run_tour(
                 renderer=OverlayRenderer(
                     hwnd, freshness_source=current_display_freshness
                 ),
+                focus_visited_source=focus_visited_source,
+                on_wrong_action=on_wrong_action,
                 # Stock grace. The two clocks used to race — a dead worker made
                 # grounding fail every tick, so the grace expired before the
                 # health budget and the tour said "cannot find 'Export' on
