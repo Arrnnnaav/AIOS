@@ -60,6 +60,12 @@ class BarState:
 _bar_state: dict[int, BarState] = {}
 _bar_status: dict[int, str] = {}
 _bar_status_hwnd: dict[int, int] = {}
+_panel_hwnd: dict[int, int] = {}
+_pending_goal: dict[int, str] = {}
+
+_PANEL_HEIGHT = 32
+_PANEL_MARGIN = 12
+ID_PANEL_EDIT = 1105
 
 
 def bar_state(hwnd: int) -> BarState:
@@ -84,6 +90,96 @@ def set_status(hwnd: int, text: str) -> None:
 def get_status(hwnd: int) -> str:
     """The status text last set via `set_status`, or "" if none yet."""
     return _bar_status.get(hwnd, "")
+
+
+def panel_is_open(hwnd: int) -> bool:
+    """Whether the goal-input box is currently showing on this bar."""
+    return hwnd in _panel_hwnd
+
+
+def open_panel(hwnd: int) -> None:
+    """Create the goal-input EDIT control, take focus for it, and record its
+    handle. Safe to call again while already open -- it is a no-op then."""
+    if hwnd in _panel_hwnd:
+        return
+    h_instance = win32api.GetModuleHandle(None)
+    edit_style = (
+        win32con.WS_CHILD
+        | win32con.WS_VISIBLE
+        | win32con.WS_BORDER
+        | win32con.ES_AUTOHSCROLL
+    )
+    edit_x = _BUTTON_MARGIN
+    edit_y = _BAR_HEIGHT
+    edit_width = _BAR_WIDTH - 2 * _BUTTON_MARGIN
+    edit_hwnd = win32gui.CreateWindowEx(
+        0,
+        "EDIT",
+        "",
+        edit_style,
+        edit_x,
+        edit_y,
+        edit_width,
+        _PANEL_HEIGHT,
+        hwnd,
+        ID_PANEL_EDIT,
+        h_instance,
+        None,
+    )
+    _panel_hwnd[hwnd] = edit_hwnd
+    try:
+        win32gui.SetForegroundWindow(hwnd)
+    except win32gui.error:
+        # Windows' foreground lock refuses this for a process that is not
+        # already frontmost (measured repeatedly in this repo -- D038,
+        # tests/test_focus.py). Accept the refusal once, silently: no
+        # retry, no AttachThreadInput. The design's own principle (spec
+        # 2026-08-21-control-bar-design.md S4.4) is that fighting the OS
+        # for foreground is how focus-stealing bugs are born.
+        pass
+    win32gui.SetFocus(edit_hwnd)
+
+
+def close_panel(hwnd: int) -> None:
+    """Destroy the goal-input box without submitting anything. Safe to call
+    when the panel is already closed."""
+    edit_hwnd = _panel_hwnd.pop(hwnd, None)
+    if edit_hwnd:
+        try:
+            win32gui.DestroyWindow(edit_hwnd)
+        except win32gui.error:
+            pass
+
+
+def panel_text(hwnd: int) -> str:
+    """The text currently in the goal-input box, or "" if the panel is closed."""
+    edit_hwnd = _panel_hwnd.get(hwnd)
+    if not edit_hwnd:
+        return ""
+    return win32gui.GetWindowText(edit_hwnd)
+
+
+def set_panel_text(hwnd: int, text: str) -> None:
+    """Put text in the box directly, without synthesising keystrokes -- doing
+    that would violate D006 (never generate input) even in a test."""
+    edit_hwnd = _panel_hwnd.get(hwnd)
+    if edit_hwnd:
+        win32gui.SetWindowText(edit_hwnd, text)
+
+
+def submit_panel(hwnd: int) -> None:
+    """Read the box's text, stash it as the pending goal, and close the
+    panel. Does not act on the text in any way -- there is no planner yet."""
+    text = panel_text(hwnd)
+    _pending_goal[hwnd] = text
+    close_panel(hwnd)
+
+
+def take_submitted_goal(hwnd: int) -> str | None:
+    """The goal last submitted on this bar, returned exactly once -- the
+    caller polls every tick, so returning it repeatedly would re-announce
+    the same goal on every later tick forever."""
+    return _pending_goal.pop(hwnd, None)
 
 
 def _on_command(hwnd: int, control_id: int) -> None:
@@ -123,6 +219,8 @@ def _bar_wnd_proc(hwnd, msg, wparam, lparam):
         _bar_state.pop(hwnd, None)
         _bar_status.pop(hwnd, None)
         _bar_status_hwnd.pop(hwnd, None)
+        _panel_hwnd.pop(hwnd, None)
+        _pending_goal.pop(hwnd, None)
         return 0
     return win32gui.DefWindowProc(hwnd, msg, wparam, lparam)
 
@@ -216,3 +314,5 @@ def destroy_bar_window(hwnd: int) -> None:
     _bar_state.pop(hwnd, None)
     _bar_status.pop(hwnd, None)
     _bar_status_hwnd.pop(hwnd, None)
+    _panel_hwnd.pop(hwnd, None)
+    _pending_goal.pop(hwnd, None)
