@@ -257,8 +257,29 @@ rather than appearance, and this work is squarely that kind.
 - **No second window has ever coexisted with the overlay in this codebase.**
   Z-order between two topmost windows, and click routing past a full-screen
   click-through window, are reasoned from documented Win32 behaviour here, not
-  measured. The first task should prove the two windows coexist before anything
-  is built on top of that assumption.
+  measured.
+
+  **This is a GATING SPIKE, not an ordinary first task.** The implementation
+  plan's Task 1 proves coexistence against real windows, and no other task
+  starts until it passes. If it fails, the design is wrong at its foundation and
+  the remaining tasks are wasted work — better to learn that from one throwaway
+  probe than from five tasks built on a false premise.
+
+  The gate exists because "documented Win32 behaviour, never tested in this
+  repo" is precisely where this project's real surprises have come from, three
+  times already: `GetSystemMetrics` silently changing its answer mid-run once
+  anything took a screenshot (D010/D013); Discord's `Discord Updater` splash
+  being a separate HWND that fully satisfied `windows_matching` and would have
+  absorbed the whole warm-up budget; and `UpdateWindow` painting synchronously,
+  which turned what looked like a narrow two-write race into a second frame that
+  definitely reached the screen (D027). In each case the documentation was
+  correct and the behaviour in context was not what anyone assumed.
+
+  What it must establish, against real windows rather than by argument: both
+  windows visible simultaneously; the bar receiving a click while the
+  full-screen click-through overlay is above or below it; the overlay still
+  drawing its hint with the bar present; and the bar able to take focus while
+  the overlay does not.
 - The `SetForegroundWindow` asymmetry (refused when not frontmost, permitted
   when frontmost) is documented Windows behaviour and the refusal half was
   measured here; **the permitted half has not been tested in this repo.**
