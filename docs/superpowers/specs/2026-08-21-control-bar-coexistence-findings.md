@@ -38,7 +38,7 @@ what anyone assumed.
 |---|---|---|
 | 1 | Both windows visible simultaneously | `overlay=True bar=True` |
 | 2 | Styles are the intended inverse | overlay `TRANSPARENT=True NOACTIVATE=True`; bar `TRANSPARENT=False NOACTIVATE=False` |
-| 3 | Bar can take foreground; overlay does not | `SetForegroundWindow` raised nothing; `GetForegroundWindow()` returned the bar's handle |
+| 3 | Bar can take foreground; overlay does not | `SetForegroundWindow` raised nothing; `GetForegroundWindow()` returned the bar's handle. **CONDITIONAL — see the correction below.** |
 | 4 | A click over the bar lands on the bar | `WindowFromPoint(960, 1028)` → root = the bar's HWND, not the overlay's |
 | 5 | Overlay still paints its hint with the bar up | **440 pixels changed** in an 80×80 capture at desktop centre after `set_hint` |
 | 6 | Destroying the bar does not end the message loop | `PumpWaitingMessages()` returned `0` (no `WM_QUIT` dequeued); overlay still alive |
@@ -52,6 +52,40 @@ procedure. The overlay's calls `PostQuitMessage(0)` on `WM_DESTROY`, which is
 correct for a window torn down once at exit; a bar closed mid-tour would have
 posted `WM_QUIT` and ended the thread's loop. The probe's procedure returns `0`
 instead, and the loop survived.
+
+## Correction (2026-08-21, same day): check 3 is conditional, not general
+
+Check 3 as first recorded said the bar "can take foreground". A later run under
+pytest measured the same call being **REFUSED**:
+
+```
+foreground before SetForegroundWindow: 65902 is_ours: False
+SetForegroundWindow: REFUSED -> error: (0, 'SetForegroundWindow', ...)
+```
+
+Both observations are correct and neither is a fluke. Windows permits
+`SetForegroundWindow` when the calling process is already the foreground process
+**or received the last input event**, and refuses it otherwise. The original
+probe happened to run in a permitted state; the pytest run did not. The finding
+as first written over-claimed by omitting the condition, which is the D034 shape
+— a measurement recorded without the circumstances that make it reproducible.
+
+**What this does and does not change:**
+
+- The gate still PASSES. Checks 1, 2, 4, 5 and 6 are unaffected, and check 4 —
+  that a click over the bar lands on the bar and not the click-through overlay —
+  was always the make-or-break one.
+- In real use the bar is focused by a user CLICKING it, which gives our process
+  the last input event and satisfies the rule. The design does not depend on
+  focusing the bar programmatically.
+- Foreground RESTORATION (design §4.4) only attempts while
+  `GetForegroundWindow() == bar_hwnd`, i.e. only when we are already foreground
+  — precisely the permitted case. The guard was written for a different reason
+  (never fight the user for focus) and turns out to also be what keeps the call
+  legal.
+- **Tests must not assert that foreground actually changed.** They cannot rely
+  on being in a permitted state. Assert that the call was ATTEMPTED with the
+  right handle instead.
 
 ## What this does NOT establish
 
