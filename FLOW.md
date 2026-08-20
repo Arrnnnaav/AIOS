@@ -96,6 +96,7 @@ run.main()
 | `ghostcursor/perception/ocr.py` | `WindowsOcr` wrapper over `Windows.Media.Ocr`, `ocr_available()`, and `reassemble()` for labels that wrap onto two lines |
 | `ghostcursor/perception/capture.py` | DPI-correct per-window pixel capture and frame differencing |
 | `ghostcursor/perception/tier2.py` | `Tier2Controller` — when OCR runs and when it stops: per-step stickiness, a 1.0s floor, a ceiling of 20 CONSECUTIVE FRUITLESS reads (reset by `grounded()`), terminal exhaustion. Owned by the perception worker, never called from the UI thread |
+| `ghostcursor/perception/warmup.py` | `WarmUp` — suppresses the tier-2 request for a budget (`DEFAULT_WARMUP_BUDGET_S = 2.0`) after a window's first failed grounding, keyed by window handle, and closes permanently for that handle the first time UIA grounding succeeds against it |
 | `tests/backdrop.py` | controlled solid-colour window used as a test surface |
 | `tests/hung_window.py` | child process that creates a window and then stops pumping messages — reproduces the 41s UIA block deterministically |
 | `tests/test_hung_window.py` | `HungWindow` context manager + the block measurement; the fixture Tasks 5-7 are built on |
@@ -155,8 +156,9 @@ rung 2 — see the persistence call graph above.
 `ghostcursor/perception/focus.py`'s `read_focused_automation_id(hwnd)` — the
 in-process focused control's AutomationId, filtered to the target process and
 non-empty ids, or `""`. It accumulates the distinct ids focus VISITED (not
-merely rested on) into a list, capped at `MAX_FOCUS_VISITED`, and publishes
-them as `Observation.focus_visited: tuple[str, ...]` on the next successful
+merely rested on) into a list, capped at `MAX_FOCUS_VISITED`, plus one sample
+recovered at the start of each walk (`_run`), and publishes them as
+`Observation.focus_visited: tuple[str, ...]` on the next successful
 walk — cleared only on a successful publish, so a raising walk does not
 silently drop an interval's ids. `Snapshot.focused_automation_id` is filled
 the same way at walk time.
@@ -450,17 +452,25 @@ run.main()
                                            world-state check, not method (D014)
                                        satisfied? -> VERIFYING (a detour is never criticised
                                            after the fact -- interrupting success is Clippy)
-                                       else loop._wrong_action(step)   run.focus_visited_source()
-                                           -> service.latest().focus_visited, compared against
-                                           the grounded target's automation_id. A non-target
-                                           in-app id -> run.on_wrong_action(touched, target)
-                                           prints one uncapped console line, then back to
+                                       (message hoisted above this chain: fires on every
+                                           non-target touch while unsatisfied, uncapped, so a
+                                           capped tick is never silenced) loop._wrong_action(step)
+                                           run.focus_visited_source() -> service.latest()
+                                           .focus_visited, compared against the grounded
+                                           target's automation_id. A non-target in-app id ->
+                                           run.on_wrong_action(touched, target) prints one
+                                           console line, then -- while under the cap -- back to
                                            OBSERVING (re-grounds; NOT a second renderer.show()
                                            call -- D027) up to 3 times per step
-                                           (wrong_action_rehints); past the cap the loop still
-                                           transitions and still prints, it just stops
-                                           re-asserting the ring. Silent when the target has no
-                                           AutomationId of its own -- true for every OCR-grounded
+                                           (wrong_action_rehints); past the cap the branch does
+                                           NOT transition to OBSERVING itself (the re-hint IS the
+                                           OBSERVING transition, so a cap that still transitioned
+                                           would cap nothing) -- the message still prints, and the
+                                           tick falls through to the elements_changed and
+                                           idle-timeout arms below, so the loop keeps re-grounding
+                                           on real change and keeps idle-re-hinting instead of
+                                           stalling silently at the cap. Silent when the target has
+                                           no AutomationId of its own -- true for every OCR-grounded
                                            step, since OCR elements carry none (D037)
                                        else elements_changed(before, after) -> OBSERVING
                                            (unchanged; the churn-not-focus case D037 explains)

@@ -155,14 +155,21 @@ terms: a wrong click may have opened a dialog and moved the target.
 
 A separate counter, capped at **3** wrong-action re-hints per step, after which
 the ring stops re-asserting and only the console records. The cap counts
-**re-hints, not messages**: past the cap the loop still transitions to
-OBSERVING and still prints, it simply stops re-asserting the ring. Silence
-about a wrong action would be worse than a quiet one — and capping the message
-too would mean a user who keeps genuinely trying and failing gets told LESS the
-harder they are struggling, which is backwards for a system whose whole purpose
-is teaching. The print is bounded by real user actions, not by wall clock, so it
-cannot produce the unbounded nagging the re-hint cap exists to prevent. The idle-timeout cap
-of 1 is unchanged.
+**re-hints, not messages**: the re-hint IS the transition to OBSERVING (§3.4)
+— there is no second re-assertion path for the cap to withhold — so past the
+cap the branch does NOT transition to OBSERVING itself; a cap that still
+transitioned on every capped tick would be capping nothing. What the cap
+does NOT touch is the message: it still prints on every wrong action, capped
+or not, and the tick still falls through to the `elements_changed` and
+idle-timeout checks below this branch, so a capped step keeps re-grounding on
+a real change and keeps idle-re-hinting rather than stalling silently once
+the cap is spent. Silence about a wrong action would be worse than a quiet
+one — and capping the message too would mean a user who keeps genuinely
+trying and failing gets told LESS the harder they are struggling, which is
+backwards for a system whose whole purpose is teaching. The print is bounded
+by real user actions, not by wall clock, so it cannot produce the unbounded
+nagging the re-hint cap exists to prevent. The idle-timeout cap of 1 is
+unchanged.
 
 Different caps because they are different situations. Idle means the user is
 doing nothing, and a second nudge is nagging. A wrong action means the user is

@@ -248,8 +248,11 @@ ghostcursor/
   perception/        # tier 1: UIA queries (uia.py) + app identity/version (appinfo.py);
                      # the worker thread and its published slot + tier-2 request slot
                      # (service.py) and worker-death detection (health.py);
+                     # which control has focus right now (focus.py);
                      # tier 2: mss window capture/diffing (capture.py), Windows.Media.Ocr
-                     # (ocr.py), cadence and caps (tier2.py) — built and wired.
+                     # (ocr.py), cadence and caps (tier2.py), Chromium warm-up
+                     # suppressing tier 2 while a cold accessibility tree populates
+                     # (warmup.py) — built and wired.
                      # Tier 3 (VLM) not yet built
   reasoning/          # observe-act-verify state machine (loop.py), grounding ladder +
                      # promotion (grounding.py), verification, staleness ladder

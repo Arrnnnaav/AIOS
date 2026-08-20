@@ -1496,8 +1496,9 @@ Code's element set was measured churning roughly 10% in steady state, on a
 real workload, well after startup finished
 (`docs/superpowers/specs/2026-08-19-cold-electron-probe-findings.md` §3).
 Announcing "you did the wrong thing" on application churn is the Clippy
-failure this whole loop exists to avoid. Focus changes because a user acted
-on a control; it does not drift on its own the way the element set does.
+failure this whole loop exists to avoid. Focus changes overwhelmingly because
+a user acted on a control; unlike the element set, it was not observed
+drifting on its own — asserted from the design, not separately measured.
 
 **The measured numbers, and where they live.** Per D034, every figure below
 is cited to the document that recorded it, not restated from memory.
@@ -1515,7 +1516,7 @@ throwaway probes, not kept in the repo, and are written down there first:
   console window returned empty AutomationIds for all 40 samples and looked
   fatal until re-pointed at real controls.
 - Walk duration **0.18–0.70s**, tier-2 capture+OCR **0.14–0.23s** (the latter
-  already recorded at D028) — design spec §2.3.
+  already recorded at D028) — design spec §2.3 and §7.
 
 **The worker perceives, the loop decides — D028's split, applied again.** The
 worker filters on exactly two perception facts: focus is inside the target
@@ -1558,12 +1559,16 @@ justified the deferral on the gap being "inside 50ms, faster than a human
 performs two deliberate clicks" — wrong by roughly an order of magnitude: 50ms
 is the slice interval, not the gap the slicing leaves open. Focus is not
 sampled during the walk or during a standing tier-2 request at all, so the
-real contiguous blind window is **0.18–0.93s** (walk plus tier 2), covering
-roughly **18–53%** of wall time against the 0.2s sampled interval — a
-wrong-then-right round trip landing inside that window is well within normal
-human click speed, not faster than it (design spec §7, corrected during this
-milestone; the corrected figure is itself the kind of number D034 exists to
-keep honest). The deferral still stands, but for the real reason: native
+real contiguous blind window is **0.18–0.93s** (walk plus tier 2). Focus is
+sampled for roughly **18–53%** of wall time (the 0.2s sampled interval
+against that 0.18–0.93s unsampled), so the blind window is the MAJORITY of
+it, not a minor gap in it — a wrong-then-right round trip landing inside that
+window is well within normal human click speed, not faster than it (design
+spec §7, corrected during this milestone after being caught by the
+independent review gate rather than self-caught — commit `6ec6c97`, "fix:
+address review Important findings on wrong-action focus sampling"; the corrected figure is itself the kind
+of number D034 exists to keep honest, and the catch is one line of evidence
+D032 pays for itself). The deferral still stands, but for the real reason: native
 events arrive as COM callbacks on RPC-managed threads and would need
 marshalling into the worker's apartment — exactly the D021 area this project
 has already paid to avoid, not because the gap is negligible.
