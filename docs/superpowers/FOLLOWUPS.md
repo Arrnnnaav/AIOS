@@ -167,6 +167,27 @@ reads as a materially higher bar than a sub-second gap warrants. NOT the
 theoretical existence of the gap, which is already known, measured, and
 accepted.
 
+### `focus_visited`'s cap keeps the earliest ids, not the latest
+From `ghostcursor/perception/service.py`: `visited.append(focused)` is guarded
+by `len(visited) < MAX_FOCUS_VISITED` (8), so once the cap is hit, later
+distinct ids are silently dropped rather than evicting an earlier one — the
+list keeps the EARLIEST ids seen, not the most recent. Combined with the fact
+that `visited` survives a failed walk and is cleared only at a successful
+publish, a long walk-failure streak can accumulate 8 ids from several seconds
+ago, hit the cap, and publish those while the id the user just touched is the
+one silently dropped.
+
+Accepted rather than fixed here because at the shipped defaults
+(`interval_s=0.2`, `focus_slice_s=0.05`) the cap is a backstop, not the
+primary bound — about 4-5 samples accumulate per normal wait, well under 8 —
+so it only does real work during an already-degraded walk-failure streak, a
+case this milestone does not otherwise try to make correct.
+
+**Trigger:** any report of a wrong action naming a control the user touched
+some time ago rather than the one they just touched. Then check whether a
+walk-failure streak was in progress, and consider evicting the oldest id
+instead of refusing new ones once the cap is hit.
+
 ### Two real-desktop tests fail on a live machine
 Discovered during the wrong-action feedback milestone, 2026-08-20, and verified
 as PRE-EXISTING rather than assumed: it fails identically on `main`

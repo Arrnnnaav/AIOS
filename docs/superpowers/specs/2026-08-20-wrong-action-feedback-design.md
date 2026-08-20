@@ -18,9 +18,6 @@ The system verifies that the **world** reached the expected state. It never
 verifies that the **user** did the expected thing. Those come apart in a way
 that matters for a product whose entire job is teaching:
 
-- The user clicks the wrong control and then the right one. Verification
-  passes. The tour advances in silence, and the user is never told they took a
-  detour — so they learn nothing from it.
 - The user clicks the wrong control and stops. The loop dwells, says nothing,
   and eventually re-hints once on the idle timer. The user is left to work out
   on their own that nothing happened.
@@ -125,12 +122,14 @@ Primitives only (D021). No COM object, no retained focus element.
 
 In `AWAITING_USER_ACTION`, ordered deliberately:
 
-1. **Satisfied wins.** If verification passes, the step advances and nothing
-   scolds the user — including when `focus_visited` shows a detour. The console
-   records the detour; the tour does not interrupt a success to criticise it.
-   Interrupting success is the Clippy failure. **At most one such line per
-   step**, and it does NOT count toward §3.5's cap, which counts re-hints —
-   on this path no ring is re-asserted, because the step is over.
+1. **Satisfied wins, and it is silent.** If verification passes, the step
+   advances and nothing is printed — including when `focus_visited` shows a
+   detour. `on_wrong_action` is guarded with `and not satisfied`, so this path
+   never calls it, not even once. This is deliberate, not an omission: a line
+   printed after the step has already advanced arrives with no ring and no
+   context to attach it to, and the Clippy argument that governs this whole
+   design applies — do not interrupt a success to criticise it. §3.5's cap is
+   irrelevant here because there is nothing on this path for it to count.
 2. **Not satisfied, and `focus_visited` holds an id that is not the grounded
    target's** → print one console line naming what was touched, then
    `State.OBSERVING`.
@@ -256,6 +255,20 @@ computer-use agent (screenshot, ask a model "did that work") is explicitly
 rejected in FOLLOWUPS: it replaces a structured UIA state-diff with a pixel
 guess, and D003 says reach for tier 3 last. Nothing here moves the cursor or
 synthesises input (D006).
+
+**Telling the user about a detour that ended in success.** §1 originally
+listed this as the first motivating case: the user clicks the wrong control,
+then the right one, verification passes, and the tour advances in silence
+with the user never told they took a detour. That case is considered here and
+deliberately left open, not closed by what this design builds — see §3.3
+item 1: `on_wrong_action` is guarded on `not satisfied`, so the satisfied
+path stays silent by design. A message on that path would arrive after the
+step has already advanced, with no ring and no context to attach it to, and
+would interrupt a success to criticise it — the exact Clippy failure mode
+this design exists to avoid. Closing this case would need a different
+delivery mechanism (attached to the *next* hint, or to a session summary,
+neither designed here), so it is left for a future design rather than bolted
+on to this one.
 
 ## 9. What these measurements do not establish
 

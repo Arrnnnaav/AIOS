@@ -686,7 +686,7 @@ Append the results to the ledger and commit.
 **Why a callable rather than a field on `Snapshot`:** the loop only ever sees `Snapshot`, and `focus_visited` is an *interval* fact — what focus touched between looks — not a point-in-time one. Putting it on `Snapshot` would mix an interval into the value `verify()` diffs before against after. The codebase already has this exact split: `ungroundable_reason` is an injected callable owned by `run.py` for precisely the same reason, and `OverlayRenderer.freshness_source` is documented as existing because the caller that KNOWS is not the caller that DRIVES.
 
 **Property this protects:** a user who acts on the wrong control is told, and the hint re-asserts.
-**Invariant enforced:** a non-target in-app AutomationId in `focus_visited`, with verification unsatisfied, produces exactly one `on_wrong_action` call and a transition to `OBSERVING`.
+**Invariant enforced:** a non-target in-app AutomationId in `focus_visited`, with verification unsatisfied, produces one `on_wrong_action` call per such observation and a transition to `OBSERVING` (while `wrong_action_rehints` is under its cap; past the cap the call still fires but the transition does not). The call is deliberately uncapped and per-observation, not "exactly one" per step — a user who keeps touching the wrong control on tick after tick is told every time, not just the first.
 **Does the invariant imply the property?** Only if `focus_visited` faithfully reflects what focus touched — which is why Task 2 has its own accumulation tests rather than relying on these.
 
 - [ ] **Step 1: Write the failing tests**
