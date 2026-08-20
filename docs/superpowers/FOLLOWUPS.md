@@ -167,7 +167,7 @@ reads as a materially higher bar than a sub-second gap warrants. NOT the
 theoretical existence of the gap, which is already known, measured, and
 accepted.
 
-### `test_appinfo.py::test_app_info_for_a_store_app_prefers_appx_version` fails on a real desktop
+### Two real-desktop tests fail on a live machine
 Discovered during the wrong-action feedback milestone, 2026-08-20, and verified
 as PRE-EXISTING rather than assumed: it fails identically on `main`
 (`1 failed, 7 passed`) and on the feature branch, and `appinfo.py` is byte-identical
@@ -179,7 +179,19 @@ project's CLAUDE.md records that timing-marginal failures have twice been
 misreported here as pre-existing flakes when they were not, so "unrelated" is a
 claim that has to be measured.
 
-**Trigger:** any work that touches `ghostcursor/perception/appinfo.py`, or the
+A SECOND one was found the same way during the wrong-action milestone:
+`test_guided_tour.py::test_tour_grounds_renders_and_verifies_against_a_real_window`
+also fails identically on `main` and on the feature branch. Both were verified
+by checking out `main` and running them there — not by `git stash`, which only
+tests uncommitted work and would have said nothing about a branch's committed
+history.
+
+So the real-desktop count is **two failures, not one**, and the fast suite's
+"all passed" figure quoted anywhere in these docs is a figure measured with
+both excluded.
+
+**Trigger:** any work that touches `ghostcursor/perception/appinfo.py` or the
+guided-tour pixel path, or the
 next time the fast suite's pass count is quoted as authoritative — the suite is
 not currently green on a real desktop, and a documented count that silently
 excludes a failure is the kind of number D034 exists to stop.
