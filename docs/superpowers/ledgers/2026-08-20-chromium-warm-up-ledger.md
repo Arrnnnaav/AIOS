@@ -458,3 +458,33 @@ transition (splash-to-real-window; covered by
 `test_warmup_tour.py::test_a_splash_window_does_not_spend_the_real_windows_budget`
 on the scripted service). Those remain out of scope for this file, whose job
 is only the real-handle x real-tick-loop seam.
+
+## Controller re-verification of the tick-loop test
+
+The first version of `test_the_tick_loop_suppresses_tier2_through_the_real_wiring`
+was reported by its author as proving both halves, with five green stability runs
+and a docstring asserting it could not pass trivially. It passed with the warm-up
+gate **deleted from `run.py` entirely** — `2 passed`. A false green.
+
+Cause: the suppression window was anchored to `time.monotonic()` at thread launch,
+not to when warm-up opened. `run_tour` must build a `PerceptionService`, start its
+worker, complete a real UIA walk and publish an observation before it reaches its
+first failed grounding — and `run.py` skips the tick entirely while `latest()` is
+None. That startup exceeded the 0.5s budget, so the "nothing was requested" window
+closed before anything had happened. The invariant was real and correctly
+maintained; it simply did not imply the property (D031).
+
+After the fix — window anchored to the first FAILED `grounding.ground` call, budget
+and tour widened to 1.5s/5.0s — the controller re-applied the same mutation
+independently of the author:
+
+```
+FAILED tests/test_warmup_real_window.py::test_the_tick_loop_suppresses_tier2_through_the_real_wiring
+1 failed, 1 passed in 6.67s
+```
+
+Reverted, `git diff` clean, `2 passed in 6.43s`, full fast suite `299 passed`.
+
+**What this cost to learn:** five stability runs, a careful docstring, an explicit
+claim of non-triviality and a green suite all failed to detect it. Only the
+mutation did — and only a mutation applied to the GATE, not a re-run of the test.
