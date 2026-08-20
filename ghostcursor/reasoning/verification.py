@@ -127,7 +127,7 @@ def verify(rule: VerificationRule, before: Snapshot, after: Snapshot) -> bool:
         # MOVES to, not IS at: a step whose target already has focus must not
         # satisfy itself before the user has done anything. "" is never a
         # match -- it means focus could not be named, which is no evidence.
-        wanted = args["automation_id"]
+        wanted = args.get("automation_id", "")
         if not wanted:
             return False
         return before.focused_automation_id != wanted and (

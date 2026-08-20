@@ -61,7 +61,12 @@ _REQUIRED_ARGS = {
     VerificationKind.ELEMENT_APPEARS: ("target_descriptor",),
     VerificationKind.ELEMENT_DISAPPEARS: ("target_descriptor",),
     VerificationKind.WINDOW_TITLE_MATCHES: ("pattern",),
-    VerificationKind.FOCUS_MOVES_TO: ("target_descriptor",),
+    # Differs from its descriptor-based siblings: focus crosses the worker
+    # thread boundary as a bare AutomationId string (Snapshot.focused_
+    # automation_id), never a name, so there is nothing for a descriptor's
+    # name half to match. Requiring target_descriptor here would advertise
+    # matching this rule cannot perform.
+    VerificationKind.FOCUS_MOVES_TO: ("automation_id",),
     VerificationKind.PROPERTY_CHANGES: ("target_descriptor", "property"),
     VerificationKind.ANY_MEANINGFUL_CHANGE: ("scope",),
     VerificationKind.USER_CONFIRMS: (),

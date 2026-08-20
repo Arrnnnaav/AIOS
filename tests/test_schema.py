@@ -72,6 +72,29 @@ def test_window_title_matches_requires_pattern_arg():
     assert any("pattern" in e for e in validate_step(step))
 
 
+def test_focus_moves_to_requires_automation_id_arg():
+    step = _step(
+        verification_rule=VerificationRule(
+            kind=VerificationKind.FOCUS_MOVES_TO, args={"automation_id": "1004"}
+        )
+    )
+    assert validate_step(step) == []
+
+
+def test_focus_moves_to_with_target_descriptor_is_rejected():
+    """Unlike its descriptor-based siblings, focus is observable only as a
+    bare AutomationId string -- a target_descriptor's name half has nothing
+    to match against, so it must not validate here."""
+    step = _step(
+        verification_rule=VerificationRule(
+            kind=VerificationKind.FOCUS_MOVES_TO,
+            args={"target_descriptor": {"name": "Save"}},
+        )
+    )
+    errors = validate_step(step)
+    assert any("automation_id" in e for e in errors)
+
+
 def test_step_with_no_claimed_identity_is_rejected():
     step = _step(target_descriptor=TargetDescriptor(claimed=ClaimedDescriptor()))
     assert any("identify" in e for e in validate_step(step))

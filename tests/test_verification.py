@@ -85,6 +85,16 @@ def test_focus_moves_to_fails_when_focus_is_unknown():
     assert verify(rule, before, after) is False
 
 
+def test_focus_moves_to_returns_false_when_automation_id_arg_is_missing():
+    """A rule that ADVANCES A TOUR must degrade to 'not satisfied' rather
+    than crash the loop if a recipe reaches it with the wrong args -- schema
+    validation should prevent this, but verify() must not raise KeyError."""
+    rule = VerificationRule(kind=VerificationKind.FOCUS_MOVES_TO, args={})
+    before = Snapshot(title="t", elements=(), focused_automation_id="1001")
+    after = Snapshot(title="t", elements=(), focused_automation_id="1004")
+    assert verify(rule, before, after) is False
+
+
 def test_property_changes():
     changed = Element("Exported", "Button", "1001", (10, 10, 110, 40))
     rule = VerificationRule(
