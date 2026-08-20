@@ -243,7 +243,7 @@ class GuidedTour:
             # it once in the `elif` guard and again to bind `touched` could
             # observe a non-None result then bind None for the message, or
             # name a different control than the one that satisfied the check.
-            touched = self._wrong_action(step)
+            touched = self._wrong_action()
 
             # The message is bounded by real user actions, not by a clock, so
             # it is deliberately uncapped: capping it would tell a user who
@@ -308,7 +308,7 @@ class GuidedTour:
         grounded = self._grounded
         return getattr(grounded, "automation_id", "") if grounded else ""
 
-    def _wrong_action(self, step) -> str | None:
+    def _wrong_action(self) -> str | None:
         """The first in-app control focus touched that is not the target.
 
         None when there is nothing to report. Silent by construction in every

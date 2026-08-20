@@ -365,8 +365,46 @@ class PerceptionService:
         except Exception:
             return ""
 
+    def _record_focus(
+        self, focused: str, visited: list[str], last_focus_holder: list
+    ) -> None:
+        """Append only a TRANSITION, never a resting state.
+
+        `last_focus_holder` is a one-element list, not a plain variable: it is
+        shared and mutated across both sampling sites (this walk-start read
+        and every slice of `_sample_focus_while_waiting`) and across every
+        interval in the worker's lifetime -- it is created once in `_run`,
+        outside the per-interval `visited` list, so it survives
+        `visited.clear()` at a successful publish. That persistence is the
+        whole fix: a control focus never left must never be reported, no
+        matter how many observations elapse while it holds focus.
+
+        An empty read is never a transition -- it means "focus is somewhere
+        we cannot name" and must not overwrite `last_focus_holder` either, or
+        a name we cannot confirm was left could be resurrected as a false
+        transition and shows up as a real focus_visited entry when it is not.
+
+        The FIRST non-empty read of the worker's lifetime only seeds
+        `last_focus_holder` -- it is never appended -- so the id already
+        holding focus when the tour starts is never reported as a "visit".
+        """
+        if not focused:
+            return
+        last_focus = last_focus_holder[0]
+        if last_focus is None:
+            last_focus_holder[0] = focused
+            return
+        if focused != last_focus:
+            if len(visited) < MAX_FOCUS_VISITED:
+                visited.append(focused)
+            last_focus_holder[0] = focused
+
     def _sample_focus_while_waiting(
-        self, stop: threading.Event, hwnd: int, visited: list[str]
+        self,
+        stop: threading.Event,
+        hwnd: int,
+        visited: list[str],
+        last_focus_holder: list,
     ) -> None:
         """Wait out `interval_s`, sampling focus in slices as it passes.
 
@@ -398,8 +436,7 @@ class PerceptionService:
                 return
             remaining -= slice_s
             focused = self._safe_focus(hwnd)
-            if focused and focused not in visited and len(visited) < MAX_FOCUS_VISITED:
-                visited.append(focused)
+            self._record_focus(focused, visited, last_focus_holder)
 
     def _publish(self, observation: Observation) -> None:
         # Overwrite. There is no history and no append anywhere in this
@@ -424,6 +461,12 @@ class PerceptionService:
 
         try:
             visited: list[str] = []
+            #: Survives `visited.clear()` at every successful publish (unlike
+            #: `visited`, which is per-interval) -- it lives for the whole
+            #: worker generation, so a control that never lost focus across
+            #: many observations is never reported as freshly "visited". See
+            #: `_record_focus`.
+            last_focus_holder: list = [None]
             while not stop.is_set():
                 self.heartbeat += 1
                 walked = None
@@ -432,21 +475,17 @@ class PerceptionService:
                     target_hwnd = self._safe_hwnd()
                     target_hwnd_for_wait = target_hwnd
                     focused_now = self._safe_focus(target_hwnd)
-                    if (
-                        focused_now
-                        and focused_now not in visited
-                        and len(visited) < MAX_FOCUS_VISITED
-                    ):
-                        # Recovers the walk-start sample that would otherwise
-                        # be read and discarded: this is the ONE moment focus
-                        # is read outside `_sample_focus_while_waiting`, and
-                        # until now it went only to the snapshot, never into
-                        # `visited`. Does not close the blind window -- the
-                        # walk itself (0.18-0.70s) and tier 2 when standing
-                        # (0.14-0.23s) still pass with no sampling at all --
-                        # but it is one line and strictly better. See design
-                        # spec section 7's corrected trigger.
-                        visited.append(focused_now)
+                    # Recovers the walk-start sample that would otherwise be
+                    # read and discarded: this is the ONE moment focus is read
+                    # outside `_sample_focus_while_waiting`, and until now it
+                    # went only to the snapshot, never into `visited`. Does
+                    # not close the blind window -- the walk itself
+                    # (0.18-0.70s) and tier 2 when standing (0.14-0.23s) still
+                    # pass with no sampling at all -- but it is one line and
+                    # strictly better. See design spec section 7's corrected
+                    # trigger. Goes through `_record_focus` like every other
+                    # sample, so it only ever records a TRANSITION.
+                    self._record_focus(focused_now, visited, last_focus_holder)
                     elements = tuple(self.walker(self.title_re))
                     observed_at = self.clock()
                     walked = (
@@ -518,7 +557,9 @@ class PerceptionService:
                     # has not completed. Losing evidence of a real user
                     # action is the worse failure.
                     visited.clear()
-                self._sample_focus_while_waiting(stop, target_hwnd_for_wait, visited)
+                self._sample_focus_while_waiting(
+                    stop, target_hwnd_for_wait, visited, last_focus_holder
+                )
         finally:
             try:
                 import pythoncom

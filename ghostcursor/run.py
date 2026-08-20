@@ -514,8 +514,20 @@ def run_tour(
                 return None
 
             def focus_visited_source():
-                observation = service.latest()
-                return observation.focus_visited if observation is not None else ()
+                # Read from `current_observation`, never re-read the slot
+                # (D019): every other consumer in this file does the same --
+                # see the reasoning at grounder_from_slot's docstring above
+                # and the tier2 status reader below. `snapshotter()` runs
+                # before `_wrong_action` in the tick, so `current_observation`
+                # is always the observation this tick's `after` came from; a
+                # fresh `service.latest()` call here could instead return
+                # observation N+1, attributing `touched` to a later walk than
+                # the one verification actually ran against.
+                return (
+                    current_observation.focus_visited
+                    if current_observation is not None
+                    else ()
+                )
 
             def on_wrong_action(touched: str, target: str) -> None:
                 # The console is the RECORD; the ring is the correction. The

@@ -114,21 +114,23 @@ def test_focus_visited_is_capped():
     assert len(observation.focus_visited) <= MAX_FOCUS_VISITED
 
 
-def test_focus_visited_deduplicates():
-    """The SAME control keeping focus across many slices must appear once.
+def test_focus_visited_ignores_stationary_focus():
+    """Resting focus must never be reported, no matter how many observations
+    pass while it rests there.
 
-    Split out of what used to be test_focus_visited_is_capped_and_deduplicated
-    (see that history on test_focus_visited_is_capped). An id-per-call reader
-    makes dedup untestable -- there is never a duplicate to deduplicate -- so
-    this reader deliberately repeats the same id on every call instead.
+    This is the Critical fix's own regression test: `visited` is cleared on
+    every successful publish, so before the fix nothing remembered the
+    PREVIOUS interval's focus and a control that focus never left was
+    re-appended on every single interval, forever. A `last_focus` value that
+    survives `visited.clear()` (see `PerceptionService._record_focus`) is
+    what stops that -- it must hold across observation boundaries, not just
+    within one interval.
 
-    The wait predicate matters for the same reason it did in
-    test_empty_ids_are_never_recorded: `_run` publishes BEFORE it samples, so
-    the FIRST observation's focus_visited is always built from an empty
-    `visited` and would pass trivially regardless of the dedup guard. Waiting
-    for a second, strictly-newer observation forces the assertion onto one
-    whose focus_visited was actually built from a wait the reader was sampled
-    during.
+    This test FAILS before the fix: with the old "append whenever the read
+    differs from what's already in this interval's `visited`" logic, a
+    constant reader has nothing in `visited` to collide with at the start of
+    each interval, so "1001" is appended fresh on the second observation AND
+    the third.
     """
     service = PerceptionService(
         title_re=".*Target.*",
@@ -142,19 +144,71 @@ def test_focus_visited_deduplicates():
     try:
         first = _wait_for(service, lambda o: o.observed_at > 0)
         second = _wait_for(service, lambda o: o.observed_at > first.observed_at)
+        third = _wait_for(service, lambda o: o.observed_at > second.observed_at)
     finally:
         service.stop()
-    assert second.focus_visited == ("1001",)
+    assert second.focus_visited == ()
+    assert third.focus_visited == ()
+
+
+def test_focus_visited_deduplicates():
+    """A control that KEEPS focus across many consecutive slices within one
+    interval must appear once in that interval's focus_visited, not once per
+    slice it happened to be read in.
+
+    Rewritten for the transition semantics the Critical fix introduces. The
+    old version of this test used a focus_reader that never moves at all and
+    asserted the resting id was reported -- which is precisely the defect
+    `test_focus_visited_ignores_stationary_focus` above now guards against,
+    so it could not be kept and honestly still be named "deduplicates". This
+    version moves focus once (away from a seed id, onto the id under test)
+    and then holds it there for the rest of the interval -- a real case of
+    the same non-empty read recurring many times within one interval -- and
+    asserts it shows up exactly once.
+    """
+    sequence = iter(["seed", "target"])
+
+    def reader(_hwnd):
+        try:
+            return next(sequence)
+        except StopIteration:
+            return "target"
+
+    service = PerceptionService(
+        title_re=".*Target.*",
+        walker=lambda _: [],
+        hwnd_source=lambda _: 4242,
+        focus_reader=reader,
+        focus_slice_s=0.001,
+        interval_s=0.05,
+    )
+    service.start()
+    try:
+        first = _wait_for(service, lambda o: o.observed_at > 0)
+        second = _wait_for(service, lambda o: o.observed_at > first.observed_at)
+    finally:
+        service.stop()
+    assert second.focus_visited == ("target",)
 
 
 def test_focus_visited_resets_between_observations():
     """Each observation describes the interval that produced it. Carrying ids
-    forward would let one wrong click be reported on every later tick."""
+    forward would let one wrong click be reported on every later tick.
+
+    The reader seeds with a throwaway value before "early": under the fixed
+    transition semantics, the very first non-empty read of the worker's
+    lifetime only seeds `last_focus` and is never itself reported (see
+    `test_focus_visited_ignores_stationary_focus`), so "early" must arrive
+    as a genuine transition, not as the worker's first-ever read, or it
+    would never appear and this test would hang on its own wait predicate.
+    """
     calls = {"n": 0}
 
     def reader(_hwnd):
         calls["n"] += 1
-        return "early" if calls["n"] <= 2 else ""
+        if calls["n"] == 1:
+            return "seed"
+        return "early" if calls["n"] <= 3 else ""
 
     service = PerceptionService(
         title_re=".*Target.*",
@@ -229,9 +283,14 @@ def test_focus_visited_survives_a_failed_walk():
             raise RuntimeError("walk failed")
         return []
 
-    # "" covers every walk-start sample; "wrongclick" is consumed exactly
-    # once, during walk #1's post-walk wait.
-    focus_sequence = iter(["", "wrongclick"])
+    # "" covers every walk-start sample. "seed" and "wrongclick" are both
+    # consumed during walk #1's post-walk wait: "seed" only establishes
+    # `last_focus` -- under the fixed transition semantics, the very first
+    # non-empty read of the worker's lifetime seeds and is never itself
+    # reported (see `test_focus_visited_ignores_stationary_focus`), so it
+    # must not be the value this test is checking for -- and "wrongclick" is
+    # then a genuine transition that follows it.
+    focus_sequence = iter(["", "seed", "wrongclick"])
 
     def reader(_hwnd):
         try:

@@ -1576,7 +1576,12 @@ has already paid to avoid, not because the gap is negligible.
 **`FOCUS_MOVES_TO`.** The verification kind that had always raised
 `NotImplementedError` because focus was never tracked is enabled by this
 milestone, with its own tests, rather than riding in silently on a feature
-that merely happened to unblock it.
+that merely happened to unblock it. It compares against
+`Snapshot.focused_automation_id`, which is populated only by the walk-start
+sample — so this rule verifies at walk cadence (0.4–1.0s) and can miss a
+focus move entirely, while the wrong-action path samples 4x more finely from
+the same worker. No recipe uses the rule today, so the asymmetry is inert in
+production, but it is recorded here rather than left to be discovered.
 
 Related: **D021** (only primitives cross the worker/UI thread boundary),
 **D027** (one write per tick — why the re-hint reuses `OBSERVING`), **D028**
