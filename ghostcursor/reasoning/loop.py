@@ -77,6 +77,8 @@ class GuidedTour:
         idle_timeout_s: float = 30.0,
         grounding_grace_s: float = DEFAULT_GROUNDING_GRACE_S,
         ungroundable_reason: Callable[[Step, int], str | None] | None = None,
+        focus_visited_source: Callable[[], tuple[str, ...]] | None = None,
+        on_wrong_action: Callable[[str, str], None] | None = None,
     ) -> None:
         self.recipe = recipe
         self.grounder = grounder
@@ -94,6 +96,13 @@ class GuidedTour:
         #: ours (D024). It stays a callable so the loop learns nothing about
         #: perception tiers, exactly as with `freshness_source` (D027).
         self.ungroundable_reason = ungroundable_reason
+        self.focus_visited_source = focus_visited_source
+        self.on_wrong_action = on_wrong_action
+        #: Wrong-action re-hints spent on the CURRENT step. Separate from
+        #: rehint_count, which counts idle nudges: idle means the user is
+        #: doing nothing and a second nudge is nagging, while a wrong action
+        #: means they are actively trying and answering each attempt is help.
+        self.wrong_action_rehints = 0
 
         self.state = State.IDLE
         self.step_index = 0
@@ -230,6 +239,24 @@ class GuidedTour:
 
             if satisfied:
                 self.state = State.VERIFYING
+            elif self._wrong_action(step) is not None:
+                touched = self._wrong_action(step)
+                # Speak every time -- the message is bounded by real user
+                # actions, not by a clock, so it cannot nag the way an idle
+                # timer can. Capping it would tell a user who keeps trying
+                # and failing LESS the harder they struggle.
+                if self.on_wrong_action is not None:
+                    self.on_wrong_action(touched, self._target_automation_id())
+                # Re-hint by going back through OBSERVING, NOT by calling
+                # renderer.show() here. A second overlay write path is what
+                # D027 exists to prevent: set_hint ends in UpdateWindow, which
+                # paints synchronously, so an extra frame definitely reaches
+                # the screen. OBSERVING also re-grounds, which is right on its
+                # own terms -- a wrong click may have opened a dialog and
+                # moved the target.
+                if self.wrong_action_rehints < 3:
+                    self.wrong_action_rehints += 1
+                    self.state = State.OBSERVING
             elif elements_changed(self._before, after):
                 # The world changed, but not into what we predicted — the user
                 # did something else. Re-observe and re-ground: the target may
@@ -257,6 +284,30 @@ class GuidedTour:
             self.step_index += 1
             self.renderer.clear()
             self._confirmed = False
+            self.wrong_action_rehints = 0
             self.state = State.OBSERVING
 
         return self.state
+
+    def _target_automation_id(self) -> str:
+        grounded = self._grounded
+        return getattr(grounded, "automation_id", "") if grounded else ""
+
+    def _wrong_action(self, step) -> str | None:
+        """The first in-app control focus touched that is not the target.
+
+        None when there is nothing to report. Silent by construction in every
+        case the design names: no source wired, nothing visited, or a target
+        with no AutomationId of its own -- which is what an OCR-grounded
+        target is, since OCR elements carry no id. Comparing against "" there
+        would report a wrong action on every focus change.
+        """
+        if self.focus_visited_source is None:
+            return None
+        target_id = self._target_automation_id()
+        if not target_id:
+            return None
+        for touched in self.focus_visited_source():
+            if touched and touched != target_id:
+                return touched
+        return None
