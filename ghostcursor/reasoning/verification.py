@@ -124,22 +124,14 @@ def verify(rule: VerificationRule, before: Snapshot, after: Snapshot) -> bool:
         return re.search(args["pattern"], after.title) is not None
 
     if kind is VerificationKind.FOCUS_MOVES_TO:
-        # take_snapshot() DOES populate focused_automation_id now (see the
-        # wrong-action-feedback milestone's worker changes in
-        # ghostcursor/perception/service.py) -- the blocker this raise
-        # originally named is fixed. What remains unbuilt is THIS rule: no
-        # comparison logic, and no tests of its own. Design spec section 6
-        # assigns enabling FOCUS_MOVES_TO to its own task, deliberately
-        # separate from the feature that merely happens to unblock it, so a
-        # verification kind that advances a tour gets its own coverage
-        # rather than riding in on this milestone's tests. The codebase's
-        # own rule for unimplemented behaviour (see the raise below for
-        # unhandled kinds) is to fail loudly instead of silently returning
-        # False forever.
-        raise NotImplementedError(
-            "focus_moves_to verification is not implemented: "
-            "the comparison logic has not been written and has no tests "
-            "(design spec section 6, its own task)"
+        # MOVES to, not IS at: a step whose target already has focus must not
+        # satisfy itself before the user has done anything. "" is never a
+        # match -- it means focus could not be named, which is no evidence.
+        wanted = args["automation_id"]
+        if not wanted:
+            return False
+        return before.focused_automation_id != wanted and (
+            after.focused_automation_id == wanted
         )
 
     if kind is VerificationKind.PROPERTY_CHANGES:
