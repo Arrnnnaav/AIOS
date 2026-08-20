@@ -39,6 +39,22 @@ def _automation():
     return _local.uia
 
 
+def _process_id_for(hwnd: int) -> int:
+    """Owning process of `hwnd`, or 0.
+
+    A module-level function rather than an inline import so a test can
+    substitute it without needing a real window AND a real foreground grab --
+    see tests/test_focus.py on why real focus cannot be taken reliably.
+    """
+    try:
+        import win32process
+
+        _, pid = win32process.GetWindowThreadProcessId(hwnd)
+        return int(pid or 0)
+    except Exception:
+        return 0
+
+
 def read_focused_automation_id(hwnd: int) -> str:
     """AutomationId of the focused control, if it is inside `hwnd`'s process.
 
@@ -56,9 +72,7 @@ def read_focused_automation_id(hwnd: int) -> str:
     if hwnd <= 0:
         return ""
     try:
-        import win32process
-
-        _, target_pid = win32process.GetWindowThreadProcessId(hwnd)
+        target_pid = _process_id_for(hwnd)
         if not target_pid:
             return ""
         element = _automation().GetFocusedElement()
