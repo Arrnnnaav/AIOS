@@ -69,6 +69,16 @@ def read_focused_automation_id(hwnd: int) -> str:
       product is the walk; focus is a nicety and must never cost an
       observation.
     """
+    # Redundant with _process_id_for's own exception handling TODAY -- a bad
+    # handle currently makes that call fail internally and return 0 anyway.
+    # Kept deliberately (same reasoning as D030's provenance guard): that
+    # redundancy is a coincidence of _process_id_for's current error
+    # handling, not a property, and a future change there (raising instead
+    # of swallowing, or a Windows build that answers for handle 0) would
+    # make this guard load-bearing again with nothing left to notice its
+    # absence. test_the_hwnd_guard_holds_even_if_the_process_lookup_succeeds
+    # in tests/test_focus.py proves it still does something by forcing
+    # _process_id_for to answer for a bogus handle.
     if hwnd <= 0:
         return ""
     try:

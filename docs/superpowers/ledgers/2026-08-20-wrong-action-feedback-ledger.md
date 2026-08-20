@@ -23,7 +23,7 @@ the next mutation.
 |---|---|---|---|---|
 | 1 | Delete the `CurrentProcessId != target_pid` check | `test_silent_when_focus_is_in_another_process` | `test_silent_when_focus_is_in_another_process` (1 of 8) | PASS — verified |
 | 2 | `return element.CurrentAutomationId or "x"` | `test_silent_when_the_focused_control_has_no_automation_id` | `test_silent_when_the_focused_control_has_no_automation_id` (1 of 8) | PASS — verified |
-| 3 | Delete the `if hwnd <= 0: return ""` guard | `test_silent_for_a_dead_window_handle` | **nothing — all 8 passed** | **NOT VERIFIED** |
+| 3 | Delete the `if hwnd <= 0: return ""` guard | `test_the_hwnd_guard_holds_even_if_the_process_lookup_succeeds` (added after the fact — see below) | that test (1 of 9) | PASS — verified |
 | 4 | Replace `except Exception: return ""` with a bare `raise` | `test_never_raises_when_the_automation_call_fails` | `test_never_raises_when_the_automation_call_fails` (1 of 8) | PASS — verified |
 
 ## Mutation 1 failure output (verbatim)
@@ -74,11 +74,12 @@ FAILED tests/test_focus.py::test_silent_when_the_focused_control_has_no_automati
 ========================= 1 failed, 7 passed in 0.94s =========================
 ```
 
-## Mutation 3 — NOT VERIFIED (full output)
+## Mutation 3 — history and final result
 
-Deleting the `if hwnd <= 0: return ""` guard did not fail any test —
-`8 passed` (all deterministic tests, plus the real-window test, which
-happened to pass rather than skip on this run):
+Deleting the `if hwnd <= 0: return ""` guard was **initially unverifiable**:
+against the original 8-test file it did not fail any test — `8 passed` (all
+deterministic tests, plus the real-window test, which happened to pass
+rather than skip on that run):
 
 ```
 tests/test_focus.py::test_reports_the_id_when_focus_is_in_the_target_process PASSED [ 12%]
@@ -103,17 +104,56 @@ Root cause: `test_silent_for_a_dead_window_handle` does not monkeypatch
 `_process_id_for`'s own `except Exception: return 0` swallows, so
 `target_pid` is `0` either way and the function still returns `""` — for
 the wrong reason, via a second, coincidentally-overlapping guard rather
-than the one the brief specifies.
+than the one the brief specifies. This history is worth keeping: it is the
+useful part, and the reason the guard needed a purpose-built test rather
+than being trusted to the existing one.
 
-This means the brief's mutation table is wrong for this codebase as
-written: `test_silent_for_a_dead_window_handle` does not actually pin the
-`hwnd <= 0` guard in `read_focused_automation_id` — it is currently
-redundant with `_process_id_for`'s own defensiveness against a bad handle.
-The guard is still worth keeping (it short-circuits before any `_process_id_for`
-call at all, which matters if that helper's internals ever change), but the
-test as specified does not prove it does anything. Flagging this rather than
-recording it as verified, per the brief's own instruction not to count an
-unverified mutation.
+Per the same reasoning as D030 (an explicit provenance guard kept despite
+being redundant, because the redundancy rested on a coincidence a later
+tier could break), the guard was kept and a new test was added —
+`test_the_hwnd_guard_holds_even_if_the_process_lookup_succeeds` — that
+forces `_process_id_for` to answer for a bogus handle (via monkeypatch),
+removing the coincidental overlap. Re-running mutation 3 against the
+9-test file now fails exactly that test and nothing else:
+
+```
+tests/test_focus.py::test_reports_the_id_when_focus_is_in_the_target_process PASSED [ 11%]
+tests/test_focus.py::test_silent_when_focus_is_in_another_process PASSED [ 22%]
+tests/test_focus.py::test_silent_when_the_focused_control_has_no_automation_id PASSED [ 33%]
+tests/test_focus.py::test_silent_when_there_is_no_focused_element PASSED [ 44%]
+tests/test_focus.py::test_never_raises_when_the_automation_call_fails PASSED [ 55%]
+tests/test_focus.py::test_silent_for_a_dead_window_handle PASSED         [ 66%]
+tests/test_focus.py::test_silent_when_the_window_has_no_process PASSED   [ 77%]
+tests/test_focus.py::test_the_hwnd_guard_holds_even_if_the_process_lookup_succeeds FAILED [ 88%]
+tests/test_focus.py::test_against_a_real_window_when_the_os_permits_foreground PASSED [100%]
+
+================================== FAILURES ===================================
+________ test_the_hwnd_guard_holds_even_if_the_process_lookup_succeeds ________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000208FCEAED80>
+
+    def test_the_hwnd_guard_holds_even_if_the_process_lookup_succeeds(monkeypatch):
+        ...
+        monkeypatch.setattr(focus_module, "_process_id_for", lambda hwnd: TARGET_PID)
+        monkeypatch.setattr(
+            focus_module,
+            "_automation",
+            lambda: _FakeAutomation(_FakeElement(TARGET_PID, "1001")),
+        )
+>       assert read_focused_automation_id(0) == ""
+E       AssertionError: assert '1001' == ''
+E
+E         + 1001
+
+tests\test_focus.py:126: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_focus.py::test_the_hwnd_guard_holds_even_if_the_process_lookup_succeeds
+========================= 1 failed, 8 passed in 0.97s =========================
+```
+
+Mutation 3 is now verified. `ghostcursor/perception/focus.py` also carries
+a comment above the guard explaining it is kept deliberately despite being
+redundant today, and naming this test as the proof.
 
 ## Mutation 4 failure output (verbatim)
 
@@ -145,11 +185,12 @@ FAILED tests/test_focus.py::test_never_raises_when_the_automation_call_fails
 
 ## Summary
 
-3 of 4 mutations verified against deterministic tests. Mutation 3 (the
-`hwnd <= 0` guard) is not exercised by `test_silent_for_a_dead_window_handle`
-as written, because `_process_id_for` independently absorbs a bad handle.
-The property this task protects (never accuse the user of touching a control
-it cannot name) still holds either way — both paths return `""` — but the
-specific invariant-to-test mapping in the brief overstates what mutation 3
-proves. No code change was made in response to this finding; it is recorded
-here per D034/D018 rather than silently counted as a pass.
+4 of 4 mutations now verified against deterministic tests. Mutation 3 (the
+`hwnd <= 0` guard) was initially unexercised by `test_silent_for_a_dead_window_handle`,
+because `_process_id_for` independently absorbs a bad handle for the two
+values (0, -1) that test uses — a coincidental overlap, not a property. A
+purpose-built test, `test_the_hwnd_guard_holds_even_if_the_process_lookup_succeeds`,
+now isolates the guard by making `_process_id_for` answer for a bogus
+handle, matching D030's precedent of keeping a redundant guard and giving
+it its own test rather than deleting it or leaving its contribution
+unproven.

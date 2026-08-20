@@ -105,6 +105,28 @@ def test_silent_when_the_window_has_no_process(monkeypatch):
     assert read_focused_automation_id(TARGET_HWND) == ""
 
 
+def test_the_hwnd_guard_holds_even_if_the_process_lookup_succeeds(monkeypatch):
+    """The `hwnd <= 0` guard is currently redundant -- `_process_id_for`
+    absorbs bad handles and returns 0 -- so nothing else in this file can
+    tell whether it is present. That redundancy is a coincidence of the
+    current implementation, not a property: make `_process_id_for` answer
+    for a bogus handle, as a future change to its error handling could,
+    and the guard is the only thing left saying no.
+
+    Same reasoning as D030, where an explicit provenance guard was kept
+    despite being redundant, because the redundancy rested on a
+    coincidence a later tier could break.
+    """
+    monkeypatch.setattr(focus_module, "_process_id_for", lambda hwnd: TARGET_PID)
+    monkeypatch.setattr(
+        focus_module,
+        "_automation",
+        lambda: _FakeAutomation(_FakeElement(TARGET_PID, "1001")),
+    )
+    assert read_focused_automation_id(0) == ""
+    assert read_focused_automation_id(-1) == ""
+
+
 def test_against_a_real_window_when_the_os_permits_foreground():
     """The one genuinely end-to-end check. SKIPS rather than fails when
     Windows' foreground lock refuses -- a process that is not already
