@@ -216,3 +216,22 @@ guided-tour pixel path, or the
 next time the fast suite's pass count is quoted as authoritative — the suite is
 not currently green on a real desktop, and a documented count that silently
 excludes a failure is the kind of number D034 exists to stop.
+
+### `ANY_MEANINGFUL_CHANGE` requires a `scope` that `verify()` never reads
+Found while narrowing the empty-required-arg check (2026-08-21). `schema.py`'s
+`_REQUIRED_ARGS` demands `scope` for this rule, but `verification.py`'s
+`ANY_MEANINGFUL_CHANGE` arm ignores it entirely and compares whole-snapshot
+element identity. So a recipe author must supply a field that does nothing, and
+`{}` is the only honest thing to put in it.
+
+That is why `scope` had to be exempted from the emptiness check: an empty value
+there is legitimate precisely BECAUSE nothing reads it. The exemption is
+correct, but it exists to accommodate a required argument that has no effect —
+which is the actual defect.
+
+Not fixed at the time because narrowing a validation check is not the place to
+change what a verification rule accepts, and no shipped recipe uses the rule.
+
+**Trigger:** the first recipe that needs `ANY_MEANINGFUL_CHANGE`, or any work
+that touches `_REQUIRED_ARGS`. Decide then whether `scope` should be dropped
+from the schema or actually honoured by `verify()` — today it is neither.
