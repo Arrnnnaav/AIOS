@@ -1423,3 +1423,53 @@ Related: **D021** (perception worker thread, apartment-bound UIA objects),
 triggers on grounding failure — this decision narrows *when* that trigger is
 armed, not what it is), **D034** (this entry's every measured figure is cited
 to the document that recorded it).
+
+## D036 — Fix the class, not the instance: sweep for siblings before closing a finding
+
+**Decision.** When a review finds a defect, treat it as an instance of a class and
+grep for the other instances before marking it fixed. Record in the fix what was
+swept, not merely what was changed. A finding closed on one instance is closed on
+one instance, and nothing about having fixed it makes the siblings less wrong.
+
+**What it cost to learn.** The Chromium warm-up branch. Final whole-branch review
+found `first_matching_hwnd`'s docstring overstating a guarantee — claiming it and
+the walk "both go through `windows_matching`", when `iter_elements` merely *gates*
+on that enumeration and hands final selection to pywinauto, so with several
+matching windows the two can name different ones. It was corrected, reviewed,
+verified and closed.
+
+The identical claim survived on `Observation.target_hwnd`'s field comment in
+`ghostcursor/perception/service.py` — same overstatement, same branch, same
+review pass — and reached the pull request, where an outside reviewer found it.
+Nobody swept. The fix was applied where the finding pointed and stopped there.
+
+**Why this is not already covered.** D032 requires an independent read of what
+the controller authored, and it worked: the docstring defect WAS found by an
+independent reviewer. D018 mutation-verifies behaviour, which a comment has none
+of. Neither rule says anything about the scope of a fix once a finding is
+correctly identified, and that is the gap this closes.
+
+**The pattern this is the third instance of.** Each review layer catches a class
+of defect the layer inside it cannot see, by construction:
+
+| Layer | What it caught that the inner layer structurally could not |
+|---|---|
+| Whole-branch review | A standing tier-2 request never retracted across a window change — an interaction between three tasks each individually correct and each individually reviewed as correct. Task-scoped review cannot see a seam. |
+| Controller mutation | A tick-loop test that passed with the warm-up gate deleted from `run.py`. Five green stability runs, a docstring explicitly claiming non-triviality, and a passing suite all missed it. Only mutating the GATE — not re-running the test — exposed it. |
+| Outside review (PR) | The sibling docstring above, in a fix the whole-branch review had itself produced and closed. |
+
+The generalisation is that **no review layer can audit its own blind spot**, which
+is the same argument D026 made about components ("every component correct in
+isolation while the assembled system did nothing") applied to review itself. It is
+the standing case for keeping whole-branch review a gate rather than a courtesy
+when everything upstream already looks clean.
+
+**Not adopted:** mechanical enforcement. See `docs/superpowers/FOLLOWUPS.md` — that
+trigger fires on evidence laundering specifically and explicitly excludes
+documentation drift, which this is. It remains at one occurrence, deliberately.
+
+Related: **D032** (independent read — necessary, and shown here to be insufficient
+alone), **D018** (mutation-verification, which caught the false green), **D026**
+(components correct in isolation while the assembly is not; this applies the same
+shape to review layers), **D034** (the failure family both PR comments landed in:
+prose asserting a guarantee the code does not enforce).
