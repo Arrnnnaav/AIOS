@@ -8,7 +8,7 @@ not where it ended up.
 
 import time
 
-from ghostcursor.perception.service import PerceptionService
+from ghostcursor.perception.service import MAX_FOCUS_VISITED, PerceptionService
 
 
 def _wait_for(service, predicate, timeout_s=5.0):
@@ -86,8 +86,17 @@ def test_empty_ids_are_never_recorded():
     assert second.focus_visited == ()
 
 
-def test_focus_visited_is_capped_and_deduplicated():
-    """A control cycling focus must not grow the payload without bound."""
+def test_focus_visited_is_capped():
+    """A control cycling focus must not grow the payload without bound.
+
+    Split out of what used to be test_focus_visited_is_capped_and_deduplicated.
+    That combined test's dedup assertion was vacuous (D031): its reader
+    (f"id{next(counter)}") never returns the same id twice, so
+    len(set(x)) == len(x) held no matter what the dedup guard did. Confirmed
+    by deleting `focused not in visited` and keeping the cap: the combined
+    test stayed green. This test keeps ONLY the ever-fresh-id reader, so
+    only the cap can be the thing stopping growth.
+    """
     counter = iter(range(1000))
     service = PerceptionService(
         title_re=".*Target.*",
@@ -102,8 +111,40 @@ def test_focus_visited_is_capped_and_deduplicated():
         observation = _wait_for(service, lambda o: len(o.focus_visited) > 0)
     finally:
         service.stop()
-    assert len(observation.focus_visited) <= 8
-    assert len(set(observation.focus_visited)) == len(observation.focus_visited)
+    assert len(observation.focus_visited) <= MAX_FOCUS_VISITED
+
+
+def test_focus_visited_deduplicates():
+    """The SAME control keeping focus across many slices must appear once.
+
+    Split out of what used to be test_focus_visited_is_capped_and_deduplicated
+    (see that history on test_focus_visited_is_capped). An id-per-call reader
+    makes dedup untestable -- there is never a duplicate to deduplicate -- so
+    this reader deliberately repeats the same id on every call instead.
+
+    The wait predicate matters for the same reason it did in
+    test_empty_ids_are_never_recorded: `_run` publishes BEFORE it samples, so
+    the FIRST observation's focus_visited is always built from an empty
+    `visited` and would pass trivially regardless of the dedup guard. Waiting
+    for a second, strictly-newer observation forces the assertion onto one
+    whose focus_visited was actually built from a wait the reader was sampled
+    during.
+    """
+    service = PerceptionService(
+        title_re=".*Target.*",
+        walker=lambda _: [],
+        hwnd_source=lambda _: 4242,
+        focus_reader=lambda _hwnd: "1001",
+        focus_slice_s=0.001,
+        interval_s=0.05,
+    )
+    service.start()
+    try:
+        first = _wait_for(service, lambda o: o.observed_at > 0)
+        second = _wait_for(service, lambda o: o.observed_at > first.observed_at)
+    finally:
+        service.stop()
+    assert second.focus_visited == ("1001",)
 
 
 def test_focus_visited_resets_between_observations():
