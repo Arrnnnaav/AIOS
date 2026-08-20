@@ -432,8 +432,9 @@ class PerceptionService:
         while remaining > 1e-9 and not stop.is_set():
             # Floor guards focus_slice_s <= 0: zero would make every
             # iteration's wait a no-op stop.wait(0), spinning the loop into
-            # back-to-back focus reads with no pacing; negative would make
-            # `remaining` grow instead of shrink. min(..., remaining) still
+            # back-to-back focus reads with no pacing; a negative value is floored to
+            # that same 1ms, so it samples very fast rather than making
+            # `remaining` grow -- the floor, not the sign, is what bounds it. min(..., remaining) still
             # wins over the floor near the end of the interval, so the last
             # slice does not overshoot.
             slice_s = max(min(self.focus_slice_s, remaining), 1e-3)

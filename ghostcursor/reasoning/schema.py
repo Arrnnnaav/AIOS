@@ -212,6 +212,36 @@ def _step_from_dict(raw: dict) -> Step:
     )
 
 
+#: Required args that verify() never reads as an identifier, so emptiness
+#: cannot make the rule degenerate. Only ANY_MEANINGFUL_CHANGE's `scope`
+#: qualifies today: verify() ignores it entirely and compares whole-snapshot
+#: element identity, so `{}` means "the whole window" and is a legitimate
+#: recipe. Every other required arg names something the rule must match, and
+#: an empty one silently breaks it in one direction or the other.
+#:
+#: That `scope` is REQUIRED but never read is its own smell -- see
+#: docs/superpowers/FOLLOWUPS.md. It is left alone here because narrowing this
+#: check is not the place to change what a verification rule accepts.
+_MAY_BE_EMPTY = {
+    (VerificationKind.ANY_MEANINGFUL_CHANGE, "scope"),
+}
+
+
+def _is_empty(value) -> bool:
+    """Whether a supplied verification arg carries no information.
+
+    Whitespace counts as empty: a pattern or an AutomationId of "   " is a
+    typo, not an intention, and it fails in exactly the same silent way.
+    """
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return not value.strip()
+    if isinstance(value, (dict, list, tuple, set)):
+        return not value
+    return False
+
+
 def validate_step(step: Step) -> list[str]:
     """Return human-readable problems with a step. Empty means valid."""
     errors: list[str] = []
@@ -232,6 +262,34 @@ def validate_step(step: Step) -> list[str]:
         if required not in rule.args:
             errors.append(
                 f"verification rule {rule.kind.value} requires arg {required!r}"
+            )
+        elif (rule.kind, required) not in _MAY_BE_EMPTY and _is_empty(
+            rule.args[required]
+        ):
+            # Present but empty is worse than missing, because it validates.
+            # Every rule kind degenerates on an empty required arg, in one of
+            # two directions, and BOTH are silent:
+            #
+            #   never satisfied -- element_appears / element_disappears with an
+            #   empty descriptor match nothing, and focus_moves_to with an empty
+            #   automation_id can never match, so the tour dwells on that step
+            #   forever without saying why. That is verbatim the failure the
+            #   NotImplementedError on focus_moves_to used to guard against, and
+            #   this project's rule for it is to fail LOUDLY.
+            #
+            #   always satisfied -- window_title_matches with an empty pattern is
+            #   `re.search("", title)`, which matches everything, so the step
+            #   completes without the user having done anything. In a system
+            #   whose whole premise is verifying the world actually changed,
+            #   auto-satisfying on no evidence is the worse of the two.
+            #
+            # Validation is the only place either can be caught: verify()
+            # returning False for an unnameable target is correct on its own
+            # terms and must not change.
+            errors.append(
+                f"verification rule {rule.kind.value} has an empty "
+                f"{required!r}; an empty value can never identify anything, so "
+                "the step would either never complete or complete on no evidence"
             )
 
     if (
