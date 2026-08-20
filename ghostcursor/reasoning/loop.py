@@ -237,10 +237,17 @@ class GuidedTour:
             else:
                 satisfied = self.verifier(step.verification_rule, self._before, after)
 
+            # Bound once, like `after` above: focus_visited_source reads a slot
+            # the perception worker overwrites without a lock (D021/D022), so
+            # two calls in the same tick are not guaranteed to agree. Calling
+            # it once in the `elif` guard and again to bind `touched` could
+            # observe a non-None result then bind None for the message, or
+            # name a different control than the one that satisfied the check.
+            touched = self._wrong_action(step)
+
             if satisfied:
                 self.state = State.VERIFYING
-            elif self._wrong_action(step) is not None:
-                touched = self._wrong_action(step)
+            elif touched is not None:
                 # Speak every time -- the message is bounded by real user
                 # actions, not by a clock, so it cannot nag the way an idle
                 # timer can. Capping it would tell a user who keeps trying

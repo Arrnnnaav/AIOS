@@ -201,6 +201,51 @@ def test_rehints_are_capped_at_three_but_messages_are_not(wrong_action_tour):
     assert len(h.wrong_actions) == 5, "stopped speaking after the re-hint cap"
 
 
+def test_wrong_action_focus_source_is_read_once_per_tick():
+    """focus_visited_source reads a slot the perception worker overwrites
+    without a lock (D021/D022) -- two reads in the same tick are not
+    guaranteed to agree. This source returns a DIFFERENT value on its first
+    call than on every later call, so a buggy two-call implementation (guard
+    on one call, bind the message from a second) diverges from a correct
+    single-bind implementation. A static-tuple source, as the rest of this
+    file uses, cannot tell the two apart -- that is why the double-call bug
+    was invisible to every other test and to mutation-verify."""
+    calls = {"n": 0}
+
+    def focus_source():
+        calls["n"] += 1
+        # First call: the wrong control. Every call after: nothing -- as if
+        # the worker had already overwritten the slot with a fresh, empty
+        # read by the time a second call happened.
+        return ("1002",) if calls["n"] == 1 else ()
+
+    recipe = Recipe(app_id="test", intent="t", steps=[_step(), _step()])
+    target = GroundedTarget((10, 10, 110, 40), 1, "1001", "Button", "Export", "uia")
+    snaps = iter([STILL] + [CHANGED] * 20)
+    seen: list[tuple[str, str]] = []
+
+    tour = GuidedTour(
+        recipe=recipe,
+        grounder=lambda step, i, elements=None: target,
+        snapshotter=lambda: next(snaps, CHANGED),
+        verifier=lambda rule, before, after: False,
+        renderer=FakeRenderer(),
+        clock=lambda: 0.0,
+        focus_visited_source=focus_source,
+        on_wrong_action=lambda touched, target_id: seen.append((touched, target_id)),
+    )
+    for _ in range(4):
+        tour.tick()
+    assert tour.state is State.AWAITING_USER_ACTION
+
+    tour.tick()
+
+    assert seen == [("1002", "1001")], (
+        f"on_wrong_action saw {seen!r} -- two reads of focus_visited_source "
+        "disagreed within one tick"
+    )
+
+
 def test_the_counter_resets_on_a_new_step(wrong_action_tour):
     h = wrong_action_tour(target_id="1001")
     h.arrive_at_awaiting()
