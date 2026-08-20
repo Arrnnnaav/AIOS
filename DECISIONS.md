@@ -1331,3 +1331,145 @@ Related: **D018** (mutation-verify rather than assume), **D026** (sequence tests
 for stateful behaviour), **D031** (an invariant must imply the property),
 **D032** (independent review). All five exist because something looked verified
 and was not.
+
+---
+
+## D035 — A warm-up grace period before tier 2 may be requested, keyed by window handle
+
+**Decision.** `run.py` escalated to tier 2 the instant grounding failed for the
+current step — including the first tick of a cold start, before a Chromium
+application's accessibility tree has finished populating. A `WarmUp` object
+now suppresses `service.request_tier2()` for a budget after a window's first
+failed grounding, and closes permanently for that handle the moment UIA
+grounding succeeds against it (`WarmUp.allows_tier2` / `WarmUp.note_grounded`,
+`ghostcursor/perception/warmup.py`). `run.py`'s tier-2 request site now calls
+`warmup.allows_tier2(target_hwnd)` before `service.request_tier2(i)`, and the
+UIA-success path calls `warmup.note_grounded(target_hwnd)`. `Observation` now
+carries `target_hwnd: int`, published by the perception worker, so the UI
+thread can key warm-up state without crossing an apartment-bound UIA object
+across the thread boundary (D021).
+
+**Why not readiness detection.** Every attempt to tell "not yet ready" apart
+from "will never have content" was ruled out by measurement, not preference —
+see `docs/superpowers/specs/2026-08-19-cold-electron-probe-findings.md` (D034).
+"Window furniture present, no content" is TRANSIENT in a cold VS Code and
+TERMINAL in Adobe Acrobat, the same shape at any threshold. The element count
+is not even monotonic in steady state, so comparing consecutive observations
+to detect convergence is unsound. What the system already has is a perfect
+readiness signal — grounding itself succeeding — so the fix is patience, not
+a new detector.
+
+**The budget: 2.0 s, and its measured basis.** VS Code grounded four targets
+(`File`, `Edit`, `Explorer`, `DECISIONS.md`) 0.57 s after the window appeared
+in one cold run and 0.39 s in another, per the targeted-grounding sweep in
+`docs/superpowers/specs/2026-08-19-chromium-warm-up-design.md` §"The budget
+was swept, not guessed" — a fifth target, `Terminal`, grounded at 1.75 s in
+the first run and never within 14 s in the second, which the same section
+treats as absent rather than slow. Discord, measured from the real window
+(its splash excluded — see below), grounded all six targets 0.92 s after it
+appeared, per `docs/superpowers/specs/2026-08-19-cold-electron-probe-findings.md`
+§6.4. No element in either app was ever observed to ground
+slowly-but-eventually — it was either fast (within ~2 s) or absent — so a
+larger budget buys nothing; it cannot rescue a target that is simply absent.
+2.0 s covers every target that grounded at all in the VS Code sweep and gives
+roughly double Discord's figure as margin.
+
+**Keyed by window HANDLE, not by the title regex — and the reason is
+measured, not defensive.** Discord's cold start puts up a window titled
+`Discord Updater` that fully matches the same title regex as the real Discord
+window — visible, non-minimised, on-screen — and lives for roughly five
+seconds before the real window exists, as a distinct HWND (see the findings
+addendum, §6.3). A warm-up keyed by title would open on the splash, spend its
+entire budget there, and leave the real window — whose tree is ready in
+0.92 s — with no allowance at all: escalating straight to OCR, exactly the
+failure this design exists to prevent. This was found by deliberately probing
+an application chosen to falsify the design (Discord loads content over the
+network, so a slow-but-eventual arrival should have shown up there if it
+existed anywhere), not by review.
+
+**The accepted cost.** A genuinely UIA-blind application — Adobe Acrobat,
+tier 2's entire reason for existing (D028) — now waits the full budget before
+OCR engages, on every cold start, permanently; it will never ground and so
+never close its own warm-up. This is why the budget is 2.0 s and not the 5.0 s
+an earlier draft proposed — every second here is a second Acrobat's user waits
+staring at an unringed screen.
+
+**Window-churn risk — unmeasured, and a diagnostic instruction, not a
+caveat.** If tier 2 ever appears not to fire on some application, check
+`WarmUp.opens` before anything else. It is a diagnostic-only counter, read by
+nothing that decides policy — the same shape as the worker heartbeat under
+D024 — incremented once per distinct handle that opens a warm-up. A count in
+the dozens means the application is recreating its top-level window faster
+than the budget, so warm-up keeps re-opening on each new handle and tier 2 is
+suppressed permanently, with no other visible symptom. This scenario has never
+been produced or measured; it is named here so it is checked first, not
+rediscovered by debugging OCR from scratch.
+
+**Measurement limitations, carried forward from the design spec's §8 "What
+the measurements do not establish" so a future reader does not have to go
+find it:**
+- Slack and Teams were not tested. Only VS Code and Discord were measured.
+- The Discord figure (0.92 s, all six targets) rests on a **single** valid
+  run. Two earlier runs measured the `Discord Updater` splash window instead
+  of the real application and were discarded once the cause was found — they
+  are not corroborating data points for the real window's figure.
+- Chrome's element-count fluctuation data (used to rule out readiness
+  detection) came from an already-loaded page with a cold accessibility tree,
+  not from a cold application start; it speaks to steady-state noise, not to
+  the cold-start shape this decision is about.
+
+Related: **D021** (perception worker thread, apartment-bound UIA objects),
+**D024** (a diagnostic-only counter, not read by policy), **D028** (tier 2
+triggers on grounding failure — this decision narrows *when* that trigger is
+armed, not what it is), **D034** (this entry's every measured figure is cited
+to the document that recorded it).
+
+## D036 — Fix the class, not the instance: sweep for siblings before closing a finding
+
+**Decision.** When a review finds a defect, treat it as an instance of a class and
+grep for the other instances before marking it fixed. Record in the fix what was
+swept, not merely what was changed. A finding closed on one instance is closed on
+one instance, and nothing about having fixed it makes the siblings less wrong.
+
+**What it cost to learn.** The Chromium warm-up branch. Final whole-branch review
+found `first_matching_hwnd`'s docstring overstating a guarantee — claiming it and
+the walk "both go through `windows_matching`", when `iter_elements` merely *gates*
+on that enumeration and hands final selection to pywinauto, so with several
+matching windows the two can name different ones. It was corrected, reviewed,
+verified and closed.
+
+The identical claim survived on `Observation.target_hwnd`'s field comment in
+`ghostcursor/perception/service.py` — same overstatement, same branch, same
+review pass — and reached the pull request, where an outside reviewer found it.
+Nobody swept. The fix was applied where the finding pointed and stopped there.
+
+**Why this is not already covered.** D032 requires an independent read of what
+the controller authored, and it worked: the docstring defect WAS found by an
+independent reviewer. D018 mutation-verifies behaviour, which a comment has none
+of. Neither rule says anything about the scope of a fix once a finding is
+correctly identified, and that is the gap this closes.
+
+**The pattern this is the third instance of.** Each review layer catches a class
+of defect the layer inside it cannot see, by construction:
+
+| Layer | What it caught that the inner layer structurally could not |
+|---|---|
+| Whole-branch review | A standing tier-2 request never retracted across a window change — an interaction between three tasks each individually correct and each individually reviewed as correct. Task-scoped review cannot see a seam. |
+| Controller mutation | A tick-loop test that passed with the warm-up gate deleted from `run.py`. Five green stability runs, a docstring explicitly claiming non-triviality, and a passing suite all missed it. Only mutating the GATE — not re-running the test — exposed it. |
+| Outside review (PR) | The sibling docstring above, in a fix the whole-branch review had itself produced and closed. |
+
+The generalisation is that **no review layer can audit its own blind spot**, which
+is the same argument D026 made about components ("every component correct in
+isolation while the assembled system did nothing") applied to review itself. It is
+the standing case for keeping whole-branch review a gate rather than a courtesy
+when everything upstream already looks clean.
+
+**Not adopted:** mechanical enforcement. See `docs/superpowers/FOLLOWUPS.md` — that
+trigger fires on evidence laundering specifically and explicitly excludes
+documentation drift, which this is. It remains at one occurrence, deliberately.
+
+Related: **D032** (independent read — necessary, and shown here to be insufficient
+alone), **D018** (mutation-verification, which caught the false green), **D026**
+(components correct in isolation while the assembly is not; this applies the same
+shape to review layers), **D034** (the failure family both PR comments landed in:
+prose asserting a guarantee the code does not enforce).

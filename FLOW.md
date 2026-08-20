@@ -6,7 +6,9 @@ the bottom shows exactly what's being built/modified right now.
 
 ---
 
-## Current milestone: Perception tier 2 (OCR)  ✅ built — see "You are here"
+## Current milestone: Chromium warm-up  ✅ built — see "You are here"
+
+## Previous milestone: Perception tier 2 (OCR)  ✅ complete
 
 ## Previous milestone: Intermediate Project — Single-App Guided Tour  ✅ complete
 
@@ -143,6 +145,23 @@ process boundaries), and deleting the database file returned behaviour to
 rung 2 — see the persistence call graph above.
 
 ### You are here
+**Chromium warm-up is built** (D035). A `WarmUp` object
+(`ghostcursor/perception/warmup.py`) suppresses the tier-2 request for a
+budget (`DEFAULT_WARMUP_BUDGET_S = 2.0`) after a window's first failed
+grounding, and closes permanently for that handle the first time UIA
+grounding succeeds against it. The tier-2 request site in `run.py`'s
+`grounder_from_slot` (around line 436-439) now calls
+`warmup.allows_tier2(target_hwnd)` before `service.request_tier2(i)`; the
+UIA-success path (around line 413) calls `warmup.note_grounded(target_hwnd)`.
+`Observation` (`service.py`) now carries `target_hwnd: int`, published by the
+worker (D021 — read from an apartment-bound UIA object on the worker thread
+and crossed as a plain int, never a COM object).
+Keyed by HANDLE, not the title regex a step matches against, because
+Discord's cold start puts up a distinct-HWND `Discord Updater` splash that
+fully matches the same regex and would otherwise consume the whole budget
+before the real window exists. Details, all measured numbers, and their
+citations: D035.
+
 **Perception tier 2 (OCR) is built** (D028-D030). When UIA cannot see the
 control a step names, the screen is read with `Windows.Media.Ocr` and the
 hint renders amber (`INFERRED`) rather than cyan, so a pixel guess never
@@ -170,11 +189,12 @@ where `Uploads` scored 92.3 against a read of `upload` — two different real
 Canva surfaces one character apart. The Canva photo editor exposes
 **4 of 13** even with a fully warm Chromium accessibility tree.
 
-What it deliberately does NOT cover: Electron apps are *blind-until-asked*,
-not blind — Chromium enables its accessibility tree on demand, and the first
-UIA probe switches it on. They want a **warm-up retry**, which is cheaper
-than OCR and is its own separate milestone. Icon-only controls carry no text
-and are unreachable by any OCR; that is tier 3, the VLM.
+What it deliberately did NOT cover at the time: Electron apps are
+*blind-until-asked*, not blind — Chromium enables its accessibility tree on
+demand, and the first UIA probe switches it on. They wanted a **warm-up
+retry**, cheaper than OCR — built in the following milestone, see "You are
+here" above and D035. Icon-only controls carry no text and are unreachable by
+any OCR; that is still tier 3, the VLM.
 
 Photoshop itself was never measured. Acrobat was a proxy for its shape.
 
@@ -233,10 +253,10 @@ Win32 renderer adapter, the `run.py --recipe` entry point, and now
 persistence — promotion survives process exit via `ObservationStore`, keyed
 by `(step_key, app_id, app_version, automation_id)`, hydrated before each
 tour and written on every promotion — are all built and wired together
-end-to-end, and so is perception tier 2 (OCR). What remains unbuilt is the
-doc-ingestion knowledge base — web search, doc ingestion, embeddings, intent
-matching, recipe distillation — and tier 3, the VLM (spec sections outside
-9-10).
+end-to-end, and so is perception tier 2 (OCR) and its Chromium warm-up
+(D035). What remains unbuilt is the doc-ingestion knowledge base — web
+search, doc ingestion, embeddings, intent matching, recipe distillation —
+and tier 3, the VLM (spec sections outside 9-10).
 
 ### Runtime call graph — guided tour (as built)
 
@@ -292,7 +312,16 @@ run.main()
                                      --- TIER 2, only if that grounding FAILED (D028) ---
                                      UIA answered? service.cancel_tier2(i) and return — a
                                      standing request is a standing cost on the worker.
+                                     ALSO: warmup.note_grounded(observation.target_hwnd) —
+                                     this handle's tree is proven, so its warm-up (if any)
+                                     never applies again.
                                      Otherwise:
+                                     warmup.allows_tier2(observation.target_hwnd)  (D035) —
+                                         False inside a fresh window's budget (default 2.0s):
+                                         return None and skip the request entirely. A cold
+                                         Chromium tree is populating, not blind; the budget
+                                         gives it a chance to answer for free before OCR is
+                                         even asked for.
                                      service.request_tier2(i)   lock-and-assign, never blocks.
                                          The READ happens on the worker; its result turns up
                                          in a LATER observation, so this tick may still fail

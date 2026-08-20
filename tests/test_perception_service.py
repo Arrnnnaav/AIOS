@@ -498,3 +498,69 @@ def test_a_failing_walk_does_not_suppress_tier_2():
         "a failed walk published an observation -- the previous one must "
         "simply age instead"
     )
+
+
+def _wait_for_observation(service, timeout_s: float = 5.0):
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        observation = service.latest()
+        if observation is not None:
+            return observation
+        time.sleep(0.01)
+    raise AssertionError("no observation published within the timeout")
+
+
+def test_worker_publishes_the_target_window_handle():
+    """The handle must cross the boundary as a plain int (D021): warm-up is
+    keyed on it, and a title cannot distinguish Discord's updater splash from
+    Discord itself."""
+    service = PerceptionService(
+        title_re=".*Target.*",
+        walker=lambda _: [],
+        hwnd_source=lambda _: 4242,
+        interval_s=0.01,
+    )
+    service.start()
+    try:
+        observation = _wait_for_observation(service)
+    finally:
+        service.stop()
+    assert observation.target_hwnd == 4242
+
+
+def test_absent_window_publishes_handle_zero():
+    service = PerceptionService(
+        title_re=".*Nothing.*",
+        walker=lambda _: [],
+        hwnd_source=lambda _: 0,
+        interval_s=0.01,
+    )
+    service.start()
+    try:
+        observation = _wait_for_observation(service)
+    finally:
+        service.stop()
+    assert observation.target_hwnd == 0
+
+
+def test_a_failing_hwnd_source_does_not_kill_the_walk():
+    """The handle is a nicety; the walk is the product. A hwnd_source that
+    raises must degrade to 0, not suppress the observation -- otherwise a
+    transient enumeration failure blinds perception entirely."""
+
+    def boom(_):
+        raise OSError("enumeration failed")
+
+    service = PerceptionService(
+        title_re=".*Target.*",
+        walker=lambda _: [],
+        hwnd_source=boom,
+        interval_s=0.01,
+    )
+    service.start()
+    try:
+        observation = _wait_for_observation(service)
+    finally:
+        service.stop()
+    assert observation.ok is True
+    assert observation.target_hwnd == 0

@@ -2,8 +2,11 @@
 
 Date: 2026-08-19
 Status: reviewed, pending implementation plan
-Measurements: `2026-08-19-cold-electron-probe-findings.md` — every number below
-comes from that document, not from estimation (D034)
+Measurements: `2026-08-19-cold-electron-probe-findings.md`, EXCEPT two sets
+recorded in this document and nowhere else — the targeted-grounding sweep in
+§3 "The budget was swept, not guessed" (VS Code runs 1 and 3), and the Chrome
+static-page fluctuation sample in §2 (zero drops over 64 samples). Nothing
+below is estimated (D034).
 Builds on: `2026-08-15-perception-tier-2-ocr-design.md`, which deliberately
 excluded this and named it as its own milestone
 
@@ -64,8 +67,8 @@ signal: *grounding succeeded*. What is missing is patience before escalating.
 
 A **warm-up window** per target window:
 
-- It opens at the first observation of a target **window handle** — not of
-  a matching title. That distinction is load-bearing; see below.
+- It opens at the first **failed grounding** for a target **window handle** —
+  not of a matching title. That distinction is load-bearing; see below.
 - While it is open, **grounding failure does not request tier 2.** The loop
   keeps waiting, exactly as it does for any step it cannot yet ground.
 - It closes permanently the first time grounding **succeeds** for that target —

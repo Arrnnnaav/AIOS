@@ -66,6 +66,23 @@ def windows_matching(title_re: str) -> list[int]:
     return matches
 
 
+def first_matching_hwnd(title_re: str) -> int:
+    """The topmost visible, non-minimized, on-screen window matching title_re,
+    or 0 when there is none.
+
+    Warm-up is keyed on this, so it must agree with the window grounding walks
+    on which window is meant. Both are GATED by the same windows_matching
+    enumeration, but the walk (iter_elements) hands the final selection to
+    pywinauto's Desktop().window(title_re=...), not to this function -- so
+    with several matching windows the two can name different ones. The
+    consequence is bounded: a sibling handle among the matches still gets its
+    own warm-up patience, it is just not guaranteed to be the same handle
+    grounding actually walked.
+    """
+    matches = windows_matching(title_re)
+    return matches[0] if matches else 0
+
+
 def _raw_window_rect(title_re: str) -> tuple[int, int, int, int] | None:
     """Fallback: raw win32gui geometry for a visible, non-minimized top-level
     window matching title_re, for the cases where UIA exposes no usable
