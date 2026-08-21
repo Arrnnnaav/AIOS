@@ -1697,6 +1697,35 @@ to, and the alternative — briefs written by an agent with less context — tra
 reviewable error for an unreviewable one. The fix is that the brief gets read
 adversarially, not that it gets written by someone else.
 
+**The other half of this rule: implementers must check too, and refusing a
+contradicted brief is expected, not initiative.**
+
+Reviewers verifying the brief is necessary but arrives late — after the code is
+written to it. The cheaper catch is at execution time, and it has now happened
+twice with the same shape: an implementer measured something, found the brief
+said otherwise, and followed the measurement.
+
+| Occurrence | What the brief said | What the implementer measured, and did |
+|---|---|---|
+| Wrong-action, Task 1 | Tests taking real focus via `SetForegroundWindow` | It is refused for a process that is not frontmost. Reported it rather than fighting the environment, which forced the plan's test design to be rewritten. |
+| Control bar, Task 4 | Assert `GetForegroundWindow() == bar_hwnd` after opening the panel | The same call is refused under pytest, so that assertion is either always-false here or vacuous elsewhere. Replaced it with a spy asserting the call was ATTEMPTED with the right handle — deterministic and environment-independent — and added a `try/except` the design's §4.4 required but the brief omitted. |
+
+The second is the stronger case: the brief's instruction was not merely
+incomplete, it was contradicted by what the implementer could observe, and the
+correct response was to deviate and say so loudly in the report.
+
+**So the expectation is stated rather than hoped for.** An implementer that
+finds the brief disagreeing with the codebase, an API signature, or a measured
+result should follow the evidence, implement what is correct, and report the
+deviation prominently — not implement something it has reason to believe is
+wrong because the brief said to. A dispatch that says "use this verbatim" means
+"do not improve this", never "do not check this".
+
+The controller's job on the other side is to make that safe: name the brief's
+known error count in the dispatch, say plainly that it is a claim to verify, and
+treat a reported deviation as the process working rather than as an implementer
+exceeding its remit.
+
 Related: **D036** (fix the class, not the instance; its layer table gains this as
 a fourth row), **D026** (components correct in isolation while the assembly is
 not — this applies the same shape to requirements), **D032** (independent read —
