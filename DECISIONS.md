@@ -1708,7 +1708,7 @@ said otherwise, and followed the measurement.
 | Occurrence | What the brief said | What the implementer measured, and did |
 |---|---|---|
 | Wrong-action, Task 1 | Tests taking real focus via `SetForegroundWindow` | It is refused for a process that is not frontmost. Reported it rather than fighting the environment, which forced the plan's test design to be rewritten. |
-| Control bar, Task 4 | Assert `GetForegroundWindow() == bar_hwnd` after opening the panel | The same call is refused under pytest, so that assertion is either always-false here or vacuous elsewhere. Replaced it with a spy asserting the call was ATTEMPTED with the right handle — deterministic and environment-independent — and added a `try/except` the design's §4.4 required but the brief omitted. |
+| Control bar, Task 4 | Assert `GetForegroundWindow() == bar_hwnd` after opening the panel | The same call is refused under pytest, so that assertion is either always-false here or vacuous elsewhere. Replaced it with a spy asserting the call was ATTEMPTED with the right handle — deterministic and environment-independent — and added a `try/except` around `open_panel`'s own `SetForegroundWindow(hwnd)`, which the brief omitted. §4.4 governs a different call (foreground *restoration* to the target app at close time, Task 5's scope), but states the same accept-once-silently principle, which this guard follows rather than was required by. |
 
 The second is the stronger case: the brief's instruction was not merely
 incomplete, it was contradicted by what the implementer could observe, and the

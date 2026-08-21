@@ -5,6 +5,7 @@ tests/test_overlay.py. Every path tears both windows down in a finally block:
 a stranded full-screen window is the failure that locks a user out.
 """
 
+import pytest
 import win32con
 import win32gui
 
@@ -141,16 +142,25 @@ def test_opening_the_panel_focuses_it_and_closing_releases(monkeypatch):
     still calls through to the real API: it proves open_panel attempted to
     take foreground for the correct hwnd regardless of environment, and it
     fails if that call is skipped (the actual mutation this test must
-    catch). The real foreground state is then asserted too, but only when
-    the OS actually granted it -- best-effort, not the load-bearing check.
+    catch). The spy also records whether the real call raised, so the real
+    foreground state can then be asserted too -- but only on the path where
+    the OS actually granted it. When it did not, the test skips honestly
+    (tests/test_focus.py's own pattern for this exact situation) rather
+    than asserting something the environment cannot make true regardless of
+    correctness.
     """
     bar_hwnd = bar.create_bar_window()
     real_sfw = win32gui.SetForegroundWindow
     calls = []
+    refused = []
 
     def spy(hwnd):
         calls.append(hwnd)
-        return real_sfw(hwnd)
+        try:
+            return real_sfw(hwnd)
+        except win32gui.error:
+            refused.append(hwnd)
+            raise
 
     monkeypatch.setattr(win32gui, "SetForegroundWindow", spy)
     try:
@@ -159,6 +169,18 @@ def test_opening_the_panel_focuses_it_and_closing_releases(monkeypatch):
         assert bar.panel_is_open(bar_hwnd) is True
         assert calls == [bar_hwnd], (
             "open_panel did not attempt to take foreground for the bar"
+        )
+        if refused:
+            pytest.skip(
+                "Windows' foreground lock refused SetForegroundWindow for "
+                "this non-frontmost process (D038, tests/test_focus.py) -- "
+                "the spy-call assertion above already proved open_panel "
+                "attempted it; the real foreground state cannot be "
+                "observed in this environment"
+            )
+        assert win32gui.GetForegroundWindow() == bar_hwnd, (
+            "open_panel called SetForegroundWindow but the bar did not "
+            "actually end up foreground"
         )
         bar.close_panel(bar_hwnd)
         assert bar.panel_is_open(bar_hwnd) is False
