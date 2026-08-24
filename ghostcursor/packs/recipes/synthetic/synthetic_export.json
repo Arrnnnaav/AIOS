@@ -1,0 +1,24 @@
+{
+  "app_id": "synthetic",
+  "intent": "export the current file",
+  "steps": [
+    {
+      "user_action": "click",
+      "target_descriptor": {"claimed": {"name": "Export", "name_synonyms": ["Export As", "Save As"]}, "confirmed": []},
+      "instruction_text": "Click Export to start exporting your file.",
+      "verification_rule": {"kind": "element_appears", "args": {"target_descriptor": {"name": "Export finished: table.csv"}}, "timeout_s": 30.0},
+      "risk": "normal",
+      "preconditions": [],
+      "provenance": {"source_urls": [], "source_tier": "hand-authored", "model": "none", "prompt_version": "none", "created_at": "2026-08-14"}
+    },
+    {
+      "user_action": "observe",
+      "target_descriptor": {"claimed": {"name": "Export finished: table.csv"}, "confirmed": []},
+      "instruction_text": "Check the status line — it should show the export finished.",
+      "verification_rule": {"kind": "user_confirms", "args": {}, "timeout_s": 30.0},
+      "risk": "normal",
+      "preconditions": [],
+      "provenance": {"source_urls": [], "source_tier": "hand-authored", "model": "none", "prompt_version": "none", "created_at": "2026-08-14"}
+    }
+  ]
+}
