@@ -6,6 +6,7 @@ easier.
 """
 
 from ghostcursor.perception.health import WorkerHealth
+from ghostcursor.perception.service import WorkerProgress
 from ghostcursor.reasoning.staleness import StalenessLadder
 
 
@@ -15,6 +16,7 @@ class FakeService:
         self.heartbeat = 7
         self.restarts = 0
         self.started = 0
+        self._progress = WorkerProgress(1, 7, "idle", None, 0.0, 0.0, None)
 
     def is_alive(self):
         return self._alive
@@ -23,6 +25,10 @@ class FakeService:
         self.restarts += 1
         self.started += 1
         self._alive = True
+        self._progress = WorkerProgress(2, 0, "starting", 20.0, 20.0, None, None)
+
+    def progress(self):
+        return self._progress
 
 
 def _health(service, now, **kw):
@@ -142,3 +148,26 @@ def test_the_heartbeat_is_logged_when_the_policy_fires():
     assert any("heartbeat" in message.lower() for message in logs), (
         "the heartbeat was not recorded when the restart policy fired"
     )
+
+
+def test_a_two_second_gap_is_logged_slow_without_restart():
+    now = {"t": 0.0}
+    service = FakeService()
+    health, _ = _health(service, now, slow_after_s=2.0, dead_after_s=12.0)
+    now["t"] = 2.1
+
+    assert health.check() is None
+    assert service.restarts == 0
+    assert any("slow" in message.lower() and "stage idle" in message.lower() for message in logs)
+
+
+def test_health_logs_stage_and_generation_progress():
+    now = {"t": 0.0}
+    service = FakeService()
+    service._progress = WorkerProgress(4, 12, "walk", 0.0, 0.0, None, None)
+    health, _ = _health(service, now)
+    now["t"] = 13.0
+
+    health.check()
+
+    assert any("stage walk" in message.lower() for message in logs)

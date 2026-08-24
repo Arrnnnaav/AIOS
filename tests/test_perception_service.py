@@ -564,3 +564,27 @@ def test_a_failing_hwnd_source_does_not_kill_the_walk():
         service.stop()
     assert observation.ok is True
     assert observation.target_hwnd == 0
+
+
+def test_progress_names_the_blocking_walk_stage():
+    entered = threading.Event()
+    release = threading.Event()
+
+    def blocked_walk(_):
+        entered.set()
+        release.wait(2.0)
+        return []
+
+    service = PerceptionService(
+        title_re=".*Target.*",
+        walker=blocked_walk,
+        hwnd_source=lambda _: 4242,
+        interval_s=0.01,
+    )
+    service.start()
+    try:
+        assert entered.wait(1.0)
+        assert service.progress().stage == "walk"
+    finally:
+        release.set()
+        service.stop()

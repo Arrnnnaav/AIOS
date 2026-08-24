@@ -1731,3 +1731,411 @@ a fourth row), **D026** (components correct in isolation while the assembly is
 not — this applies the same shape to requirements), **D032** (independent read —
 necessary, and shown here not to reach the brief), **D018** (mutation-verification,
 which cannot see a defect where code and tests agree on a wrong requirement).
+# Open-track decisions
+
+* Planner statuses distinguish supported plans, unavailable recipes, invalid
+  model output, and deterministic fallback.
+* SPACE confirmation is accepted only when the target HWND is the foreground
+  window; focus on the bar or another application cannot advance a step.
+* The synthetic export application is deterministic and exposes wrong-action
+  feedback plus an application-owned completion status.
+
+## D039 — Perception health distinguishes slow work from a stalled worker
+
+**Decision.** Perception health uses worker progress, not observation staleness
+alone. A worker with no completed iteration for about **2 seconds** is logged as
+`SLOW` but is not restarted. At **12 seconds** without a completed iteration, a
+living worker is treated as stalled and restarted once. An exited worker is
+detected immediately. The stage name, generation, elapsed age, and heartbeat
+are included in every health transition and restart message.
+
+The first restart preserves the existing guided-tour object, recipe, step,
+state, and hint decision. It replaces only the perception worker. Observations
+from the retired generation cannot publish after restart, and the replacement
+must publish a fresh observation before it can affect grounding. If the
+replacement also fails its budget, the tour ends with an explicit perception
+failure.
+
+**Why.** Complex real application UIA trees can legitimately take longer than
+one ordinary tick. Treating a short slow walk as a dead worker causes needless
+restarts and can create competing workers. Conversely, a worker blocked inside
+one UIA call must remain diagnosable and bounded. Generation-aware progress
+keeps the UI thread responsive while making the recovery policy observable.
+
+**Evidence.** `tests/test_worker_health.py` covers slow classification, stage
+logging, restart budgets, and one-restart-only behaviour. The existing
+perception-service tests continue to pass; the focused Step 1 run was **30
+tests passed**. The 2-second diagnostic and 12-second restart thresholds are
+implementation policy for this milestone and should be re-measured against
+real VS Code before being changed.
+
+Related: **D021** (worker thread protects ESC and the overlay), **D022** (single
+observation slot), **D026** (time-based behaviour needs sequence tests),
+**D031** (the invariant must imply the safety property), **D034** (measured
+figures require a source).
+
+## D040 — Application packs are strict local trust boundaries
+
+**Decision.** Application packs are loaded from local manifests with a strict
+schema. Unknown fields, missing fields, invalid regexes, unsafe paths, and
+symlinked manifests or recipe directories are rejected. Recipe files are
+resolved beneath the pack's trusted `recipes` root and are validated by the
+existing `Recipe` schema before the pack becomes available. The registry can
+match a foreground identity using executable name and title pattern, but it
+does not execute anything and does not accept model-supplied paths.
+
+The initial registry contains Synthetic Export, Notepad, and a VS Code pack
+placeholder. The VS Code pack has no executable intent yet; its first workflow
+is added only after the registry foundation is independently verified.
+
+**Why.** The planner and future installer need a stable application boundary,
+but an application pack is untrusted input until its metadata and recipes have
+passed the same path and schema checks as the existing trusted registry. Strict
+unknown-field rejection catches pack-format drift early. Matching requires both
+declared executable and title identity when both are present, preventing a
+shared host such as `python.exe` from matching unrelated windows.
+
+**Evidence.** `tests/test_packs.py` covers built-in pack loading, recipe lookup,
+executable/title matching, unknown fields, invalid regexes, and outside recipe
+directories. The focused Step 2 run passed **35 tests** including the complete
+Step 1 worker-health/perception set.
+
+Related: **D006** (no autonomous input), **D012** (ground live controls),
+**D018** (mutation-verifiable safety), **D031** (real invariant rather than a
+correlated check), **D032** (independent documentation review).
+
+## D041 — VS Code open-folder verification is user-driven and title-based
+
+**Target selection in this decision is superseded by D047.** Title-based
+post-action verification remains current.
+
+**Decision.** The first real application recipe points at VS Code's `File`
+menu and instructs the user to choose `Open Folder…` in the native Windows
+folder dialog. GhostCursor does not automate inside that dialog. Verification
+starts only after evidence of a user action and has a **20-second** timeout.
+
+Verification accepts VS Code title variants such as
+`<foldername> - Visual Studio Code` and `<workspace> - Code`. Folder matching
+uses case-insensitive Unicode `casefold()` and collapses whitespace. If the
+goal contains a path, the final segment is extracted before normalization:
+`C:\\Projects\\VSCode-Project` becomes `vscode-project`, and
+`/home/user/my app` becomes `my app`. Punctuation remains significant. Empty
+or one-character results skip substring matching and use the safer fallback:
+the title must be a valid VS Code workspace title and must have changed from
+the pre-action title.
+
+**Why.** The native dialog is a separate window/process surface and is not the
+right place to expand autonomous control. The title is application-owned world
+state, while the user remains responsible for selecting the folder. Starting
+the timeout only after an observable action avoids failing while the user is
+still deciding what to do.
+
+**Evidence.** `ghostcursor/reasoning/vscode.py` and
+`tests/test_vscode.py` cover case and whitespace normalization, Windows and
+POSIX-style full paths, degenerate references, title variants, wrong-folder
+rejection, and the 20-second recipe configuration. The planner and loop tests
+also cover `OPEN_FOLDER` routing and bounded post-action failure; the focused
+Step 3 implementation run passed **31 tests**. Real VS Code desktop validation
+is still a required acceptance gate and has not been claimed by these unit
+tests.
+
+Related: **D006** (user acts; GhostCursor points), **D012** (verify world
+state), **D026** (ordered time behaviour), **D034** (recorded measurements),
+**D040** (trusted app-pack registry).
+
+## D042 — Foreground validation starts as a logging-only daemon
+
+**Decision.** The first foreground integration is a manually launched polling
+daemon:
+
+```powershell
+py -3.12 -m ghostcursor.daemon
+```
+
+It polls the foreground HWND every **0.5 seconds** by default, resolves the
+owning executable and title, matches the strict pack registry, and logs
+activation/deactivation-relevant changes. It does not create an overlay, open
+the control bar, steal focus, launch applications, register Windows startup,
+or provide a tray menu.
+
+Unmatched windows are logged as negative validation data with the executable
+name, a title summary truncated to **60 characters**, and the failed identity
+surface: executable, title, or both. No screen content, document text,
+credentials, or other UI data is captured.
+
+**Why.** Negative matching data is the cheapest way to discover real-world
+pack gaps before adding startup UX. Separating foreground identity from tour
+activation keeps the first real-app validation reversible and avoids coupling
+pack matching defects to tray or startup behavior.
+
+**Evidence.** `ghostcursor/daemon.py` and `tests/test_daemon.py` cover pack
+activation, duplicate suppression, 60-character miss summaries, and
+executable/title failure reasons. The cumulative focused Step 4 run passed
+**51 tests**. The 0.5-second interval is the default polling policy, not a
+measured latency claim.
+
+Related: **D006** (no autonomous input), **D040** (strict pack boundary),
+**D041** (manual real-app workflow), **D034** (record measurements and policy
+values honestly).
+
+## D043 — Implementation is complete; real VS Code validation remains a desktop gate
+
+**Decision.** The reduced real-application platform implementation is complete
+through worker health, strict packs, VS Code open-folder routing, and the
+logging-only foreground watcher. The final acceptance claim is deliberately
+split: automated implementation/regression verification is complete, while
+the three-consecutive-run VS Code test remains a manual interactive-desktop
+gate. The environment confirms VS Code is installed at
+`C:\\Users\\user\\AppData\\Local\\Programs\\Microsoft VS Code\\bin\\code.cmd`,
+but no VS Code window was active during this verification session.
+
+**Evidence.** The changed and broader non-hung regression set passed **135
+tests**. `py -3.12 -m compileall ghostcursor -q` passed, `git diff --check`
+passed, and Graphify `update .` completed with **1312 nodes, 3294 edges, and
+68 communities**. The documented all-tests command reached the interactive
+guided-tour area but could not complete reliably in this session; it was
+stopped after hanging there. The known separate hung-window tests were not
+run.
+
+The remaining manual command is:
+
+```powershell
+code --new-window
+py -3.12 -m ghostcursor.run --goal "Open a folder in VS Code" --target "Visual Studio Code" --seconds 120
+```
+
+Run it three times with a real folder selection, including one learning run
+and one learned-observation reuse run. Record the desktop result before
+claiming the full milestone complete.
+
+## D044 — `VS Code` is a first-class deterministic planner alias
+
+**Decision.** Natural-language fallback treats `VS Code`, `VSCode`, and
+`Visual Studio Code` as equivalent application aliases for `OPEN_FOLDER`.
+The canonical desktop-validation command, `Open a folder in VS Code`, is an
+exact strong phrase with rule-derived confidence **0.95**. Goals containing
+one of the aliases plus an open action and a folder/path reference remain
+known synonyms at **0.85**.
+
+**Why.** The initial implementation recognized `vscode` and
+`visual studio code` but omitted the product's common spaced spelling. Its
+path-based regression passed accidentally because the fixture folder name
+contained `VSCode`, masking the gap. Deterministic fallback must accept the
+documented command even when Ollama is unavailable.
+
+**Evidence.** `tests/test_planner.py` now uses a folder name without the
+application token, covers the exact documented command, and covers the same
+command when model classification raises `TimeoutError`.
+
+## D045 — The first VS Code workflow uses a targeted UIA query
+
+**Superseded by D047.** The bounded-query principle remains current, but the
+specific `File` target did not survive the compact-menu desktop test.
+
+**Decision.** A trusted `code.exe` recipe does not enumerate VS Code's entire
+Electron accessibility tree. For the current one-workflow pack, perception
+uses a provider-side `FindFirst` query for the exact `File` `MenuItem`. If UIA
+cannot expose that element, the walk returns an empty successful observation
+so the existing OCR tier can attempt the same trusted target. Other
+application recipes retain the generic full-tree walker.
+
+Worker progress is set *before* each potentially blocking operation. In
+particular, `stage=walk` is published before entering the UIA provider. The
+previous ordering left `stage=focus` visible while the following walk was
+actually blocked, even though real focus reads had already been moved to a
+separate asynchronous sampler.
+
+**Why.** A real VS Code run blocked twice for 12 seconds while marshaling the
+full UIA descendant tree. Restarting repeated the same call and could not
+recover. The trusted workflow currently needs one known menu target, so
+collecting every editor, terminal, extension, and workbench node adds latency
+and failure surface without adding useful authority.
+
+**Evidence.** Targeted UIA, provider-failure degradation, app-specific walker
+selection, and truthful blocking-stage reporting are covered by focused
+tests. The bounded regression run passed **65 tests** (2 targeted UIA tests
+plus 63 perception, health, runtime, planner, and VS Code tests). Real desktop
+validation remains required.
+
+## D046 — Executable recipes bind target windows by executable and title
+
+**Decision.** When a recipe `app_id` is an executable name, target identity is
+the conjunction of the executable basename and the supplied title pattern.
+Application identity lookup skips title collisions owned by another process;
+the perception service and focus-safety HWND use the same filtered source. If
+no matching executable window exists, the run fails before creating the
+overlay. VS Code's specialized walker likewise accepts only `Code.exe`
+windows.
+
+**Why.** `--target "Visual Studio Code"` was still only a regular-expression
+title lookup. A browser tab, terminal, or other window containing those words
+could satisfy it even though the trusted pack manifest requires `code.exe`.
+That mismatch could produce a healthy worker observing the wrong application
+and an honest but confusing “could not read File” grounding failure.
+
+**Evidence.** Tests cover app-identity collision skipping, HWND filtering,
+app-specific source selection, and the targeted UIA path; the focused runs
+passed **67 tests**. A subsequent eight-second real-desktop smoke run against
+`Welcome - Visual Studio Code` resolved the live `File` `MenuItem` and printed
+the expected first-step instruction without a worker stall. It did not click
+or open a folder, so three complete user-driven runs remain the acceptance
+gate.
+
+## D047 — The Welcome-page Open Folder action supersedes the File-menu target
+
+**Decision.** The first trusted VS Code workflow targets the visible
+`Open Folder...` action on the Welcome page directly. UIA performs bounded
+exact-name queries for the three-dot, Unicode-ellipsis, and unpunctuated name
+variants. When VS Code exposes no matching accessibility element, local OCR is
+the fallback. OCR capture is executable-bounded to `Code.exe`, matching the
+identity, worker, and focus HWND boundary from D046.
+
+Windows OCR emits separate words, so `reassemble()` now creates conservative
+same-line candidates when adjacent words have at least 60% vertical overlap
+and a horizontal gap no larger than 1.25 times their height. Originals remain
+available, merged candidates contain at most three parts, and the grounding
+floor remains 95. This recovers `Open` + `Folder...` without weakening target
+matching.
+
+**Why.** The validated desktop used VS Code's compact hamburger menu. `File`
+was neither visibly rendered nor exposed by UIA, so both UIA and OCR correctly
+failed to ground the old recipe. The Welcome page visibly exposed
+`Open Folder...`; local OCR read its two words with boxes `(154,463,197,480)`
+and `(204,462,264,476)` relative to the window. Pointing directly at that
+action is shorter and matches the actual surface.
+
+**Evidence.** Focused OCR, UIA, capture, VS Code, runtime, perception, health,
+and planner suites passed **87 tests**. Live executable-bounded capture then
+reassembled `Open Folder...` and grounded it at screen rectangle
+`(1106,462,1216,480)`. An eight-second real overlay smoke run rendered the
+instruction `Click Open Folder… and select the folder in the Windows dialog.`
+without a perception stall. Folder selection and title verification still
+require three complete user-driven runs.
+
+## D048 — Real VS Code acceptance run 1 of 3 passed
+
+**Result.** On the normal interactive desktop, the natural-language command
+`Open a folder in VS Code` was classified by the local model as
+`SUPPORTED (0.98)` with intent `OPEN_FOLDER`. The revised recipe displayed
+`Click Open Folder… and select the folder in the Windows dialog.` The user
+selected a folder, VS Code exposed the opened workspace in Explorer, and
+GhostCursor printed `Tour complete.`
+
+This is acceptance run **1 of 3**. It proves the complete path once—model
+classification, trusted recipe selection, executable-bounded perception,
+OCR grounding, human action, and world-state verification—but does not yet
+satisfy the three-consecutive-run gate.
+
+## D049 — Ask expands into a visible middle-right input panel
+
+**Superseded by D050.** The clipping diagnosis and visible-child requirement
+remain current; the horizontal geometry does not.
+
+**Decision.** The control bar is anchored to the middle of the virtual
+desktop's right edge with a 24px inset. Its compact state remains 520×56px.
+Opening Ask resizes and recentres the parent to 520×142px, displays a visible
+`Type your goal:` label and 36px-high EDIT control, focuses that control, and
+changes Ask to Submit. Closing or submitting destroys both panel controls and
+restores the compact middle-right geometry. Stop and Pause remain in the
+always-visible top row.
+
+**Why.** The earlier EDIT control began at child `y=56`, exactly below a parent
+whose total height was also 56px. Windows correctly clipped the entire child;
+only the Submit label changed, making Ask appear to have no place to type. The
+bar was also bottom-centred while the validated desktop workflow needs the
+control surface at the right-side midpoint.
+
+**Evidence.** Real Win32 tests assert the right-edge and vertical-centre
+coordinates, expanded and restored heights, visible label/edit HWNDs, input
+containment inside the parent client rectangle, focus attempt, submission,
+pause, stop, and teardown. The focused bar/runtime run passed **31 tests**.
+
+## D050 — The control surface is a vertical right rail with a left-expanding Ask card
+
+**Decision.** The compact control surface is a **148×192px vertical rail** at
+the middle-right edge. Stop, Pause, and Ask are stacked vertically and the
+status area sits below them. Clicking Ask keeps the same right edge and
+vertical centre but expands the parent leftward to **520×260px**. A 372px-wide
+prompt column appears to the left of the rail with `Type your goal:` and a
+large multiline, vertically scrollable EDIT control. Ask changes to Submit;
+closing/submitting removes the prompt column and restores the compact rail.
+
+**Why.** The horizontal toolbar did not match the requested floating-assistant
+interaction. The supplied reference uses a narrow persistent action rail and
+a larger writing surface that opens beside it. Expanding left preserves the
+right-edge anchor and keeps Stop/Pause accessible without placing the prompt
+over those safety controls.
+
+**Evidence.** Real Win32 tests assert vertical button ordering, fixed right
+edge and centre, expanded width/height, multiline and scrollbar styles,
+visible label/edit HWNDs, no overlap between prompt and safety rail, compact
+restoration, focus attempt, submission, and teardown. Bar plus runtime Ask
+integration passed **32 tests**.
+
+## D051 — Real VS Code acceptance run 2 of 3 passed
+
+**Result.** A second consecutive interactive run classified `OPEN_FOLDER` as
+`SUPPORTED (0.98)`, grounded `Open Folder...`, displayed the revised
+instruction, accepted the user's folder selection, and printed
+`Tour complete.` The Explorer showed the opened AIOS workspace afterward.
+One additional consecutive successful run remains before the desktop
+open-folder gate is complete.
+
+## D052 — Real VS Code open-folder acceptance gate passed 3 of 3
+
+**Result.** The third consecutive normal-desktop run again classified the
+natural-language goal as `SUPPORTED (0.98)`, selected the trusted
+`OPEN_FOLDER` recipe, grounded and displayed `Open Folder...`, accepted the
+user's folder selection, and printed `Tour complete.` The screenshot also
+confirms the compact Stop/Pause/Ask controls are stacked vertically at the
+middle-right edge and remain available after completion.
+
+The VS Code open-folder workflow has now passed the required **three
+consecutive complete runs**. This closes its real-desktop workflow gate. The
+expanded Ask prompt and submitted-goal round trip remain a separate visual and
+operational check; compact-rail visibility alone does not prove them.
+
+## D053 — The expanded Ask prompt passed real-desktop visual validation
+
+**Result.** On a normal interactive Windows desktop, clicking Ask from the
+completed state expanded the control surface leftward at the middle-right
+edge. The screenshot confirms the `Type your goal:` label, large multiline
+scrollable input, Submit button, status, and always-available Stop/Pause
+controls are all visible without overlap or clipping.
+
+This closes the Ask panel's visual-opening and text-entry-surface gate. The
+remaining behavioral check is submitting a typed goal and observing the shared
+planner start the corresponding trusted tour; panel visibility alone does not
+prove that handoff.
+
+## D054 — Ask submission passed the real-desktop trusted-tour handoff gate
+
+**Result.** The user entered and submitted the VS Code open-folder goal from
+the expanded Ask card. The existing session launched a fresh trusted
+`open a folder in vscode` tour, grounded `Open Folder...`, displayed its
+instruction, accepted the user action, and printed `Tour complete.` This
+closes the Ask end-to-end behavioral gate.
+
+**Logging decision.** `Ask received: <goal> — <status>` is emitted immediately
+after planning and before the nested tour starts. Previously it was emitted
+only after `run_tour()` returned, but a completed nested tour intentionally
+keeps its control bar alive until the session timeout. That delayed the most
+useful demo evidence even though the handoff had already succeeded.
+
+## D055 — Open Track release work is isolated and governed by a hard freeze
+
+**Decision.** Submission work lives on `submission/open-track`. Existing work
+is committed by whole-file dominant concern; optional Open Terminal work must
+branch from a certified `stable-pre-terminal` tag and remains unmerged unless
+it passes 3/3 consecutive desktop runs. Raw hang dumps stay in ignored
+`.artifacts/hang-audit/`; sanitized reachability findings belong here.
+
+Feature development ends 30 August at 20:00 IST. Only fresh-clone validation,
+documentation, and release-blocking fixes are permitted on 31 August. Code
+freezes at end-of-day; 1 September is upload/paste/verify only, and 2 September
+is an emergency link/upload/form buffer with no code changes.
+
+**Why.** A dirty tree, mixed desktop tests, and an unbounded host test run are
+submission risks that outrank feature breadth. Branch isolation and an
+explicit freeze ensure every failure path returns to the already validated
+Open Folder workflow instead of creating an unfinished release.

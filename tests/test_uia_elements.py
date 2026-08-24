@@ -1,6 +1,7 @@
 import pytest
 from pywinauto import Desktop
 
+from ghostcursor.perception import uia
 from ghostcursor.perception.uia import iter_elements
 from tests.uia_app import BTN_EXPORT, SyntheticApp
 
@@ -55,3 +56,52 @@ def test_iter_elements_filters_out_degenerate_chrome_elements():
         assert all(
             (e.bbox[2] - e.bbox[0] > 0 and e.bbox[3] - e.bbox[1] > 0) for e in elements
         )
+
+
+def test_vscode_walk_returns_only_the_targeted_file_menu(monkeypatch):
+    class Rect:
+        left, top, right, bottom = 10, 20, 80, 50
+
+    class Info:
+        name = "Open Folder..."
+        control_type = "Hyperlink"
+        automation_id = ""
+        rectangle = Rect()
+
+    monkeypatch.setattr(
+        uia, "windows_matching_executable", lambda title, exe: [4242]
+    )
+    monkeypatch.setattr(uia, "_vscode_open_folder_element_info", lambda hwnd: Info())
+    monkeypatch.setattr(uia, "is_on_screen", lambda bbox: True)
+
+    elements = uia.iter_vscode_elements(".*Visual Studio Code.*")
+
+    assert len(elements) == 1
+    assert elements[0].name == "Open Folder..."
+    assert elements[0].control_type == "Hyperlink"
+    assert elements[0].bbox == (10, 20, 80, 50)
+
+
+def test_vscode_walk_degrades_to_empty_for_a_provider_failure(monkeypatch):
+    monkeypatch.setattr(
+        uia, "windows_matching_executable", lambda title, exe: [4242]
+    )
+
+    def blocked(_):
+        raise OSError("provider unavailable")
+
+    monkeypatch.setattr(uia, "_vscode_open_folder_element_info", blocked)
+    assert uia.iter_vscode_elements(".*Visual Studio Code.*") == []
+
+
+def test_executable_matching_rejects_a_title_collision(monkeypatch):
+    monkeypatch.setattr(uia, "windows_matching", lambda _: [1, 2])
+    monkeypatch.setattr(
+        uia,
+        "_executable_name_for_hwnd",
+        lambda hwnd: "chrome.exe" if hwnd == 1 else "code.exe",
+    )
+
+    assert uia.windows_matching_executable(
+        ".*Visual Studio Code.*", "Code.exe"
+    ) == [2]

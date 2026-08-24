@@ -92,6 +92,7 @@ def test_unexpected_change_reobserves_instead_of_advancing():
     # The user did something other than what was suggested. Re-plan from real
     # state rather than retrying a hint whose target may have moved.
     snaps = iter([STILL, CHANGED, CHANGED, CHANGED, CHANGED, CHANGED, CHANGED])
+    snapshots = iter((STILL, CHANGED, CHANGED))
     tour = _tour(
         verifier=lambda rule, before, after: False,
         snapshotter=lambda: next(snaps, CHANGED),
@@ -197,6 +198,34 @@ def test_idle_timer_survives_a_reobserve_cycle():
     for _ in range(4):  # OBSERVING -> DECIDING -> RENDERING_HINT -> AWAITING
         tour.tick()
     assert tour.rehint_count == 1, "idle clock was reset by the re-observe cycle"
+
+
+def test_recipe_can_fail_after_bounded_post_action_verification_timeout():
+    now = {"t": 0.0}
+    step = _step()
+    step.verification_rule.timeout_s = 20.0
+    step.verification_rule.args["fail_after_timeout"] = True
+    snapshots = iter((STILL, CHANGED, CHANGED))
+    tour = _tour(
+        steps=[step],
+        verifier=lambda rule, before, after: False,
+        clock=lambda: now["t"],
+        snapshotter=lambda: next(snapshots, CHANGED),
+    )
+    for _ in range(4):
+        tour.tick()
+    assert tour.state is State.AWAITING_USER_ACTION
+
+    now["t"] = 1.0
+    tour.tick()  # changed elements mark the user action boundary
+    assert tour.state is State.OBSERVING
+
+    now["t"] = 21.1
+    for _ in range(4):
+        tour.tick()
+    tour.tick()
+    assert tour.state is State.FAILED
+    assert "20s" in tour.failure_reason
 
 
 # --- finding 1: ordinary title churn must not bounce the tour to OBSERVING --

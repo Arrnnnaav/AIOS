@@ -5,6 +5,7 @@ Fixtures are the spike's REAL reads, not invented strings.
 
 from ghostcursor.perception.ocr import (
     MERGE_CENTRE_TOLERANCE,
+    MERGE_HORIZONTAL_GAP,
     MERGE_VERTICAL_GAP,
     OcrRead,
     reassemble,
@@ -35,6 +36,26 @@ def test_recall_a_wrapped_label_is_reassembled():
     assert _best(merged, "Magic Expand") >= 95, (
         f"'Magic Expand' was not recovered from its parts: {_texts(merged)}"
     )
+
+
+def test_same_line_words_are_reassembled_for_vscode_open_folder():
+    reads = [
+        OcrRead(text="Open", bbox=(154, 463, 197, 480)),
+        OcrRead(text="Folder...", bbox=(204, 462, 264, 476)),
+    ]
+
+    assert "Open Folder..." in _texts(reassemble(reads))
+
+
+def test_same_line_words_do_not_merge_across_a_large_horizontal_gap():
+    height = 20
+    gap = round(MERGE_HORIZONTAL_GAP * height) + 2
+    reads = [
+        OcrRead(text="Left", bbox=(10, 100, 50, 100 + height)),
+        OcrRead(text="Right", bbox=(50 + gap, 100, 100 + gap, 100 + height)),
+    ]
+
+    assert "Left Right" not in _texts(reassemble(reads))
 
 
 def test_the_original_parts_are_still_offered():

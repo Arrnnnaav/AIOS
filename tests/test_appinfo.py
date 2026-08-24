@@ -42,6 +42,35 @@ def test_app_info_is_none_when_no_window_matches():
     assert app_info_for_window(".*NoSuchWindowAnywhere12345.*") is None
 
 
+def test_expected_app_id_skips_a_title_collision(monkeypatch):
+    from ghostcursor.perception import appinfo
+
+    monkeypatch.setattr(appinfo, "windows_matching", lambda _: [101, 202])
+    monkeypatch.setattr(
+        appinfo.win32process,
+        "GetWindowThreadProcessId",
+        lambda hwnd: (0, hwnd),
+    )
+    monkeypatch.setattr(
+        appinfo,
+        "_exe_path_for_pid",
+        lambda pid: (
+            r"C:\Program Files\Google\Chrome\chrome.exe"
+            if pid == 101
+            else r"C:\Program Files\Microsoft VS Code\Code.exe"
+        ),
+    )
+    monkeypatch.setattr(appinfo, "_version_for", lambda path, kind: "1.0")
+
+    info = appinfo.app_info_for_window(
+        ".*Visual Studio Code.*", expected_app_id="code.exe"
+    )
+
+    assert info is not None
+    assert info.app_id == "code.exe"
+    assert info.exe_path.endswith("Code.exe")
+
+
 def test_app_info_for_a_store_app_prefers_appx_version():
     """Test that Store apps return the Appx package version, not the exe VERSIONINFO.
 

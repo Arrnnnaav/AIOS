@@ -84,6 +84,69 @@ def test_the_bar_is_not_full_screen():
         bar.destroy_bar_window(bar_hwnd)
 
 
+def test_the_bar_is_anchored_at_the_middle_right_edge():
+    bar_hwnd = bar.create_bar_window()
+    try:
+        left, top, right, bottom = win32gui.GetWindowRect(bar_hwnd)
+        vl, vt, vw, vh = dpi.virtual_screen_rect()
+        assert right == vl + vw - bar._BAR_MARGIN
+        assert abs(((top + bottom) // 2) - (vt + vh // 2)) <= 1
+    finally:
+        bar.destroy_bar_window(bar_hwnd)
+
+
+def test_compact_controls_are_stacked_vertically():
+    bar_hwnd = bar.create_bar_window()
+    try:
+        rects = [
+            win32gui.GetWindowRect(bar._bar_button_hwnd[bar_hwnd][control_id])
+            for control_id in (bar.ID_STOP, bar.ID_PAUSE, bar.ID_ASK)
+        ]
+        assert rects[0][0] == rects[1][0] == rects[2][0]
+        assert rects[0][1] < rects[1][1] < rects[2][1]
+    finally:
+        bar.destroy_bar_window(bar_hwnd)
+
+
+def test_ask_panel_expands_the_bar_and_keeps_the_input_visible():
+    bar_hwnd = bar.create_bar_window()
+    try:
+        compact = win32gui.GetWindowRect(bar_hwnd)
+        bar.open_panel(bar_hwnd)
+        expanded = win32gui.GetWindowRect(bar_hwnd)
+        edit = bar._panel_hwnd[bar_hwnd]
+        label = bar._panel_label_hwnd[bar_hwnd]
+        edit_rect = win32gui.GetWindowRect(edit)
+        label_rect = win32gui.GetWindowRect(label)
+        ask_rect = win32gui.GetWindowRect(
+            bar._bar_button_hwnd[bar_hwnd][bar.ID_ASK]
+        )
+        edit_style = win32gui.GetWindowLong(edit, win32con.GWL_STYLE)
+
+        assert expanded[2] - expanded[0] == bar._BAR_EXPANDED_WIDTH
+        assert expanded[3] - expanded[1] == bar._BAR_EXPANDED_HEIGHT
+        assert expanded[2] - expanded[0] > compact[2] - compact[0]
+        assert expanded[3] - expanded[1] > compact[3] - compact[1]
+        assert win32gui.IsWindowVisible(edit)
+        assert win32gui.IsWindowVisible(label)
+        assert win32gui.GetWindowText(label) == "Type your goal:"
+        assert expanded[0] <= edit_rect[0] < edit_rect[2] <= expanded[2]
+        assert expanded[1] <= edit_rect[1] < edit_rect[3] <= expanded[3]
+        assert expanded[1] <= label_rect[1] < label_rect[3] <= expanded[3]
+        assert edit_rect[2] <= ask_rect[0], "prompt overlaps the safety-control rail"
+        assert edit_style & win32con.ES_MULTILINE
+        assert edit_style & win32con.WS_VSCROLL
+
+        bar.close_panel(bar_hwnd)
+        restored = win32gui.GetWindowRect(bar_hwnd)
+        assert restored[2] - restored[0] == bar._BAR_WIDTH
+        assert restored[3] - restored[1] == bar._BAR_HEIGHT
+        assert restored[2] == compact[2] == expanded[2]
+        assert abs(((restored[1] + restored[3]) // 2) - ((compact[1] + compact[3]) // 2)) <= 1
+    finally:
+        bar.destroy_bar_window(bar_hwnd)
+
+
 def test_clicking_stop_sets_the_request_without_taking_focus():
     """The button must work by mouse alone. Focus is not required, and taking
     it would pull the user out of the app they are being taught."""

@@ -1,0 +1,10 @@
+{
+  "pack_id": "demo",
+  "display_name": "Demo",
+  "executable_names": ["demo.exe"],
+  "title_patterns": ["Demo"],
+  "version_constraints": [],
+  "recipe_directory": "demo",
+  "intent_ids": [],
+  "unexpected": true
+}

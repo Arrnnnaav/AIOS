@@ -1,5 +1,84 @@
 # CLAUDE.md
 
+## Current build status
+
+The Open Track submission-readiness milestone is active on
+`submission/open-track`. The trusted planner, strict application packs,
+bounded screen-aware hint inference, synthetic demo, foreground watcher,
+perception health instrumentation, executable-bounded VS Code grounding, and
+vertical Ask control rail are implemented.
+
+`OPEN_FOLDER` points at the Welcome page's `Open Folder...` action. The user
+handles the native folder picker, and title verification supports full-path
+goals, case-insensitive whitespace-normalized matching, degenerate-reference
+fallback, and a 20-second post-action timeout. The workflow passed three
+consecutive real-desktop runs. Ask passed visual, text-entry, submitted-goal,
+trusted replanning, and completion validation. Installer, tray, startup,
+web retrieval, and additional application packs remain deferred. The
+logging-only watcher is available as `py -3.12 -m ghostcursor.daemon`.
+
+The deterministic planner aliases `VS Code`, `VSCode`, and
+`Visual Studio Code` to the same `OPEN_FOLDER` intent. The documented goal
+`Open a folder in VS Code` is a 0.95 exact strong phrase and must continue to
+load the trusted recipe under `MODEL_UNAVAILABLE_FALLBACK` when Ollama times
+out or is offline. Do not rely on a folder name containing `vscode` to prove
+this route; the regression fixture deliberately uses an unrelated folder
+name.
+
+Real VS Code perception is intentionally narrow for the validated workflow.
+`perception_walker_for("code.exe")` selects `uia.iter_vscode_elements`, which
+uses provider-side exact queries for `Open Folder` name variants and never performs
+the generic full Electron descendant walk. A UIA provider miss returns an
+empty successful observation so executable-bounded OCR can escalate. OCR
+same-line reassembly is required because Windows reads `Open` and `Folder...`
+as separate words; it does not lower the 95 grounding floor. Keep this restriction
+aligned with the trusted VS Code pack; broaden it only when a new
+reviewed VS Code recipe needs another target. Progress stages must be written
+before potentially blocking calls so health logs do not misidentify a blocked
+walk as a focus stall.
+
+Executable recipe targets are identity-bounded. `app_info_for_window()` may
+accept `expected_app_id`; `perception_hwnd_source_for()` supplies the same
+executable filter to the worker and focus guard; and the VS Code walker accepts
+only `Code.exe`. Never weaken this to title-only matching: titles are free text
+and collide with browser tabs and terminals. Missing trusted identity must fail
+before overlay creation.
+
+Current release work is repository stabilization. Keep whole-file concern
+commits, preserve raw hang dumps only under ignored `.artifacts/hang-audit/`,
+and record sanitized reachability findings in `DECISIONS.md`. Exact commands
+for hermetic, interactive, pixel, and hung test lanes must be added here in the
+same change that creates those categories. Do not run two desktop/UIA sessions
+at once or run a hung-window lane beside anything else.
+
+Release policy is locked: feature development ends 30 August at 20:00 IST;
+31 August permits fresh-clone validation and release-blocking fixes only; code
+freezes at 31 August end-of-day; 1 September is upload/paste/verify only; and
+2 September is an emergency link/upload/form buffer with no code changes.
+
+After every finalized slice, update `DECISIONS.md`, `FLOW.md`, and this file,
+independently review the documentation against the implementation, run the
+relevant regression tests, refresh Graphify when available, and commit the
+slice before starting the next mutation.
+
+The control surface is a vertical middle-right rail, not a horizontal toolbar.
+Compact geometry is 148×192px with Stop/Pause/Ask stacked vertically and
+status below. Ask preserves the right edge and centre, expands left to
+520×260px, and adds a 372px prompt column containing `Type your goal:` and a
+multiline scrollable EDIT. Never create panel children outside the current
+parent rectangle: Win32 clips them even though their HWNDs exist. The prompt
+must not overlap the right safety rail; closing/submitting restores compact
+geometry. Bar/runtime integration is 32 passing tests.
+
+Real VS Code open-folder acceptance passed 3 of 3 consecutive successful
+runs; that workflow gate is closed. The expanded Ask prompt has been visually
+validated on a real desktop: its label, multiline input, Submit, status,
+Stop, and Pause are visible without clipping or overlap. The user then entered
+and submitted the goal; the shared planner launched a fresh trusted VS Code
+tour and it reached `Tour complete.` The Ask behavioral gate is closed. Keep
+the `Ask received` console acknowledgement before nested `run_tour()` because
+the nested control-bar session may remain alive until its timeout.
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Knowledge Graph (Graphify)

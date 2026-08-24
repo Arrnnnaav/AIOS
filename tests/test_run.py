@@ -14,7 +14,7 @@ import pytest
 
 import ghostcursor.run as run_module
 from ghostcursor.overlay import window
-from ghostcursor.perception import appinfo
+from ghostcursor.perception import appinfo, uia
 from ghostcursor.perception.uia import Element
 from ghostcursor.reasoning import grounding
 from ghostcursor.reasoning.schema import (
@@ -27,7 +27,12 @@ from ghostcursor.reasoning.schema import (
     VerificationKind,
     VerificationRule,
 )
-from ghostcursor.run import key_was_pressed, make_grounder, should_poll_space
+from ghostcursor.run import (
+    confirmation_focus_is_safe,
+    key_was_pressed,
+    make_grounder,
+    should_poll_space,
+)
 
 EN = [Element("Export", "Button", "1001", (10, 10, 110, 40))]
 
@@ -97,6 +102,18 @@ def test_should_poll_space_false_for_a_non_user_confirms_step():
 
 def test_should_poll_space_false_when_there_is_no_current_step():
     assert should_poll_space(None) is False
+
+
+def test_space_requires_the_target_hwnd_to_own_foreground(monkeypatch):
+    monkeypatch.setattr(run_module.win32gui, "GetForegroundWindow", lambda: 42)
+    assert confirmation_focus_is_safe(42, 99) is True
+    assert confirmation_focus_is_safe(43, 99) is False
+    assert confirmation_focus_is_safe(42, 42) is False
+
+
+def test_space_is_blocked_when_target_hwnd_is_unknown(monkeypatch):
+    monkeypatch.setattr(run_module.win32gui, "GetForegroundWindow", lambda: 42)
+    assert confirmation_focus_is_safe(0, None) is False
 
 
 # --- finding 2: the live grounder promotes after a successful grounding -----
@@ -189,6 +206,27 @@ def test_make_grounder_only_reports_a_persist_failure_once(monkeypatch, capsys):
 
 def _fake_recipe():
     return Recipe(app_id="app", intent="do a thing", steps=[])
+
+
+def test_vscode_recipe_selects_the_targeted_perception_walker():
+    assert run_module.perception_walker_for("code.exe") is uia.iter_vscode_elements
+    assert run_module.perception_walker_for("CODE.EXE") is uia.iter_vscode_elements
+    assert run_module.perception_walker_for("synthetic") is uia.iter_elements
+
+
+def test_executable_recipe_selects_an_identity_bounded_hwnd_source(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        uia,
+        "first_matching_hwnd_for_executable",
+        lambda title, exe: calls.append((title, exe)) or 4242,
+    )
+
+    source = run_module.perception_hwnd_source_for("code.exe")
+
+    assert source(".*Visual Studio Code.*") == 4242
+    assert calls == [(".*Visual Studio Code.*", "code.exe")]
+    assert run_module.perception_hwnd_source_for("synthetic") is uia.first_matching_hwnd
 
 
 class _FakeAppInfo:

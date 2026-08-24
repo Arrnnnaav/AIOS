@@ -6,7 +6,25 @@ the bottom shows exactly what's being built/modified right now.
 
 ---
 
-## Current milestone: Wrong-action feedback  ✅ built — see "You are here"
+## Current milestone: Open Track submission readiness — Step 1 in progress
+
+The implementation is isolated on `submission/open-track`. Three concern
+commits preserve the trusted planner/packs/inference foundation, the
+perception/VS Code runtime, and the vertical Ask control rail. Tests and
+documentation are the final concern commit before the bounded hang audit and
+`pre-readiness-audit` tag.
+
+The real `Open a folder in VS Code` workflow is complete: natural-language
+planning resolves `OPEN_FOLDER`, the `Code.exe`-bounded walker looks only for
+Welcome-page `Open Folder` variants, OCR can reassemble the split label, the
+human handles the native picker, and normalized title verification confirms
+the opened workspace. It passed three consecutive desktop runs. Ask also
+passed its visual and submitted-goal round trip.
+
+The next gate is repository readiness, not feature expansion: classify the
+test-suite stall, separate hermetic/interactive/pixel/hung lanes, run each with
+honest prerequisites, and certify a fresh reproducible baseline. Open Terminal
+may begin only after that baseline is green.
 
 ## Previous milestone: Chromium warm-up  ✅ complete
 
@@ -149,6 +167,82 @@ process boundaries), and deleting the database file returned behaviour to
 rung 2 — see the persistence call graph above.
 
 ### You are here
+
+The current completed slice is the perception-health foundation for real-app
+validation. `PerceptionService` records generation-aware progress primitives:
+iteration start, last completed iteration, last published observation, current
+stage, heartbeat, and last error. `WorkerHealth` reads that progress without
+touching COM objects. A two-second gap is diagnostic `SLOW`; a twelve-second
+gap permits one restart. `PerceptionService.restart()` retires the old worker
+generation without joining it, starts a replacement, and leaves the existing
+guided-tour state untouched. The old generation is prevented from publishing
+after retirement. A terminal tour stops the service before health checks can
+report stale worker failures.
+
+The perception-health slice is complete. The current completed slice adds
+`ghostcursor.packs.registry.PackRegistry`. It loads strict manifests from
+`ghostcursor/packs/manifests`, resolves recipes beneath
+`ghostcursor/packs/recipes`, rejects unknown manifest fields, invalid patterns,
+symlinks, outside paths, and schema-invalid recipes, then exposes primitive
+`match_values()` and HWND-based `match_window()` matching. The initial packs are
+Synthetic Export, Notepad, and an empty VS Code placeholder. Matching is
+metadata-only; no model or pack can perform input.
+
+The current implementation slice adds the VS Code `OPEN_FOLDER` intent to the
+trusted planner and pack registry. `ghostcursor/reasoning/vscode.py` extracts
+the final path segment from a goal, casefolds and whitespace-normalizes it, and
+verifies a changed VS Code workspace title. A short or empty reference falls
+back to a changed valid VS Code title. The recipe points directly at the
+Welcome page's visible `Open Folder...` action, leaves the native folder picker
+to the user, and opts into a 20-second post-action
+verification timeout. The loop starts that timeout only after action evidence
+such as focus movement, element change, or title change.
+
+The compact-menu desktop exposes no visible/UIA `File` item. The bounded VS
+Code query therefore looks only for `Open Folder` name variants. If UIA misses,
+the `Code.exe`-bounded capture goes to Windows OCR; same-line word reassembly
+turns the measured `Open` and `Folder...` reads into one exact candidate while
+retaining the original words and the 95 grounding floor.
+
+The implementation is unit-tested. Real VS Code desktop validation is the
+remaining acceptance gate for this slice. The foreground watcher, tray UI,
+installer, and web retrieval remain deferred until that gate is exercised.
+
+The current implementation also adds `ghostcursor.daemon`. Its
+`ForegroundWatcher.poll_once()` reads a foreground identity, asks
+`PackRegistry.match_values_with_reason()` for a pack and diagnostic reason, and
+logs only identity metadata. Unchanged foreground identities are suppressed.
+Successful matches log pack activation; misses log the executable, a title
+summary capped at 60 characters, and whether executable/title matching failed.
+The daemon is manually launched and does not start tours or create UI.
+
+Automated implementation status: worker health, packs, VS Code title
+verification, planner routing, timeout sequencing, and daemon logging are
+covered by the focused and non-hung regression set. The final real-desktop
+transition is intentionally not inferred from those tests: VS Code must be
+open and the user must select a folder for three consecutive successful runs.
+The current implementation live-grounded and rendered the Welcome-page action.
+Three consecutive complete user-driven runs selected a folder and reached
+`Tour complete.`, closing the VS Code open-folder real-desktop gate.
+
+The control surface now starts as a 148×192px vertical rail at the middle-right
+edge: Stop, Pause, Ask, then status. Ask is accepted only in
+idle/done/failed state as before. `open_panel()` keeps the same right edge and
+vertical centre, expands the parent leftward to 520×260px, moves the safety
+controls into the fixed right rail, and creates a 372px prompt column on the
+left. That column contains a label and large multiline EDIT child. Submit
+stores the goal for the existing planner path; `close_panel()` destroys the
+prompt children and restores the compact rail. Stop and Pause stay visible.
+
+The VS Code open-folder desktop acceptance gate is now **3 of 3 consecutive
+successful runs** and complete. The vertical rail's Ask card has also passed
+real-desktop visual validation: it expands left and visibly exposes its label,
+multiline goal input, Submit, status, Stop, and Pause without clipping. The next
+goal was entered and submitted successfully; the shared planner launched a
+fresh trusted VS Code tour and that tour reached `Tour complete.` The Ask
+end-to-end behavioral gate is therefore complete. Ask now prints its received
+goal and planner status before entering the nested tour so the handoff is
+visible immediately in console logs.
 **Wrong-action feedback is built** (D037). The perception worker
 (`ghostcursor/perception/service.py`) now samples focus in `focus_slice_s`
 (default 0.05s) slices during its inter-walk wait, via
@@ -556,3 +650,10 @@ processes against a scratch database: run 1 grounded at rung 2 (name match,
    entity-scoped memory, Tauri packaging
 See the build doc's checklist for the exhaustive list; this file grows a
 section per milestone as they're started.
+# Goal-to-tour flow
+
+`--goal` and the control-bar Ask action share the planner contract: classify,
+resolve a trusted schema-valid recipe, require an explicit target except for
+the canonical Synthetic Export target, then enter the observe/act/verify tour.
+An active tour is never replaced by Ask. The bar remains optional at runtime,
+while ESC remains polled even when bar creation or focus acquisition fails.

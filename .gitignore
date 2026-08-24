@@ -26,3 +26,28 @@ kb.sqlite*
 
 # pytest tmp_path scratch when TMPDIR is redirected into the repo
 .tmp_pytest/
+/.tmp/
+/pytest-temp-*/
+/pytest-plan-*/
+/pytest_tmp/
+/tmp*/
+
+# Local diagnostic and generated-analysis output. Sanitized findings belong
+# in DECISIONS.md; raw stacks and regenerated graphs stay off the public tree.
+/.artifacts/
+/graphify-out/
+
+# Local source extracts used during design review; canonical context remains
+# in the tracked Word document and repository documentation.
+/My_idea.md
+/build_doc.txt
+/.tmp/
+/pytest-temp-*/
+/pytest-plan-*/
+/pytest_tmp/
+/tmp*/
+
+# Local diagnostic and generated-analysis output. Sanitized findings belong
+# in DECISIONS.md; raw stacks and regenerated graphs stay off the public tree.
+/.artifacts/
+/graphify-out/
