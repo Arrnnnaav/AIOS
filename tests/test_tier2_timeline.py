@@ -364,6 +364,10 @@ def test_the_worker_stops_reading_for_a_step_the_tour_has_left(tmp_path, monkeyp
     # Space is polled only while a step is actually awaiting a confirmation
     # (`should_poll_space`), so this advances step 1 and nothing else.
     monkeypatch.setattr(run_module, "key_was_pressed", lambda vk: True)
+    # HWND focus arbitration has its own tests. This timeline uses a scripted
+    # service with no real foreground window, so make that independent safety
+    # precondition explicit instead of relying on an ambient desktop match.
+    monkeypatch.setattr(run_module, "confirmation_focus_is_safe", lambda *a: True)
 
     ocr_element = Element(
         name="Export",

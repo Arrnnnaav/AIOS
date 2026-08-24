@@ -127,6 +127,7 @@ class _WarmupHarness:
         self._ground_calls = 0
         self._thread_exc: BaseException | None = None
         self._started = False
+        self._stop = threading.Event()
         #: Set by `target()`'s `finally`, so a CLEAN `run_tour` return (DONE,
         #: FAILED, health.check() ending the tour, or the deadline falling
         #: through) is visible to `tick()` too -- not just an exception.
@@ -156,8 +157,16 @@ class _WarmupHarness:
         monkeypatch.setattr(
             service_module, "PerceptionService", lambda *a, **k: self.service
         )
+        def worker_only_hwnd_source(_title_re):
+            raise AssertionError("the HWND source ran on run_tour's control thread")
+
+        monkeypatch.setattr(
+            run_module,
+            "perception_hwnd_source_for",
+            lambda _app_id: worker_only_hwnd_source,
+        )
         monkeypatch.setattr(appinfo, "app_info_for_window", lambda _t: None)
-        monkeypatch.setattr(run_module, "escape_pressed", lambda: False)
+        monkeypatch.setattr(run_module, "escape_pressed", self._stop.is_set)
         monkeypatch.setattr(run_module, "key_was_pressed", lambda vk: False)
         monkeypatch.setattr("builtins.print", lambda *a, **k: None)
         monkeypatch.setattr(
@@ -263,13 +272,32 @@ class _WarmupHarness:
             self._go.put(True, timeout=timeout)
         raise AssertionError(f"grounder not reached in {max_pumps} outer iterations")
 
+    def close(self, timeout: float = 5.0) -> None:
+        if not self._started:
+            return
+        self._stop.set()
+        try:
+            self._go.put_nowait(True)
+        except queue.Full:
+            pass
+        self._thread.join(timeout=timeout)
+        if self._thread.is_alive():
+            raise AssertionError("run_tour did not stop during warm-up harness teardown")
+
 
 @pytest.fixture
 def warmup_harness(monkeypatch, tmp_path):
-    def factory(budget_s: float, hwnd: int) -> _WarmupHarness:
-        return _WarmupHarness(budget_s, hwnd, monkeypatch, tmp_path)
+    harnesses = []
 
-    return factory
+    def factory(budget_s: float, hwnd: int) -> _WarmupHarness:
+        harness = _WarmupHarness(budget_s, hwnd, monkeypatch, tmp_path)
+        harnesses.append(harness)
+        return harness
+
+    yield factory
+
+    for harness in harnesses:
+        harness.close()
 
 
 def test_default_budget_flows_through_to_run_tour():

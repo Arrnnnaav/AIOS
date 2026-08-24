@@ -69,22 +69,26 @@ title before printing `Tour complete.`
 
 ## Tests
 
-Focused submission-path checks currently used while the repository is being
-split into hermetic, interactive, pixel, and hung-window lanes:
+The suite is split by environment so a deliberately hung window or a slow
+pixel/UIA walk cannot contaminate the fast lane:
 
 ```powershell
-py -3.12 -m pytest tests\test_planner.py tests\test_packs.py `
-  tests\test_screen_hint.py tests\test_daemon.py `
-  tests\test_synthetic_export.py -q -p no:cacheprovider
+py -3.12 -m pytest tests -m "not interactive and not pixel and not hung" `
+  --basetemp=.tmp\pytest-hermetic -p no:cacheprovider
 
-py -3.12 -m pytest tests\test_bar.py tests\test_run.py `
-  -q -p no:cacheprovider
+py -3.12 -m pytest tests -m interactive `
+  --basetemp=.tmp\pytest-interactive -p no:cacheprovider
+
+py -3.12 -m pytest tests -m pixel `
+  --basetemp=.tmp\pytest-pixel -p no:cacheprovider
+py -3.12 -m tests.test_overlay
+py -3.12 -m tests.test_end_to_end
 ```
 
 Desktop/UIA and pixel tests require an interactive Windows desktop. Hung-window
-tests create a deliberately non-pumping window and must run alone. Exact
-reproducible lane commands will replace the temporary focused commands during
-the submission-readiness gate.
+tests create a deliberately non-pumping window and must run one file at a time,
+with no other test session active. The exact hung-lane commands are documented
+in `CLAUDE.md`.
 
 ## Honest scope
 

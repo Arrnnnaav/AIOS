@@ -6,13 +6,12 @@ the bottom shows exactly what's being built/modified right now.
 
 ---
 
-## Current milestone: Open Track submission readiness — Step 1 in progress
+## Current milestone: Open Track submission readiness — repository gate green
 
-The implementation is isolated on `submission/open-track`. Three concern
+The implementation is isolated on `submission/open-track`. Four concern
 commits preserve the trusted planner/packs/inference foundation, the
-perception/VS Code runtime, and the vertical Ask control rail. Tests and
-documentation are the final concern commit before the bounded hang audit and
-`pre-readiness-audit` tag.
+perception/VS Code runtime, the vertical Ask control rail, and its tests/docs.
+That baseline is tagged `pre-readiness-audit`.
 
 The real `Open a folder in VS Code` workflow is complete: natural-language
 planning resolves `OPEN_FOLDER`, the `Code.exe`-bounded walker looks only for
@@ -21,10 +20,22 @@ human handles the native picker, and normalized title verification confirms
 the opened workspace. It passed three consecutive desktop runs. Ask also
 passed its visual and submitted-goal round trip.
 
-The next gate is repository readiness, not feature expansion: classify the
-test-suite stall, separate hermetic/interactive/pixel/hung lanes, run each with
-honest prerequisites, and certify a fresh reproducible baseline. Open Terminal
-may begin only after that baseline is green.
+The test-suite stall is classified and fixed. After the perception worker
+starts, the tour/control thread performs no HWND discovery; target identity
+arrives only through a completed worker observation, so SPACE fails closed
+until it exists. The pre-overlay identity lookup remains synchronous by design
+and cannot strand an overlay or control rail. Two tour
+test harnesses now use bounded waits and deterministic thread teardown. A
+per-module audit ran every non-hung pytest module under a 90-second ceiling:
+all collected modules passed, including the 63-second desktop/pixel tour.
+`pytest.ini` plus `tests/conftest.py` now separate hermetic, interactive, pixel,
+and intentionally hung lanes. An independent D032 review moved the live-window
+tick-ceiling module out of hermetic, closed a constructor-time harness leak,
+and added positive coverage for worker-HWND SPACE confirmation. Final lane
+runs also structurally suppress real control-bar creation in unmarked tests.
+They passed: hermetic 341 twice, interactive 53, pytest pixel 3, standalone
+pixels 16/16 and 8/8, and isolated
+hung modules 4 + 2 + 7. Open Terminal feasibility is the next gate.
 
 ## Previous milestone: Chromium warm-up  ✅ complete
 
@@ -136,7 +147,7 @@ run.main()
 | `tests/test_overlay.py` | 16 checks: styles, click-through, transparency, hint placement, dimmed AND inferred ring colours, stale pixels, teardown |
 | `tests/test_end_to_end.py` | 8 checks: perception -> coordinate -> ring lands on the window, off-screen rejection |
 | `tests/uia_app.py` | real Win32 window with known AutomationIds, used as deterministic grounding target |
-| `ghostcursor/inference/` | empty; later milestones |
+| `ghostcursor/inference/screen_hint.py` | bounded Qwen choice among live, recipe-approved UIA targets with deterministic fallback |
 
 **A hung window is a desktop-wide side effect.** Any UIA enumeration that
 touches a non-pumping window pays the SendMessage timeout, no matter which
@@ -148,18 +159,14 @@ that outlives its test turns that 16x tax permanent. Two "flaky" failures in
 this repo were exactly this and nothing else.
 
 ### Verification status
-```
-python -m tests.test_overlay         16/16 pass
-python -m tests.test_end_to_end       8/8  pass
-python -m pytest tests/ (fast)      280 passed in 22s   excludes the three slow files below
-python -m pytest tests/test_run_threaded.py \
-                tests/test_perception_service_hung.py \
-                tests/test_hung_window.py            13 passed in 128s
-```
-The first two (pixel harnesses) have their own runner and are not collected by
-pytest. The three files in the second group each park a real non-pumping
-window on the desktop, which is why they are slow and why they must not run
-concurrently with anything else — see the note under Files. Also confirmed against a real Notepad window: 440 ring pixels, 49x49
+
+The repository now has four executable lanes: hermetic, interactive Win32/UIA,
+pixel, and intentionally hung-window. Exact commands are in `CLAUDE.md` and
+`README.md`; lane ownership is centralized in `tests/conftest.py`. The bounded
+module audit completed with every collected non-hung module green and no
+timeouts. The standalone pixel scripts remain self-runner modules and are not
+collected by pytest. The three hung files each park a real non-pumping window
+and must run alone — see the note under Files. Also confirmed against a real Notepad window: 440 ring pixels, 49x49
 diameter, centroid within 1px of the requested coordinate. And confirmed
 against a real persistence run: a UI AutomationId learned by one process was
 reused by a completely separate later process (rung 2 -> rung 1 across
@@ -204,9 +211,8 @@ the `Code.exe`-bounded capture goes to Windows OCR; same-line word reassembly
 turns the measured `Open` and `Folder...` reads into one exact candidate while
 retaining the original words and the 95 grounding floor.
 
-The implementation is unit-tested. Real VS Code desktop validation is the
-remaining acceptance gate for this slice. The foreground watcher, tray UI,
-installer, and web retrieval remain deferred until that gate is exercised.
+The implementation and real VS Code desktop path are validated. The foreground
+watcher is logging-only; tray UI, installer, and web retrieval remain deferred.
 
 The current implementation also adds `ghostcursor.daemon`. Its
 `ForegroundWatcher.poll_once()` reads a foreground identity, asks

@@ -88,9 +88,16 @@ class WorkerHealth:
             state = "SLOW"
         else:
             state = "HEALTHY"
+        # Some bounded test/services expose progress without the legacy
+        # service-level counter, and some expose only the legacy counter.
+        # Nested getattr defaults are evaluated eagerly, so using
+        # ``getattr(progress, "heartbeat", self.service.heartbeat)`` crashes
+        # even when progress already has the value. Resolve the fallback in
+        # two explicit steps instead.
+        service_heartbeat = getattr(self.service, "heartbeat", 0)
+        heartbeat = getattr(progress, "heartbeat", service_heartbeat)
         if state != self._last_state:
             stage = getattr(progress, "stage", "unknown") if progress else "unknown"
-            heartbeat = getattr(progress, "heartbeat", self.service.heartbeat)
             self.log(
                 f"Ghost Cursor: perception health {state.lower()} "
                 f"(stage {stage}, age {progress_age:.1f}s, heartbeat {heartbeat})"
@@ -114,7 +121,7 @@ class WorkerHealth:
         self.log(
             f"Ghost Cursor: perception worker {cause} "
             f"(stage {getattr(progress, 'stage', 'unknown')}, "
-            f"heartbeat {getattr(progress, 'heartbeat', self.service.heartbeat)})"
+            f"heartbeat {heartbeat})"
         )
 
         if self._restarted:

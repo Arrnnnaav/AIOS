@@ -2139,3 +2139,42 @@ is an emergency link/upload/form buffer with no code changes.
 submission risks that outrank feature breadth. Branch isolation and an
 explicit freeze ensure every failure path returns to the already validated
 Open Folder workflow instead of creating an unfinished release.
+
+## D056 — HWND discovery is worker-only and test lanes are environment-isolated
+
+**Decision.** After the perception service starts, the control thread never
+calls the HWND source. `run_tour()` initializes the focus-arbitration handle to
+zero and updates it only from a completed `Observation.target_hwnd`. SPACE and
+focus restoration therefore fail closed until the worker has identified the
+trusted target. Test ownership is explicit in `tests/conftest.py`: fast
+hermetic, interactive Win32/UIA, pixel, and intentionally hung-window lanes.
+The three hung modules run one file at a time and never beside another test
+session. The two standalone pixel scripts keep their own runners.
+
+**Finding.** Preserved faulthandler dumps showed two distinct causes. One was
+product-reachable: `run_tour()` called `target_hwnd_source(title_re)` directly
+on the control thread, and Windows enumeration blocked inside
+`uia.windows_matching`; this could freeze ESC and the control rail. The other
+was harness-only: `test_wrong_action_tour` waited forever on `Queue.get()` after
+its background tour exited, while successful wrong-action and warm-up harnesses
+left daemon threads parked. The drivers now bound every wait, surface early
+thread exit/exception, and join during fixture teardown. Worker-health logging
+also resolves its legacy heartbeat fallback without an eagerly evaluated
+attribute access.
+
+**Evidence.** The focused harness/health regression set passed 19 tests; the
+real-HWND warm-up lane passed 2 tests; the tier-2 timeline and tick ceiling are
+green with desktop-independent preconditions. A fresh per-module audit gave
+every collected non-hung pytest module a 90-second ceiling. Every module passed
+and none timed out; the longest was the real desktop/pixel guided tour at about
+63 seconds. Independent D032 review then found that `test_tick_latency.py`
+still owned real windows, so it moved from hermetic to interactive; it also
+closed constructor-time harness ownership, added a positive integration test
+proving a published worker HWND enables foreground-safe SPACE, and found real
+control-bar creation leaking through otherwise faked tour tests. An autouse
+fixture now disables real bar creation only for unmarked hermetic tests; the
+interactive bar suite remains real. The final documented lanes then passed
+independently: hermetic **341 tests twice** (20.50s and 20.25s), interactive
+53, pytest pixel 3,
+standalone pixels 16/16 and 8/8, and the three isolated hung modules 4, 2, and
+7. Raw logs remain under ignored `.artifacts/hang-audit/`.

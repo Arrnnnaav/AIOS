@@ -38,6 +38,7 @@ class _SteppableService:
 
     def __init__(self, clock, target_id):
         self._clock = clock
+        self.target_hwnd = 0
         self._element = Element(
             name="Export",
             control_type="Button",
@@ -76,6 +77,7 @@ class _SteppableService:
             observed_at=now,
             focus_visited=self.focus_visited,
             ok=True,
+            target_hwnd=self.target_hwnd,
         )
 
 
@@ -85,22 +87,40 @@ class _TourHarness:
 
     REFRESH_SECONDS = 0.5
 
-    def __init__(self, monkeypatch, tmp_path, target_id):
+    def __init__(self, monkeypatch, tmp_path, target_id, target_hwnd=0):
         import ghostcursor.run as run_module
         from ghostcursor.perception import appinfo, service as service_module
 
         self.printed: list[str] = []
+        self._stop = threading.Event()
+        self._exited = threading.Event()
+        self._error: BaseException | None = None
+        self._started = False
+        self.press_space = False
+        self.space_polls = 0
         monkeypatch.setattr(
             "builtins.print",
             lambda *a, **k: self.printed.append(" ".join(map(str, a))),
         )
         _fake_overlay(monkeypatch)
         monkeypatch.setattr(appinfo, "app_info_for_window", lambda _t: None)
-        monkeypatch.setattr(run_module, "escape_pressed", lambda: False)
-        monkeypatch.setattr(run_module, "key_was_pressed", lambda vk: False)
+        monkeypatch.setattr(run_module, "escape_pressed", self._stop.is_set)
+        def key_was_pressed(vk):
+            if vk == run_module.win32con.VK_SPACE:
+                self.space_polls += 1
+                return self.press_space
+            return False
+
+        monkeypatch.setattr(run_module, "key_was_pressed", key_was_pressed)
 
         self._clock = FakeClock()
         self._service = _SteppableService(self._clock, target_id)
+        self._service.target_hwnd = target_hwnd
+        monkeypatch.setattr(
+            run_module.win32gui,
+            "GetForegroundWindow",
+            lambda: self._service.target_hwnd,
+        )
         monkeypatch.setattr(
             service_module, "PerceptionService", lambda *a, **k: self._service
         )
@@ -113,34 +133,78 @@ class _TourHarness:
             self._ready_q.put(None)
             self._advance_q.get()
 
+        def target():
+            try:
+                run_module.run_tour(
+                    recipe_path=_recipe_file(tmp_path),
+                    title_re=".*app.*",
+                    seconds=3600.0,
+                    clock=self._clock,
+                    sleeper=sleeper,
+                )
+            except BaseException as exc:  # surfaced by _wait_ready, not lost in a daemon
+                self._error = exc
+            finally:
+                self._exited.set()
+
         self._thread = threading.Thread(
-            target=run_module.run_tour,
-            kwargs=dict(
-                recipe_path=_recipe_file(tmp_path),
-                title_re=".*app.*",
-                seconds=3600.0,
-                clock=self._clock,
-                sleeper=sleeper,
-            ),
+            target=target,
             daemon=True,
         )
+    def start(self):
+        self._started = True
         self._thread.start()
         # Wait for the first tick (IDLE -> OBSERVING) to complete and the
         # loop to park in `sleeper`, ready for the next `tick()`.
-        self._ready_q.get()
+        self._wait_ready()
 
     def publish_observation(self, focus_visited=()):
         self._service.focus_visited = focus_visited
 
+    def _wait_ready(self, timeout: float = 5.0):
+        try:
+            self._ready_q.get(timeout=timeout)
+        except queue.Empty:
+            if self._error is not None:
+                raise AssertionError("run_tour crashed in the harness") from self._error
+            if self._exited.is_set():
+                raise AssertionError("run_tour exited before the requested harness tick")
+            raise AssertionError(f"run_tour did not reach sleeper() within {timeout:g}s")
+
     def tick(self):
         self._advance_q.put(None)
-        self._ready_q.get()
+        self._wait_ready()
+
+    def finish(self, timeout: float = 5.0):
+        """Release the final parked iteration and require a clean return."""
+        self._advance_q.put(None)
+        self._thread.join(timeout=timeout)
+        if self._thread.is_alive():
+            raise AssertionError(f"run_tour did not finish within {timeout:g}s")
+        if self._error is not None:
+            raise AssertionError("run_tour crashed while finishing") from self._error
+
+    def close(self):
+        """Release the parked sleeper and stop the daemon before fixture teardown."""
+        if not self._started:
+            return
+        self._stop.set()
+        self._advance_q.put(None)
+        self._thread.join(timeout=5.0)
+        if self._thread.is_alive():
+            raise AssertionError("run_tour did not stop during harness teardown")
 
 
 @pytest.fixture
 def tour_harness(monkeypatch, tmp_path):
-    def factory(target_id):
-        h = _TourHarness(monkeypatch, tmp_path, target_id)
+    harnesses = []
+
+    def factory(target_id, target_hwnd=0):
+        h = _TourHarness(monkeypatch, tmp_path, target_id, target_hwnd)
+        # Register before starting. If the initial bounded rendezvous fails,
+        # fixture teardown still owns the thread and attempts to stop it.
+        harnesses.append(h)
+        h.start()
         # Prime OBSERVING -> DECIDING -> RENDERING_HINT -> AWAITING_USER_ACTION,
         # so the caller's own `tick()` is the first one that runs the
         # wrong-action check against a real grounded target.
@@ -148,7 +212,10 @@ def tour_harness(monkeypatch, tmp_path):
             h.tick()
         return h
 
-    return factory
+    yield factory
+
+    for harness in harnesses:
+        harness.close()
 
 
 def test_a_wrong_action_prints_once_and_re_asserts_the_hint(tour_harness):
@@ -167,3 +234,23 @@ def test_no_line_when_focus_stayed_on_the_target(tour_harness):
     h.tick()
 
     assert not any("1002" in line for line in h.printed)
+
+
+def test_worker_published_hwnd_enables_space_confirmation(tour_harness):
+    """The worker-owned HWND must reach the outer SPACE arbitration path.
+
+    A zero handle fails closed, but once the published observation identifies
+    the foreground target, SPACE must still be able to confirm a
+    USER_CONFIRMS step. This protects the positive half of the worker-only
+    HWND handoff, not merely the helper predicate in isolation.
+    """
+
+    h = tour_harness(target_id="1001", target_hwnd=4242)
+    h.press_space = True
+
+    h.tick()  # AWAITING_USER_ACTION -> VERIFYING via SPACE
+    h.tick()  # VERIFYING -> OBSERVING
+    h.finish()  # OBSERVING -> DONE and return (no real control bar)
+
+    assert h.space_polls >= 1
+    assert any("Tour complete." in line for line in h.printed)

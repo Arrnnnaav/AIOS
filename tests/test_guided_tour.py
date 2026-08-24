@@ -114,7 +114,10 @@ def test_tour_grounds_renders_and_verifies_against_a_real_window():
             assert 30 <= span_y <= 70, f"ring y-span {span_y} out of range"
 
             # the user acts: the app's status label changes
-            app.click_button(BTN_EXPORT)
+            # Match the recipe's real synthetic-demo postcondition. The
+            # generic UIA fixture's click helper intentionally emits only a
+            # control-id diagnostic, not application-specific export state.
+            app.set_status("Export finished: table.csv")
             app.pump()
 
             for _ in range(3):

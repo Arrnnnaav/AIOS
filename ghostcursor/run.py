@@ -434,7 +434,13 @@ def run_tour(
             #: elements, merged into one list, which is exactly the
             #: same-instant rule the snapshot exists to keep.
             current_observation = None
-            target_hwnd = target_hwnd_source(title_re)
+            # HWND discovery belongs to the perception worker. Calling the
+            # source here duplicated the lookup on the control thread; a
+            # single hung desktop window can block Windows' enumeration and
+            # freeze ESC/the control rail before the first tick. Keep SPACE
+            # disabled until a completed worker observation supplies the
+            # trusted HWND identity.
+            target_hwnd = 0
             paused = False
             terminal_reported = False
             terminal_service_stopped = False
@@ -723,6 +729,14 @@ def run_tour(
                         continue
                     print("ESC pressed — exiting.")
                     break
+
+                # Refresh focus arbitration from the worker's published slot,
+                # never by walking/enumerating windows on this thread. A zero
+                # handle is deliberately retained as zero: confirmation must
+                # fail closed while the target cannot be identified.
+                focus_observation = service.latest()
+                if focus_observation is not None:
+                    target_hwnd = focus_observation.target_hwnd
 
                 if bar_hwnd is not None:
                     requests = bar.bar_state(bar_hwnd)

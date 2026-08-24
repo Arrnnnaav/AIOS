@@ -15,7 +15,7 @@ default `target_hwnd = 0`, and the one file that exercises a non-zero handle
 real `PerceptionService`. No test anywhere runs the production wiring end to
 end -- until this file.
 
-This test starts a REAL `PerceptionService` (real `iter_elements` walker, and
+This test starts a REAL `PerceptionService` (with a trivial element walker, and
 critically NO `hwnd_source` override, so the production default
 `first_matching_hwnd` is what actually runs) against a real Win32 window from
 `tests.uia_app.SyntheticApp`, waits for a published `Observation`, confirms
@@ -40,17 +40,9 @@ def _wait_until_pumping(app, predicate, timeout=5.0, what="condition"):
     """Poll until predicate() is truthy, pumping `app`'s message queue on
     every spin. Returns the value; fails loudly.
 
-    A same-process UIA walk (the worker thread reading a window owned by
-    THIS process's main thread) round-trips through SendMessage(WM_GETOBJECT)
-    to that window's owning thread. `SyntheticApp.pump()` on a periodic
-    sleep-and-poll cadence (as `_wait_until` elsewhere in this suite does)
-    was measured to leave the worker thread's walk blocked indefinitely --
-    the reply needs the owning thread back in its message loop essentially
-    continuously, not every few tens of milliseconds. A real target
-    application (a different process, as production always sees) pumps its
-    own queue continuously regardless of what this test does, so this
-    tight-pump requirement is specific to using an in-process synthetic
-    window and is not itself a discovery about production behaviour.
+    The synthetic window belongs to this process's main thread, so its message
+    queue must be pumped while the perception worker discovers the real HWND.
+    Real target applications pump their own queues in separate processes.
     """
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -58,9 +50,7 @@ def _wait_until_pumping(app, predicate, timeout=5.0, what="condition"):
         value = predicate()
         if value:
             return value
-        # Deliberately no sleep (or a negligible one): PumpWaitingMessages
-        # must run essentially back-to-back for the owning thread to answer
-        # WM_GETOBJECT promptly enough for the worker's walk to complete.
+        # Keep the synthetic window responsive while the worker is sampling it.
         time.sleep(0.001)
     raise AssertionError(f"{what} never became true within {timeout}s")
 
@@ -68,6 +58,10 @@ def _wait_until_pumping(app, predicate, timeout=5.0, what="condition"):
 def test_a_real_windows_handle_reaches_warmup_and_is_not_the_zero_bypass():
     """End-to-end: real window -> real PerceptionService (default
     hwnd_source) -> real Observation.target_hwnd -> real WarmUp suppresses.
+
+    The element walker is intentionally trivial here. UIA tree fidelity is
+    covered by the desktop/pixel lane; this test's contract is the HWND path,
+    and same-process UIA introduces a WM_GETOBJECT round-trip unrelated to it.
     """
     with SyntheticApp(title="GhostCursorWarmupProbe") as app:
         title_re = f".*{app.title}.*"
@@ -77,7 +71,11 @@ def test_a_real_windows_handle_reaches_warmup_and_is_not_the_zero_bypass():
         expected_hwnd = windows_matching(title_re)[0]
         assert expected_hwnd == app.hwnd
 
-        service = PerceptionService(title_re=title_re, interval_s=0.01)
+        service = PerceptionService(
+            title_re=title_re,
+            walker=lambda _title_re: [],
+            interval_s=0.01,
+        )
         service.start()
         try:
             observation = _wait_until_pumping(
@@ -122,7 +120,7 @@ def test_the_tick_loop_suppresses_tier2_through_the_real_wiring(monkeypatch, tmp
     FAKE handle hand-set on a scripted `_ScriptedService`, never a real
     `PerceptionService`. Nothing anywhere runs BOTH halves at once: the real
     tick loop, in `ghostcursor.run.run_tour`, driving a REAL `PerceptionService`
-    (default `hwnd_source=first_matching_hwnd`, real `iter_elements` walker)
+    (default `hwnd_source=first_matching_hwnd`)
     against a real Win32 window, with a target that never grounds so warm-up
     is the only thing standing between every tick and a tier-2 request.
 
@@ -226,6 +224,14 @@ def test_the_tick_loop_suppresses_tier2_through_the_real_wiring(monkeypatch, tmp
         # 25s for a Store app. Also keeps persistence (ObservationStore) out
         # of this test entirely.
         monkeypatch.setattr(appinfo, "app_info_for_window", lambda _t: None)
+        # Preserve real HWND discovery, which is the seam under test, while
+        # removing same-process UIA's unrelated WM_GETOBJECT round-trip. Real
+        # tree walking is exercised in the desktop/pixel lane.
+        monkeypatch.setattr(
+            run_module,
+            "perception_walker_for",
+            lambda _app_id: (lambda _title_re: []),
+        )
 
         # Neutralize real keyboard state so a key genuinely held down on the
         # machine running this test cannot end the tour early via ESC or

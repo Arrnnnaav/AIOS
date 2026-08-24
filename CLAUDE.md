@@ -44,12 +44,15 @@ only `Code.exe`. Never weaken this to title-only matching: titles are free text
 and collide with browser tabs and terminals. Missing trusted identity must fail
 before overlay creation.
 
-Current release work is repository stabilization. Keep whole-file concern
-commits, preserve raw hang dumps only under ignored `.artifacts/hang-audit/`,
-and record sanitized reachability findings in `DECISIONS.md`. Exact commands
-for hermetic, interactive, pixel, and hung test lanes must be added here in the
-same change that creates those categories. Do not run two desktop/UIA sessions
-at once or run a hung-window lane beside anything else.
+Repository stabilization is green through the bounded hang audit. The
+hermetic lane passed **341 tests twice consecutively**; interactive passed 53;
+pytest pixel passed 3; standalone pixel harnesses passed 16/16 and 8/8; and
+the isolated hung modules passed 4, 2, and 7 tests. Keep
+whole-file concern commits, preserve raw hang dumps only under ignored
+`.artifacts/hang-audit/`, and record sanitized reachability findings in
+`DECISIONS.md`. Test-lane ownership lives centrally in `tests/conftest.py`.
+Do not run two desktop/UIA sessions at once or run a hung-window lane beside
+anything else.
 
 Release policy is locked: feature development ends 30 August at 20:00 IST;
 31 August permits fresh-clone validation and release-blocking fixes only; code
@@ -272,24 +275,31 @@ next run, exactly as it would on a first run.
 
 ## Tests
 
-```
-python -m tests.test_overlay        # 16 checks: styles, click-through, transparency, hint
-                                    # placement, dimmed and inferred ring colours, stale
-                                    # pixels, teardown
-python -m tests.test_end_to_end     # 8 checks: perception -> coordinate -> ring on screen
-python -m pytest tests/ \
-  --ignore=tests/test_hung_window.py \
-  --ignore=tests/test_perception_service_hung.py \
-  --ignore=tests/test_run_threaded.py   # 280 checks, ~22s: everything fast (grounding,
-                                    # promotion, persistence, verification, staleness,
-                                    # worker health, OCR, the state machine, ...)
-python -m pytest tests/test_hung_window.py \
-                tests/test_perception_service_hung.py \
-                tests/test_run_threaded.py     # 13 checks, ~128s: the hung-target tests.
-                                    # Run these ALONE — never beside another pytest session
+```powershell
+# Fast, hermetic lane: no real desktop, pixels, or deliberately hung windows.
+py -3.12 -m pytest tests -m "not interactive and not pixel and not hung" `
+  --basetemp=.tmp\pytest-hermetic -p no:cacheprovider
+
+# Interactive Win32/UIA lane: run on a normal unlocked Windows desktop.
+py -3.12 -m pytest tests -m interactive `
+  --basetemp=.tmp\pytest-interactive -p no:cacheprovider
+
+# Pixel lane: do not cover or move the test windows while this runs.
+py -3.12 -m pytest tests -m pixel `
+  --basetemp=.tmp\pytest-pixel -p no:cacheprovider
+py -3.12 -m tests.test_overlay
+py -3.12 -m tests.test_end_to_end
+
+# Hung-window lane: each command runs ALONE, never beside another test session.
+py -3.12 -m pytest tests\test_hung_window.py `
+  --basetemp=.tmp\pytest-hung-window -p no:cacheprovider -o faulthandler_timeout=60
+py -3.12 -m pytest tests\test_perception_service_hung.py `
+  --basetemp=.tmp\pytest-hung-service -p no:cacheprovider -o faulthandler_timeout=60
+py -3.12 -m pytest tests\test_run_threaded.py `
+  --basetemp=.tmp\pytest-hung-runtime -p no:cacheprovider -o faulthandler_timeout=60
 ```
 
-`pytest` does not collect the two pixel harnesses above — they keep their own
+`pytest` does not collect the two standalone pixel harnesses above — they keep their own
 runner because they assert against real Win32 window state and screen pixels,
 not just Python state.
 

@@ -150,6 +150,28 @@ def test_the_heartbeat_is_logged_when_the_policy_fires():
     )
 
 
+def test_health_logging_tolerates_a_service_without_legacy_heartbeat():
+    """Progress is the current diagnostic contract; heartbeat on the service
+    itself remains only a compatibility fallback and must not be required."""
+
+    class MinimalService:
+        def is_alive(self):
+            return True
+
+        def restart(self):
+            pass
+
+    now = {"t": 0.0}
+    ladder = StalenessLadder(clock=lambda: now["t"])
+    ladder.observed()
+    logs = []
+
+    health = WorkerHealth(MinimalService(), ladder, log=logs.append)
+
+    assert health.check() is None
+    assert any("heartbeat 0" in message for message in logs)
+
+
 def test_a_two_second_gap_is_logged_slow_without_restart():
     now = {"t": 0.0}
     service = FakeService()

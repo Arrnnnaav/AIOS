@@ -46,7 +46,7 @@ def capture_window(title_re: str, executable_name: str | None = None):
 
     import mss
 
-    with mss.mss() as sct:
+    with mss.MSS() as sct:
         raw = sct.grab(
             {"left": left, "top": top, "width": right - left, "height": bottom - top}
         )
