@@ -31,10 +31,11 @@ from __future__ import annotations
 
 from typing import Callable
 
-#: How long without a confirmed-fresh observation before a living worker is
-#: treated as dead. Comfortably past the ~10s bound a hung application
-#: imposes, so an ordinary hang is not mistaken for a dead worker.
-DEFAULT_DEAD_AFTER_S = 15.0
+#: A worker can legitimately spend a short interval inside a complex UIA
+#: walk. This is a diagnostic threshold, not a restart threshold.
+DEFAULT_SLOW_AFTER_S = 2.0
+#: The escape hatch for a living worker that has not completed an iteration.
+DEFAULT_DEAD_AFTER_S = 12.0
 
 
 class WorkerHealth:
@@ -43,57 +44,84 @@ class WorkerHealth:
         service,
         ladder,
         dead_after_s: float = DEFAULT_DEAD_AFTER_S,
+        slow_after_s: float = DEFAULT_SLOW_AFTER_S,
         log: Callable[[str], None] = print,
     ) -> None:
         self.service = service
         self.ladder = ladder
         self.dead_after_s = dead_after_s
+        self.slow_after_s = slow_after_s
         self.log = log
         self._restarted = False
         #: When the replacement worker started, on the LADDER's clock — the
         #: same clock the stall decision is measured against, so the two can
         #: never disagree and no second clock has to be injected.
         self._restarted_at: float | None = None
+        self._last_state: str | None = None
 
     def check(self) -> str | None:
         """Called once per tick. Returns a failure reason when the tour
         should end, otherwise None."""
         dead = not self.service.is_alive()
-        stalled = self.ladder.age() > self.dead_after_s
+        progress = self.service.progress() if hasattr(self.service, "progress") else None
+        now = self.ladder.clock()
+        if progress is not None and progress.last_completed_at is not None:
+            progress_age = max(0.0, now - progress.last_completed_at)
+        else:
+            progress_age = self.ladder.age()
+        stalled = progress_age > self.dead_after_s
         if (
             stalled
             and self._restarted_at is not None
-            and self.ladder.clock() - self._restarted_at <= self.dead_after_s
+            and now - self._restarted_at <= self.dead_after_s
         ):
             # A replacement worker inherits the staleness of the one it
             # replaced — the clock measures observations, not workers. Judging
             # it on that would end the tour on the very next tick, so give it
             # the same budget the original had before calling it stalled too.
             stalled = False
-        if not (dead or stalled):
+        if dead:
+            state = "DEAD"
+        elif stalled:
+            state = "STALLED"
+        elif progress_age > self.slow_after_s:
+            state = "SLOW"
+        else:
+            state = "HEALTHY"
+        if state != self._last_state:
+            stage = getattr(progress, "stage", "unknown") if progress else "unknown"
+            heartbeat = getattr(progress, "heartbeat", self.service.heartbeat)
+            self.log(
+                f"Ghost Cursor: perception health {state.lower()} "
+                f"(stage {stage}, age {progress_age:.1f}s, heartbeat {heartbeat})"
+            )
+            self._last_state = state
+
+        if state == "HEALTHY" or state == "SLOW":
             return None
 
         if dead:
             cause = "exited"
-        elif self.ladder.age() == float("inf"):
+        elif progress_age == float("inf"):
             # Never observed anything at all — "stalled for inf s" is true but
             # tells a human nothing about what went wrong.
             cause = "never produced an observation"
         else:
-            cause = f"stalled for {self.ladder.age():.1f}s"
+            cause = f"stalled for {progress_age:.1f}s"
         # Heartbeat is recorded, never consulted: it tells a later reader
         # whether the worker was blocked in a call or looping through
         # failures.
         self.log(
             f"Ghost Cursor: perception worker {cause} "
-            f"(heartbeat {self.service.heartbeat})"
+            f"(stage {getattr(progress, 'stage', 'unknown')}, "
+            f"heartbeat {getattr(progress, 'heartbeat', self.service.heartbeat)})"
         )
 
         if self._restarted:
             return f"perception stopped working ({cause}); ending the tour"
 
         self._restarted = True
-        self._restarted_at = self.ladder.clock()
+        self._restarted_at = now
         self.service.restart()
         self.log("Ghost Cursor: restarted the perception worker")
         return None

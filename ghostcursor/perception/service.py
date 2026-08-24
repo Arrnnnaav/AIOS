@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import threading
 import time
+import os
 from dataclasses import dataclass
 from typing import Callable
 
@@ -140,6 +141,25 @@ class Observation:
     focus_visited: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True)
+class WorkerProgress:
+    """Primitive lifecycle data published for health diagnosis.
+
+    This is deliberately separate from :class:`Observation`: a worker can be
+    alive and completing failed walks without producing a fresh observation.
+    Health must distinguish that case from a thread blocked inside one UIA
+    call.
+    """
+
+    generation: int
+    heartbeat: int
+    stage: str
+    iteration_started_at: float | None
+    last_completed_at: float | None
+    last_published_at: float | None
+    last_error: str | None
+
+
 class PerceptionService:
     def __init__(
         self,
@@ -178,6 +198,13 @@ class PerceptionService:
         #: caller may branch on its value.
         self.heartbeat = 0
         self.restarts = 0
+        self._generation = 0
+        self._progress_lock = threading.Lock()
+        self._stage = "stopped"
+        self._iteration_started_at: float | None = None
+        self._last_completed_at: float | None = None
+        self._last_published_at: float | None = None
+        self._last_error: str | None = None
         self._slot: Observation | None = None
         #: The request slot: one overwritten value, same shape as the result
         #: slot. Setting it never blocks and never waits for OCR -- the answer
@@ -199,6 +226,15 @@ class PerceptionService:
         self._stop = threading.Event()
         self._stop.set()
         self._thread: threading.Thread | None = None
+        self._cached_hwnd = 0
+        # Focus is useful for wrong-action feedback but must never be able to
+        # stall the primary UIA walk. Some native controls can block a COM
+        # GetFocusedElement call; keep the real reader on its own daemon.
+        self._focus_lock = threading.Lock()
+        self._focus_request = 0
+        self._focus_cache: dict[int, str] = {}
+        self._focus_stop = threading.Event()
+        self._focus_thread: threading.Thread | None = None
 
     # -- lifecycle ---------------------------------------------------------
     def start(self) -> None:
@@ -206,13 +242,36 @@ class PerceptionService:
             return  # a second worker would fight the first for the slot
         stop = threading.Event()
         self._stop = stop
+        self._generation += 1
+        generation = self._generation
+        with self._progress_lock:
+            self._stage = "starting"
+            self._iteration_started_at = None
+            self._last_completed_at = self.clock()
+            self._last_error = None
         self._thread = threading.Thread(
-            target=self._run, args=(stop,), name="ghostcursor-perception", daemon=True
+            target=self._run,
+            args=(stop, generation),
+            name="ghostcursor-perception",
+            daemon=True,
         )
         self._thread.start()
+        if self.focus_reader is read_focused_automation_id and (
+            self._focus_thread is None or not self._focus_thread.is_alive()
+        ):
+            self._focus_stop.clear()
+            self._focus_thread = threading.Thread(
+                target=self._focus_run,
+                name="ghostcursor-focus",
+                daemon=True,
+            )
+            self._focus_thread.start()
 
     def stop(self, timeout: float = 2.0) -> None:
         self._stop.set()
+        self._focus_stop.set()
+        with self._progress_lock:
+            self._stage = "stopping"
         if self._thread is not None:
             # A worker blocked in UIA cannot be interrupted; it is a daemon
             # thread and will exit with the process. Waiting briefly is
@@ -244,6 +303,40 @@ class PerceptionService:
 
     def is_alive(self) -> bool:
         return self._thread is not None and self._thread.is_alive()
+
+    def progress(self) -> WorkerProgress:
+        """Return a non-COM snapshot of the current worker lifecycle."""
+        with self._progress_lock:
+            return WorkerProgress(
+                generation=self._generation,
+                heartbeat=self.heartbeat,
+                stage=self._stage,
+                iteration_started_at=self._iteration_started_at,
+                last_completed_at=self._last_completed_at,
+                last_published_at=self._last_published_at,
+                last_error=self._last_error,
+            )
+
+    def _progress(self, generation: int, *, stage: str | None = None,
+                  iteration_started: float | None = None,
+                  completed: float | None = None,
+                  published: float | None = None,
+                  error: str | None = None) -> None:
+        """Update diagnostics only if this is still the active generation."""
+        with self._progress_lock:
+            if generation != self._generation:
+                return
+            if stage is not None:
+                self._stage = stage
+            if iteration_started is not None:
+                self._iteration_started_at = iteration_started
+            if completed is not None:
+                self._last_completed_at = completed
+                self._iteration_started_at = None
+            if published is not None:
+                self._last_published_at = published
+            if error is not None:
+                self._last_error = error
 
     # -- the slot ----------------------------------------------------------
     def latest(self) -> Observation | None:
@@ -359,16 +452,58 @@ class PerceptionService:
         degrades to 0 rather than discarding an observation that is otherwise
         perfectly good."""
         try:
-            return int(self.hwnd_source(self.title_re))
+            if self._cached_hwnd:
+                import win32gui
+
+                if win32gui.IsWindow(self._cached_hwnd):
+                    return self._cached_hwnd
+            self._cached_hwnd = int(self.hwnd_source(self.title_re))
+            return self._cached_hwnd
         except Exception:
+            self._cached_hwnd = 0
             return 0
 
     def _safe_focus(self, hwnd: int) -> str:
         """Never let a focus failure cost an observation."""
+        if self.focus_reader is read_focused_automation_id:
+            # The real COM focus query is asynchronous. Return the most recent
+            # answer immediately; an unfinished query cannot block perception.
+            with self._focus_lock:
+                if hwnd > 0:
+                    self._focus_request = hwnd
+                return self._focus_cache.get(hwnd, "")
         try:
             return self.focus_reader(hwnd)
         except Exception:
             return ""
+
+    def _focus_run(self) -> None:
+        """Sample the real focus reader without coupling it to UIA walks."""
+        pythoncom = None
+        try:
+            import pythoncom
+
+            pythoncom.CoInitializeEx(pythoncom.COINIT_APARTMENTTHREADED)
+        except Exception:
+            pass
+        try:
+            while not self._focus_stop.wait(0.01):
+                with self._focus_lock:
+                    hwnd = self._focus_request
+                    self._focus_request = 0
+                if not hwnd:
+                    continue
+                try:
+                    value = self.focus_reader(hwnd)
+                except Exception:
+                    value = ""
+                with self._focus_lock:
+                    self._focus_cache[hwnd] = value
+        finally:
+            try:
+                pythoncom.CoUninitialize()
+            except Exception:
+                pass
 
     def _record_focus(
         self, focused: str, visited: list[str], last_focus_holder: list
@@ -451,7 +586,7 @@ class PerceptionService:
             self._slot = observation
 
     # -- worker ------------------------------------------------------------
-    def _run(self, stop: threading.Event) -> None:
+    def _run(self, stop: threading.Event, generation: int) -> None:
         # `stop` is this generation's Event, passed in rather than read from
         # self._stop: an orphaned worker must keep checking the Event it was
         # started with, not whatever the current generation is using.
@@ -475,12 +610,30 @@ class PerceptionService:
             last_focus_holder: list = [None]
             while not stop.is_set():
                 self.heartbeat += 1
+                iteration_started = self.clock()
+                self._progress(
+                    generation,
+                    stage="starting",
+                    iteration_started=iteration_started,
+                    error=None,
+                )
                 walked = None
                 target_hwnd_for_wait = 0
+                stage = "hwnd"
+                debug = os.environ.get("GHOSTCURSOR_DEBUG_PERCEPTION") == "1"
+                if debug:
+                    print(f"Ghost Cursor: perception iteration {self.heartbeat} starting")
                 try:
+                    self._progress(generation, stage="hwnd")
                     target_hwnd = self._safe_hwnd()
                     target_hwnd_for_wait = target_hwnd
+                    if debug:
+                        print(f"Ghost Cursor: hwnd lookup returned {target_hwnd}")
+                    stage = "focus"
+                    self._progress(generation, stage="focus")
                     focused_now = self._safe_focus(target_hwnd)
+                    if debug:
+                        print(f"Ghost Cursor: focus sample returned {focused_now!r}")
                     # Recovers the walk-start sample that would otherwise be
                     # read and discarded: this is the ONE moment focus is read
                     # outside `_sample_focus_while_waiting`, and until now it
@@ -492,8 +645,17 @@ class PerceptionService:
                     # trigger. Goes through `_record_focus` like every other
                     # sample, so it only ever records a TRANSITION.
                     self._record_focus(focused_now, visited, last_focus_holder)
+                    stage = "walk"
+                    self._progress(generation, stage="walk")
+                    if debug:
+                        print("Ghost Cursor: UIA walk starting")
                     elements = tuple(self.walker(self.title_re))
+                    self._progress(generation, stage="walk-complete")
+                    if debug:
+                        print(f"Ghost Cursor: perception walk returned {len(elements)} element(s)")
                     observed_at = self.clock()
+                    stage = "snapshot"
+                    self._progress(generation, stage="snapshot")
                     walked = (
                         take_snapshot(
                             self.title_re,
@@ -505,13 +667,19 @@ class PerceptionService:
                         observed_at,
                         target_hwnd,
                     )
-                except Exception:
+                except Exception as exc:
                     # A failed walk publishes nothing: the previous
                     # observation simply keeps ageing, which is exactly what
                     # the staleness ladder is for. The heartbeat still
                     # advances, so "looping through failures" stays
                     # distinguishable from "blocked in a call".
-                    pass
+                    if os.environ.get("GHOSTCURSOR_DEBUG_PERCEPTION") == "1":
+                        print(f"Ghost Cursor: perception {stage} failed: {exc!r}")
+                    self._progress(
+                        generation,
+                        stage=f"{stage}-failed",
+                        error=f"{type(exc).__name__}: {exc}",
+                    )
 
                 # Tier 2 runs HERE, on this thread -- never on the UI thread.
                 # Capture plus OCR measured 0.14-0.23s on a 976x1028 window and
@@ -524,7 +692,9 @@ class PerceptionService:
                 # window transiently gone, a COM hiccup -- must not silently
                 # suppress OCR: that is precisely the situation OCR exists for.
                 # The two halves fail independently; only publication is joint.
+                self._progress(generation, stage="tier2")
                 ocr = self._tier2_payload()
+                self._progress(generation, stage="tier2-complete")
 
                 if walked is not None and not stop.is_set():
                     # A retired worker must not publish the walk it was
@@ -548,6 +718,7 @@ class PerceptionService:
                             focus_visited=tuple(visited),
                         )
                     )
+                    self._progress(generation, stage="published", published=self.clock())
                     # Cleared only here, on a SUCCESSFUL publish -- not on
                     # every iteration. A walk that raises must not discard
                     # this interval's ids: nothing was published to carry
@@ -563,9 +734,11 @@ class PerceptionService:
                     # has not completed. Losing evidence of a real user
                     # action is the worse failure.
                     visited.clear()
+                self._progress(generation, stage="idle")
                 self._sample_focus_while_waiting(
                     stop, target_hwnd_for_wait, visited, last_focus_holder
                 )
+                self._progress(generation, stage="idle", completed=self.clock())
         finally:
             try:
                 import pythoncom

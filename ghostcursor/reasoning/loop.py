@@ -121,6 +121,10 @@ class GuidedTour:
         #: after a re-observe must NOT restart it, or the timeout can never
         #: elapse during a normal poll cycle.
         self._hint_step_index: int | None = None
+        #: Starts when the first newer observation arrives after the hint. A
+        #: recipe may opt into a bounded post-action verification timeout
+        #: without turning the existing idle nudge timer into a failure timer.
+        self._verification_started_at: float | None = None
 
     @property
     def current_step(self) -> Step | None:
@@ -198,9 +202,12 @@ class GuidedTour:
                         if self.ungroundable_reason is not None
                         else None
                     )
-                    self.failure_reason = reason or (
-                        f"cannot find {step.target_descriptor.claimed.name!r} on screen"
-                    )
+                    target_name = step.target_descriptor.claimed.name
+                    if target_name:
+                        failure_text = f"cannot find {target_name!r} on screen"
+                    else:
+                        failure_text = "cannot verify the requested application state"
+                    self.failure_reason = reason or failure_text
                     self.state = State.FAILED
                 else:
                     self.state = State.OBSERVING
@@ -217,6 +224,7 @@ class GuidedTour:
                 self.rehint_count = 0
                 self._confirmed = False
                 self._hint_step_index = self.step_index
+                self._verification_started_at = None
             self.state = State.AWAITING_USER_ACTION
 
         elif self.state is State.AWAITING_USER_ACTION:
@@ -246,6 +254,16 @@ class GuidedTour:
             # that gates `on_wrong_action` and the message it prints from ever
             # disagreeing with each other.
             touched = self._wrong_action()
+            action_detected = (
+                touched is not None
+                or elements_changed(self._before, after)
+                or self._before.title != after.title
+            )
+            if self._verification_started_at is None and action_detected:
+                # Start a recipe's bounded verification clock only after
+                # evidence of a user action, not merely because the worker
+                # published another unchanged observation.
+                self._verification_started_at = self.clock()
 
             # The message is bounded by real user actions, not by a clock, so
             # it is deliberately uncapped: capping it would tell a user who
@@ -264,6 +282,17 @@ class GuidedTour:
 
             if satisfied:
                 self.state = State.VERIFYING
+            elif (
+                step.verification_rule.args.get("fail_after_timeout") is True
+                and self._verification_started_at is not None
+                and self.clock() - self._verification_started_at
+                >= step.verification_rule.timeout_s
+            ):
+                self.failure_reason = (
+                    f"verification timed out after "
+                    f"{step.verification_rule.timeout_s:g}s"
+                )
+                self.state = State.FAILED
             elif touched is not None and self.wrong_action_rehints < 3:
                 # Re-hint by going back through OBSERVING, NOT by calling
                 # renderer.show() here. A second overlay write path is what

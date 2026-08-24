@@ -31,10 +31,12 @@ from typing import Callable
 
 import win32api
 import win32con
+import win32gui
 
 # Import order matters: overlay.window pulls in overlay.dpi, which declares
 # DPI awareness before any window exists (see ghostcursor/overlay/dpi.py).
 from ghostcursor.overlay import window
+from ghostcursor.overlay import bar
 from ghostcursor.perception import uia
 from ghostcursor.perception.warmup import DEFAULT_WARMUP_BUDGET_S, WarmUp
 from ghostcursor.reasoning.schema import Step, VerificationKind
@@ -43,6 +45,31 @@ REFRESH_SECONDS = 0.25
 DEFAULT_TARGET = ".*Notepad.*"
 DEFAULT_CONTROL = "Save"
 VK_ESCAPE = win32con.VK_ESCAPE
+
+
+def perception_walker_for(app_id: str):
+    """Choose the narrowest trusted perception surface for an app recipe."""
+    if app_id.casefold() == "code.exe":
+        return uia.iter_vscode_elements
+    return uia.iter_elements
+
+
+def perception_hwnd_source_for(app_id: str):
+    """Use executable identity whenever the recipe declares one."""
+    if app_id.casefold().endswith(".exe"):
+        return lambda title_re: uia.first_matching_hwnd_for_executable(
+            title_re, app_id
+        )
+    return uia.first_matching_hwnd
+
+
+def tier2_capture_for(app_id: str):
+    """Keep pixel perception on the same executable-bounded target HWND."""
+    if app_id.casefold().endswith(".exe"):
+        from ghostcursor.perception.capture import capture_window
+
+        return lambda title_re: capture_window(title_re, executable_name=app_id)
+    return None
 
 
 def resolve_target(title_re: str, control_name: str | None) -> tuple[int, int] | None:
@@ -241,6 +268,12 @@ def should_poll_space(current_step: Step | None) -> bool:
     )
 
 
+def confirmation_focus_is_safe(target_hwnd: int, bar_hwnd: int | None = None) -> bool:
+    """SPACE may confirm only when the intended application owns focus."""
+    foreground = win32gui.GetForegroundWindow()
+    return bool(target_hwnd) and foreground == target_hwnd and foreground != bar_hwnd
+
+
 def run_tour(
     recipe_path: str,
     title_re: str,
@@ -248,6 +281,7 @@ def run_tour(
     clock=time.monotonic,
     sleeper=time.sleep,
     warmup_budget_s: float = DEFAULT_WARMUP_BUDGET_S,
+    ai_goal: str | None = None,
 ) -> int:
     """Run a recipe as a guided tour.
 
@@ -273,6 +307,7 @@ def run_tour(
     )
     from ghostcursor.reasoning.renderer import OverlayRenderer
     from ghostcursor.reasoning.schema import Recipe
+    from ghostcursor.reasoning.grounding import GroundedTarget
     from ghostcursor.reasoning.staleness import (
         StalenessLadder,
     )
@@ -291,7 +326,19 @@ def run_tour(
         print("ESC pressed — exiting.")
         return 0
 
-    app_info = app_info_for_window(title_re)
+    expected_app_id = recipe.app_id if recipe.app_id.casefold().endswith(".exe") else None
+    app_info = (
+        app_info_for_window(title_re, expected_app_id=expected_app_id)
+        if expected_app_id is not None
+        else app_info_for_window(title_re)
+    )
+
+    if expected_app_id is not None and app_info is None:
+        print(
+            f"Stopped: no trusted {expected_app_id!r} window matched "
+            f"the target {title_re!r}"
+        )
+        return 1
 
     if escape_pressed():
         print("ESC pressed — exiting.")
@@ -325,13 +372,24 @@ def run_tour(
         tier2_controller = tier2.build_controller(clock)
         if tier2_controller is None:
             print("Ghost Cursor: OCR unavailable on this machine — UIA only.")
+        else:
+            bounded_capture = tier2_capture_for(recipe.app_id)
+            if bounded_capture is not None:
+                tier2_controller.capture = bounded_capture
         # The controller is HANDED OVER here and never touched again from this
         # thread. Capture + OCR measured 0.14-0.23s on a 976x1028 window and
         # scales with captured area; on the tick path that is D020's 0.5s
         # ceiling gone and the D021 freeze back. The UI thread keeps the
         # DECIDING half (only it knows the current step and whether grounding
         # just failed) and asks through a request slot; the worker executes.
-        service = PerceptionService(title_re, clock=clock, tier2=tier2_controller)
+        target_hwnd_source = perception_hwnd_source_for(recipe.app_id)
+        service = PerceptionService(
+            title_re,
+            walker=perception_walker_for(recipe.app_id),
+            hwnd_source=target_hwnd_source,
+            clock=clock,
+            tier2=tier2_controller,
+        )
         #: Patience before escalating to tier 2 on a freshly-seen window. Same
         #: clock as the deadline, the health budget and the staleness ladder;
         #: two independently-driftable clocks here is the D026 failure
@@ -342,6 +400,13 @@ def run_tour(
         service.start()
 
         hwnd = window.create_overlay_window()
+        bar_hwnd = None
+        try:
+            bar_hwnd = bar.create_bar_window()
+        except Exception as exc:
+            # The safety bar is additive.  A registration/display failure must
+            # never remove the keyboard ESC escape hatch.
+            print(f"Control bar unavailable: {exc}")
         print(f"Guided tour: {recipe.intent!r}. ESC to quit.")
         try:
             deadline = clock() + seconds
@@ -353,6 +418,7 @@ def run_tour(
                 store=store,
                 recipe_intent=recipe.intent,
             )
+            ai_hint_decision = None
             #: observed_at of the newest observation the ladder has been told
             #: about. The ladder measures time since the last CONFIRMED-FRESH
             #: walk, so it must only be advanced by a genuinely NEW one —
@@ -368,6 +434,10 @@ def run_tour(
             #: elements, merged into one list, which is exactly the
             #: same-instant rule the snapshot exists to keep.
             current_observation = None
+            target_hwnd = target_hwnd_source(title_re)
+            paused = False
+            terminal_reported = False
+            terminal_service_stopped = False
 
             def snapshotter():
                 nonlocal last_fed_to_ladder, current_observation
@@ -385,6 +455,7 @@ def run_tour(
                 return observation.snapshot
 
             def grounder_from_slot(step, i, elements=None):
+                nonlocal ai_hint_decision
                 # Grounds against the LAST observation, not a live walk. While
                 # observations are merely stale this keeps succeeding, so the
                 # loop's grounding grace never starts — the hint stays drawn
@@ -403,7 +474,66 @@ def run_tour(
                 if elements is None:
                     elements = observation.elements if observation else ()
 
-                target = live_grounder(step, i, elements)
+                if ai_goal and i == 0 and ai_hint_decision is None and elements:
+                    from ghostcursor.inference.screen_hint import decide_next_hint
+
+                    if bar_hwnd is not None:
+                        bar.set_status(bar_hwnd, "AI thinking…")
+                    ai_hint_decision = decide_next_hint(
+                        ai_goal,
+                        list(elements),
+                        tuple(
+                            name
+                            for name in (
+                                step.target_descriptor.claimed.name,
+                                *step.target_descriptor.claimed.name_synonyms,
+                            )
+                            if name
+                        ),
+                    )
+                    print(
+                        f"AI hint: {ai_hint_decision.source} selected "
+                        f"{ai_hint_decision.automation_id!r} — "
+                        f"{ai_hint_decision.explanation}"
+                    )
+                    if bar_hwnd is not None:
+                        bar.set_status(bar_hwnd, "AI hint selected")
+
+                target = None
+                if ai_hint_decision is not None and ai_hint_decision.automation_id:
+                    allowed = {
+                        name.casefold()
+                        for name in (
+                            step.target_descriptor.claimed.name,
+                            *step.target_descriptor.claimed.name_synonyms,
+                        )
+                        if name
+                    }
+                    selected = next(
+                        (
+                            element
+                            for element in elements
+                            if element.automation_id == ai_hint_decision.automation_id
+                            and element.source == "uia"
+                            and element.name.casefold() in allowed
+                        ),
+                        None,
+                    )
+                    if selected is not None:
+                        # The model's bounded selection is the hint. It is
+                        # already validated against the live UI and the
+                        # recipe-approved names, so stale KB rows cannot
+                        # override it.
+                        target = GroundedTarget(
+                            bbox=selected.bbox,
+                            rung=2,
+                            automation_id=selected.automation_id,
+                            control_type=selected.control_type,
+                            name=selected.name,
+                            source=selected.source,
+                        )
+                if target is None:
+                    target = live_grounder(step, i, elements)
                 if target is not None:
                     # UIA answered, so tier 2 is not wanted for this step. A
                     # standing request costs capture + OCR on the worker as
@@ -476,6 +606,13 @@ def run_tour(
                 #: caches it for the tick.
                 return ladder.freshness()
 
+            def verifier(rule, before, after):
+                if recipe.app_id == "code.exe" and rule.args.get("vscode_workspace_title"):
+                    from ghostcursor.reasoning.vscode import verify_open_folder
+
+                    return verify_open_folder(before, after, ai_goal or "")
+                return verify(rule, before, after)
+
             def read_failure_reason(step, index):
                 """Why this step is ungroundable, when tier 2 knows better.
 
@@ -503,7 +640,7 @@ def run_tour(
                 observation = service.latest()
                 if observation is None or observation.tier2_step != index:
                     return None
-                name = step.target_descriptor.claimed.name
+                name = step.target_descriptor.claimed.name or "the requested application state"
                 if observation.tier2_exhausted:
                     return (
                         f"could not read {name!r} on screen after "
@@ -543,7 +680,7 @@ def run_tour(
                 recipe=recipe,
                 grounder=grounder_from_slot,
                 snapshotter=snapshotter,
-                verifier=verify,
+                verifier=verifier,
                 renderer=OverlayRenderer(
                     hwnd, freshness_source=current_display_freshness
                 ),
@@ -580,16 +717,96 @@ def run_tour(
             tier2_step_on_screen = tour.step_index
             while clock() < deadline:
                 if escape_pressed():
+                    if bar_hwnd is not None and bar.panel_is_open(bar_hwnd):
+                        bar.close_panel(bar_hwnd)
+                        bar.set_status(bar_hwnd, "Ask cancelled")
+                        continue
                     print("ESC pressed — exiting.")
                     break
+
+                if bar_hwnd is not None:
+                    requests = bar.bar_state(bar_hwnd)
+                    bar.clear_requests(bar_hwnd)
+                    if requests.stop_requested:
+                        print("Stop requested — exiting.")
+                        break
+                    if requests.pause_requested:
+                        paused = not paused
+                        bar.set_status(bar_hwnd, "Paused" if paused else "Running")
+                    if requests.ask_requested:
+                        if getattr(tour, "state", State.DONE) in (State.IDLE, State.DONE, State.FAILED):
+                            bar.open_panel(bar_hwnd)
+                        else:
+                            bar.set_status(bar_hwnd, "Finish or stop the active tour before asking")
+                    submitted = bar.take_submitted_goal(bar_hwnd)
+                    if submitted is not None:
+                        # Ask uses the same planner as --goal, but an active
+                        # tour is never replaced behind the user's back.
+                        from ghostcursor.reasoning.planner import plan_goal
+
+                        asked = plan_goal(submitted)
+                        # A supported nested tour deliberately keeps its own
+                        # control bar alive after completion. Announce the Ask
+                        # result before entering that blocking session so the
+                        # console proves the handoff immediately instead of
+                        # only when the session timeout eventually returns.
+                        print(f"Ask received: {submitted!r} — {asked.status.value}")
+                        if asked.plan is not None and asked.intent_id is not None:
+                            from ghostcursor.reasoning.planner import recipe_path_for
+
+                            # A terminal tour is an idle host for Ask. Tear
+                            # down this bar before launching the nested tour
+                            # so the user never sees two interactive bars.
+                            launch_target = (
+                                "Synthetic Export"
+                                if asked.intent_id == "EXPORT_DATA"
+                                else title_re
+                            )
+                            launch_path = str(recipe_path_for(asked.intent_id))
+                            bar.set_status(bar_hwnd, f"Starting {asked.intent_id}…")
+                            bar.restore_focus_if_safe(bar_hwnd, target_hwnd)
+                            old_bar = bar_hwnd
+                            bar_hwnd = None
+                            bar.destroy_bar_window(old_bar)
+                            run_tour(
+                                launch_path,
+                                launch_target,
+                                max(1.0, deadline - clock()),
+                                clock=clock,
+                                sleeper=sleeper,
+                                warmup_budget_s=warmup_budget_s,
+                                ai_goal=submitted,
+                            )
+                            bar_hwnd = bar.create_bar_window()
+                            bar.set_status(bar_hwnd, "Ready")
+                        else:
+                            bar.set_status(bar_hwnd, f"Ask: {asked.status.value}")
+                            bar.restore_focus_if_safe(bar_hwnd, target_hwnd)
+                if paused:
+                    window.pump_messages_nonblocking()
+                    sleeper(REFRESH_SECONDS)
+                    continue
+
+                # A terminal tour no longer needs perception. Keep pumping
+                # messages so the bar remains available for Ask, but do not
+                # let a stale worker trigger a health restart after success.
+                if getattr(tour, "state", None) in (State.DONE, State.FAILED):
+                    if not terminal_service_stopped:
+                        service.stop()
+                        terminal_service_stopped = True
+                    window.pump_messages_nonblocking()
+                    sleeper(REFRESH_SECONDS)
+                    continue
 
                 if tour.step_index != tier2_step_on_screen:
                     # The tour left the step that asked. Cancel unconditionally
                     # — whatever is standing belongs to a step nobody is on.
                     service.cancel_tier2()
                     tier2_step_on_screen = tour.step_index
-                if should_poll_space(tour.current_step) and key_was_pressed(
-                    win32con.VK_SPACE
+                if (
+                    should_poll_space(tour.current_step)
+                    and confirmation_focus_is_safe(target_hwnd, bar_hwnd)
+                    and key_was_pressed(win32con.VK_SPACE)
                 ):
                     tour.confirm()
 
@@ -651,11 +868,25 @@ def run_tour(
                 # makes the grace name the read failure.
                 state = tour.tick()
                 if state is State.DONE:
-                    print("Tour complete.")
-                    break
+                    if not terminal_reported:
+                        print("Tour complete.")
+                        terminal_reported = True
+                    if bar_hwnd is None:
+                        break
+                    bar.set_status(bar_hwnd, "Done — Ask is available")
+                    window.pump_messages_nonblocking()
+                    sleeper(REFRESH_SECONDS)
+                    continue
                 if state is State.FAILED:
-                    print(f"Stopped: {tour.failure_reason}")
-                    break
+                    if not terminal_reported:
+                        print(f"Stopped: {tour.failure_reason}")
+                        terminal_reported = True
+                    if bar_hwnd is None:
+                        break
+                    bar.set_status(bar_hwnd, "Failed — Ask is available")
+                    window.pump_messages_nonblocking()
+                    sleeper(REFRESH_SECONDS)
+                    continue
 
                 # No drawing happens here, on purpose. `tour.tick()` closes its
                 # own tick by calling `renderer.settle()`, which is the single
@@ -680,9 +911,14 @@ def run_tour(
                 window.pump_messages_nonblocking()
                 sleeper(REFRESH_SECONDS)
             else:
-                print("Time limit reached — exiting.")
+                if terminal_reported:
+                    print("Control-bar session time limit reached — exiting.")
+                else:
+                    print("Time limit reached — exiting.")
         finally:
             window.destroy_overlay_window(hwnd)
+            if bar_hwnd is not None:
+                bar.destroy_bar_window(bar_hwnd)
     finally:
         if service is not None:
             service.stop()
@@ -692,8 +928,8 @@ def run_tour(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Ghost Cursor static hint overlay")
-    parser.add_argument("--target", default=DEFAULT_TARGET, help="window title regex")
+    parser = argparse.ArgumentParser(description="Ghost Cursor guided UI assistant")
+    parser.add_argument("--target", default=None, help="window title regex")
     parser.add_argument(
         "--control",
         default=DEFAULT_CONTROL,
@@ -705,17 +941,34 @@ def main() -> int:
         default=60.0,
         help="stop automatically after this long (safety net)",
     )
-    parser.add_argument(
-        "--recipe", help="path to a recipe JSON to run as a guided tour"
-    )
+    source = parser.add_mutually_exclusive_group()
+    source.add_argument("--recipe", help="path to a recipe JSON to run as a guided tour")
+    source.add_argument("--goal", help="natural-language goal to classify and guide")
     args = parser.parse_args()
 
     if args.recipe:
-        return run_tour(args.recipe, args.target, args.seconds)
+        return run_tour(args.recipe, args.target or DEFAULT_TARGET, args.seconds)
+    if args.goal:
+        from ghostcursor.reasoning.planner import PlanStatus, plan_goal, recipe_path_for
 
+        result = plan_goal(args.goal)
+        print(f"Planner: {result.status.value} ({result.confidence:.2f}) — {result.explanation}")
+        if result.plan is None or result.intent_id is None:
+            return 2
+        target = args.target
+        if target is None:
+            target = "Synthetic Export" if result.intent_id == "EXPORT_DATA" else None
+        if target is None:
+            print("This intent requires an explicit --target.")
+            return 2
+        if result.status not in (PlanStatus.SUPPORTED, PlanStatus.MODEL_UNAVAILABLE_FALLBACK, PlanStatus.INVALID_MODEL_OUTPUT):
+            return 2
+        return run_tour(str(recipe_path_for(result.intent_id)), target, args.seconds, ai_goal=args.goal)
+
+    target = args.target or DEFAULT_TARGET
     hwnd = window.create_overlay_window()
     print(
-        f"Overlay running. Pointing at {args.target!r}. ESC to quit "
+        f"Overlay running. Pointing at {target!r}. ESC to quit "
         f"(auto-stops after {args.seconds:g}s)."
     )
 
@@ -727,11 +980,11 @@ def main() -> int:
                 print("ESC pressed — exiting.")
                 break
 
-            point = resolve_target(args.target, args.control)
+            point = resolve_target(target, args.control)
             if point is None:
                 window.clear_hint(hwnd)
                 if not missing_reported:
-                    print(f"No window matching {args.target!r} — waiting for it.")
+                    print(f"No window matching {target!r} — waiting for it.")
                     missing_reported = True
             else:
                 missing_reported = False

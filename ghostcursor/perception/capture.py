@@ -18,7 +18,7 @@ import numpy as np
 import win32gui
 
 from ghostcursor.overlay import dpi  # noqa: F401  declares DPI awareness at import
-from ghostcursor.perception.uia import windows_matching
+from ghostcursor.perception.uia import windows_matching, windows_matching_executable
 
 #: Fraction of pixels that must change before OCR is worth re-running. From
 #: the mss doc's frames_differ pattern. Cheap capture plus diff, expensive
@@ -30,9 +30,13 @@ FRAME_DIFF_THRESHOLD = 0.02
 _PIXEL_DELTA = 30
 
 
-def capture_window(title_re: str):
+def capture_window(title_re: str, executable_name: str | None = None):
     """`(frame_bgr, rect)` for the first window matching, or None if absent."""
-    hwnds = windows_matching(title_re)
+    hwnds = (
+        windows_matching_executable(title_re, executable_name)
+        if executable_name
+        else windows_matching(title_re)
+    )
     if not hwnds:
         return None
 

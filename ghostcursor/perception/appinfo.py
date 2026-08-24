@@ -142,9 +142,11 @@ def _version_for(exe_path: str, kind: str) -> str:
     return _cache[key]
 
 
-def app_info_for_window(title_re: str) -> AppInfo | None:
+def app_info_for_window(
+    title_re: str, expected_app_id: str | None = None
+) -> AppInfo | None:
     """Identify the application owning the first visible window matching
-    title_re, or None if no such window exists."""
+    title_re and, when supplied, the expected executable basename."""
     # Shared with grounding on purpose (see uia.windows_matching): a window
     # that grounding would refuse must not supply the app identity that
     # observations are persisted under.
@@ -152,15 +154,21 @@ def app_info_for_window(title_re: str) -> AppInfo | None:
     if not found:
         return None
 
-    pid = win32process.GetWindowThreadProcessId(found[0])[1]
-    exe_path = _exe_path_for_pid(pid)
-    if not exe_path:
-        return None
+    expected = os.path.basename(expected_app_id).casefold() if expected_app_id else None
+    for hwnd in found:
+        pid = win32process.GetWindowThreadProcessId(hwnd)[1]
+        exe_path = _exe_path_for_pid(pid)
+        if not exe_path:
+            continue
+        app_id = os.path.basename(exe_path).casefold()
+        if expected is not None and app_id != expected:
+            continue
 
-    kind = "appx" if "WindowsApps" in exe_path else "win32"
-    return AppInfo(
-        app_id=os.path.basename(exe_path).lower(),
-        exe_path=exe_path,
-        version=_version_for(exe_path, kind),
-        kind=kind,
-    )
+        kind = "appx" if "WindowsApps" in exe_path else "win32"
+        return AppInfo(
+            app_id=app_id,
+            exe_path=exe_path,
+            version=_version_for(exe_path, kind),
+            kind=kind,
+        )
+    return None

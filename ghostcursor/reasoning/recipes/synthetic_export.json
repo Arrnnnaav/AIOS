@@ -15,10 +15,9 @@
       },
       "instruction_text": "Click Export to start exporting your file.",
       "verification_rule": {
-        "kind": "property_changes",
+        "kind": "element_appears",
         "args": {
-          "target_descriptor": { "automation_id": "1005" },
-          "property": "name"
+          "target_descriptor": { "name": "Export finished: table.csv" }
         },
         "timeout_s": 30.0
       },
@@ -34,7 +33,13 @@
     },
     {
       "user_action": "observe",
-      "target_descriptor": { "claimed": {}, "confirmed": [] },
+      "target_descriptor": {
+        "claimed": {
+          "name": "Export finished: table.csv",
+          "visual_description": "export completion status line"
+        },
+        "confirmed": []
+      },
       "instruction_text": "Check the status line — it should show the export finished.",
       "verification_rule": { "kind": "user_confirms", "args": {}, "timeout_s": 30.0 },
       "risk": "normal",

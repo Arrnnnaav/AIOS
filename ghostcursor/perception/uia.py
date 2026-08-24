@@ -4,10 +4,12 @@ Reference: D:\\tracker\\docs\\ghostcursor\\python-uiautomation-for-windows-uiaut
 D:\\tracker\\docs\\ghostcursor\\pywinauto-windows-gui-automation-with-python.docx
 """
 
+import os
 import re
 from dataclasses import dataclass, field
 
 import win32gui
+import win32process
 from pywinauto import Desktop
 
 from ghostcursor.overlay import dpi
@@ -62,7 +64,12 @@ def windows_matching(title_re: str) -> list[int]:
         ):
             matches.append(hwnd)
 
-    win32gui.EnumWindows(_collect, None)
+    try:
+        win32gui.EnumWindows(_collect, None)
+    except Exception:
+        # A transient desktop/session access failure means "no visible
+        # target" for this observation, not a worker-killing exception.
+        return []
     return matches
 
 
@@ -80,6 +87,32 @@ def first_matching_hwnd(title_re: str) -> int:
     grounding actually walked.
     """
     matches = windows_matching(title_re)
+    return matches[0] if matches else 0
+
+
+def _executable_name_for_hwnd(hwnd: int) -> str:
+    """Owning executable basename, or an empty string when unavailable."""
+    try:
+        from ghostcursor.perception.appinfo import _exe_path_for_pid
+
+        pid = win32process.GetWindowThreadProcessId(hwnd)[1]
+        return os.path.basename(_exe_path_for_pid(pid) or "").casefold()
+    except Exception:
+        return ""
+
+
+def windows_matching_executable(title_re: str, executable_name: str) -> list[int]:
+    """Title matches whose owning executable also matches exactly."""
+    expected = os.path.basename(executable_name).casefold()
+    return [
+        hwnd
+        for hwnd in windows_matching(title_re)
+        if _executable_name_for_hwnd(hwnd) == expected
+    ]
+
+
+def first_matching_hwnd_for_executable(title_re: str, executable_name: str) -> int:
+    matches = windows_matching_executable(title_re, executable_name)
     return matches[0] if matches else 0
 
 
@@ -207,3 +240,50 @@ def iter_elements(title_re: str) -> list[Element]:
         except Exception:
             continue  # elements can vanish mid-enumeration
     return elements
+
+
+def _vscode_open_folder_element_info(hwnd: int):
+    """Find a directly exposed Welcome-page Open Folder action, if present."""
+    from pywinauto.uia_defines import IUIA
+    from pywinauto.uia_element_info import UIAElementInfo
+
+    uia = IUIA()
+    root = UIAElementInfo(hwnd)
+    for name in ("Open Folder...", "Open Folder…", "Open Folder"):
+        condition = uia.build_condition(title=name)
+        raw = root.element.FindFirst(uia.tree_scope["descendants"], condition)
+        if raw is not None:
+            return UIAElementInfo(raw)
+    return None
+
+
+def iter_vscode_elements(title_re: str) -> list[Element]:
+    """Minimal UIA perception for the trusted VS Code open-folder workflow.
+
+    This intentionally returns only the Open Folder Welcome action. It avoids the
+    unbounded full-tree walk that stalls on real VS Code windows.  If the
+    provider cannot expose Open Folder, returning an empty successful observation
+    lets the existing OCR tier attempt the same trusted target.
+    """
+    matches = windows_matching_executable(title_re, "code.exe")
+    if not matches:
+        return []
+    try:
+        info = _vscode_open_folder_element_info(matches[0])
+        if info is None:
+            return []
+        rect = info.rectangle
+        bbox = (rect.left, rect.top, rect.right, rect.bottom)
+        if not is_on_screen(bbox):
+            return []
+        return [
+            Element(
+                name=info.name or "",
+                control_type=info.control_type or "",
+                automation_id=info.automation_id or "",
+                bbox=bbox,
+                path=(info.control_type or "",),
+            )
+        ]
+    except Exception:
+        return []

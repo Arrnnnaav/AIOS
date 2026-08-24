@@ -121,6 +121,8 @@ class WindowsOcr:
 MERGE_CENTRE_TOLERANCE = 0.40  # of the wider box's width
 MERGE_VERTICAL_GAP = 0.75  # of the taller box's height
 MERGE_MAX_PARTS = 3
+MERGE_HORIZONTAL_GAP = 1.25  # of the taller word's height
+MERGE_VERTICAL_OVERLAP = 0.60  # of the shorter word's height
 
 
 def _mergeable(a: OcrRead, b: OcrRead) -> bool:
@@ -141,6 +143,32 @@ def _mergeable(a: OcrRead, b: OcrRead) -> bool:
     return 0 <= gap <= MERGE_VERTICAL_GAP * max(a_height, b_height)
 
 
+def _horizontal_mergeable(a: OcrRead, b: OcrRead) -> bool:
+    """Whether `b` is the next word on the same rendered text line."""
+    a_left, a_top, a_right, a_bottom = a.bbox
+    b_left, b_top, b_right, b_bottom = b.bbox
+    a_height, b_height = a_bottom - a_top, b_bottom - b_top
+    if min(a_height, b_height) <= 0:
+        return False
+    overlap = min(a_bottom, b_bottom) - max(a_top, b_top)
+    if overlap < MERGE_VERTICAL_OVERLAP * min(a_height, b_height):
+        return False
+    gap = b_left - a_right
+    return 0 <= gap <= MERGE_HORIZONTAL_GAP * max(a_height, b_height)
+
+
+def _combine(parts: list[OcrRead]) -> OcrRead:
+    return OcrRead(
+        text=" ".join(p.text for p in parts),
+        bbox=(
+            min(p.bbox[0] for p in parts),
+            min(p.bbox[1] for p in parts),
+            max(p.bbox[2] for p in parts),
+            max(p.bbox[3] for p in parts),
+        ),
+    )
+
+
 def reassemble(reads: list[OcrRead]) -> list[OcrRead]:
     """Originals PLUS merged candidates for labels that wrapped onto lines.
 
@@ -155,6 +183,25 @@ def reassemble(reads: list[OcrRead]) -> list[OcrRead]:
     ordered = sorted(reads, key=lambda r: (r.bbox[1], r.bbox[0]))
     merged: list[OcrRead] = list(reads)
 
+    # Windows OCR returns words, not complete labels. Reconstruct conservative
+    # same-line n-grams first so controls such as "Open Folder..." remain
+    # groundable without lowering the fuzzy-match safety floor.
+    for first in reads:
+        parts = [first]
+        unused = [candidate for candidate in reads if candidate is not first]
+        while len(parts) < MERGE_MAX_PARTS:
+            candidates = [
+                candidate
+                for candidate in unused
+                if _horizontal_mergeable(parts[-1], candidate)
+            ]
+            if not candidates:
+                break
+            candidate = min(candidates, key=lambda read: read.bbox[0])
+            parts.append(candidate)
+            unused.remove(candidate)
+            merged.append(_combine(parts))
+
     for i, first in enumerate(ordered):
         parts = [first]
         for candidate in ordered[i + 1 :]:
@@ -163,15 +210,5 @@ def reassemble(reads: list[OcrRead]) -> list[OcrRead]:
             if not _mergeable(parts[-1], candidate):
                 break
             parts.append(candidate)
-            merged.append(
-                OcrRead(
-                    text=" ".join(p.text for p in parts),
-                    bbox=(
-                        min(p.bbox[0] for p in parts),
-                        min(p.bbox[1] for p in parts),
-                        max(p.bbox[2] for p in parts),
-                        max(p.bbox[3] for p in parts),
-                    ),
-                )
-            )
+            merged.append(_combine(parts))
     return merged
