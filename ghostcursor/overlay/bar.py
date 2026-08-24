@@ -24,9 +24,9 @@ from ghostcursor.overlay.window import ensure_class, pump_messages_nonblocking
 BAR_CLASS_NAME = "GhostCursorBar"
 BAR_BG = win32api.RGB(28, 28, 34)
 
-#: Edge inset and size, in physical pixels.
-_BAR_WIDTH = 520
-_BAR_HEIGHT = 56
+#: Edge inset and compact vertical-rail size, in physical pixels.
+_BAR_WIDTH = 148
+_BAR_HEIGHT = 192
 _BAR_MARGIN = 24
 
 #: Child control ids, sent back to the wnd proc in WM_COMMAND's low word.
@@ -35,10 +35,12 @@ ID_PAUSE = 1102
 ID_ASK = 1103
 ID_STATUS = 1104
 
-_BUTTON_WIDTH = 90
-_BUTTON_HEIGHT = 32
-_BUTTON_GAP = 12
+_BUTTON_WIDTH = 124
+_BUTTON_HEIGHT = 36
+_BUTTON_GAP = 8
 _BUTTON_MARGIN = 12
+_STATUS_GAP = 10
+_STATUS_HEIGHT = 34
 
 _bar_brush = None
 
@@ -60,12 +62,81 @@ class BarState:
 _bar_state: dict[int, BarState] = {}
 _bar_status: dict[int, str] = {}
 _bar_status_hwnd: dict[int, int] = {}
+_bar_button_hwnd: dict[int, dict[int, int]] = {}
 _panel_hwnd: dict[int, int] = {}
+_panel_label_hwnd: dict[int, int] = {}
 _pending_goal: dict[int, str] = {}
 
-_PANEL_HEIGHT = 32
 _PANEL_MARGIN = 12
+_PANEL_LABEL_HEIGHT = 24
+_PANEL_LABEL_GAP = 8
+_PANEL_COLUMN_WIDTH = 372
+_BAR_EXPANDED_WIDTH = _PANEL_COLUMN_WIDTH + _BAR_WIDTH
+_BAR_EXPANDED_HEIGHT = 260
 ID_PANEL_EDIT = 1105
+ID_PANEL_LABEL = 1106
+
+
+def _bar_position(bar_width: int, bar_height: int) -> tuple[int, int]:
+    """Middle-right position in the shared virtual-desktop coordinate space."""
+    left, top, width, height = dpi.virtual_screen_rect()
+    x = left + width - bar_width - _BAR_MARGIN
+    y = top + (height - bar_height) // 2
+    return x, y
+
+
+def _rail_x(expanded: bool) -> int:
+    return _PANEL_COLUMN_WIDTH + _BUTTON_MARGIN if expanded else _BUTTON_MARGIN
+
+
+def _layout_children(hwnd: int, *, expanded: bool) -> None:
+    """Stack safety controls vertically in the fixed right-side rail."""
+    rail_x = _rail_x(expanded)
+    for i, control_id in enumerate((ID_STOP, ID_PAUSE, ID_ASK)):
+        child = _bar_button_hwnd.get(hwnd, {}).get(control_id)
+        if child:
+            win32gui.MoveWindow(
+                child,
+                rail_x,
+                _BUTTON_MARGIN + i * (_BUTTON_HEIGHT + _BUTTON_GAP),
+                _BUTTON_WIDTH,
+                _BUTTON_HEIGHT,
+                True,
+            )
+    status = _bar_status_hwnd.get(hwnd)
+    if status:
+        status_y = (
+            _BUTTON_MARGIN
+            + 3 * _BUTTON_HEIGHT
+            + 2 * _BUTTON_GAP
+            + _STATUS_GAP
+        )
+        status_height = (
+            _BAR_EXPANDED_HEIGHT if expanded else _BAR_HEIGHT
+        ) - status_y - _BUTTON_MARGIN
+        win32gui.MoveWindow(
+            status,
+            rail_x,
+            status_y,
+            _BUTTON_WIDTH,
+            max(status_height, _STATUS_HEIGHT),
+            True,
+        )
+
+
+def _resize_bar(hwnd: int, bar_width: int, bar_height: int, *, expanded: bool) -> None:
+    """Resize without activation while preserving the middle-right anchor."""
+    x, y = _bar_position(bar_width, bar_height)
+    win32gui.SetWindowPos(
+        hwnd,
+        win32con.HWND_TOPMOST,
+        x,
+        y,
+        bar_width,
+        bar_height,
+        win32con.SWP_NOACTIVATE,
+    )
+    _layout_children(hwnd, expanded=expanded)
 
 
 def bar_state(hwnd: int) -> BarState:
@@ -103,15 +174,39 @@ def open_panel(hwnd: int) -> None:
     if hwnd in _panel_hwnd:
         return
     h_instance = win32api.GetModuleHandle(None)
+    _resize_bar(
+        hwnd,
+        _BAR_EXPANDED_WIDTH,
+        _BAR_EXPANDED_HEIGHT,
+        expanded=True,
+    )
+    label_y = _PANEL_MARGIN
+    label_hwnd = win32gui.CreateWindowEx(
+        0,
+        "STATIC",
+        "Type your goal:",
+        win32con.WS_CHILD | win32con.WS_VISIBLE | win32con.SS_LEFT,
+        _BUTTON_MARGIN,
+        label_y,
+        _PANEL_COLUMN_WIDTH - 2 * _PANEL_MARGIN,
+        _PANEL_LABEL_HEIGHT,
+        hwnd,
+        ID_PANEL_LABEL,
+        h_instance,
+        None,
+    )
     edit_style = (
         win32con.WS_CHILD
         | win32con.WS_VISIBLE
         | win32con.WS_BORDER
-        | win32con.ES_AUTOHSCROLL
+        | win32con.ES_MULTILINE
+        | win32con.ES_AUTOVSCROLL
+        | win32con.ES_WANTRETURN
+        | win32con.WS_VSCROLL
     )
-    edit_x = _BUTTON_MARGIN
-    edit_y = _BAR_HEIGHT
-    edit_width = _BAR_WIDTH - 2 * _BUTTON_MARGIN
+    edit_x = _PANEL_MARGIN
+    edit_y = label_y + _PANEL_LABEL_HEIGHT + _PANEL_LABEL_GAP
+    edit_width = _PANEL_COLUMN_WIDTH - 2 * _PANEL_MARGIN
     edit_hwnd = win32gui.CreateWindowEx(
         0,
         "EDIT",
@@ -120,13 +215,17 @@ def open_panel(hwnd: int) -> None:
         edit_x,
         edit_y,
         edit_width,
-        _PANEL_HEIGHT,
+        _BAR_EXPANDED_HEIGHT - edit_y - _PANEL_MARGIN,
         hwnd,
         ID_PANEL_EDIT,
         h_instance,
         None,
     )
+    _panel_label_hwnd[hwnd] = label_hwnd
     _panel_hwnd[hwnd] = edit_hwnd
+    ask_button = _bar_button_hwnd.get(hwnd, {}).get(ID_ASK)
+    if ask_button:
+        win32gui.SetWindowText(ask_button, "Submit")
     try:
         win32gui.SetForegroundWindow(hwnd)
     except win32gui.error:
@@ -149,6 +248,39 @@ def close_panel(hwnd: int) -> None:
             win32gui.DestroyWindow(edit_hwnd)
         except win32gui.error:
             pass
+    label_hwnd = _panel_label_hwnd.pop(hwnd, None)
+    if label_hwnd:
+        try:
+            win32gui.DestroyWindow(label_hwnd)
+        except win32gui.error:
+            pass
+    if win32gui.IsWindow(hwnd):
+        _resize_bar(
+            hwnd,
+            _BAR_WIDTH,
+            _BAR_HEIGHT,
+            expanded=False,
+        )
+    ask_button = _bar_button_hwnd.get(hwnd, {}).get(ID_ASK)
+    if ask_button:
+        win32gui.SetWindowText(ask_button, "Ask")
+
+
+def restore_focus_if_safe(bar_hwnd: int, target_hwnd: int) -> bool:
+    """Restore the target only if the bar still owns foreground focus.
+
+    If the user switched applications while Ask was open, leave focus alone.
+    This guard prevents the assistant from unexpectedly pulling focus back.
+    """
+    if win32gui.GetForegroundWindow() != bar_hwnd:
+        return False
+    if not target_hwnd or not win32gui.IsWindow(target_hwnd):
+        return False
+    try:
+        win32gui.SetForegroundWindow(target_hwnd)
+    except win32gui.error:
+        return False
+    return win32gui.GetForegroundWindow() == target_hwnd
 
 
 def panel_text(hwnd: int) -> str:
@@ -197,6 +329,9 @@ def _on_command(hwnd: int, control_id: int) -> None:
     elif control_id == ID_PAUSE:
         state = replace(state, pause_requested=True)
     elif control_id == ID_ASK:
+        if panel_is_open(hwnd):
+            submit_panel(hwnd)
+            return
         state = replace(state, ask_requested=True)
     else:
         return
@@ -219,14 +354,16 @@ def _bar_wnd_proc(hwnd, msg, wparam, lparam):
         _bar_state.pop(hwnd, None)
         _bar_status.pop(hwnd, None)
         _bar_status_hwnd.pop(hwnd, None)
+        _bar_button_hwnd.pop(hwnd, None)
         _panel_hwnd.pop(hwnd, None)
+        _panel_label_hwnd.pop(hwnd, None)
         _pending_goal.pop(hwnd, None)
         return 0
     return win32gui.DefWindowProc(hwnd, msg, wparam, lparam)
 
 
 def create_bar_window() -> int:
-    """Create the control bar, bottom-centre of the virtual desktop (the
+    """Create a compact vertical control rail at the middle-right edge (the
     same all-monitors convention the overlay uses -- see dpi.virtual_screen_rect())."""
     global _bar_brush
     if _bar_brush is None:
@@ -234,9 +371,7 @@ def create_bar_window() -> int:
 
     ensure_class(BAR_CLASS_NAME, _bar_wnd_proc, _bar_brush)
 
-    left, top, width, height = dpi.virtual_screen_rect()
-    x = left + (width - _BAR_WIDTH) // 2
-    y = top + height - _BAR_HEIGHT - _BAR_MARGIN
+    x, y = _bar_position(_BAR_WIDTH, _BAR_HEIGHT)
 
     ex_style = win32con.WS_EX_TOPMOST | win32con.WS_EX_TOOLWINDOW
 
@@ -257,17 +392,16 @@ def create_bar_window() -> int:
 
     h_instance = win32api.GetModuleHandle(None)
     button_style = win32con.WS_CHILD | win32con.WS_VISIBLE | win32con.BS_PUSHBUTTON
-    button_y = (_BAR_HEIGHT - _BUTTON_HEIGHT) // 2
     labels_and_ids = (("Stop", ID_STOP), ("Pause", ID_PAUSE), ("Ask", ID_ASK))
     for i, (label, control_id) in enumerate(labels_and_ids):
-        bx = _BUTTON_MARGIN + i * (_BUTTON_WIDTH + _BUTTON_GAP)
+        by = _BUTTON_MARGIN + i * (_BUTTON_HEIGHT + _BUTTON_GAP)
         win32gui.CreateWindowEx(
             0,
             "BUTTON",
             label,
             button_style,
-            bx,
-            button_y,
+            _BUTTON_MARGIN,
+            by,
             _BUTTON_WIDTH,
             _BUTTON_HEIGHT,
             hwnd,
@@ -276,17 +410,21 @@ def create_bar_window() -> int:
             None,
         )
 
-    status_x = _BUTTON_MARGIN + len(labels_and_ids) * (_BUTTON_WIDTH + _BUTTON_GAP)
-    status_width = max(_BAR_WIDTH - status_x - _BUTTON_MARGIN, 0)
+    status_y = (
+        _BUTTON_MARGIN
+        + len(labels_and_ids) * _BUTTON_HEIGHT
+        + (len(labels_and_ids) - 1) * _BUTTON_GAP
+        + _STATUS_GAP
+    )
     static_hwnd = win32gui.CreateWindowEx(
         0,
         "STATIC",
         "",
         win32con.WS_CHILD | win32con.WS_VISIBLE | win32con.SS_LEFT,
-        status_x,
-        button_y,
-        status_width,
-        _BUTTON_HEIGHT,
+        _BUTTON_MARGIN,
+        status_y,
+        _BUTTON_WIDTH,
+        _STATUS_HEIGHT,
         hwnd,
         ID_STATUS,
         h_instance,
@@ -294,6 +432,10 @@ def create_bar_window() -> int:
     )
     _bar_status_hwnd[hwnd] = static_hwnd
     _bar_status[hwnd] = ""
+    _bar_button_hwnd[hwnd] = {
+        control_id: win32gui.GetDlgItem(hwnd, control_id)
+        for _, control_id in labels_and_ids
+    }
     _bar_state[hwnd] = BarState()
 
     # SW_SHOWNOACTIVATE: appear without stealing focus from the app the user
@@ -314,5 +456,7 @@ def destroy_bar_window(hwnd: int) -> None:
     _bar_state.pop(hwnd, None)
     _bar_status.pop(hwnd, None)
     _bar_status_hwnd.pop(hwnd, None)
+    _bar_button_hwnd.pop(hwnd, None)
     _panel_hwnd.pop(hwnd, None)
+    _panel_label_hwnd.pop(hwnd, None)
     _pending_goal.pop(hwnd, None)
