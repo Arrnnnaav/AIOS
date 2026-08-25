@@ -2279,9 +2279,13 @@ that guard to manufacture learning evidence would violate D006 and D030.
 
 **Decision.** Value evidence targets one user and task: a novice VS Code user
 opening a first project folder. The published protocol compares an unassisted
-attempt with a GhostCursor-guided attempt and records time to the correct
-action, total completion, wrong actions, completion, and a 1–5 confidence
-rating. Three participants are preferred; two are acceptable only with `n=2`
+attempt with a GhostCursor-guided attempt under the same 120-second limit. It
+records time to the first correct action, time to verified completion, wrong
+turns, help requests, completion, and 1–5 confidence before the baseline and
+after the guided attempt. Verified completion means the selected neutral
+folder is active as the VS Code workspace; the guided attempt must also print
+`Tour complete.` Three participants are the complete planned evidence tier,
+not evidence of general effectiveness. Two are acceptable only with `n=2`
 disclosed; fewer than two means no participant-value claim. Every result,
 including failures and timeouts, remains in the table. Names and contact data
 never enter the repository.
@@ -2293,8 +2297,11 @@ protocol therefore preserves individual observations and states the
 limitation instead of converting a buildathon check into research theater.
 
 **Artifact.** `docs/evidence/novice-vscode-study.md` contains the ready-to-send
-invitation, fixed protocol, empty live results table, and claim rules. Results
-are intentionally blank until real sessions occur.
+invitation, amended fixed protocol, empty live results table, measurement
+contract, and claim rules. Recruitment is deliberately deferred until eligible
+participant contacts or an authorized messaging channel are available; this
+is an intentional dependency decision, not an implied completed action.
+Results remain blank until real sessions occur.
 
 ## D060 — The demo protects live evidence inside a 4:45 budget
 

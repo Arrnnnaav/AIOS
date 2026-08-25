@@ -418,3 +418,20 @@ doc lays out — Beginner → Intermediate → Resume-level MVP — rather than 
 later-phase features (adaptive interfaces, cross-app workflows, the full AIOS vision).
 Every later phase is a superset of this loop; building it out of order means re-doing
 foundational work later.
+
+## Open Track submission evidence status
+
+- Release recertification and the never-fabricate matrix are complete.
+- The novice VS Code study protocol is locked in
+  `docs/evidence/novice-vscode-study.md`: symmetric 120-second attempts,
+  first-action and world-state completion timing, wrong turns, help requests,
+  and confidence before baseline/after guidance.
+- Three participants are preferred; two require explicit `n=2` disclosure;
+  fewer than two permits engineering evidence only and no participant-value
+  claim.
+- Recruitment is deliberately deferred until eligible participant contacts or
+  an authorized communication channel are available. Do not claim recruitment
+  or confirmation without real external evidence, and never commit participant
+  identities or contact details.
+- The demo remains the locked 4:45 sequence. It must not claim VS Code
+  AutomationId-based wrong-action recovery.
