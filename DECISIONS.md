@@ -2401,3 +2401,23 @@ not the frozen incumbent baseline, until owner review is recorded.
 non-draft `--interactive` passes. Any product or ambient failure resets the
 count to zero; its report is preserved and classified before another attempt.
 Two nonconsecutive successes do not satisfy the gate.
+
+## D065 — Raw gate reports stay local; reviewed summaries carry claims
+
+**Decision.** Timestamped gate JSON remains ignored under
+`.artifacts/model-evaluation`. A concise committed evidence artifact records the
+tested Ollama version, manifest digest, dataset review state, hard gates,
+category metrics, semantic failures, latency, interactive fixture result, and
+known limits. A draft summary must say it is not the incumbent baseline. It is
+promoted only after label review and the two-consecutive-pass rule in D064.
+
+**Why.** Full per-request reports are useful diagnostics but noisy and can be
+regenerated. Committing only an interpreted summary keeps repository evidence
+reviewable without allowing a cherry-picked report to erase a failed attempt
+or an incomplete review gate. The source report paths remain named so local
+diagnosis retains provenance.
+
+**Evidence.** `docs/evidence/model-durability-draft.md` records the first
+complete interactive draft, including the rejected stale-window attempt, the
+26/30 raw result, all four over-commitments, zero launch-eligible unsupported
+plans, exact model digest, and the scoped no-action claim.

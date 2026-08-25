@@ -26,8 +26,18 @@ rail.
 - Deterministic perception, wrong-action feedback, verification, and safety
   remain in control.
 
-The tested local model is `qwen3:4b-instruct`. Requests have one bounded
-15-second budget and no retries.
+The tested local model is `qwen3:4b-instruct`. Both inference paths now use one
+non-retrying Ollama adapter with strict dynamic JSON Schemas, deterministic-ish
+request options (`temperature: 0`, seed 42), bounded context/output, and a
+15-minute session keep-alive. These settings improve consistency; they do not
+promise bit-identical output across Ollama versions or hardware.
+
+Schema conformance is not treated as semantic correctness. A versioned 30-case
+gate separately records raw model quality and final execution authority. Its
+first complete draft measured 86.7% raw semantic accuracy and 100% on exact
+supported goals; four high-confidence over-commitments were denied authority by
+the deterministic D058 policy. The draft is not promoted as the incumbent
+baseline until its human semantic labels are explicitly owner-reviewed.
 
 ## Run the validated workflows
 
@@ -110,6 +120,22 @@ tests create a deliberately non-pumping window and must run one file at a time,
 with no other test session active. The exact hung-lane commands are documented
 in `CLAUDE.md`.
 
+Every model/digest, prompt, schema, parser, adapter, or inference-policy change
+also requires the three-lane model gate. While labels await owner review, run
+the honest diagnostic form:
+
+```powershell
+py -3.12 -m ghostcursor.evaluation.model_gate `
+  --model qwen3:4b-instruct `
+  --endpoint http://127.0.0.1:11434 `
+  --unavailable-endpoint http://127.0.0.1:1 `
+  --interactive --draft
+```
+
+The interactive lane reads a real Synthetic Export UIA tree but cannot launch
+a tour or synthesize input. Omitting `--interactive` is reported as a skip and
+cannot close the milestone.
+
 ## Evidence
 
 - `docs/evidence/vscode-open-terminal.md` records the real-desktop terminal
@@ -118,6 +144,9 @@ in `CLAUDE.md`.
   planner behavior with Qwen available and unavailable.
 - `docs/evidence/novice-vscode-study.md` is the fixed participant protocol;
   its results remain blank until real sessions are completed.
+- `docs/evidence/model-durability-draft.md` records the first 30-case local
+  model measurement, its four semantic over-commitments, and the layered
+  no-action evidence. It is explicitly not a frozen baseline yet.
 - `docs/submission/demo-video-script.md` is the protected 4:45 demo sequence.
 
 ## Honest scope

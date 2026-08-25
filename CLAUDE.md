@@ -395,7 +395,8 @@ ghostcursor/
                      # promotion (grounding.py), verification, staleness ladder
                      # (staleness.py), recipes, overlay renderer
   memory/             # SQLite knowledge base of learned observations (store.py); see "Stored data" above
-  inference/           # local model streaming/decision — not yet built
+  inference/           # shared bounded Ollama transport + screen-hint decisions
+  evaluation/          # semantic dataset, UIA fixture, read-only three-lane gate
 DECISIONS.md   # why — read first
 FLOW.md         # how execution flows, "you are here" marker
 My idea.docx    # the full long-term vision + market research (context, not a build doc)
@@ -449,3 +450,9 @@ synthesis API into it. Full reports are ignored under
 `.artifacts/model-evaluation`; commit only a reviewed summary. Final acceptance
 requires two consecutive non-draft full passes; every failure resets the count
 to zero and must be preserved and classified first.
+
+D065 fixes evidence promotion: timestamped JSON remains ignored, while
+`docs/evidence/model-durability-draft.md` is the concise, reviewable diagnostic
+summary. Do not remove its draft warning or call its numbers the incumbent
+baseline until dataset owner review and D064's consecutive-pass gate are both
+complete.

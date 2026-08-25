@@ -10,6 +10,7 @@ flowchart LR
     Bar[Control bar\nStop / Pause / Ask / goal input]
     Planner[Bounded goal planner\nregistered intent IDs only]
     HintAI[Screen-aware local inference\nobserved approved IDs only]
+    Eval[Three-lane model gate\nraw quality + final authority + read-only UIA]
     Packs[Strict application packs\nmanifest + trusted recipes]
     Recipe[Hand-authored Recipe\nreasoning/recipes/*.json]
 
@@ -67,6 +68,8 @@ flowchart LR
     Service --> Ground
     Service --> HintAI
     HintAI --> Ground
+    Planner --> Eval
+    HintAI --> Eval
     Ground --> Loop
     Loop --> Verify
     Verify --> Loop
@@ -87,7 +90,7 @@ flowchart LR
     classDef done fill:#d9f2e6,stroke:#16734a,color:#123b2a;
     classDef partial fill:#fff0c2,stroke:#9a6b00,color:#4a3500;
     classDef missing fill:#f5dddd,stroke:#a33a3a,color:#521b1b,stroke-dasharray: 6 4;
-    class User,Args,Bar,Planner,HintAI,Packs,Recipe,UIA,Service,Focus,Warm,Capture,OCR,Tier2,Health,Ground,Loop,Verify,Fresh,Renderer,Overlay,Paint,Safety,Identity,Store,Promote done;
+    class User,Args,Bar,Planner,HintAI,Eval,Packs,Recipe,UIA,Service,Focus,Warm,Capture,OCR,Tier2,Health,Ground,Loop,Verify,Fresh,Renderer,Overlay,Paint,Safety,Identity,Store,Promote done;
     class VLM,Package,AIOS missing;
 ```
 
@@ -141,6 +144,12 @@ flowchart LR
   authority. Any model-selected intent with a recipe must agree with the
   deterministic classifier's grounded candidate; otherwise only a trusted
   fallback may run, or the goal is unsupported.
+- Planner and hint inference share one bounded Ollama transport but keep
+  separate dynamic schemas. A versioned 30-case gate measures raw advisory
+  quality separately from final authority, reruns the production policy
+  directly, and has an explicit read-only interactive lane against a
+  provenance-tagged Synthetic Export UIA fixture. Its dataset cannot be
+  promoted while owner review metadata is incomplete.
 - The VS Code pack has two validated recipes. Open Folder uses a provider-side
   exact-name query plus title verification. Open Terminal uses a separate
   executable-bounded Button surface, a human `Ctrl+\`` instruction, and exact
@@ -193,6 +202,12 @@ The real VS Code Open Folder and Open Terminal workflows each passed three
 consecutive interactive desktop runs. The expanded Ask panel and submitted-goal
 round trip also passed interactive validation. Repository-wide lane
 classification is complete; the fresh-clone release gate remains.
+
+The first complete model-durability draft passed every hard gate and measured
+26/30 raw semantic intent decisions. All four raw over-commitments remained
+non-launchable. This is diagnostic evidence, not yet the frozen incumbent
+baseline, because owner review and two consecutive non-draft interactive passes
+remain open.
 
 # Open-track goal planning
 

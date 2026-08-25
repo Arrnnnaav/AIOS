@@ -761,6 +761,10 @@ versioned human-semantic dataset (30 cases, family_id grouped)
 Until dataset metadata records owner review, use `--draft`; the result is
 diagnostic and can never be marked as the trusted incumbent baseline.
 
+Raw timestamped reports remain ignored. Only a reviewed summary with model
+digest, dataset review state, hard gates, failures, latency, and no-action
+scope is committed under `docs/evidence/`.
+
 ```powershell
 # Draft diagnostics while semantic labels await owner review.
 py -3.12 -m ghostcursor.evaluation.model_gate `
