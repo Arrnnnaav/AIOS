@@ -16,6 +16,14 @@ trusted planner/packs/inference foundation, the
 perception/VS Code runtime, the vertical Ask control rail, and its tests/docs.
 That baseline is tagged `pre-readiness-audit`.
 
+The release inference code is anchored at `submission-pre-model-hardening`
+(`15f20cef...`). A partially implemented schema-constrained Ollama request
+contract is parked at `304e8e0` on `post-submission/model-durability` and is
+absent from the submission branch. Mechanical branch/tag/absence checks passed,
+followed by 23 focused controls, 361 hermetic tests, and all eight live
+available/unavailable planner matrix cells against the actual release code.
+Only those release-branch results are submission evidence.
+
 The real `Open a folder in VS Code` workflow is complete: natural-language
 planning resolves `OPEN_FOLDER`, the `Code.exe`-bounded walker looks only for
 Welcome-page `Open Folder` variants, OCR can reassemble the split label, the
@@ -716,6 +724,27 @@ resolve a trusted schema-valid recipe, require an explicit target except for
 the canonical Synthetic Export target, then enter the observe/act/verify tour.
 An active tour is never replaced by Ask. The bar remains optional at runtime,
 while ESC remains polled even when bar creation or focus acquisition fails.
+
+## Submission evidence flow
+
+The novice VS Code check is locked before data collection:
+
+```
+recruit 3 novices (2 disclosed fallback; <2 means no value claim)
+    -> pre-study confidence (1-5)
+    -> baseline Open Folder attempt (120s)
+    -> reset VS Code
+    -> Ask-guided Open Folder attempt (120s)
+    -> post-study confidence (1-5)
+    -> publish every row, failure, timeout, wrong turn, and help request
+    -> report raw values and limited descriptive summaries only
+```
+
+Completion is a world-state measurement: the selected neutral folder must be
+active as the VS Code workspace. The guided attempt must additionally reach
+`Tour complete.` Recruitment is deliberately deferred until eligible
+participant contacts or an authorized communication channel are available;
+the prepared invitation is not evidence that it was sent.
 
 ## Durability inference transport
 

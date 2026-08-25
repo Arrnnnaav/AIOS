@@ -2279,9 +2279,13 @@ that guard to manufacture learning evidence would violate D006 and D030.
 
 **Decision.** Value evidence targets one user and task: a novice VS Code user
 opening a first project folder. The published protocol compares an unassisted
-attempt with a GhostCursor-guided attempt and records time to the correct
-action, total completion, wrong actions, completion, and a 1–5 confidence
-rating. Three participants are preferred; two are acceptable only with `n=2`
+attempt with a GhostCursor-guided attempt under the same 120-second limit. It
+records time to the first correct action, time to verified completion, wrong
+turns, help requests, completion, and 1–5 confidence before the baseline and
+after the guided attempt. Verified completion means the selected neutral
+folder is active as the VS Code workspace; the guided attempt must also print
+`Tour complete.` Three participants are the complete planned evidence tier,
+not evidence of general effectiveness. Two are acceptable only with `n=2`
 disclosed; fewer than two means no participant-value claim. Every result,
 including failures and timeouts, remains in the table. Names and contact data
 never enter the repository.
@@ -2293,8 +2297,11 @@ protocol therefore preserves individual observations and states the
 limitation instead of converting a buildathon check into research theater.
 
 **Artifact.** `docs/evidence/novice-vscode-study.md` contains the ready-to-send
-invitation, fixed protocol, empty live results table, and claim rules. Results
-are intentionally blank until real sessions occur.
+invitation, amended fixed protocol, empty live results table, measurement
+contract, and claim rules. Recruitment is deliberately deferred until eligible
+participant contacts or an authorized messaging channel are available; this
+is an intentional dependency decision, not an implied completed action.
+Results remain blank until real sessions occur.
 
 ## D060 — The demo protects live evidence inside a 4:45 budget
 
@@ -2311,6 +2318,41 @@ margin below the form's five-minute limit protects upload and editing variance.
 
 **Artifact.** `docs/submission/demo-video-script.md` fixes the timestamps,
 commands, protected/cuttable segments, and final review checklist.
+
+## D061 — Model-call hardening is preserved but excluded from the submission release
+
+**Finding.** Schema-constrained Ollama request work was started directly on
+`submission/open-track` and reached 27 focused planner/screen-hint tests, but
+had not passed the live never-fabricate matrix or complete regression gates.
+Focused tests alone do not justify replacing the already certified inference
+contract on the release branch.
+
+**Decision.** Tag release commit `15f20cef8d841fdd75145bd0e2493d61a2a90092`
+as `submission-pre-model-hardening`. Preserve the partial five-file slice at
+commit `304e8e0` on `post-submission/model-durability`, then return the release
+branch to the tagged code. The request hardening, model comparisons, trusted
+document retrieval, and any fine-tuning remain post-submission work.
+
+**Isolation evidence.** The annotated tag and release HEAD both resolved to
+the exact full commit above. Commit-to-tag, staged, and unstaged diffs were
+empty; `git status --porcelain` was empty; the deferred
+`ghostcursor/inference/ollama.py` module and its request-contract tests were
+absent from `submission/open-track`.
+
+**Release recertification.** On the actual tagged release code, the focused
+planner/screen-hint controls passed **23 tests** and the complete hermetic lane
+passed **361 tests**. The live eight-cell planner matrix passed with Ollama
+0.31.1 and `qwen3:4b-instruct` digest
+`0edcdef34593eac1aa2be9c7d06c432dcf81945adca5eca2f27662c18f168ba0`:
+both unsupported goals remained non-launching in available and unavailable
+conditions; Open Folder and Open Terminal were `SUPPORTED` with Qwen and
+`MODEL_UNAVAILABLE_FALLBACK` through the unreachable endpoint. The probe never
+launched a tour.
+
+**Honest scope.** The submission ships the existing prompt-request format plus
+D058 deterministic semantic grounding. It does not claim structured-output,
+`think: false`, fixed-seed, or keep-alive hardening; those changes exist only
+on the explicitly incomplete post-submission branch.
 
 ## D062 — One bounded Ollama adapter owns request transport and metadata
 
