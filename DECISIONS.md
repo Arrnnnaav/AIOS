@@ -2351,3 +2351,53 @@ avoiding unrelated UI text.
 **Evidence.** The focused adapter/planner/hint lane passes 41 tests, including
 valid abstention, strict alias/extra-field rejection, deterministic mismatch,
 duplicate IDs, candidate ceilings, and unavailable-model fallback.
+
+## D064 — Model changes require one versioned, read-only, three-lane gate
+
+**Decision.** Every model name/digest, prompt, schema, parser, adapter, or
+planner/hint inference-path change must run the same versioned evaluation set.
+The set contains 30 independently drafted semantic cases grouped by
+`family_id`: exact supported goals, paraphrases, misspellings, ambiguous goals,
+near misses, and adversarial requests. Expected raw labels are human semantic
+judgments, never incumbent outputs. Observed Qwen output is baseline evidence,
+not ground truth. The dataset cannot produce a trusted baseline until its
+metadata says `owner-reviewed`, identifies the reviewer and review date, and
+confirms it was frozen before the first complete trusted run.
+
+The standing command has three honest lanes: hermetic policy/contract checks,
+bounded localhost Ollama requests, and an explicitly requested interactive UIA
+check. Omitting `--interactive` is reported as a skip and cannot close the
+milestone. Generated full reports live under ignored `.artifacts/`; reviewed
+summaries may be committed separately.
+
+**No-action boundary.** The interactive lane starts and owns one Synthetic
+Export child, calls perception and hint inference directly, and never imports
+the tour dispatcher. An evaluation-package import allowlist, project AST scan,
+the repository-wide D006 input-synthesis scan, runtime `ghostcursor.run` guard,
+single approved AutomationId schema, and `STATUS_ID` before/after sentinel are
+independent checks. The sentinel proves the Export/Wrong Control status did not
+change; it is not an exhaustive UI diff. The combined API-path prohibition,
+import/AST checks, runtime guard, and sentinel support the stronger read-only
+claim. Third-party dependencies are intentionally not recursively AST-scanned.
+
+**Fixture contract.** The Synthetic Export fixture was captured through real
+Windows UIA on 2026-08-25 and records source commit provenance. Name, control
+type, AutomationId, and source must match exactly. Geometry is structural only:
+four integers, positive area, and intersection with the target window. Focus,
+HWND, timestamps, enumeration order, and absolute position are volatile and do
+not participate in parity.
+
+**First draft measurement.** The unreviewed Qwen 3 4B draft passed every hard
+gate: 100% raw accuracy on six exact supported controls, zero launch-eligible
+plans across unsupported cases, safe four-cell never-fabricate results, and
+exact Export selection from candidate `1005`. Overall semantic accuracy was
+26/30 (86.7%); the model over-committed on `Open it`, `Make a new one`, `Open a
+project`, and `Build and publish a website`, all at 0.95 confidence. D058 or an
+unavailable recipe prevented authority in every case. Median request latency
+was 2861 ms in the complete interactive draft run. This is diagnostic evidence,
+not the frozen incumbent baseline, until owner review is recorded.
+
+**Consecutive acceptance.** Final closure requires two consecutive full
+non-draft `--interactive` passes. Any product or ambient failure resets the
+count to zero; its report is preserved and classified before another attempt.
+Two nonconsecutive successes do not satisfy the gate.

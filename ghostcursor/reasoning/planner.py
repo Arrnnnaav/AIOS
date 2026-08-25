@@ -135,6 +135,15 @@ def _fallback(goal: str) -> tuple[str | None, float, str]:
     return None, 0.0, "no trusted intent matched"
 
 
+def deterministic_intent(goal: str) -> tuple[str | None, float, str]:
+    """Expose the trusted rule classifier to production-parity evaluation.
+
+    The evaluation gate calls this same function rather than maintaining a
+    second, potentially drifting implementation of deterministic grounding.
+    """
+    return _fallback(goal)
+
+
 def planner_response_schema(intent_ids: tuple[str, ...]) -> dict:
     if not intent_ids:
         raise ValueError("planner registry must not be empty")

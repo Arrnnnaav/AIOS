@@ -1,0 +1,36 @@
+{
+  "fixture_version": "1.0.0",
+  "provenance": {
+    "source_app": "ghostcursor.demo.synthetic_export_app",
+    "source_commit": "65e260d1bf6bffef59dda05a96fa972b79d715cd",
+    "captured_at": "2026-08-25",
+    "capture_method": "real Windows UI Automation via ghostcursor.perception.uia.iter_elements"
+  },
+  "window": {
+    "title": "Synthetic Export",
+    "captured_bbox": [375, 250, 1025, 575]
+  },
+  "elements": [
+    {
+      "name": "Export",
+      "control_type": "Button",
+      "automation_id": "1005",
+      "source": "uia",
+      "captured_bbox": [423, 333, 648, 386]
+    },
+    {
+      "name": "Wrong control",
+      "control_type": "Button",
+      "automation_id": "1006",
+      "source": "uia",
+      "captured_bbox": [673, 333, 898, 386]
+    },
+    {
+      "name": "Ready to export",
+      "control_type": "Text",
+      "automation_id": "1007",
+      "source": "uia",
+      "captured_bbox": [423, 439, 923, 479]
+    }
+  ]
+}

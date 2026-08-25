@@ -738,3 +738,41 @@ screen_hint.decide_next_hint(goal, observation, approved_names)
 ```
 
 Schema validity never grants recipe or control authority.
+
+## Standing model-durability gate
+
+```
+versioned human-semantic dataset (30 cases, family_id grouped)
+    -> lane 1: hermetic schema/parser/D058/abstention/candidate checks
+    -> lane 2: one bounded local-model request per goal
+         -> raw IntentDecision metrics
+         -> same resolve_model_decision() used by production
+         -> never-fabricate matrix + supported controls
+         -> frozen Synthetic Export hint fixture
+    -> lane 3 (--interactive): owned Synthetic Export child
+         -> real UIA observation
+         -> exact identity + structural geometry fixture parity
+         -> approved candidates == [EXPORT_ID]
+         -> direct hint inference (no run_tour / no input synthesis)
+         -> STATUS_ID remains "Ready to export"
+    -> ignored JSON report; reviewed evidence is promoted separately
+```
+
+Until dataset metadata records owner review, use `--draft`; the result is
+diagnostic and can never be marked as the trusted incumbent baseline.
+
+```powershell
+# Draft diagnostics while semantic labels await owner review.
+py -3.12 -m ghostcursor.evaluation.model_gate `
+  --model qwen3:4b-instruct `
+  --endpoint http://127.0.0.1:11434 `
+  --unavailable-endpoint http://127.0.0.1:1 `
+  --interactive --draft
+
+# Final standing gate after owner review (no --draft).
+py -3.12 -m ghostcursor.evaluation.model_gate `
+  --model qwen3:4b-instruct `
+  --endpoint http://127.0.0.1:11434 `
+  --unavailable-endpoint http://127.0.0.1:1 `
+  --interactive
+```

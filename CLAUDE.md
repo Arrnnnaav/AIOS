@@ -421,3 +421,31 @@ D063 is now built: both inference paths use the shared adapter, parsers accept
 only canonical bounded fields, planner null is an explicit abstention, and
 `resolve_model_decision()` is the single production/evaluation authority
 policy. Never bypass that function in an evaluation runner.
+
+D064 is built in draft: a 30-case versioned semantic dataset, provenance-tagged
+Synthetic Export UIA fixture, and three-lane read-only gate now exist. The
+dataset remains `pending-owner-review`, so draft reports are diagnostics and
+must not be called the incumbent baseline. The first complete draft passed all
+hard gates at 86.7% overall raw semantic accuracy and 100% on exact supported
+goals; D058 denied authority to all four raw over-commitments.
+
+Any change to a model name or digest, Ollama request options, prompt, JSON
+schema, parser, adapter, planner inference, hint inference, or authority policy
+requires the complete model-durability gate. Run it with `--interactive`; a
+non-interactive skip cannot close the milestone. Until labels are owner-reviewed
+and frozen, add `--draft` and do not promote the report:
+
+```powershell
+py -3.12 -m ghostcursor.evaluation.model_gate `
+  --model qwen3:4b-instruct `
+  --endpoint http://127.0.0.1:11434 `
+  --unavailable-endpoint http://127.0.0.1:1 `
+  --interactive --draft
+```
+
+The evaluation package is read-only by construction. Do not import
+`ghostcursor.run`, `ghostcursor.reasoning.loop`, overlay creation, or any input
+synthesis API into it. Full reports are ignored under
+`.artifacts/model-evaluation`; commit only a reviewed summary. Final acceptance
+requires two consecutive non-draft full passes; every failure resets the count
+to zero and must be preserved and classified first.
