@@ -8,10 +8,11 @@ the bottom shows exactly what's being built/modified right now.
 
 ## Current milestone: Open Track submission readiness — two VS Code workflows green
 
-The certified baseline is isolated on `submission/open-track`; the accepted
-terminal slice is developed on `feature/vscode-open-terminal` from the
-`stable-pre-terminal` tag. Four concern commits preserve the trusted
-planner/packs/inference foundation, the
+The certified baseline and accepted terminal slice are now merged on
+`submission/open-track`. The terminal work was developed on
+`feature/vscode-open-terminal` from the `stable-pre-terminal` tag and passed
+its gate before the fast-forward merge. Four concern commits preserve the
+trusted planner/packs/inference foundation, the
 perception/VS Code runtime, the vertical Ask control rail, and its tests/docs.
 That baseline is tagged `pre-readiness-audit`.
 

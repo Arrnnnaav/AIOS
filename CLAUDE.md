@@ -2,10 +2,11 @@
 
 ## Current build status
 
-The Open Track submission baseline is on `submission/open-track`; the accepted
-terminal slice is developed from `stable-pre-terminal` on
-`feature/vscode-open-terminal`. The trusted planner, strict application packs,
-bounded screen-aware hint inference, synthetic demo, foreground watcher,
+The Open Track submission baseline and accepted terminal slice are merged on
+`submission/open-track`. The terminal slice was developed from
+`stable-pre-terminal` on `feature/vscode-open-terminal` and merged only after
+its 3/3 gate and independent review. The trusted planner, strict application
+packs, bounded screen-aware hint inference, synthetic demo, foreground watcher,
 perception health instrumentation, executable-bounded VS Code grounding, and
 vertical Ask control rail are implemented.
 
