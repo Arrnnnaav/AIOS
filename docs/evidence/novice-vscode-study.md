@@ -85,4 +85,3 @@ Fill this table during each session. Do not reconstruct it later from memory.
   novice participants reached the correct action/completion with the guide,
   with the recorded timings and confidence ratings shown above.”
 - If a run fails, retain it in the table and explain the observed failure.
-

@@ -70,4 +70,3 @@ must match the observed contract in `docs/evidence/never-fabricate-matrix.md`.
 - The refusal clip proves behavior rather than merely showing a slide.
 - Participant claims exactly match the filled evidence table and sample size.
 - Repository URL and final video link open from a signed-out/private browser.
-
