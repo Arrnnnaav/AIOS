@@ -287,3 +287,53 @@ def iter_vscode_elements(title_re: str) -> list[Element]:
         ]
     except Exception:
         return []
+
+
+_VSCODE_TERMINAL_BUTTONS = {
+    "Toggle Panel (Ctrl+J)",
+    "Terminal Section",
+}
+
+
+def iter_vscode_terminal_elements(title_re: str) -> list[Element]:
+    """Trusted UIA surface for the VS Code integrated-terminal workflow.
+
+    Electron exposes the title-bar Toggle Panel control and the visible
+    terminal section as Buttons, but neither has a stable AutomationId. Walk
+    only Buttons and publish only these two hand-approved exact names. The
+    walk remains on the bounded perception worker; a slow Electron provider
+    therefore cannot freeze ESC or the control rail.
+    """
+
+    matches = windows_matching_executable(title_re, "code.exe")
+    if not matches:
+        return []
+    try:
+        window = Desktop(backend="uia").window(handle=matches[0])
+        controls = window.descendants(control_type="Button")
+    except Exception:
+        return []
+
+    elements: list[Element] = []
+    for control in controls:
+        try:
+            name = control.window_text() or ""
+            if name not in _VSCODE_TERMINAL_BUTTONS:
+                continue
+            rect = control.rectangle()
+            bbox = (rect.left, rect.top, rect.right, rect.bottom)
+            if not is_on_screen(bbox):
+                continue
+            info = control.element_info
+            elements.append(
+                Element(
+                    name=name,
+                    control_type=info.control_type or "",
+                    automation_id=info.automation_id or "",
+                    bbox=bbox,
+                    path=(info.control_type or "",),
+                )
+            )
+        except Exception:
+            continue
+    return elements

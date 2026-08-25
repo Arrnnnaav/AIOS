@@ -137,6 +137,12 @@ flowchart LR
 - Natural-language planning and screen-aware target selection are bounded by
   registered intent IDs, strict pack manifests, trusted recipe paths, and live
   observed AutomationIds.
+- The VS Code pack has two validated recipes. Open Folder uses a provider-side
+  exact-name query plus title verification. Open Terminal uses a separate
+  executable-bounded Button surface, a human `Ctrl+\`` instruction, and exact
+  `Terminal Section` appearance verification. Already-present state completes
+  before rendering; otherwise a first-hint deadline bounds the transition.
+  Its empty Electron AutomationIds are never persisted.
 - The logging-only foreground watcher matches installed packs without starting
   tours or displaying UI.
 
@@ -166,8 +172,9 @@ flowchart LR
   does not currently use.
 - Some real-desktop tests depend on the current Windows desktop and are not a
   clean CI contract; the fast suite count should not be treated as universal.
-- The test suite still needs explicit hermetic, interactive, pixel, and
-  hung-window lanes before the submission baseline is certified.
+- Desktop controls without stable AutomationIds cannot participate in learned
+  reuse or ID-based wrong-action naming; they remain eligible only for trusted
+  live name/type grounding and deterministic world-state verification.
 
 ## Verification Snapshot
 
@@ -178,10 +185,10 @@ control bar. The slow hung-window tests must run alone on Windows. Run the
 project's documented test commands sequentially; do not run two desktop/UIA
 test sessions at the same time.
 
-The real VS Code Open Folder workflow passed three consecutive interactive
-desktop runs. The expanded Ask panel and submitted-goal round trip also passed
-interactive validation. Repository-wide lane classification and a fresh-clone
-release gate remain in progress.
+The real VS Code Open Folder and Open Terminal workflows each passed three
+consecutive interactive desktop runs. The expanded Ask panel and submitted-goal
+round trip also passed interactive validation. Repository-wide lane
+classification is complete; the fresh-clone release gate remains.
 
 # Open-track goal planning
 

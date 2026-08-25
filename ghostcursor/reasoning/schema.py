@@ -292,6 +292,30 @@ def validate_step(step: Step) -> list[str]:
                 "the step would either never complete or complete on no evidence"
             )
 
+    for option in (
+        "fail_after_timeout",
+        "timeout_from_hint",
+        "accept_if_already_present",
+    ):
+        if option in rule.args and not isinstance(rule.args[option], bool):
+            errors.append(f"verification option {option!r} must be a boolean")
+
+    if (
+        rule.args.get("accept_if_already_present") is True
+        and rule.kind is not VerificationKind.ELEMENT_APPEARS
+    ):
+        errors.append(
+            "accept_if_already_present is supported only for element_appears"
+        )
+
+    if (
+        rule.args.get("timeout_from_hint") is True
+        and rule.args.get("fail_after_timeout") is not True
+    ):
+        errors.append(
+            "timeout_from_hint requires fail_after_timeout so the deadline has an effect"
+        )
+
     if (
         step.user_action in _TARGETED_ACTIONS
         and step.target_descriptor.claimed.is_empty()

@@ -228,6 +228,77 @@ def test_recipe_can_fail_after_bounded_post_action_verification_timeout():
     assert "20s" in tour.failure_reason
 
 
+def test_timeout_from_hint_bounds_a_keyboard_action_with_no_detectable_change():
+    now = {"t": 0.0}
+    step = _step()
+    step.verification_rule.timeout_s = 20.0
+    step.verification_rule.args.update(
+        fail_after_timeout=True,
+        timeout_from_hint=True,
+    )
+    tour = _tour(
+        steps=[step],
+        verifier=lambda rule, before, after: False,
+        clock=lambda: now["t"],
+        snapshotter=lambda: STILL,
+    )
+
+    for _ in range(4):
+        tour.tick()
+    assert tour.state is State.AWAITING_USER_ACTION
+
+    now["t"] = 20.1
+    tour.tick()
+
+    assert tour.state is State.FAILED
+    assert tour.failure_reason == "verification timed out after 20s"
+
+
+def test_timeout_wins_when_the_verified_state_arrives_after_the_deadline():
+    now = {"t": 0.0}
+    step = _step()
+    step.verification_rule.timeout_s = 20.0
+    step.verification_rule.args.update(
+        fail_after_timeout=True,
+        timeout_from_hint=True,
+    )
+    save_present = Snapshot("App", (SAVE,))
+    snapshots = iter((STILL, save_present))
+    tour = _tour(
+        steps=[step],
+        verifier=verify,
+        clock=lambda: now["t"],
+        snapshotter=lambda: next(snapshots, save_present),
+    )
+
+    for _ in range(4):
+        tour.tick()
+    now["t"] = 20.1
+    tour.tick()
+
+    assert tour.state is State.FAILED
+
+
+def test_already_present_goal_completes_without_rendering_or_grounding():
+    step = _step()
+    step.verification_rule.args["accept_if_already_present"] = True
+    save_present = Snapshot("App", (SAVE,))
+    ground_calls = []
+    tour = _tour(
+        steps=[step],
+        grounder=lambda *args: ground_calls.append(args) or TARGET,
+        verifier=verify,
+        snapshotter=lambda: save_present,
+    )
+
+    for _ in range(5):
+        tour.tick()
+
+    assert tour.state is State.DONE
+    assert ground_calls == []
+    assert tour.renderer.shown == []
+
+
 # --- finding 1: ordinary title churn must not bounce the tour to OBSERVING --
 
 EXPORT = Element("Export", "Button", "1001", (10, 10, 110, 40))

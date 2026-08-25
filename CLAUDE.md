@@ -2,8 +2,9 @@
 
 ## Current build status
 
-The Open Track submission-readiness milestone is active on
-`submission/open-track`. The trusted planner, strict application packs,
+The Open Track submission baseline is on `submission/open-track`; the accepted
+terminal slice is developed from `stable-pre-terminal` on
+`feature/vscode-open-terminal`. The trusted planner, strict application packs,
 bounded screen-aware hint inference, synthetic demo, foreground watcher,
 perception health instrumentation, executable-bounded VS Code grounding, and
 vertical Ask control rail are implemented.
@@ -17,16 +18,26 @@ trusted replanning, and completion validation. Installer, tray, startup,
 web retrieval, and additional application packs remain deferred. The
 logging-only watcher is available as `py -3.12 -m ghostcursor.daemon`.
 
-The deterministic planner aliases `VS Code`, `VSCode`, and
-`Visual Studio Code` to the same `OPEN_FOLDER` intent. The documented goal
-`Open a folder in VS Code` is a 0.95 exact strong phrase and must continue to
-load the trusted recipe under `MODEL_UNAVAILABLE_FALLBACK` when Ollama times
-out or is offline. Do not rely on a folder name containing `vscode` to prove
-this route; the regression fixture deliberately uses an unrelated folder
-name.
+`OPEN_TERMINAL` is the second validated VS Code intent. Its trusted recipe
+highlights `Toggle Panel (Ctrl+J)`, tells the human to press `Ctrl+\``, and
+accepts an already-visible exact `Terminal Section` before rendering. Otherwise
+it verifies an absent-to-present state within 20 seconds of the first hint;
+timeout wins over a state first observed after the deadline.
+It passed 3/3 consecutive real-desktop runs. A click recipe is forbidden for
+this goal because Toggle Panel restores whichever panel was active and opened
+Debug Console during the measured rehearsal.
 
-Real VS Code perception is intentionally narrow for the validated workflow.
-`perception_walker_for("code.exe")` selects `uia.iter_vscode_elements`, which
+The deterministic planner aliases `VS Code`, `VSCode`, and
+`Visual Studio Code` for both registered VS Code intents. The documented goals
+`Open a folder in VS Code` and `Open the integrated terminal in VS Code` are
+0.95 exact strong phrases and must continue to load their trusted recipes
+under `MODEL_UNAVAILABLE_FALLBACK` when Ollama times out or is offline. Do not
+rely on a folder name containing `vscode` to prove the folder route; the
+regression fixture deliberately uses an unrelated folder name.
+
+Real VS Code perception is intentionally narrow for each validated workflow.
+`perception_walker_for("code.exe", recipe_intent)` selects the reviewed walker
+for that recipe. Open Folder uses `uia.iter_vscode_elements`, which
 uses provider-side exact queries for `Open Folder` name variants and never performs
 the generic full Electron descendant walk. A UIA provider miss returns an
 empty successful observation so executable-bounded OCR can escalate. OCR
@@ -36,6 +47,16 @@ aligned with the trusted VS Code pack; broaden it only when a new
 reviewed VS Code recipe needs another target. Progress stages must be written
 before potentially blocking calls so health logs do not misidentify a blocked
 walk as a focus stall.
+
+Open Terminal uses `uia.iter_vscode_terminal_elements`, a `Code.exe`-bounded
+Button walk filtered to exact `Toggle Panel (Ctrl+J)` and `Terminal Section`
+names. Neither exposes a stable AutomationId. Never invent one, persist these
+name-only controls, or claim focus-based wrong-action naming for this workflow:
+promotion and wrong-action feedback intentionally fail closed without an ID.
+Keep `accept_if_already_present` and `timeout_from_hint` on this recipe. The
+first prevents an already-satisfied goal from receiving a shortcut that closes
+it; the second bounds a no-op shortcut that provides no observable action
+event. Both options are schema-checked and covered by injected-clock tests.
 
 Executable recipe targets are identity-bounded. `app_info_for_window()` may
 accept `expected_app_id`; `perception_hwnd_source_for()` supplies the same
@@ -81,6 +102,14 @@ and submitted the goal; the shared planner launched a fresh trusted VS Code
 tour and it reached `Tour complete.` The Ask behavioral gate is closed. Keep
 the `Ask received` console acknowledgement before nested `run_tour()` because
 the nested control-bar session may remain alive until its timeout.
+
+Real VS Code open-terminal acceptance also passed 3 of 3 consecutive clean
+runs from a confirmed hidden-panel baseline. The evidence is fresh live
+grounding plus an observed `Terminal Section` transition on each run; it is not
+a learned-observation reuse claim because the controls have empty IDs.
+Post-review regression is 50 focused, 355 hermetic, and 55 interactive tests.
+The corrected desktop path passed one already-present run with no hint plus
+3/3 consecutive hidden-to-visible transitions.
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 

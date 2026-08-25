@@ -65,6 +65,16 @@ def registry() -> dict[str, IntentSpec]:
             ),
             _ROOT.parent / "packs" / "recipes" / "vscode" / "open_folder.json",
         ),
+        "OPEN_TERMINAL": IntentSpec(
+            "OPEN_TERMINAL",
+            (
+                "open the integrated terminal in vs code",
+                "open the integrated terminal in vscode",
+                "open a terminal in vs code",
+                "open a terminal in vscode",
+            ),
+            _ROOT.parent / "packs" / "recipes" / "vscode" / "open_terminal.json",
+        ),
     }
 
 
@@ -87,13 +97,22 @@ def _fallback(goal: str) -> tuple[str | None, float, str]:
         and ("folder" in normalized or "\\" in normalized or "/" in normalized)
     ):
         return "OPEN_FOLDER", 0.85, "matched the VS Code open-folder intent"
+    for phrase in specs["OPEN_TERMINAL"].phrases:
+        if normalized == phrase:
+            return "OPEN_TERMINAL", 0.95, f"matched exact phrase: {phrase}"
+    if (
+        any(word in normalized for word in ("open", "show"))
+        and "terminal" in normalized
+        and any(alias in normalized for alias in ("vs code", "vscode", "visual studio code"))
+    ):
+        return "OPEN_TERMINAL", 0.85, "matched the VS Code integrated-terminal intent"
     return None, 0.0, "no trusted intent matched"
 
 
 def _model_intent(goal: str, endpoint: str, model: str, timeout: float) -> tuple[str, float, str]:
     prompt = (
         "Return JSON only with keys intent_id, confidence, explanation. "
-        "intent_id must be one of EXPORT_DATA, CREATE_DOCUMENT, OPEN_SETTINGS, OPEN_FOLDER. "
+        "intent_id must be one of EXPORT_DATA, CREATE_DOCUMENT, OPEN_SETTINGS, OPEN_FOLDER, OPEN_TERMINAL. "
         f"Goal: {goal}"
     )
     # Keep the request compatible with older Ollama servers. Qwen3 may emit

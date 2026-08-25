@@ -230,7 +230,7 @@ def test_the_tick_loop_suppresses_tier2_through_the_real_wiring(monkeypatch, tmp
         monkeypatch.setattr(
             run_module,
             "perception_walker_for",
-            lambda _app_id: (lambda _title_re: []),
+            lambda _app_id, _recipe_intent="": (lambda _title_re: []),
         )
 
         # Neutralize real keyboard state so a key genuinely held down on the

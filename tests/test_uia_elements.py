@@ -94,6 +94,74 @@ def test_vscode_walk_degrades_to_empty_for_a_provider_failure(monkeypatch):
     assert uia.iter_vscode_elements(".*Visual Studio Code.*") == []
 
 
+def test_vscode_terminal_walk_returns_only_trusted_exact_buttons(monkeypatch):
+    class Rect:
+        left, top, right, bottom = 10, 20, 180, 50
+
+    class ElementInfo:
+        control_type = "Button"
+        automation_id = ""
+
+    class Control:
+        element_info = ElementInfo()
+
+        def __init__(self, name):
+            self.name = name
+
+        def window_text(self):
+            return self.name
+
+        def rectangle(self):
+            return Rect()
+
+    controls = [
+        Control("Toggle Panel (Ctrl+J)"),
+        Control("Terminal Section"),
+        Control("Toggle Chat"),
+    ]
+
+    class Window:
+        def descendants(self, *, control_type):
+            assert control_type == "Button"
+            return controls
+
+    class FakeDesktop:
+        def __init__(self, *, backend):
+            assert backend == "uia"
+
+        def window(self, *, handle):
+            assert handle == 4242
+            return Window()
+
+    def matching_executable(title_re, executable_name):
+        assert title_re == ".*Visual Studio Code.*"
+        assert executable_name == "code.exe"
+        return [4242]
+
+    monkeypatch.setattr(uia, "windows_matching_executable", matching_executable)
+    monkeypatch.setattr(uia, "Desktop", FakeDesktop)
+    monkeypatch.setattr(uia, "is_on_screen", lambda bbox: True)
+
+    elements = uia.iter_vscode_terminal_elements(".*Visual Studio Code.*")
+
+    assert [element.name for element in elements] == [
+        "Toggle Panel (Ctrl+J)",
+        "Terminal Section",
+    ]
+
+
+def test_vscode_terminal_walk_degrades_to_empty_for_provider_failure(monkeypatch):
+    monkeypatch.setattr(uia, "windows_matching_executable", lambda *args: [4242])
+
+    class BrokenDesktop:
+        def __init__(self, *, backend):
+            raise OSError("provider unavailable")
+
+    monkeypatch.setattr(uia, "Desktop", BrokenDesktop)
+
+    assert uia.iter_vscode_terminal_elements(".*Visual Studio Code.*") == []
+
+
 def test_executable_matching_rejects_a_title_collision(monkeypatch):
     monkeypatch.setattr(uia, "windows_matching", lambda _: [1, 2])
     monkeypatch.setattr(

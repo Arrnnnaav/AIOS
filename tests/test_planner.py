@@ -1,3 +1,5 @@
+import pytest
+
 from ghostcursor.reasoning.planner import PlanStatus, plan_goal
 
 
@@ -71,3 +73,44 @@ def test_exact_cli_vscode_goal_survives_unavailable_model(monkeypatch):
     assert result.intent_id == "OPEN_FOLDER"
     assert result.confidence == 0.95
     assert result.plan is not None
+
+
+def test_exact_vscode_terminal_goal_is_supported_without_model():
+    result = plan_goal("Open the integrated terminal in VS Code", use_model=False)
+
+    assert result.status is PlanStatus.SUPPORTED
+    assert result.intent_id == "OPEN_TERMINAL"
+    assert result.confidence == 0.95
+    assert result.plan is not None
+    assert result.plan.app_id == "code.exe"
+
+
+def test_vscode_terminal_goal_survives_unavailable_model(monkeypatch):
+    monkeypatch.setattr(
+        "ghostcursor.reasoning.planner._model_intent",
+        lambda *args: (_ for _ in ()).throw(TimeoutError("Ollama unavailable")),
+    )
+
+    result = plan_goal("Open the integrated terminal in VS Code")
+
+    assert result.status is PlanStatus.MODEL_UNAVAILABLE_FALLBACK
+    assert result.intent_id == "OPEN_TERMINAL"
+    assert result.plan is not None
+
+
+def test_goal_planner_rejects_a_registered_recipe_outside_trusted_roots(
+    monkeypatch, tmp_path
+):
+    from ghostcursor.reasoning import planner
+
+    outside = tmp_path / "outside.json"
+    outside.write_text("{}", encoding="utf-8")
+    spec = planner.IntentSpec(
+        "OPEN_TERMINAL",
+        ("open the integrated terminal in vs code",),
+        outside,
+    )
+    monkeypatch.setattr(planner, "registry", lambda: {"OPEN_TERMINAL": spec})
+
+    with pytest.raises(ValueError, match="outside the trusted recipe directory"):
+        planner.recipe_path_for("OPEN_TERMINAL")

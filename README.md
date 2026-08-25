@@ -5,10 +5,11 @@ a goal, GhostCursor observes the live application, points at one trusted next
 control, waits for the human to act, and verifies the resulting application
 state. It never moves the mouse or sends keyboard input.
 
-The first real user is a new developer learning VS Code. The validated real-app
-workflow guides `Open a folder in VS Code`; it passed three consecutive
-interactive desktop runs. The same natural-language path works from the CLI and
-the middle-right Ask control rail.
+The first real user is a new developer learning VS Code. Two validated real-app
+workflows guide `Open a folder in VS Code` and `Open the integrated terminal in
+VS Code`; each passed three consecutive interactive desktop runs. The same
+natural-language planner is used by the CLI and the middle-right Ask control
+rail.
 
 ## What makes the AI bounded
 
@@ -55,6 +56,22 @@ The user clicks the highlighted `Open Folder...` action and handles the native
 Windows folder picker. GhostCursor verifies the resulting VS Code workspace
 title before printing `Tour complete.`
 
+Open the integrated terminal:
+
+```powershell
+py -3.12 -m ghostcursor.run `
+  --goal "Open the integrated terminal in VS Code" `
+  --target "Visual Studio Code" `
+  --seconds 60
+```
+
+GhostCursor highlights VS Code's Toggle Panel location and tells the user to
+press `Ctrl+\``. It does not send the shortcut. The tour completes only after
+VS Code exposes the `Terminal Section` application state. If the terminal is
+already visible, the goal completes without showing a shortcut that could
+close it; otherwise the verified transition has a 20-second first-hint
+deadline.
+
 ## Implemented safety and reliability
 
 - UI Automation with executable-bounded HWND identity
@@ -92,7 +109,8 @@ in `CLAUDE.md`.
 
 ## Honest scope
 
-Open Folder is the proven real VS Code workflow. Open Terminal is a gated
-submission stretch only after repository readiness is green. Installer, tray,
-startup automation, web retrieval, filesystem verification, VLM tier 3, and
-additional application packs are deliberately deferred.
+Open Folder and Open Terminal are the two proven real VS Code workflows. The
+terminal controls expose no stable AutomationIds, so GhostCursor deliberately
+does not persist them or claim ID-based wrong-action feedback for that flow.
+Installer, tray, startup automation, web retrieval, filesystem verification,
+VLM tier 3, and additional application packs are deliberately deferred.

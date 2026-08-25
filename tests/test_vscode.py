@@ -1,5 +1,6 @@
 from ghostcursor.reasoning.schema import VerificationKind
-from ghostcursor.reasoning.verification import Snapshot
+from ghostcursor.perception.uia import Element
+from ghostcursor.reasoning.verification import Snapshot, verify
 from ghostcursor.reasoning.vscode import (
     folder_reference_from_goal,
     is_valid_vscode_workspace_title,
@@ -54,3 +55,37 @@ def test_vscode_recipe_uses_title_verification_rule():
     assert rule.timeout_s == 20.0
     assert rule.args["vscode_workspace_title"] is True
     assert rule.args["fail_after_timeout"] is True
+
+
+def test_vscode_terminal_recipe_uses_application_state_verification():
+    from ghostcursor.reasoning.schema import Recipe, UserAction
+
+    recipe = Recipe.load("ghostcursor/packs/recipes/vscode/open_terminal.json")
+    step = recipe.steps[0]
+
+    assert step.target_descriptor.claimed.name == "Toggle Panel (Ctrl+J)"
+    assert step.user_action is UserAction.PRESS_KEYS
+    assert step.verification_rule.kind is VerificationKind.ELEMENT_APPEARS
+    assert step.verification_rule.args["target_descriptor"] == {
+        "name": "Terminal Section"
+    }
+    assert step.verification_rule.args["fail_after_timeout"] is True
+    assert step.verification_rule.args["timeout_from_hint"] is True
+    assert step.verification_rule.args["accept_if_already_present"] is True
+    assert step.verification_rule.timeout_s == 20.0
+
+
+def test_vscode_terminal_completion_requires_terminal_section_to_appear():
+    from ghostcursor.reasoning.schema import Recipe
+
+    recipe = Recipe.load("ghostcursor/packs/recipes/vscode/open_terminal.json")
+    rule = recipe.steps[0].verification_rule
+    toggle = Element("Toggle Panel (Ctrl+J)", "Button", "", (10, 10, 30, 30))
+    terminal = Element("Terminal Section", "Button", "", (10, 40, 90, 70))
+
+    before = Snapshot("Welcome - Visual Studio Code", (toggle,))
+    unchanged = Snapshot("Welcome - Visual Studio Code", (toggle,))
+    after = Snapshot("Welcome - Visual Studio Code", (toggle, terminal))
+
+    assert not verify(rule, before, unchanged)
+    assert verify(rule, before, after)

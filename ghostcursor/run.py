@@ -47,9 +47,11 @@ DEFAULT_CONTROL = "Save"
 VK_ESCAPE = win32con.VK_ESCAPE
 
 
-def perception_walker_for(app_id: str):
+def perception_walker_for(app_id: str, recipe_intent: str = ""):
     """Choose the narrowest trusted perception surface for an app recipe."""
     if app_id.casefold() == "code.exe":
+        if recipe_intent.casefold() == "open the integrated terminal in vscode":
+            return uia.iter_vscode_terminal_elements
         return uia.iter_vscode_elements
     return uia.iter_elements
 
@@ -385,7 +387,7 @@ def run_tour(
         target_hwnd_source = perception_hwnd_source_for(recipe.app_id)
         service = PerceptionService(
             title_re,
-            walker=perception_walker_for(recipe.app_id),
+            walker=perception_walker_for(recipe.app_id, recipe.intent),
             hwnd_source=target_hwnd_source,
             clock=clock,
             tier2=tier2_controller,

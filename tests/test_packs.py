@@ -14,6 +14,7 @@ def test_builtin_packs_load_and_validate_recipes():
     assert registry.recipe_for("synthetic", "EXPORT_DATA") is not None
     assert registry.recipe_for("notepad", "OPEN_NEW_TAB") is not None
     assert registry.recipe_for("vscode", "OPEN_FOLDER") is not None
+    assert registry.recipe_for("vscode", "OPEN_TERMINAL") is not None
 
 
 def test_match_values_requires_both_executable_and_title_when_both_are_declared():

@@ -244,3 +244,43 @@ def test_a_populated_required_arg_still_validates():
         )
     )
     assert validate_step(step) == []
+
+
+@pytest.mark.parametrize(
+    "option",
+    ["fail_after_timeout", "timeout_from_hint", "accept_if_already_present"],
+)
+def test_verification_control_options_require_boolean_values(option):
+    rule = VerificationRule(
+        kind=VerificationKind.ELEMENT_APPEARS,
+        args={"target_descriptor": {"name": "Save"}, option: "yes"},
+    )
+
+    assert any(
+        "must be a boolean" in error
+        for error in validate_step(_step(verification_rule=rule))
+    )
+
+
+def test_accept_if_already_present_is_limited_to_element_appears():
+    rule = VerificationRule(
+        kind=VerificationKind.WINDOW_TITLE_MATCHES,
+        args={"pattern": "Saved", "accept_if_already_present": True},
+    )
+
+    assert any(
+        "only for element_appears" in error
+        for error in validate_step(_step(verification_rule=rule))
+    )
+
+
+def test_timeout_from_hint_requires_a_failure_deadline():
+    rule = VerificationRule(
+        kind=VerificationKind.ELEMENT_APPEARS,
+        args={"target_descriptor": {"name": "Save"}, "timeout_from_hint": True},
+    )
+
+    assert any(
+        "requires fail_after_timeout" in error
+        for error in validate_step(_step(verification_rule=rule))
+    )

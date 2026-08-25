@@ -2178,3 +2178,66 @@ independently: hermetic **341 tests twice** (20.50s and 20.25s), interactive
 53, pytest pixel 3,
 standalone pixels 16/16 and 8/8, and the three isolated hung modules 4, 2, and
 7. Raw logs remain under ignored `.artifacts/hang-audit/`.
+
+## D057 — Open Terminal is the second validated VS Code workflow
+
+**Decision.** Register `OPEN_TERMINAL` as a second trusted intent in the VS
+Code pack. The deterministic planner recognizes exact and synonym forms of
+"open/show the terminal in VS Code," and the model may return only the same
+registered intent ID. The local recipe remains the sole action authority.
+
+The recipe highlights VS Code's exact `Toggle Panel (Ctrl+J)` accessibility
+control as spatial context and instructs the human to press `Ctrl+\``. It does
+not synthesize the shortcut. If exact `Terminal Section` is already visible,
+the goal completes before any hint is rendered, so guidance cannot undo an
+already-correct state. Otherwise completion requires an absent-to-present
+`ELEMENT_APPEARS` transition within 20 seconds of the first rendered hint.
+Perception remains executable-bounded to `Code.exe` and publishes only those
+two reviewed exact Button names for this recipe.
+
+**Rejected alternative.** Clicking Toggle Panel is not a deterministic way to
+open the terminal: a real desktop rehearsal restored the previously active
+Debug Console and correctly ended with `verification timed out after 20s`.
+The documented native terminal shortcut is deterministic, while verification
+still judges the resulting application state rather than the method.
+
+**Evidence.** The focused planner, pack, runtime, UIA, and VS Code set passed
+**49 tests twice**. The corrected workflow then passed **3 of 3 consecutive
+interactive runs** from a confirmed terminal-hidden baseline. Each run used
+`MODEL_UNAVAILABLE_FALLBACK (0.95)` while Ollama was unavailable, grounded the
+trusted Toggle Panel context, waited for the human shortcut, observed
+`Terminal Section`, and printed `Tour complete.` The acceptance record is
+`docs/evidence/vscode-open-terminal.md`.
+
+Post-slice regression runs passed **345 hermetic tests** and **55 interactive
+Windows/UIA tests**. The first interactive run exposed one stale one-argument
+test fake after `perception_walker_for` gained the recipe-intent parameter;
+the background exception was surfaced, the fake was updated to the real
+contract, its module passed in isolation, and the full lane then passed.
+
+**Independent review correction.** D032 review found that the original
+post-action timer could remain unstarted after a no-op keyboard shortcut and
+that an already-open terminal had no safe path. `timeout_from_hint` now starts
+this recipe's bounded clock at first render; timeout is evaluated before a
+late success; and `accept_if_already_present` completes an already-satisfied
+`ELEMENT_APPEARS` goal before grounding or rendering. Schema validation limits
+and type-checks both options. Injected-clock tests cover no-op timeout, late
+appearance rejection, and already-present completion without a hint. The same
+review added mutation-sensitive coverage for planner path containment,
+`Code.exe` walker binding, runtime intent-to-walker wiring, and the project-wide
+D006 ban on input-synthesis calls.
+
+After those corrections, the final regression lanes passed **50 focused**,
+**355 hermetic**, and **55 interactive Windows/UIA** tests. Real desktop
+validation passed the already-present path once with no instruction rendered,
+then passed the corrected hidden-to-visible transition **3 of 3** again. A live
+no-op attempt was not counted as timeout evidence because VS Code independently
+exposed the desired Terminal Section during the run; the injected-clock test is
+the controlled proof that an unchanged state fails at the deadline.
+
+**Honest limitation.** These Electron controls expose no stable AutomationId.
+The learning store and focus-based wrong-action feedback intentionally require
+non-empty AutomationIds, so this workflow neither persists a learned control
+nor claims ID-based wrong-action naming. Repeated runs therefore prove fresh
+live grounding and world-state verification, not a cache-reuse path. Weakening
+that guard to manufacture learning evidence would violate D006 and D030.

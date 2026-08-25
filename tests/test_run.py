@@ -211,6 +211,12 @@ def _fake_recipe():
 def test_vscode_recipe_selects_the_targeted_perception_walker():
     assert run_module.perception_walker_for("code.exe") is uia.iter_vscode_elements
     assert run_module.perception_walker_for("CODE.EXE") is uia.iter_vscode_elements
+    assert (
+        run_module.perception_walker_for(
+            "code.exe", "open the integrated terminal in vscode"
+        )
+        is uia.iter_vscode_terminal_elements
+    )
     assert run_module.perception_walker_for("synthetic") is uia.iter_elements
 
 
@@ -378,6 +384,15 @@ def test_run_tour_creates_overlay_only_after_app_info_is_resolved(
     monkeypatch.setattr(window, "pump_messages_nonblocking", lambda: None)
     monkeypatch.setattr(run_module, "escape_pressed", lambda: False)
     monkeypatch.setattr(Recipe, "load", staticmethod(lambda path: _fake_recipe()))
+    walker_selection = []
+    monkeypatch.setattr(
+        run_module,
+        "perception_walker_for",
+        lambda app_id, recipe_intent: (
+            walker_selection.append((app_id, recipe_intent))
+            or (lambda _title_re: [])
+        ),
+    )
 
     import ghostcursor.reasoning.loop as loop_module
 
@@ -404,3 +419,4 @@ def test_run_tour_creates_overlay_only_after_app_info_is_resolved(
     assert order.index("GuidedTour") > order.index("create_overlay_window")
     assert order[-1] in ("store.close",), order
     assert order.count("destroy_overlay") == 1
+    assert walker_selection == [("app", "do a thing")]

@@ -6,10 +6,12 @@ the bottom shows exactly what's being built/modified right now.
 
 ---
 
-## Current milestone: Open Track submission readiness — repository gate green
+## Current milestone: Open Track submission readiness — two VS Code workflows green
 
-The implementation is isolated on `submission/open-track`. Four concern
-commits preserve the trusted planner/packs/inference foundation, the
+The certified baseline is isolated on `submission/open-track`; the accepted
+terminal slice is developed on `feature/vscode-open-terminal` from the
+`stable-pre-terminal` tag. Four concern commits preserve the trusted
+planner/packs/inference foundation, the
 perception/VS Code runtime, the vertical Ask control rail, and its tests/docs.
 That baseline is tagged `pre-readiness-audit`.
 
@@ -19,6 +21,18 @@ Welcome-page `Open Folder` variants, OCR can reassemble the split label, the
 human handles the native picker, and normalized title verification confirms
 the opened workspace. It passed three consecutive desktop runs. Ask also
 passed its visual and submitted-goal round trip.
+
+The second real workflow, `Open the integrated terminal in VS Code`, is also
+complete. Planning resolves `OPEN_TERMINAL`; runtime selects a separate
+`Code.exe`-bounded walker that publishes only `Toggle Panel (Ctrl+J)` and
+`Terminal Section`; the overlay highlights Toggle Panel as context; the human
+presses `Ctrl+\``; and an absent-to-present `Terminal Section` transition
+verifies completion. An already-visible Terminal Section completes before a
+hint is rendered; otherwise a 20-second clock starts with the first hint and
+expires before a late state can pass. It passed three consecutive clean desktop
+runs. The
+controls have no stable AutomationIds, so the system correctly does not
+persist them or claim ID-based wrong-action feedback.
 
 The test-suite stall is classified and fixed. After the perception worker
 starts, the tour/control thread performs no HWND discovery; target identity
@@ -34,8 +48,8 @@ tick-ceiling module out of hermetic, closed a constructor-time harness leak,
 and added positive coverage for worker-HWND SPACE confirmation. Final lane
 runs also structurally suppress real control-bar creation in unmarked tests.
 They passed: hermetic 341 twice, interactive 53, pytest pixel 3, standalone
-pixels 16/16 and 8/8, and isolated
-hung modules 4 + 2 + 7. Open Terminal feasibility is the next gate.
+pixels 16/16 and 8/8, and isolated hung modules 4 + 2 + 7. The
+never-fabricate matrix and submission evidence are the next gates.
 
 ## Previous milestone: Chromium warm-up  ✅ complete
 
@@ -192,8 +206,8 @@ The perception-health slice is complete. The current completed slice adds
 `ghostcursor/packs/recipes`, rejects unknown manifest fields, invalid patterns,
 symlinks, outside paths, and schema-invalid recipes, then exposes primitive
 `match_values()` and HWND-based `match_window()` matching. The initial packs are
-Synthetic Export, Notepad, and an empty VS Code placeholder. Matching is
-metadata-only; no model or pack can perform input.
+Synthetic Export, Notepad, and VS Code. Matching is metadata-only; no model or
+pack can perform input.
 
 The current implementation slice adds the VS Code `OPEN_FOLDER` intent to the
 trusted planner and pack registry. `ghostcursor/reasoning/vscode.py` extracts
@@ -210,6 +224,28 @@ Code query therefore looks only for `Open Folder` name variants. If UIA misses,
 the `Code.exe`-bounded capture goes to Windows OCR; same-line word reassembly
 turns the measured `Open` and `Folder...` reads into one exact candidate while
 retaining the original words and the 95 grounding floor.
+
+The next completed slice adds `OPEN_TERMINAL` to the same trusted VS Code
+manifest and planner allowlist. `run.perception_walker_for(app_id, intent)`
+keeps Open Folder on its provider-side exact-name walker and selects
+`uia.iter_vscode_terminal_elements` only for the terminal recipe. That walker
+is still `Code.exe`-bounded and filters a Button-only UIA walk down to the two
+reviewed exact names. The recipe's `PRESS_KEYS` value describes the human
+action; GhostCursor never sends input. Verification uses `ELEMENT_APPEARS`
+for exact `Terminal Section`. `accept_if_already_present` prevents the shortcut
+from closing an already-open terminal. For the unsatisfied path,
+`timeout_from_hint` starts the 20-second deadline at first render, because a
+no-op name-only keyboard shortcut produces no reliable focus action event.
+
+A click-based rehearsal was rejected because Toggle Panel restored Debug
+Console. The native `Ctrl+\`` instruction then passed 3/3 consecutive clean
+desktop runs from confirmed absent baselines. Empty Electron AutomationIds
+mean promotion, persistence, and focus-based wrong-action naming fail closed;
+the accepted evidence is live name/type grounding plus application-state
+verification on every run. After independent-review corrections, regression
+passed 50 focused tests, 355 hermetic tests, and 55 interactive Windows/UIA
+tests. The already-present desktop path completed without rendering, and the
+corrected transition path passed another clean 3/3 sequence.
 
 The implementation and real VS Code desktop path are validated. The foreground
 watcher is logging-only; tray UI, installer, and web retrieval remain deferred.

@@ -121,9 +121,10 @@ class GuidedTour:
         #: after a re-observe must NOT restart it, or the timeout can never
         #: elapse during a normal poll cycle.
         self._hint_step_index: int | None = None
-        #: Starts when the first newer observation arrives after the hint. A
-        #: recipe may opt into a bounded post-action verification timeout
-        #: without turning the existing idle nudge timer into a failure timer.
+        #: Starts when the first newer observation provides action evidence,
+        #: unless a recipe explicitly chooses `timeout_from_hint` for an
+        #: action (such as a name-only keyboard shortcut) that cannot otherwise
+        #: be observed if it is a no-op. This is separate from the idle nudge.
         self._verification_started_at: float | None = None
 
     @property
@@ -175,6 +176,22 @@ class GuidedTour:
 
         elif self.state is State.DECIDING:
             step = self.current_step
+            assert step is not None
+            assert self._before is not None
+
+            # Some goals are already true when the tour starts. For an
+            # ELEMENT_APPEARS recipe that opts in, treat the current snapshot
+            # as the post-state against an empty baseline and complete without
+            # rendering an instruction that could UNDO the requested state.
+            # The option is schema-limited to ELEMENT_APPEARS, so this cannot
+            # turn title/property/change rules into vacuous successes.
+            if step.verification_rule.args.get("accept_if_already_present") is True:
+                empty = Snapshot(title=self._before.title, elements=())
+                if self.verifier(step.verification_rule, empty, self._before):
+                    self.renderer.clear()
+                    self.state = State.VERIFYING
+                    return self.state
+
             # Reuse the elements OBSERVING just read rather than walking the
             # UI tree again. OBSERVING and DECIDING are meant to describe the
             # SAME instant — "here is the screen, now decide what to point at"
@@ -225,6 +242,16 @@ class GuidedTour:
                 self._confirmed = False
                 self._hint_step_index = self.step_index
                 self._verification_started_at = None
+            if (
+                step.verification_rule.args.get("fail_after_timeout") is True
+                and step.verification_rule.args.get("timeout_from_hint") is True
+                and self._verification_started_at is None
+            ):
+                # Keyboard shortcuts with name-only Electron controls provide
+                # no reliable focus/AutomationId action event when they are a
+                # no-op. Starting this recipe's clock at first render keeps the
+                # failure bounded without synthesizing or intercepting input.
+                self._verification_started_at = self.clock()
             self.state = State.AWAITING_USER_ACTION
 
         elif self.state is State.AWAITING_USER_ACTION:
@@ -280,19 +307,20 @@ class GuidedTour:
             ):
                 self.on_wrong_action(touched, self._target_automation_id())
 
-            if satisfied:
-                self.state = State.VERIFYING
-            elif (
+            timed_out = (
                 step.verification_rule.args.get("fail_after_timeout") is True
                 and self._verification_started_at is not None
                 and self.clock() - self._verification_started_at
                 >= step.verification_rule.timeout_s
-            ):
+            )
+            if timed_out:
                 self.failure_reason = (
                     f"verification timed out after "
                     f"{step.verification_rule.timeout_s:g}s"
                 )
                 self.state = State.FAILED
+            elif satisfied:
+                self.state = State.VERIFYING
             elif touched is not None and self.wrong_action_rehints < 3:
                 # Re-hint by going back through OBSERVING, NOT by calling
                 # renderer.show() here. A second overlay write path is what

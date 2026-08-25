@@ -5,5 +5,5 @@
   "title_patterns": [".*Visual Studio Code.*", ".* - Code$"],
   "version_constraints": [],
   "recipe_directory": "vscode",
-  "intent_ids": ["OPEN_FOLDER"]
+  "intent_ids": ["OPEN_FOLDER", "OPEN_TERMINAL"]
 }
