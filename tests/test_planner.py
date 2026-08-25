@@ -3,7 +3,7 @@ import json
 import pytest
 
 from ghostcursor.reasoning import planner
-from ghostcursor.reasoning.planner import PlanStatus, plan_goal
+from ghostcursor.reasoning.planner import IntentDecision, PlanStatus, plan_goal
 
 
 class _Response:
@@ -40,7 +40,7 @@ def test_ollama_intent_request_is_schema_constrained_and_deterministic(monkeypat
         "Open a folder in VS Code", "http://127.0.0.1:11434", "test-model", 7.0
     )
 
-    assert result[0] == "OPEN_FOLDER"
+    assert result.intent_id == "OPEN_FOLDER"
     body = captured["body"]
     assert body["model"] == "test-model"
     assert body["stream"] is False
@@ -50,11 +50,11 @@ def test_ollama_intent_request_is_schema_constrained_and_deterministic(monkeypat
         "temperature": 0,
         "seed": 42,
         "num_ctx": 4096,
-        "num_predict": 96,
+        "num_predict": 128,
     }
-    assert set(body["format"]["properties"]["intent_id"]["enum"]) == set(
-        planner.registry()
-    )
+    assert set(body["format"]["properties"]["intent_id"]["enum"]) == {
+        None, *planner.registry()
+    }
     assert body["format"]["additionalProperties"] is False
     assert captured["timeout"] == 7.0
 
@@ -71,10 +71,58 @@ def test_model_intent_rejects_schema_bypassing_out_of_range_confidence(monkeypat
         }),
     )
 
-    with pytest.raises(ValueError, match="invalid model fields"):
+    with pytest.raises(ValueError, match="confidence"):
         planner._model_intent(
             "Open a folder in VS Code", "http://127.0.0.1:11434", "test-model", 7.0
         )
+
+
+def test_model_intent_accepts_required_nullable_intent(monkeypatch):
+    monkeypatch.setattr(
+        "urllib.request.urlopen",
+        lambda *args, **kwargs: _Response({
+            "response": json.dumps({
+                "intent_id": None,
+                "confidence": 0.8,
+                "explanation": "none of the registered intents fits",
+            })
+        }),
+    )
+
+    decision = planner._model_intent(
+        "Deploy this project", "http://127.0.0.1:11434", "test-model", 7.0
+    )
+
+    assert decision.intent_id is None
+
+
+def test_model_intent_rejects_alias_or_extra_fields(monkeypatch):
+    monkeypatch.setattr(
+        "urllib.request.urlopen",
+        lambda *args, **kwargs: _Response({
+            "response": json.dumps({
+                "intent_id": "OPEN_FOLDER",
+                "confidence": 0.9,
+                "explanation": "folder",
+                "reason": "extra alias",
+            })
+        }),
+    )
+
+    with pytest.raises(ValueError, match="exact planner fields"):
+        planner._model_intent(
+            "Open a folder in VS Code", "http://127.0.0.1:11434", "test-model", 7.0
+        )
+
+
+def test_oversized_goal_never_contacts_ollama(monkeypatch):
+    monkeypatch.setattr(
+        "urllib.request.urlopen",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("Ollama called")),
+    )
+    result = plan_goal("x" * 1025)
+    assert result.status is PlanStatus.UNSUPPORTED_GOAL
+    assert result.plan is None
 
 
 def test_exact_export_goal_is_supported_without_model():
@@ -99,7 +147,7 @@ def test_unmatched_goal_is_explicitly_unsupported():
 def test_valid_unavailable_model_intent_is_not_fallback(monkeypatch):
     monkeypatch.setattr(
         "ghostcursor.reasoning.planner._model_intent",
-        lambda *args: ("OPEN_SETTINGS", 0.9, "settings"),
+        lambda *args: IntentDecision("OPEN_SETTINGS", 0.9, "settings"),
     )
     result = plan_goal("open settings")
     assert result.status is PlanStatus.KNOWN_INTENT_RECIPE_UNAVAILABLE
@@ -145,7 +193,7 @@ def test_unavailable_model_without_fallback_is_unsupported(monkeypatch):
 def test_model_cannot_attach_an_ungrounded_executable_intent(monkeypatch):
     monkeypatch.setattr(
         "ghostcursor.reasoning.planner._model_intent",
-        lambda *args: ("EXPORT_DATA", 0.98, "deployment needs an export"),
+        lambda *args: IntentDecision("EXPORT_DATA", 0.98, "deployment needs an export"),
     )
 
     result = plan_goal("Deploy this project to production")
@@ -158,7 +206,7 @@ def test_model_cannot_attach_an_ungrounded_executable_intent(monkeypatch):
 def test_model_intent_mismatch_uses_distinguishable_trusted_fallback(monkeypatch):
     monkeypatch.setattr(
         "ghostcursor.reasoning.planner._model_intent",
-        lambda *args: ("EXPORT_DATA", 0.98, "incorrect model route"),
+        lambda *args: IntentDecision("EXPORT_DATA", 0.98, "incorrect model route"),
     )
 
     result = plan_goal("Open a folder in VS Code")
@@ -167,6 +215,32 @@ def test_model_intent_mismatch_uses_distinguishable_trusted_fallback(monkeypatch
     assert result.intent_id == "OPEN_FOLDER"
     assert result.plan is not None
     assert result.plan.app_id == "code.exe"
+
+
+def test_valid_model_abstention_uses_explicit_trusted_fallback_status(monkeypatch):
+    monkeypatch.setattr(
+        "ghostcursor.reasoning.planner._model_intent",
+        lambda *args: IntentDecision(None, 0.8, "uncertain"),
+    )
+
+    result = plan_goal("Open a folder in VS Code")
+
+    assert result.status is PlanStatus.MODEL_ABSTAINED_FALLBACK
+    assert result.intent_id == "OPEN_FOLDER"
+    assert result.plan is not None
+
+
+def test_valid_model_abstention_without_fallback_is_unsupported(monkeypatch):
+    monkeypatch.setattr(
+        "ghostcursor.reasoning.planner._model_intent",
+        lambda *args: IntentDecision(None, 0.8, "none fits"),
+    )
+
+    result = plan_goal("Deploy this project to production")
+
+    assert result.status is PlanStatus.UNSUPPORTED_GOAL
+    assert result.intent_id is None
+    assert result.plan is None
 
 
 @pytest.mark.parametrize(
@@ -185,7 +259,7 @@ def test_matching_available_model_intent_keeps_its_trusted_plan(
 ):
     monkeypatch.setattr(
         "ghostcursor.reasoning.planner._model_intent",
-        lambda *args: (intent_id, 0.98, "matching model route"),
+        lambda *args: IntentDecision(intent_id, 0.98, "matching model route"),
     )
 
     result = plan_goal(goal)

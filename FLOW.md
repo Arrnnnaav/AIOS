@@ -720,7 +720,21 @@ while ESC remains polled even when bar creation or focus acquisition fails.
 ## Durability inference transport
 
 `inference.ollama.generate_structured()` is the one bounded request adapter:
-no retry, one response envelope, and preserved generation metadata. The parked
-planner and screen-hint callers still use the older body helper in this slice;
-D063 migrates them. Caller-specific schemas and semantic parsers remain outside
-the adapter; schema validity never grants recipe or control authority.
+no retry, one response envelope, and preserved generation metadata.
+
+```
+planner.infer_intent(goal)
+    -> dynamic nullable planner schema
+    -> ollama.generate_structured()
+    -> strict IntentDecision
+    -> resolve_model_decision(goal, decision)
+    -> D058 deterministic agreement + trusted recipe
+
+screen_hint.decide_next_hint(goal, observation, approved_names)
+    -> unique approved UIA candidates only
+    -> dynamic AutomationId schema
+    -> ollama.generate_structured()
+    -> strict HintDecision or deterministic fallback
+```
+
+Schema validity never grants recipe or control authority.

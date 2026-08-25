@@ -8,13 +8,15 @@ from __future__ import annotations
 
 import json
 import os
-import re
-import urllib.request
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
-from ghostcursor.inference.ollama import DEFAULT_MODEL, generate_body
+from ghostcursor.inference.ollama import (
+    DEFAULT_MODEL,
+    GenerateResponse,
+    generate_structured,
+)
 from ghostcursor.reasoning.schema import Recipe
 
 
@@ -24,6 +26,12 @@ class PlanStatus(Enum):
     KNOWN_INTENT_RECIPE_UNAVAILABLE = "KNOWN_INTENT_RECIPE_UNAVAILABLE"
     INVALID_MODEL_OUTPUT = "INVALID_MODEL_OUTPUT"
     MODEL_UNAVAILABLE_FALLBACK = "MODEL_UNAVAILABLE_FALLBACK"
+    MODEL_ABSTAINED_FALLBACK = "MODEL_ABSTAINED_FALLBACK"
+
+
+MAX_GOAL_CHARS = 1024
+MAX_EXPLANATION_CHARS = 512
+PLANNER_NUM_PREDICT = 128
 
 
 @dataclass(frozen=True)
@@ -41,6 +49,23 @@ class PlanResult:
     confidence: float
     explanation: str
     plan: Recipe | None = None
+
+
+@dataclass(frozen=True)
+class IntentDecision:
+    intent_id: str | None
+    confidence: float
+    explanation: str
+
+
+@dataclass(frozen=True)
+class IntentInference:
+    decision: IntentDecision
+    generation: GenerateResponse
+
+
+class ModelInputRejected(ValueError):
+    """The advisory request was rejected before contacting the model."""
 
 
 _ROOT = Path(__file__).resolve().parent
@@ -110,50 +135,77 @@ def _fallback(goal: str) -> tuple[str | None, float, str]:
     return None, 0.0, "no trusted intent matched"
 
 
-def _model_intent(goal: str, endpoint: str, model: str, timeout: float) -> tuple[str, float, str]:
-    intent_ids = tuple(registry())
-    prompt = (
-        "Return JSON only with keys intent_id, confidence, explanation. "
-        f"intent_id must be one of {', '.join(intent_ids)}. "
-        f"Goal: {goal}"
-    )
-    schema = {
+def planner_response_schema(intent_ids: tuple[str, ...]) -> dict:
+    if not intent_ids:
+        raise ValueError("planner registry must not be empty")
+    return {
         "type": "object",
         "properties": {
-            "intent_id": {"type": "string", "enum": list(intent_ids)},
+            "intent_id": {
+                "type": ["string", "null"],
+                "enum": [None, *intent_ids],
+            },
             "confidence": {"type": "number", "minimum": 0, "maximum": 1},
-            "explanation": {"type": "string", "minLength": 1},
+            "explanation": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": MAX_EXPLANATION_CHARS,
+            },
         },
         "required": ["intent_id", "confidence", "explanation"],
         "additionalProperties": False,
     }
-    body = json.dumps(
-        generate_body(model=model, prompt=prompt, schema=schema)
-    ).encode()
-    request = urllib.request.Request(endpoint.rstrip("/") + "/api/generate", data=body, headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        outer = json.loads(response.read().decode("utf-8"))
-    raw = outer.get("response", outer)
+
+
+def parse_intent_decision(raw: object, intent_ids: tuple[str, ...]) -> IntentDecision:
     if isinstance(raw, str):
-        match = re.search(r"\{.*\}", raw, re.DOTALL)
-        if not match:
-            raise ValueError("model response was not JSON")
-        raw = json.loads(match.group(0))
-    if not isinstance(raw, dict):
-        raise ValueError("model response was not an object")
-    intent = raw.get("intent_id")
-    confidence = raw.get("confidence")
-    explanation = raw.get("explanation")
+        raw = json.loads(raw)
+    if not isinstance(raw, dict) or set(raw) != {"intent_id", "confidence", "explanation"}:
+        raise ValueError("model response did not have the exact planner fields")
+    intent = raw["intent_id"]
+    confidence = raw["confidence"]
+    explanation = raw["explanation"]
+    if intent is not None and (not isinstance(intent, str) or intent not in intent_ids):
+        raise ValueError("invalid model intent")
     if (
-        intent not in registry()
-        or not isinstance(confidence, (int, float))
+        not isinstance(confidence, (int, float))
         or isinstance(confidence, bool)
         or not 0 <= float(confidence) <= 1
-        or not isinstance(explanation, str)
-        or not explanation.strip()
     ):
-        raise ValueError("invalid model fields")
-    return intent, float(confidence), explanation
+        raise ValueError("invalid model confidence")
+    if (
+        not isinstance(explanation, str)
+        or not explanation.strip()
+        or len(explanation) > MAX_EXPLANATION_CHARS
+    ):
+        raise ValueError("invalid model explanation")
+    return IntentDecision(intent, float(confidence), explanation.strip())
+
+
+def infer_intent(goal: str, endpoint: str, model: str, timeout: float) -> IntentInference:
+    if len(goal) > MAX_GOAL_CHARS:
+        raise ModelInputRejected(f"goal exceeds {MAX_GOAL_CHARS} characters")
+    intent_ids = tuple(sorted(registry()))
+    prompt = (
+        "Classify the goal using one registered intent. Use JSON null for intent_id "
+        "when none fits. Return only intent_id, confidence, and explanation. "
+        f"Registered intents: {', '.join(intent_ids)}. "
+        f"Goal: {goal}"
+    )
+    generation = generate_structured(
+        endpoint=endpoint,
+        model=model,
+        prompt=prompt,
+        schema=planner_response_schema(intent_ids),
+        timeout=timeout,
+        num_predict=PLANNER_NUM_PREDICT,
+    )
+    return IntentInference(parse_intent_decision(generation.payload, intent_ids), generation)
+
+
+def _model_intent(goal: str, endpoint: str, model: str, timeout: float) -> IntentDecision:
+    """Compatibility seam used by focused policy tests."""
+    return infer_intent(goal, endpoint, model, timeout).decision
 
 
 def _trusted_recipe(spec: IntentSpec) -> Recipe | None:
@@ -181,6 +233,68 @@ def recipe_path_for(intent_id: str) -> Path:
     return spec.recipe_path.resolve()
 
 
+def resolve_model_decision(goal: str, decision: IntentDecision) -> PlanResult:
+    """Pure authority policy: model advice plus deterministic trusted grounding."""
+    fallback_id, fallback_confidence, fallback_explanation = _fallback(goal)
+    if decision.intent_id is None:
+        if fallback_id is None:
+            return PlanResult(
+                PlanStatus.UNSUPPORTED_GOAL,
+                None,
+                0.0,
+                f"model abstained: {decision.explanation}",
+            )
+        recipe = _trusted_recipe(registry()[fallback_id])
+        return PlanResult(
+            PlanStatus.MODEL_ABSTAINED_FALLBACK,
+            fallback_id,
+            fallback_confidence,
+            f"model abstained; {fallback_explanation}",
+            recipe,
+        )
+
+    spec = registry()[decision.intent_id]
+    # A registered ID is only an allowlist boundary. An available recipe gains
+    # authority only when the deterministic classifier independently agrees.
+    if spec.recipe_path is not None and fallback_id != decision.intent_id:
+        if fallback_id is not None:
+            recipe = _trusted_recipe(registry()[fallback_id])
+            return PlanResult(
+                PlanStatus.INVALID_MODEL_OUTPUT,
+                fallback_id,
+                fallback_confidence,
+                (
+                    f"model selected ungrounded intent {decision.intent_id}; "
+                    f"{fallback_explanation}"
+                ),
+                recipe,
+            )
+        return PlanResult(
+            PlanStatus.UNSUPPORTED_GOAL,
+            None,
+            0.0,
+            (
+                f"model selected ungrounded intent {decision.intent_id}; "
+                "no trusted intent matched"
+            ),
+        )
+    recipe = _trusted_recipe(spec)
+    if recipe is None:
+        return PlanResult(
+            PlanStatus.KNOWN_INTENT_RECIPE_UNAVAILABLE,
+            decision.intent_id,
+            decision.confidence,
+            decision.explanation,
+        )
+    return PlanResult(
+        PlanStatus.SUPPORTED,
+        decision.intent_id,
+        decision.confidence,
+        decision.explanation,
+        recipe,
+    )
+
+
 def plan_goal(goal: str, *, endpoint: str = "http://127.0.0.1:11434", model: str = DEFAULT_MODEL, timeout: float = 15.0, use_model: bool = True) -> PlanResult:
     """Classify one goal and load only a trusted local recipe."""
     if not goal or not goal.strip():
@@ -188,37 +302,7 @@ def plan_goal(goal: str, *, endpoint: str = "http://127.0.0.1:11434", model: str
     fallback_id, fallback_confidence, fallback_explanation = _fallback(goal)
     if use_model:
         try:
-            intent_id, confidence, explanation = _model_intent(goal, endpoint, model, timeout)
-            spec = registry()[intent_id]
-            # A model can choose only a registered ID, but registration alone
-            # does not make the choice semantically safe. Qwen mapped "deploy
-            # this project" to EXPORT_DATA during the live never-fabricate
-            # probe. Any intent carrying executable authority must therefore
-            # agree with the deterministic classifier's grounded candidate.
-            # Unavailable intents remain honest non-launch results.
-            if spec.recipe_path is not None and fallback_id != intent_id:
-                if fallback_id is not None:
-                    recipe = _trusted_recipe(registry()[fallback_id])
-                    return PlanResult(
-                        PlanStatus.INVALID_MODEL_OUTPUT,
-                        fallback_id,
-                        fallback_confidence,
-                        (
-                            f"model selected ungrounded intent {intent_id}; "
-                            f"{fallback_explanation}"
-                        ),
-                        recipe,
-                    )
-                return PlanResult(
-                    PlanStatus.UNSUPPORTED_GOAL,
-                    None,
-                    0.0,
-                    f"model selected ungrounded intent {intent_id}; no trusted intent matched",
-                )
-            recipe = _trusted_recipe(spec)
-            if recipe is None:
-                return PlanResult(PlanStatus.KNOWN_INTENT_RECIPE_UNAVAILABLE, intent_id, confidence, explanation)
-            return PlanResult(PlanStatus.SUPPORTED, intent_id, confidence, explanation, recipe)
+            return resolve_model_decision(goal, _model_intent(goal, endpoint, model, timeout))
         except (OSError, TimeoutError, ConnectionError) as exc:
             if fallback_id:
                 recipe = _trusted_recipe(registry()[fallback_id])
@@ -235,10 +319,16 @@ def plan_goal(goal: str, *, endpoint: str = "http://127.0.0.1:11434", model: str
                 0.0,
                 f"model unavailable ({type(exc).__name__}); no trusted intent matched",
             )
-        except (ValueError, KeyError, json.JSONDecodeError):
+        except (ValueError, KeyError, json.JSONDecodeError) as exc:
             if fallback_id:
                 recipe = _trusted_recipe(registry()[fallback_id])
-                return PlanResult(PlanStatus.INVALID_MODEL_OUTPUT, fallback_id, fallback_confidence, fallback_explanation, recipe)
+                return PlanResult(
+                    PlanStatus.INVALID_MODEL_OUTPUT,
+                    fallback_id,
+                    fallback_confidence,
+                    f"{fallback_explanation} ({type(exc).__name__})",
+                    recipe,
+                )
             return PlanResult(
                 PlanStatus.UNSUPPORTED_GOAL,
                 None,

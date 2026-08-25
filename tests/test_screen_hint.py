@@ -50,6 +50,7 @@ def test_hint_request_schema_contains_only_observed_recipe_approved_ids(monkeypa
     }
     assert body["format"]["properties"]["automation_id"]["enum"] == ["1005"]
     assert "1006" not in body["format"]["properties"]["automation_id"]["enum"]
+    assert "Wrong control" not in body["prompt"]
     assert captured["timeout"] == 8.0
 
 
@@ -115,7 +116,7 @@ def test_model_cannot_select_an_observed_but_untrusted_control(monkeypatch):
     assert result.source == "invalid-model"
 
 
-def test_qwen_aliases_and_string_confidence_are_normalized(monkeypatch):
+def test_aliases_and_string_confidence_are_rejected(monkeypatch):
     class Response:
         def __enter__(self):
             return self
@@ -133,9 +134,10 @@ def test_qwen_aliases_and_string_confidence_are_normalized(monkeypatch):
     monkeypatch.setattr("urllib.request.urlopen", lambda *args, **kwargs: Response())
     result = decide_next_hint("Export this table as CSV", ELEMENTS, ("Export",))
     assert result.automation_id == "1005"
+    assert result.source == "invalid-model"
 
 
-def test_qwen_reasoning_object_does_not_get_joined_to_final_object(monkeypatch):
+def test_reasoning_wrapper_is_rejected_under_strict_contract(monkeypatch):
     class Response:
         def __enter__(self):
             return self
@@ -156,11 +158,11 @@ def test_qwen_reasoning_object_does_not_get_joined_to_final_object(monkeypatch):
     monkeypatch.setattr("urllib.request.urlopen", lambda *args, **kwargs: Response())
     result = decide_next_hint("export the table", ELEMENTS, ("Export",))
 
-    assert result.source == "model"
+    assert result.source == "invalid-model"
     assert result.automation_id == "1005"
 
 
-def test_qwen_qualitative_confidence_is_normalized(monkeypatch):
+def test_qualitative_confidence_is_rejected(monkeypatch):
     class Response:
         def __enter__(self):
             return self
@@ -180,6 +182,32 @@ def test_qwen_qualitative_confidence_is_normalized(monkeypatch):
     monkeypatch.setattr("urllib.request.urlopen", lambda *args, **kwargs: Response())
     result = decide_next_hint("export the table", ELEMENTS, ("Export",))
 
-    assert result.source == "model"
+    assert result.source == "invalid-model"
     assert result.automation_id == "1005"
     assert result.confidence == 0.95
+
+
+def test_duplicate_recipe_approved_id_skips_model(monkeypatch):
+    elements = [
+        Element("Export", "Button", "1005", (0, 0, 1, 1)),
+        Element("Export", "Button", "1005", (1, 1, 2, 2)),
+    ]
+    monkeypatch.setattr(
+        "urllib.request.urlopen",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("Ollama called")),
+    )
+    result = decide_next_hint("Export this table", elements, ("Export",))
+    assert result.source == "fallback"
+
+
+def test_more_than_32_candidates_skips_model(monkeypatch):
+    elements = [
+        Element("Export", "Button", str(2000 + i), (0, 0, 1, 1))
+        for i in range(33)
+    ]
+    monkeypatch.setattr(
+        "urllib.request.urlopen",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("Ollama called")),
+    )
+    result = decide_next_hint("Export this table", elements, ("Export",))
+    assert result.source == "fallback"

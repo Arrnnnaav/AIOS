@@ -6,11 +6,14 @@ AutomationId, never a path, coordinate, recipe, or executable action.
 from __future__ import annotations
 
 import json
-import re
-import urllib.request
+from collections import Counter
 from dataclasses import dataclass
 
-from ghostcursor.inference.ollama import DEFAULT_MODEL, generate_body
+from ghostcursor.inference.ollama import (
+    DEFAULT_MODEL,
+    GenerateResponse,
+    generate_structured,
+)
 from ghostcursor.perception.uia import Element
 
 
@@ -22,6 +25,16 @@ class HintDecision:
     source: str  # "model", "fallback", or "invalid-model"
 
 
+@dataclass(frozen=True)
+class HintInference:
+    decision: HintDecision
+    generation: GenerateResponse
+
+
+MAX_CANDIDATES = 32
+MAX_EXPLANATION_CHARS = 512
+
+
 def _fallback(elements: list[Element], allowed_names: tuple[str, ...]) -> HintDecision:
     names = {name.casefold() for name in allowed_names}
     for element in elements:
@@ -30,51 +43,99 @@ def _fallback(elements: list[Element], allowed_names: tuple[str, ...]) -> HintDe
     return HintDecision(None, 0.0, "no trusted observed target matched", "fallback")
 
 
-def _parse(raw: object, elements: list[Element]) -> HintDecision:
+def _eligible_candidates(
+    elements: list[Element], allowed_names: tuple[str, ...]
+) -> tuple[Element, ...]:
+    allowed = {name.casefold() for name in allowed_names if name}
+    matching = [
+        element
+        for element in elements
+        if element.source == "uia"
+        and bool(element.automation_id)
+        and element.name.casefold() in allowed
+    ]
+    counts = Counter(element.automation_id for element in matching)
+    return tuple(
+        sorted(
+            (element for element in matching if counts[element.automation_id] == 1),
+            key=lambda element: element.automation_id,
+        )
+    )
+
+
+def hint_response_schema(candidate_ids: tuple[str, ...]) -> dict:
+    if not candidate_ids:
+        raise ValueError("hint candidates must not be empty")
+    return {
+        "type": "object",
+        "properties": {
+            "automation_id": {"type": "string", "enum": list(candidate_ids)},
+            "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+            "explanation": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": MAX_EXPLANATION_CHARS,
+            },
+        },
+        "required": ["automation_id", "confidence", "explanation"],
+        "additionalProperties": False,
+    }
+
+
+def _parse(raw: object, candidate_ids: tuple[str, ...]) -> HintDecision:
     if isinstance(raw, str):
-        # Qwen may include a reasoning block and then a final JSON object.
-        # Do not use one greedy {.*} match: if reasoning contains an example
-        # object, it joins that example to the final object and breaks JSON.
-        cleaned = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL | re.IGNORECASE)
-        decoder = json.JSONDecoder()
-        candidates: list[dict[str, object]] = []
-        for match in re.finditer(r"\{", cleaned):
-            try:
-                candidate, _ = decoder.raw_decode(cleaned[match.start():])
-            except json.JSONDecodeError:
-                continue
-            if isinstance(candidate, dict):
-                candidates.append(candidate)
-        if not candidates:
-            raise ValueError("model response was not JSON")
-        raw = candidates[-1]
-    if not isinstance(raw, dict):
-        raise ValueError("model response was not an object")
-    automation_id = raw.get("automation_id", raw.get("target_automation_id", raw.get("target_id")))
-    confidence = raw.get("confidence")
-    explanation = raw.get("explanation", raw.get("reason", "model selected the target"))
-    if isinstance(automation_id, int):
-        automation_id = str(automation_id)
-    if isinstance(confidence, str):
-        try:
-            confidence = float(confidence)
-        except ValueError:
-            confidence = {
-                "high": 0.95,
-                "medium": 0.75,
-                "low": 0.50,
-            }.get(confidence.strip().casefold())
-    observed_ids = {element.automation_id for element in elements if element.automation_id}
+        raw = json.loads(raw)
+    if not isinstance(raw, dict) or set(raw) != {
+        "automation_id", "confidence", "explanation"
+    }:
+        raise ValueError("model response did not have the exact hint fields")
+    automation_id = raw["automation_id"]
+    confidence = raw["confidence"]
+    explanation = raw["explanation"]
     if (
-        automation_id not in observed_ids
+        not isinstance(automation_id, str)
+        or automation_id not in candidate_ids
         or not isinstance(confidence, (int, float))
         or isinstance(confidence, bool)
         or not 0 <= float(confidence) <= 1
         or not isinstance(explanation, str)
         or not explanation.strip()
+        or len(explanation) > MAX_EXPLANATION_CHARS
     ):
-        raise ValueError("model selected an unobserved target or returned invalid fields")
-    return HintDecision(automation_id, float(confidence), explanation, "model")
+        raise ValueError("model selected an untrusted target or returned invalid fields")
+    return HintDecision(automation_id, float(confidence), explanation.strip(), "model")
+
+
+def infer_hint(
+    goal: str,
+    candidates: tuple[Element, ...],
+    *,
+    endpoint: str,
+    model: str,
+    timeout: float,
+) -> HintInference:
+    candidate_ids = tuple(element.automation_id for element in candidates)
+    prompt = (
+        "Choose the recipe-approved observed control that best advances the goal. "
+        "Return only automation_id, confidence, and explanation.\n"
+        f"Goal: {goal}\nEligible UI controls: "
+        + json.dumps([
+            {
+                "name": element.name,
+                "control_type": element.control_type,
+                "automation_id": element.automation_id,
+            }
+            for element in candidates
+        ], ensure_ascii=False)
+    )
+    generation = generate_structured(
+        endpoint=endpoint,
+        model=model,
+        prompt=prompt,
+        schema=hint_response_schema(candidate_ids),
+        timeout=timeout,
+    )
+    return HintInference(_parse(generation.payload, candidate_ids), generation)
 
 
 def decide_next_hint(
@@ -90,51 +151,13 @@ def decide_next_hint(
     fallback = _fallback(elements, allowed_names)
     if not use_model:
         return fallback
-    allowed_casefold = {name.casefold() for name in allowed_names}
-    candidate_ids = sorted({
-        element.automation_id
-        for element in elements
-        if element.automation_id and element.name.casefold() in allowed_casefold
-    })
-    if not candidate_ids:
+    candidates = _eligible_candidates(elements, allowed_names)
+    if not candidates or len(candidates) > MAX_CANDIDATES:
         return fallback
-    prompt = (
-        "Return JSON only: {automation_id, confidence, explanation}. "
-        "Choose exactly one observed control that best advances the goal. "
-        "Do not invent IDs.\n"
-        f"Goal: {goal}\nObserved UI elements: "
-        + json.dumps([
-            {"name": e.name, "control_type": e.control_type, "automation_id": e.automation_id}
-            for e in elements
-        ], ensure_ascii=False)
-    )
-    schema = {
-        "type": "object",
-        "properties": {
-            "automation_id": {"type": "string", "enum": candidate_ids},
-            "confidence": {"type": "number", "minimum": 0, "maximum": 1},
-            "explanation": {"type": "string", "minLength": 1},
-        },
-        "required": ["automation_id", "confidence", "explanation"],
-        "additionalProperties": False,
-    }
-    request = urllib.request.Request(
-        endpoint.rstrip("/") + "/api/generate",
-        data=json.dumps(
-            generate_body(model=model, prompt=prompt, schema=schema)
-        ).encode(),
-        headers={"Content-Type": "application/json"},
-    )
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            outer = json.loads(response.read().decode("utf-8"))
-        decision = _parse(outer.get("response", outer), elements)
-        if decision.automation_id not in {
-            e.automation_id for e in elements
-            if e.name.casefold() in allowed_casefold
-        }:
-            raise ValueError("model selected an observed but untrusted target")
-        return decision
+        return infer_hint(
+            goal, candidates, endpoint=endpoint, model=model, timeout=timeout
+        ).decision
     except (OSError, TimeoutError, ConnectionError):
         return fallback
     except (ValueError, KeyError, json.JSONDecodeError):

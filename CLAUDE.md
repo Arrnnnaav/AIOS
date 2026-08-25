@@ -416,3 +416,8 @@ Model durability continues only on `post-submission/model-durability`. D062
 records the measured nullable-schema probe and shared bounded Ollama adapter.
 Do not merge this branch into the certified submission branch while durability
 gates remain incomplete.
+
+D063 is now built: both inference paths use the shared adapter, parsers accept
+only canonical bounded fields, planner null is an explicit abstention, and
+`resolve_model_decision()` is the single production/evaluation authority
+policy. Never bypass that function in an evaluation runner.

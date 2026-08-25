@@ -2330,3 +2330,24 @@ D058 remains the execution boundary.
 
 **Evidence.** `docs/evidence/model-durability-task0.md` records the real probe.
 `tests/test_ollama_request.py` fixes the shared request and metadata contract.
+
+## D063 — Nullable advice and execution authority are separate contracts
+
+**Decision.** Planner output requires the canonical three fields and permits a
+registered intent or JSON null. Null plus a deterministic trusted recipe is
+reported honestly as `MODEL_ABSTAINED_FALLBACK`; null without one remains
+`UNSUPPORTED_GOAL`. A pure `resolve_model_decision()` function applies D058 so
+production and evaluation share the same authority policy. Screen-hint output
+is likewise canonical-only and can select only a unique, currently observed
+UIA AutomationId whose name is recipe-approved. More than 32 eligible controls,
+duplicate IDs, or no eligible IDs skip model inference.
+
+**Why.** Structured generation can prevent invented fields while still making
+the wrong semantic choice. Parsing therefore validates substance and the pure
+policy—not schema conformance—decides whether a reviewed recipe may execute.
+Only eligible controls are disclosed to hint inference, bounding latency and
+avoiding unrelated UI text.
+
+**Evidence.** The focused adapter/planner/hint lane passes 41 tests, including
+valid abstention, strict alias/extra-field rejection, deterministic mismatch,
+duplicate IDs, candidate ceilings, and unavailable-model fallback.
