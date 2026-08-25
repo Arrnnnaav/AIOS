@@ -2235,6 +2235,39 @@ no-op attempt was not counted as timeout evidence because VS Code independently
 exposed the desired Terminal Section during the run; the injected-clock test is
 the controlled proof that an unchanged state fails at the deadline.
 
+## D058 — A registered model intent is not executable without deterministic grounding
+
+**Finding.** In the live never-fabricate matrix, prewarmed
+`qwen3:4b-instruct` classified `Deploy this project to production` as
+`EXPORT_DATA (0.98)`. The intent ID was registered and its recipe was valid, so
+the old planner returned a launch-eligible synthetic export plan. The probe did
+not launch it. An ID allowlist bounded *what* could run but did not prove that
+the selected workflow answered the user's goal.
+
+**Decision.** A model-selected intent with an available recipe is executable
+only when it equals the deterministic classifier's grounded intent for the
+same goal. If the model selects a different executable intent and deterministic
+fallback has a candidate, return `INVALID_MODEL_OUTPUT` with only that trusted
+fallback plan. If fallback has no candidate, return `UNSUPPORTED_GOAL` with no
+intent and no plan. Model-unavailable or malformed-output paths also return
+`UNSUPPORTED_GOAL` when fallback cannot classify; fallback statuses are used
+only when a fallback plan actually exists. Registered unavailable intents may
+still return `KNOWN_INTENT_RECIPE_UNAVAILABLE`, which is non-launching.
+
+**Why.** The model remains meaningful—it chooses and explains an intent—but
+cannot attach execution authority to a semantically unrelated goal. This is a
+deliberate precision-over-recall boundary: new language broadening must first
+be added to reviewed deterministic intent rules instead of arriving as an
+unreviewed model-only route.
+
+**Evidence.** The filled 2×2 unsupported-goal matrix and supported controls are
+in `docs/evidence/never-fabricate-matrix.md`. Available Qwen now returns
+`KNOWN_INTENT_RECIPE_UNAVAILABLE` for create-file and `UNSUPPORTED_GOAL` for
+deploy; the unreachable-endpoint condition returns `UNSUPPORTED_GOAL` for
+both. Open Folder and Open Terminal remain `SUPPORTED` with Qwen and
+`MODEL_UNAVAILABLE_FALLBACK` without it. Focused planner regression passed 17
+tests, and the complete hermetic lane passed **361 tests**.
+
 **Honest limitation.** These Electron controls expose no stable AutomationId.
 The learning store and focus-based wrong-action feedback intentionally require
 non-empty AutomationIds, so this workflow neither persists a learned control

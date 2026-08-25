@@ -35,6 +35,14 @@ runs. The
 controls have no stable AutomationIds, so the system correctly does not
 persist them or claim ID-based wrong-action feedback.
 
+The never-fabricate gate is also closed. A model-returned registered intent no
+longer receives executable authority by registration alone. For intents with
+recipes, `plan_goal()` requires the model ID to equal `_fallback(goal)`'s
+deterministically grounded candidate. A mismatch falls back only to an existing
+trusted candidate (`INVALID_MODEL_OUTPUT`) or returns `UNSUPPORTED_GOAL` with
+no plan. Registered unavailable intents remain honest non-launch results. The
+focused planner set passed 17 tests and the hermetic lane passed 361.
+
 The test-suite stall is classified and fixed. After the perception worker
 starts, the tour/control thread performs no HWND discovery; target identity
 arrives only through a completed worker observation, so SPACE fails closed
@@ -50,7 +58,7 @@ and added positive coverage for worker-HWND SPACE confirmation. Final lane
 runs also structurally suppress real control-bar creation in unmarked tests.
 They passed: hermetic 341 twice, interactive 53, pytest pixel 3, standalone
 pixels 16/16 and 8/8, and isolated hung modules 4 + 2 + 7. The
-never-fabricate matrix and submission evidence are the next gates.
+participant evidence and submission production are the next gates.
 
 ## Previous milestone: Chromium warm-up  ✅ complete
 

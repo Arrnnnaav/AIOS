@@ -29,8 +29,10 @@ Electron UI Automation calls could stall, so perception was isolated in a
 worker with bounded health monitoring and one controlled restart. When
 accessibility information was incomplete, GhostCursor used DPI-correct window
 capture and Windows OCR while visibly lowering hint confidence. Local-model
-output was constrained to registered intents and observed, recipe-approved
-controls; model-generated paths, coordinates, and actions are never
-executable. We also implemented wrong-action detection, focus-safe keyboard
+output was constrained to registered intents, and an executable intent must
+also agree with deterministic goal grounding before any trusted recipe is
+released. Screen hints remain limited to observed, recipe-approved controls;
+model-generated paths, coordinates, and actions are never executable. We also
+implemented wrong-action detection, focus-safe keyboard
 arbitration, trusted recipe containment, and application-state verification so
 the system advances only when the requested outcome is genuinely observed.

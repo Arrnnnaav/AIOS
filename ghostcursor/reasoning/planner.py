@@ -171,6 +171,31 @@ def plan_goal(goal: str, *, endpoint: str = "http://127.0.0.1:11434", model: str
         try:
             intent_id, confidence, explanation = _model_intent(goal, endpoint, model, timeout)
             spec = registry()[intent_id]
+            # A model can choose only a registered ID, but registration alone
+            # does not make the choice semantically safe. Qwen mapped "deploy
+            # this project" to EXPORT_DATA during the live never-fabricate
+            # probe. Any intent carrying executable authority must therefore
+            # agree with the deterministic classifier's grounded candidate.
+            # Unavailable intents remain honest non-launch results.
+            if spec.recipe_path is not None and fallback_id != intent_id:
+                if fallback_id is not None:
+                    recipe = _trusted_recipe(registry()[fallback_id])
+                    return PlanResult(
+                        PlanStatus.INVALID_MODEL_OUTPUT,
+                        fallback_id,
+                        fallback_confidence,
+                        (
+                            f"model selected ungrounded intent {intent_id}; "
+                            f"{fallback_explanation}"
+                        ),
+                        recipe,
+                    )
+                return PlanResult(
+                    PlanStatus.UNSUPPORTED_GOAL,
+                    None,
+                    0.0,
+                    f"model selected ungrounded intent {intent_id}; no trusted intent matched",
+                )
             recipe = _trusted_recipe(spec)
             if recipe is None:
                 return PlanResult(PlanStatus.KNOWN_INTENT_RECIPE_UNAVAILABLE, intent_id, confidence, explanation)
@@ -185,13 +210,24 @@ def plan_goal(goal: str, *, endpoint: str = "http://127.0.0.1:11434", model: str
                     f"{fallback_explanation} (Ollama request failed: {type(exc).__name__})",
                     recipe,
                 )
+            return PlanResult(
+                PlanStatus.UNSUPPORTED_GOAL,
+                None,
+                0.0,
+                f"model unavailable ({type(exc).__name__}); no trusted intent matched",
+            )
         except (ValueError, KeyError, json.JSONDecodeError):
             if fallback_id:
                 recipe = _trusted_recipe(registry()[fallback_id])
                 return PlanResult(PlanStatus.INVALID_MODEL_OUTPUT, fallback_id, fallback_confidence, fallback_explanation, recipe)
-            return PlanResult(PlanStatus.INVALID_MODEL_OUTPUT, None, 0.0, "model output was invalid")
+            return PlanResult(
+                PlanStatus.UNSUPPORTED_GOAL,
+                None,
+                0.0,
+                "model output was invalid and no trusted intent matched",
+            )
     if fallback_id:
         recipe = _trusted_recipe(registry()[fallback_id])
         status = PlanStatus.MODEL_UNAVAILABLE_FALLBACK if use_model else PlanStatus.SUPPORTED
         return PlanResult(status, fallback_id, fallback_confidence, fallback_explanation, recipe)
-    return PlanResult(PlanStatus.MODEL_UNAVAILABLE_FALLBACK if use_model else PlanStatus.UNSUPPORTED_GOAL, None, 0.0, "no trusted intent matched")
+    return PlanResult(PlanStatus.UNSUPPORTED_GOAL, None, 0.0, "no trusted intent matched")

@@ -36,6 +36,15 @@ under `MODEL_UNAVAILABLE_FALLBACK` when Ollama times out or is offline. Do not
 rely on a folder name containing `vscode` to prove the folder route; the
 regression fixture deliberately uses an unrelated folder name.
 
+Never execute a model-selected available intent unless it agrees with the
+deterministic classifier's grounded intent for the same goal (D058). A
+registered ID is an allowlist boundary, not semantic evidence. On mismatch,
+use only an existing deterministic fallback with `INVALID_MODEL_OUTPUT`; with
+no fallback return `UNSUPPORTED_GOAL` and no plan. Model-unavailable and
+malformed-output paths likewise use fallback statuses only when a plan exists.
+The live matrix is `docs/evidence/never-fabricate-matrix.md`; its correction
+passed 17 focused planner tests and the 361-test hermetic lane.
+
 Real VS Code perception is intentionally narrow for each validated workflow.
 `perception_walker_for("code.exe", recipe_intent)` selects the reviewed walker
 for that recipe. Open Folder uses `uia.iter_vscode_elements`, which

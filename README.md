@@ -19,6 +19,8 @@ rail.
 - The screen-aware hint model may select only an observed, recipe-approved UI
   AutomationId.
 - Model-generated paths, coordinates, code, and actions are rejected.
+- A model-selected executable intent must also match the deterministic
+  classifier's grounded intent; registration alone cannot authorize a recipe.
 - If Ollama is unavailable, deterministic matching is reported as a fallback;
   invalid model output has a separate status.
 - Deterministic perception, wrong-action feedback, verification, and safety
@@ -83,6 +85,7 @@ deadline.
 - Strict application-pack manifests and recipe-path containment
 - Local SQLite observations scoped by application/version/step
 - Explicit unsupported and unavailable planner states
+- Tested never-fabricate behavior for unsupported and close-but-unavailable goals
 
 ## Tests
 

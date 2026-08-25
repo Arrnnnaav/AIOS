@@ -137,6 +137,10 @@ flowchart LR
 - Natural-language planning and screen-aware target selection are bounded by
   registered intent IDs, strict pack manifests, trusted recipe paths, and live
   observed AutomationIds.
+- Registration bounds the model's vocabulary but does not grant semantic
+  authority. Any model-selected intent with a recipe must agree with the
+  deterministic classifier's grounded candidate; otherwise only a trusted
+  fallback may run, or the goal is unsupported.
 - The VS Code pack has two validated recipes. Open Folder uses a provider-side
   exact-name query plus title verification. Open Terminal uses a separate
   executable-bounded Button surface, a human `Ctrl+\`` instruction, and exact

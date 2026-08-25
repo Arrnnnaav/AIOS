@@ -4,9 +4,34 @@ Fill this table live while running each probe. Different non-launch statuses
 may be valid; the invariant is that no unsupported, unavailable, or untrusted
 workflow launches.
 
-| Goal | Ollama state | Status | Intent/pack | Recipe | Tour launched |
-|---|---|---|---|---|---|
-| Create a Python file in VS Code | Available | Pending | Pending | Pending | Pending |
-| Create a Python file in VS Code | Unavailable | Pending | Pending | Pending | Pending |
-| Deploy this project to production | Available | Pending | Pending | Pending | Pending |
-| Deploy this project to production | Unavailable | Pending | Pending | Pending | Pending |
+| Goal | Ollama state | Status | Intent/pack | Recipe | Launch eligible | Tour launched |
+|---|---|---|---|---|---|---|
+| Create a Python file in VS Code | Available | `KNOWN_INTENT_RECIPE_UNAVAILABLE` | `CREATE_DOCUMENT` / none | none | No | No |
+| Create a Python file in VS Code | Unavailable | `UNSUPPORTED_GOAL` | none | none | No | No |
+| Deploy this project to production | Available | `UNSUPPORTED_GOAL` | none | none | No | No |
+| Deploy this project to production | Unavailable | `UNSUPPORTED_GOAL` | none | none | No | No |
+
+## Supported-goal controls
+
+| Goal | Ollama state | Status | Intent/pack | Recipe | Launch eligible | Tour launched |
+|---|---|---|---|---|---|---|
+| Open a folder in VS Code | Available | `SUPPORTED` | `OPEN_FOLDER` / `vscode` | `open a folder in vscode` | Yes | No (planner probe only) |
+| Open a folder in VS Code | Unavailable | `MODEL_UNAVAILABLE_FALLBACK` | `OPEN_FOLDER` / `vscode` | `open a folder in vscode` | Yes | No (planner probe only) |
+| Open the integrated terminal in VS Code | Available | `SUPPORTED` | `OPEN_TERMINAL` / `vscode` | `open the integrated terminal in vscode` | Yes | No (planner probe only) |
+| Open the integrated terminal in VS Code | Unavailable | `MODEL_UNAVAILABLE_FALLBACK` | `OPEN_TERMINAL` / `vscode` | `open the integrated terminal in vscode` | Yes | No (planner probe only) |
+
+## Finding and correction
+
+The first available-model probe exposed a real never-fabricate failure: Qwen
+classified `Deploy this project to production` as `EXPORT_DATA (0.98)`, which
+made the synthetic export recipe launch-eligible. The probe did not launch a
+tour. The planner now requires every model-selected intent with an available
+recipe to agree with the deterministic classifier's grounded intent. After
+that correction, the same Qwen response became `UNSUPPORTED_GOAL` with no
+intent, pack, recipe, or launch authority.
+
+Available-state probes used the installed, prewarmed `qwen3:4b-instruct` at
+`127.0.0.1:11434`. Unavailable-state probes used an unreachable local endpoint
+at `127.0.0.1:1`; supported goals still exercised deterministic fallback.
+The correction passed 17 focused planner tests and the complete 361-test
+hermetic lane.

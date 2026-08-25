@@ -42,6 +42,87 @@ def test_malformed_model_output_keeps_a_valid_fallback(monkeypatch):
     assert result.plan is not None
 
 
+def test_malformed_model_output_without_fallback_is_unsupported(monkeypatch):
+    monkeypatch.setattr(
+        "ghostcursor.reasoning.planner._model_intent",
+        lambda *args: (_ for _ in ()).throw(ValueError("bad JSON")),
+    )
+
+    result = plan_goal("Deploy this project to production")
+
+    assert result.status is PlanStatus.UNSUPPORTED_GOAL
+    assert result.intent_id is None
+    assert result.plan is None
+
+
+def test_unavailable_model_without_fallback_is_unsupported(monkeypatch):
+    monkeypatch.setattr(
+        "ghostcursor.reasoning.planner._model_intent",
+        lambda *args: (_ for _ in ()).throw(TimeoutError("offline")),
+    )
+
+    result = plan_goal("Deploy this project to production")
+
+    assert result.status is PlanStatus.UNSUPPORTED_GOAL
+    assert result.intent_id is None
+    assert result.plan is None
+
+
+def test_model_cannot_attach_an_ungrounded_executable_intent(monkeypatch):
+    monkeypatch.setattr(
+        "ghostcursor.reasoning.planner._model_intent",
+        lambda *args: ("EXPORT_DATA", 0.98, "deployment needs an export"),
+    )
+
+    result = plan_goal("Deploy this project to production")
+
+    assert result.status is PlanStatus.UNSUPPORTED_GOAL
+    assert result.intent_id is None
+    assert result.plan is None
+
+
+def test_model_intent_mismatch_uses_distinguishable_trusted_fallback(monkeypatch):
+    monkeypatch.setattr(
+        "ghostcursor.reasoning.planner._model_intent",
+        lambda *args: ("EXPORT_DATA", 0.98, "incorrect model route"),
+    )
+
+    result = plan_goal("Open a folder in VS Code")
+
+    assert result.status is PlanStatus.INVALID_MODEL_OUTPUT
+    assert result.intent_id == "OPEN_FOLDER"
+    assert result.plan is not None
+    assert result.plan.app_id == "code.exe"
+
+
+@pytest.mark.parametrize(
+    ("goal", "intent_id", "recipe_intent"),
+    [
+        ("Open a folder in VS Code", "OPEN_FOLDER", "open a folder in vscode"),
+        (
+            "Open the integrated terminal in VS Code",
+            "OPEN_TERMINAL",
+            "open the integrated terminal in vscode",
+        ),
+    ],
+)
+def test_matching_available_model_intent_keeps_its_trusted_plan(
+    monkeypatch, goal, intent_id, recipe_intent
+):
+    monkeypatch.setattr(
+        "ghostcursor.reasoning.planner._model_intent",
+        lambda *args: (intent_id, 0.98, "matching model route"),
+    )
+
+    result = plan_goal(goal)
+
+    assert result.status is PlanStatus.SUPPORTED
+    assert result.intent_id == intent_id
+    assert result.confidence == 0.98
+    assert result.plan is not None
+    assert result.plan.intent == recipe_intent
+
+
 def test_fallback_recognizes_vscode_open_folder_goal():
     result = plan_goal(
         r"Open C:\Projects\Customer-Portal in VS Code",
