@@ -2311,3 +2311,22 @@ margin below the form's five-minute limit protects upload and editing variance.
 
 **Artifact.** `docs/submission/demo-video-script.md` fixes the timestamps,
 commands, protected/cuttable segments, and final review checklist.
+
+## D062 — One bounded Ollama adapter owns request transport and metadata
+
+**Finding.** Ollama 0.31.1 accepted a nullable planner schema and Qwen emitted
+JSON null in a forced control, but the same model still mapped the unsupported
+deployment goal to `CREATE_DOCUMENT (0.8)`. Structured output constrained the
+shape without making the decision semantically correct.
+
+**Decision.** Both inference paths will use one non-retrying Ollama adapter for
+the request body, HTTP transport, response envelope, and generation metadata.
+This slice builds and fixes that adapter; caller migration belongs to D063.
+The adapter sends `think: false`, temperature 0, seed 42, a 4096 context, a
+15-minute keep-alive, and caller-bounded output. It preserves `done_reason`
+and token/time metadata so a length cutoff is not mislabeled as arbitrary
+malformed output. Callers remain responsible for strict semantic validation;
+D058 remains the execution boundary.
+
+**Evidence.** `docs/evidence/model-durability-task0.md` records the real probe.
+`tests/test_ollama_request.py` fixes the shared request and metadata contract.

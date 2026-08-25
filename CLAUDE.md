@@ -409,3 +409,10 @@ doc lays out — Beginner → Intermediate → Resume-level MVP — rather than 
 later-phase features (adaptive interfaces, cross-app workflows, the full AIOS vision).
 Every later phase is a superset of this loop; building it out of order means re-doing
 foundational work later.
+
+## Model-durability branch status
+
+Model durability continues only on `post-submission/model-durability`. D062
+records the measured nullable-schema probe and shared bounded Ollama adapter.
+Do not merge this branch into the certified submission branch while durability
+gates remain incomplete.

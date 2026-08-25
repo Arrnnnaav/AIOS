@@ -716,3 +716,11 @@ resolve a trusted schema-valid recipe, require an explicit target except for
 the canonical Synthetic Export target, then enter the observe/act/verify tour.
 An active tour is never replaced by Ask. The bar remains optional at runtime,
 while ESC remains polled even when bar creation or focus acquisition fails.
+
+## Durability inference transport
+
+`inference.ollama.generate_structured()` is the one bounded request adapter:
+no retry, one response envelope, and preserved generation metadata. The parked
+planner and screen-hint callers still use the older body helper in this slice;
+D063 migrates them. Caller-specific schemas and semantic parsers remain outside
+the adapter; schema validity never grants recipe or control authority.
