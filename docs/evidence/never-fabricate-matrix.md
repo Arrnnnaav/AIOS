@@ -35,3 +35,22 @@ Available-state probes used the installed, prewarmed `qwen3:4b-instruct` at
 at `127.0.0.1:1`; supported goals still exercised deterministic fallback.
 The correction passed 17 focused planner tests and the complete 361-test
 hermetic lane.
+
+## Submission release recertification
+
+Date: 2026-08-25
+
+The model-call hardening started after D058 was isolated on
+`post-submission/model-durability` and was not included in this release. The
+annotated `submission-pre-model-hardening` tag and release HEAD both resolved
+to `15f20cef8d841fdd75145bd0e2493d61a2a90092`; all branch, staged, unstaged,
+status, module-absence, and test-absence checks passed.
+
+The tables above were then rerun unchanged against that release code. All eight
+cells reproduced their documented status, intent, recipe, and launch-eligibility
+contracts. Available probes used Ollama 0.31.1 with
+`qwen3:4b-instruct` digest
+`0edcdef34593eac1aa2be9c7d06c432dcf81945adca5eca2f27662c18f168ba0`;
+unavailable probes used `127.0.0.1:1`. No probe launched a tour. The same
+release checkout passed 23 focused planner/screen-hint controls and all 361
+hermetic tests.

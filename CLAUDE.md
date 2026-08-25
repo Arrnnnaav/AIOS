@@ -10,6 +10,15 @@ packs, bounded screen-aware hint inference, synthetic demo, foreground watcher,
 perception health instrumentation, executable-bounded VS Code grounding, and
 vertical Ask control rail are implemented.
 
+The submission inference implementation is anchored by
+`submission-pre-model-hardening` at `15f20cef...` (D061). Do not merge or
+cherry-pick `post-submission/model-durability` before submission. Its commit
+`304e8e0` contains an explicitly incomplete structured-Ollama request slice;
+`ghostcursor/inference/ollama.py` and its four added contract tests must remain
+absent from the release branch. Release recertification passed 23 focused
+planner/screen-hint tests, 361 hermetic tests, and the complete live eight-cell
+never-fabricate matrix on the tagged code.
+
 `OPEN_FOLDER` points at the Welcome page's `Open Folder...` action. The user
 handles the native folder picker, and title verification supports full-path
 goals, case-insensitive whitespace-normalized matching, degenerate-reference

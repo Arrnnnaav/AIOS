@@ -112,6 +112,11 @@ in `CLAUDE.md`.
 
 ## Evidence
 
+- The submission release was re-certified after isolating deferred model-call
+  work: 23 focused planner/hint tests, all 361 hermetic tests, and the complete
+  eight-cell available/unavailable never-fabricate matrix passed against the
+  actual release code. The model was `qwen3:4b-instruct` digest
+  `0edcdef34593eac1aa2be9c7d06c432dcf81945adca5eca2f27662c18f168ba0`.
 - `docs/evidence/vscode-open-terminal.md` records the real-desktop terminal
   acceptance gate and its limitations.
 - `docs/evidence/never-fabricate-matrix.md` records supported and unsupported

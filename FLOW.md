@@ -16,6 +16,14 @@ trusted planner/packs/inference foundation, the
 perception/VS Code runtime, the vertical Ask control rail, and its tests/docs.
 That baseline is tagged `pre-readiness-audit`.
 
+The release inference code is anchored at `submission-pre-model-hardening`
+(`15f20cef...`). A partially implemented schema-constrained Ollama request
+contract is parked at `304e8e0` on `post-submission/model-durability` and is
+absent from the submission branch. Mechanical branch/tag/absence checks passed,
+followed by 23 focused controls, 361 hermetic tests, and all eight live
+available/unavailable planner matrix cells against the actual release code.
+Only those release-branch results are submission evidence.
+
 The real `Open a folder in VS Code` workflow is complete: natural-language
 planning resolves `OPEN_FOLDER`, the `Code.exe`-bounded walker looks only for
 Welcome-page `Open Folder` variants, OCR can reassemble the split label, the
