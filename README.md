@@ -36,8 +36,9 @@ Schema conformance is not treated as semantic correctness. A versioned 30-case
 gate separately records raw model quality and final execution authority. Its
 first complete draft measured 86.7% raw semantic accuracy and 100% on exact
 supported goals; four high-confidence over-commitments were denied authority by
-the deterministic D058 policy. Dataset 1.0.0 is now owner-reviewed and frozen;
-the draft is superseded only after two consecutive post-freeze full passes.
+the deterministic D058 policy. Owner-reviewed dataset 1.0.0 is frozen, and the
+same 86.7% result plus every hard gate passed in two consecutive post-freeze
+interactive runs. This is the accepted Qwen incumbent baseline.
 
 ## Run the validated workflows
 
@@ -145,8 +146,9 @@ cannot close the milestone.
 - `docs/evidence/novice-vscode-study.md` is the fixed participant protocol;
   its results remain blank until real sessions are completed.
 - `docs/evidence/model-durability-draft.md` records the first 30-case local
-  model measurement, its four semantic over-commitments, and the layered
-  no-action evidence. It is explicitly not a frozen baseline yet.
+  model diagnostic before label freeze; it remains historical evidence.
+- `docs/evidence/model-durability-baseline.md` records the owner-reviewed,
+  two-consecutive-pass incumbent baseline and layered no-action evidence.
 - `docs/submission/demo-video-script.md` is the protected 4:45 demo sequence.
 
 ## Honest scope

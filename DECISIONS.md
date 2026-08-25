@@ -2445,3 +2445,28 @@ confusion case, and the near-open-project probe had individual exposure before
 the full dataset was drafted. Their `previously_probed` flags and the dataset
 review metadata preserve that fact; exact-control accuracy is not described as
 independent blind evidence.
+
+## D067 — Qwen 3 4B is the accepted frozen incumbent at 26/30
+
+**Decision.** Dataset 1.0.0 and the unchanged request contract passed two
+consecutive complete non-draft `--interactive` gates after freeze commit
+`93047ea`. Qwen achieved 26/30 (86.7%) raw semantic accuracy and 6/6 exact
+supported accuracy in both runs. All hard gates passed: zero unsupported
+launch-eligible plans, safe available/unavailable matrix, supported controls,
+exact synthetic and live Export selection, no exact length truncation, zero
+tour dispatch, and unchanged status sentinel. This manifest digest is now the
+incumbent and immediate rollback target.
+
+**Observed limitation.** The model repeated four 0.95-confidence
+over-commitments in both runs: `Open it` to `OPEN_FOLDER`, `Make a new one` to
+`CREATE_DOCUMENT`, `Open a project` to `OPEN_FOLDER`, and `Build and publish a
+website` to `CREATE_DOCUMENT`. D058 or recipe unavailability denied authority
+in every case. Schema validity is therefore reported as zero parse failures,
+not evidence of semantic caution.
+
+**Evidence.** The accepted reports are
+`.artifacts/model-evaluation/model-gate-20260825-181341.json` and
+`model-gate-20260825-181618.json`; raw reports remain ignored.
+`docs/evidence/model-durability-baseline.md` is the committed reviewed summary.
+Pass medians were 2870 ms and 2771 ms. Pass 1's 10,671 ms maximum is an
+observed session value, not a formal cold-start benchmark.

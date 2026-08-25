@@ -461,3 +461,12 @@ an observed anchor-rule result, not fuzzy matching: only `intergrated` preserves
 the required `open + terminal + VS Code` anchors. From this commit onward, do
 not use `--draft`; the first full run after the freeze starts the trusted
 two-consecutive-pass count.
+
+D067 closes that count: two consecutive complete post-freeze interactive gates
+passed with identical 26/30 raw semantic accuracy, 6/6 exact supported, zero
+unsupported launches, and unchanged no-action evidence. The incumbent is
+`qwen3:4b-instruct` at manifest digest
+`0edcdef34593eac1aa2be9c7d06c432dcf81945adca5eca2f27662c18f168ba0`.
+`docs/evidence/model-durability-baseline.md` is the committed baseline; future
+model/request/prompt/schema/parser changes compare against it and retain this
+digest as the rollback target.

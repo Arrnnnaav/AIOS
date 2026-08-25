@@ -766,7 +766,9 @@ digest, dataset review state, hard gates, failures, latency, and no-action
 scope is committed under `docs/evidence/`.
 
 Dataset 1.0.0 is now owner-reviewed and frozen at D066. The next gate command
-must omit `--draft`; that post-freeze run is the first trusted baseline attempt.
+must omit `--draft`. D067 closed the gate with two consecutive post-freeze
+passes; future inference changes rerun this same command against the frozen
+incumbent before they can be trusted.
 
 ```powershell
 # Optional diagnostics against an intentionally unreviewed future draft.

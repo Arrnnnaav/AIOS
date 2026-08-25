@@ -203,10 +203,10 @@ consecutive interactive desktop runs. The expanded Ask panel and submitted-goal
 round trip also passed interactive validation. Repository-wide lane
 classification is complete; the fresh-clone release gate remains.
 
-The first complete model-durability draft passed every hard gate and measured
-26/30 raw semantic intent decisions. All four raw over-commitments remained
-non-launchable. This remains pre-freeze diagnostic evidence; two consecutive
-post-freeze non-draft interactive passes remain open.
+The frozen model-durability baseline passed every hard gate in two consecutive
+post-freeze interactive runs and measured 26/30 raw semantic intent decisions
+both times. The same four raw over-commitments remained non-launchable, and the
+interactive lane selected only Export while leaving application state intact.
 
 # Open-track goal planning
 
