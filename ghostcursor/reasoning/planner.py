@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
+from ghostcursor.inference.ollama import DEFAULT_MODEL, generate_body
 from ghostcursor.reasoning.schema import Recipe
 
 
@@ -110,14 +111,25 @@ def _fallback(goal: str) -> tuple[str | None, float, str]:
 
 
 def _model_intent(goal: str, endpoint: str, model: str, timeout: float) -> tuple[str, float, str]:
+    intent_ids = tuple(registry())
     prompt = (
         "Return JSON only with keys intent_id, confidence, explanation. "
-        "intent_id must be one of EXPORT_DATA, CREATE_DOCUMENT, OPEN_SETTINGS, OPEN_FOLDER, OPEN_TERMINAL. "
+        f"intent_id must be one of {', '.join(intent_ids)}. "
         f"Goal: {goal}"
     )
-    # Keep the request compatible with older Ollama servers. Qwen3 may emit
-    # a <think> wrapper; the response parser already extracts the JSON object.
-    body = json.dumps({"model": model, "prompt": prompt, "stream": False}).encode()
+    schema = {
+        "type": "object",
+        "properties": {
+            "intent_id": {"type": "string", "enum": list(intent_ids)},
+            "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+            "explanation": {"type": "string", "minLength": 1},
+        },
+        "required": ["intent_id", "confidence", "explanation"],
+        "additionalProperties": False,
+    }
+    body = json.dumps(
+        generate_body(model=model, prompt=prompt, schema=schema)
+    ).encode()
     request = urllib.request.Request(endpoint.rstrip("/") + "/api/generate", data=body, headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(request, timeout=timeout) as response:
         outer = json.loads(response.read().decode("utf-8"))
@@ -132,7 +144,14 @@ def _model_intent(goal: str, endpoint: str, model: str, timeout: float) -> tuple
     intent = raw.get("intent_id")
     confidence = raw.get("confidence")
     explanation = raw.get("explanation")
-    if intent not in registry() or not isinstance(confidence, (int, float)) or not isinstance(explanation, str):
+    if (
+        intent not in registry()
+        or not isinstance(confidence, (int, float))
+        or isinstance(confidence, bool)
+        or not 0 <= float(confidence) <= 1
+        or not isinstance(explanation, str)
+        or not explanation.strip()
+    ):
         raise ValueError("invalid model fields")
     return intent, float(confidence), explanation
 
@@ -162,7 +181,7 @@ def recipe_path_for(intent_id: str) -> Path:
     return spec.recipe_path.resolve()
 
 
-def plan_goal(goal: str, *, endpoint: str = "http://127.0.0.1:11434", model: str = "qwen3:4b-instruct", timeout: float = 15.0, use_model: bool = True) -> PlanResult:
+def plan_goal(goal: str, *, endpoint: str = "http://127.0.0.1:11434", model: str = DEFAULT_MODEL, timeout: float = 15.0, use_model: bool = True) -> PlanResult:
     """Classify one goal and load only a trusted local recipe."""
     if not goal or not goal.strip():
         return PlanResult(PlanStatus.UNSUPPORTED_GOAL, None, 0.0, "goal is empty")

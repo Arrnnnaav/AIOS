@@ -10,6 +10,7 @@ import re
 import urllib.request
 from dataclasses import dataclass
 
+from ghostcursor.inference.ollama import DEFAULT_MODEL, generate_body
 from ghostcursor.perception.uia import Element
 
 
@@ -64,7 +65,14 @@ def _parse(raw: object, elements: list[Element]) -> HintDecision:
                 "low": 0.50,
             }.get(confidence.strip().casefold())
     observed_ids = {element.automation_id for element in elements if element.automation_id}
-    if automation_id not in observed_ids or not isinstance(confidence, (int, float)) or not isinstance(explanation, str):
+    if (
+        automation_id not in observed_ids
+        or not isinstance(confidence, (int, float))
+        or isinstance(confidence, bool)
+        or not 0 <= float(confidence) <= 1
+        or not isinstance(explanation, str)
+        or not explanation.strip()
+    ):
         raise ValueError("model selected an unobserved target or returned invalid fields")
     return HintDecision(automation_id, float(confidence), explanation, "model")
 
@@ -75,12 +83,20 @@ def decide_next_hint(
     allowed_names: tuple[str, ...],
     *,
     endpoint: str = "http://127.0.0.1:11434",
-    model: str = "qwen3:4b-instruct",
+    model: str = DEFAULT_MODEL,
     timeout: float = 15.0,
     use_model: bool = True,
 ) -> HintDecision:
     fallback = _fallback(elements, allowed_names)
     if not use_model:
+        return fallback
+    allowed_casefold = {name.casefold() for name in allowed_names}
+    candidate_ids = sorted({
+        element.automation_id
+        for element in elements
+        if element.automation_id and element.name.casefold() in allowed_casefold
+    })
+    if not candidate_ids:
         return fallback
     prompt = (
         "Return JSON only: {automation_id, confidence, explanation}. "
@@ -92,9 +108,21 @@ def decide_next_hint(
             for e in elements
         ], ensure_ascii=False)
     )
+    schema = {
+        "type": "object",
+        "properties": {
+            "automation_id": {"type": "string", "enum": candidate_ids},
+            "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+            "explanation": {"type": "string", "minLength": 1},
+        },
+        "required": ["automation_id", "confidence", "explanation"],
+        "additionalProperties": False,
+    }
     request = urllib.request.Request(
         endpoint.rstrip("/") + "/api/generate",
-        data=json.dumps({"model": model, "prompt": prompt, "stream": False}).encode(),
+        data=json.dumps(
+            generate_body(model=model, prompt=prompt, schema=schema)
+        ).encode(),
         headers={"Content-Type": "application/json"},
     )
     try:
@@ -103,7 +131,7 @@ def decide_next_hint(
         decision = _parse(outer.get("response", outer), elements)
         if decision.automation_id not in {
             e.automation_id for e in elements
-            if e.name.casefold() in {name.casefold() for name in allowed_names}
+            if e.name.casefold() in allowed_casefold
         }:
             raise ValueError("model selected an observed but untrusted target")
         return decision

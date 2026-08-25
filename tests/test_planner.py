@@ -1,6 +1,80 @@
+import json
+
 import pytest
 
+from ghostcursor.reasoning import planner
 from ghostcursor.reasoning.planner import PlanStatus, plan_goal
+
+
+class _Response:
+    def __init__(self, payload):
+        self.payload = payload
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+    def read(self):
+        return json.dumps(self.payload).encode()
+
+
+def test_ollama_intent_request_is_schema_constrained_and_deterministic(monkeypatch):
+    captured = {}
+
+    def urlopen(request, timeout):
+        captured["body"] = json.loads(request.data.decode())
+        captured["timeout"] = timeout
+        return _Response({
+            "response": json.dumps({
+                "intent_id": "OPEN_FOLDER",
+                "confidence": 0.98,
+                "explanation": "matched the folder goal",
+            })
+        })
+
+    monkeypatch.setattr("urllib.request.urlopen", urlopen)
+
+    result = planner._model_intent(
+        "Open a folder in VS Code", "http://127.0.0.1:11434", "test-model", 7.0
+    )
+
+    assert result[0] == "OPEN_FOLDER"
+    body = captured["body"]
+    assert body["model"] == "test-model"
+    assert body["stream"] is False
+    assert body["think"] is False
+    assert body["keep_alive"] == "15m"
+    assert body["options"] == {
+        "temperature": 0,
+        "seed": 42,
+        "num_ctx": 4096,
+        "num_predict": 96,
+    }
+    assert set(body["format"]["properties"]["intent_id"]["enum"]) == set(
+        planner.registry()
+    )
+    assert body["format"]["additionalProperties"] is False
+    assert captured["timeout"] == 7.0
+
+
+def test_model_intent_rejects_schema_bypassing_out_of_range_confidence(monkeypatch):
+    monkeypatch.setattr(
+        "urllib.request.urlopen",
+        lambda *args, **kwargs: _Response({
+            "response": json.dumps({
+                "intent_id": "OPEN_FOLDER",
+                "confidence": 1.2,
+                "explanation": "too confident",
+            })
+        }),
+    )
+
+    with pytest.raises(ValueError, match="invalid model fields"):
+        planner._model_intent(
+            "Open a folder in VS Code", "http://127.0.0.1:11434", "test-model", 7.0
+        )
 
 
 def test_exact_export_goal_is_supported_without_model():
