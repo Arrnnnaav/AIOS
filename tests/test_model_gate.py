@@ -51,7 +51,14 @@ def test_draft_gate_reports_interactive_skip_explicitly(monkeypatch):
     }
 
 
-def test_non_draft_gate_refuses_pending_owner_review():
+def test_non_draft_gate_refuses_pending_owner_review(monkeypatch):
+    def reject_pending(*, require_reviewed):
+        assert require_reviewed is True
+        raise ValueError("dataset labels are not owner-reviewed and frozen")
+
+    monkeypatch.setattr(
+        "ghostcursor.evaluation.model_gate.load_dataset", reject_pending
+    )
     args = Namespace(
         draft=False,
         endpoint="http://127.0.0.1:11434",

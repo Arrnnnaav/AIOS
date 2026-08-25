@@ -758,22 +758,25 @@ versioned human-semantic dataset (30 cases, family_id grouped)
     -> ignored JSON report; reviewed evidence is promoted separately
 ```
 
-Until dataset metadata records owner review, use `--draft`; the result is
+Dataset 1.0.0 is owner-reviewed and frozen. Pre-freeze `--draft` results remain
 diagnostic and can never be marked as the trusted incumbent baseline.
 
 Raw timestamped reports remain ignored. Only a reviewed summary with model
 digest, dataset review state, hard gates, failures, latency, and no-action
 scope is committed under `docs/evidence/`.
 
+Dataset 1.0.0 is now owner-reviewed and frozen at D066. The next gate command
+must omit `--draft`; that post-freeze run is the first trusted baseline attempt.
+
 ```powershell
-# Draft diagnostics while semantic labels await owner review.
+# Optional diagnostics against an intentionally unreviewed future draft.
 py -3.12 -m ghostcursor.evaluation.model_gate `
   --model qwen3:4b-instruct `
   --endpoint http://127.0.0.1:11434 `
   --unavailable-endpoint http://127.0.0.1:1 `
   --interactive --draft
 
-# Final standing gate after owner review (no --draft).
+# Standing gate for owner-reviewed dataset 1.0.0 (no --draft).
 py -3.12 -m ghostcursor.evaluation.model_gate `
   --model qwen3:4b-instruct `
   --endpoint http://127.0.0.1:11434 `

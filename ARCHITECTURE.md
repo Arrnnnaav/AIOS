@@ -148,8 +148,8 @@ flowchart LR
   separate dynamic schemas. A versioned 30-case gate measures raw advisory
   quality separately from final authority, reruns the production policy
   directly, and has an explicit read-only interactive lane against a
-  provenance-tagged Synthetic Export UIA fixture. Its dataset cannot be
-  promoted while owner review metadata is incomplete.
+  provenance-tagged Synthetic Export UIA fixture. Dataset 1.0.0 is
+  owner-reviewed and frozen before the trusted baseline.
 - The VS Code pack has two validated recipes. Open Folder uses a provider-side
   exact-name query plus title verification. Open Terminal uses a separate
   executable-bounded Button surface, a human `Ctrl+\`` instruction, and exact
@@ -205,9 +205,8 @@ classification is complete; the fresh-clone release gate remains.
 
 The first complete model-durability draft passed every hard gate and measured
 26/30 raw semantic intent decisions. All four raw over-commitments remained
-non-launchable. This is diagnostic evidence, not yet the frozen incumbent
-baseline, because owner review and two consecutive non-draft interactive passes
-remain open.
+non-launchable. This remains pre-freeze diagnostic evidence; two consecutive
+post-freeze non-draft interactive passes remain open.
 
 # Open-track goal planning
 

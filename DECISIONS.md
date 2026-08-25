@@ -2421,3 +2421,27 @@ diagnosis retains provenance.
 complete interactive draft, including the rejected stale-window attempt, the
 26/30 raw result, all four over-commitments, zero launch-eligible unsupported
 plans, exact model digest, and the scoped no-action claim.
+
+## D066 — Dataset 1.0.0 is owner-reviewed and frozen before baseline
+
+**Decision.** Project owner Arrnnnvva reviewed all 30 semantic labels and
+approved them with two conditions. The four misspelling predictions were run
+directly through the current deterministic classifier before freeze: `Exprot`,
+`floder`, and `Opne` returned no trusted intent; `Open the intergrated terminal
+in VS Code` returned `OPEN_TERMINAL`. Dataset metadata now records version
+1.0.0, owner role, review date, and `frozen_before_first_full_baseline_run:
+true`. The first trusted full baseline must run strictly after this commit.
+
+**Why the misspelling asymmetry is deliberate.** The classifier is not fuzzy.
+Its VS Code terminal synonym requires `open` or `show`, `terminal`, and a VS
+Code alias; misspelling the unused word `integrated` leaves every required
+anchor intact. `Exprot` removes the required export/save/download verb,
+`floder` removes the folder-or-path anchor, and `Opne` removes the open/show
+verb. These labels are therefore measurements of the current deterministic
+contract, while `expected_raw_intent` remains an independent semantic label.
+
+**Prior exposure disclosure.** Three exact supported controls, the deployment
+confusion case, and the near-open-project probe had individual exposure before
+the full dataset was drafted. Their `previously_probed` flags and the dataset
+review metadata preserve that fact; exact-control accuracy is not described as
+independent blind evidence.

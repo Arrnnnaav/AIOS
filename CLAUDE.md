@@ -423,10 +423,10 @@ only canonical bounded fields, planner null is an explicit abstention, and
 `resolve_model_decision()` is the single production/evaluation authority
 policy. Never bypass that function in an evaluation runner.
 
-D064 is built in draft: a 30-case versioned semantic dataset, provenance-tagged
-Synthetic Export UIA fixture, and three-lane read-only gate now exist. The
-dataset remains `pending-owner-review`, so draft reports are diagnostics and
-must not be called the incumbent baseline. The first complete draft passed all
+D064 is built: a 30-case versioned semantic dataset, provenance-tagged
+Synthetic Export UIA fixture, and three-lane read-only gate now exist. D066
+freezes owner-reviewed version 1.0.0; pre-freeze draft reports remain diagnostic
+and must not be called the incumbent baseline. The first complete draft passed all
 hard gates at 86.7% overall raw semantic accuracy and 100% on exact supported
 goals; D058 denied authority to all four raw over-commitments.
 
@@ -453,6 +453,11 @@ to zero and must be preserved and classified first.
 
 D065 fixes evidence promotion: timestamped JSON remains ignored, while
 `docs/evidence/model-durability-draft.md` is the concise, reviewable diagnostic
-summary. Do not remove its draft warning or call its numbers the incumbent
-baseline until dataset owner review and D064's consecutive-pass gate are both
-complete.
+summary. Do not remove its pre-freeze warning or call its numbers the incumbent
+baseline until D064's consecutive-pass gate is complete.
+
+D066 freezes owner-reviewed dataset version 1.0.0. Its misspelling asymmetry is
+an observed anchor-rule result, not fuzzy matching: only `intergrated` preserves
+the required `open + terminal + VS Code` anchors. From this commit onward, do
+not use `--draft`; the first full run after the freeze starts the trusted
+two-consecutive-pass count.

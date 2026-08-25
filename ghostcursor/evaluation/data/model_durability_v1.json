@@ -1,10 +1,10 @@
 {
-  "dataset_version": "1.0.0-draft",
+  "dataset_version": "1.0.0",
   "label_review": {
-    "status": "pending-owner-review",
-    "reviewed_by": null,
-    "reviewed_at": null,
-    "frozen_before_first_full_baseline_run": false,
+    "status": "owner-reviewed",
+    "reviewed_by": "Arrnnnvva (AIOS project owner)",
+    "reviewed_at": "2026-08-25",
+    "frozen_before_first_full_baseline_run": true,
     "prior_exposure_disclosure": "The deploy_confusion case and supported controls were individually probed before this complete dataset was drafted. Labels are human semantic judgments, never copied from Qwen output."
   },
   "cases": [

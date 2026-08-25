@@ -36,8 +36,8 @@ Schema conformance is not treated as semantic correctness. A versioned 30-case
 gate separately records raw model quality and final execution authority. Its
 first complete draft measured 86.7% raw semantic accuracy and 100% on exact
 supported goals; four high-confidence over-commitments were denied authority by
-the deterministic D058 policy. The draft is not promoted as the incumbent
-baseline until its human semantic labels are explicitly owner-reviewed.
+the deterministic D058 policy. Dataset 1.0.0 is now owner-reviewed and frozen;
+the draft is superseded only after two consecutive post-freeze full passes.
 
 ## Run the validated workflows
 
@@ -121,15 +121,15 @@ with no other test session active. The exact hung-lane commands are documented
 in `CLAUDE.md`.
 
 Every model/digest, prompt, schema, parser, adapter, or inference-policy change
-also requires the three-lane model gate. While labels await owner review, run
-the honest diagnostic form:
+also requires the three-lane model gate. Dataset 1.0.0 is owner-reviewed, so
+the standing post-freeze command is:
 
 ```powershell
 py -3.12 -m ghostcursor.evaluation.model_gate `
   --model qwen3:4b-instruct `
   --endpoint http://127.0.0.1:11434 `
   --unavailable-endpoint http://127.0.0.1:1 `
-  --interactive --draft
+  --interactive
 ```
 
 The interactive lane reads a real Synthetic Export UIA tree but cannot launch

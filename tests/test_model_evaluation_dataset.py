@@ -6,11 +6,13 @@ import pytest
 from ghostcursor.evaluation.dataset import DATASET_PATH, load_dataset
 
 
-def test_dataset_has_reviewable_versioned_shape_and_required_category_counts():
+def test_dataset_has_owner_reviewed_versioned_shape_and_required_category_counts():
     dataset = load_dataset()
 
-    assert dataset.dataset_version == "1.0.0-draft"
-    assert dataset.review_status == "pending-owner-review"
+    assert dataset.dataset_version == "1.0.0"
+    assert dataset.review_status == "owner-reviewed"
+    assert dataset.reviewed_by == "Arrnnnvva (AIOS project owner)"
+    assert dataset.frozen_before_first_full_baseline_run is True
     assert len(dataset.cases) == 30
     assert Counter(case.category for case in dataset.cases) == Counter(
         {
@@ -34,9 +36,25 @@ def test_deploy_confusion_is_human_labelled_as_abstention_and_disclosed():
     assert case.previously_probed is True
 
 
-def test_pending_labels_cannot_be_loaded_as_trusted_baseline():
+def test_owner_reviewed_labels_can_be_loaded_as_trusted_baseline():
+    assert load_dataset(require_reviewed=True).dataset_version == "1.0.0"
+
+
+def test_pending_labels_cannot_be_loaded_as_trusted_baseline(tmp_path):
+    raw = json.loads(DATASET_PATH.read_text(encoding="utf-8"))
+    raw["label_review"].update(
+        {
+            "status": "pending-owner-review",
+            "reviewed_by": None,
+            "reviewed_at": None,
+            "frozen_before_first_full_baseline_run": False,
+        }
+    )
+    path = tmp_path / "pending.json"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
     with pytest.raises(ValueError, match="not owner-reviewed"):
-        load_dataset(require_reviewed=True)
+        load_dataset(path, require_reviewed=True)
 
 
 def test_dataset_detects_deterministic_classifier_drift(tmp_path):

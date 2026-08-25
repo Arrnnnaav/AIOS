@@ -1,15 +1,16 @@
 # Model-Durability Gate — Draft Evidence
 
-Status: **diagnostic draft, not the frozen incumbent baseline**
+Status: **historical pre-freeze diagnostic, not the incumbent baseline**
 
 ## Why this is still a draft
 
 The 30 expected raw-intent labels are independent human semantic judgments,
 not copies of Qwen output. They are checked into
 `ghostcursor/evaluation/data/model_durability_v1.json`, but the dataset metadata
-remains `pending-owner-review`. The gate refuses a trusted non-draft run until
-the project owner reviews those labels, records reviewer/date, and confirms the
-set was frozen before the first complete trusted baseline run.
+was `pending-owner-review` when this report ran. D066 subsequently records
+owner review and freezes dataset 1.0.0. Because these numbers predate that
+freeze commit, they remain diagnostic and cannot become the trusted baseline
+retroactively.
 
 The deployment case and supported controls had prior individual exposure. That
 history is disclosed in the dataset and does not make incumbent output ground
@@ -92,7 +93,7 @@ path, and runtime tour-module guard.
 
 ## Reproduce
 
-Until owner review is recorded:
+This historical diagnostic was run before owner review with:
 
 ```powershell
 py -3.12 -m ghostcursor.evaluation.model_gate `
@@ -102,5 +103,5 @@ py -3.12 -m ghostcursor.evaluation.model_gate `
   --interactive --draft
 ```
 
-After owner review, remove `--draft`. Milestone closure then requires two
+For the post-freeze baseline, remove `--draft`. Milestone closure requires two
 consecutive complete non-draft passes; any failure resets the count to zero.
