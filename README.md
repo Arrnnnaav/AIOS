@@ -110,6 +110,16 @@ tests create a deliberately non-pumping window and must run one file at a time,
 with no other test session active. The exact hung-lane commands are documented
 in `CLAUDE.md`.
 
+## Evidence
+
+- `docs/evidence/vscode-open-terminal.md` records the real-desktop terminal
+  acceptance gate and its limitations.
+- `docs/evidence/never-fabricate-matrix.md` records supported and unsupported
+  planner behavior with Qwen available and unavailable.
+- `docs/evidence/novice-vscode-study.md` is the fixed participant protocol;
+  its results remain blank until real sessions are completed.
+- `docs/submission/demo-video-script.md` is the protected 4:45 demo sequence.
+
 ## Honest scope
 
 Open Folder and Open Terminal are the two proven real VS Code workflows. The

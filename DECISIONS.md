@@ -2274,3 +2274,40 @@ non-empty AutomationIds, so this workflow neither persists a learned control
 nor claims ID-based wrong-action naming. Repeated runs therefore prove fresh
 live grounding and world-state verification, not a cache-reuse path. Weakening
 that guard to manufacture learning evidence would violate D006 and D030.
+
+## D059 — Participant value evidence is an informal, fully disclosed novice check
+
+**Decision.** Value evidence targets one user and task: a novice VS Code user
+opening a first project folder. The published protocol compares an unassisted
+attempt with a GhostCursor-guided attempt and records time to the correct
+action, total completion, wrong actions, completion, and a 1–5 confidence
+rating. Three participants are preferred; two are acceptable only with `n=2`
+disclosed; fewer than two means no participant-value claim. Every result,
+including failures and timeouts, remains in the table. Names and contact data
+never enter the repository.
+
+**Why.** Three consecutive desktop runs prove engineering reliability, not
+user value. A small study can provide concrete observed value, but its order
+effect and sample size cannot support statistical or causal claims. The
+protocol therefore preserves individual observations and states the
+limitation instead of converting a buildathon check into research theater.
+
+**Artifact.** `docs/evidence/novice-vscode-study.md` contains the ready-to-send
+invitation, fixed protocol, empty live results table, and claim rules. Results
+are intentionally blank until real sessions occur.
+
+## D060 — The demo protects live evidence inside a 4:45 budget
+
+**Decision.** The pitch is capped at 4:45. The Open Folder, Ask/Open Terminal,
+and never-fabricate refusal segments are protected; problem framing, evidence
+narration, and the close are cuttable. Qwen is prewarmed before recording. The
+refusal clip is recorded separately, and any code fix affecting captured
+behavior requires the relevant tests and clip to be rerun.
+
+**Why.** The Open Track bar asks for a real problem, meaningful AI, a working
+product, and evidence of value. The protected sequence shows each directly
+without relying on architecture slides or edited claims, while a 15-second
+margin below the form's five-minute limit protects upload and editing variance.
+
+**Artifact.** `docs/submission/demo-video-script.md` fixes the timestamps,
+commands, protected/cuttable segments, and final review checklist.

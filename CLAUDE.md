@@ -45,6 +45,15 @@ malformed-output paths likewise use fallback statuses only when a plan exists.
 The live matrix is `docs/evidence/never-fabricate-matrix.md`; its correction
 passed 17 focused planner tests and the 361-test hermetic lane.
 
+Submission evidence must follow D059 and D060. Fill
+`docs/evidence/novice-vscode-study.md` live; never invent participant rows,
+drop failures, or make a participant-value claim below two completed sessions.
+Use `docs/submission/demo-video-script.md` for the 4:45 recording. Open Folder,
+Ask/Open Terminal, and the refusal clip are protected segments; if product code
+changes behavior after recording, rerun the affected tests and rerecord that
+clip. Sending invitations and uploading video are external actions and must not
+be claimed from repository edits alone.
+
 Real VS Code perception is intentionally narrow for each validated workflow.
 `perception_walker_for("code.exe", recipe_intent)` selects the reviewed walker
 for that recipe. Open Folder uses `uia.iter_vscode_elements`, which

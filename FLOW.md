@@ -60,6 +60,14 @@ They passed: hermetic 341 twice, interactive 53, pytest pixel 3, standalone
 pixels 16/16 and 8/8, and isolated hung modules 4 + 2 + 7. The
 participant evidence and submission production are the next gates.
 
+Participant evidence now has a locked, empty-by-design protocol in
+`docs/evidence/novice-vscode-study.md`: recruit three novice VS Code users
+(two is the disclosed fallback), collect baseline and guided observations live,
+and make no user-value claim below `n=2`. Demo production follows
+`docs/submission/demo-video-script.md`; its Open Folder, Ask/Open Terminal, and
+unsupported-goal clips are protected inside a 4:45 maximum. No participant
+results or invitations are claimed until they actually occur.
+
 ## Previous milestone: Chromium warm-up  ✅ complete
 
 ## Previous milestone: Perception tier 2 (OCR)  ✅ complete
