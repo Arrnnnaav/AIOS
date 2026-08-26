@@ -193,6 +193,73 @@ class Element:
     source: str = field(default="uia")
 
 
+class ProviderQueryFault(RuntimeError):
+    """A provider-side query failed in a way that is not a clean absence.
+
+    Raised rather than returned so a caller cannot accidentally treat it like a
+    false or empty result. That flattening is exactly what hid Open Folder's
+    tier-1 perception going dark: the walk published an empty *successful*
+    observation, indistinguishable from "nothing is on screen" (D069).
+    """
+
+
+def _is_dead_pointer(exc: BaseException) -> bool:
+    """True when a property read failed because the element no longer exists.
+
+    Measured on VS Code 1.134.0 with the installed UIA provider and comtypes
+    1.4.16: `FindFirst` answers a condition that matched nothing with a
+    non-`None` object whose every property access raises this, instead of
+    returning `None`. That is an observation to defend against, not a contract
+    the platform owes, so the predicate is deliberately narrow -- any OTHER
+    ValueError is a fault, not an absence.
+    """
+    return isinstance(exc, ValueError) and "NULL COM pointer" in str(exc)
+
+
+def provider_exact(find, make_info) -> Element | None:
+    """Resolve one provider-side query into presence, absence, or a fault.
+
+    `find()` performs the FindFirst; `make_info(raw)` wraps the result so its
+    properties can be read. Both are injected so the presence rule can be tested
+    without a live UIA provider.
+
+        required properties read     -> Element   (present)
+        FindFirst returned None      -> None      (absent)
+        NULL COM pointer on read     -> None      (absent)
+        any other failure            -> ProviderQueryFault
+
+    A non-`None` return from FindFirst carries no information on its own; only a
+    successful property read establishes presence.
+    """
+    try:
+        raw = find()
+    except Exception as exc:  # noqa: BLE001 - re-raised as a typed fault
+        raise ProviderQueryFault(f"provider query failed: {exc}") from exc
+
+    if raw is None:
+        return None
+
+    try:
+        info = make_info(raw)
+        name = info.name or ""
+        control_type = info.control_type or ""
+        automation_id = info.automation_id or ""
+        rect = info.rectangle
+        bbox = (rect.left, rect.top, rect.right, rect.bottom)
+    except Exception as exc:  # noqa: BLE001 - classified below
+        if _is_dead_pointer(exc):
+            return None
+        raise ProviderQueryFault(f"provider property read failed: {exc}") from exc
+
+    return Element(
+        name=name,
+        control_type=control_type,
+        automation_id=automation_id,
+        bbox=bbox,
+        path=(control_type,),
+    )
+
+
 def iter_elements(title_re: str) -> list[Element]:
     """Every on-screen element inside the window matching title_re.
 
