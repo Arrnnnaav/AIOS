@@ -58,42 +58,6 @@ def test_iter_elements_filters_out_degenerate_chrome_elements():
         )
 
 
-def test_vscode_walk_returns_only_the_targeted_file_menu(monkeypatch):
-    class Rect:
-        left, top, right, bottom = 10, 20, 80, 50
-
-    class Info:
-        name = "Open Folder..."
-        control_type = "Hyperlink"
-        automation_id = ""
-        rectangle = Rect()
-
-    monkeypatch.setattr(
-        uia, "windows_matching_executable", lambda title, exe: [4242]
-    )
-    monkeypatch.setattr(uia, "_vscode_open_folder_element_info", lambda hwnd: Info())
-    monkeypatch.setattr(uia, "is_on_screen", lambda bbox: True)
-
-    elements = uia.iter_vscode_elements(".*Visual Studio Code.*")
-
-    assert len(elements) == 1
-    assert elements[0].name == "Open Folder..."
-    assert elements[0].control_type == "Hyperlink"
-    assert elements[0].bbox == (10, 20, 80, 50)
-
-
-def test_vscode_walk_degrades_to_empty_for_a_provider_failure(monkeypatch):
-    monkeypatch.setattr(
-        uia, "windows_matching_executable", lambda title, exe: [4242]
-    )
-
-    def blocked(_):
-        raise OSError("provider unavailable")
-
-    monkeypatch.setattr(uia, "_vscode_open_folder_element_info", blocked)
-    assert uia.iter_vscode_elements(".*Visual Studio Code.*") == []
-
-
 def test_vscode_terminal_walk_returns_only_trusted_exact_buttons(monkeypatch):
     class Rect:
         left, top, right, bottom = 10, 20, 180, 50

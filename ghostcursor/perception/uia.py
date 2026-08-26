@@ -418,51 +418,41 @@ def iter_elements(title_re: str) -> list[Element]:
     return elements
 
 
-def _vscode_open_folder_element_info(hwnd: int):
-    """Find a directly exposed Welcome-page Open Folder action, if present."""
-    from pywinauto.uia_defines import IUIA
-    from pywinauto.uia_element_info import UIAElementInfo
+#: The Welcome-page action, in the spellings VS Code has used. The observed
+#: Codicon prefix is deliberately NOT listed: a private-use codepoint is
+#: version-sensitive, so it is normalised away at match time instead (D069).
+_VSCODE_OPEN_FOLDER_NAMES = ("Open Folder...", "Open Folder…", "Open Folder")
 
-    uia = IUIA()
-    root = UIAElementInfo(hwnd)
-    for name in ("Open Folder...", "Open Folder…", "Open Folder"):
-        condition = uia.build_condition(title=name)
-        raw = root.element.FindFirst(uia.tree_scope["descendants"], condition)
-        if raw is not None:
-            return UIAElementInfo(raw)
-    return None
+
+def _vscode_button_walk(hwnd: int):
+    """Bounded Button descendants of one Code.exe window.
+
+    Module level so the COM call is one seam. Never the generic full-tree walk:
+    that is the stall this project measured and narrowed away from.
+    """
+    window = Desktop(backend="uia").window(handle=hwnd)
+    return window.descendants(control_type="Button")
 
 
 def iter_vscode_elements(title_re: str) -> list[Element]:
     """Minimal UIA perception for the trusted VS Code open-folder workflow.
 
-    This intentionally returns only the Open Folder Welcome action. It avoids the
-    unbounded full-tree walk that stalls on real VS Code windows.  If the
-    provider cannot expose Open Folder, returning an empty successful observation
-    lets the existing OCR tier attempt the same trusted target.
+    Uses the bounded-descendants strategy. It previously used a provider-side
+    exact query, which on VS Code 1.134.0 returns a dead COM pointer for this
+    target while the Button walk reads it cleanly (5/5, stable bbox) -- so the
+    workflow had silently fallen back to OCR for its grounding (D069).
+
+    A clean absence still returns an empty successful observation, which is what
+    lets executable-bounded OCR escalate for the same trusted target. A genuine
+    provider fault now raises rather than masquerading as an empty screen.
     """
     matches = windows_matching_executable(title_re, "code.exe")
     if not matches:
         return []
-    try:
-        info = _vscode_open_folder_element_info(matches[0])
-        if info is None:
-            return []
-        rect = info.rectangle
-        bbox = (rect.left, rect.top, rect.right, rect.bottom)
-        if not is_on_screen(bbox):
-            return []
-        return [
-            Element(
-                name=info.name or "",
-                control_type=info.control_type or "",
-                automation_id=info.automation_id or "",
-                bbox=bbox,
-                path=(info.control_type or "",),
-            )
-        ]
-    except Exception:
-        return []
+    hwnd = matches[0]
+    return bounded_descendants(
+        lambda: _vscode_button_walk(hwnd), _VSCODE_OPEN_FOLDER_NAMES
+    )
 
 
 _VSCODE_TERMINAL_BUTTONS = {

@@ -301,7 +301,8 @@ retaining the original words and the 95 grounding floor.
 
 The next completed slice adds `OPEN_TERMINAL` to the same trusted VS Code
 manifest and planner allowlist. `run.perception_walker_for(app_id, intent)`
-keeps Open Folder on its provider-side exact-name walker and selects
+keeps Open Folder on its own reviewed walker (since D069 a bounded,
+normalised-name Button walk rather than the provider-side exact query) and selects
 `uia.iter_vscode_terminal_elements` only for the terminal recipe. That walker
 is still `Code.exe`-bounded and filters a Button-only UIA walk down to the two
 reviewed exact names. The recipe's `PRESS_KEYS` value describes the human

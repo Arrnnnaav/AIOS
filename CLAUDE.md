@@ -65,10 +65,19 @@ be claimed from repository edits alone.
 
 Real VS Code perception is intentionally narrow for each validated workflow.
 `perception_walker_for("code.exe", recipe_intent)` selects the reviewed walker
-for that recipe. Open Folder uses `uia.iter_vscode_elements`, which
-uses provider-side exact queries for `Open Folder` name variants and never performs
-the generic full Electron descendant walk. A UIA provider miss returns an
-empty successful observation so executable-bounded OCR can escalate. OCR
+for that recipe. Open Folder uses `uia.iter_vscode_elements`, which since D069
+uses the **bounded-descendants** strategy: a `Code.exe`-bounded Button walk
+filtered by NORMALISED name against the `Open Folder` variants, capped at
+`DEFAULT_DESCENDANT_LIMIT`. It never performs the generic full Electron
+descendant walk. It previously used a provider-side exact query, which on
+VS Code 1.134.0 returns a dead COM pointer for this target while the Button
+walk reads it cleanly — so the workflow had silently fallen back to OCR for its
+grounding. Matching is normalised because VS Code prefixes a private-use
+Codicon to the accessible name; the glyph is never written into a recipe, since
+a specific codepoint is version-sensitive. A clean absence still returns an
+empty successful observation so executable-bounded OCR can escalate, but a
+genuine provider fault now raises `ProviderQueryFault` instead of
+masquerading as an empty screen. OCR
 same-line reassembly is required because Windows reads `Open` and `Folder...`
 as separate words; it does not lower the 95 grounding floor. Keep this restriction
 aligned with the trusted VS Code pack; broaden it only when a new
