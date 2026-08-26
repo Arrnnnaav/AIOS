@@ -1,0 +1,640 @@
+# Declarative Workflow Compiler and Recipe Schema v2 — Design
+
+Date: 2026-08-27
+Status: **draft, pending independent review**
+Decisions: D069 (+ later-measurement amendment), D070, D072
+Evidence: `docs/evidence/provider-findall-spike.md`,
+`docs/evidence/d072-compatibility-corpus.md`,
+`docs/evidence/workflow3-uia-feasibility.md`
+
+---
+
+## 1. Why
+
+Adding a workflow to GhostCursor currently requires new Python: a bespoke UIA
+walker, a branch in `perception_walker_for()`, and an entry in the hardcoded
+`registry()` dict in `ghostcursor/reasoning/planner.py`. Every application pack
+therefore costs engineering time proportional to the number of workflows, which
+is the constraint that keeps the product at two certified workflows in one
+application.
+
+**The product-defining proof is adding Open Extensions through data alone** —
+manifest and recipe artifacts, with no workflow-specific change under
+`ghostcursor/**/*.py`.
+
+Two discoveries shaped this design.
+
+**There are already two intent→recipe mappings, and only one of them executes.**
+`registry()` is a hardcoded dict and is the real execution authority.
+`PackRegistry` plus the JSON manifests is consumed only by `daemon.py` and
+tests, so it never executes anything. That is why its `recipe_for_intent()` can
+get away with globbing the recipe directory, matching `path.stem` against the
+intent id, and falling back to "the only recipe in a one-intent pack" — all
+three forbidden by D070. The compiler's job is not to invent a mapping. It is to
+**make the manifest path authoritative and harden it in the same move**,
+because the moment it executes, those three shortcuts become authority holes.
+
+**`bounded_descendants` has a live defect.** `uia.py:368` breaks out of its loop
+at `len(selected) >= limit`, so a small limit truncates the result before the
+`EXACTLY_ONE` ambiguity check can observe a second match. Shipped in `c7a85ab`;
+fixed as part of this work.
+
+---
+
+## 2. Artifact layout
+
+```
+ghostcursor/packs/
+  index.json                          # names pack dirs explicitly; no glob
+  vscode/
+    pack/vscode.<digest>.json         # pack_kind: "application"
+    intents/open_folder.<digest>.json
+    intents/open_terminal.<digest>.json
+    recipes/open_folder.<digest>.json
+    recipes/open_terminal.<digest>.json
+    activation.json                   # the ONLY mutable file in a pack
+  synthetic/ …   notepad/ …           # pack_kind: "application"
+  common/
+    pack/common.<digest>.json         # pack_kind: "planner_only"
+    intents/create_document.<digest>.json
+    intents/open_settings.<digest>.json
+    activation.json                   # both indexed at recipe: null
+```
+
+Every immutable executable artifact — pack identity, intent, and recipe — uses a
+whole-file content-addressed name. One hashing rule, no JSON canonicalisation to
+specify. Filenames carry a readable name plus 12–16 hex characters of the
+artifact's SHA-256 for reviewability; **the full 64-hex digest recorded in
+`activation.json` is the authority**, and the filename fragment is never parsed
+or trusted. Mutable `activation.json`, mutable `packs/index.json`, and committed
+evidence are also bound by SHA-256 over their exact bytes where this design names
+a digest, but do not pretend to contain their own address.
+
+`activation.json` binds the pack, intent, and recipe digests together, so
+broadening a title pattern or an intent phrase after acceptance cannot retain
+authority over the accepted recipe.
+
+### `pack_kind` is explicit, never inferred from empty arrays
+
+| Kind | Meaning |
+|---|---|
+| `application` | Validated executable/title identity; participates in window matching |
+| `planner_only` | Executable names and title patterns **must** be empty; never matches a window; **every recipe must be null** — a non-null recipe is a validation failure |
+
+`CREATE_DOCUMENT` and `OPEN_SETTINGS` belong to no application but are
+load-bearing: the certified never-fabricate matrix depends on them returning
+`KNOWN_INTENT_RECIPE_UNAVAILABLE` rather than `UNSUPPORTED_GOAL`. They live in a
+`planner_only` pack. Per D072 they carry **no deterministic matcher rules** —
+`_fallback()` never checks them today, so adding rules would change
+deterministic-null results and break migration parity.
+
+`OPEN_NEW_TAB` is **deleted and not indexed**. It has zero planner references
+today, so indexing it even at `recipe: null` would make it planner- and
+model-visible and change current behaviour.
+
+### Encoding — split responsibility
+
+`.gitattributes` pins **every digest-bound text file** to LF: pack JSON
+(including `index.json` and `activation.json`) and committed Markdown under
+`docs/evidence/`. **UTF-8 without BOM is enforced by the trusted loaders and by
+tests**, not by `.gitattributes`, which cannot express it. A BOM is a load
+failure, never a silent strip.
+
+This is latent today, not hypothetical: `.gitattributes` is absent and
+`core.autocrlf=input`, so recipe JSON happens to be LF in the working tree while
+nothing enforces it. One save from a Windows editor and stored bytes diverge
+from working-tree bytes, and every digest fails after checkout with no code
+change.
+
+---
+
+## 3. `activation.json`
+
+```json
+{
+  "activation_generation": 7,
+  "pack": { "path": "pack/vscode.<d>.json", "sha256": "<64 hex>" },
+  "intents": {
+    "OPEN_FOLDER": {
+      "intent": { "path": "intents/open_folder.<d>.json", "sha256": "<64 hex>" },
+      "recipe": { "path": "recipes/open_folder.<d>.json", "sha256": "<64 hex>" },
+      "accepted_app_versions": { "kind": "exact", "value": "1.134.0" },
+      "evidence": { "path": "docs/evidence/<committed>.md", "sha256": "<64 hex>" },
+      "adopted_at": "<ISO-8601 UTC>",
+      "reviewer_id": "<repository-defined id>",
+      "review_commit": "<40 hex>",
+      "supersedes_sha256": "<64 hex> | null"
+    }
+  }
+}
+```
+
+`activation_generation`, `pack`, and `intents` are always required; `intent` is
+required per entry. `recipe` may be `null`, and when it is, **the acceptance
+fields must be absent** — a registered-but-unavailable intent was never
+accepted, and carrying acceptance metadata for it would be a false record. When
+`recipe` is non-null, all of them are mandatory. `supersedes_sha256` is `null`
+only on first adoption.
+
+**Acceptance evidence is bound immutably.** `evidence` carries a path *and* the
+document's SHA-256. A path alone names a mutable file and cannot prove which
+bytes were reviewed — the same failure shape as an unbound recipe.
+`review_commit` is kept for provenance but is not the binding; verifying it
+would require git at load time, whereas a digest is checkable from the artifacts
+alone.
+
+`reviewer_id` is a stable repository identity (the same class of identity used
+for commit attribution), not an arbitrary display name or personal-data field
+typed into JSON.
+
+**`activation_generation` is an audit sequence, not authority.** It starts at
+`1` and increments by exactly one on every adoption, supersession, rollback, or
+withdrawal that changes `activation.json`. The loader rejects zero, negative,
+non-integer, or decreasing generations when it has a previous generation to
+compare. A generation may help cache invalidation and audit ordering, but only
+the digest of the exact activation bytes binds content.
+
+**Version scope — `exact` only in v2.** `kind` accepts **`exact`** and nothing
+else. A range grammar needs comparison semantics of its own (ordering,
+inclusivity, prerelease handling) and would be a sub-design with no current
+consumer, so it is deferred rather than half-specified. `range` becomes valid
+only when a decision defines its grammar.
+
+**`unknown` cannot activate an executable recipe** — acceptance always happened
+against some observed application version, so recording `unknown` would falsify
+what was tested.
+
+**Runtime behaviour is fail-closed.** If version detection returns `unknown`, or
+the detected version does not equal the entry's `accepted_app_versions.value`,
+that intent is `KNOWN_INTENT_RECIPE_UNAVAILABLE`. It does not launch on the hope
+that the recipe still fits, and it does not silently widen its own scope.
+
+Acceptance, planning, pre-launch revalidation, and rollback all obtain this
+value through the same `AppInfo.version` source. An acceptance document may
+record the observed value, but may not supply or override it. This prevents two
+version parsers from assigning different scopes to the same application build.
+
+For **rollback**, the same equality applies: D070 permits repointing to an older
+digest only when its recorded scope covers the current application version.
+Deliberately strict — the alternative makes an unversioned or loosely-scoped
+entry a universal rollback target, which is how Open Folder's cross-version
+degradation would return.
+
+**Paths — two distinct rules, because two different kinds of file are named.**
+
+*Artifact paths* (`pack`, `intent`, `recipe`) are **pack-relative**: forward
+slashes, no `..`, no absolute paths, no symlinks, and must resolve **inside the
+pack directory**.
+
+*Evidence paths* are **repository-relative** and must resolve inside committed
+`docs/evidence/`. They are deliberately outside the pack: acceptance evidence is
+a reviewed document shared across packs and referenced by digest, not a pack
+artifact. Applying the pack-containment rule to it would make the field
+unsatisfiable.
+
+**Digest prefix collisions are an install-time concern, not a load-time one.**
+The loader resolves by exact path; installation extends the prefix rather than
+overwriting when a filename already holds different bytes.
+
+---
+
+## 4. Verification and failure scoping
+
+### Root index — all fail closed
+
+| Condition | Result |
+|---|---|
+| `packs/index.json` missing or structurally invalid | no pack loads |
+| index path is absolute, escapes the packs root, or resolves through a symlink | no pack loads |
+| duplicate pack ID or duplicate pack directory | no pack loads |
+| duplicate case-folded intent ID across packs | no pack loads |
+| duplicate normalized exact phrase across intents | no pack loads |
+
+The last two are what make D072's cross-intent ambiguity rule decidable at all.
+If two packs could register the same intent ID or the same exact phrase,
+tier-level ambiguity would be unresolvable at runtime instead of caught at load.
+
+Every index entry is a forward-slash path relative to `ghostcursor/packs/`: no
+absolute path, no `..`, no symlink, and the resolved directory must remain under
+that root. An unindexed pack directory is inert. For a newly installed pack,
+its valid `activation.json` is written first and the atomic root-index swap is
+the pack-discovery commit point; for an already indexed pack, the per-pack
+`activation.json` swap remains the intent activation commit point.
+
+### Per pack
+
+| Condition | Result |
+|---|---|
+| `activation.json` structurally invalid | whole pack fails closed |
+| pack digest mismatch | whole pack unavailable |
+| `planner_only` pack with a non-null recipe | whole pack fails closed |
+| intent not indexed | `UNSUPPORTED_GOAL` |
+| intent artifact invalid | excluded from matching + registry diagnostic |
+| `recipe: null` or recipe digest mismatch | `KNOWN_INTENT_RECIPE_UNAVAILABLE` |
+| acceptance evidence missing or digest mismatch | `KNOWN_INTENT_RECIPE_UNAVAILABLE` |
+| accepted application version missing, unknown, or unequal to `AppInfo.version` | `KNOWN_INTENT_RECIPE_UNAVAILABLE` |
+
+An unverifiable intent artifact cannot safely classify a goal, so it is excluded
+from matching rather than treated as absent. No globbing, no filename
+inference, no one-intent fallback. Unreferenced artifacts are inert.
+
+---
+
+## 5. The matcher — D072, carried verbatim
+
+Intent artifacts carry `rules: []`. Grammar is fixed, nonrecursive, conjunctive
+normal form at depth three:
+
+```json
+{
+  "intent_id": "OPEN_FOLDER",
+  "rules": [
+    { "tier": "exact",
+      "phrases": ["open a folder in vs code", "open a folder in vscode"] },
+    { "tier": "heuristic",
+      "all_of": [
+        { "any_of": [ {"token": "open"} ] },
+        { "any_of": [ {"alias": "vscode_names"} ] },
+        { "any_of": [ {"token": "folder"}, {"path": true} ] }
+      ] }
+  ]
+}
+```
+
+A heuristic rule is `all_of: [clause…]`; a clause is `any_of: [term…]`; a term is
+exactly one of `{"token": …}`, `{"alias": …}`, `{"path": true}`. No recursion, no
+fourth form, no negation.
+
+- **Matching** is by normalized literal substring for tokens and alias members —
+  not whole-word, not equality. `exact_phrase` matches by equality.
+- **Literals are stored canonical** (lowercased, whitespace collapsed); the
+  loader validates and rejects rather than normalizing, because artifacts are
+  content-addressed and silent normalization would let two digests mean the same
+  thing.
+- **Non-empty after normalization** for every phrase, token, alias name, and
+  **alias member**; every exact rule needs a phrase, every `all_of` a clause,
+  every `any_of` a term, every alias group a member. An empty `all_of` is
+  vacuously true and matches every goal; an empty `any_of` matches none; a
+  whitespace-only alias member normalizes to the empty string, which is a
+  substring of everything.
+- **Two tiers only** — exact 0.95, heuristic 0.85. Confidence is a property of
+  the tier; artifacts never declare a number.
+- **Tier by tier, not intent by intent.** Every exact rule across all intents
+  evaluates before any heuristic rule. Two different intents matching within a
+  tier fail closed to `UNSUPPORTED_GOAL`.
+- **Path predicate** recognizes Windows-shaped forms only: drive-rooted with
+  either slash, UNC with two leading backslashes, relative backslash paths
+  defined as non-whitespace segments joined by a backslash, and explicit
+  `./ ../ .\ ..\`. A bare forward-slash pair is not a path.
+
+Migration is gated by the D072 compatibility corpus: 86 rows, 14 divergences in
+three declared classes, zero UNCLASSIFIED, zero v2 confidences outside
+{0.0, 0.85, 0.95}.
+
+---
+
+## 6. Selectors
+
+A recipe declares a top-level `selectors` block; steps and verification rules
+reference entries by id.
+
+```json
+"selectors": {
+  "extensions_tab": {
+    "strategy": "provider_exact",
+    "control_type": "TabItem",
+    "names": ["Extensions (Ctrl+Shift+X)"],
+    "normalise": "none",
+    "cardinality": "exactly_one",
+    "result_limit": 8
+  }
+}
+```
+
+- **Action targets must be `exactly_one`**, even when a verification rule
+  references the same selector. Verification may be `at_least_one`. Enforced at
+  schema level, not discovered at runtime.
+- **A v2 `provider_exact` selector must declare exactly one name.** Multi-name
+  provider union identity is not yet measured, so the loader rejects a longer
+  list. This restriction does not apply to `bounded_descendants`, whose names
+  filter one already-shared traversal. A later measurement may relax the rule;
+  v2 does not guess meanwhile.
+- **`result_limit` raises when exceeded; it never truncates.** It bounds trusted
+  results, not traversal latency — `descendants()` completes before filtering.
+  Silent truncation can hide a second match from `exactly_one`, which is the
+  `uia.py:368` defect.
+- **Selector required** for `element_appears`, `element_disappears`,
+  `property_changes`. **No selector** for `window_title_matches`,
+  `focus_moves_to`, `any_meaningful_change`, `user_confirms`.
+
+### `provider_exact` uses `FindAll`, never `FindFirst`
+
+Measured on VS Code 1.134.0: `FindFirst` returns at most one element and cannot
+detect a second, so it **cannot prove `exactly_one`**; on a genuine absence it
+returns a non-`None` object whose property access raises `NULL COM pointer
+access`. `FindAll` reports absence as `Length = 0` and counts correctly.
+
+```
+Length == 0  -> absent
+Length == 1  -> read required properties; success = present, failure = fault
+Length  > 1  -> SelectorAmbiguityFault for exactly_one
+```
+
+**`Extensions (Ctrl+Shift+X)` requires `control_type: "TabItem"`.** Without it
+the query matches **two** elements — a `TabItem` and a `Group` spatially
+contained within it, sharing the accessible name. `FindFirst` returned only the
+first, which is why Spike B recorded this selector as unambiguous. With the
+control type it resolves to one, measured 3/3.
+
+`provider_exact` **cannot serve Open Folder**: `build_condition(title=…)` is an
+exact match with no normalisation hook, so reaching that element through a
+provider query would require writing the version-sensitive Codicon glyph into
+the recipe.
+
+### Observation plan — grouping is strategy-specific
+
+- **`bounded_descendants`** — one traversal per unique `control_type` per tick;
+  every selector of that control type evaluates over the shared result.
+- **`provider_exact`** — one provider call per unique query. It performs no
+  traversal, so grouping it by control type is meaningless.
+
+Cardinality is evaluated **per selector, before** publishing the deduplicated
+union. **Any non-absence selector fault invalidates the entire tick** — never
+publish a partial observation. A clean absence is not a fault.
+
+**Deduplication is worker-side only, while backend handles are live.** Shared
+traversal candidates dedupe by backend candidate identity; provider results
+dedupe only when a stable backend runtime identity proves the same control. If
+identity is unavailable, retain both. **Never** dedupe by name, AutomationId,
+bounds, or serialized `Element` equality — `Element` carries no backend identity
+(D021), and nothing guarantees two distinct controls differ in the fields it
+does carry.
+
+`GetRuntimeId()` was measured stable across three consecutive calls within one
+live observation session and distinguished two same-named controls. Stability
+across ticks, worker generations, or a tree rebuild was **not** measured.
+
+### Migration must not broaden certified behaviour
+
+Open Terminal's walker accepts exactly `Toggle Panel (Ctrl+J)` and
+`Terminal Section` — no synonym, no normalisation. Its v2 selectors use
+`normalise: "none"`. Codicon normalisation was measured for Open Folder only.
+
+---
+
+## 7. Goal-derived title verification
+
+`run.py:630` currently hardcodes
+`recipe.app_id == "code.exe" and rule.args.get("vscode_workspace_title")`. That
+becomes a declarative `window_title_matches` contract. **Migration parity is the
+constraint** — the current behaviour lives in
+`ghostcursor/reasoning/vscode.py::verify_open_folder`, and v2 must reproduce it,
+not approximate it.
+
+### Verification gets its own title patterns
+
+The verification rule declares its own normalized literal
+`completion_title_suffixes`; it **must not** reuse the pack's `title_patterns`.
+The list must be non-empty and every suffix must remain non-empty after
+normalization.
+The migrated Open Folder rule declares `visual studio code` and ` - code`, which
+are exactly the two suffixes accepted by the current
+`(?:visual studio code|\s-\s*code)$` check after whitespace normalization. This
+avoids adding an author-controlled regular-expression language to recipes.
+
+Those two serve different jobs. A pack's patterns are *window-discovery*
+patterns — `.*Visual Studio Code.*` is deliberately broad, because it has to
+find the window at all. The completion check today is
+`is_valid_vscode_workspace_title()`, which tests a specific **suffix** pattern
+on the normalized title. Substituting the discovery pattern would weaken
+verification to "the window is still VS Code", which every failed run also
+satisfies.
+
+### The three conditions
+
+1. the normalized title **must change** from the pre-action baseline;
+2. the normalized new title **must end with** one of the rule's non-empty,
+   normalized `completion_title_suffixes`;
+3. if the derived reference is **specific**, the normalized new title **must
+   contain** it.
+
+### Reference extraction — the exact algorithm
+
+The rule declares a `goal_reference` object using only compiler-owned generic
+operations: `strip_leading_token`, `nonspecific_templates`,
+`strip_trailing_alias_clause`, `basename_separators`, and `minimum_length`.
+Its values bind the pack alias group and the literal words used by this intent;
+the recipe supplies no executable pattern or plugin. The Open Folder declaration
+reproduces `folder_reference_from_goal()` step for step:
+
+```json
+"goal_reference": {
+  "strip_leading_token": "open",
+  "alias": "vscode_names",
+  "nonspecific_templates": ["a folder in {alias}", "folder in {alias}"],
+  "strip_trailing_alias_clause": { "preposition": "in" },
+  "basename_separators": ["/", "\\"],
+  "minimum_length": 2
+}
+```
+
+`{alias}` is the only template placeholder and expands to one normalized member
+of the named pack alias group. All other values are non-empty normalized
+lowercase literals validated under D072's literal rules. All fields shown are
+required, extra fields are rejected, and `minimum_length` is an integer of at
+least 2.
+
+1. strip surrounding whitespace;
+2. remove a leading `open` word boundary, case-insensitively;
+3. remove a **whole-remainder** match of
+   `(?:a\s+)?folder\s+in\s+<alias>\s*$`;
+4. remove a **trailing** match of `\s+in\s+<alias>\s*$`;
+5. **if the remainder contains `\` or `/` anywhere**, split on `[\/]+` and
+   keep the last non-empty segment;
+6. normalize.
+
+A reference is **specific** only when it is **≥ 2 characters**. Shorter or empty
+references are nonspecific and condition 3 does not apply — `.` appears in
+ordinary titles and must not self-satisfy.
+
+**Step 5 deliberately uses bare separator containment, not D072's path
+predicate.** An earlier draft of this spec said the matcher and verifier share
+one path definition. That is wrong for parity: D072's predicate rejects a bare
+forward slash, so `open my folder a/b in vs code` — which still grounds under
+v2 through its `folder` token — would yield the reference `my folder a/b`
+instead of today's `b`, silently changing what gets verified. The two predicates
+answer different questions: D072 asks *is this goal about a path*, and step 5
+asks *does this reference have a final segment*. They are allowed to differ, and
+here they must.
+
+The extractor result is computed once during planning and carried on
+`CompiledWorkflow`; verification does not reinterpret the goal with a second
+implementation.
+
+## 8. Modules and runtime integration
+
+```
+packs/index.json ─┐
+pack.<d>.json     ├─→ trusted.py ──→ activation.py ──→ compile_planner()
+intents/*.json    │   (load + verify   (verify the      compile_observation_plan()
+recipes/*.json    ┘    one artifact)    4-file graph)         ↓
+activation.json                                        CompiledWorkflow
+```
+
+- **`packs/trusted.py`** — the single trust-boundary module. Its artifact loader
+  enforces pack-relative paths; its evidence loader enforces repository-relative
+  containment under committed `docs/evidence/`. Both enforce no symlink, exact
+  digest, UTF-8 without BOM, and read bytes once before hashing and parsing.
+  Pack, intent, and recipe additionally receive strict schema and cross-file id
+  validation, so the validated bytes are provably the compiled bytes.
+- **`packs/activation.py`** — reads each mutable authority file (`index.json` and
+  `activation.json`) once, hashes and parses those same bytes, verifies the
+  complete bound graph, and applies the failure scoping in §4. It knows nothing
+  about planners or walkers.
+- **`packs/compile.py`** — pure functions over a verified pack:
+  `compile_planner()` produces `IntentSpec`s, replacing `registry()` and
+  emitting specs for indexed intents whose recipe is null;
+  `compile_observation_plan()` produces the bounded plan replacing
+  `perception_walker_for()`'s branches.
+- **`CompiledWorkflow`** replaces the bare `Recipe` on `PlanResult`, carrying
+  verified pack identity, intent, recipe, observation plan, every bound artifact
+  digest, **the full digest of `activation.json` itself, the full digest of
+  `packs/index.json`, the bound acceptance-evidence digest, the exact accepted
+  application version, and the activation generation**. Required because recipe `app_id`
+  is **removed** — activation already binds a recipe to exactly one pack and
+  intent, so restating identity inside the artifact creates a second source that
+  can disagree. Runtime still needs the executable filter for
+  `perception_hwnd_source_for()` and `tier2_capture_for()`; that now comes from
+  the pack's `executable_names`, which is where D046's executable-bounded
+  identity already lives.
+- **`PackRegistry`** consumes verified pack identities and performs **no
+  independent scanning or loading**. Its `recipe_for_intent()`,
+  `recipe_paths()`, and one-intent fallback are deleted; window matching for
+  `daemon.py` remains.
+
+### Pre-launch revalidation
+
+Immediately before tour launch, reload and revalidate **all** of:
+
+1. the `packs/index.json` digest, **and that the index still names this pack** —
+   a withdrawn pack must abort a launch, not merely fail later;
+2. the `activation.json` digest;
+3. every bound artifact digest — pack, intent, recipe — and the bound committed
+   acceptance-evidence digest;
+4. the activation generation;
+5. the current `AppInfo.version`, which must still exactly equal the accepted
+   version carried by the plan.
+
+**The generation is not content binding.** It is a counter, and a counter can
+stay put while the file it labels changes — an edited digest, a changed
+acceptance record, a removed entry. Revalidating the generation alone would let
+activation metadata change under a running plan. The digests are what bind
+content; the generation is a cheap ordering hint kept alongside them, not a
+substitute.
+
+On any change: **abort before overlay creation**, do not substitute new
+artifacts transparently, do not execute the old in-memory workflow, and require
+a fresh plan or Ask submission.
+
+The manifest mapping is the activation commit point. No cache is assumed; any
+future cache must invalidate synchronously on adoption, withdrawal, or
+supersession, and may never serve an inactive mapping. Revalidation happens at
+activation and launch — **not on every perception tick**.
+
+### Fail-closed behaviour, including after a crash mid-adoption
+
+- manifest names a missing recipe, or the digest mismatches →
+  `KNOWN_INTENT_RECIPE_UNAVAILABLE` (the existing status; no new one)
+- an installed artifact with no manifest reference → **inert orphan**
+- registry or cache failure → **no new workflow launch**
+
+---
+
+## 9. Migration scope
+
+Three packs, four pack recipes, two legacy recipes. Atomic: all migrate to a
+single root, and `ghostcursor/reasoning/recipes/` is deleted along with the
+`planner.py:231-232` special case that exists only to paper over its duplication.
+No v1 loader, no `schema_version` dual path.
+
+The `uia.py:368` `result_limit` truncation defect is fixed as part of this work.
+
+### Adoption sequence
+
+D070 requires acceptance evidence committed **before** installation and
+activation, so no workflow can be drafted, accepted, evidenced, installed, and
+activated in one commit. Every executable workflow follows:
+
+1. quarantined candidate;
+2. acceptance run against a **developer-only candidate harness** — unreachable
+   from production planning, the CLI goal path, and Ask; loads exactly one named
+   quarantined digest; performs **no input synthesis**. It is an acceptance
+   instrument, never a second authority path;
+3. committed acceptance evidence recording the full tested digest and
+   application version;
+4. content-addressed installation, bytes re-read and re-hashed;
+5. atomic `activation.json` swap, pointing at that exact file and digest, with
+   the previous accepted artifact retained for rollback.
+
+**The proof is the entire diff from the compiler baseline through adopted Open
+Extensions containing no workflow-specific Python** — not a single commit's
+diff.
+
+**Acceptance is 12 runs**: Synthetic Export, Open Folder, Open Terminal, and
+Open Extensions, 3/3 each. All four receive new artifact bytes, so D070 requires
+fresh acceptance for each unless a separate decision grants migration parity.
+Open Folder's gate must assert **UIA provenance**, not merely that the workflow
+completed — fallback OCR preserves the outcome while the preferred tier is dark.
+
+---
+
+## 10. Testing
+
+Hermetic tests carry the weight; every unit above is pure or fake-driven.
+
+- Each root-index and per-pack failure row in §4 gets a test, mutation-verified
+  per D018.
+- A `planner_only` pack with a non-null recipe fails closed.
+- The loader rejects a BOM; `.gitattributes` LF enforcement is tested.
+- Both legacy recipe paths and every v1 loader and fallback are gone — asserted,
+  not assumed.
+- The D072 differential corpus runs as a gate: agreement on intent **and**
+  confidence, each divergence in a declared class with the stated outcome, zero
+  UNCLASSIFIED.
+- `result_limit` raises rather than truncating, including at limits small enough
+  that truncation would hide a second match.
+- The frozen three-lane model gate runs because planner, parser, and schema
+  contracts change. It must retain the two matching baseline passes and the
+  never-fabricate guarantee; model advice still cannot alter executed recipe
+  authority (D068).
+- The live eight-cell never-fabricate matrix runs independently of the frozen
+  corpus. The corpus preserves matcher expectations; it is not a substitute for
+  exercising the live planner/model boundary.
+- Existing interactive, pixel, isolated hung-window, and standalone pixel
+  harnesses pass, together with the synthetic wrong-action regression.
+- The four real workflows complete the **12 acceptance runs** in §9, including
+  Open Folder's UIA-provenance assertion.
+- The repository records a mechanical diff check from the compiler baseline
+  through adopted Open Extensions proving that no workflow-specific change
+  under `ghostcursor/**/*.py` was required for that workflow.
+
+---
+
+## 11. Deferred measurements and fixed v2 behaviour
+
+- **Multi-name union cardinality** across two different names resolving to one
+  control is unmeasured. Therefore v2 rejects multi-name `provider_exact`
+  selectors. `bounded_descendants` continues to allow multiple names because it
+  filters them after one walk and does not union provider queries.
+- **A cold Chromium tree reports zero for every query.** An observation plan run
+  once against a cold window sees an empty screen, which the presence rule alone
+  cannot distinguish from a clean absence. v2 preserves D035's existing
+  per-HWND two-second `WarmUp` and grounding grace: a clean zero during that
+  interval neither becomes a provider fault nor triggers immediate OCR. The
+  observation plan may not weaken or bypass that behaviour. Distinguishing a
+  persistently cold tree from genuine absence remains follow-up work.
+- **Rung 3 versus rung 2 for Open Folder** remains triggered follow-up work, not
+  a migration choice. v2 preserves the certified migration's raw published UIA
+  name, normalised selector matching, and current grounding ladder, including
+  its present rung. Moving it to rung 2 requires its own evidence and gate; the
+  compiler does not broaden the global ladder while migrating it.
