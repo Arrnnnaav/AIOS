@@ -271,3 +271,26 @@ with VS Code open.
 **Wider lesson worth keeping:** a degradation of this shape passes acceptance
 silently, because the end-to-end outcome still succeeds on a fallback tier.
 Acceptance gates that assert only the outcome cannot see a tier going dark.
+
+
+### Repeated fast provider faults do not trigger the stalled-worker policy
+
+Once `provider_exact()` raises `ProviderQueryFault`, a failed iteration is
+diagnostic: it reaches `PerceptionService.progress().last_error` and publishes no
+observation, so nothing false is rendered. But a failed iteration still updates
+`last_completed_at`, so a *fast* fault repeating every tick keeps the heartbeat
+healthy and never trips the stalled-worker policy. The tour therefore continues
+indefinitely against a perception tier that is producing nothing.
+
+That is strictly better than today, where the same condition is published as an
+empty *successful* observation and is invisible. It is not a complete fix: the
+fault is observable but does not end anything.
+
+Not addressed in the presence-helper slice because bounding it is a policy
+question — how many consecutive faults on the same step should end a step or a
+tour — and that belongs with the existing tier-2 exhaustion ceiling, not inside
+a provider query.
+
+**Trigger:** the first workflow that depends on a provider query it can lose, or
+any work touching the stalled-worker policy or the tier-2 fruitless-run ceiling.
+Decide then whether consecutive faults get their own ceiling.

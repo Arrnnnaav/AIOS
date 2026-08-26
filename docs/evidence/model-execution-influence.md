@@ -141,9 +141,18 @@ elements carry those names with a non-empty AutomationId. What is known:
 - **`EXPORT_DATA`: single candidate.** The durability baseline measured the
   recipe-approved set as exactly `["1005"]`, with Wrong Control `1006`
   excluded. One candidate means the model's choice is forced.
-- **`OPEN_FOLDER`: not yet measured.** Whether the Welcome-page Open Folder
-  action exposes a non-empty AutomationId is an open question, deferred to
-  Spike B, which has real VS Code open for its own purpose.
+- **`OPEN_FOLDER`: also inert — measured by Spike B.** Every VS Code control
+  observed across three UI states carries an **empty** AutomationId, the
+  Welcome-page Open Folder action included; the only non-empty ids anywhere were
+  positional `list_id_<n>_<n>` entries in result lists. So
+  `_eligible_candidates()` yields zero for OPEN_FOLDER as well, and
+  `decide_next_hint()` returns the deterministic fallback without issuing a
+  request.
+
+**Conclusion for the second surface: the hint model is inert for every
+registered VS Code workflow.** It can only make a choice where a recipe-approved
+control exposes a non-empty AutomationId, which no VS Code control currently
+does. See `docs/evidence/workflow3-uia-feasibility.md`.
 
 ## Incidental observation — cold start exceeds the production timeout
 

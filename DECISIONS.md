@@ -2574,6 +2574,10 @@ pointer when the condition matches nothing, rather than returning `None`.
 Measured with no exceptions across 10 names x 3 UI states: dead pointer if and
 only if no match, presence if and only if a property read succeeded.
 
+This is a property of the **measured environment** — VS Code 1.134.0 with the
+installed UIA provider and comtypes 1.4.16 — not a universal COM guarantee. It
+is stated as an observation to defend against, not a contract the platform owes.
+
 The resulting rule has three branches, not two, and the third is the one the
 current code gets wrong:
 
@@ -2598,8 +2602,9 @@ and returned a dead pointer whenever the sidebar was not rendered.
 **Decision.** Scope the declarative workflow compiler to the 7 existing
 verification kinds and the 2 existing selector strategies, with four
 safeguards the measurements require: recipes **declare** selector strategy
-rather than having it inferred; a dead COM pointer is reported as a strategy
-failure, never a hit; trusted name matching strips private-use Codicon prefixes;
+rather than having it inferred; a dead COM pointer is reported as a **clean
+absence**, never a hit, while any other query or property-read exception is a
+**fault** and must be raised rather than flattened into emptiness; trusted name matching strips private-use Codicon prefixes;
 and durable promotion rejects positional IDs matching
 `list_id_<number>_<number>`, which encode list position and not control
 identity. `vscode_workspace_title` moves into declarative verification
@@ -2623,3 +2628,15 @@ runs for the milestone.
 
 **Artifact.** `docs/evidence/workflow3-uia-feasibility.md`; raw results under
 `.artifacts/model-evaluation/spike-b-*.json`, ignored per D065.
+
+**Independent review (D032).** The owner reviewed both spike write-ups against
+the raw JSON and reproduced the headline figures independently: 30 cases and 0
+executable changes on both model passes, 11 divergences, 13 launch-eligible,
+latency medians 3097.8 ms and 3053 ms, Button counts 44/35/17, TabItem counts
+1/9/0, and provider dead-pointer counts 9/6/8. Two documentation defects were
+found and corrected — a dead pointer had been called a "strategy failure" in one
+place while classified as absence in another, and the model-influence write-up
+still described OPEN_FOLDER's candidate state as unmeasured after Spike B had
+measured it. The "dead pointer iff no match" observation was also rescoped to
+the measured environment rather than presented as a universal COM guarantee.
+D032 is closed for this slice by that review.

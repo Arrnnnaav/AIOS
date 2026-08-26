@@ -98,6 +98,10 @@ exact and has no exceptions:
 So: **dead pointer if and only if no match; presence if and only if a property
 read succeeds.**
 
+This holds for the **measured environment** — VS Code 1.134.0 with the installed
+UIA provider and comtypes 1.4.16. It is an observation to defend against, not a
+universal COM guarantee, and should not be restated as one.
+
 Stated as the rule a shared helper must enforce, it has three branches:
 
 | `FindFirst` | property read | meaning |
@@ -209,8 +213,10 @@ behaviour that motivated narrowing perception in the first place.
 1. Recipes must **declare** selector strategy. Strategy 1 and strategy 2 were
    measured resolving the same target differently in the same instant; the
    choice cannot be inferred from the target name.
-2. A dead COM pointer must be reported as a **strategy failure**, never as a
-   hit. Non-`None` is not an existence signal.
+2. A dead COM pointer must be reported as a **clean absence**, never as a hit.
+   Non-`None` is not an existence signal. Only *other* query or property-read
+   exceptions are faults, and those must be raised rather than flattened into
+   an empty result.
 3. Trusted name matching must **strip private-use Codicon prefixes** before
    comparison.
 4. Durable promotion must **reject positional IDs**.
