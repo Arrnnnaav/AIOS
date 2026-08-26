@@ -1,8 +1,8 @@
 # Declarative Workflow Compiler and Recipe Schema v2 — Design
 
 Date: 2026-08-27
-Status: **approved after independent review; implementation plan drafted and pending review**
-Decisions: D069 (+ later-measurement amendment), D070, D072
+Status: **revised after independent review; D073 amendment and implementation plan pending re-review**
+Decisions: D069 (+ later-measurement amendment), D070, D072, D073
 Evidence: `docs/evidence/provider-findall-spike.md`,
 `docs/evidence/d072-compatibility-corpus.md`,
 `docs/evidence/workflow3-uia-feasibility.md`
@@ -96,6 +96,7 @@ A pack artifact has exactly:
   "executable_names": ["code.exe"],
   "title_patterns": [".*Visual Studio Code.*", ".* - Code$"],
   "tier2_capture": "executable_bounded",
+  "version_identity": { "kind": "executable_version" },
   "aliases": {
     "vscode_names": ["vs code", "vscode", "visual studio code"]
   }
@@ -107,7 +108,7 @@ case-folded basenames. Title patterns are compilable regular
 expressions used only for window discovery. Alias names and members obey D072's
 canonical-literal rules. The v1 `recipe_directory`, `intent_ids`, and empty
 `version_constraints` fields do not survive: the root index names the pack,
-`activation.json` is the intent index, and exact accepted application version
+`activation.json` is the intent index, and exact accepted application identity
 lives on each adoption record. Keeping the old fields would create duplicate
 sources of authority.
 
@@ -116,6 +117,23 @@ because deriving it from a non-empty executable list would newly enable OCR for
 Synthetic Export, whose v1 `app_id: "synthetic"` deliberately produces no tier-2
 capture. The migrated synthetic pack declares `disabled`; VS Code declares
 `executable_bounded`. A `planner_only` pack must declare `disabled`.
+
+`version_identity` is explicit under D073. An application pack declares exactly
+one of:
+
+```json
+{ "kind": "executable_version" }
+{ "kind": "content_sha256", "path": "ghostcursor/demo/synthetic_export_app.py" }
+```
+
+VS Code uses `executable_version`, resolved from the matched executable's
+`AppInfo.version`. Synthetic Export uses `content_sha256`, resolved from the
+exact stored bytes of its checked-in application module; a Python interpreter
+patch is not the demo application's version. The content path is forward-slash,
+repository-relative, contains no `..`, is not a symlink, and must resolve under
+the allowlisted `ghostcursor/demo/` application-source root. A `planner_only`
+pack declares `version_identity: null`. There is no command, plugin, arbitrary
+path, or operator-supplied strategy.
 
 An intent artifact has exactly `schema_version`, `intent_id`,
 `canonical_target`, and `rules`. `canonical_target` is either `null` or a
@@ -167,7 +185,7 @@ coordinate-like keys remain recursively forbidden.
 | Kind | Meaning |
 |---|---|
 | `application` | Executable names and title patterns are both non-empty; validated executable-plus-title identity participates in window matching |
-| `planner_only` | Executable names, title patterns, and aliases **must** be empty; tier-2 capture is `disabled`; never matches a window; every intent has active adoption `null` and empty adoption history |
+| `planner_only` | Executable names, title patterns, and aliases **must** be empty; tier-2 capture is `disabled`; version identity is `null`; never matches a window; every intent has active adoption `null` and empty adoption history |
 
 `CREATE_DOCUMENT` and `OPEN_SETTINGS` belong to no application but are
 load-bearing: the certified never-fabricate matrix depends on them returning
@@ -183,9 +201,10 @@ model-visible and change current behaviour.
 ### Encoding — split responsibility
 
 `.gitattributes` pins **every digest-bound text file** to LF: pack JSON
-(including `index.json` and `activation.json`) and committed Markdown under
-`docs/evidence/`. **UTF-8 without BOM is enforced by the trusted loaders and by
-tests**, not by `.gitattributes`, which cannot express it. A BOM is a load
+(including `index.json` and `activation.json`), D073 content-identity source,
+and committed Markdown under `docs/evidence/`. **UTF-8 without BOM is enforced
+by the trusted loaders and by tests**, not by `.gitattributes`, which cannot
+express it. A BOM is a load
 failure, never a silent strip.
 
 This is latent today, not hypothetical: `.gitattributes` is absent and
@@ -212,7 +231,10 @@ change.
           "recipe": { "path": "recipes/open_folder.<d>.json", "sha256": "<64 hex>" },
           "accepted_pack": { "path": "pack/vscode.<d>.json", "sha256": "<64 hex>" },
           "accepted_intent": { "path": "intents/open_folder.<d>.json", "sha256": "<64 hex>" },
-          "accepted_app_version": { "kind": "exact", "value": "1.134.0" },
+          "accepted_application_identity": {
+            "kind": "executable_version",
+            "value": "1.134.0"
+          },
           "evidence": { "path": "docs/evidence/<committed>.md", "sha256": "<64 hex>" },
           "adopted_at": "<ISO-8601 UTC>",
           "reviewer_id": "<repository-defined id>",
@@ -262,7 +284,7 @@ minimum audit record. A `planner_only` entry must have active `null` and an empt
 adoptions object.
 
 Adoption identity is deliberately separate from recipe identity. Identical
-recipe bytes may be re-accepted against a new application version, producing a
+recipe bytes may be re-accepted against a new application identity, producing a
 second record with the same recipe SHA-256 and different evidence and scope.
 Keying history by recipe digest would overwrite the first acceptance and make
 version-aware rollback impossible.
@@ -280,7 +302,7 @@ are UTC ISO-8601. The strict duplicate-key parser runs before these checks.
 document's SHA-256. A path alone names a mutable file and cannot prove which
 bytes were reviewed — the same failure shape as an unbound recipe.
 The document records the tested recipe, intent, and pack digests plus the exact
-application version, so it identifies the complete semantic input graph rather
+application identity, so it identifies the complete semantic input graph rather
 than only the step payload.
 `review_commit` is kept for provenance but is not the binding; verifying it
 would require git at load time, whereas a digest is checkable from the artifacts
@@ -297,29 +319,30 @@ non-integer, or decreasing generations when it has a previous generation to
 compare. A generation may help cache invalidation and audit ordering, but only
 the digest of the exact activation bytes binds content.
 
-**Version scope — `exact` only in v2.** `kind` accepts **`exact`** and nothing
-else. A range grammar needs comparison semantics of its own (ordering,
-inclusivity, prerelease handling) and would be a sub-design with no current
-consumer, so it is deferred rather than half-specified. `range` becomes valid
-only when a decision defines its grammar.
+**Application identity scope is exact in v2.** The adoption record's kind must
+equal the trusted pack's `version_identity.kind`, and its value must equal the
+resolver's exact result. `executable_version` stores the exact observed version;
+`content_sha256` stores the exact lowercase 64-hex module digest. Version ranges
+and additional identity strategies need comparison and trust semantics of their
+own and are deferred rather than half-specified.
 
 **`unknown` cannot activate an executable recipe** — acceptance always happened
-against some observed application version, so recording `unknown` would falsify
+against a resolved application identity, so recording `unknown` would falsify
 what was tested.
 
-**Runtime behaviour is fail-closed.** If version detection returns `unknown`, or
-the detected version does not equal the active record's
-`accepted_app_version.value`,
+**Runtime behaviour is fail-closed.** If identity resolution returns `unknown`,
+the strategy differs, or the resolved value does not equal the active record's
+`accepted_application_identity.value`,
 that intent is `KNOWN_INTENT_RECIPE_UNAVAILABLE`. It does not launch on the hope
 that the recipe still fits, and it does not silently widen its own scope.
 
 Acceptance, planning, pre-launch revalidation, and rollback all obtain this
-value through the same `AppInfo.version` source. An acceptance document may
+value through the same pack-selected resolver. An acceptance document may
 record the observed value, but may not supply or override it. This prevents two
-version parsers from assigning different scopes to the same application build.
+identity paths from assigning different scopes to the same application build.
 
 For **rollback**, the same equality applies: D070 permits repointing to an older
-adoption only when that preserved record covers the current application version.
+adoption only when that preserved record covers the current application identity.
 Deliberately strict — the alternative makes an unversioned or loosely-scoped
 entry a universal rollback target, which is how Open Folder's cross-version
 degradation would return.
@@ -330,7 +353,7 @@ record. An invalid active record makes the intent
 `KNOWN_INTENT_RECIPE_UNAVAILABLE`. This keeps fail-closed execution from turning
 damage to an unused rollback artifact into an outage of the current workflow.
 
-**Paths — two distinct rules, because two different kinds of file are named.**
+**Paths — three distinct rules, because three different kinds of file are named.**
 
 *Artifact paths* (`pack`, `intent`, `recipe`) are **pack-relative**: forward
 slashes, no `..`, no absolute paths, no symlinks, and must resolve **inside the
@@ -342,10 +365,17 @@ a reviewed document shared across packs and referenced by digest, not a pack
 artifact. Applying the pack-containment rule to it would make the field
 unsatisfiable.
 
-Both roots are derived from the installed project/package location supplied to
+*Content-identity paths* are **repository-relative** and must resolve inside the
+allowlisted `ghostcursor/demo/` application-source root. They are read only to
+derive the exact D073 identity of a checked-in application, never to load a
+recipe or grant authority. They reject absolute paths, `..`, backslashes,
+symlinks, missing files, and containment escape.
+
+All roots are derived from the installed project/package location supplied to
 the catalog, never from the process working directory. Any distributable build
-must include every evidence document referenced by an active adoption; omission
-is the same fail-closed missing-evidence condition as a local deletion.
+must include every evidence document referenced by an active adoption and every
+content-identity source named by an active pack; omission fails closed like a
+local deletion.
 
 **Digest prefix collisions are an install-time concern, not a load-time one.**
 The loader resolves by exact path; installation extends the prefix rather than
@@ -390,7 +420,7 @@ the pack-discovery commit point; for an already indexed pack, the per-pack
 | active adoption is `null`, missing, or has a recipe digest mismatch | `KNOWN_INTENT_RECIPE_UNAVAILABLE` |
 | active adoption's accepted pack or intent digest differs from the current bound artifact | `KNOWN_INTENT_RECIPE_UNAVAILABLE` |
 | acceptance evidence missing or digest mismatch | `KNOWN_INTENT_RECIPE_UNAVAILABLE` |
-| accepted application version missing, unknown, or unequal to `AppInfo.version` | `KNOWN_INTENT_RECIPE_UNAVAILABLE` |
+| accepted application identity missing, unknown, strategy-mismatched, or unequal to the pack-selected resolver | `KNOWN_INTENT_RECIPE_UNAVAILABLE` |
 | inactive adoption record invalid | registry diagnostic; that digest cannot be rolled back to; valid active adoption remains available |
 
 An unverifiable intent artifact cannot safely classify a goal, so it is excluded
@@ -695,8 +725,8 @@ activation.json                                        CompiledWorkflow
   verified pack identity, intent, recipe, observation plan, every bound artifact
   digest, **the full digest of `activation.json` itself, the full digest of
   `packs/index.json`, the bound acceptance-evidence digest, the exact accepted
-  application version, the activation generation, and the bound target HWND plus
-  `AppInfo` identity. Required because recipe `app_id`
+  application identity kind/value, the activation generation, and the bound
+  target HWND plus `AppInfo` identity. Required because recipe `app_id`
   is **removed** — activation already binds a recipe to exactly one pack and
   intent, so restating identity inside the artifact creates a second source that
   can disagree. Runtime still needs the executable filter for
@@ -716,19 +746,21 @@ that selected intent then requires its active adoption plus a trusted live
 application context.
 
 For an application pack, the production resolver returns a `TargetContext`
-containing the chosen HWND and `AppInfo`. The window must match the verified
+containing the chosen HWND, `AppInfo`, and pack-resolved application identity.
+The window must match the verified
 pack's executable name **and** title pattern; an optional user `--target` may
 narrow the title set but can never replace the executable check. The chosen HWND
 is captured, not rediscovered by title later. Resolution is deterministic:
 filter by pack identity, apply optional title narrowing, choose the foreground
 window if it is in the remaining set, otherwise require exactly one. No matching
-window, more than one non-foreground candidate, `AppInfo.version == "unknown"`,
-or an exact-version mismatch yields
+window, more than one non-foreground candidate, unresolved application
+identity, or an exact identity mismatch yields
 `KNOWN_INTENT_RECIPE_UNAVAILABLE` and no `CompiledWorkflow`.
 
 `CompiledWorkflow` therefore also carries the chosen target HWND, executable
-identity, and `AppInfo` snapshot. Hermetic planner/model tests inject a fake
-trusted resolver; production callers cannot supply a version string directly.
+identity, `AppInfo` snapshot, and resolved application identity kind/value.
+Hermetic planner/model tests inject a fake trusted resolver; production callers
+cannot supply an identity value directly.
 The model remains advice only: it can select only an indexed intent, and an
 active adoption materializes only when the deterministic authority policy and
 live application checks allow it.
@@ -752,8 +784,8 @@ Immediately before tour launch, reload and revalidate **all** of:
 3. every bound artifact digest — pack, intent, recipe — and the bound committed
    acceptance-evidence digest;
 4. the activation generation;
-5. the current `AppInfo.version`, which must still exactly equal the accepted
-   version carried by the plan;
+5. the current value from the trusted pack's `version_identity` resolver, which
+   must still exactly equal the accepted kind/value carried by the plan;
 6. the recorded HWND still exists, still belongs to the recorded process and
    executable, and still satisfies the verified pack title identity.
 
@@ -813,7 +845,7 @@ activated in one commit. Every executable workflow follows:
    digests; performs **no scanning, fallback, or input synthesis**. It is an
    acceptance instrument, never a second authority path;
 3. committed acceptance evidence recording the full tested pack, intent, and
-   recipe digests plus the exact application version;
+   recipe digests plus the exact pack-resolved application identity;
 4. content-addressed installation of the accepted pack, intent, and recipe
    bytes, each re-read and re-hashed;
 5. append the complete adoption record and atomically swap `activation.json`,
@@ -828,7 +860,7 @@ Supersession performs the same sequence and records the predecessor digest.
 Withdrawal atomically sets `active_adoption_id` to `null` without deleting
 the intent, adoption history, evidence, or artifacts. Rollback is another atomic
 activation change: it may point at a preserved record only after that record's
-recipe, evidence, and exact application-version scope revalidate. Each operation
+recipe, evidence, and exact application-identity scope revalidate. Each operation
 increments `activation_generation`; none rewrites immutable artifacts.
 
 Artifact identity does not replace learned-step identity. Compilation passes the
@@ -862,12 +894,13 @@ Hermetic tests carry the weight; every unit above is pure or fake-driven.
   keys, cross-file ID mismatch, path escape, symlink, digest mismatch, and the
   strategy-specific selector constraints.
 - Adoption-history tests cover first adoption, supersession, withdrawal,
-  version-valid rollback, version-invalid rollback, and a corrupt inactive
+  identity-valid rollback, identity-invalid rollback, and a corrupt inactive
   record that cannot be selected but does not disable a valid active record.
 - Planner integration tests prove classification alone never loads a recipe;
-  materialization requires a pack-matched HWND and exact `AppInfo.version`; and
+  materialization requires a pack-matched HWND and exact pack-resolved
+  application identity; and
   pre-launch changes to the index, activation, evidence, artifact, process,
-  HWND, or version abort before overlay creation.
+  HWND, or resolved application identity abort before overlay creation.
 - The production parser has no `--recipe` path, `run_tour` rejects bare recipe
   paths, and CLI/Ask consume the original `CompiledWorkflow` without a second
   registry lookup. The only path-based recipe loader is the isolated candidate
@@ -937,16 +970,17 @@ The first pass rejected the draft rather than approving around gaps. Corrections
 made before approval:
 
 1. adoption history now preserves complete pack, intent, recipe, evidence, and
-   exact-version facts; withdrawal and rollback are representable;
+   exact application-identity facts; withdrawal and rollback are representable;
 2. adoption identity is distinct from recipe digest, so unchanged bytes can be
-   re-accepted for a new application version without overwriting history;
+   re-accepted for a new application identity without overwriting history;
 3. all schema-v2 JSON contracts and their cross-file constraints are explicit,
    including duplicate-key rejection, provenance, selector references, and
    stable D016 `step_key_namespace` migration;
 4. production `--recipe` and `run_tour(recipe_path)` are removed as a second
    authority path; CLI and Ask carry one verified `CompiledWorkflow`;
-5. planning binds a deterministic target HWND and the same `AppInfo.version`
-   source used at pre-launch, with all changes aborting before overlay creation;
+5. planning binds a deterministic target HWND and the same pack-selected
+   application-identity resolver used at pre-launch, with all changes aborting
+   before overlay creation;
 6. Synthetic Export's disabled OCR policy and explicit context selectors preserve
    v1 behavior rather than inheriting broader VS Code behavior from the compiler;
 7. D069's dead-pointer/other-fault split, positional-ID guard, raw-name
@@ -957,3 +991,21 @@ made before approval:
 behavior and do not require implementation-time design choices. This review
 approves a plan to implement the contract; it does not approve any code or waive
 the later acceptance gates.
+
+---
+
+## 13. D073 amendment from implementation-plan review
+
+The independent implementation-plan review found that the approved draft used
+`AppInfo.version` for every application pack. That is meaningful for VS Code but
+wrong-shaped for Synthetic Export: its matched executable is `python.exe`, so an
+interpreter patch would invalidate acceptance while not directly identifying a
+change to the checked-in demo UI.
+
+D073 corrects the schema and runtime contract before implementation:
+`version_identity` is explicit and closed; VS Code uses
+`executable_version`; Synthetic uses the SHA-256 of
+`ghostcursor/demo/synthetic_export_app.py`; every authority stage resolves and
+compares the same kind/value. This is a substantive amendment and requires
+independent re-review. No implementation may start on the strength of §12's
+earlier verdict alone.

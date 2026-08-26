@@ -12,8 +12,9 @@ workflow-specific Python.
 **Architecture:** Immutable content-addressed pack, intent, and recipe artifacts
 are named by per-pack `activation.json` files, themselves discovered only through
 `packs/index.json`. Strict loaders verify bytes, paths, schemas, IDs, digests,
-acceptance history, evidence, and exact application version before pure compiler
-functions produce planner intent specs and bounded observation plans. Planning
+acceptance history, evidence, and exact pack-resolved application identity
+before pure compiler functions produce planner intent specs and bounded
+observation plans. Planning
 selects an intent first, then materializes one target-bound `CompiledWorkflow`;
 the CLI, Ask, and guided tour carry that same verified object without a second
 recipe lookup. Candidate acceptance is a developer-only, no-input-synthesis path
@@ -27,7 +28,7 @@ transport. No new runtime dependency.
 `docs/superpowers/specs/2026-08-27-declarative-workflow-compiler-design.md`
 
 **Decisions and evidence:** D016, D017, D018, D021, D030–D035, D040, D046,
-D058, D062–D072; `docs/evidence/provider-findall-spike.md`;
+D058, D062–D073; `docs/evidence/provider-findall-spike.md`;
 `docs/evidence/d072-compatibility-corpus.md`;
 `docs/evidence/workflow3-uia-feasibility.md`.
 
@@ -74,22 +75,34 @@ never-fabricate work, two consecutive interactive model-gate passes, independent
 reviews, and every rerun caused by failure or application-version drift. No
 schedule may assume first-pass success.
 
-Exact application-version equality makes drift a gate, not an inconvenience.
-Before the first acceptance for an application, record the observed
-`AppInfo.version`; re-read it before and after every run, before evidence is
+Exact application-identity equality makes drift a gate, not an inconvenience.
+Before the first acceptance for an application, record the trusted pack's
+resolved identity; re-read it before and after every run, before evidence is
 committed, immediately before installation/activation, and at pre-launch. Do not
 claim the application is pinned merely because no update was observed. A
 controlled installation may disable updates only when that state is itself
 verified and recorded; the safety rule remains detection and exact equality.
 
-If an application version changes, preserve the old evidence as valid history
-for the old version but reset the affected consecutive-run count. Every workflow
-that will remain active for the new version must be accepted 3/3 against that
-version and receive a new adoption record before activation. For VS Code, drift
+Under D073, VS Code resolves `executable_version` from `AppInfo.version`.
+Synthetic Export resolves `content_sha256` from the stored bytes of
+`ghostcursor/demo/synthetic_export_app.py`; it does **not** bind Python's
+interpreter version. A changed demo module resets Synthetic acceptance, while an
+unrelated Python patch does not.
+
+If a resolved application identity changes, preserve the old evidence as valid
+history for the old identity but reset the affected consecutive-run count. Every
+workflow that will remain active for the new identity must be accepted 3/3
+against it and receive a new adoption record before activation. For VS Code, drift
 after Task 8 can therefore require reaccepting Open Folder and Open Terminal as
-well as Open Extensions. Until then, exact-version mismatch correctly leaves
+well as Open Extensions. Until then, exact-identity mismatch correctly leaves
 those intents unavailable. Never widen a range or edit evidence to recover the
 nominal 12-run count.
+
+**Stopping rule:** after two drift resets for the same application during this
+milestone, do not begin a third campaign on the same uncontrolled installation.
+Either establish and verify a controlled/pinned installation, or record a new
+decision revisiting the exact-identity policy before continuing. This prevents
+the acceptance/review loop from livelocking behind a monthly updater.
 
 Independent review capacity is also a prerequisite. At minimum this plan needs
 separate review gates for the plan itself, migrated acceptance evidence, the
@@ -117,7 +130,7 @@ past it.
 | `ghostcursor/daemon.py` | Consume verified pack window identities only |
 | `ghostcursor/devtools/candidate_acceptance.py` *(new)* | Developer-only exact-graph candidate harness, unreachable from production parser/Ask |
 | `tests/data/d072_compatibility_v1.json` *(new)* | Committed machine-readable form of the reviewed 86-row D072 corpus |
-| `tools/render_d072_compatibility.py` *(new)* | Deterministically render/check the D072 evidence table from the committed canonical fixture |
+| `tools/render_d072_compatibility.py` *(new root and file)* | Establish the repository's top-level `tools/` root; deterministically render/check the D072 evidence table from the committed canonical fixture |
 | `docs/superpowers/candidates/declarative-workflow-compiler/` *(new)* | Quarantined candidate artifacts, outside trusted roots |
 | `ghostcursor/packs/index.json` and pack directories | Installed v2 catalog and activation authority after cutover |
 
@@ -143,9 +156,9 @@ or missing fields, wrong schema version, noncanonical literals, invalid regex,
 absolute/parent/backslash paths, symlinks, containment escape, and digest
 mismatch before returning a value.
 
-- [ ] Add `.gitattributes` rules that pin trusted JSON, candidate JSON, and
-  committed acceptance/evidence Markdown to LF. Do not claim it enforces BOM;
-  the loader and tests own that rule.
+- [ ] Add `.gitattributes` rules that pin trusted JSON, candidate JSON, D073
+  content-identity source, and committed acceptance/evidence Markdown to LF. Do
+  not claim it enforces BOM; the loader and tests own that rule.
 - [ ] Write failing tests for the complete index, pack, intent, recipe,
   selector, step, provenance, verification, and artifact-reference contracts in
   Design §§2–6.
@@ -153,6 +166,10 @@ mismatch before returning a value.
   last-write-wins behavior must never reach validation.
 - [ ] Test exact 64-lowercase-hex digest comparison. Filename digest prefixes
   are never parsed.
+- [ ] Test D073's closed `version_identity` union: application packs accept only
+  `executable_version` or allowlisted repository-relative `content_sha256`;
+  planner-only requires `null`; missing, outside-root, parent, absolute, and
+  symlinked content paths fail.
 - [ ] Test the two path roots separately: pack-relative immutable artifacts and
   repository-relative committed evidence.
 - [ ] Test case-folded uniqueness and canonical values without silently
@@ -203,10 +220,10 @@ or rollback.
 - [ ] Test `planner_only`: no executables, titles, aliases, OCR, active adoption,
   or history; its valid intents remain model-visible but unavailable.
 - [ ] Test adoption lifecycle: first adoption, same recipe reaccepted for a new
-  version under a distinct adoption ID, supersession, withdrawal,
-  version-valid rollback, and version-invalid rollback.
+  application identity under a distinct adoption ID, supersession, withdrawal,
+  identity-valid rollback, and identity-invalid rollback.
 - [ ] Test predecessor ID/digest agreement, no cycles/self-reference, exact
-  version only, evidence digest/root, and active accepted pack/intent refs equal
+  identity only, evidence digest/root, and active accepted pack/intent refs equal
   current refs.
 - [ ] Test global pack changes invalidate every still-active intent while an
   intent-only change invalidates only that intent.
@@ -354,26 +371,33 @@ backend identity worker-side and never serialized value equality.
 by trusted materialization, and pre-launch revalidation.
 
 **Property:** the workflow planned, accepted, launched, perceived, and verified
-is the same immutable graph against the same application window/version.
+is the same immutable graph against the same application window and resolved
+identity.
 
-**Invariant:** materialization captures one HWND and `AppInfo`; before overlay
+**Invariant:** materialization captures one HWND, `AppInfo`, and pack-resolved
+application identity; before overlay
 creation runtime rechecks index, activation, all artifact/evidence digests,
 generation, process, executable, title identity, HWND existence, and exact
-version. Any change aborts; runtime never substitutes either old or new bytes.
+identity. Any change aborts; runtime never substitutes either old or new bytes.
 
 - [ ] Separate intent classification from recipe materialization. Classification
   must not load a recipe.
 - [ ] Implement deterministic target resolution: verified executable plus title,
   optional `--target` narrowing, foreground preference, otherwise exactly one.
 - [ ] Return `KNOWN_INTENT_RECIPE_UNAVAILABLE` for no target, ambiguous target,
-  unknown version, version mismatch, inactive adoption, or graph failure.
+  unresolved identity, identity mismatch, inactive adoption, or graph failure.
 - [ ] Inject the resolver in hermetic/model tests; production callers cannot
-  supply an application version.
+  supply an application identity.
 - [ ] Implement generic goal-reference derivation and declarative
   `window_title_matches` exactly as Design §7. Add parity tests for both current
   VS Code title suffixes and nonspecific `open a folder in VS Code`.
 - [ ] Add explicit pack `tier2_capture`; Synthetic Export is `disabled`, VS Code
   is executable-bounded, planner-only is disabled.
+- [ ] Implement D073's shared resolver: VS Code uses the matched executable's
+  `AppInfo.version`; Synthetic hashes the checked-in demo module's exact bytes.
+  Acceptance, planning, pre-launch, rollback, and drift checks call this one
+  resolver. Test that changing Python's version does not invalidate Synthetic,
+  while changing one demo-module byte does.
 - [ ] Add pre-launch mutation tests for each bound input and ensure overlay
   creation is never reached on failure.
 - [ ] Define the production-facing `run_tour(compiled_workflow, ...)` API in
@@ -395,7 +419,8 @@ version. Any change aborts; runtime never substitutes either old or new bytes.
 - Modify: `tests/test_no_input_synthesis.py`
 
 **Produces:** a developer command accepting explicit candidate pack, intent,
-recipe paths and full SHA-256 values, plus expected app version and target.
+recipe paths and full SHA-256 values, plus expected application identity and
+target.
 
 **Property:** humans can test exact quarantined bytes before those bytes gain
 production authority.
@@ -407,9 +432,9 @@ write `activation.json`, and imports/calls no input-synthesis API.
 - [ ] Write negative tests for missing digest, digest mismatch, unexpected file,
   glob/directory input, model-selected intent, activation write, and production
   parser reachability.
-- [ ] Require exact `AppInfo.version` from the observed target, not an operator
-  override. A command-line expected version may assert equality but never supply
-  identity.
+- [ ] Require exact application identity from the pack-selected trusted
+  resolver, not an operator override. A command-line expected identity may
+  assert equality but never supply it.
 - [ ] Reuse `CompiledWorkflow` and the production observation/tour path after
   exact candidate verification. Do not implement a second compiler.
 - [ ] Emit a run record containing all three digests, app identity/version,
@@ -466,20 +491,21 @@ meaning.
 - Do not install or activate candidates in this task
 
 **Gate:** stop if any workflow does not complete three consecutive runs against
-the exact candidate graph and exact observed application version.
+the exact candidate graph and exact resolved application identity.
 
-- [ ] Start an acceptance campaign by recording the live Synthetic/Python and
-  VS Code `AppInfo.version` values. Re-read the applicable value before and
+- [ ] Start an acceptance campaign by recording Synthetic's demo-module SHA-256
+  and VS Code's live `AppInfo.version`. Re-read the applicable value before and
   after every run. A change resets the consecutive count for every affected
-  workflow; old-version evidence remains history and is never edited into
-  new-version evidence.
+  workflow; old-identity evidence remains history and is never edited into
+  new-identity evidence.
 - [ ] Run Synthetic Export 3/3, including its wrong-control action and verified
   recovery/completion.
 - [ ] Run Open Folder 3/3. Evidence must assert in-tour `source=uia` and zero OCR
   escalation, not completion alone.
 - [ ] Run Open Terminal 3/3 with the exact migrated selector behavior.
 - [ ] Preserve raw logs under `.artifacts/`, but write durable evidence with the
-  exact pack, intent, and recipe SHA-256; exact `AppInfo.version`; run-by-run
+  exact pack, intent, and recipe SHA-256; exact application-identity kind/value;
+  run-by-run
   outcome; provenance; timestamps; and candidate-harness command.
 - [ ] Independently review each evidence document under D032. The operator who
   ran or authored it cannot be its sole certifier.
@@ -513,10 +539,11 @@ the exact candidate graph and exact observed application version.
 the reviewed v2 catalog.
 
 **Invariant:** all three accepted recipes activate only through manifest records
-that bind the exact tested pack, intent, recipe, evidence, and app version.
+that bind the exact tested pack, intent, recipe, evidence, and application
+identity.
 
-- [ ] **Pre-cutover version gate:** independently re-read each target's
-  `AppInfo.version` and compare it to Task 8 evidence before staging the
+- [ ] **Pre-cutover identity gate:** independently re-read each target's
+  pack-resolved application identity and compare it to Task 8 evidence before staging the
   activation. On drift, stop and return the affected workflow(s) to Task 8 for
   fresh 3/3 acceptance; do not create an immediately unavailable activation.
 - [ ] Produce a staged authority inventory mapping every old production entry
@@ -524,6 +551,12 @@ that bind the exact tested pack, intent, recipe, evidence, and app version.
   the complete staged diff, activation records, deletion list, source scans, and
   failure-scope tests before the commit is created. This is a stronger gate than
   ordinary task review because Task 9 changes all production authority at once.
+- [ ] After the final `git add`, capture the exact staged tree with
+  `git write-tree`; review `git diff --cached`; do not restage afterward. Create
+  the commit and require `git rev-parse 'HEAD^{tree}'` to equal the captured tree.
+  Any formatter, line-ending normalization, hook, or restage that changes the
+  tree voids the pre-commit approval and requires review of the created commit's
+  exact bytes. The post-commit review below is authoritative.
 - [ ] Install the accepted candidate bytes under content-addressed names; re-read
   and rehash every installed artifact.
 - [ ] Build complete adoption records using Task 8 evidence digests and set their
@@ -695,12 +728,13 @@ be reviewable before activation can reference it.
 - [ ] Adoption, supersession, withdrawal, rollback, and reacceptance preserve
   complete immutable history.
 - [ ] Planning and pre-launch bind the same HWND, process, executable, title,
-  `AppInfo.version`, index, activation, evidence, and artifact bytes.
+  pack-selected application identity, index, activation, evidence, and artifact
+  bytes.
 - [ ] Observation plans cover action, verification, and context selectors with
   one all-or-nothing tick and no ambiguity-hiding truncation.
 - [ ] Synthetic Export, Open Folder, Open Terminal, and Open Extensions each
-  pass 3/3 on the exact version ultimately activated; Open Folder asserts UIA
-  provenance. Twelve is the no-drift minimum, not a cap.
+  pass 3/3 on the exact application identity ultimately activated; Open Folder
+  asserts UIA provenance. Twelve is the no-drift minimum, not a cap.
 - [ ] Frozen model gate has two consecutive non-draft passes; live never-fabricate
   matrix and zero model execution influence remain green.
 - [ ] Interactive, pixel, standalone, hung-window-alone, wrong-action, and

@@ -3103,3 +3103,36 @@ class declared above with the stated outcome kind, and no unexpected divergence
 is waived during the run. Comparing intent alone would let a right-intent
 wrong-tier result pass, and would make a clean no-match indistinguishable from
 an ambiguity failure.
+
+### D073 — Acceptance binds the pack-declared application identity, not necessarily the host executable version
+
+**Decision.** Every application pack declares exactly one closed
+`version_identity` strategy, and every acceptance/adoption record binds the
+strategy plus its exact resolved value. v2 supports two strategies:
+
+- `executable_version` — the existing `AppInfo.version` of the matched
+  executable, used by external installed applications such as VS Code;
+- `content_sha256` — the lowercase full SHA-256 of one explicitly named,
+  repository-relative application source file, used by the checked-in Synthetic
+  Export demo.
+
+Acceptance, planning, pre-launch revalidation, rollback, and drift detection all
+use the same resolver selected by the trusted pack. An operator may record the
+resolved identity but cannot supply or override it. `unknown`, a strategy
+mismatch, a missing or symlinked content file, a path outside the allowlisted
+application-source root, or unequal values fails closed as
+`KNOWN_INTENT_RECIPE_UNAVAILABLE`.
+
+**Why.** Synthetic Export is hosted by `python.exe`, but Python is an
+interpreter, not the demo application's release identity. Binding acceptance to
+the interpreter's patch version would invalidate three human runs after an
+unrelated Python update while failing to directly identify a change to the UI
+script that acceptance exercised. The checked-in module's content digest has
+the required implication: changing its bytes changes its identity; changing an
+unrelated interpreter patch does not. VS Code remains executable-version-bound
+because its shipped UI genuinely changes with that application version and the
+Open Folder degradation demonstrated the need for exact equality.
+
+This is not an exemption from version scoping. It makes the scope meaningful for
+both classes of application. Adding another strategy requires a new decision;
+packs cannot provide a plugin or arbitrary version command.
