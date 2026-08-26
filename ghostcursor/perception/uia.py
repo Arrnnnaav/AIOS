@@ -193,6 +193,48 @@ class Element:
     source: str = field(default="uia")
 
 
+# Codicons live in the Unicode Private Use Area. VS Code 1.134.0 prefixes one to
+# the Welcome-page action name, so the accessible name is " Open Folder..."
+# while the trusted recipe asks for "Open Folder..." -- an exact match misses,
+# which is how that workflow's tier-1 perception went dark (D069).
+_PRIVATE_USE_FIRST = 0xE000
+_PRIVATE_USE_LAST = 0xF8FF
+
+
+def normalise_accessible_name(name: str | None) -> str:
+    """Strip a leading decorative icon codepoint and the space it leaves.
+
+    Deliberately narrow. Only a LEADING private-use character is decoration;
+    one anywhere else is part of the label. This is not a fuzzy matcher and
+    must never lower the grounding floor -- it removes a glyph, nothing more.
+
+    The observed glyph is normalised away rather than written into the recipe
+    on purpose: a specific private-use codepoint is version-sensitive and would
+    break the next time VS Code renumbers its icon font.
+    """
+    if not name:
+        return ""
+    index = 0
+    while index < len(name) and _PRIVATE_USE_FIRST <= ord(name[index]) <= _PRIVATE_USE_LAST:
+        index += 1
+    if index == 0:
+        return name
+    return name[index:].lstrip()
+
+
+def matches_trusted_name(observed: str | None, allowed_names) -> bool:
+    """True when an observed name equals a trusted name after normalisation.
+
+    Equality, never substring: rung 3 is the substring rung and OCR is barred
+    from it so the floor is not decorative (D030). Normalisation must not
+    reintroduce that looseness by the back door.
+    """
+    normalised = normalise_accessible_name(observed)
+    if not normalised:
+        return False
+    return any(normalised == name for name in allowed_names if name)
+
+
 class ProviderQueryFault(RuntimeError):
     """A provider-side query failed in a way that is not a clean absence.
 
@@ -212,6 +254,11 @@ def _is_dead_pointer(exc: BaseException) -> bool:
     returning `None`. That is an observation to defend against, not a contract
     the platform owes, so the predicate is deliberately narrow -- any OTHER
     ValueError is a fault, not an absence.
+
+    The exception was also reproduced independently of VS Code, by accessing a
+    plain null ``POINTER(IUnknown)``: comtypes raises ``builtins.ValueError``
+    with args ``('NULL COM pointer access',)``. So the match is on comtypes'
+    own null-pointer message, not on a VS Code quirk.
     """
     return isinstance(exc, ValueError) and "NULL COM pointer" in str(exc)
 
