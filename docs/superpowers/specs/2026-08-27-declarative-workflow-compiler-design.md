@@ -1,7 +1,7 @@
 # Declarative Workflow Compiler and Recipe Schema v2 — Design
 
 Date: 2026-08-27
-Status: **approved after independent review; implementation plan pending**
+Status: **approved after independent review; implementation plan drafted and pending review**
 Decisions: D069 (+ later-measurement amendment), D070, D072
 Evidence: `docs/evidence/provider-findall-spike.md`,
 `docs/evidence/d072-compatibility-corpus.md`,
