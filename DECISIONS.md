@@ -2610,6 +2610,22 @@ and durable promotion rejects positional IDs matching
 identity. `vscode_workspace_title` moves into declarative verification
 configuration.
 
+**Selector cardinality.** An ACTION selector is `exactly_one`: zero matches is
+a clean absence, one is a usable target, and **more than one is an ambiguity
+fault — never silently select the first**. A VERIFICATION selector may be
+`at_least_one`, because "an Installed Section exists" does not require choosing
+one control on the user's behalf.
+
+This is not theoretical. `provider_exact` returns a first match while
+`bounded_descendants` returns a set, and live VS Code 1.134.0 shows **two**
+Open Folder affordances: the Explorer sidebar button at `(39, 263, 359, 297)`,
+named plain `Open Folder`, and the Welcome-page action at
+`(527, 238, 677, 277)`, which carries the ellipsis. Both matched the recipe's
+synonyms and grounding took the first — the sidebar one, which is not the
+validated target. The walker's allowed names are therefore deliberately
+narrower than the recipe's synonyms, and the cardinality check makes any future
+ambiguity loud instead of arbitrary.
+
 **Open Folder migration.** Move Open Folder to the bounded-descendants
 strategy, which is *measured* working (5/5, stable bbox), rather than betting on
 the unverified hypothesis that fixing the name would revive provider lookup.

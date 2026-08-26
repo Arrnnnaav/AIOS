@@ -245,6 +245,26 @@ class ProviderQueryFault(RuntimeError):
     """
 
 
+class SelectorAmbiguityFault(ProviderQueryFault):
+    """An action selector matched more than one control.
+
+    A subclass so existing fault handling catches it without knowing the
+    subtype, while an operator can still tell the two apart. Measured on live
+    VS Code 1.134.0: the Explorer sidebar button and the Welcome-page action
+    both matched the trusted Open Folder names, and silently taking the first
+    would have pointed the user at the wrong control (D069).
+    """
+
+
+#: An ACTION selector must resolve to one control, because the hint points the
+#: user at exactly one thing. Zero is a clean absence; more than one is a fault.
+EXACTLY_ONE = "exactly_one"
+
+#: A VERIFICATION selector may match several. "An Installed Section exists"
+#: does not require choosing one control on the user's behalf.
+AT_LEAST_ONE = "at_least_one"
+
+
 def _is_dead_pointer(exc: BaseException) -> bool:
     """True when a property read failed because the element no longer exists.
 
@@ -314,7 +334,13 @@ def provider_exact(find, make_info) -> Element | None:
 DEFAULT_DESCENDANT_LIMIT = 16
 
 
-def bounded_descendants(walk, allowed_names, *, limit: int = DEFAULT_DESCENDANT_LIMIT):
+def bounded_descendants(
+    walk,
+    allowed_names,
+    *,
+    limit: int = DEFAULT_DESCENDANT_LIMIT,
+    cardinality: str = AT_LEAST_ONE,
+):
     """Select trusted controls from a bounded, control-type-scoped walk.
 
     The second declared selector strategy. Measured on VS Code 1.134.0: the
@@ -365,6 +391,13 @@ def bounded_descendants(walk, allowed_names, *, limit: int = DEFAULT_DESCENDANT_
                 bbox=bbox,
                 path=(control_type,),
             )
+        )
+
+    if cardinality == EXACTLY_ONE and len(selected) > 1:
+        candidates = ", ".join(f"{e.name!r}@{e.bbox}" for e in selected)
+        raise SelectorAmbiguityFault(
+            f"action selector matched {len(selected)} controls, expected one: "
+            f"{candidates}"
         )
     return selected
 
@@ -421,7 +454,15 @@ def iter_elements(title_re: str) -> list[Element]:
 #: The Welcome-page action, in the spellings VS Code has used. The observed
 #: Codicon prefix is deliberately NOT listed: a private-use codepoint is
 #: version-sensitive, so it is normalised away at match time instead (D069).
-_VSCODE_OPEN_FOLDER_NAMES = ("Open Folder...", "Open Folder…", "Open Folder")
+#:
+#: NARROWER than the recipe's synonyms, on purpose. The recipe also accepts a
+#: bare "Open Folder", but live VS Code 1.134.0 shows two Open Folder
+#: affordances: the Explorer sidebar button at (39, 263, 359, 297), named plain
+#: "Open Folder", and the Welcome-page action at (527, 238, 677, 277), which
+#: carries the ellipsis. Both matched, and grounding took the first -- the
+#: sidebar one -- which is not the validated target. Only the ellipsis
+#: spellings identify the action this recipe was certified against.
+_VSCODE_OPEN_FOLDER_NAMES = ("Open Folder...", "Open Folder…")
 
 
 def _vscode_button_walk(hwnd: int):
@@ -451,7 +492,9 @@ def iter_vscode_elements(title_re: str) -> list[Element]:
         return []
     hwnd = matches[0]
     return bounded_descendants(
-        lambda: _vscode_button_walk(hwnd), _VSCODE_OPEN_FOLDER_NAMES
+        lambda: _vscode_button_walk(hwnd),
+        _VSCODE_OPEN_FOLDER_NAMES,
+        cardinality=EXACTLY_ONE,
     )
 
 

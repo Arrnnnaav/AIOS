@@ -294,3 +294,26 @@ a provider query.
 **Trigger:** the first workflow that depends on a provider query it can lose, or
 any work touching the stalled-worker policy or the tier-2 fruitless-run ceiling.
 Decide then whether consecutive faults get their own ceiling.
+
+
+### Open Folder grounds at rung 3, not rung 2, because of the Codicon prefix
+
+The walker publishes the raw accessible name `' Open Folder...'`, which is
+correct — a cleaned-up name would make the observation disagree with the screen.
+But rung 2 is byte-exact name equality, so the glyph makes it miss, and
+grounding lands on rung 3, the case-insensitive substring rung. Measured live:
+`rung 3 substring, source='uia'`, 5/5.
+
+Accepted for now rather than widening the global grounding ladder in that slice,
+because the risk is bounded on three independent counts: the element is
+UIA-sourced, the walker has already reduced the candidate set to exactly one
+trusted target (`EXACTLY_ONE`), and the only difference between observed and
+claimed name is the measured leading Codicon.
+
+Normalising inside the ladder would change matching for every application and
+every rung, which deserves its own design rather than being folded into a
+walker fix.
+
+**Trigger:** the declarative compiler. It can carry both the raw and the
+normalised name on a selector, which restores exact-rung semantics without
+losing observation fidelity — a better fix than widening rung 2 globally.

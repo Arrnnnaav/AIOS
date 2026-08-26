@@ -97,3 +97,46 @@ def test_vscode_walk_returns_empty_when_the_action_is_simply_absent(monkeypatch)
     monkeypatch.setattr(uia, "is_on_screen", lambda bbox: True)
 
     assert uia.iter_vscode_elements(".*Visual Studio Code.*") == []
+
+
+def test_open_folder_walk_ignores_the_bare_sidebar_button(monkeypatch):
+    """Live VS Code 1.134.0 shows TWO Open Folder affordances (D069).
+
+    The Explorer sidebar button at (39, 263, 359, 297) is named plain
+    'Open Folder'; the Welcome-page action the recipe targets carries the
+    ellipsis. Both matched the recipe's synonyms, and grounding took the first
+    -- the sidebar one -- which is not the validated target. The walker's
+    allowed names are therefore narrower than the recipe's synonyms.
+    """
+    monkeypatch.setattr(uia, "windows_matching_executable", lambda title, exe: [4242])
+    monkeypatch.setattr(
+        uia,
+        "_vscode_button_walk",
+        lambda hwnd: [
+            _FakeButton("Open Folder", bbox=(39, 263, 359, 297)),
+            _FakeButton(" Open Folder...", bbox=(527, 238, 677, 277)),
+        ],
+    )
+    monkeypatch.setattr(uia, "is_on_screen", lambda bbox: True)
+
+    elements = uia.iter_vscode_elements(".*Visual Studio Code.*")
+
+    assert [e.name for e in elements] == [" Open Folder..."]
+    assert elements[0].bbox == (527, 238, 677, 277)
+
+
+def test_open_folder_walk_faults_rather_than_choosing_between_two_actions(monkeypatch):
+    """An action selector is exactly_one: never silently take the first."""
+    monkeypatch.setattr(uia, "windows_matching_executable", lambda title, exe: [4242])
+    monkeypatch.setattr(
+        uia,
+        "_vscode_button_walk",
+        lambda hwnd: [
+            _FakeButton("Open Folder...", bbox=(39, 263, 359, 297)),
+            _FakeButton(" Open Folder...", bbox=(527, 238, 677, 277)),
+        ],
+    )
+    monkeypatch.setattr(uia, "is_on_screen", lambda bbox: True)
+
+    with pytest.raises(uia.SelectorAmbiguityFault):
+        uia.iter_vscode_elements(".*Visual Studio Code.*")
