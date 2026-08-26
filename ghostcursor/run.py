@@ -26,6 +26,7 @@ machine.
 """
 
 import argparse
+import os
 import time
 from typing import Callable
 
@@ -224,6 +225,17 @@ def make_grounder(
             elements=elements,
         )
         if grounded is not None:
+            if os.environ.get("GHOSTCURSOR_DEBUG_PERCEPTION") == "1":
+                # Gate 2 resets the count on any OCR-grounded run, so which
+                # tier actually grounded the step has to be observable. Without
+                # it a run reports only "Tour complete." -- the outcome-only
+                # signal that let Open Folder's tier-1 perception go dark while
+                # OCR quietly carried the workflow (D069).
+                print(
+                    f"Ghost Cursor: step {i} provenance "
+                    f"source={grounded.source} rung={grounded.rung} "
+                    f"name={grounded.name!r}"
+                )
             grounding.promote(step, grounded, app_version=app_version, locale=ui_locale)
             # Second half of the same guard as promote()'s: nothing tier 2
             # produced reaches the knowledge base (D030). Without this, the

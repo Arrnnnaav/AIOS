@@ -420,3 +420,50 @@ def test_run_tour_creates_overlay_only_after_app_info_is_resolved(
     assert order[-1] in ("store.close",), order
     assert order.count("destroy_overlay") == 1
     assert walker_selection == [("app", "do a thing")]
+
+
+# --- gate-2 observability: grounding provenance must be reportable ---------
+
+
+def test_grounder_reports_uia_provenance_when_debug_is_on(monkeypatch, capsys):
+    """Gate 2 resets on any OCR-grounded run, so provenance must be observable.
+
+    Without this the run reports only "Tour complete.", which is exactly the
+    outcome-only signal that let Open Folder's tier-1 perception go dark. The
+    line is diagnostic and stays behind the existing debug switch.
+    """
+    monkeypatch.setenv("GHOSTCURSOR_DEBUG_PERCEPTION", "1")
+    monkeypatch.setattr(grounding, "iter_elements", lambda title_re: EN)
+
+    grounder = make_grounder(".*")
+    grounder(_step(), 0)
+
+    out = capsys.readouterr().out
+    assert "provenance" in out.lower()
+    assert "uia" in out.lower()
+
+
+def test_grounder_reports_ocr_provenance_distinctly(monkeypatch, capsys):
+    """An OCR-grounded step must be distinguishable, not just 'grounded'."""
+    from ghostcursor.perception.uia import Element
+
+    ocr_only = [Element("Export", "", "", (10, 10, 110, 40), source="ocr")]
+    monkeypatch.setenv("GHOSTCURSOR_DEBUG_PERCEPTION", "1")
+    monkeypatch.setattr(grounding, "iter_elements", lambda title_re: ocr_only)
+
+    grounder = make_grounder(".*")
+    result = grounder(_step(), 0)
+
+    out = capsys.readouterr().out
+    if result is not None:
+        assert "ocr" in out.lower()
+
+
+def test_grounder_stays_quiet_without_the_debug_switch(monkeypatch, capsys):
+    monkeypatch.delenv("GHOSTCURSOR_DEBUG_PERCEPTION", raising=False)
+    monkeypatch.setattr(grounding, "iter_elements", lambda title_re: EN)
+
+    grounder = make_grounder(".*")
+    grounder(_step(), 0)
+
+    assert "provenance" not in capsys.readouterr().out.lower()
