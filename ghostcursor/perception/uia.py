@@ -307,6 +307,68 @@ def provider_exact(find, make_info) -> Element | None:
     )
 
 
+#: Ceiling on how many elements one bounded walk may publish. Measured Button
+#: counts on VS Code 1.134.0 were 17-44 across three UI states, so a trusted
+#: recipe selecting more than a handful means the filter is wrong, not that the
+#: screen is busy.
+DEFAULT_DESCENDANT_LIMIT = 16
+
+
+def bounded_descendants(walk, allowed_names, *, limit: int = DEFAULT_DESCENDANT_LIMIT):
+    """Select trusted controls from a bounded, control-type-scoped walk.
+
+    The second declared selector strategy. Measured on VS Code 1.134.0: the
+    Welcome-page Open Folder action reads cleanly here (5/5, stable bbox) while
+    provider-side exact lookup returns a dead pointer for it, so the two
+    strategies are not interchangeable and a recipe must declare which it uses.
+
+    Matching is on the NORMALISED name, so a Codicon prefix cannot defeat it,
+    but the element publishes the RAW observed name: a cleaned-up name would
+    make the observation disagree with the screen, and every downstream trust
+    decision keys off the observation.
+
+    Per-control failures follow the same three-branch rule as
+    :func:`provider_exact`. A control that died mid-walk is a clean absence and
+    is skipped; anything else is a fault for the whole walk, because silently
+    dropping it is how a dark tier stays invisible.
+    """
+    try:
+        controls = list(walk())
+    except Exception as exc:  # noqa: BLE001 - re-raised as a typed fault
+        raise ProviderQueryFault(f"bounded walk failed: {exc}") from exc
+
+    selected: list[Element] = []
+    for control in controls:
+        if len(selected) >= limit:
+            break
+        try:
+            name = control.window_text() or ""
+            if not matches_trusted_name(name, allowed_names):
+                continue
+            rect = control.rectangle()
+            bbox = (rect.left, rect.top, rect.right, rect.bottom)
+            info = control.element_info
+            control_type = info.control_type or ""
+            automation_id = info.automation_id or ""
+        except Exception as exc:  # noqa: BLE001 - classified below
+            if _is_dead_pointer(exc):
+                continue
+            raise ProviderQueryFault(f"bounded walk read failed: {exc}") from exc
+
+        if not is_on_screen(bbox):
+            continue
+        selected.append(
+            Element(
+                name=name,
+                control_type=control_type,
+                automation_id=automation_id,
+                bbox=bbox,
+                path=(control_type,),
+            )
+        )
+    return selected
+
+
 def iter_elements(title_re: str) -> list[Element]:
     """Every on-screen element inside the window matching title_re.
 
