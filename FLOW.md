@@ -217,6 +217,14 @@ rung 2 — see the persistence call graph above.
 **Two feasibility spikes are closed (D068, D069); the declarative workflow
 compiler is next, and a shared presence helper lands before it.**
 
+**D070 fixes the future knowledge boundary before tables exist.** Runtime
+screen observations remain in erasable `kb.sqlite`; curated knowledge belongs
+in a separate local `knowledge.sqlite`; and only schema-valid JSON named by an
+explicit manifest mapping can authorize a workflow. Draft adoption is always
+human-gated: quarantine -> isolated read-only acceptance -> content-addressed
+install -> manifest swap. No database row, draft, directory glob, or ambiguous
+filename fallback is execution authority; D070 carries the complete rule.
+
 Spike A measured whether the local model can change the executable outcome.
 Across the frozen 1.0.0 dataset, 30 cases x 2 passes, **zero of 60 case-runs
 changed the executable recipe**. Exactly one model request per case, asserted by

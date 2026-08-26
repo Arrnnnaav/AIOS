@@ -2670,3 +2670,127 @@ still described OPEN_FOLDER's candidate state as unmeasured after Spike B had
 measured it. The "dead pointer iff no match" observation was also rescoped to
 the measured environment rather than presented as a universal COM guarantee.
 D032 is closed for this slice by that review.
+
+## D070 — Runtime observations and curated knowledge have separate stores, lifecycles, and authority
+
+**Decision.** `kb.sqlite` remains the user-resettable store for screen-derived
+observations. Deleting it must continue to erase that learned state without
+collateral loss. Curated source provenance, document chunks, selector-health
+measurements, and validation history belong in a separate future
+`knowledge.sqlite` with its own lifecycle. Recipe payloads never live in either
+database: executable workflows remain schema-validated JSON artifacts under a
+trusted pack directory.
+
+`knowledge.sqlite` is batch-oriented and provenance-labelled, not uniformly
+reviewed. It will contain mixed lifecycle states, including unreviewed fetched
+material, and every record must carry an explicit state and provenance. No row
+has execution authority in any state. The store inherits D017's locality
+invariant explicitly — local only, no telemetry, no network egress, and no
+cloud sync. Ingestion's outbound-network policy is a separate decision. Its
+eventual schema must also impose a measured growth bound: document chunks and
+validation history have no natural idempotent key equivalent to D017's
+observation key, so unbounded accumulation is not acceptable even though the
+numeric policy is deferred with table design.
+
+**Two-part execution boundary.** A recipe is executable only when BOTH are
+true:
+
+1. an explicit manifest entry names the exact recipe artifact; and
+2. `_trusted_recipe()` revalidates that named path's containment, symlink
+   status, existence, digest, and recipe schema.
+
+Neither condition is sufficient alone. The compiler must never restore a
+directory glob, an inferred filename, or the current one-intent filename
+fallback as execution authority. A file merely existing under a trusted root
+is inert until a manifest names it; a manifest cannot make an unsafe or invalid
+path trusted. Retrieval drafts remain outside every trusted root, so the
+existing `_trusted_recipe()` boundary makes quarantine enforceable rather than
+conventional.
+
+Turning a reviewed draft into an active trusted recipe is called **adoption**,
+not promotion: `grounding.promote()` already names the D013 operation that
+records a learned AutomationId into a step's confirmed observations.
+
+**Adoption order.** Adoption is always human-gated and follows this order:
+
+1. Verify one named draft's full hash and schema while it remains in
+   quarantine.
+2. Run that exact quarantined digest through a developer-only candidate
+   harness. The harness is unreachable from production planning, CLI goals,
+   and Ask; loads only the explicitly named digest; and performs no input
+   synthesis. It is an acceptance instrument, never a second authority path.
+3. Complete the current acceptance policy of three consecutive human-driven
+   real-desktop runs. Generated drafts can never auto-adopt, and changing the
+   3/3 policy requires a separate decision.
+4. Commit a durable evidence document recording the full tested recipe digest
+   and application version. Ignored `.artifacts/` logs may support that
+   document but cannot be its identifier.
+5. Install the accepted bytes unchanged under a readable, content-addressed
+   filename such as `open_folder.a3f8c2d19e04.json`. The filename uses at least
+   12–16 SHA-256 hexadecimal characters for reviewability; the manifest stores
+   and verifies the full SHA-256. If that shortened filename already holds
+   different bytes, extend the prefix or use the full digest — never overwrite.
+6. Re-read the installed bytes and verify their full digest.
+7. Atomically replace the manifest last, naming that exact filename and full
+   digest. The manifest mapping is the activation commit point. Keep the prior
+   accepted artifact for rollback.
+
+Manifest-last is safe for replacement only because artifacts are immutable and
+content-addressed. Overwriting a stable filename first would expose new,
+unaccepted bytes through the old manifest. An installed but unreferenced file
+is a harmless orphan precisely because nothing scans directories for recipes.
+
+**Where evidence lives.** Existing step-level `provenance` continues to hold
+source identifiers and review information known before acceptance. A recipe
+cannot contain its own artifact digest without changing the bytes being hashed,
+and adding post-run acceptance results would make adopted bytes differ from
+tested bytes. Artifact-level facts therefore live in the manifest entry:
+full recipe SHA-256, committed acceptance-evidence path, adoption timestamp,
+stable privacy-safe reviewer identifier, review commit, accepted application
+version scope, and superseded recipe digest. The evidence document must itself
+record the full tested digest and application version. This keeps the minimum
+audit record with the trusted artifacts even if `knowledge.sqlite` is deleted.
+
+**Withdrawal, supersession, and caching.** Withdrawal atomically removes the
+active manifest mapping while preserving recipe artifacts, provenance, and
+validation history. Supersession points the manifest at a newly accepted digest
+and records its predecessor. Rollback is explicit and may repoint to an older
+digest only when that artifact's recorded acceptance scope covers the current
+application version; otherwise it requires fresh acceptance.
+
+The manifest mapping is the durable activation state; no particular cache or
+`reload()` API is assumed. Every new plan resolves and validates the active
+mapping, and execution revalidates it immediately before a tour starts — never
+on every perception tick. Any future cache must be invalidated synchronously by
+adoption, withdrawal, or supersession and may not serve an inactive mapping.
+
+Crash and corruption behaviour is fail-closed. A manifest naming a missing
+artifact or a digest mismatch makes that intent
+`KNOWN_INTENT_RECIPE_UNAVAILABLE`; an unreferenced artifact stays inert; and a
+registry or cache failure permits no new workflow launch. No parallel status is
+introduced.
+
+**Identity and invalidation.** Artifact identity does not replace learned-step
+identity. Supersession retains D016's `step_key()` rule — intent plus claimed
+name, OCR text, and visual description — rather than coupling observations to
+a recipe digest. Trivial recipe edits therefore do not erase learning, while a
+real target-description change still produces a new key. Knowledge records
+must carry an explicit application-version scope (exact, range, or explicitly
+unknown/global) plus source revision or content identity; application version
+alone cannot reveal that documentation changed.
+
+**Why the split is concrete.** Coupling curated work to `kb.sqlite` would make
+the user's screen-data privacy reset expensive and therefore discourage its
+use. Conversely, deleting `knowledge.sqlite` cannot break an adopted workflow,
+because active recipe bytes, their manifest mapping, and the minimum audit
+record remain trusted files. Deletion may still destroy richer local caches and
+non-reconstructable audit history when a source changes or disappears; it is
+not described as lossless. The stores also have different write profiles:
+`kb.sqlite` is a per-tick, cross-process hot path, while curated knowledge is
+written in provenance-labelled batches.
+
+**Deferred.** No `knowledge.sqlite` tables are designed until recipe schema v2
+and the declarative selector/planner compiler stabilize selector, intent,
+manifest, and provenance shapes. The next branch fast-forwards to the
+`post-submission/model-durability` HEAD containing this decision, not to the
+earlier `8622007` checkpoint.

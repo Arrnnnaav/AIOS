@@ -450,6 +450,16 @@ foundational work later.
 
 D068 and D069 close the two feasibility spikes and reset the next milestone.
 
+**D070 — keep runtime memory, curated knowledge, and execution authority
+separate.** Screen-derived observations remain in erasable `kb.sqlite`; future
+curated knowledge is local-only in a separate `knowledge.sqlite`; and only a
+schema-valid JSON artifact explicitly named by a manifest can authorize a
+workflow. Drafts stay quarantined outside trusted roots. Adoption is always
+human-gated and ordered quarantine -> isolated no-input-synthesis acceptance ->
+content-addressed install -> manifest swap; table design remains deferred until
+the declarative compiler stabilizes the shapes. See D070 for withdrawal,
+version scope, evidence, digest, cache, and fail-closed requirements.
+
 **D068 — the local model cannot change which recipe executes.** Measured: zero
 of 60 case-runs changed the executable recipe, with exactly one model request
 per case and the deterministic/policy views derived purely from that same
