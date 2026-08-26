@@ -21,7 +21,10 @@ import os
 import sqlite3
 from pathlib import Path
 
-from ghostcursor.reasoning.schema import ConfirmedObservation
+from ghostcursor.reasoning.schema import (
+    ConfirmedObservation,
+    is_positional_automation_id,
+)
 
 #: Overriding the path is what lets tests — and a second process in the
 #: end-to-end proof — share a database without touching the real one.
@@ -83,6 +86,10 @@ class ObservationStore:
         """Upsert one observation, merging locales with anything already known."""
         if not observation.automation_id:
             return  # nothing learned; never invent an id
+        if is_positional_automation_id(observation.automation_id):
+            # Independent of promote()'s guard on purpose: a future caller
+            # reaching the store directly must not be able to bypass it.
+            return
 
         # One statement, deliberately. An earlier version read the row, merged
         # locales in Python, then wrote — so two processes could both read the

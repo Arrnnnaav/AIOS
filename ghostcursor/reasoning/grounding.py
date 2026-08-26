@@ -33,7 +33,11 @@ from datetime import datetime, timezone
 
 from ghostcursor.perception.appinfo import parse_version
 from ghostcursor.perception.uia import Element, iter_elements
-from ghostcursor.reasoning.schema import ConfirmedObservation, Step
+from ghostcursor.reasoning.schema import (
+    ConfirmedObservation,
+    Step,
+    is_positional_automation_id,
+)
 from ghostcursor.reasoning.staleness import CONFIRMED_SOURCE
 
 RUNG_AUTOMATION_ID = 1
@@ -274,6 +278,8 @@ def promote(
     if grounded is None or grounded.source != CONFIRMED_SOURCE:
         return False
     if not grounded.automation_id:
+        return False
+    if is_positional_automation_id(grounded.automation_id):
         return False
 
     for observation in step.target_descriptor.confirmed:

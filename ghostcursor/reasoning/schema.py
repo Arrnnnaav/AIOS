@@ -9,6 +9,7 @@ See docs/superpowers/specs/2026-08-14-reasoning-and-knowledge-design.md §4.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import asdict, dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -85,6 +86,19 @@ class ClaimedDescriptor:
 
     def is_empty(self) -> bool:
         return not (self.name or self.name_synonyms or self.ocr_text)
+
+
+# A list index is not a control identity. VS Code exposes these as the only
+# non-empty AutomationIds it has, and the command palette's list is
+# recency-ordered, so `list_id_5_0` means "most recently used command" and
+# changes constantly. Persisting one and hydrating it on a later run points at
+# whatever now occupies that index. Measured in D069.
+_POSITIONAL_AUTOMATION_ID = re.compile(r"^list_id_\d+_\d+$")
+
+
+def is_positional_automation_id(automation_id: str | None) -> bool:
+    """True for ids that encode a list position rather than a control."""
+    return bool(_POSITIONAL_AUTOMATION_ID.match(automation_id or ""))
 
 
 @dataclass
