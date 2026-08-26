@@ -1,67 +1,87 @@
 # CLAUDE.md
 
+## Document ownership (D071)
+
+Each tracking document has one job. Put a sentence where it belongs:
+
+| File | Owns |
+|---|---|
+| `CLAUDE.md` | current mandatory rules and commands |
+| `FLOW.md` | current architecture |
+| `DECISIONS.md` | history, rationale, measurements |
+| `docs/superpowers/FOLLOWUPS.md` | unresolved work and its triggers |
+| `docs/evidence/` | durable measured results |
+
+**The test.** Does this change what an agent must do now? It belongs here. Does
+it explain what happened or why? It belongs in `DECISIONS.md` or
+`docs/evidence/`.
+
+A numeric threshold can be an active rule and stays — the 95 OCR floor, D020's
+0.5s tick ceiling, the 20-run tier-2 ceiling, `DEFAULT_DESCENDANT_LIMIT`, the
+3/3 acceptance policy. A count of what passed on some date is a finding and does
+not belong here. Cite decision numbers for provenance; never restate their
+content.
+
 ## Current build status
 
-The Open Track submission baseline and accepted terminal slice are merged on
-`submission/open-track`. The terminal slice was developed from
-`stable-pre-terminal` on `feature/vscode-open-terminal` and merged only after
-its 3/3 gate and independent review. The trusted planner, strict application
-packs, bounded screen-aware hint inference, synthetic demo, foreground watcher,
-perception health instrumentation, executable-bounded VS Code grounding, and
-vertical Ask control rail are implemented.
+Two real VS Code workflows are validated and their gates are closed:
+`OPEN_FOLDER` and `OPEN_TERMINAL` (evidence: D047-D057, D069, and
+`docs/evidence/`). The trusted planner, strict application packs, bounded
+screen-aware hint inference, synthetic demo, foreground watcher, perception
+health instrumentation, executable-bounded VS Code grounding, and the vertical
+Ask control rail are implemented.
 
-The submission inference implementation is anchored by
-`submission-pre-model-hardening` at `15f20cef...` (D061). Do not merge or
-cherry-pick `post-submission/model-durability` before submission. Its commit
-`304e8e0` contains an explicitly incomplete structured-Ollama request slice;
-`ghostcursor/inference/ollama.py` and its four added contract tests must remain
-absent from the release branch. Release recertification passed 23 focused
-planner/screen-hint tests, 361 hermetic tests, and the complete live eight-cell
-never-fabricate matrix on the tagged code.
+The submission release is anchored by `submission-pre-model-hardening` (D061).
+**Do not merge or cherry-pick `post-submission/model-durability` into
+`submission/open-track`.** `ghostcursor/inference/ollama.py` and its contract
+tests must remain absent from the release branch.
+
+`post-submission/model-durability` is frozen at the `durability-final` tag. All
+schema-v2 and compiler work belongs to `feature/declarative-workflow-compiler`.
 
 `OPEN_FOLDER` points at the Welcome page's `Open Folder...` action. The user
-handles the native folder picker, and title verification supports full-path
-goals, case-insensitive whitespace-normalized matching, degenerate-reference
-fallback, and a 20-second post-action timeout. The workflow passed three
-consecutive real-desktop runs. Ask passed visual, text-entry, submitted-goal,
-trusted replanning, and completion validation. Installer, tray, startup,
-web retrieval, and additional application packs remain deferred. The
-logging-only watcher is available as `py -3.12 -m ghostcursor.daemon`.
+handles the native folder picker; title verification supports full-path goals,
+case-insensitive whitespace-normalized matching, degenerate-reference fallback,
+and a 20-second post-action timeout.
 
-`OPEN_TERMINAL` is the second validated VS Code intent. Its trusted recipe
-highlights `Toggle Panel (Ctrl+J)`, tells the human to press `Ctrl+\``, and
-accepts an already-visible exact `Terminal Section` before rendering. Otherwise
-it verifies an absent-to-present state within 20 seconds of the first hint;
-timeout wins over a state first observed after the deadline.
-It passed 3/3 consecutive real-desktop runs. A click recipe is forbidden for
-this goal because Toggle Panel restores whichever panel was active and opened
-Debug Console during the measured rehearsal.
+`OPEN_TERMINAL`'s trusted recipe highlights `Toggle Panel (Ctrl+J)`, tells the
+human to press `Ctrl+\``, and accepts an already-visible exact `Terminal
+Section` before rendering. Otherwise it verifies an absent-to-present state
+within 20 seconds of the first hint; timeout wins over a state first observed
+after the deadline. **A click recipe is forbidden for this goal** — Toggle Panel
+restores whichever panel was last active (D057).
 
-The deterministic planner aliases `VS Code`, `VSCode`, and
-`Visual Studio Code` for both registered VS Code intents. The documented goals
-`Open a folder in VS Code` and `Open the integrated terminal in VS Code` are
-0.95 exact strong phrases and must continue to load their trusted recipes
-under `MODEL_UNAVAILABLE_FALLBACK` when Ollama times out or is offline. Do not
-rely on a folder name containing `vscode` to prove the folder route; the
-regression fixture deliberately uses an unrelated folder name.
+Keep the `Ask received` console acknowledgement before a nested `run_tour()`:
+the nested control-bar session may stay alive until its timeout.
 
-Never execute a model-selected available intent unless it agrees with the
-deterministic classifier's grounded intent for the same goal (D058). A
-registered ID is an allowlist boundary, not semantic evidence. On mismatch,
-use only an existing deterministic fallback with `INVALID_MODEL_OUTPUT`; with
-no fallback return `UNSUPPORTED_GOAL` and no plan. Model-unavailable and
+The deterministic planner aliases `VS Code`, `VSCode`, and `Visual Studio Code`
+for both registered VS Code intents. The documented goals `Open a folder in VS
+Code` and `Open the integrated terminal in VS Code` are 0.95 exact strong
+phrases and **must continue to load their trusted recipes under
+`MODEL_UNAVAILABLE_FALLBACK`** when Ollama times out or is offline. Do not rely
+on a folder name containing `vscode` to prove the folder route; the regression
+fixture deliberately uses an unrelated folder name.
+
+**Never execute a model-selected available intent unless it agrees with the
+deterministic classifier's grounded intent for the same goal (D058).** A
+registered ID is an allowlist boundary, not semantic evidence. On mismatch, use
+only an existing deterministic fallback with `INVALID_MODEL_OUTPUT`; with no
+fallback return `UNSUPPORTED_GOAL` and no plan. Model-unavailable and
 malformed-output paths likewise use fallback statuses only when a plan exists.
-The live matrix is `docs/evidence/never-fabricate-matrix.md`; its correction
-passed 17 focused planner tests and the 361-test hermetic lane.
+The live matrix is `docs/evidence/never-fabricate-matrix.md`.
 
 Submission evidence must follow D059 and D060. Fill
-`docs/evidence/novice-vscode-study.md` live; never invent participant rows,
-drop failures, or make a participant-value claim below two completed sessions.
-Use `docs/submission/demo-video-script.md` for the 4:45 recording. Open Folder,
+`docs/evidence/novice-vscode-study.md` live; never invent participant rows, drop
+failures, or make a participant-value claim below two completed sessions. Use
+`docs/submission/demo-video-script.md` for the 4:45 recording. Open Folder,
 Ask/Open Terminal, and the refusal clip are protected segments; if product code
 changes behavior after recording, rerun the affected tests and rerecord that
 clip. Sending invitations and uploading video are external actions and must not
 be claimed from repository edits alone.
+
+Installer, tray, startup, web retrieval, and additional application packs remain
+deferred; see `docs/superpowers/FOLLOWUPS.md`. The logging-only watcher runs as
+`py -3.12 -m ghostcursor.daemon`.
 
 Real VS Code perception is intentionally narrow for each validated workflow.
 `perception_walker_for("code.exe", recipe_intent)` selects the reviewed walker
@@ -102,15 +122,11 @@ only `Code.exe`. Never weaken this to title-only matching: titles are free text
 and collide with browser tabs and terminals. Missing trusted identity must fail
 before overlay creation.
 
-Repository stabilization is green through the bounded hang audit. The
-hermetic lane passed **341 tests twice consecutively**; interactive passed 53;
-pytest pixel passed 3; standalone pixel harnesses passed 16/16 and 8/8; and
-the isolated hung modules passed 4, 2, and 7 tests. Keep
-whole-file concern commits, preserve raw hang dumps only under ignored
+Keep whole-file concern commits, preserve raw hang dumps only under ignored
 `.artifacts/hang-audit/`, and record sanitized reachability findings in
 `DECISIONS.md`. Test-lane ownership lives centrally in `tests/conftest.py`.
-Do not run two desktop/UIA sessions at once or run a hung-window lane beside
-anything else.
+**Do not run two desktop/UIA sessions at once, or a hung-window lane beside
+anything else** (D025).
 
 Release policy is locked: feature development ends 30 August at 20:00 IST;
 31 August permits fresh-clone validation and release-blocking fixes only; code
@@ -129,24 +145,11 @@ status below. Ask preserves the right edge and centre, expands left to
 multiline scrollable EDIT. Never create panel children outside the current
 parent rectangle: Win32 clips them even though their HWNDs exist. The prompt
 must not overlap the right safety rail; closing/submitting restores compact
-geometry. Bar/runtime integration is 32 passing tests.
+geometry.
 
-Real VS Code open-folder acceptance passed 3 of 3 consecutive successful
-runs; that workflow gate is closed. The expanded Ask prompt has been visually
-validated on a real desktop: its label, multiline input, Submit, status,
-Stop, and Pause are visible without clipping or overlap. The user then entered
-and submitted the goal; the shared planner launched a fresh trusted VS Code
-tour and it reached `Tour complete.` The Ask behavioral gate is closed. Keep
-the `Ask received` console acknowledgement before nested `run_tour()` because
-the nested control-bar session may remain alive until its timeout.
-
-Real VS Code open-terminal acceptance also passed 3 of 3 consecutive clean
-runs from a confirmed hidden-panel baseline. The evidence is fresh live
-grounding plus an observed `Terminal Section` transition on each run; it is not
-a learned-observation reuse claim because the controls have empty IDs.
-Post-review regression is 50 focused, 355 hermetic, and 55 interactive tests.
-The corrected desktop path passed one already-present run with no hint plus
-3/3 consecutive hidden-to-visible transitions.
+Both VS Code workflow gates and the Ask behavioral gate are closed. Their
+acceptance evidence lives in `docs/evidence/` and D048-D057; do not restate run
+counts here.
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -446,36 +449,15 @@ foundational work later.
 - The demo remains the locked 4:45 sequence. It must not claim VS Code
   AutomationId-based wrong-action recovery.
 
-## Model-durability outcomes (complete)
+## Standing perception and authority rules
 
-D068 and D069 close the two feasibility spikes and reset the next milestone.
+Project-wide invariants. They were discovered during the model-durability and
+compiler-feasibility milestones, but they govern all work — including on
+`feature/declarative-workflow-compiler`. Findings, measurements, and gate
+results live in `DECISIONS.md` and `docs/evidence/`; only the rules are here.
 
-**D070 — keep runtime memory, curated knowledge, and execution authority
-separate.** Screen-derived observations remain in erasable `kb.sqlite`; future
-curated knowledge is local-only in a separate `knowledge.sqlite`; and only a
-schema-valid JSON artifact explicitly named by a manifest can authorize a
-workflow. Drafts stay quarantined outside trusted roots. Adoption is always
-human-gated and ordered quarantine -> isolated no-input-synthesis acceptance ->
-content-addressed install -> manifest swap; table design remains deferred until
-the declarative compiler stabilizes the shapes. See D070 for withdrawal,
-version scope, evidence, digest, cache, and fail-closed requirements.
-
-**D068 — the local model cannot change which recipe executes.** Measured: zero
-of 60 case-runs changed the executable recipe, with exactly one model request
-per case and the deterministic/policy views derived purely from that same
-sample. The model varies status, named intent, confidence, explanation, and
-latency, and nothing else. Do not present raw semantic accuracy as workflow
-capability, and do not use it as a model replacement criterion. Model swapping
-is deferred: a smaller model currently offers only latency and RAM gains.
-
-**D069 — workflow #3 is feasible with what already exists.** Open Extensions is
-selected (`strategy-1` on `Extensions (Ctrl+Shift+X)`, `element_appears` on
-`Installed Section`, persistent, empty AutomationId). Command Palette is
-rejected on measured grounds. No new verification kind, no new selector
-strategy.
-
-**Presence rule — this supersedes any pointer-based check.** `FindFirst`
-returning a non-`None` object is not evidence of presence:
+**Presence requires a successful property read (D069).** A non-`None` return
+from `FindFirst` is not evidence of presence:
 
 | `FindFirst` | property read | meaning |
 |---|---|---|
@@ -483,43 +465,51 @@ returning a non-`None` object is not evidence of presence:
 | object | `NULL COM pointer access` | absent |
 | object | any other COM/read failure | perception fault |
 
-`provider_exact()` owns this classification, and every provider-side exact query
-must route through it. A non-presence property-read failure raises
-`ProviderQueryFault` instead of being collapsed into an empty successful
-observation. Verification never treats pointer existence as evidence,
-`element_appears` and `element_disappears` included. The earlier "shell chrome
-versus webview" explanation is **retracted** — it was wrong.
+`provider_exact()` owns this classification and every provider-side exact query
+must route through it. A non-presence read failure raises `ProviderQueryFault`
+rather than collapsing into an empty successful observation. Verification never
+treats pointer existence as evidence — `element_appears` and
+`element_disappears` included.
 
-**Open Folder's tier-1 perception was restored and revalidated.** The workflow
-was migrated to `bounded_descendants()` with `EXACTLY_ONE` cardinality and
-normalised trusted-name matching. Gate 1 passed 5/5; gate 2 passed 3/3 with
-in-tour `source=uia` grounding and zero OCR. Never write the observed leading
-Codicon glyph into a recipe — a private-use codepoint is version-sensitive.
-Migration gates must assert UIA provenance rather than mere completion, because
-fallback OCR can preserve the outcome while the preferred tier is dark.
+**Selector cardinality is declared, never inferred (D069, D070).** An **action**
+selector is `EXACTLY_ONE`: zero matches is a clean absence, one is a usable
+target, and more than one raises `SelectorAmbiguityFault` — never silently take
+the first. A **verification** selector may be `AT_LEAST_ONE`, because "an
+`Installed Section` exists" does not require choosing one control on the user's
+behalf. Recipes declare the strategy; the compiler never infers it.
 
-**Never promote positional AutomationIds.** `list_id_<number>_<number>` encodes
-a list index, not a control. They are the only non-empty ids VS Code exposes,
-and `promote()` would happily persist one.
+**Never write an observed Codicon glyph into a recipe (D069).** A private-use
+codepoint is version-sensitive. Match a normalised name instead:
+`normalise_accessible_name()` strips a leading private-use character; matching is
+equality, never substring, so it cannot reintroduce rung 3's looseness.
 
-D063 is now built: both inference paths use the shared adapter, parsers accept
-only canonical bounded fields, planner null is an explicit abstention, and
-`resolve_model_decision()` is the single production/evaluation authority
-policy. Never bypass that function in an evaluation runner.
+**Never promote positional AutomationIds (D069).** `list_id_<number>_<number>`
+encodes a list index, not a control. They are the only non-empty ids VS Code
+exposes, and both `promote()` and `ObservationStore.record()` reject them
+independently.
 
-D064 is built: a 30-case versioned semantic dataset, provenance-tagged
-Synthetic Export UIA fixture, and three-lane read-only gate now exist. D066
-freezes owner-reviewed version 1.0.0; pre-freeze draft reports remain diagnostic
-and must not be called the incumbent baseline. The first complete draft passed all
-hard gates at 86.7% overall raw semantic accuracy and 100% on exact supported
-goals; D058 denied authority to all four raw over-commitments.
+**A migration or acceptance gate must assert UIA provenance, not mere
+completion (D069).** Fallback OCR preserves the outcome while the preferred tier
+is dark, so an outcome-only gate cannot see a tier going dark.
 
-Any change to a model name or digest, Ollama request options, prompt, JSON
-schema, parser, adapter, planner inference, hint inference, or authority policy
-requires the complete model-durability gate. Run it with `--interactive` and
-without `--draft`; a non-interactive skip cannot close the milestone. `--draft`
-is reserved for an explicitly unfrozen dataset revision and cannot produce a
-promotable report:
+**Model output is advice, never authority (D058, D068).** The local model cannot
+change which recipe executes; it varies status, named intent, confidence,
+explanation, and latency. Do not present raw semantic accuracy as workflow
+capability or use it as a model replacement criterion. Model swapping is
+deferred — a smaller model currently offers only latency and RAM gains.
+
+**Runtime memory, curated knowledge, and execution authority stay separate
+(D070).** Screen-derived observations remain in erasable `kb.sqlite`; future
+curated knowledge is local-only in a separate `knowledge.sqlite`; only a
+schema-valid JSON artifact explicitly named by a manifest can authorize a
+workflow. Drafts stay quarantined outside trusted roots. Adoption is always
+human-gated and ordered quarantine -> isolated no-input-synthesis acceptance ->
+content-addressed install -> manifest swap. See D070 for withdrawal, version
+scope, evidence, digest, cache, and fail-closed requirements.
+
+**Model durability continues only on its frozen branch.** Every model, digest,
+prompt, schema, parser, adapter, or inference-policy change requires the
+three-lane model gate before it can be trusted:
 
 ```powershell
 py -3.12 -m ghostcursor.evaluation.model_gate `
@@ -529,31 +519,18 @@ py -3.12 -m ghostcursor.evaluation.model_gate `
   --interactive
 ```
 
-The evaluation package is read-only by construction. Do not import
-`ghostcursor.run`, `ghostcursor.reasoning.loop`, overlay creation, or any input
-synthesis API into it. Full reports are ignored under
-`.artifacts/model-evaluation`; commit only a reviewed summary. Final acceptance
-requires two consecutive non-draft full passes; every failure resets the count
-to zero and must be preserved and classified first.
+Run it with `--interactive`; a non-interactive skip cannot close the milestone.
+Dataset 1.0.0 is frozen, so **never use `--draft`** — draft numbers are
+diagnostic and must never be called the incumbent baseline (D065, D066).
+Acceptance requires **two consecutive non-draft full passes**; any failure
+resets that count to zero, and the failure must be preserved and classified
+before rerunning (D064, D067).
 
-D065 fixed evidence promotion: timestamped JSON remains ignored, while
-`docs/evidence/model-durability-draft.md` is the concise, reviewable diagnostic
-summary. Its pre-freeze numbers remain diagnostic and are not the incumbent
-baseline.
-
-D066 froze owner-reviewed dataset version 1.0.0. Its misspelling asymmetry is
-an observed anchor-rule result, not fuzzy matching: only `intergrated` preserves
-the required `open + terminal + VS Code` anchors. The trusted baseline runs used
-non-draft mode after that freeze.
-
-D067 closes that count: two consecutive complete post-freeze interactive gates
-passed with identical 26/30 raw semantic accuracy, 6/6 exact supported, zero
-unsupported launches, and unchanged no-action evidence. The incumbent is
-`qwen3:4b-instruct` at manifest digest
-`0edcdef34593eac1aa2be9c7d06c432dcf81945adca5eca2f27662c18f168ba0`.
-`docs/evidence/model-durability-baseline.md` is the committed baseline; future
-model/request/prompt/schema/parser changes compare against it and retain this
-digest as the rollback target.
+The evaluation package is read-only by construction. Never import
+`ghostcursor.run`, the reasoning loop, overlay creation, or any input-synthesis
+API into it. Full reports stay ignored under `.artifacts/model-evaluation`;
+commit only a reviewed summary (D065). Never bypass `resolve_model_decision()`
+in an evaluation runner (D063).
 
 ## Forward work (not started)
 

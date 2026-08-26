@@ -2794,3 +2794,70 @@ and the declarative selector/planner compiler stabilize selector, intent,
 manifest, and provenance shapes. The next branch fast-forwards to the
 `post-submission/model-durability` HEAD containing this decision, not to the
 earlier `8622007` checkpoint.
+
+## D071 — Each tracking document has one job, and CLAUDE.md states rules, not findings
+
+**Finding.** Three documents had overlapping jobs, hand-synced. `CLAUDE.md` had
+drifted into summarising findings — measurements, gate results, decision
+precis — each of which already had a canonical home in `DECISIONS.md`. Every
+such sentence was a second copy maintained by hand, in the one file loaded into
+every session and therefore paid for on every request.
+
+Two defects came from that duplication rather than from carelessness. The
+D068/D069 handoff block contradicted itself, describing the Open Folder
+migration as complete in one passage while instructing a reader to perform it in
+another, phrased as an imperative. Separately, `CLAUDE.md` claimed the hermetic
+lane "passed 341 tests twice consecutively" when it passed 445 — stale by 104
+tests, and it survived a corrective commit whose whole purpose was removing
+stale claims, because a count buried mid-paragraph does not announce itself the
+way an imperative does.
+
+Findings in `CLAUDE.md` rot silently. Rules do not.
+
+At the time of this decision `CLAUDE.md` was 576 lines and 36 KB, restated 32
+decision numbers, and carried measurements or gate results on 36 lines.
+
+**Decision.** Document ownership is explicit, and each file has one job:
+
+| File | Owns |
+|---|---|
+| `CLAUDE.md` | current mandatory rules and commands |
+| `FLOW.md` | current architecture |
+| `DECISIONS.md` | history, rationale, measurements |
+| `docs/superpowers/FOLLOWUPS.md` | unresolved work and its triggers |
+| `docs/evidence/` | durable measured results |
+
+**The test.** Does this sentence change what an agent must do now? It belongs in
+`CLAUDE.md`. Does it explain what happened or why? It belongs in `DECISIONS.md`
+or `docs/evidence/`.
+
+Deliberately not "delete the numbers": a numeric threshold can be an active
+rule. The 95 OCR grounding floor, D020's 0.5s tick ceiling, the 20-run tier-2
+ceiling, `DEFAULT_DESCENDANT_LIMIT`, and the 3/3 acceptance policy all change
+what an agent must do and stay. A count of what passed on some date does not,
+and goes.
+
+**Pointers, not restatements.** `CLAUDE.md` may cite a decision number for
+provenance but must not restate its content. A reader needing the reasoning
+follows the pointer to the single source.
+
+**Alternatives considered.** "Sync more carefully." That is what was already
+being done, by people who care, on a project with an explicit independent
+documentation review rule — and it still produced a self-contradicting file and
+a figure stale by 104 tests. A property maintained by care alone is not
+maintained; D030 and D031 both already ruled that way.
+
+**Applied on adoption.** This decision landed with the cleanup that makes the
+document obey it, rather than as a rule the document immediately violated:
+stale pass counts removed, the D062-D070 block compressed to standing rules
+plus decision links, the section retitled away from a frozen milestone's name
+because it holds project-wide invariants, and the selector cardinality rule
+added, since `at_least_one` governs verification selectors and appeared
+nowhere.
+
+**Enforcement, deliberately bounded.** Stated as a rule. A mechanical check —
+`CLAUDE.md` containing no measurement-shaped text outside a declared thresholds
+list — is not built, matching the existing deferral of mechanical D032/D034
+enforcement. **Trigger:** the first drift incident that survives an independent
+documentation review, or the doc-audit `--check` mode arriving for another
+reason. Ordinary drift caught by review does not count toward it.
