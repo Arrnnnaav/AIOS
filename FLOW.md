@@ -214,6 +214,55 @@ rung 2 — see the persistence call graph above.
 
 ### You are here
 
+**Two feasibility spikes are closed (D068, D069); the declarative workflow
+compiler is next, and a shared presence helper lands before it.**
+
+Spike A measured whether the local model can change the executable outcome.
+Across the frozen 1.0.0 dataset, 30 cases x 2 passes, **zero of 60 case-runs
+changed the executable recipe**. Exactly one model request per case, asserted by
+a counting wrapper on the transport; deterministic and policy views are pure and
+reuse that same sample. The model diverged from deterministic grounding on 11 of
+30 cases, five of them recipe-bearing, and D058 denied authority to every one.
+Model comparison is therefore a latency and cost benchmark, and model swapping
+is deferred.
+
+Spike B selected workflow #3. **Open Extensions passes** with existing
+machinery: `strategy-1` reads `Extensions (Ctrl+Shift+X)` as a `TabItem` in
+11.2 ms, the view is persistent, and `element_appears` on `Installed Section`
+gives the same absent-to-present transition `Terminal Section` already provides.
+No new verification kind, no new selector strategy. The Command Palette is
+rejected: it drives the bounded `TabItem` walk to zero while open, and its
+closed state is not distinguishable from its open state by pointer alone. Its
+dismissal on focus loss was attempted four times and is recorded as unmeasured.
+
+The load-bearing discovery is a presence bug that spans everything:
+
+```
+FindFirst(condition)
+  -> object, property read succeeds        -> PRESENT
+  -> object, NULL COM pointer on read      -> ABSENT
+  -> object, any other COM/read failure    -> PERCEPTION FAULT
+```
+
+A non-`None` return carries no information. `iter_vscode_elements()` collapses
+the last two branches with a blanket `except Exception: return []`, so a real
+fault is published as an empty successful observation. That is why Open Folder's
+tier-1 perception went dark unnoticed: it returns 0 elements against VS Code
+1.134.0 and the workflow completes on OCR alone, so an outcome-only acceptance
+gate cannot see it.
+
+Next, in order: the shared provider-query helper enforcing the three-branch
+presence rule, with regression tests; Open Folder migrated to bounded
+descendants with normalised names (strip private-use Codicon prefixes, never
+hardcode the glyph); positional `list_id_<n>_<n>` ids rejected from promotion;
+then the compiler itself, contracted as `provider_exact` and
+`bounded_descendants` with strategy declared by the recipe and never inferred.
+The proof is adding Open Extensions through manifest and recipe data alone, with
+no change to `ghostcursor/**/*.py`.
+
+## Earlier completed slices
+
+
 The current completed slice is the perception-health foundation for real-app
 validation. `PerceptionService` records generation-aware progress primitives:
 iteration start, last completed iteration, last published observation, current

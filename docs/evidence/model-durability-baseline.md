@@ -99,3 +99,12 @@ may replace it only after passing the same frozen dataset, never-fabricate
 matrix, supported controls, hermetic tests, and interactive no-action gate in
 its final deployed configuration. The incumbent digest and request contract
 remain the immediate rollback target.
+
+**Amended by D068 (2026-08-26).** Semantic performance is removed as a
+replacement criterion. Measured: the model cannot change which recipe executes —
+zero of 60 case-runs did — so a candidate scoring higher or lower on raw
+semantic accuracy cannot alter any executable outcome. A candidate is compared
+on **latency, memory, and continued safety**, and must still pass the frozen
+dataset, never-fabricate matrix, supported controls, hermetic tests, and
+interactive no-action gate in its final deployed configuration. Model swapping
+is deferred; see `docs/evidence/model-execution-influence.md`.

@@ -439,6 +439,60 @@ foundational work later.
 
 ## Model-durability branch status
 
+D068 and D069 close the two feasibility spikes and reset the next milestone.
+
+**D068 — the local model cannot change which recipe executes.** Measured: zero
+of 60 case-runs changed the executable recipe, with exactly one model request
+per case and the deterministic/policy views derived purely from that same
+sample. The model varies status, named intent, confidence, explanation, and
+latency, and nothing else. Do not present raw semantic accuracy as workflow
+capability, and do not use it as a model replacement criterion. Model swapping
+is deferred: a smaller model currently offers only latency and RAM gains.
+
+**D069 — workflow #3 is feasible with what already exists.** Open Extensions is
+selected (`strategy-1` on `Extensions (Ctrl+Shift+X)`, `element_appears` on
+`Installed Section`, persistent, empty AutomationId). Command Palette is
+rejected on measured grounds. No new verification kind, no new selector
+strategy.
+
+**Presence rule — this supersedes any pointer-based check.** `FindFirst`
+returning a non-`None` object is not evidence of presence:
+
+| `FindFirst` | property read | meaning |
+|---|---|---|
+| object | succeeds | present |
+| object | `NULL COM pointer access` | absent |
+| object | any other COM/read failure | perception fault |
+
+`iter_vscode_elements()` collapses the last two into an empty successful
+observation, so a real fault is indistinguishable from "nothing there". A shared
+provider-query helper must own this rule and every provider-side query must
+route through it. Verification never treats pointer existence as evidence,
+`element_appears` and `element_disappears` included. The earlier "shell chrome
+versus webview" explanation is **retracted** — it was wrong.
+
+**Open Folder's tier-1 perception is currently dark.** `iter_vscode_elements()`
+returns 0 elements against VS Code 1.134.0 and the workflow completes on OCR
+alone. Migrate it to the bounded-descendants strategy, which is measured
+working, matching a **normalised** name: strip leading private-use Codicon
+characters, then compare against `Open Folder...`. Never write the observed
+glyph into a recipe — a private-use codepoint is version-sensitive. Its
+migration gate must assert the hint was UIA-grounded, not merely that the
+workflow finished, or it passes on the fallback tier and proves nothing.
+
+**Never promote positional AutomationIds.** `list_id_<number>_<number>` encodes
+a list index, not a control. They are the only non-empty ids VS Code exposes,
+and `promote()` would happily persist one.
+
+**Next milestone: the declarative workflow compiler**, contracted as two
+explicit strategies — `provider_exact` (presence requires a successful property
+read) and `bounded_descendants` (declared control type, bounded result count,
+normalised accessible names). Recipes declare strategy; the compiler never
+infers it. The product-defining proof is adding Open Extensions through
+manifest and recipe data with no change to `ghostcursor/**/*.py`. Budget roughly
+nine real-desktop acceptance runs. The shared presence helper lands before the
+compiler.
+
 Model durability continues only on `post-submission/model-durability`. D062
 records the measured nullable-schema probe and shared bounded Ollama adapter.
 Do not merge this branch into the certified submission branch while durability

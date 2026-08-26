@@ -235,3 +235,39 @@ change what a verification rule accepts, and no shipped recipe uses the rule.
 **Trigger:** the first recipe that needs `ANY_MEANINGFUL_CHANGE`, or any work
 that touches `_REQUIRED_ARGS`. Decide then whether `scope` should be dropped
 from the schema or actually honoured by `verify()` — today it is neither.
+
+## From Spike B (2026-08-26)
+
+### OPEN_FOLDER's UIA tier yields nothing on VS Code 1.134.0
+
+`iter_vscode_elements()` returns 0 elements against the live Welcome page, 8/8
+repeats. The workflow still completes: an empty successful observation lets
+executable-bounded OCR escalate, which is the documented design. But the
+cheapest and most-trusted perception tier contributes nothing, and OCR is
+carrying a workflow that is documented as UIA-grounded.
+
+The same target reads cleanly under strategy 2, 5/5, at a stable bbox
+`(107, 450, 257, 488)`, under the accessible name `' Open Folder...'` — a
+Codicon private-use glyph prefixed to the label. The recipe asks for
+`'Open Folder...'`.
+
+Most likely cause is therefore a name mismatch, which under D069's central
+finding produces exactly the observed dead pointer. **Unverified**: confirming
+it means querying the glyph-prefixed name and checking that a property read
+succeeds, and VS Code was closed before that test could run. An earlier test
+that appeared to confirm all three name variants "HIT" used non-`None` as the
+predicate and is meaningless.
+
+Not fixed here because Spike B's remit was feasibility, not repair, and because
+the fix differs depending on the answer: name normalisation if the mismatch
+hypothesis holds, a strategy change if it does not.
+
+**Trigger:** before the Open Folder migration to the declarative compiler. That
+gate must assert the hint was UIA-grounded rather than merely that the workflow
+completed — otherwise it passes on OCR and proves nothing about the compiler's
+strategy-1 path. Settle the hypothesis first; it is a sixty-second measurement
+with VS Code open.
+
+**Wider lesson worth keeping:** a degradation of this shape passes acceptance
+silently, because the end-to-end outcome still succeeds on a fallback tier.
+Acceptance gates that assert only the outcome cannot see a tier going dark.

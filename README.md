@@ -40,6 +40,13 @@ the deterministic D058 policy. Owner-reviewed dataset 1.0.0 is frozen, and the
 same 86.7% result plus every hard gate passed in two consecutive post-freeze
 interactive runs. This is the accepted Qwen incumbent baseline.
 
+Raw semantic accuracy is **not** a capability claim. D068 measured the model's
+influence on the executable outcome directly: across 30 frozen cases x 2 passes,
+zero of 60 runs changed which recipe executes. Deterministic grounding decides
+that in every case; the model varies status, named intent, confidence,
+explanation, and latency. Model quality is therefore an explanation-and-latency
+property here, not a measure of what GhostCursor can do.
+
 ## Run the validated workflows
 
 Requirements: Windows, Python 3.12, VS Code for the real-app workflow, and an

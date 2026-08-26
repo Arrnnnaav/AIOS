@@ -2512,3 +2512,114 @@ not evidence of semantic caution.
 `docs/evidence/model-durability-baseline.md` is the committed reviewed summary.
 Pass medians were 2870 ms and 2771 ms. Pass 1's 10,671 ms maximum is an
 observed session value, not a formal cold-start benchmark.
+
+## D068 — The local model cannot change which recipe executes
+
+**Finding.** `resolve_model_decision()` attaches the *deterministic fallback's*
+recipe on agreement, on disagreement (`INVALID_MODEL_OUTPUT`), and on abstention
+(`MODEL_ABSTAINED_FALLBACK`) alike. Only the status label, confidence, and
+explanation vary with model output. That was a reading of the code; it is now
+measured.
+
+**Measurement.** Across the frozen 1.0.0 dataset, 30 cases x 2 passes,
+**zero of 60 case-runs changed the executable recipe**. Model intent was
+identical on all 30 cases across both passes, so the result is stable rather
+than one lucky sample. The model proposed an intent deterministic grounding did
+not produce on 11 of 30 cases — five of them recipe-bearing — and D058 denied
+authority to every one. All 13 launch-eligible cases were goals deterministic
+grounding already resolved.
+
+Exactly one model request was issued per case, asserted in the runner by a
+counting wrapper on the transport; the deterministic and policy views are pure
+and reuse that single sample, so a difference could not have been sampling
+noise. Comparison was on recipe identity, never on status.
+
+**Decision.** Remove semantic model accuracy from the model replacement gate: it
+measures something that cannot reach a user's executable outcome. Model
+comparison is a latency and cost benchmark, not a capability or safety
+milestone, and must not be scoped as one. Model swapping is deferred; a smaller
+model currently offers only latency and RAM improvements.
+
+**Honest scope.** Zero *execution* influence is not zero user-visible influence.
+On the six `KNOWN_INTENT_RECIPE_UNAVAILABLE` cases the model's `intent_id`
+reaches the user as a named intent — carrying no recipe and no launch authority
+— and confidence and explanation are model-authored throughout. The model's
+product surface is status, named intent, explanation, and latency.
+
+**Artifact.** `docs/evidence/model-execution-influence.md` is the reviewed
+summary; the raw result is
+`.artifacts/model-evaluation/spike-a-execution-influence.json`, ignored per
+D065. Also recorded there: the first request against a cold `ollama serve`
+exceeded the production 15 s timeout and raised, while a prewarmed model loaded
+in 502 ms and served all 60 cases without a timeout. Existing baseline latency
+figures were all taken prewarmed.
+
+## D069 — Workflow #3 is feasible without new verification kinds or strategies
+
+**Finding.** Open Extensions is expressible with what already exists.
+`'Extensions (Ctrl+Shift+X)'` reads as a `TabItem` in 11.2 ms under strategy 1,
+the view is persistent, and `element_appears` on `'Installed Section'` gives the
+same absent-to-present transition OPEN_TERMINAL already verifies. No special
+verification arg is needed. The AutomationId is empty, so promotion and
+ID-based wrong-action feedback remain unavailable, exactly as for OPEN_TERMINAL.
+
+The Command Palette fallback is **rejected**: it drives the bounded `TabItem`
+walk to zero while open, so shell-chrome hints become ungroundable, and its
+closed state is not distinguishable from its open state by `FindFirst` alone.
+Its dismissal on focus loss was attempted four times and never measured; that is
+recorded as an unmeasured gap rather than inferred, and nothing depends on it.
+
+**Central finding.** `FindFirst` returns a non-`None` element with a dead COM
+pointer when the condition matches nothing, rather than returning `None`.
+Measured with no exceptions across 10 names x 3 UI states: dead pointer if and
+only if no match, presence if and only if a property read succeeded.
+
+The resulting rule has three branches, not two, and the third is the one the
+current code gets wrong:
+
+| `FindFirst` | property read | meaning |
+|---|---|---|
+| object | succeeds | **present** |
+| object | `NULL COM pointer access` | **absent** |
+| object | any other COM/read failure | **perception fault** |
+
+`iter_vscode_elements()` collapses the last two with a blanket
+`except Exception: return []`, so a genuine perception fault is reported as an
+empty successful observation — indistinguishable from "nothing is there". That
+is the same silent-degradation shape that let Open Folder's tier-1 perception go
+dark without any gate noticing. A shared provider-query helper must enforce all
+three branches, and every provider-side query must go through it.
+
+An earlier
+generalisation of this data as a "shell chrome versus webview" boundary was
+wrong and is explicitly retracted — `Extensions (Ctrl+Shift+X)` is shell chrome
+and returned a dead pointer whenever the sidebar was not rendered.
+
+**Decision.** Scope the declarative workflow compiler to the 7 existing
+verification kinds and the 2 existing selector strategies, with four
+safeguards the measurements require: recipes **declare** selector strategy
+rather than having it inferred; a dead COM pointer is reported as a strategy
+failure, never a hit; trusted name matching strips private-use Codicon prefixes;
+and durable promotion rejects positional IDs matching
+`list_id_<number>_<number>`, which encode list position and not control
+identity. `vscode_workspace_title` moves into declarative verification
+configuration.
+
+**Open Folder migration.** Move Open Folder to the bounded-descendants
+strategy, which is *measured* working (5/5, stable bbox), rather than betting on
+the unverified hypothesis that fixing the name would revive provider lookup.
+Match a **normalised** accessible name: strip leading private-use Codicon
+characters, then compare against `Open Folder...`. Do not add the observed glyph
+to the recipe literally — a specific private-use codepoint is version-sensitive
+and would break on the next VS Code that renumbers its icon font. Open
+Extensions stays on provider exact lookup, with the live-property guard.
+
+**Consequence for the migration gate.** `iter_vscode_elements()` returns zero
+elements against live VS Code 1.134.0, so Open Folder currently completes on
+OCR alone. Its migration gate must assert the hint was UIA-grounded, not merely
+that the workflow finished; otherwise the gate passes on the fallback tier and
+proves nothing about the compiler. Budget roughly nine real-desktop acceptance
+runs for the milestone.
+
+**Artifact.** `docs/evidence/workflow3-uia-feasibility.md`; raw results under
+`.artifacts/model-evaluation/spike-b-*.json`, ignored per D065.
