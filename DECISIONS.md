@@ -3104,7 +3104,7 @@ is waived during the run. Comparing intent alone would let a right-intent
 wrong-tier result pass, and would make a clean no-match indistinguishable from
 an ambiguity failure.
 
-### D073 — Acceptance binds the pack-declared application identity, not necessarily the host executable version
+## D073 — Acceptance binds the pack-declared application identity, not necessarily the host executable version
 
 **Decision.** Every application pack declares exactly one closed
 `version_identity` strategy, and every acceptance/adoption record binds the
