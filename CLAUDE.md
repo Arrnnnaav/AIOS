@@ -446,7 +446,7 @@ foundational work later.
 - The demo remains the locked 4:45 sequence. It must not claim VS Code
   AutomationId-based wrong-action recovery.
 
-## Model-durability branch status
+## Model-durability outcomes (complete)
 
 D068 and D069 close the two feasibility spikes and reset the next milestone.
 
@@ -483,39 +483,24 @@ returning a non-`None` object is not evidence of presence:
 | object | `NULL COM pointer access` | absent |
 | object | any other COM/read failure | perception fault |
 
-`iter_vscode_elements()` collapses the last two into an empty successful
-observation, so a real fault is indistinguishable from "nothing there". A shared
-provider-query helper must own this rule and every provider-side query must
-route through it. Verification never treats pointer existence as evidence,
+`provider_exact()` owns this classification, and every provider-side exact query
+must route through it. A non-presence property-read failure raises
+`ProviderQueryFault` instead of being collapsed into an empty successful
+observation. Verification never treats pointer existence as evidence,
 `element_appears` and `element_disappears` included. The earlier "shell chrome
 versus webview" explanation is **retracted** — it was wrong.
 
-**Open Folder's tier-1 perception is currently dark.** `iter_vscode_elements()`
-returns 0 elements against VS Code 1.134.0 and the workflow completes on OCR
-alone. Migrate it to the bounded-descendants strategy, which is measured
-working, matching a **normalised** name: strip leading private-use Codicon
-characters, then compare against `Open Folder...`. Never write the observed
-glyph into a recipe — a private-use codepoint is version-sensitive. Its
-migration gate must assert the hint was UIA-grounded, not merely that the
-workflow finished, or it passes on the fallback tier and proves nothing.
+**Open Folder's tier-1 perception was restored and revalidated.** The workflow
+was migrated to `bounded_descendants()` with `EXACTLY_ONE` cardinality and
+normalised trusted-name matching. Gate 1 passed 5/5; gate 2 passed 3/3 with
+in-tour `source=uia` grounding and zero OCR. Never write the observed leading
+Codicon glyph into a recipe — a private-use codepoint is version-sensitive.
+Migration gates must assert UIA provenance rather than mere completion, because
+fallback OCR can preserve the outcome while the preferred tier is dark.
 
 **Never promote positional AutomationIds.** `list_id_<number>_<number>` encodes
 a list index, not a control. They are the only non-empty ids VS Code exposes,
 and `promote()` would happily persist one.
-
-**Next milestone: the declarative workflow compiler**, contracted as two
-explicit strategies — `provider_exact` (presence requires a successful property
-read) and `bounded_descendants` (declared control type, bounded result count,
-normalised accessible names). Recipes declare strategy; the compiler never
-infers it. The product-defining proof is adding Open Extensions through
-manifest and recipe data with no change to `ghostcursor/**/*.py`. Budget roughly
-nine real-desktop acceptance runs. The shared presence helper lands before the
-compiler.
-
-Model durability continues only on `post-submission/model-durability`. D062
-records the measured nullable-schema probe and shared bounded Ollama adapter.
-Do not merge this branch into the certified submission branch while durability
-gates remain incomplete.
 
 D063 is now built: both inference paths use the shared adapter, parsers accept
 only canonical bounded fields, planner null is an explicit abstention, and
@@ -531,16 +516,17 @@ goals; D058 denied authority to all four raw over-commitments.
 
 Any change to a model name or digest, Ollama request options, prompt, JSON
 schema, parser, adapter, planner inference, hint inference, or authority policy
-requires the complete model-durability gate. Run it with `--interactive`; a
-non-interactive skip cannot close the milestone. Until labels are owner-reviewed
-and frozen, add `--draft` and do not promote the report:
+requires the complete model-durability gate. Run it with `--interactive` and
+without `--draft`; a non-interactive skip cannot close the milestone. `--draft`
+is reserved for an explicitly unfrozen dataset revision and cannot produce a
+promotable report:
 
 ```powershell
 py -3.12 -m ghostcursor.evaluation.model_gate `
   --model qwen3:4b-instruct `
   --endpoint http://127.0.0.1:11434 `
   --unavailable-endpoint http://127.0.0.1:1 `
-  --interactive --draft
+  --interactive
 ```
 
 The evaluation package is read-only by construction. Do not import
@@ -550,16 +536,15 @@ synthesis API into it. Full reports are ignored under
 requires two consecutive non-draft full passes; every failure resets the count
 to zero and must be preserved and classified first.
 
-D065 fixes evidence promotion: timestamped JSON remains ignored, while
+D065 fixed evidence promotion: timestamped JSON remains ignored, while
 `docs/evidence/model-durability-draft.md` is the concise, reviewable diagnostic
-summary. Do not remove its pre-freeze warning or call its numbers the incumbent
-baseline until D064's consecutive-pass gate is complete.
+summary. Its pre-freeze numbers remain diagnostic and are not the incumbent
+baseline.
 
-D066 freezes owner-reviewed dataset version 1.0.0. Its misspelling asymmetry is
+D066 froze owner-reviewed dataset version 1.0.0. Its misspelling asymmetry is
 an observed anchor-rule result, not fuzzy matching: only `intergrated` preserves
-the required `open + terminal + VS Code` anchors. From this commit onward, do
-not use `--draft`; the first full run after the freeze starts the trusted
-two-consecutive-pass count.
+the required `open + terminal + VS Code` anchors. The trusted baseline runs used
+non-draft mode after that freeze.
 
 D067 closes that count: two consecutive complete post-freeze interactive gates
 passed with identical 26/30 raw semantic accuracy, 6/6 exact supported, zero
@@ -569,3 +554,23 @@ unsupported launches, and unchanged no-action evidence. The incumbent is
 `docs/evidence/model-durability-baseline.md` is the committed baseline; future
 model/request/prompt/schema/parser changes compare against it and retain this
 digest as the rollback target.
+
+## Forward work (not started)
+
+- Build recipe schema v2 and the declarative workflow compiler around the two
+  measured selector strategies: `provider_exact` and `bounded_descendants`.
+  Recipes declare strategy; the compiler never infers it.
+- Make intent registration declarative. `registry()` is still a hardcoded Python
+  dictionary, so Open Extensions cannot be a data-only workflow while it stays
+  one.
+- Migrate Open Folder and Open Terminal to schema v2, then add Open Extensions
+  through manifest and recipe data with no workflow-specific change under
+  `ghostcursor/**/*.py`.
+- Budget roughly nine human-driven real-desktop acceptance runs: 3/3 for each
+  migrated workflow and 3/3 for Open Extensions.
+
+`post-submission/model-durability` is frozen by the `durability-final` tag on
+this corrective commit. All schema-v2 design and implementation belongs only to
+`feature/declarative-workflow-compiler`; intentional work there may now diverge
+from durability. Never merge the durability branch into the certified
+`submission/open-track` branch.
