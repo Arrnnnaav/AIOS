@@ -2642,6 +2642,20 @@ that the workflow finished; otherwise the gate passes on the fallback tier and
 proves nothing about the compiler. Budget roughly nine real-desktop acceptance
 runs for the milestone.
 
+**Migration closed.** Both gates passed on VS Code 1.134.0. Gate 1: five
+consecutive read-only checks, exactly one UIA element at `(527, 238, 677, 277)`
+— the Welcome-page action, not the sidebar button — grounding on a UIA name
+rung. Gate 2: three consecutive guided-tour completions, every one reporting
+`source=uia rung=3` in-tour with zero OCR mentions in its log. Recorded in
+`docs/evidence/open-folder-migration-gates.md`.
+
+The gate's pre-run capture proved a flawed instrument and should not be reused:
+it is itself a UIA probe, so it warms the Chromium tree it is measuring (D035),
+and it failed on two runs that then succeeded. The in-tour provenance line
+measures the same property without perturbing anything. Its corollary is
+product-relevant on its own — a genuinely cold VS Code window returns zero
+elements on the first probe, so a real cold start can let OCR escalate.
+
 **Artifact.** `docs/evidence/workflow3-uia-feasibility.md`; raw results under
 `.artifacts/model-evaluation/spike-b-*.json`, ignored per D065.
 
