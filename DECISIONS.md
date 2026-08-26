@@ -2671,6 +2671,24 @@ measured it. The "dead pointer iff no match" observation was also rescoped to
 the measured environment rather than presented as a universal COM guarantee.
 D032 is closed for this slice by that review.
 
+**Later measurement — the Open Extensions selector needs a control type.**
+Spike B's verdict for Open Extensions was measured through `FindFirst`, which
+returns at most one element. A later `FindAll` measurement on VS Code 1.134.0
+found that `Extensions (Ctrl+Shift+X)` matches **two** elements: a `TabItem` at
+`(1093, 923, 1133, 969)` and a `Group` at `(1101, 934, 1124, 957)`, runtime ids
+`(42, 460470, 4, 4, 1, 890)` and `…891`. `FindFirst` returned only the first, so
+the ambiguity was invisible to the original spike.
+
+Under D069's own cardinality rule an `EXACTLY_ONE` action selector on that name
+would raise `SelectorAmbiguityFault`. The verdict stands with one addition: the
+selector must declare `control_type: "TabItem"`, which resolves it to a single
+match (measured 3/3). Schema v2 does not exist yet; the agreed v2 design already
+includes a `control_type` field on selectors, so this requires no expressiveness
+beyond what is planned — but for this selector it is mandatory, not optional.
+
+Recorded in `docs/evidence/provider-findall-spike.md`.
+
+
 ## D070 — Runtime observations and curated knowledge have separate stores, lifecycles, and authority
 
 **Decision.** `kb.sqlite` remains the user-resettable store for screen-derived
