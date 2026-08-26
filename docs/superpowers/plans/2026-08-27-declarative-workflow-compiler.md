@@ -1,7 +1,7 @@
 # Declarative Workflow Compiler Implementation Plan
 
 Date: 2026-08-27
-Status: **draft, pending independent review before implementation**
+Status: **revised after independent review; pending re-review before implementation**
 
 **Goal:** Replace GhostCursor's hardcoded planner registry and workflow-specific
 UIA walkers with one manifest-authorized schema-v2 compiler, migrate the three
@@ -65,6 +65,40 @@ D058, D062–D072; `docs/evidence/provider-findall-spike.md`;
 - Commit each task after its focused and hermetic gates pass. Do not push or
   begin the next review-gated phase until the preceding diff is reviewed.
 
+## Execution prerequisites, version drift, and real cost
+
+The **12 desktop runs are a minimum acceptance count, not the human-work
+budget**. They exclude interactive and pixel lanes, standalone pixel harnesses,
+three isolated hung-window lanes, the wrong-action regression, live
+never-fabricate work, two consecutive interactive model-gate passes, independent
+reviews, and every rerun caused by failure or application-version drift. No
+schedule may assume first-pass success.
+
+Exact application-version equality makes drift a gate, not an inconvenience.
+Before the first acceptance for an application, record the observed
+`AppInfo.version`; re-read it before and after every run, before evidence is
+committed, immediately before installation/activation, and at pre-launch. Do not
+claim the application is pinned merely because no update was observed. A
+controlled installation may disable updates only when that state is itself
+verified and recorded; the safety rule remains detection and exact equality.
+
+If an application version changes, preserve the old evidence as valid history
+for the old version but reset the affected consecutive-run count. Every workflow
+that will remain active for the new version must be accepted 3/3 against that
+version and receive a new adoption record before activation. For VS Code, drift
+after Task 8 can therefore require reaccepting Open Folder and Open Terminal as
+well as Open Extensions. Until then, exact-version mismatch correctly leaves
+those intents unavailable. Never widen a range or edit evidence to recover the
+nominal 12-run count.
+
+Independent review capacity is also a prerequisite. At minimum this plan needs
+separate review gates for the plan itself, migrated acceptance evidence, the
+atomic authority cutover, compiler-baseline evidence, Open Extensions evidence,
+and final code/evidence/docs. A single author/operator cannot self-certify those
+artifacts under D032. Batch review is allowed; skipped or circular review is not.
+If an independent reviewer is unavailable, stop at that gate rather than coding
+past it.
+
 ## Planned file ownership
 
 | File | Responsibility |
@@ -83,6 +117,7 @@ D058, D062–D072; `docs/evidence/provider-findall-spike.md`;
 | `ghostcursor/daemon.py` | Consume verified pack window identities only |
 | `ghostcursor/devtools/candidate_acceptance.py` *(new)* | Developer-only exact-graph candidate harness, unreachable from production parser/Ask |
 | `tests/data/d072_compatibility_v1.json` *(new)* | Committed machine-readable form of the reviewed 86-row D072 corpus |
+| `tools/render_d072_compatibility.py` *(new)* | Deterministically render/check the D072 evidence table from the committed canonical fixture |
 | `docs/superpowers/candidates/declarative-workflow-compiler/` *(new)* | Quarantined candidate artifacts, outside trusted roots |
 | `ghostcursor/packs/index.json` and pack directories | Installed v2 catalog and activation authority after cutover |
 
@@ -193,7 +228,9 @@ or rollback.
 - Create: `ghostcursor/packs/compile.py`
 - Create: `tests/test_compiled_matcher.py`
 - Create: `tests/data/d072_compatibility_v1.json`
+- Create: `tools/render_d072_compatibility.py`
 - Modify: `tests/test_planner.py`
+- Modify: `docs/evidence/d072-compatibility-corpus.md` — generated-section markers
 
 **Produces:** pure `compile_planner(catalog) -> tuple[IntentSpec, ...]` and a
 pure deterministic classifier implementing D072's two-tier fixed-depth grammar.
@@ -206,12 +243,23 @@ tier 0.85; multiple rules for one intent deduplicate; multiple intents in one
 tier return `UNSUPPORTED_GOAL`; artifacts cannot declare confidence, negation,
 recursion, or matcher plugins.
 
-- [ ] Transcribe the reviewed 86-row corpus into committed JSON with goal,
-  v1/v2 intent, confidence, kind, divergence class, and D072 reason.
-- [ ] Add a consistency test that parses the full table in
-  `docs/evidence/d072-compatibility-corpus.md` and proves the fixture has the
-  same 86 goals, 14 divergences, and 5/3/6 class distribution. Do not maintain a
-  second handwritten expectation set.
+- [ ] Establish `tests/data/d072_compatibility_v1.json` as the one canonical,
+  reviewed corpus source with goal, v1/v2 intent, confidence, kind, divergence
+  class, and D072 reason. The ignored `.artifacts/` JSON is disposable scratch,
+  not a third source, and is never cited or compared as authority.
+- [ ] Commit a deterministic renderer/checker that reads the canonical JSON and
+  renders the result counts and full table inside marked generated sections of
+  `docs/evidence/d072-compatibility-corpus.md`. `--check` must fail on any byte
+  difference without rewriting files; normal mode regenerates the evidence
+  sections. It contains no matcher and no duplicate expected outcomes.
+- [ ] Add a test invoking the renderer in `--check` mode and proving the
+  canonical fixture has 86 goals, 14 divergences, and the reviewed 5/3/6 class
+  distribution. This makes JSON→evidence reproducible rather than checking two
+  independently maintained copies against each other.
+- [ ] Before declaring JSON canonical, independently review the one-time
+  evidence→JSON transcription and require the renderer's first output to make
+  zero semantic changes to the already reviewed table. Thereafter JSON is the
+  source and the marked evidence sections are generated output.
 - [ ] Add deterministic bounded generation from each declared exact phrase and
   heuristic clause product.
 - [ ] Implement normalized literal-substring token/alias matching and the
@@ -420,6 +468,11 @@ meaning.
 **Gate:** stop if any workflow does not complete three consecutive runs against
 the exact candidate graph and exact observed application version.
 
+- [ ] Start an acceptance campaign by recording the live Synthetic/Python and
+  VS Code `AppInfo.version` values. Re-read the applicable value before and
+  after every run. A change resets the consecutive count for every affected
+  workflow; old-version evidence remains history and is never edited into
+  new-version evidence.
 - [ ] Run Synthetic Export 3/3, including its wrong-control action and verified
   recovery/completion.
 - [ ] Run Open Folder 3/3. Evidence must assert in-tour `source=uia` and zero OCR
@@ -462,6 +515,15 @@ the reviewed v2 catalog.
 **Invariant:** all three accepted recipes activate only through manifest records
 that bind the exact tested pack, intent, recipe, evidence, and app version.
 
+- [ ] **Pre-cutover version gate:** independently re-read each target's
+  `AppInfo.version` and compare it to Task 8 evidence before staging the
+  activation. On drift, stop and return the affected workflow(s) to Task 8 for
+  fresh 3/3 acceptance; do not create an immediately unavailable activation.
+- [ ] Produce a staged authority inventory mapping every old production entry
+  point to its v2 replacement or deletion. An independent reviewer must inspect
+  the complete staged diff, activation records, deletion list, source scans, and
+  failure-scope tests before the commit is created. This is a stronger gate than
+  ordinary task review because Task 9 changes all production authority at once.
 - [ ] Install the accepted candidate bytes under content-addressed names; re-read
   and rehash every installed artifact.
 - [ ] Build complete adoption records using Task 8 evidence digests and set their
@@ -479,6 +541,9 @@ that bind the exact tested pack, intent, recipe, evidence, and app version.
 - [ ] Mutation-check at least one guard at every authority stage from index to
   pre-launch.
 - [ ] Commit: `feat: activate declarative workflow compiler`
+- [ ] Independently review the committed tree and rerun the authority inventory
+  before Task 10. Task 9 is provisional and must not be pushed while Task 10 is
+  unresolved.
 
 ---
 
@@ -488,6 +553,17 @@ that bind the exact tested pack, intent, recipe, evidence, and app version.
 
 - Create/update committed gate summaries under `docs/evidence/`
 - Do not add workflow capability
+
+**Gate and remedy:** Task 9 does not become the compiler baseline until every
+item below passes. Preserve and classify every failure. For an authority,
+never-fabricate, input-synthesis, or other safety failure, immediately revert
+Task 9 with a new revert commit, restoring v1 as the sole production authority;
+fix the pre-cutover implementation and repeat Tasks 8–10 as affected. For a
+fail-closed compatibility/UX defect that exposes no unsafe execution path, hold
+the branch unpushed, fix forward in a focused reviewed commit, and restart all
+affected gates—including the consecutive model-pass count—from zero. Do not
+start Open Extensions, call the cutover certified, or merge while this gate is
+open.
 
 - [ ] Run hermetic:
 
@@ -512,6 +588,8 @@ py -3.12 -m pytest tests -m "not interactive and not pixel and not hung" `
   durable source.
 - [ ] Independent evidence review under D032.
 - [ ] Commit: `docs: certify declarative compiler baseline`
+- [ ] Only after independent review of the complete gate evidence, designate the
+  passing HEAD as the Open Extensions proof baseline.
 
 ---
 
@@ -552,6 +630,11 @@ be reviewable before activation can reference it.
 - [ ] Run the exact quarantined candidate 3/3 on the reviewed VS Code version.
   A run passes only when the Extensions target is UIA-grounded and `Installed
   Section` appears under the declarative verification selector.
+- [ ] Re-read VS Code `AppInfo.version` before and after each run and immediately
+  before activation. If it differs from either the Open Extensions campaign or
+  any already-active VS Code adoption, stop: reset Open Extensions' count and
+  reaccept every VS Code workflow that must remain active on the new version.
+  The minimum 12-run budget no longer applies after drift.
 - [ ] Write committed evidence with full pack, intent, recipe digests; exact app
   version; raw provider count/property-read result; 3/3 outcomes; and provenance.
 - [ ] Independently review the evidence, then commit:
@@ -582,10 +665,11 @@ be reviewable before activation can reference it.
 - Update `README.md` only for user-visible commands/behavior
 
 - [ ] Repeat the full Task 10 non-desktop gate set on final HEAD and verify the
-  committed **12-run** acceptance record is complete: Synthetic Export, Open
-  Folder, Open Terminal, and Open Extensions, each accepted 3/3 before
-  activation against the exact installed bytes. Do not inflate the count with
-  post-install smoke checks.
+  committed acceptance record contains at least the **12 required successful
+  runs**: Synthetic Export, Open Folder, Open Terminal, and Open Extensions,
+  each accepted 3/3 before activation against the exact installed bytes and
+  version. Version drift may legitimately increase the human-run count; do not
+  inflate it with post-install smoke checks.
 - [ ] Confirm `kb.sqlite` deletion semantics are unchanged and no
   `knowledge.sqlite` tables were introduced.
 - [ ] Confirm durability branch remains exactly `5e771ca` at tag
@@ -615,7 +699,8 @@ be reviewable before activation can reference it.
 - [ ] Observation plans cover action, verification, and context selectors with
   one all-or-nothing tick and no ambiguity-hiding truncation.
 - [ ] Synthetic Export, Open Folder, Open Terminal, and Open Extensions each
-  pass 3/3; Open Folder asserts UIA provenance.
+  pass 3/3 on the exact version ultimately activated; Open Folder asserts UIA
+  provenance. Twelve is the no-drift minimum, not a cap.
 - [ ] Frozen model gate has two consecutive non-draft passes; live never-fabricate
   matrix and zero model execution influence remain green.
 - [ ] Interactive, pixel, standalone, hung-window-alone, wrong-action, and
