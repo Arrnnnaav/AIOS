@@ -2883,3 +2883,223 @@ list — is not built, matching the existing deferral of mechanical D032/D034
 enforcement. **Trigger:** the first drift incident that survives an independent
 documentation review, or the doc-audit `--check` mode arriving for another
 reason. Ordinary drift caught by review does not count toward it.
+
+## D072 — The deterministic matcher is frozen as declarative data
+
+**Finding.** `_fallback()` in `ghostcursor/reasoning/planner.py` is the real
+execution authority for goal classification, and it is hardcoded Python. Open
+Extensions cannot be a data-only workflow while it stays that way, so the
+matcher has to become artifact data before the declarative compiler can prove
+anything.
+
+Reading it closely surfaced a defect worth fixing rather than porting. The
+current matcher grounds `open the report and/or the sheet in vs code` as
+`OPEN_FOLDER` at 0.85: a prose slash, plus `open`, plus an application alias is
+enough to authorize an unrelated workflow. The slash predicate is `"\\" in
+normalized or "/" in normalized`, which cannot tell a path from prose.
+
+**Decision.** Freeze the matcher as a fixed, nonrecursive grammar carried in
+intent artifacts.
+
+**Grammar.** Five primitives: `normalise` (lowercase, collapse whitespace),
+`exact_phrase`, `any_of`, `all_of`, `contains_path_separator`. A heuristic rule
+is `all_of: [clause…]`; a clause is `any_of: [term…]`; a term is exactly one of
+`{"token": …}`, `{"alias": …}`, `{"path": true}`. Three levels, no recursion, no
+fourth form — conjunctive normal form at fixed depth. No negation or exclusion
+predicates. Aliases are pack-level and referenced by name; a missing alias
+reference is a hard failure, never a silent skip.
+
+**Matching semantics.** A `token`, and every member of an `alias`, matches by
+**normalized literal substring** — the term's characters appearing anywhere in
+the normalized goal. Not whole-word, not equality. This is stated because it is
+load-bearing for parity: `_fallback()` uses substring containment today, so
+`open` matches inside `reopen` and `opened`. Whole-word matching would be
+defensible on its own merits and would change results, which makes it a separate
+decision rather than an implementation detail. An `exact_phrase` matches by
+equality against the normalized goal.
+
+**Literal form.** Matcher literals — phrases, tokens, and alias members — are
+**stored in canonical normalized form** (lowercased, whitespace collapsed). The
+loader **validates and rejects**; it does not normalize on the way in. Two
+reasons: artifacts are content-addressed, so silently normalizing would let two
+byte sequences with different digests mean the same thing; and an authoring
+mistake such as a capitalized token should fail loudly rather than be repaired
+invisibly. Goal text is normalized at match time by the same definition.
+
+**Non-empty constraints, enforced at load.** After normalization, every one of
+these must be non-empty: each phrase in an exact rule, each `token` value, each
+`alias` name, and **each member of an alias group**. Every exact rule carries at
+least one phrase; every `all_of` at least one clause; every `any_of` at least
+one term; every **alias group at least one member**.
+
+These are not stylistic — each empty case fails silently and in a different
+direction:
+
+| Empty thing | Silent effect |
+|---|---|
+| `all_of` with no clauses | vacuously true — matches **every goal** |
+| `any_of` with no terms | vacuously false — matches none |
+| alias group with no members | matches none |
+| an alias **member** that is empty or whitespace-only | substring test succeeds for **every goal** |
+
+The last is the worst and the least obvious: a whitespace-only member normalizes
+to the empty string, and the empty string is a substring of everything, so one
+stray entry silently grants the alias clause to every goal. Which of these a
+reader gets also depends on the implementation's fold — exactly the divergence a
+frozen contract exists to forbid.
+
+Sufficiency is established for every existing rule and unproven beyond them:
+EXPORT_DATA needs 2 clauses, OPEN_FOLDER 3, OPEN_TERMINAL 3.
+
+**Tiers.** Exactly two — `exact` at 0.95 and `heuristic` at 0.85. Confidence is
+a property of the tier; artifacts select a tier and never declare a number.
+
+**Ordering and ambiguity.** Every exact rule across all intents evaluates before
+any heuristic rule. `_fallback()` today runs EXPORT_DATA's heuristic before
+OPEN_FOLDER's exact phrases, so one intent's heuristic can structurally shadow
+another's exact match; tiering removes that. Multiple rules matching the same
+intent within a tier deduplicate to that intent. Two different intents matching
+within a tier fail closed to `UNSUPPORTED_GOAL` — once intents are separate
+files across packs, source order stops existing, so first-match-wins has no
+meaning to preserve.
+
+**Path predicate — recognized forms only.**
+
+| Form | Example |
+|---|---|
+| Drive-rooted, either slash | `C:\Projects\Demo`, `C:/Projects/Demo` |
+| UNC — **two** leading backslashes | `\\server\share` |
+| Relative backslash path | `Projects\Demo` |
+| Explicit dotted | `./x`, `../x`, `.\x`, `..\x` |
+
+A **relative backslash path** is non-whitespace segments joined by a backslash.
+Bare backslash containment is not sufficient: prose carrying a loose backslash,
+such as `foo \ bar`, must not be accepted as a path.
+
+A bare forward-slash pair is not a path: `Projects/Demo` is lexically identical
+to `csv/tsv`, and no rule can separate them.
+
+**`CREATE_DOCUMENT` and `OPEN_SETTINGS` get no deterministic rules.** They
+remain registered, model-visible IDs. `_fallback()` never checks them, so adding
+rules would change deterministic-null results and break migration parity.
+
+**Alternatives considered.** Exact phrases only — measurably worse: the frozen
+dataset's `paraphrase_open_windows_path` exists to exercise the path predicate,
+and six paraphrase cases would regress. Matcher plugins — breaks the data-only
+proof by construction, since adding a workflow would mean adding Python.
+
+**Intentional divergences, predeclared.** Three **classes**. The goals below are
+**representatives, not an exhaustive list** — each class is unbounded, and the
+corpus fixes concrete rows so the gate has something to check. What D072
+declares is the classes; what the corpus pins is examples of them.
+
+The definitions are deliberately narrow, because a loose one would let the
+allowlist absorb an unrelated divergence:
+
+- **forward-slash** — v1 reaches `OPEN_FOLDER` *solely* because the old
+  predicate accepted a bare forward slash, and v2 does **not** reach
+  `OPEN_FOLDER`.
+- **backslash-prose** — the same, for a loose backslash.
+- **ambiguity** — two different intents match within a tier.
+
+Merely containing a separator is not sufficient. `export as csv/tsv` carries one
+and does **not** diverge, because it reaches `EXPORT_DATA` through its own
+clauses rather than through the separator predicate.
+
+A path-class divergence does **not** always end in a non-match. Removing the
+separator can leave a *different* intent as the sole match:
+`open terminal x/y in vscode` is `OPEN_FOLDER` (0.85) under v1 and
+`OPEN_TERMINAL` (0.85) under v2, because `OPEN_FOLDER` is checked first in v1
+and stops matching in v2. Defining the class as "resolves to no match" would
+therefore mark a legitimate member UNCLASSIFIED; the class is defined by v2 not
+reaching `OPEN_FOLDER`, whatever it reaches instead.
+
+A divergence meeting none of the definitions above is **UNCLASSIFIED** and fails
+the gate. The class is **persisted per row** in the raw corpus, so the count can
+be recomputed from the preserved artifact rather than depending on a script that
+produced it.
+
+*Class 3 — two intents match within a tier, so D072 fails closed:*
+
+| Goal | v1 | v2 |
+|---|---|---|
+| `csv export open vs code folder` | `EXPORT_DATA` (0.85) | ambiguous |
+| `csv export open terminal vs code` | `EXPORT_DATA` (0.85) | ambiguous |
+| `open vs code folder open terminal vs code` | `OPEN_FOLDER` (0.85) | ambiguous |
+| `open terminal in vs code and export table` | `EXPORT_DATA` (0.85) | ambiguous |
+| `open folder in vs code and export table` | `EXPORT_DATA` (0.85) | ambiguous |
+| `open folder terminal in vscode` | `OPEN_FOLDER` (0.85) | ambiguous |
+
+`_fallback()` has no ambiguity concept: it returns the first rule that matches,
+by source order, so any goal satisfying two intents' heuristic rules silently
+resolves to whichever intent happens to be checked first. Under D072 that is
+`UNSUPPORTED_GOAL`. The corpus covers this class systematically — one collision
+goal per **unordered pair** of intents, built from one representative term per
+clause of each — so no pair is left sampled. The exact tier cannot collide,
+because duplicate normalized exact phrases across intents are rejected at load.
+
+This class was absent from the first two drafts of this decision. It is not a
+path-predicate consequence; it follows from the ambiguity rule itself, which is
+why declaring only the path classes left it invisible.
+
+*Class 1 — a bare forward slash no longer counts as a path:*
+
+| Goal | v1 | v2 |
+|---|---|---|
+| `open csv/tsv in VS Code` | `OPEN_FOLDER` (0.85) | no_match |
+| `Open Projects/Demo in VS Code` | `OPEN_FOLDER` (0.85) | no_match |
+| `open and/or in vs code` | `OPEN_FOLDER` (0.85) | no_match |
+| `open the report and/or the sheet in vs code` | `OPEN_FOLDER` (0.85) | no_match |
+
+*Class 2 — a loose backslash in prose no longer counts as a path:*
+
+| Goal | v1 | v2 |
+|---|---|---|
+| `open foo \ bar in vs code` | `OPEN_FOLDER` (0.85) | no_match |
+| `open a \ b in visual studio code` | `OPEN_FOLDER` (0.85) | no_match |
+
+Class 2 was missing from this decision's first draft, which declared only the
+forward-slash cases. It surfaced when the contract-defining negative `foo \ bar`
+was added to the compatibility corpus during review: the v1 predicate is bare
+backslash containment, so backslash prose grounds today, and tightening the
+relative-path definition changes it.
+
+Both omissions have the same shape — a contract-defining case that lived in no
+committed artifact, so nothing forced it to be evaluated. Without them the
+gate's no-unexpected-divergence rule would have failed the first time anyone
+wrote such a goal.
+
+**A no-match and an ambiguity are different outcomes.** Both yield no intent, so
+comparing intent alone cannot tell them apart, and D072's fail-closed ambiguity
+rule would go unverified. The corpus therefore records an outcome `kind` —
+`matched`, `no_match`, or `ambiguous` — alongside the intent, and a confidence,
+since an implementation could otherwise return the right intent at the wrong
+tier and be counted as agreeing.
+
+**Evidence.** `docs/evidence/d072-compatibility-corpus.md` holds 86 rows — the
+frozen 30-case dataset, the never-fabricate matrix cells, every exact phrase
+verbatim, 21 deterministically generated clause combinations, 7 positive path
+fixtures, negative prose-slash fixtures, one collision goal per unordered intent
+pair, and representatives of all three divergence classes. It also carries the
+complete 14-case path-predicate table, so every input the predicate is specified
+against — including the `foo \ bar` negative that distinguishes the definition
+from bare containment — lives in a committed artifact rather than a transcript.
+
+Each row carries intent, confidence, and outcome kind for both matchers. The v1
+values are **measured** by running `deterministic_intent()`; the v2 values are
+**specified** by a reference implementation of this contract rather than
+measured, because v2 does not exist yet.
+
+Result: 14 divergences, every one falling in a class predeclared above, **0
+UNCLASSIFIED** when recomputed from the persisted rows. No v2 confidence lies outside {0.0, 0.85, 0.95}. All 30 frozen
+dataset rows agree on intent *and* confidence, so there is **no regression in
+the frozen 30-case dataset** — evidence over that dataset, not proof over all
+goals. The tightening intentionally changes unmeasured inputs, and every
+divergence is exactly such an input.
+
+**Gate.** The migration gate passes only when every non-divergent row agrees
+with `_fallback()` on intent **and** confidence, each divergence falls in a
+class declared above with the stated outcome kind, and no unexpected divergence
+is waived during the run. Comparing intent alone would let a right-intent
+wrong-tier result pass, and would make a clean no-match indistinguishable from
+an ambiguity failure.
