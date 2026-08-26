@@ -306,3 +306,42 @@ walker fix.
 **Trigger:** the declarative compiler. It can carry both the raw and the
 normalised name on a selector, which restores exact-rung semantics without
 losing observation fidelity — a better fix than widening rung 2 globally.
+
+
+## Declarative workflow compiler (scoped, not started)
+
+Moved out of `CLAUDE.md` under D071: unresolved work is owned here, not by the
+rules file.
+
+### Recipe schema v2 and the declarative workflow compiler
+
+Built around the two measured selector strategies, `provider_exact` and
+`bounded_descendants`. Recipes declare strategy; the compiler never infers it.
+
+**Trigger:** the design spec is written and independently reviewed.
+
+### Declarative intent registration
+
+`registry()` in `ghostcursor/reasoning/planner.py` is still a hardcoded Python
+dictionary, so Open Extensions cannot be a data-only workflow while it stays
+one. This is a prerequisite for the proof, not an optional cleanup.
+
+**Trigger:** schema v2 lands.
+
+### Migrate the existing workflows, then add Open Extensions
+
+Migrate Synthetic Export, Open Folder, and Open Terminal to schema v2, then add
+Open Extensions through pack and recipe data with no workflow-specific change
+under `ghostcursor/**/*.py`. The proof is the whole diff from the compiler
+baseline through adopted Open Extensions containing no such Python.
+
+**Trigger:** the compiler is implemented and tested.
+
+### Acceptance budget
+
+Twelve human-driven real-desktop runs: 3/3 each for Synthetic Export, Open
+Folder, Open Terminal, and Open Extensions. All four receive new artifact bytes,
+so D070 requires fresh acceptance for each. Open Folder's gate must assert UIA
+provenance rather than mere completion.
+
+**Trigger:** artifacts exist and are ready for acceptance.

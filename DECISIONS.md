@@ -2837,9 +2837,13 @@ ceiling, `DEFAULT_DESCENDANT_LIMIT`, and the 3/3 acceptance policy all change
 what an agent must do and stay. A count of what passed on some date does not,
 and goes.
 
-**Pointers, not restatements.** `CLAUDE.md` may cite a decision number for
-provenance but must not restate its content. A reader needing the reasoning
-follows the pointer to the single source.
+**Minimal summary, not duplication.** Operational rules may be summarized
+minimally in `CLAUDE.md` — an agent needs the consequence without a round trip,
+and forcing a lookup for every rule would make the rules file unusable. What may
+never be duplicated is findings, rationale, measurements, and evidence: those
+stay canonical in `DECISIONS.md` and `docs/evidence/`, cited by number. The test
+is the same one above — a summarized consequence changes what an agent does; a
+restated finding only explains what happened.
 
 **Alternatives considered.** "Sync more carefully." That is what was already
 being done, by people who care, on a project with an explicit independent

@@ -16,6 +16,13 @@ Each tracking document has one job. Put a sentence where it belongs:
 it explain what happened or why? It belongs in `DECISIONS.md` or
 `docs/evidence/`.
 
+**This file's scope: rules, commands, and minimal orientation — not canonical
+architecture.** The sections below that describe what the project is, its tech
+stack, and its repo layout exist so an agent can find its way, and they carry
+the constraints that bind current work. They are deliberately not the
+authoritative architecture description; `FLOW.md` owns that, and the rationale
+behind each choice lives in the cited decisions.
+
 A numeric threshold can be an active rule and stays — the 95 OCR floor, D020's
 0.5s tick ceiling, the 20-run tier-2 ceiling, `DEFAULT_DESCENDANT_LIMIT`, the
 3/3 acceptance policy. A count of what passed on some date is a finding and does
@@ -85,25 +92,15 @@ deferred; see `docs/superpowers/FOLLOWUPS.md`. The logging-only watcher runs as
 
 Real VS Code perception is intentionally narrow for each validated workflow.
 `perception_walker_for("code.exe", recipe_intent)` selects the reviewed walker
-for that recipe. Open Folder uses `uia.iter_vscode_elements`, which since D069
-uses the **bounded-descendants** strategy: a `Code.exe`-bounded Button walk
-filtered by NORMALISED name against the `Open Folder` variants, capped at
-`DEFAULT_DESCENDANT_LIMIT`. It never performs the generic full Electron
-descendant walk. It previously used a provider-side exact query, which on
-VS Code 1.134.0 returns a dead COM pointer for this target while the Button
-walk reads it cleanly — so the workflow had silently fallen back to OCR for its
-grounding. Matching is normalised because VS Code prefixes a private-use
-Codicon to the accessible name; the glyph is never written into a recipe, since
-a specific codepoint is version-sensitive. A clean absence still returns an
-empty successful observation so executable-bounded OCR can escalate, but a
-genuine provider fault now raises `ProviderQueryFault` instead of
-masquerading as an empty screen. OCR
-same-line reassembly is required because Windows reads `Open` and `Folder...`
-as separate words; it does not lower the 95 grounding floor. Keep this restriction
-aligned with the trusted VS Code pack; broaden it only when a new
-reviewed VS Code recipe needs another target. Progress stages must be written
-before potentially blocking calls so health logs do not misidentify a blocked
-walk as a focus stall.
+for that recipe. Open Folder uses `uia.iter_vscode_elements`: a `Code.exe`-bounded
+Button walk filtered by normalised name against the `Open Folder` variants,
+capped by `DEFAULT_DESCENDANT_LIMIT`, never the generic full Electron descendant
+walk. Match on the normalised name and never write an observed Codicon glyph
+into a recipe. Keep OCR same-line reassembly; it does not lower the 95 grounding
+floor. Keep this restriction aligned with the trusted VS Code pack; broaden it
+only when a new reviewed recipe needs another target. Write progress stages
+before potentially blocking calls, so health logs do not misidentify a blocked
+walk as a focus stall. See D069.
 
 Open Terminal uses `uia.iter_vscode_terminal_elements`, a `Code.exe`-bounded
 Button walk filtered to exact `Toggle Panel (Ctrl+J)` and `Terminal Section`
@@ -456,20 +453,12 @@ compiler-feasibility milestones, but they govern all work — including on
 `feature/declarative-workflow-compiler`. Findings, measurements, and gate
 results live in `DECISIONS.md` and `docs/evidence/`; only the rules are here.
 
-**Presence requires a successful property read (D069).** A non-`None` return
-from `FindFirst` is not evidence of presence:
-
-| `FindFirst` | property read | meaning |
-|---|---|---|
-| object | succeeds | present |
-| object | `NULL COM pointer access` | absent |
-| object | any other COM/read failure | perception fault |
-
-`provider_exact()` owns this classification and every provider-side exact query
-must route through it. A non-presence read failure raises `ProviderQueryFault`
-rather than collapsing into an empty successful observation. Verification never
-treats pointer existence as evidence — `element_appears` and
-`element_disappears` included.
+**Presence requires a successful property read (D069).** Pointer existence is
+never evidence. Every provider-side query routes through `provider_exact()`,
+which owns the classification: a clean absence yields an empty successful
+observation, and any other read failure raises `ProviderQueryFault` rather than
+collapsing into emptiness. Verification never treats pointer existence as
+evidence — `element_appears` and `element_disappears` included.
 
 **Selector cardinality is declared, never inferred (D069, D070).** An **action**
 selector is `EXACTLY_ONE`: zero matches is a clean absence, one is a usable
@@ -507,7 +496,8 @@ human-gated and ordered quarantine -> isolated no-input-synthesis acceptance ->
 content-addressed install -> manifest swap. See D070 for withdrawal, version
 scope, evidence, digest, cache, and fail-closed requirements.
 
-**Model durability continues only on its frozen branch.** Every model, digest,
+**The frozen durability contract remains mandatory.** Implementation changes
+happen on the active product branch and must rerun the gate. Every model, digest,
 prompt, schema, parser, adapter, or inference-policy change requires the
 three-lane model gate before it can be trusted:
 
@@ -520,8 +510,10 @@ py -3.12 -m ghostcursor.evaluation.model_gate `
 ```
 
 Run it with `--interactive`; a non-interactive skip cannot close the milestone.
-Dataset 1.0.0 is frozen, so **never use `--draft`** — draft numbers are
-diagnostic and must never be called the incumbent baseline (D065, D066).
+Dataset 1.0.0 is frozen, so runs against it are **non-draft**. `--draft` is
+permitted only for an explicitly unfrozen future dataset revision, and a draft
+run can never establish a trusted baseline — draft numbers are diagnostic and
+must never be called the incumbent baseline (D065, D066).
 Acceptance requires **two consecutive non-draft full passes**; any failure
 resets that count to zero, and the failure must be preserved and classified
 before rerunning (D064, D067).
@@ -531,23 +523,3 @@ The evaluation package is read-only by construction. Never import
 API into it. Full reports stay ignored under `.artifacts/model-evaluation`;
 commit only a reviewed summary (D065). Never bypass `resolve_model_decision()`
 in an evaluation runner (D063).
-
-## Forward work (not started)
-
-- Build recipe schema v2 and the declarative workflow compiler around the two
-  measured selector strategies: `provider_exact` and `bounded_descendants`.
-  Recipes declare strategy; the compiler never infers it.
-- Make intent registration declarative. `registry()` is still a hardcoded Python
-  dictionary, so Open Extensions cannot be a data-only workflow while it stays
-  one.
-- Migrate Open Folder and Open Terminal to schema v2, then add Open Extensions
-  through manifest and recipe data with no workflow-specific change under
-  `ghostcursor/**/*.py`.
-- Budget roughly nine human-driven real-desktop acceptance runs: 3/3 for each
-  migrated workflow and 3/3 for Open Extensions.
-
-`post-submission/model-durability` is frozen by the `durability-final` tag on
-this corrective commit. All schema-v2 design and implementation belongs only to
-`feature/declarative-workflow-compiler`; intentional work there may now diverge
-from durability. Never merge the durability branch into the certified
-`submission/open-track` branch.
