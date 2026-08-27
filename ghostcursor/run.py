@@ -1189,7 +1189,7 @@ def _run_compiled_tour(
             )
         else:
             renderer_ladder = None
-        service = None
+        stop_perception = None
         if observe is None:  # pragma: no cover - needs a real desktop
             from ghostcursor.perception import tier2 as tier2_module
             from ghostcursor.perception.compiled import build_compiled_perception
@@ -1197,14 +1197,20 @@ def _run_compiled_tour(
             perception = build_compiled_perception(
                 workflow, clock, tier2=tier2_module.build_controller(clock)
             )
-            service = perception.service
             if renderer_ladder is not None:
                 renderer_ladder[0] = perception.source.ladder
             # ONE start operation, shared with the candidate harness. Starting
             # the worker and arming the health grace are the same event, and
             # anywhere they are two steps the gap between them is spent
             # against a worker that does not exist yet.
-            observe, on_grounding, _stop = perception.start()
+            #
+            # The returned stop is KEPT and used. Reaching past it to
+            # `service.stop()` stops the worker but leaves the composition
+            # believing it is still running, so a later start would be treated
+            # as a no-op and the health grace would never be armed for the
+            # worker that actually followed. One lifecycle owner means one
+            # stop as well as one start.
+            observe, on_grounding, stop_perception = perception.start()
 
         try:
             result = execute_compiled_workflow(
@@ -1219,8 +1225,8 @@ def _run_compiled_tour(
                 on_grounding=on_grounding,
             )
         finally:
-            if service is not None:  # pragma: no cover - needs a real desktop
-                service.stop()
+            if stop_perception is not None:  # pragma: no cover - real desktop
+                stop_perception()
     finally:
         # Every exit path, exceptions included. The overlay is full-screen,
         # topmost, click-through and has no title bar: one left behind after a

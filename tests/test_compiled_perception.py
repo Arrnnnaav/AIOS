@@ -709,7 +709,7 @@ def test_a_real_worker_drives_a_real_tour_to_completion() -> None:
         workflow, __import__("time").monotonic, service=service
     )
 
-    source, on_grounding, _stop = perception.start()
+    source, on_grounding, stop_perception = perception.start()
     try:
         drawn = []
 
@@ -740,7 +740,7 @@ def test_a_real_worker_drives_a_real_tour_to_completion() -> None:
             on_grounding=on_grounding,
         )
     finally:
-        service.stop()
+        stop_perception()
 
     assert result.outcome is RunOutcome.PASSED, result
     assert result.provenance and result.provenance[0].value == "uia"
@@ -776,14 +776,14 @@ def test_the_composed_stack_never_walks_on_the_calling_thread() -> None:
     perception = build_compiled_perception(
         workflow, __import__("time").monotonic, service=service
     )
-    source, _hook, _stop = perception.start()
+    source, _hook, stop_perception = perception.start()
     try:
         deadline = __import__("time").monotonic() + 2.0
         while not walk_threads and __import__("time").monotonic() < deadline:
             source()
             __import__("time").sleep(0.01)
     finally:
-        service.stop()
+        stop_perception()
 
     assert walk_threads, "the worker never walked"
     assert caller not in walk_threads, "UIA ran on the calling thread (D021)"
@@ -1238,51 +1238,121 @@ def test_the_composition_arms_the_grace_when_it_starts_the_worker() -> None:
     try:
         observe, on_grounding, stop = perception.start()
     finally:
-        perception.stop()
+        stop()
     assert perception.source._started_at == 500.0
     assert observe is perception.source
     assert on_grounding == perception.source.note_grounding
 
 
-def test_both_entry_points_start_perception_through_the_composition() -> None:
-    """Production and acceptance share the operation, not a copy of it.
-
-    Two starts would be two places to remember that arming the grace is part
-    of starting -- and the harness is the one that would forget, because it is
-    the one where the two moments differ.
-    """
+def _function(module: str, name: str):
     import ast
     from pathlib import Path
 
     root = Path(__file__).resolve().parent.parent
-    # Scoped to the COMPILED entry points. `run_tour()` is the v1 driver and
-    # carries its own inline grace; it is not migrated until the cutover, and
-    # a check that flagged it would be asserting something untrue about this
-    # milestone.
-    targets = {
-        "ghostcursor/run.py": "_run_compiled_tour",
-        "ghostcursor/devtools/candidate_acceptance.py": "_live_acceptance_seams",
-    }
-    for module, function in targets.items():
-        source = (root / module).read_text(encoding="utf-8")
-        tree = ast.parse(source)
-        node = next(
-            n
-            for n in ast.walk(tree)
-            if isinstance(n, ast.FunctionDef) and n.name == function
-        )
-        starts = [
-            child
-            for child in ast.walk(node)
-            if isinstance(child, ast.Attribute)
-            and child.attr == "start"
-            and isinstance(child.value, ast.Name)
-            and child.value.id == "service"
-        ]
-        assert not starts, f"{function} starts the worker outside the composition"
-        assert "perception.start" in ast.unparse(node), (
-            f"{function} does not use the shared start"
-        )
+    tree = ast.parse((root / module).read_text(encoding="utf-8"))
+    return next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == name
+    )
+
+
+#: Where each compiled entry point WIRES perception, and where it unpacks the
+#: seams that start hands back. In production those are the same function; in
+#: the harness the wiring returns `perception.start` and `accept_candidate()`
+#: calls it after the pre-launch gates, which is the whole point of the split.
+WIRING = {
+    "ghostcursor/run.py": "_run_compiled_tour",
+    "ghostcursor/devtools/candidate_acceptance.py": "_live_acceptance_seams",
+}
+UNPACKING = {
+    "ghostcursor/run.py": "_run_compiled_tour",
+    "ghostcursor/devtools/candidate_acceptance.py": "accept_candidate",
+}
+
+
+@pytest.mark.parametrize("module,function", sorted(WIRING.items()))
+def test_no_compiled_entry_point_drives_the_worker_directly(module, function) -> None:
+    """One lifecycle owner means one start AND one stop.
+
+    `run_tour()` is deliberately out of scope: it is the v1 driver with its
+    own inline grace and is not migrated until the cutover, so flagging it
+    would assert something untrue about this milestone.
+    """
+    import ast
+
+    node = _function(module, function)
+    # Any lifecycle call on anything ending in `.service` -- `service.stop()`
+    # and `perception.service.stop()` alike. Matching only a bare Name missed
+    # the second, which is the more natural way to write the bypass once the
+    # composition is in scope.
+    reached_past = sorted(
+        f"{ast.unparse(child.value)}.{child.attr}"
+        for child in ast.walk(node)
+        if isinstance(child, ast.Attribute)
+        and child.attr in {"start", "stop", "restart"}
+        and ast.unparse(child.value).split(".")[-1] == "service"
+    )
+    assert not reached_past, (
+        f"{function} drives the worker directly ({reached_past}) instead of "
+        "through the composition"
+    )
+    assert "perception.start" in ast.unparse(node), (
+        f"{function} does not use the shared start"
+    )
+
+
+@pytest.mark.parametrize("module,function", sorted(UNPACKING.items()))
+def test_every_compiled_entry_point_keeps_the_stop_seam(module, function) -> None:
+    """The RETURNED stop, neither reached past nor discarded.
+
+    Stopping the service directly leaves the composition believing it is still
+    running, so a later start is a no-op and the health grace is never armed
+    for the worker that followed. Discarding the seam stops nothing at all.
+
+    Checked by NAME: a `finally` that calls some `stop_perception` the start
+    never bound to satisfies a text search while doing nothing.
+    """
+    import ast
+
+    node = _function(module, function)
+    bound = [
+        target.elts[2].id
+        for statement in ast.walk(node)
+        if isinstance(statement, ast.Assign)
+        for target in statement.targets
+        if isinstance(target, ast.Tuple)
+        and len(target.elts) == 3
+        and all(isinstance(element, ast.Name) for element in target.elts)
+    ]
+    assert len(bound) == 1, f"{function} does not unpack the start seams exactly once"
+    stop_name = bound[0]
+    assert not stop_name.startswith("_"), (
+        f"{function} discards the stop seam it was handed ({stop_name})"
+    )
+
+    # CALLED, not merely mentioned. A guard reading `if stop_perception is
+    # not None` references the name while stopping nothing.
+    called = [
+        child
+        for child in ast.walk(node)
+        if isinstance(child, ast.Call)
+        and isinstance(child.func, ast.Name)
+        and child.func.id == stop_name
+    ]
+    registered = [
+        child
+        for child in ast.walk(node)
+        if isinstance(child, ast.Call)
+        and stop_name in {
+            argument.id
+            for argument in child.args
+            if isinstance(argument, ast.Name)
+        }
+    ]
+    assert called or registered, (
+        f"{function} never invokes or registers the stop seam {stop_name!r}"
+    )
 
 
 class _StartableService(_HealthService):
@@ -1427,3 +1497,37 @@ def test_stopping_before_any_start_is_harmless() -> None:
     service, _source, perception = _composition(lambda: now[0])
     perception.stop()
     assert service.calls == ["stop"]
+
+
+def test_the_composition_state_agrees_with_its_service_after_a_stop() -> None:
+    """Stopping through the seam keeps one lifecycle owner honest.
+
+    Reaching past it to `service.stop()` stops the worker and leaves the
+    composition believing it is still running -- so the next start is treated
+    as a no-op and the health grace is never armed for the worker that
+    actually followed. The composition's state and its service's must not be
+    able to disagree.
+    """
+    now = [0.0]
+    service, source, perception = _composition(lambda: now[0])
+
+    _observe, _hook, stop = perception.start()
+    assert perception._running.get("started") is True
+
+    stop()
+    assert perception._running.get("started") is False
+    assert service.calls == ["start", "stop"]
+
+    now[0] = 500.0
+    perception.start()
+    assert source._started_at == 500.0, (
+        "the worker that followed the stop never got its own grace"
+    )
+
+
+def test_the_returned_stop_is_the_compositions_own() -> None:
+    """The seam is not a bare handle to the service."""
+    now = [0.0]
+    _service, _source, perception = _composition(lambda: now[0])
+    _observe, _hook, stop = perception.start()
+    assert stop == perception.stop
