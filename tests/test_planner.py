@@ -343,3 +343,51 @@ def test_goal_planner_rejects_a_registered_recipe_outside_trusted_roots(
 
     with pytest.raises(ValueError, match="outside the trusted recipe directory"):
         planner.recipe_path_for("OPEN_TERMINAL")
+
+
+def test_production_planning_does_not_consult_the_compiled_matcher(monkeypatch):
+    """The compiled matcher exists but is not yet wired into planning.
+
+    `compile.py` is built and differentially tested before the cutover, so for
+    one milestone two matchers exist in the tree.  Only one may decide.  If
+    planning ever reached the compiled matcher, a goal in a declared divergence
+    class would silently change outcome with no cutover commit to point at.
+    """
+    from ghostcursor.packs import compile as packs_compile
+
+    def _forbidden(*args, **kwargs):  # pragma: no cover - the assertion is the point
+        raise AssertionError("production planning reached the compiled matcher")
+
+    monkeypatch.setattr(packs_compile.CompiledMatcher, "classify", _forbidden)
+    monkeypatch.setattr(packs_compile, "compile_matcher", _forbidden)
+    monkeypatch.setattr(packs_compile, "compile_planner", _forbidden)
+
+    # A divergence-class goal: OPEN_FOLDER under `_fallback()`, no match under
+    # D072.  Production must still return the v1 answer.
+    assert planner.deterministic_intent("Open Projects/Demo in VS Code")[:2] == (
+        "OPEN_FOLDER",
+        0.85,
+    )
+    result = plan_goal("Open Projects/Demo in VS Code", use_model=False)
+    assert result.status is PlanStatus.SUPPORTED
+    assert result.intent_id == "OPEN_FOLDER"
+
+
+def test_registry_is_still_the_hardcoded_execution_authority():
+    """Pins that the registry has not been swapped for compiled artifacts.
+
+    Task 3 produces `compile_planner()`; it does not adopt it.  This test fails
+    at the cutover, which is the moment its expectations should be rewritten
+    rather than the moment they should quietly still pass.
+    """
+    specs = planner.registry()
+    assert set(specs) == {
+        "EXPORT_DATA",
+        "CREATE_DOCUMENT",
+        "OPEN_SETTINGS",
+        "OPEN_FOLDER",
+        "OPEN_TERMINAL",
+    }
+    assert specs["CREATE_DOCUMENT"].recipe_path is None
+    assert specs["OPEN_SETTINGS"].recipe_path is None
+    assert specs["OPEN_FOLDER"].recipe_path is not None

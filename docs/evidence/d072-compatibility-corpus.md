@@ -32,6 +32,7 @@ it agreement.
 
 ## Result
 
+<!-- generated:result -->
 | | |
 |---|---:|
 | Rows | **86** |
@@ -40,6 +41,7 @@ it agreement.
 | Divergences matching no class definition (**UNCLASSIFIED**) | **0** |
 | v2 `matched` / `no_match` / `ambiguous` | 55 / 25 / 6 |
 | v2 confidence values outside {0.0, 0.85, 0.95} | **0** |
+<!-- /generated:result -->
 
 ## Path predicate — the complete contract-defining table
 
@@ -93,6 +95,7 @@ an unrelated divergence, which is exactly what the gate must not permit.
 Any divergence not meeting a definition above is reported as
 **UNCLASSIFIED** and fails the gate.
 
+<!-- generated:classes -->
 **Class — forward-slash** (5 representatives). A bare forward slash no longer counts as a path.
 
 | Goal | v1 | v2 |
@@ -121,6 +124,7 @@ Any divergence not meeting a definition above is reported as
 | `open terminal in vs code and export table` | EXPORT_DATA (0.85) | ambiguous |
 | `open folder in vs code and export table` | EXPORT_DATA (0.85) | ambiguous |
 | `open folder terminal in vscode` | OPEN_FOLDER (0.85) | ambiguous |
+<!-- /generated:classes -->
 
 The ambiguity class is covered systematically: one collision goal is
 generated for **every unordered pair** of intents, built from one
@@ -152,10 +156,14 @@ Passes only when every non-divergent row agrees with
 matches the class and outcome above, and no unexpected divergence is
 waived during the run.
 
-Raw rows: `.artifacts/d072-corpus.json` (ignored by design, per D065).
+Canonical rows: `tests/data/d072_compatibility_v1.json`. The generated
+regions below are projected from it by
+`tools/render_d072_compatibility.py`; `--check` fails if they drift. Any
+JSON under `.artifacts/` is disposable scratch and is never a source.
 
 ## Full corpus
 
+<!-- generated:corpus -->
 | Goal | v1 | v1 kind | v2 | v2 kind | class | Origin |
 |---|---|---|---|---|---|---|
 | `Export this table as CSV` | EXPORT_DATA (0.95) | matched | EXPORT_DATA (0.95) | matched | — | frozen dataset: exact_export_table_csv |
@@ -244,3 +252,4 @@ Raw rows: `.artifacts/d072-corpus.json` (ignored by design, per D065).
 | `open csv/tsv in VS Code` | OPEN_FOLDER (0.85) | matched | — **DIVERGES** | no_match | forward-slash | OPEN_FOLDER divergence fixture |
 | `Open Projects/Demo in VS Code` | OPEN_FOLDER (0.85) | matched | — **DIVERGES** | no_match | forward-slash | bare forward-slash divergence |
 | `open the report and/or the sheet in vs code` | OPEN_FOLDER (0.85) | matched | — **DIVERGES** | no_match | forward-slash | D072 justification: prose slash grounds an unrelated workflow in v1 |
+<!-- /generated:corpus -->
