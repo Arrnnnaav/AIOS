@@ -184,26 +184,35 @@ class _ProvenanceLog:
 def execute_compiled_workflow(
     workflow,
     *,
-    observe: Callable[[], TickInput],
+    observe: Callable[[], TickInput | None],
     renderer,
     clock: Callable[[], float] = time.monotonic,
     sleeper: Callable[[float], None] = time.sleep,
     seconds: float = 120.0,
     tick_interval_s: float = 0.25,
     should_abort: Callable[[], bool] | None = None,
+    pump: Callable[[], None] | None = None,
 ) -> TourResult:
     """Run one compiled workflow to a terminal state and report what happened.
 
-    Every seam is injected, so this runs identically against a live desktop and
-    against a scripted screen. That is what makes acceptance able to exercise
-    the real executor: a harness that could only run the real thing could not
-    be tested, and one that ran a simplified stand-in would certify the
-    stand-in.
+    **`observe()` READS a published observation; it must never take one.**
+    Perception belongs on the worker thread (D021): a "Not Responding" target
+    blocks a single UIA walk for 41 seconds measured, and this loop is what
+    polls the abort signal and pumps window messages, so a walk performed here
+    is 41 seconds in which the user cannot dismiss a window covering their
+    whole screen. Returning `None` means nothing has been published yet -- the
+    loop waits, keeps pumping, and keeps the deadline live rather than
+    blocking on the first read.
 
     Grounding is the compiled plan's own answer. A step's target selector
     already declared `exactly_one` and the observation already enforced it, so
     there is nothing left to choose here -- and choosing would mean a second
     matching rule beside the declared one.
+
+    Every seam is injected, so this runs identically against a live desktop and
+    against a scripted screen. A harness that could only run the real thing
+    could not be tested, and one that ran a simplified stand-in would certify
+    the stand-in.
     """
     steps = compiled_steps(workflow)
     provenance = _ProvenanceLog()
@@ -244,8 +253,16 @@ def execute_compiled_workflow(
     _index = [0]
 
     def snapshotter() -> Snapshot:
+        """The latest PUBLISHED observation, never a fresh walk.
+
+        Reached only after `_await_observation()` has confirmed one exists, so
+        a `None` here would be a slot that emptied mid-tick, which the service
+        never does -- it overwrites, and never clears.
+        """
         nonlocal _current
-        _current = observe()
+        published = observe()
+        if published is not None:
+            _current = published
         _index[0] = tour.step_index
         return _snapshot(_current)
 
@@ -264,7 +281,40 @@ def execute_compiled_workflow(
     )
 
     started = clock()
+
+    def _tend() -> None:
+        """Keep the UI thread's obligations current between ticks."""
+        if pump is not None:
+            pump()
+
+    # Wait for the FIRST published observation before the loop starts. The
+    # worker has to complete one walk, and entering the state machine without
+    # one would mean building a snapshot that observed no selector at all --
+    # which is a fault, not an empty screen.
+    while _current is None:
+        _tend()
+        if should_abort is not None and should_abort():
+            return TourResult(
+                outcome=RunOutcome.ABORTED,
+                provenance=(),
+                steps_completed=0,
+                steps_total=len(steps),
+                detail="aborted before the first observation",
+            )
+        if clock() - started >= seconds:
+            return TourResult(
+                outcome=RunOutcome.TIMED_OUT,
+                provenance=(),
+                steps_completed=0,
+                steps_total=len(steps),
+                detail=f"no observation published within {seconds:g}s",
+            )
+        _current = observe()
+        if _current is None:
+            sleeper(tick_interval_s)
+
     while True:
+        _tend()
         if should_abort is not None and should_abort():
             return TourResult(
                 outcome=RunOutcome.ABORTED,

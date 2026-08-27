@@ -172,9 +172,18 @@ class PerceptionService:
         tier2=None,
         focus_reader: Callable[[int], str] = read_focused_automation_id,
         focus_slice_s: float = DEFAULT_FOCUS_SLICE_S,
+        plan_runner: Callable[[int], tuple] | None = None,
     ) -> None:
         self.title_re = title_re
         self.walker = walker
+        #: A compiled observation plan, run ON THIS WORKER in place of the
+        #: walker. It returns `(selector_results, elements)` for one target
+        #: HWND. Optional because the v1 walkers are still what production
+        #: uses; when it is set, the compiled path gets everything the worker
+        #: already provides -- the published slot, tier 2, focus sampling,
+        #: worker-death detection -- instead of walking UIA on the UI thread,
+        #: which is the 41-second freeze D021 exists to prevent.
+        self.plan_runner = plan_runner
         self.hwnd_source = hwnd_source
         self.focus_reader = focus_reader
         self.focus_slice_s = focus_slice_s
@@ -657,7 +666,12 @@ class PerceptionService:
                     self._progress(generation, stage="walk")
                     if debug:
                         print("Ghost Cursor: UIA walk starting")
-                    elements = tuple(self.walker(self.title_re))
+                    if self.plan_runner is not None:
+                        selector_results, elements = self.plan_runner(target_hwnd)
+                        elements = tuple(elements)
+                    else:
+                        selector_results = ()
+                        elements = tuple(self.walker(self.title_re))
                     self._progress(generation, stage="walk-complete")
                     if debug:
                         print(
@@ -672,6 +686,7 @@ class PerceptionService:
                             elements=elements,
                             observed_at=observed_at,
                             focused_automation_id=focused_now,
+                            selector_results=selector_results,
                         ),
                         elements,
                         observed_at,

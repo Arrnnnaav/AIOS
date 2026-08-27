@@ -186,7 +186,22 @@ class GuidedTour:
             # The option is schema-limited to ELEMENT_APPEARS, so this cannot
             # turn title/property/change rules into vacuous successes.
             if step.verification_rule.args.get("accept_if_already_present") is True:
-                empty = Snapshot(title=self._before.title, elements=())
+                # Every selector the baseline observed, published as empty.
+                # NOT `selector_results=()`: an omitted selector means "never
+                # observed", which is a fault, not an absence -- so a
+                # selector-backed rule raised here instead of completing, and
+                # Open Terminal is exactly the recipe that uses this option.
+                # "The screen is empty" has to say every selector matched
+                # nothing, which is a different statement from saying nothing
+                # was looked at.
+                empty = Snapshot(
+                    title=self._before.title,
+                    elements=(),
+                    selector_results=tuple(
+                        (selector_id, ())
+                        for selector_id, _ in self._before.selector_results
+                    ),
+                )
                 if self.verifier(step.verification_rule, empty, self._before):
                     self.renderer.clear()
                     self.state = State.VERIFYING

@@ -1103,7 +1103,7 @@ def CompiledWorkflowReplacement(workflow, **changes):
 # ---------------------------------------------------------------------------
 
 
-def _driven_clock():
+def _driven_clock(on_sleep=None):
     """A clock the sleeper advances.
 
     Never a frozen clock: the executor's only bound is the deadline, so a
@@ -1112,14 +1112,20 @@ def _driven_clock():
     executor.
     """
     now = [0.0]
-    return (lambda: now[0]), (lambda seconds: now.__setitem__(0, now[0] + seconds))
+
+    def _sleep(seconds):
+        now[0] += seconds
+        if on_sleep is not None:
+            on_sleep()
+
+    return (lambda: now[0]), _sleep
 
 
 def _launch(workflow, catalog, *, live=None, missing=False, create_overlay=lambda: 1,
-            observe=None, renderer=None, seconds=1.0):
+            observe=None, renderer=None, seconds=1.0, on_sleep=None):
     from ghostcursor.run import _launch_compiled_workflow
 
-    clock, sleeper = _driven_clock()
+    clock, sleeper = _driven_clock(on_sleep)
     return _launch_compiled_workflow(
         workflow,
         seconds=seconds,
@@ -1227,9 +1233,16 @@ def test_a_revalidated_launch_reaches_the_execution_body() -> None:
 
     workflow, catalog = _workflow()
     created = []
-    titles = ["Welcome - Visual Studio Code", "demo - Visual Studio Code"]
+    # A published SLOT, advanced by the worker between ticks -- the executor
+    # reads what was published and never walks UIA itself (D021).
+    titles = [
+        "Welcome - Visual Studio Code",
+        "Welcome - Visual Studio Code",
+        "demo - Visual Studio Code",
+    ]
+    slot = {}
 
-    def _observe():
+    def _publish():
         title = titles.pop(0) if len(titles) > 1 else titles[0]
         matched = (
             Element(
@@ -1240,8 +1253,14 @@ def test_a_revalidated_launch_reaches_the_execution_body() -> None:
                 path=("Button",),
             ),
         )
-        return TickInput(title=title, selectors={"open_folder": matched},
-                         union=matched)
+        slot["value"] = TickInput(
+            title=title, selectors={"open_folder": matched}, union=matched
+        )
+
+    _publish()
+
+    def _observe():
+        return slot.get("value")
 
     class _Renderer:
         def show(self, grounded, instruction_text):
@@ -1260,6 +1279,7 @@ def test_a_revalidated_launch_reaches_the_execution_body() -> None:
         create_overlay=lambda: created.append(True) or 1,
         observe=_observe,
         renderer=_Renderer(),
+        on_sleep=_publish,
     )
     assert exit_code == 0
     assert created == [True], "the overlay is created once, after revalidation"

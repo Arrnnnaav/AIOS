@@ -362,3 +362,69 @@ def test_churn_then_the_users_real_change_still_advances_the_step():
         tour.tick()
 
     assert tour.step_index == 1
+
+
+def test_an_already_satisfied_selector_rule_completes_rather_than_faulting():
+    """`accept_if_already_present` against a compiled selector (finding 4).
+
+    The baseline the loop builds for this check must say every selector was
+    observed and matched nothing. `selector_results=()` says nothing was
+    observed at all, which `Snapshot.matched()` correctly treats as a fault --
+    so an already-visible terminal raised instead of completing, and Open
+    Terminal is precisely the recipe that uses this option.
+    """
+    from ghostcursor.perception.uia import Element
+    from ghostcursor.reasoning.compiled_tour import compiled_steps
+    from ghostcursor.reasoning.loop import GuidedTour, State
+    from ghostcursor.reasoning.schema import (
+        ClaimedDescriptor,
+        Risk,
+        Step,
+        TargetDescriptor,
+        UserAction,
+        VerificationKind,
+        VerificationRule,
+    )
+    from ghostcursor.reasoning.verification import Snapshot, verify
+    from types import SimpleNamespace
+
+    del compiled_steps  # imported only to prove the compiled path is in scope
+
+    present = (Element("Terminal Section", "Pane", "", (0, 0, 10, 10), ("Pane",)),)
+    step = Step(
+        user_action=UserAction.PRESS_KEYS,
+        target_descriptor=TargetDescriptor(claimed=ClaimedDescriptor(name="Terminal")),
+        instruction_text="Press Ctrl+`",
+        verification_rule=VerificationRule(
+            kind=VerificationKind.ELEMENT_APPEARS,
+            args={"accept_if_already_present": True},
+            selector="panel",
+        ),
+        risk=Risk.NORMAL,
+    )
+
+    class _Renderer:
+        def show(self, grounded, instruction_text):
+            raise AssertionError("an already-satisfied goal must not be re-hinted")
+
+        def clear(self):
+            pass
+
+        def settle(self):
+            pass
+
+    def _snapshotter():
+        return Snapshot(
+            title="x", elements=present, selector_results=(("panel", present),)
+        )
+
+    tour = GuidedTour(
+        recipe=SimpleNamespace(steps=(step,)),
+        grounder=lambda s, i, e: None,
+        snapshotter=_snapshotter,
+        verifier=verify,
+        renderer=_Renderer(),
+        clock=lambda: 0.0,
+    )
+    states = [tour.tick() for _ in range(5)]
+    assert State.DONE in states, states

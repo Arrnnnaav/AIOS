@@ -27,6 +27,7 @@ machine.
 
 import argparse
 import os
+import re
 import time
 from pathlib import Path
 from typing import Callable
@@ -1169,26 +1170,172 @@ def _run_compiled_tour(
     from ghostcursor.reasoning.staleness import Freshness
 
     hwnd = create_overlay()
-    if renderer is None:
-        renderer = OverlayRenderer(hwnd, freshness_source=lambda: Freshness.FRESH)
-    if observe is None:  # pragma: no cover - needs a real desktop
-        observe = _live_observation_source(workflow)
+    try:
+        if renderer is None:
+            renderer = OverlayRenderer(hwnd, freshness_source=lambda: Freshness.FRESH)
+        service = None
+        if observe is None:  # pragma: no cover - needs a real desktop
+            from ghostcursor.perception import tier2 as tier2_module
 
-    result = execute_compiled_workflow(
-        workflow,
-        observe=observe,
-        renderer=renderer,
-        clock=clock,
-        sleeper=sleeper,
-        seconds=seconds,
-        should_abort=escape_pressed,
-    )
+            service = compiled_perception_service(
+                workflow, clock, tier2=tier2_module.build_controller(clock)
+            )
+            service.start()
+            observe = published_observation_source(service)
+
+        try:
+            result = execute_compiled_workflow(
+                workflow,
+                observe=observe,
+                renderer=renderer,
+                clock=clock,
+                sleeper=sleeper,
+                seconds=seconds,
+                should_abort=escape_pressed,
+                pump=pump_messages,
+            )
+        finally:
+            if service is not None:  # pragma: no cover - needs a real desktop
+                service.stop()
+    finally:
+        # Every exit path, exceptions included. The overlay is full-screen,
+        # topmost, click-through and has no title bar: one left behind after a
+        # failure, a timeout or an ESC is one the user cannot close.
+        _destroy_overlay(hwnd)
+
     print(
         f"{result.outcome.value}: {result.steps_completed}/{result.steps_total} "
         f"step(s), grounded by "
         f"{', '.join(p.value for p in result.provenance) or 'nothing'}"
     )
     return 0 if result.outcome is RunOutcome.PASSED else 1
+
+
+def _destroy_overlay(hwnd) -> None:
+    """Tear down the overlay, never letting teardown mask the real outcome."""
+    if not hwnd:
+        return
+    try:
+        win32gui.DestroyWindow(hwnd)
+    except Exception:
+        pass
+
+
+def compiled_plan_runner(workflow):
+    """Run a compiled observation plan ON THE WORKER, for one target HWND.
+
+    Handed to `PerceptionService(plan_runner=...)`, so every UIA call it makes
+    happens on the worker thread. That is not tidiness: a "Not Responding"
+    target blocks one UIA walk for 41 seconds measured, and the UI thread is
+    what polls ESC and pumps messages, so the same walk there is 41 seconds in
+    which the user cannot dismiss a window covering their whole screen (D021).
+
+    Returns `(selector_results, elements)` -- the per-selector answers and the
+    deduplicated union -- both frozen values of primitives, which is all that
+    may cross the boundary.
+    """
+    from ghostcursor.perception.service import run_observation_plan
+
+    class _Info:
+        def __init__(self, control):
+            info = control.element_info
+            self.name = info.name or ""
+            self.control_type = info.control_type or ""
+            self.automation_id = info.automation_id or ""
+            self.rectangle = control.rectangle()
+            runtime_id = getattr(info, "runtime_id", None)
+            if runtime_id:
+                self.runtime_id = tuple(runtime_id)
+
+    def _run(target_hwnd: int):
+        if not target_hwnd:
+            return (), ()
+        observation = run_observation_plan(
+            workflow.recipe.plan,
+            walk_for=lambda control_type: (
+                lambda: uia.control_type_walk(target_hwnd, control_type)
+            ),
+            query_for=lambda control_type, name: (
+                lambda: uia.provider_query_for(target_hwnd, control_type, name)
+            ),
+            make_info=_Info,
+        )
+        return tuple(observation.selectors.items()), observation.union
+
+    return _run
+
+
+def compiled_perception_service(workflow, clock, tier2=None):
+    """A worker configured for one compiled workflow.
+
+    Identity-bounded exactly as the v1 path is: the HWND source filters on the
+    pack's executables, so a browser tab whose title collides with the target
+    can never become the window perception walks (D046).
+    """
+    from ghostcursor.perception.service import PerceptionService
+
+    executables = workflow.executable_names
+    primary = executables[0] if executables else ""
+
+    def _hwnd_source(title_re: str) -> int:
+        if primary:
+            return uia.first_matching_hwnd_for_executable(title_re, primary)
+        return uia.first_matching_hwnd(title_re)
+
+    return PerceptionService(
+        title_re=re.escape(workflow.target.title) if workflow.target.title else ".*",
+        hwnd_source=_hwnd_source,
+        clock=clock,
+        tier2=tier2,
+        plan_runner=compiled_plan_runner(workflow),
+    )
+
+
+def published_observation_source(service):
+    """Read the worker's published slot. Never blocks, never walks.
+
+    `None` means nothing has been published yet, which the executor waits
+    through while still pumping messages and polling ESC.
+    """
+    from ghostcursor.reasoning.compiled_tour import TickInput
+
+    def _observe():
+        observation = service.latest()
+        if observation is None:
+            return None
+        snapshot = observation.snapshot
+        return TickInput(
+            title=snapshot.title,
+            selectors=dict(snapshot.selector_results),
+            union=tuple(snapshot.elements),
+            focused_automation_id=snapshot.focused_automation_id,
+        )
+
+    return _observe
+
+
+def pump_messages() -> None:
+    """One non-blocking drain of the UI thread's message queue.
+
+    The overlay is a real window; a window that never pumps stops repainting
+    and is reported as hung by the shell.
+    """
+    try:
+        import pythoncom
+
+        pythoncom.PumpWaitingMessages()
+    except Exception:
+        pass
+
+
+def _destroy_overlay(hwnd) -> None:
+    """Tear down the overlay, never letting teardown mask the real outcome."""
+    if not hwnd:
+        return
+    try:
+        win32gui.DestroyWindow(hwnd)
+    except Exception:
+        pass
 
 
 def _live_observation_source(workflow):  # pragma: no cover - needs a real desktop

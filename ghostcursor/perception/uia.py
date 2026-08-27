@@ -761,17 +761,65 @@ def control_type_walk(hwnd: int, control_type: str):
     return window.descendants(control_type=control_type)
 
 
-def provider_query_for(hwnd: int, control_type: str, name: str):
-    """One provider-side `FindAll` against one window, by type and exact name.
+#: UIA property ids, from UIAutomationClient. Named here so the query below
+#: reads as a query rather than as three magic numbers.
+_UIA_NAME_PROPERTY = 30005
+_UIA_CONTROL_TYPE_PROPERTY = 30003
 
-    Returns the raw results; `provider_exact()` classifies them. Split that way
-    because presence is established by a successful property READ, never by a
-    result existing (D069), and that judgement belongs with the classifier.
+#: ControlType ids for the types a trusted recipe may select. Explicit rather
+#: than derived: a name-to-id mapping built by scanning the UIA module would
+#: silently start accepting control types no recipe has been reviewed against.
+_CONTROL_TYPE_IDS = {
+    "Button": 50000,
+    "Edit": 50004,
+    "List": 50008,
+    "ListItem": 50007,
+    "Menu": 50009,
+    "MenuItem": 50011,
+    "Pane": 50033,
+    "Tab": 50018,
+    "TabItem": 50019,
+    "Text": 50020,
+    "Tree": 50023,
+    "TreeItem": 50024,
+    "Window": 50032,
+}
+
+
+def provider_query_for(hwnd: int, control_type: str, name: str):
+    """One provider-side **FindAll** against one window, by type and exact name.
+
+    Genuinely `FindAll`, through `IUIAutomation` -- not a descendant walk with
+    a Python name filter. The difference is the whole reason this strategy
+    exists: a walk pays the traversal this project measured and narrowed away
+    from, and filtering afterwards makes the provider's own cardinality answer
+    unavailable. `FindAll` reports `Length = 0` for a genuine absence and
+    counts, which is what makes `exactly_one` provable at all (`FindFirst`
+    cannot, and returns a dead pointer on absence).
+
+    Returns the raw results; `provider_exact()` classifies them, because
+    presence is established by a successful property READ and never by a result
+    existing (D069).
     """
-    window = Desktop(backend="uia").window(handle=hwnd)
-    matched = window.descendants(control_type=control_type)
-    return [
-        control
-        for control in matched
-        if (control.element_info.name or "") == name
-    ]
+    import comtypes.client
+
+    module = comtypes.client.GetModule("UIAutomationCore.dll")
+    automation = comtypes.client.CreateObject(
+        "{ff48dba4-60ef-4201-aa87-54103eef594e}", interface=module.IUIAutomation
+    )
+
+    type_id = _CONTROL_TYPE_IDS.get(control_type)
+    if type_id is None:
+        raise ProviderQueryFault(
+            f"control type {control_type!r} has no reviewed UIA id"
+        )
+
+    root = automation.ElementFromHandle(hwnd)
+    condition = automation.CreateAndCondition(
+        automation.CreatePropertyCondition(_UIA_CONTROL_TYPE_PROPERTY, type_id),
+        automation.CreatePropertyCondition(_UIA_NAME_PROPERTY, name),
+    )
+    # TreeScope_Descendants = 4. Scoped to this window's subtree, never the
+    # desktop root: a query rooted at the desktop is the unbounded traversal
+    # in another costume.
+    return element_array_items(root.FindAll(4, condition))

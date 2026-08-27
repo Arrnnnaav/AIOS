@@ -399,8 +399,28 @@ def test_the_synthesised_adoption_never_reaches_disk(candidate) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _factory(renderer=None):
+    """A renderer FACTORY, plus the disposal the harness must always call.
+
+    Passing a constructed renderer is what let the overlay exist before the
+    gates ran: Python evaluates arguments before the call.
+    """
+    made = renderer if renderer is not None else _Renderer()
+    disposed = []
+
+    def _make():
+        made.created = True
+        return made, lambda: disposed.append(True)
+
+    _make.disposed = disposed
+    _make.renderer = made
+    return _make
+
+
 class _Renderer:
     """Counts what was drawn. The executor must actually reach the hint."""
+
+    created = False
 
     def __init__(self):
         self.shown = []
@@ -430,25 +450,34 @@ def _element(name="Open Folder...", source="uia", bbox=(10, 20, 110, 60)):
 
 
 def _screen(titles, *, present=True, source="uia"):
-    """A scripted screen: one `TickInput` per observation, then the last repeats.
+    """A published SLOT, not a fresh walk per read.
 
-    The title sequence is what drives verification -- the compiled Open Folder
-    rule completes when the title changes to a workspace title.
+    The executor reads what the worker last published and never takes an
+    observation itself, so a fake that produced a new screen on every read
+    would model the very thing this design forbids. The slot advances when the
+    worker would publish -- between ticks -- which is what `_accept` wires the
+    sleeper to.
+
+    Returns `(observe, publish)`. `observe()` may return `None`, meaning
+    nothing has been published yet.
     """
     from ghostcursor.reasoning.compiled_tour import TickInput
 
     sequence = list(titles)
+    slot = {"value": None}
 
-    def _observe():
+    def _publish():
         title = sequence.pop(0) if len(sequence) > 1 else sequence[0]
         matched = (_element(source=source),) if present else ()
-        return TickInput(
-            title=title,
-            selectors={"open_folder": matched},
-            union=matched,
+        slot["value"] = TickInput(
+            title=title, selectors={"open_folder": matched}, union=matched
         )
 
-    return _observe
+    def _observe():
+        return slot["value"]
+
+    _publish()  # the worker completes one walk before the tour starts
+    return _observe, _publish
 
 
 def _clock():
@@ -463,23 +492,30 @@ def _clock():
     return _read, _sleep
 
 
-def _accept(candidate, *, observe, renderer=None, seconds=120.0, read_window=None,
+def _accept(candidate, *, screen, renderer=None, seconds=120.0, read_window=None,
             goal=r"Open C:\Projects\Demo in VS Code"):
     from ghostcursor.devtools.candidate_acceptance import accept_candidate
 
+    observe, publish = screen
     graph = _load(candidate)
     target = bind_candidate_target(graph, windows=[_window()], project_root=PROJECT_ROOT)
     workflow = candidate_workflow(graph, goal, target, project_root=PROJECT_ROOT)
     read, sleep = _clock()
+
+    def _between_ticks(seconds_slept):
+        # The worker publishes between ticks, exactly as the real one does.
+        sleep(seconds_slept)
+        publish()
+
     return graph, accept_candidate(
         graph,
         workflow,
         observe=observe,
-        renderer=renderer if renderer is not None else _Renderer(),
+        make_renderer=_factory(renderer),
         read_window=read_window or _reader(),
         project_root=PROJECT_ROOT,
         clock=read,
-        sleeper=sleep,
+        sleeper=_between_ticks,
         seconds=seconds,
     )
 
@@ -496,8 +532,12 @@ def test_acceptance_actually_runs_the_workflow_and_records_what_happened(
     renderer = _Renderer()
     graph, record = _accept(
         candidate,
-        observe=_screen(
-            ["Welcome - Visual Studio Code", "demo - Visual Studio Code"]
+        screen=_screen(
+            [
+                "Welcome - Visual Studio Code",
+                "Welcome - Visual Studio Code",
+                "demo - Visual Studio Code",
+            ]
         ),
         renderer=renderer,
     )
@@ -518,7 +558,7 @@ def test_a_workflow_that_never_completes_is_recorded_as_timed_out(candidate) -> 
     """
     _graph, record = _accept(
         candidate,
-        observe=_screen(["Welcome - Visual Studio Code"]),
+        screen=_screen(["Welcome - Visual Studio Code"]),
         seconds=5.0,
     )
     assert record.outcome is RunOutcome.TIMED_OUT
@@ -535,7 +575,7 @@ def test_a_target_that_never_appears_is_recorded_as_failed(candidate) -> None:
     """
     _graph, record = _accept(
         candidate,
-        observe=_screen(["Welcome - Visual Studio Code"], present=False),
+        screen=_screen(["Welcome - Visual Studio Code"], present=False),
         seconds=600.0,
     )
     assert record.outcome is RunOutcome.FAILED
@@ -548,12 +588,12 @@ def test_a_failed_loop_is_never_reported_as_a_pass(candidate) -> None:
     a pass."""
     _graph, failed = _accept(
         candidate,
-        observe=_screen(["Welcome - Visual Studio Code"], present=False),
+        screen=_screen(["Welcome - Visual Studio Code"], present=False),
         seconds=600.0,
     )
     _graph2, timed_out = _accept(
         candidate,
-        observe=_screen(["Welcome - Visual Studio Code"]),
+        screen=_screen(["Welcome - Visual Studio Code"]),
         seconds=5.0,
     )
     assert failed.outcome is RunOutcome.FAILED
@@ -614,8 +654,12 @@ def test_the_run_verifies_against_the_workflows_own_goal_reference(
     """
     _graph, wrong_folder = _accept(
         candidate,
-        observe=_screen(
-            ["Welcome - Visual Studio Code", "unrelated - Visual Studio Code"]
+        screen=_screen(
+            [
+                "Welcome - Visual Studio Code",
+                "Welcome - Visual Studio Code",
+                "unrelated - Visual Studio Code",
+            ]
         ),
         seconds=30.0,
         goal=r"Open C:\Projects\Demo in VS Code",
@@ -624,8 +668,12 @@ def test_the_run_verifies_against_the_workflows_own_goal_reference(
 
     _graph2, right_folder = _accept(
         candidate,
-        observe=_screen(
-            ["Welcome - Visual Studio Code", "demo - Visual Studio Code"]
+        screen=_screen(
+            [
+                "Welcome - Visual Studio Code",
+                "Welcome - Visual Studio Code",
+                "demo - Visual Studio Code",
+            ]
         ),
         seconds=30.0,
         goal=r"Open C:\Projects\Demo in VS Code",
@@ -642,12 +690,23 @@ def test_the_record_reports_the_tier_that_actually_grounded(candidate) -> None:
     """
     _graph, uia_run = _accept(
         candidate,
-        observe=_screen(["Welcome - Visual Studio Code", "demo - Visual Studio Code"]),
+        screen=_screen(
+            [
+                "Welcome - Visual Studio Code",
+                "Welcome - Visual Studio Code",
+                "demo - Visual Studio Code",
+            ]
+        ),
     )
     _graph2, ocr_run = _accept(
         candidate,
-        observe=_screen(
-            ["Welcome - Visual Studio Code", "demo - Visual Studio Code"], source="ocr"
+        screen=_screen(
+            [
+                "Welcome - Visual Studio Code",
+                "Welcome - Visual Studio Code",
+                "demo - Visual Studio Code",
+            ],
+            source="ocr",
         ),
     )
 
@@ -699,12 +758,12 @@ def test_the_candidate_files_are_rehashed_immediately_before_launch(
     candidate["paths"]["recipe"].write_bytes(
         candidate["paths"]["recipe"].read_bytes() + b"\n"
     )
-    with pytest.raises(CandidateRejected, match="changed since it was loaded"):
+    with pytest.raises(CandidateRejected, match="since it was loaded"):
         accept_candidate(
             graph,
             workflow,
-            observe=_screen(["Welcome - Visual Studio Code"]),
-            renderer=_Renderer(),
+            observe=_screen(["Welcome - Visual Studio Code"])[0],
+            make_renderer=_factory(),
             read_window=_reader(),
             project_root=PROJECT_ROOT,
         )
@@ -723,8 +782,8 @@ def test_the_live_target_is_revalidated_before_the_run(candidate) -> None:
         accept_candidate(
             graph,
             workflow,
-            observe=_screen(["Welcome - Visual Studio Code"]),
-            renderer=_Renderer(),
+            observe=_screen(["Welcome - Visual Studio Code"])[0],
+            make_renderer=_factory(),
             read_window=_reader(missing=True),
             project_root=PROJECT_ROOT,
         )
@@ -758,7 +817,7 @@ def test_nothing_runs_when_the_rehash_or_revalidation_fails(candidate) -> None:
             graph,
             workflow,
             observe=_observe,
-            renderer=_Renderer(),
+            make_renderer=_factory(),
             read_window=_reader(),
             project_root=PROJECT_ROOT,
         )
@@ -786,7 +845,13 @@ def test_a_preparation_record_names_itself_as_non_evidence(candidate) -> None:
 def test_a_run_record_names_all_three_digests_and_the_identity(candidate) -> None:
     _graph, record = _accept(
         candidate,
-        observe=_screen(["Welcome - Visual Studio Code", "demo - Visual Studio Code"]),
+        screen=_screen(
+            [
+                "Welcome - Visual Studio Code",
+                "Welcome - Visual Studio Code",
+                "demo - Visual Studio Code",
+            ]
+        ),
     )
     payload = json.loads(record.to_json())
 
@@ -807,7 +872,13 @@ def test_the_record_is_the_durable_reference_not_a_log_path(candidate) -> None:
     """Evidence that names an uncommitted file names nothing (D034)."""
     _graph, record = _accept(
         candidate,
-        observe=_screen(["Welcome - Visual Studio Code", "demo - Visual Studio Code"]),
+        screen=_screen(
+            [
+                "Welcome - Visual Studio Code",
+                "Welcome - Visual Studio Code",
+                "demo - Visual Studio Code",
+            ]
+        ),
     )
     assert ".artifacts" not in record.to_json()
 
@@ -1101,3 +1172,297 @@ def test_the_command_offers_no_intent_selection_option() -> None:
             imported += [alias.name for alias in node.names]
     assert not any("inference" in name for name in imported)
     assert not any("planner" in name for name in imported)
+
+
+def test_a_same_byte_symlink_swapped_in_after_loading_is_refused(
+    candidate, tmp_path
+) -> None:
+    """The rehash could not see this; the full reload can.
+
+    Comparing digests at the resolved path checks the BYTES and nothing else.
+    An artifact replaced by a symlink to identical bytes has the same digest
+    and violates the trusted-artifact boundary outright -- containment,
+    symlink refusal, schema, and cross-file agreement all went unchecked
+    because none of them were re-run.
+    """
+    from ghostcursor.devtools.candidate_acceptance import revalidate_candidate
+
+    graph = _load(candidate)
+    recipe = candidate["paths"]["recipe"]
+    identical = tmp_path / "identical.json"
+    identical.write_bytes(recipe.read_bytes())
+
+    recipe.unlink()
+    try:
+        recipe.symlink_to(identical)
+    except (OSError, NotImplementedError):
+        pytest.skip("this environment cannot create symlinks")
+
+    assert (
+        hashlib.sha256(recipe.read_bytes()).hexdigest()
+        == candidate["digests"]["recipe"]
+    ), "the bytes are identical, so a digest-only check cannot see this"
+
+    with pytest.raises(CandidateRejected):
+        revalidate_candidate(graph)
+
+
+def test_an_artifact_that_now_resolves_outside_the_root_is_refused(
+    candidate, tmp_path
+) -> None:
+    """Containment is re-checked, not assumed to still hold."""
+    from ghostcursor.devtools.candidate_acceptance import revalidate_candidate
+
+    graph = _load(candidate)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    moved = outside / "recipe.json"
+    moved.write_bytes(candidate["paths"]["recipe"].read_bytes())
+
+    candidate["paths"]["recipe"].unlink()
+    try:
+        candidate["paths"]["recipe"].symlink_to(moved)
+    except (OSError, NotImplementedError):
+        pytest.skip("this environment cannot create symlinks")
+
+    with pytest.raises(CandidateRejected):
+        revalidate_candidate(graph)
+
+
+def test_an_unchanged_candidate_revalidates(candidate) -> None:
+    from ghostcursor.devtools.candidate_acceptance import revalidate_candidate
+
+    graph = _load(candidate)
+    reloaded = revalidate_candidate(graph)
+    assert reloaded.digests == graph.digests
+
+
+# ---------------------------------------------------------------------------
+# Live-path architecture
+# ---------------------------------------------------------------------------
+
+
+def test_the_executor_never_observes_on_its_own_thread() -> None:
+    """Perception belongs on the worker (D021).
+
+    A "Not Responding" target blocks one UIA walk for 41 seconds measured, and
+    this loop is what polls ESC and pumps messages -- so a walk performed here
+    is 41 seconds in which the user cannot dismiss a window covering their
+    whole screen. `observe()` must READ a published slot, never take one.
+    """
+    import ast
+
+    source = (
+        PROJECT_ROOT / "ghostcursor" / "reasoning" / "compiled_tour.py"
+    ).read_text(encoding="utf-8")
+    tree = ast.parse(source)
+
+    imported = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module:
+            imported.append(node.module)
+        elif isinstance(node, ast.Import):
+            imported += [alias.name for alias in node.names]
+
+    walking = {"pywinauto", "comtypes", "win32gui"}
+    assert not any(name.split(".")[0] in walking for name in imported), imported
+    assert "Desktop" not in source
+    assert "control_type_walk" not in source
+    assert "provider_query_for" not in source
+
+
+def test_an_unpublished_slot_is_waited_through_not_blocked_on(candidate) -> None:
+    """`None` means "nothing published yet", and the loop stays responsive.
+
+    The deadline keeps running and the abort signal keeps being polled, which
+    is the whole reason the read is non-blocking.
+    """
+    from ghostcursor.devtools.candidate_acceptance import accept_candidate
+
+    graph = _load(candidate)
+    target = bind_candidate_target(graph, windows=[_window()], project_root=PROJECT_ROOT)
+    workflow = candidate_workflow(
+        graph, "Open a folder in VS Code", target, project_root=PROJECT_ROOT
+    )
+    pumped = []
+    read, sleep = _clock()
+
+    record = accept_candidate(
+        graph,
+        workflow,
+        observe=lambda: None,
+        make_renderer=_factory(),
+        read_window=_reader(),
+        project_root=PROJECT_ROOT,
+        clock=read,
+        sleeper=sleep,
+        seconds=5.0,
+        pump=lambda: pumped.append(True),
+    )
+    assert record.outcome is RunOutcome.TIMED_OUT
+    assert "no observation published" in record.detail
+    assert pumped, "the loop stopped pumping while waiting for an observation"
+
+
+def test_the_abort_signal_is_polled_before_the_first_observation(candidate) -> None:
+    from ghostcursor.reasoning.compiled_tour import execute_compiled_workflow
+
+    graph = _load(candidate)
+    target = bind_candidate_target(graph, windows=[_window()], project_root=PROJECT_ROOT)
+    workflow = candidate_workflow(
+        graph, "Open a folder in VS Code", target, project_root=PROJECT_ROOT
+    )
+    read, sleep = _clock()
+    result = execute_compiled_workflow(
+        workflow,
+        observe=lambda: None,
+        renderer=_Renderer(),
+        clock=read,
+        sleeper=sleep,
+        seconds=600.0,
+        should_abort=lambda: True,
+    )
+    assert result.outcome is RunOutcome.ABORTED
+
+
+def test_the_overlay_is_created_only_after_both_gates_pass(candidate) -> None:
+    """Python evaluates arguments before the call.
+
+    Passing a constructed renderer meant the overlay already covered the
+    user's screen by the time `accept_candidate()` could refuse the run. It
+    takes a factory, and the factory is called after the reload and the
+    live-target check.
+    """
+    from ghostcursor.devtools.candidate_acceptance import accept_candidate
+
+    graph = _load(candidate)
+    target = bind_candidate_target(graph, windows=[_window()], project_root=PROJECT_ROOT)
+    workflow = candidate_workflow(
+        graph, "Open a folder in VS Code", target, project_root=PROJECT_ROOT
+    )
+    factory = _factory()
+
+    candidate["paths"]["recipe"].write_bytes(
+        candidate["paths"]["recipe"].read_bytes() + b"\n"
+    )
+    with pytest.raises(CandidateRejected):
+        accept_candidate(
+            graph,
+            workflow,
+            observe=_screen(["Welcome - Visual Studio Code"])[0],
+            make_renderer=factory,
+            read_window=_reader(),
+            project_root=PROJECT_ROOT,
+        )
+    assert factory.renderer.created is False, "the overlay was created anyway"
+
+
+def test_the_overlay_is_disposed_on_every_outcome(candidate) -> None:
+    """Pass, fail, timeout, abort, exception.
+
+    An overlay is full-screen, topmost, click-through and has no title bar, so
+    one left behind is one the user cannot close.
+    """
+    for screen, seconds in (
+        (
+            _screen(
+                [
+                    "Welcome - Visual Studio Code",
+                    "Welcome - Visual Studio Code",
+                    "demo - Visual Studio Code",
+                ]
+            ),
+            60.0,
+        ),
+        (_screen(["Welcome - Visual Studio Code"], present=False), 600.0),
+        (_screen(["Welcome - Visual Studio Code"]), 5.0),
+    ):
+        factory = _factory()
+        graph = _load(candidate)
+        target = bind_candidate_target(
+            graph, windows=[_window()], project_root=PROJECT_ROOT
+        )
+        workflow = candidate_workflow(
+            graph, r"Open C:\Projects\Demo in VS Code", target,
+            project_root=PROJECT_ROOT,
+        )
+        from ghostcursor.devtools.candidate_acceptance import accept_candidate
+
+        observe, publish = screen
+        read, sleep = _clock()
+        accept_candidate(
+            graph,
+            workflow,
+            observe=observe,
+            make_renderer=factory,
+            read_window=_reader(),
+            project_root=PROJECT_ROOT,
+            clock=read,
+            sleeper=lambda s: (sleep(s), publish()),
+            seconds=seconds,
+        )
+        assert factory.disposed, "the overlay outlived the run"
+
+
+def test_the_overlay_is_disposed_when_the_executor_raises(candidate) -> None:
+    from ghostcursor.devtools.candidate_acceptance import accept_candidate
+
+    graph = _load(candidate)
+    target = bind_candidate_target(graph, windows=[_window()], project_root=PROJECT_ROOT)
+    workflow = candidate_workflow(
+        graph, "Open a folder in VS Code", target, project_root=PROJECT_ROOT
+    )
+    factory = _factory()
+
+    def _boom():
+        raise RuntimeError("perception exploded")
+
+    with pytest.raises(RuntimeError):
+        accept_candidate(
+            graph,
+            workflow,
+            observe=_boom,
+            make_renderer=factory,
+            read_window=_reader(),
+            project_root=PROJECT_ROOT,
+        )
+    assert factory.disposed, "an exception left the overlay on screen"
+
+
+def test_the_provider_query_is_findall_not_a_filtered_walk() -> None:
+    """The measured Step 0 contract.
+
+    A descendant walk with a Python name filter pays the traversal this
+    project narrowed away from and throws away the provider's own cardinality
+    answer -- which is the only thing that makes `exactly_one` provable.
+    """
+    import ast
+
+    source = (PROJECT_ROOT / "ghostcursor" / "perception" / "uia.py").read_text(
+        encoding="utf-8"
+    )
+    body = source.split("def provider_query_for(")[1].split("\ndef ")[0]
+    assert "FindAll" in body
+    assert "descendants(" not in body, "provider_query_for is walking, not querying"
+    assert "CreatePropertyCondition" in body
+    ast.parse(source)
+
+
+@pytest.mark.parametrize("artifact", ["pack", "intent", "recipe"])
+def test_every_artifact_is_revalidated_not_just_the_recipe(
+    candidate, artifact
+) -> None:
+    """All three, or the ones left out can be swapped after review.
+
+    A revalidation that only covered the recipe would let an edited pack --
+    which decides the executable filter, the aliases, and the version identity
+    strategy -- reach a run under evidence naming the reviewed digest.
+    """
+    from ghostcursor.devtools.candidate_acceptance import revalidate_candidate
+
+    graph = _load(candidate)
+    path = candidate["paths"][artifact]
+    path.write_bytes(path.read_bytes() + b"\n")
+
+    with pytest.raises(CandidateRejected):
+        revalidate_candidate(graph)

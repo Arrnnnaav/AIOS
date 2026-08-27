@@ -81,6 +81,27 @@ class CandidateRejected(Exception):
 
 
 @dataclass(frozen=True)
+class CandidateRequest:
+    """Exactly how a candidate was named, kept so it can be named again.
+
+    Revalidation repeats the ORIGINAL request rather than re-reading whatever
+    now sits at the resolved paths. Re-reading a path checks the bytes and
+    nothing else -- containment, symlinks, schema, and cross-file agreement
+    all went unchecked, so a resolved path replaced by a same-byte symlink
+    passed while violating the trusted-artifact boundary outright.
+    """
+
+    root: Path
+    pack_path: Path
+    pack_sha256: str
+    intent_path: Path
+    intent_sha256: str
+    recipe_path: Path
+    recipe_sha256: str
+    project_root: Path
+
+
+@dataclass(frozen=True)
 class CandidateGraph:
     """One explicitly named pack + intent + recipe, all digest-verified."""
 
@@ -89,6 +110,7 @@ class CandidateGraph:
     intent: LoadedArtifact
     recipe: LoadedArtifact
     compiled: CompiledRecipe
+    request: CandidateRequest
 
     @property
     def digests(self) -> Mapping[str, str]:
@@ -295,6 +317,16 @@ def load_candidate(
         intent=intent,
         recipe=recipe,
         compiled=compile_recipe(recipe.value),
+        request=CandidateRequest(
+            root=root,
+            pack_path=Path(pack_path),
+            pack_sha256=pack_sha256,
+            intent_path=Path(intent_path),
+            intent_sha256=intent_sha256,
+            recipe_path=Path(recipe_path),
+            recipe_sha256=recipe_sha256,
+            project_root=Path(project_root),
+        ),
     )
 
 
@@ -459,26 +491,54 @@ def record_for(
     )
 
 
-def rehash_candidate(graph: CandidateGraph) -> None:
-    """Re-read and re-hash the three named files immediately before launch.
+def revalidate_candidate(graph: CandidateGraph) -> CandidateGraph:
+    """Re-run the ENTIRE trusted load immediately before launch.
 
-    The digests were verified when the graph was loaded. Between then and the
-    launch a human has been arranging windows, and an editor left open on the
-    candidate is the ordinary way those bytes change. Evidence has to name the
-    bytes that RAN, so this refuses rather than recording digests for content
-    that is no longer on disk.
+    Not a rehash. Re-reading the resolved paths and comparing digests checks
+    the bytes and nothing else: containment, symlink refusal, strict schema,
+    and cross-file id agreement all go unchecked, so an artifact replaced by a
+    same-byte symlink -- or by a file that now resolves outside the candidate
+    root -- passes while violating the boundary the load exists to enforce.
+
+    Repeating `load_candidate()` with the original request is what makes the
+    check equal to the one that granted the bytes their standing in the first
+    place. Anything less is a weaker gate running later, which is the worst
+    possible ordering.
+
+    The returned graph is the freshly verified one. It is discarded unless it
+    is byte-identical to the original, but returning it keeps the caller from
+    having to decide which of two graphs it now holds.
     """
-    for label, artifact in (
-        ("pack", graph.pack),
-        ("intent", graph.intent),
-        ("recipe", graph.recipe),
-    ):
-        current = hashlib.sha256(artifact.path.read_bytes()).hexdigest()
-        if current != artifact.sha256:
-            raise CandidateRejected(
-                f"the {label} artifact changed since it was loaded: "
-                f"{artifact.sha256} -> {current}"
-            )
+    request = graph.request
+    try:
+        reloaded = _reload(request)
+    except ValueError as exc:
+        # At load time a failure means "this candidate is not loadable". Here
+        # it means "the bytes that were reviewed are no longer what is on
+        # disk", which is a different fact and deserves to say so.
+        raise CandidateRejected(
+            f"the candidate no longer verifies since it was loaded: {exc}"
+        ) from exc
+
+    # No per-artifact comparison afterwards. `load_candidate()` verifies each
+    # artifact against the digest the ORIGINAL request named, so a reload that
+    # returns at all has already proved the bytes are the reviewed ones -- and
+    # a comparison that cannot fail reads as a safety check while enforcing
+    # nothing (D031). The reload is the check.
+    return reloaded
+
+
+def _reload(request: CandidateRequest) -> CandidateGraph:
+    return load_candidate(
+        request.root,
+        pack_path=request.pack_path,
+        pack_sha256=request.pack_sha256,
+        intent_path=request.intent_path,
+        intent_sha256=request.intent_sha256,
+        recipe_path=request.recipe_path,
+        recipe_sha256=request.recipe_sha256,
+        project_root=request.project_root,
+    )
 
 
 def accept_candidate(
@@ -486,20 +546,21 @@ def accept_candidate(
     workflow,
     *,
     observe,
-    renderer,
+    make_renderer,
     read_window,
     project_root: Path,
     clock=None,
     sleeper=None,
     seconds: float = 120.0,
     should_abort=None,
+    pump=None,
 ) -> RunRecord:
     """Run one candidate through the production executor and record the result.
 
-    Ordered deliberately: rehash the explicit files, revalidate the live
-    target, and only then execute. Each step invalidates something the one
-    before it cannot see -- edited bytes, a window that closed or updated, and
-    finally whether the workflow actually works.
+    Ordered deliberately: re-run the full trusted load of the explicit files,
+    revalidate the live target, and only then execute. Each step invalidates
+    something the one before it cannot see -- an artifact edited or replaced,
+    a window that closed or updated, and finally whether the workflow works.
 
     `execute_compiled_workflow()` is the same executor the production entry
     point calls. Acceptance that ran anything else would certify something
@@ -507,7 +568,7 @@ def accept_candidate(
     """
     from ghostcursor.packs.workflow import validate_live_target
 
-    rehash_candidate(graph)
+    revalidate_candidate(graph)
     validate_live_target(
         workflow,
         _as_verified_pack(graph),
@@ -516,14 +577,31 @@ def accept_candidate(
         project_root=project_root,
     )
 
-    kwargs = {"observe": observe, "renderer": renderer, "seconds": seconds}
+    # The renderer is built HERE, after both gates, and never passed in
+    # already-constructed. Python evaluates arguments before the call, so a
+    # caller writing `accept_candidate(..., renderer=_live_renderer())` had
+    # already put a full-screen topmost window on the user's screen before
+    # this function could refuse the run.
+    renderer, dispose = make_renderer()
+    kwargs = {
+        "observe": observe,
+        "renderer": renderer,
+        "seconds": seconds,
+        "pump": pump,
+    }
     if clock is not None:
         kwargs["clock"] = clock
     if sleeper is not None:
         kwargs["sleeper"] = sleeper
     if should_abort is not None:
         kwargs["should_abort"] = should_abort
-    result = execute_compiled_workflow(workflow, **kwargs)
+    try:
+        result = execute_compiled_workflow(workflow, **kwargs)
+    finally:
+        # Every exit: pass, fail, timeout, abort, exception. An overlay is
+        # click-through, topmost and has no title bar, so one left behind is
+        # one the user cannot close.
+        dispose()
     return record_for(graph, workflow.target, result)
 
 
@@ -621,86 +699,86 @@ def main(
         print(preparation_record(graph, target).to_json())
         return 0
 
+    import time
+
+    observe, ladder, pump, stop_perception = _live_acceptance_seams(
+        workflow, time.monotonic
+    )
     try:
         record = accept_candidate(
             graph,
             workflow,
-            observe=_live_observer(workflow),
-            renderer=_live_renderer(),
+            observe=observe,
+            make_renderer=_live_renderer_factory(ladder),
             read_window=live_window_reader(),
             project_root=project_root,
             seconds=args.seconds,
+            pump=pump,
         )
     except (CandidateRejected, WorkflowUnavailable) as exc:
         print(f"run refused: {exc}", file=sys.stderr)
         return 4
+    finally:
+        stop_perception()
 
     print(record.to_json())
     return 0 if record.outcome is RunOutcome.PASSED else 1
 
 
-def _live_renderer():  # pragma: no cover - needs a real desktop
-    """The production overlay renderer, created only when a run really starts."""
-    from ghostcursor.overlay import window as overlay_window
-    from ghostcursor.reasoning.renderer import OverlayRenderer
-    from ghostcursor.reasoning.staleness import Freshness
+def _live_renderer_factory(ladder):  # pragma: no cover - needs a real desktop
+    """A factory, never a renderer.
 
-    # A candidate run has no staleness ladder: perception here is synchronous,
-    # so every observation the executor renders from is the one it just took.
-    # Reporting FRESH is the honest answer, not a convenient default.
-    return OverlayRenderer(
-        overlay_window.create_overlay_window(),
-        freshness_source=lambda: Freshness.FRESH,
+    Returns `(renderer, dispose)` and creates nothing until called, so the
+    overlay cannot come into existence while Python is still evaluating the
+    arguments of the call that was going to refuse the run.
+    """
+
+    def _make():
+        from ghostcursor.overlay import window as overlay_window
+        from ghostcursor.reasoning.renderer import OverlayRenderer
+
+        hwnd = overlay_window.create_overlay_window()
+        renderer = OverlayRenderer(hwnd, freshness_source=ladder.freshness)
+
+        def _dispose():
+            try:
+                import win32gui
+
+                win32gui.DestroyWindow(hwnd)
+            except Exception:
+                pass
+
+        return renderer, _dispose
+
+    return _make
+
+
+def _live_acceptance_seams(workflow, clock):  # pragma: no cover - real desktop
+    """The same worker, staleness ladder, and pump production uses.
+
+    Acceptance that observed differently from production would certify
+    something production does not do -- which is the same objection that
+    forbids a second executor, one layer down.
+    """
+    from ghostcursor.perception import tier2 as tier2_module
+    from ghostcursor.reasoning.staleness import StalenessLadder
+    from ghostcursor.run import (
+        compiled_perception_service,
+        published_observation_source,
+        pump_messages,
     )
 
-
-def _live_observer(workflow):  # pragma: no cover - needs a real desktop
-    """One tick of real perception for the bound window, shaped for the executor.
-
-    Reads the compiled plan, not a per-workflow walker. `control_type_walk`
-    takes the control type as data, so a candidate that selects a control type
-    nothing has selected before needs no Python at all -- which is the whole
-    claim this milestone exists to make.
-    """
-    import win32gui
-
-    from ghostcursor.perception import uia
-    from ghostcursor.perception.service import run_observation_plan
-    from ghostcursor.reasoning.compiled_tour import TickInput
-
-    hwnd = workflow.target.hwnd
-
-    class _Info:
-        """Property reads for one provider result, in one place."""
-
-        def __init__(self, control):
-            info = control.element_info
-            self.name = info.name or ""
-            self.control_type = info.control_type or ""
-            self.automation_id = info.automation_id or ""
-            self.rectangle = control.rectangle()
-            runtime_id = getattr(info, "runtime_id", None)
-            if runtime_id:
-                self.runtime_id = tuple(runtime_id)
-
-    def _observe() -> TickInput:
-        observation = run_observation_plan(
-            workflow.recipe.plan,
-            walk_for=lambda control_type: (
-                lambda: uia.control_type_walk(hwnd, control_type)
-            ),
-            query_for=lambda control_type, name: (
-                lambda: uia.provider_query_for(hwnd, control_type, name)
-            ),
-            make_info=_Info,
-        )
-        return TickInput(
-            title=win32gui.GetWindowText(hwnd),
-            selectors=dict(observation.selectors),
-            union=observation.union,
-        )
-
-    return _observe
+    service = compiled_perception_service(
+        workflow, clock, tier2=tier2_module.build_controller(clock)
+    )
+    ladder = StalenessLadder(clock=clock)
+    service.start()
+    return (
+        published_observation_source(service),
+        ladder,
+        pump_messages,
+        service.stop,
+    )
 
 
 def _live_windows(graph: CandidateGraph) -> list[WindowCandidate]:  # pragma: no cover
