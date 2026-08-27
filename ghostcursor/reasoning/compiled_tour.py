@@ -192,6 +192,7 @@ def execute_compiled_workflow(
     seconds: float = 120.0,
     tick_interval_s: float = 0.25,
     should_abort: Callable[[], bool] | None = None,
+    confirmation_requested: Callable[[], bool] | None = None,
     pump: Callable[[], None] | None = None,
     on_grounding: Callable[..., None] | None = None,
 ) -> TourResult:
@@ -348,6 +349,19 @@ def execute_compiled_workflow(
             )
 
         _index[0] = tour.step_index
+        # Confirmation is an explicit user action, not an observation.  The
+        # executor owns the step-kind check so a SPACE typed while any other
+        # step is active can never invent progress, even if a caller supplies
+        # an over-eager input source.
+        current_step = tour.current_step
+        if (
+            current_step is not None
+            and current_step.verification_rule.kind
+            is VerificationKind.USER_CONFIRMS
+            and confirmation_requested is not None
+            and confirmation_requested()
+        ):
+            tour.confirm()
         try:
             state = tour.tick()
         except (ProviderQueryFault, PerceptionUnhealthy) as fault:

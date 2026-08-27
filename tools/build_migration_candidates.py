@@ -153,7 +153,7 @@ SYNTHETIC_RECIPE = {
             "control_type": "Text",
             "names": ["Export finished: table.csv"],
             "normalise": "none",
-            "cardinality": "at_least_one",
+            "cardinality": "exactly_one",
             "result_limit": 4,
         },
         # The wrong-action surface, declared rather than discovered. The
@@ -195,7 +195,7 @@ SYNTHETIC_RECIPE = {
         },
         {
             "user_action": "observe",
-            "target_selector": None,
+            "target_selector": "export_status",
             "target_descriptor": {
                 "claimed": {
                     "name": "Export finished: table.csv",

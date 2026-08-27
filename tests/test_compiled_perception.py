@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import ast
 import threading
+from dataclasses import replace
 
 import pytest
 
@@ -31,7 +32,12 @@ from ghostcursor.perception.compiled import (
     merge_ocr,
 )
 from ghostcursor.perception.uia import Element
-from ghostcursor.reasoning.compiled_tour import RunOutcome, execute_compiled_workflow
+from ghostcursor.packs.compile import CompiledRecipe, CompiledStep, CompiledVerification
+from ghostcursor.reasoning.compiled_tour import (
+    RunOutcome,
+    TickInput,
+    execute_compiled_workflow,
+)
 
 pytest_plugins = ()
 
@@ -673,6 +679,112 @@ def test_an_empty_slot_still_returns_none_while_healthy() -> None:
 # ---------------------------------------------------------------------------
 # The whole stack, composed
 # ---------------------------------------------------------------------------
+
+
+def test_a_compiled_user_confirmation_can_complete_only_from_its_input_source() -> None:
+    """The migrated Synthetic recipe ends with this exact interaction.
+
+    Observation cannot satisfy `user_confirms`; the executor must carry the
+    explicit human signal into the unchanged GuidedTour loop.
+    """
+    workflow, _catalog = _workflow()
+    confirmation = CompiledVerification(
+        kind="user_confirms", selector_id=None, args={}, timeout_s=30.0
+    )
+    step = CompiledStep(
+        user_action="observe",
+        target_selector="open_folder",
+        instruction_text="Confirm the status.",
+        verification=confirmation,
+        risk="normal",
+    )
+    workflow = replace(
+        workflow,
+        recipe=CompiledRecipe(
+            intent_id=workflow.recipe.intent_id,
+            step_key_namespace=workflow.recipe.step_key_namespace,
+            steps=(step,),
+            context_selectors=(),
+            plan=workflow.recipe.plan,
+        ),
+    )
+
+    class _Renderer:
+        def show(self, grounded, instruction_text):
+            pass
+
+        def clear(self):
+            pass
+
+        def settle(self):
+            pass
+
+    requested = []
+
+    def _confirmation_requested():
+        requested.append(True)
+        return True
+
+    folder = Element("Open Folder...", "Button", "", (1, 2, 3, 4))
+    now = [0.0]
+    result = execute_compiled_workflow(
+        workflow,
+        observe=lambda: TickInput(
+            title="Synthetic Export",
+            selectors={"open_folder": (folder,)},
+            union=(folder,),
+        ),
+        renderer=_Renderer(),
+        confirmation_requested=_confirmation_requested,
+        clock=lambda: now[0],
+        sleeper=lambda seconds: now.__setitem__(0, now[0] + seconds),
+        seconds=5.0,
+    )
+
+    assert result.outcome is RunOutcome.PASSED
+    assert requested, "the explicit confirmation source was never read"
+
+
+def test_confirmation_input_is_never_polled_for_an_observed_rule() -> None:
+    """An eager source cannot turn SPACE in another step into progress."""
+    workflow, _catalog = _workflow()
+    calls = []
+    titles = iter(
+        [
+            "Welcome - Visual Studio Code",
+            "Welcome - Visual Studio Code",
+            "demo - Visual Studio Code",
+        ]
+    )
+    folder = Element("Open Folder...", "Button", "", (1, 2, 3, 4))
+
+    class _Renderer:
+        def show(self, grounded, instruction_text):
+            pass
+
+        def clear(self):
+            pass
+
+        def settle(self):
+            pass
+
+    def _observe():
+        return TickInput(
+            title=next(titles, "demo - Visual Studio Code"),
+            selectors={"open_folder": (folder,)},
+            union=(folder,),
+        )
+
+    result = execute_compiled_workflow(
+        workflow,
+        observe=_observe,
+        renderer=_Renderer(),
+        confirmation_requested=lambda: calls.append(True) or True,
+        seconds=5.0,
+    )
+
+    assert result.outcome is RunOutcome.PASSED
+    assert calls == []
 
 
 def test_a_real_worker_drives_a_real_tour_to_completion() -> None:

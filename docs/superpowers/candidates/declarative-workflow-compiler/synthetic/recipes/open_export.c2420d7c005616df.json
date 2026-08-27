@@ -16,7 +16,7 @@
       "strategy": "bounded_descendants"
     },
     "export_status": {
-      "cardinality": "at_least_one",
+      "cardinality": "exactly_one",
       "control_type": "Text",
       "names": [
         "Export finished: table.csv"
@@ -90,7 +90,7 @@
         },
         "confirmed": []
       },
-      "target_selector": null,
+      "target_selector": "export_status",
       "user_action": "observe",
       "verification_rule": {
         "args": {},

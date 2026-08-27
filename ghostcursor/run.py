@@ -290,6 +290,15 @@ def confirmation_focus_is_safe(target_hwnd: int, bar_hwnd: int | None = None) ->
     return bool(target_hwnd) and foreground == target_hwnd and foreground != bar_hwnd
 
 
+def space_confirmation_requested(
+    target_hwnd: int, bar_hwnd: int | None = None
+) -> bool:
+    """Read one safe, explicit confirmation from the live desktop."""
+    return confirmation_focus_is_safe(target_hwnd, bar_hwnd) and key_was_pressed(
+        win32con.VK_SPACE, key_state=win32api.GetAsyncKeyState
+    )
+
+
 def run_tour(
     recipe_path: str,
     title_re: str,
@@ -1221,6 +1230,9 @@ def _run_compiled_tour(
                 sleeper=sleeper,
                 seconds=seconds,
                 should_abort=escape_pressed,
+                confirmation_requested=lambda: space_confirmation_requested(
+                    workflow.target.hwnd
+                ),
                 pump=pump_messages,
                 on_grounding=on_grounding,
             )

@@ -554,6 +554,7 @@ def accept_candidate(
     sleeper=None,
     seconds: float = 120.0,
     should_abort=None,
+    confirmation_requested=None,
     pump=None,
 ) -> RunRecord:
     """Run one candidate through the production executor and record the result.
@@ -614,6 +615,8 @@ def accept_candidate(
             kwargs["sleeper"] = sleeper
         if should_abort is not None:
             kwargs["should_abort"] = should_abort
+        if confirmation_requested is not None:
+            kwargs["confirmation_requested"] = confirmation_requested
         result = execute_compiled_workflow(workflow, **kwargs)
     return record_for(graph, workflow.target, result)
 
@@ -715,6 +718,8 @@ def main(
     import time
 
     start_perception, ladder, pump = _live_acceptance_seams(workflow, time.monotonic)
+    from ghostcursor.run import space_confirmation_requested
+
     try:
         record = accept_candidate(
             graph,
@@ -725,6 +730,9 @@ def main(
             project_root=project_root,
             seconds=args.seconds,
             pump=pump,
+            confirmation_requested=lambda: space_confirmation_requested(
+                workflow.target.hwnd
+            ),
         )
     except (CandidateRejected, WorkflowUnavailable) as exc:
         print(f"run refused: {exc}", file=sys.stderr)

@@ -345,7 +345,8 @@ def test_synthetic_export_declares_its_wrong_action_surface(digests) -> None:
     assert graph.compiled.context_selectors == ("wrong_control",)
     assert plan.selectors["wrong_control"].names == ("Wrong control",)
     assert plan.selectors["export_button"].cardinality == "exactly_one"
-    assert plan.selectors["export_status"].cardinality == "at_least_one"
+    assert plan.selectors["export_status"].cardinality == "exactly_one"
+    assert graph.compiled.steps[1].target_selector == "export_status"
 
 
 def test_synthetic_export_disables_ocr(digests) -> None:

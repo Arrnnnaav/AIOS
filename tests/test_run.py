@@ -31,6 +31,7 @@ from ghostcursor.run import (
     confirmation_focus_is_safe,
     key_was_pressed,
     make_grounder,
+    space_confirmation_requested,
     should_poll_space,
 )
 
@@ -109,6 +110,23 @@ def test_space_requires_the_target_hwnd_to_own_foreground(monkeypatch):
     assert confirmation_focus_is_safe(42, 99) is True
     assert confirmation_focus_is_safe(43, 99) is False
     assert confirmation_focus_is_safe(42, 42) is False
+
+
+def test_live_confirmation_reads_space_only_with_safe_target_focus(monkeypatch):
+    reads = []
+    monkeypatch.setattr(run_module.win32gui, "GetForegroundWindow", lambda: 42)
+    monkeypatch.setattr(
+        run_module.win32api,
+        "GetAsyncKeyState",
+        lambda vk: reads.append(vk) or _CURRENTLY_DOWN,
+    )
+
+    assert space_confirmation_requested(42, 99) is True
+    assert reads == [run_module.win32con.VK_SPACE]
+
+    reads.clear()
+    assert space_confirmation_requested(43, 99) is False
+    assert reads == [], "SPACE was consumed while another window owned focus"
 
 
 def test_space_is_blocked_when_target_hwnd_is_unknown(monkeypatch):
