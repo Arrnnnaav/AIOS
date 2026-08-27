@@ -1,0 +1,13 @@
+{
+  "packs": [
+    {
+      "pack_id": "synthetic",
+      "path": "synthetic"
+    },
+    {
+      "pack_id": "vscode",
+      "path": "vscode"
+    }
+  ],
+  "schema_version": 2
+}

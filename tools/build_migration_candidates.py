@@ -88,7 +88,10 @@ SYNTHETIC_PACK = {
 SYNTHETIC_INTENT = {
     "schema_version": 2,
     "intent_id": "EXPORT_DATA",
-    "canonical_target": "Export",
+    # The v1 registry's value, verbatim. This is what the planner surfaces
+    # for a known-but-unavailable intent, so inventing a "better" one here
+    # would change what a user is told (D058).
+    "canonical_target": "Synthetic Export",
     "rules": [
         {
             "tier": "exact",
@@ -239,7 +242,7 @@ VSCODE_PACK = {
 OPEN_FOLDER_INTENT = {
     "schema_version": 2,
     "intent_id": "OPEN_FOLDER",
-    "canonical_target": "Open Folder",
+    "canonical_target": None,
     "rules": [
         {
             "tier": "exact",
@@ -339,7 +342,7 @@ OPEN_FOLDER_RECIPE = {
 OPEN_TERMINAL_INTENT = {
     "schema_version": 2,
     "intent_id": "OPEN_TERMINAL",
-    "canonical_target": "Toggle Panel (Ctrl+J)",
+    "canonical_target": None,
     "rules": [
         {
             "tier": "exact",
@@ -479,6 +482,69 @@ def build() -> dict:
     return artifacts
 
 
+def activation_fixtures(artifacts: dict) -> dict[str, bytes]:
+    """The candidate-only index and activation documents.
+
+    Every intent is registered with `active_adoption_id: null` and no
+    adoptions, because none of these has been accepted. That state is the
+    honest one and it is also the safe one: a registered id is nameable but
+    not executable, so loading this graph proves the intents parse, cross-file
+    ids agree, and the matcher they compile to behaves -- without any of them
+    gaining authority to run.
+
+    These live beside the artifacts, outside `ghostcursor/packs/`. Production
+    reads `ghostcursor/packs/index.json`, which does not exist; a test
+    assembles a throwaway tree to load these, and nothing installs them.
+    """
+    by_pack: dict[str, dict[str, dict]] = {}
+    for relative, entry in artifacts.items():
+        pack_id, folder, name = relative.split("/")
+        by_pack.setdefault(pack_id, {}).setdefault(folder, {})[name] = entry
+
+    documents: dict[str, bytes] = {}
+    for pack_id, parts in sorted(by_pack.items()):
+        pack_name, pack_entry = next(iter(parts["pack"].items()))
+        intents = {}
+        for name, intent_entry in sorted(parts["intents"].items()):
+            stem = name.split(".")[0]
+            intent_id = next(
+                value["intent_id"]
+                for value in PACKS[pack_id]["intents"].values()
+                if value["intent_id"]
+                == PACKS[pack_id]["intents"][stem]["intent_id"]
+            )
+            intents[intent_id] = {
+                "intent": {
+                    "path": f"intents/{name}",
+                    "sha256": intent_entry["sha256"],
+                },
+                # Not accepted. No adoption record exists, so none is claimed.
+                "active_adoption_id": None,
+                "adoptions": {},
+            }
+        documents[f"{pack_id}/activation.json"] = canonical_bytes(
+            {
+                "schema_version": 2,
+                "activation_generation": 1,
+                "pack": {
+                    "path": f"pack/{pack_name}",
+                    "sha256": pack_entry["sha256"],
+                },
+                "intents": intents,
+            }
+        )
+
+    documents["index.json"] = canonical_bytes(
+        {
+            "schema_version": 2,
+            "packs": [
+                {"pack_id": pack_id, "path": pack_id} for pack_id in sorted(by_pack)
+            ],
+        }
+    )
+    return documents
+
+
 def digest_record(artifacts: dict) -> bytes:
     """The separately recorded full digests.
 
@@ -510,15 +576,29 @@ def main(argv: list[str] | None = None) -> int:
     written = {
         CANDIDATE_ROOT / path: entry["bytes"] for path, entry in artifacts.items()
     }
+    for path, raw in activation_fixtures(artifacts).items():
+        written[CANDIDATE_ROOT / path] = raw
     written[CANDIDATE_ROOT / "digests.json"] = digest_record(artifacts)
+
+    # Content-addressed names change when content does, so an edit leaves the
+    # PREVIOUS file behind under its old digest. An orphan is not harmless
+    # here: it is a schema-valid artifact nothing references, sitting where a
+    # human choosing a path to accept will see it.
+    existing = set(CANDIDATE_ROOT.rglob("*.json")) if CANDIDATE_ROOT.exists() else set()
+    orphans = sorted(existing - set(written))
 
     if args.check:
         for path, raw in sorted(written.items()):
             if not path.exists() or path.read_bytes() != raw:
                 print(f"{path} is out of date", file=sys.stderr)
                 return 1
-        return 0
+        for path in orphans:
+            print(f"{path} is an orphaned artifact", file=sys.stderr)
+        return 1 if orphans else 0
 
+    for path in orphans:
+        path.unlink()
+        print(f"removed orphan {path.relative_to(REPO_ROOT)}")
     for path, raw in sorted(written.items()):
         path.parent.mkdir(parents=True, exist_ok=True)
         if not path.exists() or path.read_bytes() != raw:

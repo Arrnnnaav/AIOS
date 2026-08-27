@@ -247,6 +247,26 @@ def test_claimed_descriptors_and_provenance_survive_verbatim(
         assert v2_step["instruction_text"] == v1_step["instruction_text"], index
         assert v2_step["user_action"] == v1_step["user_action"], index
         assert v2_step["risk"] == v1_step["risk"], index
+        # Preconditions are part of what a step means, and a schema-valid one
+        # added in migration would gate a step v1 never gated. The identity
+        # test constructs an empty list to compute `step_key()`, which says
+        # nothing about the candidate's own value -- this is what checks it.
+        assert _plain(v2_step["preconditions"]) == v1_step["preconditions"], index
+
+
+@pytest.mark.parametrize("intent_id", ALL_INTENTS)
+def test_no_candidate_step_gained_a_precondition(intent_id, digests) -> None:
+    """None of the three v1 recipes gates any step, and none may start to.
+
+    Stated separately from the field-by-field comparison so the intent is
+    legible: this is not "the lists happen to match", it is "no gate was
+    introduced by the migration".
+    """
+    graph = _graph(intent_id, digests)
+    for index, step in enumerate(graph.recipe.value["steps"]):
+        assert _plain(step["preconditions"]) == [], index
+    for index, step in enumerate(_v1(intent_id)["steps"]):
+        assert step["preconditions"] == [], index
 
 
 @pytest.mark.parametrize("intent_id", ALL_INTENTS)
@@ -604,3 +624,297 @@ def test_the_builder_is_not_importable_from_production() -> None:
             elif isinstance(node, ast.ImportFrom) and node.module:
                 names = [node.module]
             assert not any("build_migration_candidates" in name for name in names), path
+
+
+# ---------------------------------------------------------------------------
+# The candidates as one catalog, and the matcher they compile to
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def catalog_root(tmp_path_factory):
+    """A throwaway tree where the candidates sit where a catalog expects them.
+
+    `load_catalog()` reads `<root>/ghostcursor/packs/index.json`, so loading
+    the candidates as a graph means putting them there -- in a temporary tree,
+    never in the repository. Committing them under `ghostcursor/packs/` would
+    make them discoverable, which is the one thing quarantine forbids.
+
+    The bytes are copied unchanged, so every digest in the activation document
+    still binds exactly what was reviewed. `ghostcursor/demo/` comes along
+    because the synthetic pack's `content_sha256` identity names a file there
+    and the pack validator resolves it against the project root.
+    """
+    import shutil
+
+    root = tmp_path_factory.mktemp("candidate-catalog")
+    packs = root / "ghostcursor" / "packs"
+    packs.parent.mkdir(parents=True)
+    shutil.copytree(CANDIDATE_ROOT, packs)
+    (packs / "digests.json").unlink()
+
+    demo = root / "ghostcursor" / "demo"
+    demo.mkdir()
+    shutil.copy2(
+        REPO_ROOT / "ghostcursor" / "demo" / "synthetic_export_app.py",
+        demo / "synthetic_export_app.py",
+    )
+    return root
+
+
+@pytest.fixture(scope="module")
+def catalog(catalog_root):
+    from ghostcursor.packs.activation import load_catalog
+
+    return load_catalog(catalog_root)
+
+
+def test_the_candidate_graph_verifies_as_a_whole(catalog) -> None:
+    """Loading each triple alone never checks the graph they form.
+
+    Duplicate intent ids across packs, a duplicate normalised exact phrase, an
+    activation naming a digest no artifact has -- none of those is visible to
+    a per-triple load, and every one of them is a load-time failure the root
+    index exists to catch.
+    """
+    from ghostcursor.packs.activation import IntentAvailability
+
+    assert catalog.root_valid, catalog.diagnostics
+    assert catalog.diagnostics == ()
+    assert set(catalog.packs) == {"synthetic", "vscode"}
+    assert set(catalog.packs["vscode"].intents) == {"OPEN_FOLDER", "OPEN_TERMINAL"}
+    assert set(catalog.packs["synthetic"].intents) == {"EXPORT_DATA"}
+
+    for pack in catalog.packs.values():
+        for intent in pack.intents.values():
+            # Registered, not accepted. A candidate that already claimed an
+            # adoption would be executable without ever having been run.
+            assert intent.active_adoption is None
+            assert intent.adoptions == {}
+            assert intent.availability is (
+                IntentAvailability.KNOWN_INTENT_RECIPE_UNAVAILABLE
+            )
+
+
+def test_the_candidate_intents_compile_into_one_matcher(catalog) -> None:
+    from ghostcursor.packs.compile import compile_matcher
+
+    matcher = compile_matcher(catalog)
+    assert matcher.diagnostics == ()
+    assert {intent.intent_id for intent in matcher.intents} == set(MIGRATIONS)
+
+
+def test_the_candidate_matcher_reproduces_the_whole_d072_corpus(catalog) -> None:
+    """The 86-row gate, run against the artifacts rather than a fixture.
+
+    Until now the intents were only ever loaded one triple at a time and never
+    classified anything, so changing a token, a phrase or an alias and
+    regenerating would have passed every migration test. This is what makes
+    the intent artifacts checked rather than merely well-formed.
+    """
+    from ghostcursor.packs.compile import compile_matcher
+
+    corpus = json.loads(
+        (REPO_ROOT / "tests" / "data" / "d072_compatibility_v1.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    matcher = compile_matcher(catalog)
+
+    failures = []
+    for row in corpus["rows"]:
+        outcome = matcher.classify(row["goal"])
+        actual = (outcome.intent_id, outcome.confidence, outcome.kind)
+        expected = (row["expected_v2"], row["v2_confidence"], row["v2_kind"])
+        if actual != expected:
+            failures.append((row["goal"], expected, actual))
+    assert failures == []
+    assert len(corpus["rows"]) == 86
+
+
+def test_the_candidate_matcher_agrees_with_the_production_one(catalog) -> None:
+    """Same rows, same answers as the deterministic classifier still shipping.
+
+    Divergence is allowed only where D072 declared it, and the corpus records
+    which rows those are.
+    """
+    from ghostcursor.packs.compile import compile_matcher
+    from ghostcursor.reasoning.planner import deterministic_intent
+
+    corpus = json.loads(
+        (REPO_ROOT / "tests" / "data" / "d072_compatibility_v1.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    matcher = compile_matcher(catalog)
+
+    unlisted = []
+    for row in corpus["rows"]:
+        v1_intent, v1_confidence, _reason = deterministic_intent(row["goal"])
+        outcome = matcher.classify(row["goal"])
+        diverges = (v1_intent, v1_confidence) != (outcome.intent_id, outcome.confidence)
+        if diverges and not row["diverges"]:
+            unlisted.append(row["goal"])
+    assert unlisted == []
+
+
+def test_every_declared_exact_phrase_grounds_its_own_intent(catalog) -> None:
+    """A completeness check on the artifacts, not on the corpus.
+
+    A phrase that grounds nothing is a phrase the migration dropped in
+    transit, and no corpus row need mention it.
+    """
+    from ghostcursor.packs.compile import EXACT_CONFIDENCE, compile_matcher
+
+    matcher = compile_matcher(catalog)
+    for pack in catalog.packs.values():
+        for intent_id, intent in pack.intents.items():
+            phrases = [
+                phrase
+                for rule in intent.intent_value["rules"]
+                if rule["tier"] == "exact"
+                for phrase in rule["phrases"]
+            ]
+            assert phrases, intent_id
+            for phrase in phrases:
+                outcome = matcher.classify(phrase)
+                assert (outcome.intent_id, outcome.confidence) == (
+                    intent_id,
+                    EXACT_CONFIDENCE,
+                ), phrase
+
+
+def test_the_candidate_catalog_grants_no_execution_authority(catalog) -> None:
+    """Registered and nameable; not runnable.
+
+    `recipe: null` is the whole point of the fixture: the graph can be
+    verified and the matcher exercised without any candidate becoming
+    executable before acceptance (D070).
+    """
+    from ghostcursor.packs.compile import compile_planner
+
+    specs = compile_planner(catalog)
+    assert {spec.intent_id for spec in specs} == set(MIGRATIONS)
+    for spec in specs:
+        assert spec.recipe_path is None, spec.intent_id
+
+
+def test_the_activation_fixtures_stay_out_of_the_trusted_pack_root() -> None:
+    packs = REPO_ROOT / "ghostcursor" / "packs"
+    assert not (packs / "index.json").exists()
+    assert not list(packs.glob("*/activation.json"))
+    assert (CANDIDATE_ROOT / "index.json").exists()
+    assert sorted(p.parent.name for p in CANDIDATE_ROOT.glob("*/activation.json")) == [
+        "synthetic",
+        "vscode",
+    ]
+
+
+#: The reviewed D072 rule sets, read from the differential suite rather than
+#: restated. Those are the definitions the 86-row corpus was built against and
+#: `_fallback()` was compared to, so they are the specification the candidate
+#: intents have to reproduce.
+def _reviewed_rules():
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from test_compiled_matcher import (
+        EXPORT_DATA,
+        OPEN_FOLDER,
+        OPEN_TERMINAL,
+        VSCODE_ALIASES,
+    )
+
+    return (
+        {
+            "EXPORT_DATA": EXPORT_DATA,
+            "OPEN_FOLDER": OPEN_FOLDER,
+            "OPEN_TERMINAL": OPEN_TERMINAL,
+        },
+        VSCODE_ALIASES,
+    )
+
+
+@pytest.mark.parametrize("intent_id", ALL_INTENTS)
+def test_each_intent_artifact_carries_the_reviewed_rules_exactly(
+    intent_id, digests
+) -> None:
+    """Rule shape, not just rule behaviour.
+
+    The corpus is a behavioural gate and a good one, but it cannot see a
+    widening no row happens to exercise -- an extra alias member, or a token
+    added to a clause that another clause already excludes. Both are real
+    drift in what the workflow will ground on, and both passed every other
+    check here.
+    """
+    graph = _graph(intent_id, digests)
+    reviewed, _aliases = _reviewed_rules()
+    expected = reviewed[intent_id]
+
+    assert _plain(graph.intent.value["rules"]) == expected["rules"]
+
+
+@pytest.mark.parametrize("intent_id", ALL_INTENTS)
+def test_the_canonical_target_is_the_v1_registrys(intent_id, digests) -> None:
+    """What the planner surfaces for a known intent, unchanged.
+
+    The differential fixtures carry illustrative targets, so they are not the
+    authority here -- `registry()` is, because it is what production answers
+    with today. Checking against the fixture instead is what let three wrong
+    values through.
+    """
+    from ghostcursor.reasoning.planner import registry
+
+    graph = _graph(intent_id, digests)
+    assert graph.intent.value["canonical_target"] == registry()[intent_id].canonical_target
+
+
+@pytest.mark.parametrize("intent_id", ALL_INTENTS)
+def test_the_exact_phrases_are_the_v1_registrys(intent_id, digests) -> None:
+    from ghostcursor.reasoning.planner import registry
+
+    graph = _graph(intent_id, digests)
+    phrases = tuple(
+        phrase
+        for rule in graph.intent.value["rules"]
+        if rule["tier"] == "exact"
+        for phrase in rule["phrases"]
+    )
+    assert phrases == registry()[intent_id].phrases
+
+
+def test_the_alias_group_is_exactly_the_reviewed_one(digests) -> None:
+    """An alias member is a matching rule wearing a different name."""
+    graph = _graph("OPEN_FOLDER", digests)
+    _reviewed, aliases = _reviewed_rules()
+    assert _plain(graph.pack.value["aliases"]) == aliases
+
+
+def test_the_synthetic_pack_declares_no_aliases(digests) -> None:
+    """EXPORT_DATA's rules reference none, so the pack must not carry any.
+
+    An unreferenced alias group is a term nothing checks and a widening
+    waiting for a future rule to pick up.
+    """
+    graph = _graph("EXPORT_DATA", digests)
+    assert _plain(graph.pack.value["aliases"]) == {}
+
+
+def test_the_candidate_directory_holds_no_orphaned_artifact(digests) -> None:
+    """Every file is either referenced or is a reference.
+
+    Content-addressed names change when content does, so an edit leaves the
+    previous file behind under its old digest. That orphan is schema-valid and
+    nothing points at it -- which is exactly the shape a human choosing a path
+    to accept could pick up by mistake.
+    """
+    referenced = {CANDIDATE_ROOT / relative for relative in digests}
+    referenced |= {
+        CANDIDATE_ROOT / "digests.json",
+        CANDIDATE_ROOT / "index.json",
+        CANDIDATE_ROOT / "synthetic" / "activation.json",
+        CANDIDATE_ROOT / "vscode" / "activation.json",
+    }
+    present = set(CANDIDATE_ROOT.rglob("*.json"))
+    assert present - referenced == set()
+    assert referenced - present == set()

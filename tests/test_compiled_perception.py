@@ -1331,27 +1331,39 @@ def test_every_compiled_entry_point_keeps_the_stop_seam(module, function) -> Non
         f"{function} discards the stop seam it was handed ({stop_name})"
     )
 
-    # CALLED, not merely mentioned. A guard reading `if stop_perception is
-    # not None` references the name while stopping nothing.
-    called = [
-        child
-        for child in ast.walk(node)
-        if isinstance(child, ast.Call)
-        and isinstance(child.func, ast.Name)
-        and child.func.id == stop_name
-    ]
+    # The SHAPE of the cleanup, not merely that the name appears somewhere.
+    # A guard reading `if stop_perception is not None` mentions it while
+    # stopping nothing, and "passed to any call" accepts `print(stop)` -- both
+    # satisfy a laxer check while leaving a worker running.
+    #
+    # Two acceptable shapes, because the two paths genuinely differ:
+    # production owns its `finally`, while the harness registers on an
+    # `ExitStack` so the teardown survives a failure in the one beside it.
     registered = [
         child
         for child in ast.walk(node)
         if isinstance(child, ast.Call)
-        and stop_name in {
-            argument.id
+        and isinstance(child.func, ast.Attribute)
+        and child.func.attr == "callback"
+        and [
+            argument
             for argument in child.args
-            if isinstance(argument, ast.Name)
-        }
+            if isinstance(argument, ast.Name) and argument.id == stop_name
+        ]
     ]
-    assert called or registered, (
-        f"{function} never invokes or registers the stop seam {stop_name!r}"
+    in_finally = [
+        child
+        for handler in ast.walk(node)
+        if isinstance(handler, ast.Try)
+        for statement in handler.finalbody
+        for child in ast.walk(statement)
+        if isinstance(child, ast.Call)
+        and isinstance(child.func, ast.Name)
+        and child.func.id == stop_name
+    ]
+    assert registered or in_finally, (
+        f"{function} neither registers {stop_name!r} as a cleanup callback nor "
+        "calls it from a finally block"
     )
 
 

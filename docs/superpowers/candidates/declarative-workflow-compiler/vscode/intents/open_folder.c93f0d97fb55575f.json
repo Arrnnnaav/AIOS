@@ -1,5 +1,5 @@
 {
-  "canonical_target": "Open Folder",
+  "canonical_target": null,
   "intent_id": "OPEN_FOLDER",
   "rules": [
     {

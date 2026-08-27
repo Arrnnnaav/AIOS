@@ -1,0 +1,18 @@
+{
+  "activation_generation": 1,
+  "intents": {
+    "EXPORT_DATA": {
+      "active_adoption_id": null,
+      "adoptions": {},
+      "intent": {
+        "path": "intents/open_export.b44a6bdf9c0a53c2.json",
+        "sha256": "b44a6bdf9c0a53c224e654d66ddd3944c2b0c8eb0a13f90f13e9afe6eb6ef219"
+      }
+    }
+  },
+  "pack": {
+    "path": "pack/synthetic.abbf4db4a8a60e1f.json",
+    "sha256": "abbf4db4a8a60e1f8caae3b4b1e95a59d691aa0b71769bbeecba037540e8a004"
+  },
+  "schema_version": 2
+}

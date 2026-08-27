@@ -1,5 +1,5 @@
 {
-  "canonical_target": "Export",
+  "canonical_target": "Synthetic Export",
   "intent_id": "EXPORT_DATA",
   "rules": [
     {
