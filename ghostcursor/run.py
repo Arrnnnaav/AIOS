@@ -1044,7 +1044,7 @@ def run_tour_for_workflow(
     *,
     seconds: float,
     reload_catalog,
-    window_still_valid,
+    read_window,
     project_root,
     clock=time.monotonic,
     sleeper=time.sleep,
@@ -1076,7 +1076,7 @@ def run_tour_for_workflow(
     revalidate(
         workflow,
         reload_catalog=reload_catalog,
-        window_still_valid=window_still_valid,
+        read_window=read_window,
         project_root=project_root,
     )
 

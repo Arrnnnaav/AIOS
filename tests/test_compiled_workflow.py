@@ -51,6 +51,7 @@ from ghostcursor.packs.workflow import (
     resolve_application_identity,
     resolve_target,
     revalidate,
+    validate_live_target,
 )
 from ghostcursor.reasoning.vscode import (
     folder_reference_from_goal,
@@ -845,11 +846,28 @@ def test_an_intent_with_no_adoption_classifies_as_recipe_unavailable() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _revalidate(workflow, catalog, *, window_ok=True):
+def _reader(window=None, *, missing=False):
+    """A fake SCREEN, never a fake verdict.
+
+    Tests substitute what the OS reports about a handle. They cannot
+    substitute whether that report is acceptable -- `revalidate()` takes no
+    boolean, so there is nothing for a test double to say yes to.
+    """
+
+    def _read(hwnd):
+        if missing:
+            return None
+        live = window if window is not None else _window()
+        return WindowCandidate(hwnd=hwnd, title=live.title, app=live.app)
+
+    return _read
+
+
+def _revalidate(workflow, catalog, *, live=None, missing=False):
     revalidate(
         workflow,
         reload_catalog=lambda: catalog,
-        window_still_valid=lambda _w: window_ok,
+        read_window=_reader(live, missing=missing),
         project_root=PROJECT_ROOT,
     )
 
@@ -1008,23 +1026,69 @@ def test_a_withdrawn_adoption_aborts() -> None:
 
 
 def test_a_changed_application_identity_aborts() -> None:
-    """The application updated between planning and launch."""
+    """The application updated between planning and launch.
+
+    The LIVE window now reports a different version. Recomputing identity from
+    the workflow's own frozen snapshot would compare a value to itself and
+    agree every time -- it would read as a check and detect nothing, which is
+    exactly what this test used to prove by mutating the stored snapshot
+    instead of the screen.
+    """
     workflow, catalog = _workflow()
-    upgraded = TargetContext(
-        hwnd=workflow.target.hwnd,
-        title=workflow.target.title,
-        app=AppSnapshot("Code.exe", "1.200.0", 4242),
-        identity=workflow.target.identity,
-    )
-    moved = CompiledWorkflowReplacement(workflow, target=upgraded)
+    upgraded = _window(version="1.200.0")
     with pytest.raises(WorkflowUnavailable, match="identity changed"):
-        _revalidate(moved, catalog)
+        _revalidate(workflow, catalog, live=upgraded)
 
 
 def test_a_lost_window_aborts() -> None:
     workflow, catalog = _workflow()
-    with pytest.raises(WorkflowUnavailable, match="bound window"):
-        _revalidate(workflow, catalog, window_ok=False)
+    with pytest.raises(WorkflowUnavailable, match="no longer exists"):
+        _revalidate(workflow, catalog, missing=True)
+
+
+def test_a_recycled_hwnd_owned_by_another_process_aborts() -> None:
+    """A handle that still exists proves nothing about what is behind it.
+
+    Windows recycles HWND values. The same handle can belong to a process
+    started after planning, so "the window exists" is not "the window is still
+    my target".
+    """
+    workflow, catalog = _workflow()
+    recycled = _window(pid=9999)
+    with pytest.raises(WorkflowUnavailable, match="belongs to process"):
+        _revalidate(workflow, catalog, live=recycled)
+
+
+def test_the_bound_window_changing_executable_aborts() -> None:
+    workflow, catalog = _workflow()
+    impostor = _window(exe="chrome.exe")
+    with pytest.raises(WorkflowUnavailable, match="is now"):
+        _revalidate(workflow, catalog, live=impostor)
+
+
+def test_a_title_that_no_longer_satisfies_the_pack_aborts() -> None:
+    workflow, catalog = _workflow()
+    renamed = _window(title="Untitled - Notepad")
+    with pytest.raises(WorkflowUnavailable, match="no longer satisfies"):
+        _revalidate(workflow, catalog, live=renamed)
+
+
+def test_revalidation_offers_no_way_to_assert_a_window_is_valid() -> None:
+    """The injection point is the OS reader, never the verdict.
+
+    An unrestricted boolean callback would let any caller -- a test double, a
+    future entry point, a refactor in a hurry -- pass `lambda _: True` and
+    bypass the whole live-target invariant while every digest check still ran
+    and every test still passed.
+    """
+    import inspect
+
+    parameters = inspect.signature(revalidate).parameters
+    assert "read_window" in parameters
+    assert "window_still_valid" not in parameters
+
+    returns = inspect.signature(validate_live_target).return_annotation
+    assert returns in (None, "None"), "a validator that returns a verdict invites one"
 
 
 def CompiledWorkflowReplacement(workflow, **changes):
@@ -1063,7 +1127,7 @@ def test_a_failed_revalidation_never_reaches_overlay_creation() -> None:
             workflow,
             seconds=1.0,
             reload_catalog=lambda: empty,
-            window_still_valid=lambda _w: True,
+            read_window=_reader(),
             project_root=PROJECT_ROOT,
             create_overlay=_create_overlay,
         )
@@ -1095,7 +1159,98 @@ def test_a_revalidated_launch_reaches_the_execution_body() -> None:
             workflow,
             seconds=1.0,
             reload_catalog=lambda: catalog,
-            window_still_valid=lambda _w: True,
+            read_window=_reader(),
             project_root=PROJECT_ROOT,
             create_overlay=lambda: 1,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Immutability of the bound workflow
+# ---------------------------------------------------------------------------
+
+
+def test_the_derived_goal_reference_cannot_be_rewritten_after_planning() -> None:
+    """Nothing here is bound by a digest, so nothing else would catch it.
+
+    The reference is DERIVED from the goal at plan time, not loaded from an
+    artifact. A mutable mapping would let what a step verifies be rewritten
+    after planning with every bound digest still matching -- and revalidation,
+    which only compares digests and live identity, would pass.
+
+    `frozen=True` on the dataclass is not enough on its own: it stops the
+    FIELD being reassigned and says nothing about the contents of a mutable
+    object the field points at.
+    """
+    workflow, catalog = _workflow(goal=r"Open C:\Projects\Demo in VS Code")
+    assert workflow.goal_reference_for(0) == "demo"
+
+    with pytest.raises(TypeError):
+        workflow.goal_references[0] = "attacker"
+    with pytest.raises((TypeError, AttributeError)):
+        workflow.goal_references.clear()
+    with pytest.raises((TypeError, AttributeError)):
+        workflow.goal_references.pop(0)
+
+    assert workflow.goal_reference_for(0) == "demo"
+    _revalidate(workflow, catalog)
+
+
+def test_replacing_the_whole_field_is_refused_too() -> None:
+    from dataclasses import FrozenInstanceError
+
+    workflow, _catalog = _workflow()
+    with pytest.raises(FrozenInstanceError):
+        workflow.goal_references = {0: "attacker"}
+
+
+def test_the_compiled_plan_is_immutable_the_same_way() -> None:
+    """The same rule already holds one layer down; this keeps them consistent."""
+    workflow, _catalog = _workflow()
+    with pytest.raises(TypeError):
+        workflow.recipe.plan.selectors["open_folder"] = None
+    with pytest.raises(TypeError):
+        workflow.recipe.steps[0].verification.args["goal_reference"] = None
+
+
+def test_the_validator_does_not_trust_the_arguments_it_is_handed() -> None:
+    """Two checks `revalidate()` alone cannot reach, and why they stay.
+
+    Inside `revalidate()` both are implied by the checks before them: the
+    executable was already compared against the workflow's own, and the
+    adoption already accepted that identity at materialization. Reached
+    through that path they can never fire, so the mutation audit finds them
+    surviving -- correctly.
+
+    They are kept and tested HERE because `validate_live_target()` is exported
+    and takes the pack and the adoption as arguments. A caller that pairs a
+    workflow with the wrong pack, or with an adoption for a different
+    application version, gets a refusal rather than a launch. This is the last
+    gate before an overlay covers the user's screen; it does not get to assume
+    its caller did the pairing correctly.
+    """
+    workflow, catalog = _workflow()
+    pack = catalog.packs["vscode"]
+    adoption = pack.intents["OPEN_FOLDER"].active_adoption
+
+    # A pack that does not claim this workflow's executable.
+    other_pack = _catalog(pack_value=_pack_value(executables=("notepad.exe",)))[1]
+    with pytest.raises(WorkflowUnavailable, match="not an executable pack"):
+        validate_live_target(
+            workflow,
+            other_pack,
+            adoption,
+            read_window=_reader(),
+            project_root=PROJECT_ROOT,
+        )
+
+    # An adoption accepted against a different application version.
+    stale = _adoption(identity=ApplicationIdentity("executable_version", "1.100.0"))
+    with pytest.raises(WorkflowUnavailable, match="no longer accepted"):
+        validate_live_target(
+            workflow,
+            pack,
+            stale,
+            read_window=_reader(),
+            project_root=PROJECT_ROOT,
         )

@@ -24,6 +24,7 @@ import hashlib
 import re
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
+from types import MappingProxyType
 from typing import Any, Callable, Mapping
 
 from ghostcursor.packs.activation import (
@@ -286,6 +287,13 @@ class CompiledWorkflow:
     executable_names: tuple[str, ...]
     #: The goal reference derived ONCE, per step index. Verification reads it
     #: rather than re-extracting from the goal, so there is one extractor.
+    #:
+    #: An immutable view, not a dict. Nothing here is bound by a digest -- it
+    #: is DERIVED from the goal at plan time -- so a mutable mapping would let
+    #: what a step verifies be rewritten after planning with every bound digest
+    #: still matching, and revalidation would pass. `frozen=True` on the
+    #: dataclass stops the field being reassigned; it does nothing about the
+    #: contents of a mutable object the field points at.
     goal_references: Mapping[int, str]
 
     def goal_reference_for(self, step_index: int) -> str | None:
@@ -354,7 +362,7 @@ def materialize(
         evidence_sha256=adoption.evidence.sha256,
         tier2_capture=pack.pack_value["tier2_capture"],
         executable_names=tuple(pack.pack_value["executable_names"]),
-        goal_references=dict(references),
+        goal_references=MappingProxyType(references),
     )
 
 
@@ -363,11 +371,129 @@ def materialize(
 # ---------------------------------------------------------------------------
 
 
+def live_window_reader() -> Callable[[int], WindowCandidate | None]:
+    """The production low-level reader: one HWND in, its current facts out.
+
+    Deliberately dumb. It answers what the OS says about a window handle right
+    now and makes no judgement about whether that is acceptable -- the judgement
+    is `validate_live_target()`'s, and keeping the two apart is what lets a test
+    substitute a screen without ever substituting a verdict.
+    """
+
+    def _read(hwnd: int) -> WindowCandidate | None:
+        import os
+
+        import win32gui
+        import win32process
+
+        from ghostcursor.perception.appinfo import _exe_path_for_pid, _version_for
+
+        try:
+            if not win32gui.IsWindow(hwnd):
+                return None
+            title = win32gui.GetWindowText(hwnd)
+            pid = win32process.GetWindowThreadProcessId(hwnd)[1]
+        except Exception:
+            # An unreadable window is not a window that passed. Absence here
+            # aborts the launch, which is the safe direction.
+            return None
+
+        exe_path = _exe_path_for_pid(pid)
+        if not exe_path:
+            return None
+        kind = "appx" if "WindowsApps" in exe_path else "win32"
+        return WindowCandidate(
+            hwnd=hwnd,
+            title=title,
+            app=AppSnapshot(
+                executable_name=os.path.basename(exe_path).casefold(),
+                version=_version_for(exe_path, kind),
+                process_id=pid,
+            ),
+        )
+
+    return _read
+
+
+def validate_live_target(
+    workflow: CompiledWorkflow,
+    pack: VerifiedPack,
+    adoption: AdoptionRecord,
+    *,
+    read_window: Callable[[int], WindowCandidate | None],
+    project_root: Path,
+) -> None:
+    """Re-read the bound window and prove it is still the same target.
+
+    Every check reads the LIVE snapshot. Recomputing identity from the
+    workflow's own frozen planning-time snapshot would compare a value to
+    itself: it can only ever agree, so it would look like a check and detect
+    nothing. The application updating between planning and launch is exactly
+    the case this exists for.
+
+    Only the OS reader is injectable. A caller cannot hand in a verdict --
+    there is no boolean to pass -- so no test double and no future caller can
+    assert that an arbitrary window is acceptable. Substituting a screen is
+    allowed; substituting the judgement about it is not.
+    """
+    live = read_window(workflow.target.hwnd)
+    if live is None:
+        raise WorkflowUnavailable(
+            f"the bound window {workflow.target.hwnd} no longer exists"
+        )
+    if live.hwnd != workflow.target.hwnd:
+        raise WorkflowUnavailable("the window reader answered about another window")
+
+    # HWND values are recycled. A handle that still "exists" can belong to a
+    # process started after planning, so the handle alone proves nothing about
+    # which application is behind it.
+    if live.app.process_id != workflow.target.app.process_id:
+        raise WorkflowUnavailable(
+            f"window {workflow.target.hwnd} now belongs to process "
+            f"{live.app.process_id}, not {workflow.target.app.process_id}"
+        )
+
+    # The PACK's list, not the workflow's copy of it. Reading the copy would
+    # compare the workflow to itself and agree every time -- a check in shape
+    # only. The pack is the authority on which executables it claims.
+    executables = {
+        name.casefold() for name in pack.pack_value.get("executable_names", ())
+    }
+    live_executable = live.app.executable_name.casefold()
+    if live_executable != workflow.target.app.executable_name.casefold():
+        raise WorkflowUnavailable(
+            f"window {workflow.target.hwnd} is now {live_executable!r}, not "
+            f"{workflow.target.app.executable_name!r}"
+        )
+    if live_executable not in executables:
+        raise WorkflowUnavailable(
+            f"{live_executable!r} is not an executable pack {pack.pack_id} claims"
+        )
+
+    patterns = [re.compile(p) for p in pack.pack_value["title_patterns"]]
+    if not any(pattern.search(live.title) for pattern in patterns):
+        raise WorkflowUnavailable(
+            f"window {workflow.target.hwnd} title {live.title!r} no longer "
+            f"satisfies pack {pack.pack_id}"
+        )
+
+    # The live application identity, through the SAME resolver acceptance used
+    # (D073). Two resolvers would compare two different questions.
+    current = resolve_application_identity(pack, live.app, project_root=project_root)
+    if current != workflow.target.identity:
+        raise WorkflowUnavailable(
+            f"application identity changed from {workflow.target.identity.value!r} "
+            f"to {current.value!r} since planning"
+        )
+    if not adoption.accepts_identity(current):
+        raise WorkflowUnavailable("live application identity is no longer accepted")
+
+
 def revalidate(
     workflow: CompiledWorkflow,
     *,
     reload_catalog: Callable[[], VerifiedCatalog],
-    window_still_valid: Callable[[CompiledWorkflow], bool],
+    read_window: Callable[[int], WindowCandidate | None],
     project_root: Path,
 ) -> None:
     """Re-verify every bound input immediately before a tour launches.
@@ -416,19 +542,11 @@ def revalidate(
     if adoption.evidence.sha256 != workflow.evidence_sha256:
         raise WorkflowUnavailable("acceptance evidence changed since planning")
 
-    # The live application identity, through the SAME resolver acceptance used.
-    current = resolve_application_identity(
-        pack, workflow.target.app, project_root=project_root
+    # The window and the application behind it, all read live.
+    validate_live_target(
+        workflow,
+        pack,
+        adoption,
+        read_window=read_window,
+        project_root=project_root,
     )
-    if current != workflow.target.identity:
-        raise WorkflowUnavailable(
-            f"application identity changed from {workflow.target.identity.value!r} "
-            f"to {current.value!r} since planning"
-        )
-    if not adoption.accepts_identity(current):
-        raise WorkflowUnavailable("live application identity is no longer accepted")
-
-    # The window itself: still there, still the same process and executable,
-    # still satisfying the pack's title identity.
-    if not window_still_valid(workflow):
-        raise WorkflowUnavailable("the bound window is gone or is no longer the target")
