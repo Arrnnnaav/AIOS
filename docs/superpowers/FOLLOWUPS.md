@@ -308,17 +308,27 @@ normalised name on a selector, which restores exact-rung semantics without
 losing observation fidelity — a better fix than widening rung 2 globally.
 
 
-## Declarative workflow compiler (scoped, not started)
+## Declarative workflow compiler (designed and planned; implementation not started)
 
 Moved out of `CLAUDE.md` under D071: unresolved work is owned here, not by the
 rules file.
+
+**Approved artifacts — read these; do not redesign the milestone:**
+
+- [Design spec](specs/2026-08-27-declarative-workflow-compiler-design.md)
+- [Implementation plan](plans/2026-08-27-declarative-workflow-compiler.md)
+
+Both passed independent D032 review through `af47bcf`. No implementation code
+has started. The remaining top-level trigger is explicit owner authorization to
+begin Task 1 of the approved plan.
 
 ### Recipe schema v2 and the declarative workflow compiler
 
 Built around the two measured selector strategies, `provider_exact` and
 `bounded_descendants`. Recipes declare strategy; the compiler never infers it.
 
-**Trigger:** the design spec is written and independently reviewed.
+**State/trigger:** design and planning are complete; begin only when the owner
+authorizes implementation from the approved plan.
 
 ### Declarative intent registration
 
@@ -326,7 +336,8 @@ Built around the two measured selector strategies, `provider_exact` and
 dictionary, so Open Extensions cannot be a data-only workflow while it stays
 one. This is a prerequisite for the proof, not an optional cleanup.
 
-**Trigger:** schema v2 lands.
+**State/trigger:** scheduled by plan Task 3 after strict schema and activation
+loading. It is not a separate design task.
 
 ### Migrate the existing workflows, then add Open Extensions
 
@@ -335,13 +346,16 @@ Open Extensions through pack and recipe data with no workflow-specific change
 under `ghostcursor/**/*.py`. The proof is the whole diff from the compiler
 baseline through adopted Open Extensions containing no such Python.
 
-**Trigger:** the compiler is implemented and tested.
+**State/trigger:** scheduled by plan Tasks 7–12 after the compiler baseline and
+its review gates pass.
 
 ### Acceptance budget
 
-Twelve human-driven real-desktop runs: 3/3 each for Synthetic Export, Open
-Folder, Open Terminal, and Open Extensions. All four receive new artifact bytes,
-so D070 requires fresh acceptance for each. Open Folder's gate must assert UIA
-provenance rather than mere completion.
+At least twelve successful human-driven real-desktop runs: 3/3 each for
+Synthetic Export, Open Folder, Open Terminal, and Open Extensions. Application
+identity drift resets affected campaigns and may increase the total. All four
+receive new artifact bytes, so D070 requires fresh acceptance for each. Open
+Folder's gate must assert UIA provenance rather than mere completion.
 
-**Trigger:** artifacts exist and are ready for acceptance.
+**State/trigger:** scheduled by plan Tasks 8 and 12 when exact candidate
+artifacts and independent reviewers are available.

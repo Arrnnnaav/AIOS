@@ -1,7 +1,7 @@
 # Declarative Workflow Compiler Implementation Plan
 
 Date: 2026-08-27
-Status: **revised after independent review; pending re-review before implementation**
+Status: **approved after independent D032 re-review; awaiting owner authorization to implement**
 
 **Goal:** Replace GhostCursor's hardcoded planner registry and workflow-specific
 UIA walkers with one manifest-authorized schema-v2 compiler, migrate the three
