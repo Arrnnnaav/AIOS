@@ -801,6 +801,124 @@ def test_pack_directories_that_resolve_to_one_place_load_no_packs(tmp_path):
     )
 
 
+def test_a_rejected_ancestor_does_not_disable_a_valid_active_descendant(tmp_path):
+    """The predecessor chain is walked over declared edges, not surviving ones.
+
+    Walking the surviving set instead makes a rejected ancestor orphan every
+    descendant, which would disable a fully valid active record -- the outcome
+    Design section 3 forbids. This entry's only first adoption is the rejected
+    one, so it also pins the legitimate zero-verified-roots case.
+    """
+
+    built = _one_pack(tmp_path)
+    entry = built["activation"]["intents"]["OPEN_FOLDER"]
+    first_id = entry["active_adoption_id"]
+    second_id = "accept-open_folder-2"
+    entry["adoptions"][second_id] = _adoption(
+        built["recipe_refs"]["OPEN_FOLDER"],
+        built["pack_ref"],
+        built["intent_refs"]["OPEN_FOLDER"],
+        _evidence(tmp_path, "vscode-open_folder-descendant"),
+        identity="1.135.0",
+        supersedes_id=first_id,
+        supersedes_recipe=entry["adoptions"][first_id]["recipe"]["sha256"],
+        adopted_at="2026-08-27T02:00:00Z",
+    )
+    entry["active_adoption_id"] = second_id
+    # Break the ancestor only. Its own evidence document no longer verifies,
+    # which leaves the descendant's facts untouched.
+    entry["adoptions"][first_id]["evidence"]["sha256"] = "0" * 64
+    built["activation"]["activation_generation"] = 2
+    _write_authority(built["root"], "activation.json", built["activation"])
+
+    catalog = load_catalog(tmp_path)
+    intent = catalog.packs["vscode"].intents["OPEN_FOLDER"]
+    assert intent.availability is IntentAvailability.ACTIVE
+    assert intent.active_adoption.adoption_id == second_id
+    assert set(intent.adoptions) == {second_id}
+    assert all(
+        record.supersedes_adoption_id is not None
+        for record in intent.adoptions.values()
+    ), "no verified first adoption remains, and that must stay legitimate"
+    assert any(
+        item.code is DiagnosticCode.INACTIVE_ADOPTION_INVALID
+        for item in catalog.diagnostics
+    )
+    assert not any(
+        item.code is DiagnosticCode.ACTIVE_ADOPTION_INVALID
+        for item in catalog.diagnostics
+    )
+
+
+def test_history_keeps_the_identity_strategy_it_was_accepted_under(tmp_path):
+    """A pack that switches identity strategy must not erase its own history."""
+
+    source = tmp_path / "ghostcursor" / "demo" / "synthetic_export_app.py"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_bytes(b"APP_TITLE = 'Synthetic Export'\n")
+
+    built = _one_pack(tmp_path)
+    entry = built["activation"]["intents"]["OPEN_FOLDER"]
+    first_id = entry["active_adoption_id"]
+
+    switched = _pack(display="vscode")
+    switched["version_identity"] = {
+        "kind": "content_sha256",
+        "path": "ghostcursor/demo/synthetic_export_app.py",
+    }
+    new_pack_ref = _write_json(built["root"], "pack/vscode-v2.json", switched)
+
+    second_id = "accept-open_folder-2"
+    second = _adoption(
+        built["recipe_refs"]["OPEN_FOLDER"],
+        new_pack_ref,
+        built["intent_refs"]["OPEN_FOLDER"],
+        _evidence(tmp_path, "vscode-open_folder-strategy"),
+        identity=_sha(source.read_bytes()),
+        supersedes_id=first_id,
+        supersedes_recipe=entry["adoptions"][first_id]["recipe"]["sha256"],
+        adopted_at="2026-08-27T02:00:00Z",
+    )
+    second["accepted_application_identity"]["kind"] = "content_sha256"
+    entry["adoptions"][second_id] = second
+    entry["active_adoption_id"] = second_id
+    built["activation"]["pack"] = new_pack_ref
+    built["activation"]["activation_generation"] = 2
+    _write_authority(built["root"], "activation.json", built["activation"])
+
+    catalog = load_catalog(tmp_path)
+    intent = catalog.packs["vscode"].intents["OPEN_FOLDER"]
+    assert intent.availability is IntentAvailability.ACTIVE
+    assert set(intent.adoptions) == {first_id, second_id}
+    assert (
+        intent.adoption_for_identity(
+            first_id, ApplicationIdentity("executable_version", "1.134.0")
+        ).adoption_id
+        == first_id
+    )
+    assert intent.active_adoption.accepts_identity(
+        ApplicationIdentity("content_sha256", _sha(source.read_bytes()))
+    )
+
+
+def test_an_unresolvable_indexed_directory_loads_no_packs(tmp_path):
+    good = _make_pack(tmp_path, directory="good", pack_id="good", active=False)
+    _write_index(
+        tmp_path,
+        [
+            {"pack_id": "good", "path": good["directory"]},
+            {"pack_id": "missing", "path": "missing"},
+        ],
+    )
+
+    catalog = load_catalog(tmp_path)
+    assert not catalog.root_valid
+    assert catalog.packs == {}
+    assert any(
+        item.code is DiagnosticCode.ROOT_INDEX_INVALID for item in catalog.diagnostics
+    )
+
+
 def test_catalog_binds_the_exact_index_bytes(tmp_path):
     _one_pack(tmp_path, active=False)
     index_path = tmp_path / "ghostcursor" / "packs" / "index.json"

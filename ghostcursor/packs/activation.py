@@ -187,12 +187,16 @@ def load_catalog(
         try:
             directory = resolve_trusted_directory(packs_root, entry["path"])
         except (ValueError, OSError) as exc:
-            diagnostics.append(
-                Diagnostic(
-                    code=DiagnosticCode.PACK_INVALID, detail=str(exc), pack_id=pack_id
-                )
+            # Root-scoped, not pack-scoped. An index that names a directory
+            # which is missing, unsafe, or unresolvable is a defective index,
+            # and discovery is the one commit point where that must fail whole:
+            # loading the remaining packs would silently ship a partial registry.
+            return _root_failure(
+                DiagnosticCode.ROOT_INDEX_INVALID,
+                f"indexed pack {pack_id!r} does not resolve: {exc}",
+                diagnostics,
+                index_sha256=index.sha256,
             )
-            continue
         key = os.path.normcase(str(directory))
         if key in claimed:
             return _root_failure(
@@ -560,9 +564,12 @@ def _verify_adoptions(
 
     # "First adoption alone uses both fields as null." Two null-predecessor
     # records are two unrelated histories in one entry, and both would become
-    # rollback-eligible without either one accounting for the other. Counted
-    # over verified records only: a malformed record is rejected on its own
-    # and never competes for the root.
+    # rollback-eligible without either one accounting for the other.
+    #
+    # At most one, not exactly one. Counting over verified records means zero
+    # verified roots is legitimate: when a rejected ancestor is the entry's only
+    # first adoption, its valid descendants survive on the declared chain, and
+    # demanding a verified root here would disable them.
     roots = sorted(
         adoption_id
         for adoption_id, record in records.items()
@@ -677,6 +684,7 @@ def _adoption_record(
             raise ValueError(
                 f"{label} accepted intent is not the currently bound intent"
             )
+        acceptance_pack_value = pack_value
     else:
         # A preserved record describes what was accepted *then*. Requiring it
         # to equal the current binding would erase the whole history on the
@@ -692,9 +700,13 @@ def _adoption_record(
         )
         if historical_intent.value["intent_id"] != intent_id:
             raise ValueError(f"{label} accepted intent belongs to another intent")
+        acceptance_pack_value = historical_pack.value
 
+    # Judged against the pack this record was accepted against, never against
+    # today's. A pack that switches identity strategy would otherwise reject
+    # every preserved record, which is the history D070's rollback check needs.
     identity = _application_identity(
-        raw["accepted_application_identity"], pack_value, label
+        raw["accepted_application_identity"], acceptance_pack_value, label
     )
 
     evidence_ref = _artifact_ref(raw["evidence"], f"{label}.evidence")

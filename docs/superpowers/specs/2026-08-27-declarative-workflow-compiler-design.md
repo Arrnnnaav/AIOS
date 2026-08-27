@@ -338,8 +338,12 @@ A generation may help cache invalidation and audit ordering, but only the digest
 of the exact activation bytes binds content.
 
 **Application identity scope is exact in v2.** The adoption record's kind must
-equal the trusted pack's `version_identity.kind`, and its value must equal the
-resolver's exact result. `executable_version` stores the exact observed version;
+equal the `version_identity.kind` of **the pack that record was accepted
+against** — the current pack for an active record, its own accepted pack for a
+preserved one — and its value must equal the resolver's exact result. Judging
+preserved records against today's pack would make a strategy change erase the
+entire history, the same failure as judging their artifact bindings against
+today's. `executable_version` stores the exact observed version;
 `content_sha256` stores the exact lowercase 64-hex module digest. Version ranges
 and additional identity strategies need comparison and trust semantics of their
 own and are deferred rather than half-specified.
@@ -408,7 +412,8 @@ overwriting when a filename already holds different bytes.
 | Condition | Result |
 |---|---|
 | `packs/index.json` missing or structurally invalid | no pack loads |
-| index path is absolute, escapes the packs root, or resolves through a symlink | no pack loads |
+| index path is absolute, escapes the packs root, resolves through a symlink, is missing, or is otherwise unresolvable | no pack loads |
+| two index paths resolve to one directory | no pack loads |
 | duplicate pack ID or duplicate pack directory | no pack loads |
 | duplicate case-folded intent ID across packs | no pack loads |
 | duplicate normalized exact phrase across intents | no pack loads |
