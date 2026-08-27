@@ -186,12 +186,29 @@ def _parse_json(text: str) -> dict[str, Any]:
     return value
 
 
-def _freeze(value: Any) -> Any:
+def freeze(value: Any) -> Any:
+    """Deep-freeze one parsed artifact value.
+
+    Every nesting level, not just the outer one. A shallow freeze looks
+    identical from the outside and protects nothing that matters: the values a
+    recipe actually decides behaviour with -- a verification's
+    `goal_reference`, its `minimum_length` -- live one or two levels down, so
+    an outer `MappingProxyType` over mutable interiors is a guarantee in shape
+    only.
+
+    Public because the compiler must be able to re-apply it. Anything that
+    rebuilds part of an artifact and hands the result on has to freeze what it
+    rebuilt, or it silently gives back the mutability the trust boundary
+    removed.
+    """
     if isinstance(value, dict):
-        return MappingProxyType({key: _freeze(item) for key, item in value.items()})
+        return MappingProxyType({key: freeze(item) for key, item in value.items()})
     if isinstance(value, list):
-        return tuple(_freeze(item) for item in value)
+        return tuple(freeze(item) for item in value)
     return value
+
+
+_freeze = freeze
 
 
 def _validate_relative_path(value: Any, label: str) -> str:

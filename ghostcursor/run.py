@@ -28,6 +28,7 @@ machine.
 import argparse
 import os
 import time
+from pathlib import Path
 from typing import Callable
 
 import win32api
@@ -1043,20 +1044,24 @@ def run_tour_for_workflow(
     workflow,
     *,
     seconds: float,
-    reload_catalog,
-    read_window,
-    project_root,
     clock=time.monotonic,
     sleeper=time.sleep,
     warmup_budget_s: float = DEFAULT_WARMUP_BUDGET_S,
-    create_overlay=None,
 ) -> int:
     """Launch a guided tour from a `CompiledWorkflow`, never from a path.
 
-    The production-facing shape of the v2 entry point: `--goal` and Ask hand
-    the exact object planning returned straight to the tour, with no second
+    The production-facing v2 entry point: `--goal` and Ask hand the exact
+    object planning returned straight to the tour, with no second
     `recipe_path_for()` lookup that could resolve to different bytes than the
     ones the plan was authorized against.
+
+    **Every authority input is chosen here, not accepted here.** The window
+    reader, the catalog loader, and the project root are what revalidation
+    decides with -- a caller who supplies them supplies the PID, executable,
+    title, and version that authorize the launch, which is the same bypass the
+    boolean callback was, just spelled with more arguments. This function takes
+    none of them. `clock` and `sleeper` remain parameters because they drive
+    the timeline and decide nothing about authority.
 
     Revalidation happens FIRST, before anything creates a window. Ordering is
     the whole guarantee: an overlay is full-screen, topmost and click-through,
@@ -1071,6 +1076,45 @@ def run_tour_for_workflow(
     exists only inside the developer acceptance harness and is unreachable
     from planning, Ask, and this entry point.
     """
+    from ghostcursor.packs.activation import load_catalog
+    from ghostcursor.packs.workflow import live_window_reader
+
+    from ghostcursor.overlay import window as overlay_window
+
+    project_root = Path(__file__).resolve().parent.parent
+    return _launch_compiled_workflow(
+        workflow,
+        seconds=seconds,
+        reload_catalog=lambda: load_catalog(project_root),
+        read_window=live_window_reader(),
+        project_root=project_root,
+        clock=clock,
+        sleeper=sleeper,
+        warmup_budget_s=warmup_budget_s,
+        create_overlay=overlay_window.create_overlay_window,
+    )
+
+
+def _launch_compiled_workflow(
+    workflow,
+    *,
+    seconds: float,
+    reload_catalog,
+    read_window,
+    project_root,
+    clock,
+    sleeper,
+    warmup_budget_s: float,
+    create_overlay,
+) -> int:
+    """The revalidation seam. Private, and hermetic tests are its only callers.
+
+    Separated from the public entry point so a test can substitute a screen, a
+    catalog, and a filesystem root without those becoming things production
+    code is able to pass. Nothing importable as public API reaches this with
+    fabricated facts: `run_tour_for_workflow()` selects all three itself and
+    offers no way to override them.
+    """
     from ghostcursor.packs.workflow import revalidate
 
     revalidate(
@@ -1080,12 +1124,8 @@ def run_tour_for_workflow(
         project_root=project_root,
     )
 
-    # Only now may a window exist. Injected so a test can prove the ordering
-    # by asserting this was never reached.
-    if create_overlay is None:  # pragma: no cover - exercised at the cutover
-        from ghostcursor.overlay import window as overlay_window
-
-        create_overlay = overlay_window.create_overlay_window
+    # Only now may a window exist. `create_overlay` is injected here, and only
+    # here, so a test can prove the ordering by asserting it was never reached.
     return _run_compiled_tour(
         workflow,
         seconds=seconds,

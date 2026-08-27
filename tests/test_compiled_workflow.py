@@ -1103,6 +1103,22 @@ def CompiledWorkflowReplacement(workflow, **changes):
 # ---------------------------------------------------------------------------
 
 
+def _launch(workflow, catalog, *, live=None, missing=False, create_overlay=lambda: 1):
+    from ghostcursor.run import _launch_compiled_workflow
+
+    return _launch_compiled_workflow(
+        workflow,
+        seconds=1.0,
+        reload_catalog=lambda: catalog,
+        read_window=_reader(live, missing=missing),
+        project_root=PROJECT_ROOT,
+        clock=lambda: 0.0,
+        sleeper=lambda _s: None,
+        warmup_budget_s=2.0,
+        create_overlay=create_overlay,
+    )
+
+
 def test_a_failed_revalidation_never_reaches_overlay_creation() -> None:
     """Ordering is the entire guarantee.
 
@@ -1110,8 +1126,6 @@ def test_a_failed_revalidation_never_reaches_overlay_creation() -> None:
     after creating one has already covered the user's screen for a workflow it
     then refuses to run.
     """
-    from ghostcursor.run import run_tour_for_workflow
-
     workflow, catalog = _workflow()
     created = []
 
@@ -1123,14 +1137,7 @@ def test_a_failed_revalidation_never_reaches_overlay_creation() -> None:
         root_valid=True, packs={}, index_sha256=catalog.index_sha256
     )
     with pytest.raises(WorkflowUnavailable):
-        run_tour_for_workflow(
-            workflow,
-            seconds=1.0,
-            reload_catalog=lambda: empty,
-            read_window=_reader(),
-            project_root=PROJECT_ROOT,
-            create_overlay=_create_overlay,
-        )
+        _launch(workflow, empty, create_overlay=_create_overlay)
     assert created == []
 
 
@@ -1149,20 +1156,53 @@ def test_the_launch_entry_point_takes_a_workflow_not_a_path() -> None:
     assert "recipe_path" not in parameters
 
 
-def test_a_revalidated_launch_reaches_the_execution_body() -> None:
-    """The gate passes and hands over; the body itself lands at the cutover."""
+def test_the_public_launch_path_accepts_no_authority_inputs() -> None:
+    """A caller who supplies the facts supplies the authority.
+
+    The window reader, the catalog loader, and the project root are what
+    revalidation decides with. Accepting any of them from a caller is the same
+    bypass the boolean callback was, spelled with more arguments -- fabricated
+    PID, executable, title, and version would authorize the launch. The public
+    entry point selects all three itself.
+
+    `clock` and `sleeper` stay parameters: they drive the timeline and decide
+    nothing about authority.
+    """
+    import inspect
+
     from ghostcursor.run import run_tour_for_workflow
 
+    parameters = set(inspect.signature(run_tour_for_workflow).parameters)
+    authority = {
+        "read_window",
+        "reload_catalog",
+        "project_root",
+        "create_overlay",
+        "window_still_valid",
+        "catalog",
+        "target",
+        "identity",
+    }
+    assert not (parameters & authority), (
+        "the public launch path accepts authority inputs: "
+        f"{sorted(parameters & authority)}"
+    )
+    assert parameters == {"workflow", "seconds", "clock", "sleeper", "warmup_budget_s"}
+
+
+def test_the_injection_seam_is_private() -> None:
+    """Hermetic tests reach it; nothing importable as public API does."""
+    from ghostcursor import run
+
+    assert hasattr(run, "_launch_compiled_workflow")
+    assert not hasattr(run, "launch_compiled_workflow")
+
+
+def test_a_revalidated_launch_reaches_the_execution_body() -> None:
+    """The gate passes and hands over; the body itself lands at the cutover."""
     workflow, catalog = _workflow()
     with pytest.raises(NotImplementedError, match="Task 9"):
-        run_tour_for_workflow(
-            workflow,
-            seconds=1.0,
-            reload_catalog=lambda: catalog,
-            read_window=_reader(),
-            project_root=PROJECT_ROOT,
-            create_overlay=lambda: 1,
-        )
+        _launch(workflow, catalog)
 
 
 # ---------------------------------------------------------------------------
@@ -1202,6 +1242,59 @@ def test_replacing_the_whole_field_is_refused_too() -> None:
     workflow, _catalog = _workflow()
     with pytest.raises(FrozenInstanceError):
         workflow.goal_references = {0: "attacker"}
+
+
+def test_verification_arguments_are_frozen_at_every_level() -> None:
+    """A shallow freeze protects nothing that decides behaviour.
+
+    The values a recipe actually decides with live one and two levels down.
+    `minimum_length` is the clearest: it is what says whether a title must
+    contain the derived reference at all, so raising it to 99 turns every
+    reference nonspecific and makes condition 3 stop applying -- with no bound
+    digest changing and revalidation still passing.
+
+    The trust boundary already deep-froze this. The compiler was undoing it:
+    `MappingProxyType(dict(args))` unwraps the frozen outer mapping into a
+    mutable dict and re-wraps only that one level.
+    """
+    workflow, catalog = _workflow()
+    args = workflow.recipe.steps[0].verification.args
+
+    with pytest.raises(TypeError):
+        args["goal_reference"]["minimum_length"] = 99
+    with pytest.raises(TypeError):
+        args["goal_reference"]["strip_trailing_alias_clause"]["preposition"] = "at"
+    with pytest.raises(TypeError):
+        args["goal_reference"]["alias"] = "attacker"
+
+    assert args["goal_reference"]["minimum_length"] == 2
+    _revalidate(workflow, catalog)
+
+
+def test_frozen_sequences_are_tuples_not_lists() -> None:
+    """A list inside a frozen mapping is still a mutable list."""
+    workflow, _catalog = _workflow()
+    args = workflow.recipe.steps[0].verification.args
+
+    assert isinstance(args["completion_title_suffixes"], tuple)
+    assert isinstance(args["goal_reference"]["nonspecific_templates"], tuple)
+    assert isinstance(args["goal_reference"]["basename_separators"], tuple)
+    with pytest.raises((TypeError, AttributeError)):
+        args["completion_title_suffixes"].append("- notepad")
+
+
+def test_a_frozen_recipe_still_compiles_and_verifies() -> None:
+    """Freezing must not break the readers -- the reason to check.
+
+    `compile_goal_reference` reads these values; a freeze that made them
+    unreadable would trade one failure for another.
+    """
+    workflow, _catalog = _workflow(goal=r"Open C:\Projects\Demo in VS Code")
+    assert workflow.goal_reference_for(0) == "demo"
+    assert _declarative(
+        "Visual Studio Code", "demo - Visual Studio Code",
+        r"Open C:\Projects\Demo in VS Code",
+    )
 
 
 def test_the_compiled_plan_is_immutable_the_same_way() -> None:

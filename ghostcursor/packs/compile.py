@@ -31,6 +31,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Iterable, Mapping
 
+from ghostcursor.packs.trusted import freeze
 from ghostcursor.packs.activation import (
     Diagnostic,
     DiagnosticCode,
@@ -565,7 +566,14 @@ def compile_recipe(recipe_value: Mapping[str, Any]) -> CompiledRecipe:
                 verification=CompiledVerification(
                     kind=rule["kind"],
                     selector_id=rule.get("selector"),
-                    args=MappingProxyType(dict(rule["args"])),
+                    # `freeze`, never `MappingProxyType(dict(...))`. That
+                    # unwrapped the deep freeze the trust boundary applied and
+                    # re-wrapped only the outer level, so a nested value --
+                    # `goal_reference.minimum_length`, the one that decides
+                    # whether a title must contain the reference at all --
+                    # stayed writable after planning, with no bound digest
+                    # changing and revalidation still passing.
+                    args=freeze(dict(rule["args"])),
                     timeout_s=float(rule["timeout_s"]),
                 ),
                 risk=step["risk"],
