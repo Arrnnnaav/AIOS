@@ -115,6 +115,28 @@ def render_corpus(rows: list[dict]) -> str:
     return "\n".join(lines)
 
 
+BOM = "﻿"
+
+
+def canonical_text(raw: bytes) -> str:
+    """Decode `raw` into the one text form the document is allowed to have.
+
+    A BOM is removed and every line terminator becomes a bare LF, so the
+    rendered bytes are canonical no matter what the file on disk contained.
+    Comparing those bytes against the original is then what enforces the
+    encoding trusted artifacts require -- UTF-8, LF, no BOM.  Normalising
+    without comparing would silently accept the variants; comparing without
+    normalising would accept whichever variant the input already had.
+    """
+    text = raw.decode("utf-8")
+    if text.startswith(BOM):
+        text = text[len(BOM) :]
+    # CRLF first, then any remaining lone CR: an old-Mac terminator and a
+    # stray CR inside a line are both line terminators here, and both survive
+    # a CRLF-only replacement.
+    return text.replace("\r\n", "\n").replace("\r", "\n")
+
+
 def _replace(text: str, name: str, body: str) -> str:
     pattern = re.compile(
         rf"(?<=<!-- generated:{re.escape(name)} -->\n)"
@@ -124,7 +146,7 @@ def _replace(text: str, name: str, body: str) -> str:
     )
     replaced, count = pattern.subn(lambda _: body, text, count=1)
     if count != 1:
-        raise SystemExit(f"missing generated region {name!r} in {DOCUMENT_PATH}")
+        raise SystemExit(f"missing generated region {name!r}")
     return replaced
 
 
@@ -143,24 +165,32 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="verify the document already matches the corpus; never write",
     )
+    parser.add_argument(
+        "--document",
+        type=Path,
+        default=DOCUMENT_PATH,
+        help=(
+            "the document to render or check (default: the committed evidence"
+            " document). Tests point this at a copy so a regression check never"
+            " writes to a tracked file."
+        ),
+    )
     args = parser.parse_args(argv)
 
     document = load_corpus()
+    document_path: Path = args.document
 
     # Bytes, never `read_text()`.  Text mode on Windows folds CRLF to LF on the
-    # way in, so a CRLF copy of this document reads back identical to the LF
-    # bytes the renderer emits, and `--check` would pass over a file whose
-    # bytes differ.  Comparing bytes is also what enforces the encoding the
-    # trusted artifacts require: UTF-8, LF, no BOM, which is exactly what
-    # `render_document()` produces.
-    current = DOCUMENT_PATH.read_bytes()
-    text = current.decode("utf-8").replace("\r\n", "\n")
-    rendered = render_document(text, document).encode("utf-8")
+    # way in, so a CRLF copy of this document would read back identical to the
+    # LF bytes the renderer emits and `--check` would pass over a file whose
+    # bytes differ.
+    current = document_path.read_bytes()
+    rendered = render_document(canonical_text(current), document).encode("utf-8")
 
     if args.check:
         if rendered != current:
             print(
-                f"{DOCUMENT_PATH} is out of date with {CORPUS_PATH};"
+                f"{document_path} is out of date with {CORPUS_PATH};"
                 " run tools/render_d072_compatibility.py",
                 file=sys.stderr,
             )
@@ -168,10 +198,10 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if rendered != current:
-        DOCUMENT_PATH.write_bytes(rendered)
-        print(f"rewrote {DOCUMENT_PATH}")
+        document_path.write_bytes(rendered)
+        print(f"rewrote {document_path}")
     else:
-        print(f"{DOCUMENT_PATH} already current")
+        print(f"{document_path} already current")
     return 0
 
 

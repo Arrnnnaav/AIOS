@@ -525,13 +525,16 @@ def test_every_divergence_class_records_its_d072_reason(corpus: dict) -> None:
         assert definition["representatives_summary"].strip(), name
 
 
-def _check_renderer() -> subprocess.CompletedProcess:
-    return subprocess.run(
-        [sys.executable, str(RENDERER), "--check"],
-        cwd=REPO_ROOT,
-        capture_output=True,
-        text=True,
-    )
+def _check_renderer(document: Path | None = None) -> subprocess.CompletedProcess:
+    command = [sys.executable, str(RENDERER), "--check"]
+    if document is not None:
+        command += ["--document", str(document)]
+    return subprocess.run(command, cwd=REPO_ROOT, capture_output=True, text=True)
+
+
+CR = bytes([13])
+LF = bytes([10])
+UTF8_BOM = bytes([0xEF, 0xBB, 0xBF])
 
 
 def test_the_evidence_document_is_a_faithful_render_of_the_corpus() -> None:
@@ -546,29 +549,78 @@ def test_the_evidence_document_is_a_faithful_render_of_the_corpus() -> None:
 
 def test_the_evidence_document_is_utf8_lf_without_a_bom() -> None:
     raw = EVIDENCE_PATH.read_bytes()
-    assert b"\r\n" not in raw
-    assert not raw.startswith(b"\xef\xbb\xbf")
+    assert CR not in raw
+    assert not raw.startswith(UTF8_BOM)
     raw.decode("utf-8")
 
 
-def test_check_mode_detects_a_byte_difference_text_mode_would_hide() -> None:
-    """A CRLF copy differs in bytes while reading back identical as text.
+def _corrupt(original: bytes, kind: str) -> bytes:
+    if kind == "crlf":
+        return original.replace(LF, CR + LF)
+    if kind == "bom":
+        return UTF8_BOM + original
+    if kind == "bare-cr-terminator":
+        return original.replace(LF, CR, 1)
+    # A stray CR inside a prose line, outside every generated region: the case
+    # a CRLF-only normalisation preserves, so rendering reproduces it and the
+    # comparison sees no difference.
+    anchor = b"Every input D072"
+    index = original.index(anchor)
+    return (
+        original[:index]
+        + b"Every"
+        + CR
+        + b" input D072"
+        + original[index + len(anchor) :]
+    )
 
-    `Path.read_text()` folds CRLF to LF on Windows, so a check built on text
-    comparison passes over a file whose bytes changed.  The plan requires
-    `--check` to fail on *any* byte difference, which is only observable if the
-    comparison is made on bytes.
+
+@pytest.mark.parametrize(
+    "kind", ["crlf", "bom", "bare-cr-terminator", "bare-cr-in-prose"]
+)
+def test_check_mode_rejects_every_non_canonical_encoding(
+    tmp_path: Path, kind: str
+) -> None:
+    """`--check` must fail on any byte difference, encoding included.
+
+    Each corruption here reads back as the same *text* under some plausible
+    reading -- CRLF and a lone CR are folded by text mode, and a BOM decodes to
+    a character that survives rendering untouched -- so a check that compares
+    anything but canonical bytes accepts at least one of them.
+
+    The corrupted copy lives in `tmp_path`.  Rewriting the tracked document in
+    place would leave it corrupted if the test process were killed, and would
+    be observed by anything else reading the repository meanwhile.
     """
     original = EVIDENCE_PATH.read_bytes()
-    assert b"\r\n" not in original
+    copy = tmp_path / EVIDENCE_PATH.name
 
-    EVIDENCE_PATH.write_bytes(original.replace(b"\n", b"\r\n"))
-    try:
-        crlf = _check_renderer()
-        assert crlf.returncode == 1, "--check accepted a CRLF copy of the document"
-    finally:
-        EVIDENCE_PATH.write_bytes(original)
-    assert _check_renderer().returncode == 0
+    copy.write_bytes(original)
+    assert _check_renderer(copy).returncode == 0, "a verbatim copy must pass"
+
+    corrupted = _corrupt(original, kind)
+    assert corrupted != original, kind
+    copy.write_bytes(corrupted)
+    assert _check_renderer(copy).returncode == 1, f"--check accepted {kind}"
+
+
+def test_rendering_a_non_canonical_copy_restores_canonical_bytes(
+    tmp_path: Path,
+) -> None:
+    """Normal mode repairs what `--check` rejects, and never in the repository."""
+    original = EVIDENCE_PATH.read_bytes()
+    copy = tmp_path / EVIDENCE_PATH.name
+    copy.write_bytes(UTF8_BOM + original.replace(LF, CR + LF))
+
+    result = subprocess.run(
+        [sys.executable, str(RENDERER), "--document", str(copy)],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert copy.read_bytes() == original
+    assert EVIDENCE_PATH.read_bytes() == original
 
 
 # --------------------------------------------------------------------------
