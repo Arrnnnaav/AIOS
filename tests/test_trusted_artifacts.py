@@ -191,6 +191,14 @@ def test_artifact_ref_requires_canonical_relative_path_and_full_lowercase_digest
         "C:/absolute.json",
         "C:drive-relative.json",
         "d:folder/file.json",
+        "foo/C:bar.json",
+        "intents/x:y.json",
+        " leading.json",
+        "trailing.json ",
+        "foo/ leading.json",
+        "foo/trailing.json ",
+        "foo/trailing-dot.json.",
+        "foo/control\tcharacter.json",
         "../escape.json",
         "a\\b.json",
         "a/./b.json",
@@ -359,7 +367,7 @@ def test_pack_kind_constraints_are_explicit(tmp_path):
         _load_json(tmp_path, {**planner, "executable_names": ["host.exe"]}, ArtifactSchema.PACK)
     with pytest.raises(ValueError, match="planner_only"):
         _load_json(
-            tmp_path / "aliases",
+            tmp_path,
             {**planner, "aliases": {"vscode_names": ["vs code"]}},
             ArtifactSchema.PACK,
         )

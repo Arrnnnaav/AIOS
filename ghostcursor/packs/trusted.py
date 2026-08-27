@@ -16,7 +16,6 @@ _SHA256_RE = re.compile(r"[0-9a-f]{64}\Z")
 _PACK_ID_RE = re.compile(r"[a-z][a-z0-9_]*\Z")
 _INTENT_ID_RE = re.compile(r"[A-Z][A-Z0-9_]*\Z")
 _SELECTOR_ID_RE = re.compile(r"[a-z][a-z0-9_]*\Z")
-_WINDOWS_DRIVE_RE = re.compile(r"[A-Za-z]:")
 _UTF8_BOM = b"\xef\xbb\xbf"
 
 
@@ -151,10 +150,16 @@ def _freeze(value: Any) -> Any:
 def _validate_relative_path(value: Any, label: str) -> str:
     if not isinstance(value, str) or not value:
         raise ValueError(f"{label} must be a non-empty string")
-    if "\\" in value or value.startswith("/") or _WINDOWS_DRIVE_RE.match(value):
+    if "\\" in value or ":" in value or value.startswith("/"):
         raise ValueError(f"{label} must be a canonical relative POSIX path")
     path = PurePosixPath(value)
-    if str(path) != value or any(part in {"", ".", ".."} for part in path.parts):
+    if str(path) != value or any(
+        part in {"", ".", ".."}
+        or part != part.strip()
+        or part.endswith(".")
+        or any(ord(character) < 32 for character in part)
+        for part in path.parts
+    ):
         raise ValueError(f"{label} must be a canonical relative POSIX path")
     return value
 
