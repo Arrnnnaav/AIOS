@@ -14,7 +14,9 @@ cannot flood the observation.
 import pytest
 
 from ghostcursor.perception.uia import (
+    EXACTLY_ONE,
     ProviderQueryFault,
+    SelectorAmbiguityFault,
     bounded_descendants,
 )
 
@@ -24,11 +26,19 @@ GLYPH = ""
 class _Ctl:
     """A minimal stand-in for a pywinauto control wrapper."""
 
-    def __init__(self, name, automation_id="", bbox=(10, 10, 110, 40), raises=None):
+    def __init__(
+        self,
+        name,
+        automation_id="",
+        bbox=(10, 10, 110, 40),
+        raises=None,
+        runtime_id=None,
+    ):
         self._name = name
         self._automation_id = automation_id
         self._bbox = bbox
         self._raises = raises
+        self._runtime_id = runtime_id
 
     def window_text(self):
         if self._raises is not None:
@@ -53,6 +63,10 @@ class _Ctl:
         info = _Info()
         info.control_type = "Button"
         info.automation_id = self._automation_id
+        # A real backend identity when the fixture supplies one; absent
+        # otherwise, which is the "identity unavailable" case.
+        if self._runtime_id is not None:
+            info.runtime_id = self._runtime_id
         return info
 
 
@@ -97,10 +111,55 @@ def test_offscreen_controls_are_excluded():
     assert bounded_descendants(_walk(controls), ALLOWED) == []
 
 
-def test_the_result_count_is_capped():
+def test_exceeding_the_result_limit_raises_instead_of_truncating():
+    """The limit bounds what a recipe may claim, not how long a walk may run.
+
+    Truncating produced a silently wrong answer: the extra matches were
+    discarded before anything could notice them, so an over-broad filter
+    looked like a correctly bounded one.
+    """
     controls = [_Ctl("Open Folder...") for _ in range(50)]
+    with pytest.raises(ProviderQueryFault) as caught:
+        bounded_descendants(_walk(controls), ALLOWED, limit=8)
+    assert "over the result limit of 8" in str(caught.value)
+
+
+def test_a_one_limit_selector_matching_twice_reports_ambiguity():
+    """The regression for the truncation defect.
+
+    With truncation at the top of the loop, a limit of one stopped after the
+    first match and the ambiguity check never saw the second -- so the caller
+    received one element and no indication that the filter named two controls.
+    Ambiguity is reported rather than the limit, because it is the more
+    specific answer.
+    """
+    controls = [_Ctl("Open Folder...", bbox=(0, 0, 10, 10)),
+                _Ctl("Open Folder...", bbox=(20, 20, 30, 30))]
+    with pytest.raises(SelectorAmbiguityFault) as caught:
+        bounded_descendants(_walk(controls), ALLOWED, limit=1, cardinality=EXACTLY_ONE)
+    assert "matched 2 controls" in str(caught.value)
+
+
+def test_a_result_count_at_the_limit_is_accepted():
+    controls = [_Ctl("Open Folder...", bbox=(i, i, i + 10, i + 10)) for i in range(8)]
     elements = bounded_descendants(_walk(controls), ALLOWED, limit=8)
     assert len(elements) == 8
+
+
+def test_candidates_deduplicate_on_backend_identity_never_on_value():
+    """One control reached twice is one result; two look-alikes are two.
+
+    `Element` equality compares name, control type, AutomationId and bbox, and
+    VS Code publishes empty AutomationIds with repeated names -- so value
+    equality would collapse two genuinely different controls into one and hide
+    an ambiguity.
+    """
+    same = [_Ctl("Open Folder...", runtime_id=(7, 1)),
+            _Ctl("Open Folder...", runtime_id=(7, 1))]
+    assert len(bounded_descendants(_walk(same), ALLOWED)) == 1
+
+    identical_values = [_Ctl("Open Folder..."), _Ctl("Open Folder...")]
+    assert len(bounded_descendants(_walk(identical_values), ALLOWED)) == 2
 
 
 def test_a_raising_walk_is_a_fault():

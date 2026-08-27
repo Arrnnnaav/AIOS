@@ -28,6 +28,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Iterable, Mapping
 
 from ghostcursor.packs.activation import (
@@ -373,3 +374,208 @@ def compile_planner(catalog: VerifiedCatalog) -> tuple["IntentSpec", ...]:
                 )
             )
     return tuple(specs)
+
+
+# --------------------------------------------------------------------------
+# Observation plans
+#
+# A recipe declares every control its action, its verification, and its
+# wrong-action context need.  Compiling that declaration into a plan is what
+# lets one bounded worker tick observe the whole union with no
+# workflow-specific Python: the plan says which traversals to run and which
+# selectors read from each, and the worker just executes it.
+# --------------------------------------------------------------------------
+
+PROVIDER_EXACT = "provider_exact"
+BOUNDED_DESCENDANTS = "bounded_descendants"
+
+EXACTLY_ONE = "exactly_one"
+AT_LEAST_ONE = "at_least_one"
+
+STRIP_LEADING_PRIVATE_USE = "strip_leading_private_use"
+
+
+class RecipeCompileError(ValueError):
+    """A verified recipe could not be compiled into an observation plan."""
+
+
+@dataclass(frozen=True)
+class CompiledSelector:
+    selector_id: str
+    strategy: str
+    control_type: str
+    names: tuple[str, ...]
+    normalise: str
+    cardinality: str
+    result_limit: int
+
+    @property
+    def query_key(self) -> tuple[str, ...]:
+        """What makes two provider queries identical.
+
+        Grouping is by the *full* query.  A provider call performs no
+        traversal, so two selectors that differ in any queried field are two
+        different calls -- unlike a bounded walk, where the traversal is the
+        expensive part and is shared by control type.
+        """
+        return (self.strategy, self.control_type, self.normalise) + self.names
+
+
+@dataclass(frozen=True)
+class BoundedTraversal:
+    """One walk of a control type, shared by every selector over it."""
+
+    control_type: str
+    selector_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class ProviderQuery:
+    """One provider call, shared by selectors whose full query is identical."""
+
+    control_type: str
+    name: str
+    selector_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class ObservationPlan:
+    selectors: Mapping[str, CompiledSelector]
+    traversals: tuple[BoundedTraversal, ...]
+    queries: tuple[ProviderQuery, ...]
+
+    @property
+    def selector_ids(self) -> tuple[str, ...]:
+        return tuple(self.selectors)
+
+
+@dataclass(frozen=True)
+class CompiledVerification:
+    kind: str
+    selector_id: str | None
+    args: Mapping[str, Any]
+    timeout_s: float
+
+
+@dataclass(frozen=True)
+class CompiledStep:
+    user_action: str
+    target_selector: str | None
+    instruction_text: str
+    verification: CompiledVerification
+    risk: str
+
+
+@dataclass(frozen=True)
+class CompiledRecipe:
+    intent_id: str
+    step_key_namespace: str
+    steps: tuple[CompiledStep, ...]
+    context_selectors: tuple[str, ...]
+    plan: ObservationPlan
+
+
+def _compile_selector(selector_id: str, value: Mapping[str, Any]) -> CompiledSelector:
+    return CompiledSelector(
+        selector_id=selector_id,
+        strategy=value["strategy"],
+        control_type=value["control_type"],
+        names=tuple(value["names"]),
+        normalise=value["normalise"],
+        cardinality=value["cardinality"],
+        result_limit=value["result_limit"],
+    )
+
+
+def _reject_positional_ids(recipe_value: Mapping[str, Any]) -> None:
+    """No compiled recipe may name a positional AutomationId.
+
+    `list_id_<number>_<number>` encodes a list index, not a control, and is the
+    only non-empty id VS Code exposes.  `promote()` and `ObservationStore`
+    reject it independently at runtime; rejecting it here as well means a
+    recipe carrying one never reaches either -- three boundaries, none relying
+    on another having caught it.
+    """
+    from ghostcursor.reasoning.schema import is_positional_automation_id
+
+    for index, step in enumerate(recipe_value["steps"]):
+        wanted = step["verification_rule"]["args"].get("automation_id")
+        if is_positional_automation_id(wanted):
+            raise RecipeCompileError(
+                f"step {index} verifies against positional AutomationId {wanted!r}"
+            )
+
+
+def compile_observation_plan(recipe_value: Mapping[str, Any]) -> ObservationPlan:
+    """Group a recipe's selectors into the traversals and queries one tick runs.
+
+    Grouping is strategy-specific because the two strategies cost different
+    things.  A bounded walk pays for the traversal, so one walk per unique
+    control type is shared by every selector of that type.  A provider call
+    performs no traversal at all, so control-type grouping would be meaningless
+    for it and queries collapse only when the entire query is identical.
+
+    Cardinality is *not* applied here.  It is evaluated per selector against
+    that selector's own results at observation time, because a shared traversal
+    produces candidates for several selectors and only each selector knows how
+    many of them it is allowed to claim.
+    """
+    selectors = {
+        selector_id: _compile_selector(selector_id, value)
+        for selector_id, value in recipe_value["selectors"].items()
+    }
+
+    traversals: dict[str, list[str]] = {}
+    queries: dict[tuple[str, ...], list[str]] = {}
+    for selector in selectors.values():
+        if selector.strategy == BOUNDED_DESCENDANTS:
+            traversals.setdefault(selector.control_type, []).append(selector.selector_id)
+        elif selector.strategy == PROVIDER_EXACT:
+            queries.setdefault(selector.query_key, []).append(selector.selector_id)
+        else:  # pragma: no cover - the schema admits no third strategy
+            raise RecipeCompileError(f"unknown strategy {selector.strategy!r}")
+
+    return ObservationPlan(
+        selectors=MappingProxyType(selectors),
+        traversals=tuple(
+            BoundedTraversal(control_type, tuple(ids))
+            for control_type, ids in traversals.items()
+        ),
+        queries=tuple(
+            # A provider selector carries exactly one name, enforced by the
+            # schema, so the query has a single name to send.
+            ProviderQuery(selectors[ids[0]].control_type, selectors[ids[0]].names[0], tuple(ids))
+            for ids in queries.values()
+        ),
+    )
+
+
+def compile_recipe(recipe_value: Mapping[str, Any]) -> CompiledRecipe:
+    """Compile one verified recipe artifact into its executable form."""
+    _reject_positional_ids(recipe_value)
+
+    steps = []
+    for step in recipe_value["steps"]:
+        rule = step["verification_rule"]
+        steps.append(
+            CompiledStep(
+                user_action=step["user_action"],
+                target_selector=step["target_selector"],
+                instruction_text=step["instruction_text"],
+                verification=CompiledVerification(
+                    kind=rule["kind"],
+                    selector_id=rule.get("selector"),
+                    args=MappingProxyType(dict(rule["args"])),
+                    timeout_s=float(rule["timeout_s"]),
+                ),
+                risk=step["risk"],
+            )
+        )
+
+    return CompiledRecipe(
+        intent_id=recipe_value["intent_id"],
+        step_key_namespace=recipe_value["step_key_namespace"],
+        steps=tuple(steps),
+        context_selectors=tuple(recipe_value["context_selectors"]),
+        plan=compile_observation_plan(recipe_value),
+    )

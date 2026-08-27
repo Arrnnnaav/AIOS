@@ -317,11 +317,16 @@ class PerceptionService:
                 last_error=self._last_error,
             )
 
-    def _progress(self, generation: int, *, stage: str | None = None,
-                  iteration_started: float | None = None,
-                  completed: float | None = None,
-                  published: float | None = None,
-                  error: str | None = None) -> None:
+    def _progress(
+        self,
+        generation: int,
+        *,
+        stage: str | None = None,
+        iteration_started: float | None = None,
+        completed: float | None = None,
+        published: float | None = None,
+        error: str | None = None,
+    ) -> None:
         """Update diagnostics only if this is still the active generation."""
         with self._progress_lock:
             if generation != self._generation:
@@ -622,7 +627,9 @@ class PerceptionService:
                 stage = "hwnd"
                 debug = os.environ.get("GHOSTCURSOR_DEBUG_PERCEPTION") == "1"
                 if debug:
-                    print(f"Ghost Cursor: perception iteration {self.heartbeat} starting")
+                    print(
+                        f"Ghost Cursor: perception iteration {self.heartbeat} starting"
+                    )
                 try:
                     self._progress(generation, stage="hwnd")
                     target_hwnd = self._safe_hwnd()
@@ -652,7 +659,9 @@ class PerceptionService:
                     elements = tuple(self.walker(self.title_re))
                     self._progress(generation, stage="walk-complete")
                     if debug:
-                        print(f"Ghost Cursor: perception walk returned {len(elements)} element(s)")
+                        print(
+                            f"Ghost Cursor: perception walk returned {len(elements)} element(s)"
+                        )
                     observed_at = self.clock()
                     stage = "snapshot"
                     self._progress(generation, stage="snapshot")
@@ -718,7 +727,9 @@ class PerceptionService:
                             focus_visited=tuple(visited),
                         )
                     )
-                    self._progress(generation, stage="published", published=self.clock())
+                    self._progress(
+                        generation, stage="published", published=self.clock()
+                    )
                     # Cleared only here, on a SUCCESSFUL publish -- not on
                     # every iteration. A walk that raises must not discard
                     # this interval's ids: nothing was published to carry
@@ -746,3 +757,87 @@ class PerceptionService:
                 pythoncom.CoUninitialize()
             except Exception:
                 pass
+
+
+# --------------------------------------------------------------------------
+# Compiled observation plans
+#
+# The executor for a `ghostcursor.packs.compile.ObservationPlan`. It lives on
+# the perception side because it touches UIA; the plan itself is pure data
+# compiled from a verified recipe, so nothing here is workflow-specific.
+#
+# Not yet wired into the production tick: the v1 walkers stay in place until
+# the cutover, and this is exercised through tests and the candidate harness.
+# --------------------------------------------------------------------------
+
+
+def run_observation_plan(
+    plan,
+    *,
+    walk_for,
+    query_for,
+    make_info,
+) -> dict[str, tuple[Element, ...]]:
+    """Observe every selector in `plan` in one tick.
+
+    `walk_for(control_type)` returns a callable performing one bounded walk of
+    that control type; `query_for(control_type, name)` returns a callable
+    performing one provider `FindAll`; `make_info(raw)` wraps a provider result
+    for property reads. All three are injected so the grouping and failure
+    rules can be exercised with no live provider.
+
+    **A non-absence fault invalidates the entire tick.** The fault propagates
+    and the caller publishes nothing. Publishing the selectors that did read
+    would be a partial observation that looks complete: a verification whose
+    selector faulted would see an empty result and read it as "the control is
+    not there", which is the flattening of fault into absence that D069
+    exists to prevent. A clean absence is not a fault and publishes as an
+    empty tuple.
+    """
+    from ghostcursor.perception import uia
+
+    results: dict[str, tuple[Element, ...]] = {}
+
+    for traversal in plan.traversals:
+        # One walk per unique control type, shared by every selector over it.
+        walk = walk_for(traversal.control_type)
+        try:
+            candidates = list(walk())
+        except Exception as exc:  # noqa: BLE001 - re-raised as a typed fault
+            raise uia.ProviderQueryFault(
+                f"bounded walk of {traversal.control_type} failed: {exc}"
+            ) from exc
+        for selector_id in traversal.selector_ids:
+            selector = plan.selectors[selector_id]
+            # Each selector filters the SHARED candidates independently and
+            # judges its own cardinality. The walk is shared; the answer is not.
+            results[selector_id] = tuple(
+                uia.bounded_descendants(
+                    lambda candidates=candidates: candidates,
+                    selector.names,
+                    limit=selector.result_limit,
+                    cardinality=selector.cardinality,
+                    normalise=selector.normalise,
+                )
+            )
+
+    for query in plan.queries:
+        find_all = query_for(query.control_type, query.name)
+        for selector_id in query.selector_ids:
+            selector = plan.selectors[selector_id]
+            found = uia.provider_exact(
+                find_all, make_info, cardinality=selector.cardinality
+            )
+            if len(found) > selector.result_limit:
+                raise uia.ProviderQueryFault(
+                    f"provider query matched {len(found)} controls, over the "
+                    f"result limit of {selector.result_limit}"
+                )
+            results[selector_id] = tuple(found)
+
+    missing = set(plan.selectors) - results.keys()
+    if missing:  # pragma: no cover - every selector belongs to a group
+        raise uia.ProviderQueryFault(
+            f"plan left selectors unobserved: {sorted(missing)}"
+        )
+    return results

@@ -27,6 +27,24 @@ class Snapshot:
     #: service's clock. 0.0 means untimestamped — a synchronous or faked
     #: perception — and is treated as always fresh.
     observed_at: float = 0.0
+    #: What each selector of a compiled observation plan matched this tick, as
+    #: pairs rather than a mapping: only frozen values of primitives cross the
+    #: worker boundary (D021), and a dict is neither frozen nor hashable.
+    #: Empty when no plan ran, which is every v1 observation.
+    selector_results: tuple[tuple[str, tuple[Element, ...]], ...] = ()
+
+    def matched(self, selector_id: str) -> tuple[Element, ...]:
+        """What `selector_id` matched, or `()` when it matched nothing.
+
+        `()` here always means a clean absence. A selector that faulted never
+        reaches a published snapshot at all, because a non-absence fault
+        invalidates the whole tick -- so an empty tuple cannot be a swallowed
+        failure.
+        """
+        for observed_id, elements in self.selector_results:
+            if observed_id == selector_id:
+                return elements
+        return ()
 
 
 def _sort_elements(
@@ -100,9 +118,44 @@ def elements_changed(before: Snapshot, after: Snapshot) -> bool:
     return _identity(before) != _identity(after)
 
 
+_SELECTOR_KINDS = {
+    VerificationKind.ELEMENT_APPEARS,
+    VerificationKind.ELEMENT_DISAPPEARS,
+    VerificationKind.PROPERTY_CHANGES,
+}
+
+
+def _verify_by_selector(
+    rule: VerificationRule, before: Snapshot, after: Snapshot
+) -> bool:
+    """Decide one of the three selector-backed kinds from observed results.
+
+    The selector, not a descriptor, is what a compiled recipe declares, and the
+    observation plan already evaluated its cardinality. So the question here is
+    only about presence over time, and `matched()` answers it directly.
+    """
+    was, now = before.matched(rule.selector), after.matched(rule.selector)
+
+    if rule.kind is VerificationKind.ELEMENT_APPEARS:
+        return not was and bool(now)
+    if rule.kind is VerificationKind.ELEMENT_DISAPPEARS:
+        return bool(was) and not now
+
+    # PROPERTY_CHANGES. A property can only have changed on a control that was
+    # observed both before and after; anything else is an appearance or a
+    # disappearance, which are different rules.
+    if not was or not now:
+        return False
+    prop = rule.args["property"]
+    return [getattr(e, prop) for e in was] != [getattr(e, prop) for e in now]
+
+
 def verify(rule: VerificationRule, before: Snapshot, after: Snapshot) -> bool:
     kind = rule.kind
     args = rule.args
+
+    if rule.selector is not None and kind in _SELECTOR_KINDS:
+        return _verify_by_selector(rule, before, after)
 
     if kind is VerificationKind.USER_CONFIRMS:
         # Resolved by a keypress in the loop, never by looking at the screen.

@@ -215,24 +215,48 @@ def normalise_accessible_name(name: str | None) -> str:
     if not name:
         return ""
     index = 0
-    while index < len(name) and _PRIVATE_USE_FIRST <= ord(name[index]) <= _PRIVATE_USE_LAST:
+    while (
+        index < len(name)
+        and _PRIVATE_USE_FIRST <= ord(name[index]) <= _PRIVATE_USE_LAST
+    ):
         index += 1
     if index == 0:
         return name
     return name[index:].lstrip()
 
 
-def matches_trusted_name(observed: str | None, allowed_names) -> bool:
-    """True when an observed name equals a trusted name after normalisation.
+#: The two declared normalisation strategies. `NONE` compares the observed name
+#: byte for byte; `STRIP_LEADING_PRIVATE_USE` removes a leading Codicon glyph
+#: first. A recipe declares which; neither is inferred from the name it sees.
+NORMALISE_NONE = "none"
+NORMALISE_STRIP_LEADING_PRIVATE_USE = "strip_leading_private_use"
+
+
+def matches_trusted_name(
+    observed: str | None,
+    allowed_names,
+    *,
+    normalise: str = NORMALISE_STRIP_LEADING_PRIVATE_USE,
+) -> bool:
+    """True when an observed name equals a trusted name under `normalise`.
 
     Equality, never substring: rung 3 is the substring rung and OCR is barred
     from it so the floor is not decorative (D030). Normalisation must not
     reintroduce that looseness by the back door.
+
+    `normalise` is the selector's declared strategy, not a property of the name
+    observed. Open Terminal's certified walker accepts exactly `Toggle Panel
+    (Ctrl+J)` and `Terminal Section` with no normalisation at all, so applying
+    the glyph strip to it would broaden certified behaviour during migration --
+    the one thing the migration is not allowed to do.
     """
-    normalised = normalise_accessible_name(observed)
-    if not normalised:
+    if normalise == NORMALISE_NONE:
+        candidate = observed or ""
+    else:
+        candidate = normalise_accessible_name(observed)
+    if not candidate:
         return False
-    return any(normalised == name for name in allowed_names if name)
+    return any(candidate == name for name in allowed_names if name)
 
 
 class ProviderQueryFault(RuntimeError):
@@ -283,48 +307,113 @@ def _is_dead_pointer(exc: BaseException) -> bool:
     return isinstance(exc, ValueError) and "NULL COM pointer" in str(exc)
 
 
-def provider_exact(find, make_info) -> Element | None:
+def _runtime_identity(info) -> object | None:
+    """A live backend identity for one candidate, or `None` when unavailable.
+
+    Deduplication must never use a serialized value. `Element` equality
+    compares name, control type, AutomationId and bbox, and two genuinely
+    different controls can agree on all four -- VS Code exposes empty
+    AutomationIds and repeats accessible names across views. Only the backend
+    can say "these are the same control", and only while the handle is live.
+
+    Returning `None` is a real answer: it means identity could not be
+    established, and the caller must then retain both candidates rather than
+    guess.
+    """
+    for attribute in ("runtime_id", "handle"):
+        try:
+            value = getattr(info, attribute, None)
+        except Exception:  # noqa: BLE001 - an unreadable identity is no identity
+            return None
+        if value:
+            return (
+                attribute,
+                tuple(value) if isinstance(value, (list, tuple)) else value,
+            )
+    return None
+
+
+def element_array_items(array) -> list:
+    """Adapt an `IUIAutomationElementArray` to a plain list of raw elements.
+
+    `FindAll` returns a COM array, not a Python sequence. Converting here keeps
+    :func:`provider_exact` injectable with an ordinary list in tests while the
+    live path still reads `Length` and `GetElement` exactly once each.
+    """
+    return [array.GetElement(index) for index in range(array.Length)]
+
+
+def provider_exact(
+    find_all, make_info, *, cardinality: str = EXACTLY_ONE
+) -> list[Element]:
     """Resolve one provider-side query into presence, absence, or a fault.
 
-    `find()` performs the FindFirst; `make_info(raw)` wraps the result so its
-    properties can be read. Both are injected so the presence rule can be tested
-    without a live UIA provider.
+    `find_all()` performs the **FindAll** and returns a sequence of raw
+    results; `make_info(raw)` wraps one so its properties can be read. Both are
+    injected so the presence rule can be tested without a live UIA provider.
 
-        required properties read     -> Element   (present)
-        FindFirst returned None      -> None      (absent)
-        NULL COM pointer on read     -> None      (absent)
+        empty result set             -> []        (clean absence)
+        properties read              -> [Element] (present)
+        NULL COM pointer on read     -> skipped   (died between call and read)
         any other failure            -> ProviderQueryFault
+        several matches, exactly_one -> SelectorAmbiguityFault
 
-    A non-`None` return from FindFirst carries no information on its own; only a
-    successful property read establishes presence.
+    **Never `FindFirst`.** It returns one element and cannot report that a
+    second exists, so `exactly_one` is unprovable with it -- and on a match of
+    nothing it answers with a non-`None` object whose every property access
+    raises, which is a dead pointer rather than an honest absence. `FindAll`
+    reports `Length = 0` for a genuine absence and counts, so it can prove
+    cardinality. Length alone still carries no information about any one
+    element: only a successful property read establishes presence, which is why
+    a result whose read dies is dropped rather than counted.
     """
     try:
-        raw = find()
+        raw_items = list(find_all())
     except Exception as exc:  # noqa: BLE001 - re-raised as a typed fault
         raise ProviderQueryFault(f"provider query failed: {exc}") from exc
 
-    if raw is None:
-        return None
+    found: list[Element] = []
+    identities: list[object] = []
+    for raw in raw_items:
+        if raw is None:
+            continue
+        try:
+            info = make_info(raw)
+            name = info.name or ""
+            control_type = info.control_type or ""
+            automation_id = info.automation_id or ""
+            rect = info.rectangle
+            bbox = (rect.left, rect.top, rect.right, rect.bottom)
+            identity = _runtime_identity(info)
+        except Exception as exc:  # noqa: BLE001 - classified below
+            if _is_dead_pointer(exc):
+                continue
+            raise ProviderQueryFault(f"provider property read failed: {exc}") from exc
 
-    try:
-        info = make_info(raw)
-        name = info.name or ""
-        control_type = info.control_type or ""
-        automation_id = info.automation_id or ""
-        rect = info.rectangle
-        bbox = (rect.left, rect.top, rect.right, rect.bottom)
-    except Exception as exc:  # noqa: BLE001 - classified below
-        if _is_dead_pointer(exc):
-            return None
-        raise ProviderQueryFault(f"provider property read failed: {exc}") from exc
+        # Provider results deduplicate ONLY when a stable backend runtime
+        # identity proves two results are the same control. With no identity
+        # available both are retained: collapsing them on value would hide a
+        # real second match, which is the ambiguity this call exists to detect.
+        if identity is not None and identity in identities:
+            continue
+        identities.append(identity)
+        found.append(
+            Element(
+                name=name,
+                control_type=control_type,
+                automation_id=automation_id,
+                bbox=bbox,
+                path=(control_type,),
+            )
+        )
 
-    return Element(
-        name=name,
-        control_type=control_type,
-        automation_id=automation_id,
-        bbox=bbox,
-        path=(control_type,),
-    )
+    if cardinality == EXACTLY_ONE and len(found) > 1:
+        candidates = ", ".join(f"{e.name!r}@{e.bbox}" for e in found)
+        raise SelectorAmbiguityFault(
+            f"provider action selector matched {len(found)} controls, "
+            f"expected one: {candidates}"
+        )
+    return found
 
 
 #: Ceiling on how many elements one bounded walk may publish. Measured Button
@@ -340,6 +429,7 @@ def bounded_descendants(
     *,
     limit: int = DEFAULT_DESCENDANT_LIMIT,
     cardinality: str = AT_LEAST_ONE,
+    normalise: str = NORMALISE_STRIP_LEADING_PRIVATE_USE,
 ):
     """Select trusted controls from a bounded, control-type-scoped walk.
 
@@ -348,10 +438,12 @@ def bounded_descendants(
     provider-side exact lookup returns a dead pointer for it, so the two
     strategies are not interchangeable and a recipe must declare which it uses.
 
-    Matching is on the NORMALISED name, so a Codicon prefix cannot defeat it,
-    but the element publishes the RAW observed name: a cleaned-up name would
-    make the observation disagree with the screen, and every downstream trust
-    decision keys off the observation.
+    Matching follows the selector's declared `normalise` strategy, so a Codicon
+    prefix cannot defeat a selector that declares the strip -- and cannot be
+    silently tolerated by one that declares `none`. Either way the element
+    publishes the RAW observed name: a cleaned-up name would make the
+    observation disagree with the screen, and every downstream trust decision
+    keys off the observation.
 
     Per-control failures follow the same three-branch rule as
     :func:`provider_exact`. A control that died mid-walk is a clean absence and
@@ -364,18 +456,18 @@ def bounded_descendants(
         raise ProviderQueryFault(f"bounded walk failed: {exc}") from exc
 
     selected: list[Element] = []
+    identities: list[object] = []
     for control in controls:
-        if len(selected) >= limit:
-            break
         try:
             name = control.window_text() or ""
-            if not matches_trusted_name(name, allowed_names):
+            if not matches_trusted_name(name, allowed_names, normalise=normalise):
                 continue
             rect = control.rectangle()
             bbox = (rect.left, rect.top, rect.right, rect.bottom)
             info = control.element_info
             control_type = info.control_type or ""
             automation_id = info.automation_id or ""
+            identity = _runtime_identity(info)
         except Exception as exc:  # noqa: BLE001 - classified below
             if _is_dead_pointer(exc):
                 continue
@@ -383,6 +475,13 @@ def bounded_descendants(
 
         if not is_on_screen(bbox):
             continue
+        # Shared-traversal candidates deduplicate on live backend identity
+        # only. Two selectors over one walk can reach the same control, and
+        # value equality cannot tell that from two distinct controls that
+        # happen to agree on every published field.
+        if identity is not None and identity in identities:
+            continue
+        identities.append(identity)
         selected.append(
             Element(
                 name=name,
@@ -393,11 +492,27 @@ def bounded_descendants(
             )
         )
 
+    # Cardinality BEFORE the limit. Both faults would fire on a one-limit
+    # selector that matched twice, and ambiguity is the more specific answer:
+    # it says the filter names two controls, where the limit only says there
+    # were more results than allowed.
     if cardinality == EXACTLY_ONE and len(selected) > 1:
         candidates = ", ".join(f"{e.name!r}@{e.bbox}" for e in selected)
         raise SelectorAmbiguityFault(
             f"action selector matched {len(selected)} controls, expected one: "
             f"{candidates}"
+        )
+
+    # Raise, never truncate. Truncating at the top of the loop discarded
+    # matches before the ambiguity check could see them, so a one-limit
+    # selector matching two controls returned the first one silently -- the
+    # exact "silently taking the first" failure the cardinality rule exists to
+    # prevent. The limit bounds how many trusted results a recipe may claim,
+    # not how long the walk may take.
+    if len(selected) > limit:
+        raise ProviderQueryFault(
+            f"bounded walk matched {len(selected)} controls, over the "
+            f"result limit of {limit}"
         )
     return selected
 

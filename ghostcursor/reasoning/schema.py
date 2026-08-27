@@ -127,6 +127,11 @@ class VerificationRule:
     kind: VerificationKind
     args: dict = field(default_factory=dict)
     timeout_s: float = 30.0
+    #: The selector whose observed results decide this rule, for the three
+    #: kinds that name one. `None` keeps the descriptor-matching behaviour the
+    #: v1 recipes use, so adding this field changes nothing until a compiled
+    #: recipe supplies it.
+    selector: str | None = None
 
 
 @dataclass
