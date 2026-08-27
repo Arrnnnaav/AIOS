@@ -1339,17 +1339,32 @@ def test_every_compiled_entry_point_keeps_the_stop_seam(module, function) -> Non
     # Two acceptable shapes, because the two paths genuinely differ:
     # production owns its `finally`, while the harness registers on an
     # `ExitStack` so the teardown survives a failure in the one beside it.
+    # The ExitStack this function actually opened, so the receiver is checked
+    # against a real binding rather than against a name someone chose. Any
+    # other object's `.callback` registers on a stack that will not unwind
+    # here.
+    stacks = {
+        item.optional_vars.id
+        for statement in ast.walk(node)
+        if isinstance(statement, (ast.With, ast.AsyncWith))
+        for item in statement.items
+        if isinstance(item.optional_vars, ast.Name)
+        and "ExitStack" in ast.unparse(item.context_expr)
+    }
     registered = [
         child
         for child in ast.walk(node)
         if isinstance(child, ast.Call)
         and isinstance(child.func, ast.Attribute)
         and child.func.attr == "callback"
-        and [
-            argument
-            for argument in child.args
-            if isinstance(argument, ast.Name) and argument.id == stop_name
-        ]
+        # The receiver must be the stack this function opened...
+        and isinstance(child.func.value, ast.Name)
+        and child.func.value.id in stacks
+        # ...and the seam must be the CALLBACK, not an argument to one.
+        # `cleanup.callback(print, stop_perception)` registers a print.
+        and child.args
+        and isinstance(child.args[0], ast.Name)
+        and child.args[0].id == stop_name
     ]
     in_finally = [
         child
@@ -1543,3 +1558,70 @@ def test_the_returned_stop_is_the_compositions_own() -> None:
     _service, _source, perception = _composition(lambda: now[0])
     _observe, _hook, stop = perception.start()
     assert stop == perception.stop
+
+
+@pytest.mark.parametrize(
+    "line,accepted",
+    [
+        ("cleanup.callback(stop_perception)", True),
+        # A different object's stack does not unwind in this function.
+        ("other.callback(stop_perception)", False),
+        # Registers a `print`, with the seam as its argument.
+        ("cleanup.callback(print, stop_perception)", False),
+        ("print(stop_perception)", False),
+        ("if stop_perception is not None:\n            pass", False),
+    ],
+)
+def test_the_cleanup_check_accepts_only_the_real_registration(line, accepted) -> None:
+    """Mutation-verify the check itself (D018).
+
+    The assertion it makes is structural, so the only way to know it is
+    discriminating is to feed it the near-misses. Each of these mentions the
+    seam and leaves the worker running.
+    """
+    import ast
+
+    source = (
+        "def accept_candidate(graph, workflow, *, start_perception, make_renderer):\n"
+        "    with contextlib.ExitStack() as cleanup:\n"
+        "        observe, on_grounding, stop_perception = start_perception()\n"
+        f"        {line}\n"
+        "        renderer, dispose = make_renderer()\n"
+        "        cleanup.callback(dispose)\n"
+        "        result = execute_compiled_workflow(workflow)\n"
+        "    return result\n"
+    )
+    node = next(
+        n for n in ast.walk(ast.parse(source)) if isinstance(n, ast.FunctionDef)
+    )
+    bound = [
+        target.elts[2].id
+        for statement in ast.walk(node)
+        if isinstance(statement, ast.Assign)
+        for target in statement.targets
+        if isinstance(target, ast.Tuple)
+        and len(target.elts) == 3
+        and all(isinstance(element, ast.Name) for element in target.elts)
+    ]
+    stop_name = bound[0]
+    stacks = {
+        item.optional_vars.id
+        for statement in ast.walk(node)
+        if isinstance(statement, (ast.With, ast.AsyncWith))
+        for item in statement.items
+        if isinstance(item.optional_vars, ast.Name)
+        and "ExitStack" in ast.unparse(item.context_expr)
+    }
+    registered = [
+        child
+        for child in ast.walk(node)
+        if isinstance(child, ast.Call)
+        and isinstance(child.func, ast.Attribute)
+        and child.func.attr == "callback"
+        and isinstance(child.func.value, ast.Name)
+        and child.func.value.id in stacks
+        and child.args
+        and isinstance(child.args[0], ast.Name)
+        and child.args[0].id == stop_name
+    ]
+    assert bool(registered) is accepted, line
