@@ -28,7 +28,7 @@ What it owns, and why each is not optional:
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from ghostcursor.perception import uia
 from ghostcursor.perception.health import PerceptionUnhealthy
@@ -366,18 +366,53 @@ class CompiledPerception:
 
     service: PerceptionService
     source: CompiledObservationSource
+    #: Whether a start has succeeded and not yet been stopped. A dict because
+    #: the dataclass is frozen: the identity of this composition never changes,
+    #: but whether it is currently running does.
+    _running: dict = field(default_factory=dict, repr=False, compare=False)
 
     def start(self):
-        """Start the worker and arm the grace from this instant.
+        """Start the worker and arm the grace, as one transaction.
 
         Returns the seams a tour needs: the observation source, the grounding
         hook, and the stop.
+
+        **Atomic.** `PerceptionService.start()` brings up more than one thread,
+        so it can fail having already started something -- and a `start()` that
+        raises never returns its stop seam, leaving the caller with a partly
+        running worker it has no handle on. Anything partially started is torn
+        down here before the failure propagates.
+
+        **One-shot while running.** A second call returns the same seams and
+        does NOT re-arm. `PerceptionService.start()` treats it as a no-op, so
+        re-arming would move the health epoch for a worker that never
+        restarted, handing a possibly-stalled one a fresh budget it did not
+        earn. After `stop()`, starting again is a genuinely new worker era and
+        does arm afresh.
         """
-        self.service.start()
-        self.source.arm()
+        if self._running.get("started"):
+            return self.source, self.source.note_grounding, self.stop
+
+        try:
+            self.service.start()
+            self.source.arm()
+        except BaseException:
+            # Tear down before propagating. `stop()` on a service that never
+            # got as far as starting must be harmless, and is -- but a failure
+            # in teardown must not replace the failure being reported, which
+            # is the one that says what actually went wrong.
+            try:
+                self.service.stop()
+            except Exception:
+                pass
+            raise
+
+        self._running["started"] = True
         return self.source, self.source.note_grounding, self.stop
 
     def stop(self) -> None:
+        """Stop the worker. Safe to call twice, and safe before any start."""
+        self._running["started"] = False
         self.service.stop()
 
 

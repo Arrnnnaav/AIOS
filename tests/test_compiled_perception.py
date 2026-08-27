@@ -21,6 +21,7 @@ import pytest
 
 from ghostcursor.perception.compiled import (
     CompiledObservationSource,
+    CompiledPerception,
     PywinautoElementInfo,
     RawElementInfo,
     build_compiled_perception,
@@ -1282,3 +1283,147 @@ def test_both_entry_points_start_perception_through_the_composition() -> None:
         assert "perception.start" in ast.unparse(node), (
             f"{function} does not use the shared start"
         )
+
+
+class _StartableService(_HealthService):
+    """A service whose start and stop are observable, and can be made to fail."""
+
+    def __init__(self, fail_on_start=None):
+        super().__init__()
+        self.fail_on_start = fail_on_start
+        self.calls = []
+
+    def start(self):
+        self.calls.append("start")
+        if self.fail_on_start is not None:
+            raise self.fail_on_start
+
+    def stop(self):
+        self.calls.append("stop")
+
+
+def _composition(clock, service=None, arm_error=None):
+    workflow, _catalog = _workflow()
+    service = service or _StartableService()
+    ladder = _AgeingLadder(clock)
+    source = CompiledObservationSource(
+        service, ladder, health=_real_health(service, ladder, clock), clock=clock
+    )
+    if arm_error is not None:
+        def _boom(now=None):
+            raise arm_error
+
+        source.arm = _boom
+    return service, source, CompiledPerception(service=service, source=source)
+
+
+def test_a_partial_start_is_torn_down_before_the_failure_propagates() -> None:
+    """`PerceptionService.start()` brings up more than one thread.
+
+    It can fail having already started something, and a `start()` that raises
+    never returns its stop seam -- so the caller is left with a partly running
+    worker it has no handle on. Nothing else in the process will stop it.
+    """
+    now = [0.0]
+    service, _source, perception = _composition(
+        lambda: now[0],
+        service=_StartableService(RuntimeError("focus thread failed to start")),
+    )
+
+    with pytest.raises(RuntimeError, match="focus thread"):
+        perception.start()
+    assert service.calls == ["start", "stop"], service.calls
+
+
+def test_a_failure_while_arming_also_tears_the_worker_down() -> None:
+    """Arming is part of the transaction, not a step after it."""
+    now = [0.0]
+    service, _source, perception = _composition(
+        lambda: now[0], arm_error=RuntimeError("clock unavailable")
+    )
+
+    with pytest.raises(RuntimeError, match="clock"):
+        perception.start()
+    assert service.calls == ["start", "stop"], service.calls
+
+
+def test_a_teardown_failure_does_not_replace_the_real_error() -> None:
+    """The reported failure must be the one that says what went wrong."""
+    now = [0.0]
+
+    class _BadStop(_StartableService):
+        def stop(self):
+            self.calls.append("stop")
+            raise RuntimeError("stop also failed")
+
+    service, _source, perception = _composition(
+        lambda: now[0], service=_BadStop(RuntimeError("focus thread failed to start"))
+    )
+    with pytest.raises(RuntimeError, match="focus thread"):
+        perception.start()
+    assert service.calls == ["start", "stop"]
+
+
+def test_a_second_start_does_not_move_the_health_epoch() -> None:
+    """The service treats it as a no-op, so the epoch must not move.
+
+    Re-arming would hand a worker that never restarted a fresh budget it did
+    not earn -- and a stalled one is exactly the worker most likely to be
+    started again by a caller trying to recover.
+    """
+    now = [0.0]
+    service, source, perception = _composition(lambda: now[0])
+
+    perception.start()
+    first = source._started_at
+
+    now[0] = 500.0
+    seams = perception.start()
+    assert source._started_at == first, "the epoch moved for the same worker"
+    assert seams == (source, source.note_grounding, perception.stop)
+
+
+def test_a_second_start_is_harmless_and_returns_the_same_seams() -> None:
+    now = [0.0]
+    service, source, perception = _composition(lambda: now[0])
+    first = perception.start()
+    second = perception.start()
+    assert first == second
+    assert service.calls == ["start"], "the second start reached the service"
+
+
+def test_starting_again_after_a_stop_is_a_new_worker_era() -> None:
+    """A genuine restart DOES get a fresh grace, because it is a fresh worker."""
+    now = [0.0]
+    service, source, perception = _composition(lambda: now[0])
+
+    perception.start()
+    perception.stop()
+    now[0] = 500.0
+    perception.start()
+
+    assert source._started_at == 500.0
+    assert service.calls == ["start", "stop", "start"]
+
+
+def test_a_failed_start_leaves_the_composition_startable() -> None:
+    """A rolled-back transaction leaves no half-set state behind."""
+    now = [0.0]
+    service = _StartableService(RuntimeError("focus thread failed to start"))
+    _svc, source, perception = _composition(lambda: now[0], service=service)
+
+    with pytest.raises(RuntimeError):
+        perception.start()
+    assert source._started_at is None, "a failed start armed the grace anyway"
+
+    service.fail_on_start = None
+    now[0] = 42.0
+    perception.start()
+    assert source._started_at == 42.0
+
+
+def test_stopping_before_any_start_is_harmless() -> None:
+    now = [0.0]
+    service, _source, perception = _composition(lambda: now[0])
+    perception.stop()
+    assert service.calls == ["stop"]
