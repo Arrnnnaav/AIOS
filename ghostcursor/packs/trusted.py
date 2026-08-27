@@ -48,6 +48,53 @@ class LoadedArtifact:
     value: Any
 
 
+@dataclass(frozen=True)
+class AuthorityDocument:
+    path: Path
+    sha256: str
+    raw_bytes: bytes
+    value: Any
+
+
+def load_authority_document(
+    root: Path,
+    relative: str,
+    schema: ArtifactSchema | None = None,
+    *,
+    project_root: Path | None = None,
+) -> AuthorityDocument:
+    """Read one mutable authority file once and return its immutable JSON value."""
+
+    path = _trusted_file(Path(root), relative)
+    raw = path.read_bytes()
+    value = _parse_json(_decode_utf8(raw))
+    if schema is not None:
+        validator = {
+            ArtifactSchema.INDEX: _validate_index,
+            ArtifactSchema.PACK: lambda document: _validate_pack(
+                document, project_root=Path(project_root or root)
+            ),
+            ArtifactSchema.INTENT: _validate_intent,
+            ArtifactSchema.RECIPE: _validate_recipe,
+        }.get(schema)
+        if validator is None:
+            raise ValueError("evidence is not a JSON authority schema")
+        validator(value)
+    value = _freeze(value)
+    return AuthorityDocument(
+        path=path,
+        sha256=hashlib.sha256(raw).hexdigest(),
+        raw_bytes=raw,
+        value=value,
+    )
+
+
+def resolve_trusted_directory(root: Path, relative: str) -> Path:
+    """Resolve an explicitly named, non-symlinked directory beneath root."""
+
+    return _trusted_path(Path(root), relative, require_directory=True)
+
+
 def load_trusted_artifact(
     root: Path,
     ref: ArtifactRef,
@@ -165,6 +212,10 @@ def _validate_relative_path(value: Any, label: str) -> str:
 
 
 def _trusted_file(root: Path, relative: str) -> Path:
+    return _trusted_path(root, relative, require_directory=False)
+
+
+def _trusted_path(root: Path, relative: str, *, require_directory: bool) -> Path:
     _validate_relative_path(relative, "artifact path")
     if root.is_symlink():
         raise ValueError("trusted root must not be a symlink")
@@ -186,7 +237,10 @@ def _trusted_file(root: Path, relative: str) -> Path:
         resolved.relative_to(resolved_root)
     except ValueError as exc:
         raise ValueError("trusted artifact resolves outside its root") from exc
-    if not resolved.is_file():
+    if require_directory:
+        if not resolved.is_dir():
+            raise ValueError("trusted path must be a directory")
+    elif not resolved.is_file():
         raise ValueError("trusted artifact must be a file")
     return resolved
 

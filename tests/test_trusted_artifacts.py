@@ -9,7 +9,9 @@ import pytest
 from ghostcursor.packs.trusted import (
     ArtifactRef,
     ArtifactSchema,
+    load_authority_document,
     load_trusted_artifact,
+    resolve_trusted_directory,
 )
 
 
@@ -655,3 +657,48 @@ def test_gitattributes_pins_every_attested_text_class_to_lf():
         "docs/evidence/**/*.md text eol=lf",
         "ghostcursor/demo/synthetic_export_app.py text eol=lf",
     }
+
+
+def test_mutable_authority_document_is_read_once_hashed_parsed_and_frozen(
+    tmp_path, monkeypatch
+):
+    path = tmp_path / "activation.json"
+    path.write_text('{"schema_version":2}\n', encoding="utf-8", newline="\n")
+    original = Path.read_bytes
+    reads = 0
+
+    def counted(candidate: Path) -> bytes:
+        nonlocal reads
+        reads += 1
+        return original(candidate)
+
+    monkeypatch.setattr(Path, "read_bytes", counted)
+    loaded = load_authority_document(tmp_path, "activation.json")
+
+    assert reads == 1
+    assert loaded.sha256 == _digest(loaded.raw_bytes)
+    assert loaded.value["schema_version"] == 2
+    with pytest.raises(TypeError):
+        loaded.value["schema_version"] = 1
+
+
+def test_trusted_directory_resolution_rejects_files_and_symlink_components(
+    tmp_path, monkeypatch
+):
+    directory = tmp_path / "packs" / "vscode"
+    directory.mkdir(parents=True)
+    assert resolve_trusted_directory(tmp_path, "packs/vscode") == directory.resolve()
+
+    file_path = tmp_path / "packs" / "not-a-directory"
+    file_path.write_text("x", encoding="utf-8")
+    with pytest.raises(ValueError, match="directory"):
+        resolve_trusted_directory(tmp_path, "packs/not-a-directory")
+
+    original = Path.is_symlink
+    monkeypatch.setattr(
+        Path,
+        "is_symlink",
+        lambda path: path == tmp_path / "packs" or original(path),
+    )
+    with pytest.raises(ValueError, match="symlink"):
+        resolve_trusted_directory(tmp_path, "packs/vscode")
