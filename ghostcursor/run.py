@@ -1194,14 +1194,17 @@ def _run_compiled_tour(
             from ghostcursor.perception import tier2 as tier2_module
             from ghostcursor.perception.compiled import build_compiled_perception
 
-            service, source = build_compiled_perception(
+            perception = build_compiled_perception(
                 workflow, clock, tier2=tier2_module.build_controller(clock)
             )
-            service.start()
-            observe = source
-            on_grounding = source.note_grounding
+            service = perception.service
             if renderer_ladder is not None:
-                renderer_ladder[0] = source.ladder
+                renderer_ladder[0] = perception.source.ladder
+            # ONE start operation, shared with the candidate harness. Starting
+            # the worker and arming the health grace are the same event, and
+            # anywhere they are two steps the gap between them is spent
+            # against a worker that does not exist yet.
+            observe, on_grounding, _stop = perception.start()
 
         try:
             result = execute_compiled_workflow(

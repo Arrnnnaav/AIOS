@@ -774,15 +774,15 @@ def _live_acceptance_seams(workflow, clock):  # pragma: no cover - real desktop
     from ghostcursor.perception.compiled import build_compiled_perception
     from ghostcursor.run import pump_messages
 
-    service, source = build_compiled_perception(
+    perception = build_compiled_perception(
         workflow, clock, tier2=tier2_module.build_controller(clock)
     )
-
-    def _start():
-        service.start()
-        return source, source.note_grounding, service.stop
-
-    return _start, source.ladder, pump_messages
+    # `perception.start` IS the seam. The harness calls it after its gates,
+    # and the composition arms the health grace at that moment rather than at
+    # construction -- a slow gate would otherwise spend the whole grace before
+    # the worker existed, and its first read would restart something that had
+    # never run.
+    return perception.start, perception.source.ladder, pump_messages
 
 
 def _live_windows(graph: CandidateGraph) -> list[WindowCandidate]:  # pragma: no cover

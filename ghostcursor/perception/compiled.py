@@ -227,12 +227,19 @@ class CompiledObservationSource:
         self.health = health
         self.plan = plan
         self.clock = clock or ladder.clock
-        #: When the tour began, for the startup grace below. `ladder.age()` is
-        #: infinite until the first observation lands, and the health policy
+        #: When the WORKER started, for the startup grace below. `ladder.age()`
+        #: is infinite until the first observation lands, and the health policy
         #: reads that age as a stall -- so an unguarded check restarts a
         #: perfectly healthy worker on the very first read and ends the tour on
         #: the second, before perception has answered once.
-        self._started_at = started_at if started_at is not None else self.clock()
+        #:
+        #: `None` until `arm()` is called. Construction time is the wrong epoch:
+        #: the candidate harness builds this composition BEFORE its pre-launch
+        #: gates and starts the worker only after they pass, so a slow gate --
+        #: a large reload, a human at a dialog -- spends the whole grace before
+        #: the worker exists, and its first read restarts something that has
+        #: never run.
+        self._started_at = started_at
         self._last_observed_at: float | None = None
         self._step = -1
         #: The selector the current tier-2 request was made FOR. A request
@@ -288,17 +295,32 @@ class CompiledObservationSource:
             focused_automation_id=snapshot.focused_automation_id,
         )
 
+    def arm(self, now: float | None = None) -> None:
+        """Start the health grace from THIS moment.
+
+        Called when the worker starts, never when this object is built. The
+        two are the same instant in production and are not in the candidate
+        harness, where the composition is assembled before the pre-launch
+        gates and started after them.
+        """
+        self._started_at = self.clock() if now is None else now
+
     def _health_may_report(self) -> bool:
         """The startup grace, matching the v1 driver exactly.
 
         Suppressed only until the first observation lands OR the same
-        `dead_after_s` budget has elapsed from the tour's start. A worker that
-        never produces anything at all is still caught -- just from a start
-        time that exists, rather than from an infinite age that was never
-        about this worker.
+        `dead_after_s` budget has elapsed since the worker started. A worker
+        that never produces anything at all is still caught -- just from a
+        start time that exists, rather than from an infinite age that was
+        never about this worker.
         """
         if self.ladder.age() != float("inf"):
             return True
+        if self._started_at is None:
+            # Nothing has started, so nothing can be stalling. Judging a
+            # worker that does not exist yet is how a healthy one gets
+            # restarted before its first read.
+            return False
         budget = getattr(self.health, "dead_after_s", 0.0)
         return self.clock() - self._started_at > budget
 
@@ -331,6 +353,34 @@ class CompiledObservationSource:
             self.service.request_tier2(step_index)
 
 
+@dataclass(frozen=True)
+class CompiledPerception:
+    """The wired stack, plus the one way to start and stop it.
+
+    `start()` exists so no caller has to remember that starting the worker and
+    arming the health grace are the same event. They were two steps once, and
+    the candidate harness -- which builds this before its pre-launch gates and
+    starts it after -- spent the entire grace between them, so its first read
+    restarted a worker that had never run.
+    """
+
+    service: PerceptionService
+    source: CompiledObservationSource
+
+    def start(self):
+        """Start the worker and arm the grace from this instant.
+
+        Returns the seams a tour needs: the observation source, the grounding
+        hook, and the stop.
+        """
+        self.service.start()
+        self.source.arm()
+        return self.source, self.source.note_grounding, self.stop
+
+    def stop(self) -> None:
+        self.service.stop()
+
+
 def build_compiled_perception(
     workflow,
     clock,
@@ -339,13 +389,15 @@ def build_compiled_perception(
     service=None,
     ladder=None,
     health=None,
-) -> tuple[PerceptionService, CompiledObservationSource]:
+) -> CompiledPerception:
     """Wire the whole stack for one workflow and start nothing.
 
     Starting is the caller's decision, and deliberately so: the candidate
     harness must not have a worker running before its pre-launch gates pass,
     or the run can consume an observation taken while the artifacts were still
-    unverified.
+    unverified. It is `start()` on the returned object, so the decision of
+    WHEN stays with the caller while the mechanics of what starting means stay
+    here.
     """
     from ghostcursor.perception.health import WorkerHealth
     from ghostcursor.reasoning.staleness import StalenessLadder
@@ -356,4 +408,4 @@ def build_compiled_perception(
     source = CompiledObservationSource(
         service, ladder, health=health, plan=workflow.recipe.plan, clock=clock
     )
-    return service, source
+    return CompiledPerception(service=service, source=source)

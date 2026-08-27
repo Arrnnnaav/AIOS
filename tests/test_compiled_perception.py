@@ -535,6 +535,7 @@ def test_a_healthy_worker_is_not_restarted_on_the_first_empty_read() -> None:
     source = CompiledObservationSource(
         service, ladder, health=_real_health(service, ladder, clock), clock=clock
     )
+    source.arm()
 
     assert source() is None
     assert service.restarts == 0, "a healthy worker was restarted before it answered"
@@ -558,6 +559,7 @@ def test_a_worker_that_never_answers_is_still_caught_after_the_grace() -> None:
     service = _HealthService()
     health = _real_health(service, ladder, clock)
     source = CompiledObservationSource(service, ladder, health=health, clock=clock)
+    source.arm()
 
     source()
     now[0] = health.dead_after_s + 1.0
@@ -586,6 +588,7 @@ def test_a_terminal_health_verdict_is_raised_not_discarded() -> None:
     )
     health = _real_health(service, ladder, clock)
     source = CompiledObservationSource(service, ladder, health=health, clock=clock)
+    source.arm()
 
     ladder.observed()  # an observation HAS landed, so the grace is over
     now[0] += health.dead_after_s + 1.0
@@ -611,6 +614,7 @@ def test_a_dead_worker_never_publishes_a_normal_looking_tick() -> None:
     )
     health = _real_health(service, ladder, clock)
     source = CompiledObservationSource(service, ladder, health=health, clock=clock)
+    source.arm()
 
     ladder.observed()
     source()  # restart spent; the fake comes back alive
@@ -660,6 +664,7 @@ def test_an_empty_slot_still_returns_none_while_healthy() -> None:
     source = CompiledObservationSource(
         service, ladder, health=_real_health(service, ladder, clock), clock=clock
     )
+    source.arm()
     assert source() is None
 
 
@@ -699,11 +704,11 @@ def test_a_real_worker_drives_a_real_tour_to_completion() -> None:
         ),
         interval_s=0.01,
     )
-    _service, source = build_compiled_perception(
+    perception = build_compiled_perception(
         workflow, __import__("time").monotonic, service=service
     )
 
-    service.start()
+    source, on_grounding, _stop = perception.start()
     try:
         drawn = []
 
@@ -731,7 +736,7 @@ def test_a_real_worker_drives_a_real_tour_to_completion() -> None:
             seconds=2.0,
             tick_interval_s=0.01,
             sleeper=_sleeper,
-            on_grounding=source.note_grounding,
+            on_grounding=on_grounding,
         )
     finally:
         service.stop()
@@ -767,10 +772,10 @@ def test_the_composed_stack_never_walks_on_the_calling_thread() -> None:
         ),
         interval_s=0.01,
     )
-    _service, source = build_compiled_perception(
+    perception = build_compiled_perception(
         workflow, __import__("time").monotonic, service=service
     )
-    service.start()
+    source, _hook, _stop = perception.start()
     try:
         deadline = __import__("time").monotonic() + 2.0
         while not walk_threads and __import__("time").monotonic() < deadline:
@@ -1166,3 +1171,114 @@ def test_a_worker_that_dies_mid_run_fails_the_run_with_its_cause() -> None:
     assert result.outcome is RunOutcome.FAILED, result
     assert "perception stopped working" in result.detail
     assert len(reads) > 1, "the fault never reached the running loop"
+
+
+def test_the_grace_runs_from_worker_start_not_from_construction() -> None:
+    """The candidate harness builds this before its gates and starts it after.
+
+    A slow gate -- a large reload, a human at a dialog -- spends the whole
+    grace between the two, and the first read then restarts a worker that has
+    never run. Construction time is simply the wrong epoch; only the harness
+    can tell them apart, because in production they are the same instant.
+    """
+    now = [0.0]
+    clock = lambda: now[0]
+    ladder = _AgeingLadder(clock)
+    service = _HealthService()
+    health = _real_health(service, ladder, clock)
+    source = CompiledObservationSource(service, ladder, health=health, clock=clock)
+
+    # The gates take longer than the whole grace.
+    now[0] = health.dead_after_s + 1.0
+    source.arm()
+
+    assert source() is None
+    assert service.restarts == 0, "a worker was restarted before it had run"
+
+    # And the grace still expires, measured from the start that happened.
+    now[0] += health.dead_after_s + 1.0
+    source()
+    assert service.restarts == 1
+
+
+def test_an_unarmed_source_never_judges_the_worker() -> None:
+    """Nothing has started, so nothing can be stalling."""
+    now = [10_000.0]
+    clock = lambda: now[0]
+    ladder = _AgeingLadder(clock)
+    service = _HealthService()
+    source = CompiledObservationSource(
+        service, ladder, health=_real_health(service, ladder, clock), clock=clock
+    )
+    assert source() is None
+    assert service.restarts == 0
+
+
+def test_the_composition_arms_the_grace_when_it_starts_the_worker() -> None:
+    """`start()` is one event, so no caller can do half of it."""
+    workflow, _catalog = _workflow()
+    now = [0.0]
+    service = compiled_perception_service(
+        workflow,
+        lambda: now[0],
+        plan_runner=compiled_plan_runner(
+            workflow,
+            walk=lambda hwnd, control_type: [],
+            query=lambda hwnd, control_type, name: [],
+            read_title=lambda hwnd: "t",
+            make_info=PywinautoElementInfo,
+        ),
+        interval_s=0.01,
+    )
+    perception = build_compiled_perception(workflow, lambda: now[0], service=service)
+    assert perception.source._started_at is None
+
+    now[0] = 500.0
+    try:
+        observe, on_grounding, stop = perception.start()
+    finally:
+        perception.stop()
+    assert perception.source._started_at == 500.0
+    assert observe is perception.source
+    assert on_grounding == perception.source.note_grounding
+
+
+def test_both_entry_points_start_perception_through_the_composition() -> None:
+    """Production and acceptance share the operation, not a copy of it.
+
+    Two starts would be two places to remember that arming the grace is part
+    of starting -- and the harness is the one that would forget, because it is
+    the one where the two moments differ.
+    """
+    import ast
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    # Scoped to the COMPILED entry points. `run_tour()` is the v1 driver and
+    # carries its own inline grace; it is not migrated until the cutover, and
+    # a check that flagged it would be asserting something untrue about this
+    # milestone.
+    targets = {
+        "ghostcursor/run.py": "_run_compiled_tour",
+        "ghostcursor/devtools/candidate_acceptance.py": "_live_acceptance_seams",
+    }
+    for module, function in targets.items():
+        source = (root / module).read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        node = next(
+            n
+            for n in ast.walk(tree)
+            if isinstance(n, ast.FunctionDef) and n.name == function
+        )
+        starts = [
+            child
+            for child in ast.walk(node)
+            if isinstance(child, ast.Attribute)
+            and child.attr == "start"
+            and isinstance(child.value, ast.Name)
+            and child.value.id == "service"
+        ]
+        assert not starts, f"{function} starts the worker outside the composition"
+        assert "perception.start" in ast.unparse(node), (
+            f"{function} does not use the shared start"
+        )
