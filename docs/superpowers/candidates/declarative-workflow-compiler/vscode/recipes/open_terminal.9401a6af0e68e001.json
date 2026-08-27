@@ -1,0 +1,67 @@
+{
+  "context_selectors": [],
+  "intent_id": "OPEN_TERMINAL",
+  "schema_version": 2,
+  "selectors": {
+    "terminal_section": {
+      "cardinality": "at_least_one",
+      "control_type": "Button",
+      "names": [
+        "Terminal Section"
+      ],
+      "normalise": "none",
+      "result_limit": 4,
+      "strategy": "bounded_descendants"
+    },
+    "toggle_panel": {
+      "cardinality": "exactly_one",
+      "control_type": "Button",
+      "names": [
+        "Toggle Panel (Ctrl+J)"
+      ],
+      "normalise": "none",
+      "result_limit": 4,
+      "strategy": "bounded_descendants"
+    }
+  },
+  "step_key_namespace": "open the integrated terminal in vscode",
+  "steps": [
+    {
+      "instruction_text": "Press Ctrl+` to open the integrated terminal. The highlighted Toggle Panel button identifies VS Code's panel control.",
+      "preconditions": [],
+      "provenance": {
+        "created_at": "2026-08-25",
+        "model": "none",
+        "prompt_version": "none",
+        "source_tier": "official-docs-hand-authored",
+        "source_urls": [
+          "https://code.visualstudio.com/docs/terminal/getting-started"
+        ]
+      },
+      "risk": "normal",
+      "target_descriptor": {
+        "claimed": {
+          "name": "Toggle Panel (Ctrl+J)",
+          "name_synonyms": [
+            "Toggle Panel"
+          ],
+          "ocr_text": null,
+          "visual_description": "the Toggle Panel button in the VS Code title bar"
+        },
+        "confirmed": []
+      },
+      "target_selector": "toggle_panel",
+      "user_action": "press_keys",
+      "verification_rule": {
+        "args": {
+          "accept_if_already_present": true,
+          "fail_after_timeout": true,
+          "timeout_from_hint": true
+        },
+        "kind": "element_appears",
+        "selector": "terminal_section",
+        "timeout_s": 20.0
+      }
+    }
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "canonical_target": "Open Folder",
+  "intent_id": "OPEN_FOLDER",
+  "rules": [
+    {
+      "phrases": [
+        "open a folder in vs code",
+        "open a folder in vscode",
+        "open a folder in visual studio code"
+      ],
+      "tier": "exact"
+    },
+    {
+      "all_of": [
+        {
+          "any_of": [
+            {
+              "token": "open"
+            }
+          ]
+        },
+        {
+          "any_of": [
+            {
+              "alias": "vscode_names"
+            }
+          ]
+        },
+        {
+          "any_of": [
+            {
+              "token": "folder"
+            },
+            {
+              "path": true
+            }
+          ]
+        }
+      ],
+      "tier": "heuristic"
+    }
+  ],
+  "schema_version": 2
+}

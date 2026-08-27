@@ -1,0 +1,102 @@
+{
+  "context_selectors": [
+    "wrong_control"
+  ],
+  "intent_id": "EXPORT_DATA",
+  "schema_version": 2,
+  "selectors": {
+    "export_button": {
+      "cardinality": "exactly_one",
+      "control_type": "Button",
+      "names": [
+        "Export"
+      ],
+      "normalise": "none",
+      "result_limit": 4,
+      "strategy": "bounded_descendants"
+    },
+    "export_status": {
+      "cardinality": "at_least_one",
+      "control_type": "Text",
+      "names": [
+        "Export finished: table.csv"
+      ],
+      "normalise": "none",
+      "result_limit": 4,
+      "strategy": "bounded_descendants"
+    },
+    "wrong_control": {
+      "cardinality": "at_least_one",
+      "control_type": "Button",
+      "names": [
+        "Wrong control"
+      ],
+      "normalise": "none",
+      "result_limit": 4,
+      "strategy": "bounded_descendants"
+    }
+  },
+  "step_key_namespace": "export the current file",
+  "steps": [
+    {
+      "instruction_text": "Click Export to start exporting your file.",
+      "preconditions": [],
+      "provenance": {
+        "created_at": "2026-08-14",
+        "model": "none",
+        "prompt_version": "none",
+        "source_tier": "hand-authored",
+        "source_urls": []
+      },
+      "risk": "normal",
+      "target_descriptor": {
+        "claimed": {
+          "name": "Export",
+          "name_synonyms": [
+            "Export As",
+            "Save As"
+          ],
+          "ocr_text": null,
+          "visual_description": null
+        },
+        "confirmed": []
+      },
+      "target_selector": "export_button",
+      "user_action": "click",
+      "verification_rule": {
+        "args": {},
+        "kind": "element_appears",
+        "selector": "export_status",
+        "timeout_s": 30.0
+      }
+    },
+    {
+      "instruction_text": "Check the status line — it should show the export finished.",
+      "preconditions": [],
+      "provenance": {
+        "created_at": "2026-08-14",
+        "model": "none",
+        "prompt_version": "none",
+        "source_tier": "hand-authored",
+        "source_urls": []
+      },
+      "risk": "normal",
+      "target_descriptor": {
+        "claimed": {
+          "name": "Export finished: table.csv",
+          "name_synonyms": [],
+          "ocr_text": null,
+          "visual_description": null
+        },
+        "confirmed": []
+      },
+      "target_selector": null,
+      "user_action": "observe",
+      "verification_rule": {
+        "args": {},
+        "kind": "user_confirms",
+        "timeout_s": 30.0
+      }
+    }
+  ]
+}

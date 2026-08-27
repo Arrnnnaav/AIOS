@@ -1,0 +1,13 @@
+{
+  "artifacts": {
+    "synthetic/intents/open_export.add8abcbf701243d.json": "add8abcbf701243d635be81cc0b8670bb1c521974c5115519c2517b47b813699",
+    "synthetic/pack/synthetic.abbf4db4a8a60e1f.json": "abbf4db4a8a60e1f8caae3b4b1e95a59d691aa0b71769bbeecba037540e8a004",
+    "synthetic/recipes/open_export.e4db56e2a6cf8509.json": "e4db56e2a6cf8509d5605169c3ede6c08539870572b974bf0e4306c522bdea12",
+    "vscode/intents/open_folder.0376179471cf0fd0.json": "0376179471cf0fd012883a086a097dda402f95869d684edcd0b1ca9c646c2fb1",
+    "vscode/intents/open_terminal.7326b40f270d0113.json": "7326b40f270d01136349e31422610bebdf197ad6fbe1262c01d2fdb8fa04dcb0",
+    "vscode/pack/vscode.185cd7431e4f7e5e.json": "185cd7431e4f7e5ecd2d9e372a15690edd496a26667bafbb59f218762bb2f992",
+    "vscode/recipes/open_folder.f47777c8ce19731a.json": "f47777c8ce19731ae00bb3ef61e414830d12a027b58566f82fe35ed138982b06",
+    "vscode/recipes/open_terminal.9401a6af0e68e001.json": "9401a6af0e68e001dceaeaf1b78e6a1586492e96f7a7f9b03744725e01fb5766"
+  },
+  "note": "Full SHA-256 of each candidate artifact's exact bytes. The hex fragment in each filename is readability only and is never parsed or trusted; these are the digests to pass to the acceptance harness."
+}

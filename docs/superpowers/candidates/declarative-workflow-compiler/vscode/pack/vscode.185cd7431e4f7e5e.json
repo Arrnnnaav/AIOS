@@ -1,0 +1,24 @@
+{
+  "aliases": {
+    "vscode_names": [
+      "vs code",
+      "vscode",
+      "visual studio code"
+    ]
+  },
+  "display_name": "Visual Studio Code",
+  "executable_names": [
+    "code.exe"
+  ],
+  "pack_id": "vscode",
+  "pack_kind": "application",
+  "schema_version": 2,
+  "tier2_capture": "executable_bounded",
+  "title_patterns": [
+    ".*Visual Studio Code.*",
+    ".* - Code$"
+  ],
+  "version_identity": {
+    "kind": "executable_version"
+  }
+}

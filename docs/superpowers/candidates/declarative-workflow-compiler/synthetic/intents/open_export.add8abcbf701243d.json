@@ -1,0 +1,47 @@
+{
+  "canonical_target": "Export",
+  "intent_id": "EXPORT_DATA",
+  "rules": [
+    {
+      "phrases": [
+        "export this table as csv",
+        "export as csv",
+        "export data",
+        "export the current file"
+      ],
+      "tier": "exact"
+    },
+    {
+      "all_of": [
+        {
+          "any_of": [
+            {
+              "token": "csv"
+            },
+            {
+              "token": "spreadsheet"
+            },
+            {
+              "token": "table"
+            }
+          ]
+        },
+        {
+          "any_of": [
+            {
+              "token": "export"
+            },
+            {
+              "token": "save"
+            },
+            {
+              "token": "download"
+            }
+          ]
+        }
+      ],
+      "tier": "heuristic"
+    }
+  ],
+  "schema_version": 2
+}
