@@ -78,6 +78,37 @@ class PackRegistry:
         self.root = (Path(root) if root is not None else Path(__file__).resolve().parent).resolve()
         self._packs: tuple[AppPack, ...] | None = None
 
+    @classmethod
+    def from_verified(cls, packs) -> "PackRegistry":
+        """Build a registry from already-verified pack identities.
+
+        The v2 constructor. `PackRegistry` performs no scanning and no loading
+        of its own here: it receives identities that `activation.py` already
+        verified against exact digests and strict schemas, and does nothing but
+        match windows for `daemon.py`.
+
+        The legacy `__init__` still globs `manifests/*.json` and is still what
+        production uses; the atomic cutover removes it along with the manifest
+        directory. Both exist only during the migration, and only this one
+        derives identity from a verified graph.
+        """
+        registry = cls.__new__(cls)
+        registry.root = Path(__file__).resolve().parent
+        registry._packs = tuple(
+            AppPack(
+                pack_id=pack.pack_id,
+                display_name=pack.pack_value["display_name"],
+                executable_names=tuple(pack.pack_value["executable_names"]),
+                title_patterns=tuple(pack.pack_value["title_patterns"]),
+                version_constraints=(),
+                recipe_directory=pack.directory,
+                intent_ids=tuple(pack.intents),
+            )
+            for pack in packs
+            if pack.pack_value.get("pack_kind") == "application"
+        )
+        return registry
+
     def installed_packs(self) -> tuple[AppPack, ...]:
         if self._packs is None:
             manifests = sorted(self.root.glob("manifests/*.json"))

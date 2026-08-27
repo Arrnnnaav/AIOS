@@ -11,6 +11,7 @@ import os
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
+from typing import Callable
 
 from ghostcursor.inference.ollama import (
     DEFAULT_MODEL,
@@ -349,3 +350,103 @@ def plan_goal(goal: str, *, endpoint: str = "http://127.0.0.1:11434", model: str
         status = PlanStatus.MODEL_UNAVAILABLE_FALLBACK if use_model else PlanStatus.SUPPORTED
         return PlanResult(status, fallback_id, fallback_confidence, fallback_explanation, recipe)
     return PlanResult(PlanStatus.UNSUPPORTED_GOAL, None, 0.0, "no trusted intent matched")
+
+
+# ---------------------------------------------------------------------------
+# Schema v2: classification with no recipe loading
+# ---------------------------------------------------------------------------
+#
+# `resolve_model_decision()` above is still production authority and still
+# loads a recipe inline. That coupling is what this replaces: it made naming an
+# intent and gaining the right to execute one the same act, so every test of
+# the authority policy had to have a loadable recipe on disk, and the policy
+# could not be reasoned about without one.
+#
+# Here classification is pure. It names an intent and says nothing about what
+# may run. Materialization -- an active adoption, a live window, an exactly
+# equal application identity -- happens in `ghostcursor.packs.workflow`, which
+# is the only thing that can grant execution. Production keeps the v1 path
+# until the atomic cutover.
+
+
+@dataclass(frozen=True)
+class Classification:
+    """The result of naming an intent. Carries no recipe and no authority."""
+
+    status: PlanStatus
+    intent_id: str | None
+    confidence: float
+    explanation: str
+
+
+def classify_decision(
+    goal: str,
+    decision: IntentDecision,
+    *,
+    deterministic: Callable[[str], tuple[str | None, float, str]],
+    available: frozenset[str],
+) -> Classification:
+    """Apply the authority policy without touching a recipe.
+
+    `available` names the intents that currently have an active adoption. It is
+    consulted only to tell an ungrounded *available* intent from an ungrounded
+    unavailable one, which is the distinction D058 turns on -- a registered ID
+    is an allowlist boundary the model may name, never semantic evidence that
+    it named the right one.
+
+    The model can never widen this. Where its choice and the deterministic
+    classifier's grounded intent disagree, the deterministic one wins if it
+    exists and nothing runs if it does not.
+    """
+    fallback_id, fallback_confidence, fallback_explanation = deterministic(goal)
+
+    if decision.intent_id is None:
+        if fallback_id is None:
+            return Classification(
+                PlanStatus.UNSUPPORTED_GOAL,
+                None,
+                0.0,
+                f"model abstained: {decision.explanation}",
+            )
+        return Classification(
+            PlanStatus.MODEL_ABSTAINED_FALLBACK,
+            fallback_id,
+            fallback_confidence,
+            f"model abstained; {fallback_explanation}",
+        )
+
+    if decision.intent_id in available and fallback_id != decision.intent_id:
+        if fallback_id is None:
+            return Classification(
+                PlanStatus.UNSUPPORTED_GOAL,
+                None,
+                0.0,
+                (
+                    f"model selected ungrounded intent {decision.intent_id}; "
+                    "no trusted intent matched"
+                ),
+            )
+        return Classification(
+            PlanStatus.INVALID_MODEL_OUTPUT,
+            fallback_id,
+            fallback_confidence,
+            (
+                f"model selected ungrounded intent {decision.intent_id}; "
+                f"{fallback_explanation}"
+            ),
+        )
+
+    if decision.intent_id not in available:
+        return Classification(
+            PlanStatus.KNOWN_INTENT_RECIPE_UNAVAILABLE,
+            decision.intent_id,
+            decision.confidence,
+            decision.explanation,
+        )
+
+    return Classification(
+        PlanStatus.SUPPORTED,
+        decision.intent_id,
+        decision.confidence,
+        decision.explanation,
+    )

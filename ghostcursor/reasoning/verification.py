@@ -203,7 +203,60 @@ def _verify_by_selector(
     return getattr(was[0], prop) != getattr(now[0], prop)
 
 
-def verify(rule: VerificationRule, before: Snapshot, after: Snapshot) -> bool:
+def _verify_title_completion(
+    args: dict,
+    before: Snapshot,
+    after: Snapshot,
+    goal_reference: str | None,
+) -> bool:
+    """The declarative replacement for the hardcoded VS Code title branch.
+
+    Three conditions, in the order Design section 7 states them. Each is
+    load-bearing on its own:
+
+    1. the normalised title must CHANGE. Without this a goal already satisfied
+       before the user did anything verifies immediately;
+    2. the new title must END WITH one of the rule's declared suffixes. This is
+       deliberately not the pack's `title_patterns`, which are broad
+       window-DISCOVERY patterns -- `.*Visual Studio Code.*` is satisfied by
+       every failed run too, so reusing it would weaken the check to "the
+       window is still VS Code";
+    3. if the derived reference is specific, the new title must CONTAIN it.
+
+    A nonspecific reference skips condition 3 rather than failing it. That is
+    what keeps `open a folder in VS Code` -- which names no folder at all --
+    verifiable on conditions 1 and 2, exactly as it is today.
+    """
+    from ghostcursor.packs.compile import normalise_title_text
+
+    was = normalise_title_text(before.title)
+    now = normalise_title_text(after.title)
+    if was == now:
+        return False
+    if not any(now.endswith(suffix) for suffix in args["completion_title_suffixes"]):
+        return False
+    minimum = args["goal_reference"]["minimum_length"]
+    reference = goal_reference or ""
+    if len(reference) < minimum:
+        return True
+    return reference in now
+
+
+def verify(
+    rule: VerificationRule,
+    before: Snapshot,
+    after: Snapshot,
+    *,
+    goal_reference: str | None = None,
+) -> bool:
+    """Decide one verification rule against two observations.
+
+    `goal_reference` is the value a compiled workflow derived from the goal
+    ONCE, during planning. It is passed in rather than recomputed here so
+    there is exactly one extractor: a second implementation living in the
+    verifier could disagree with the one that planned the run, and the
+    disagreement would show up only as a workflow that never verifies.
+    """
     kind = rule.kind
     args = rule.args
 
@@ -227,6 +280,8 @@ def verify(rule: VerificationRule, before: Snapshot, after: Snapshot) -> bool:
         )
 
     if kind is VerificationKind.WINDOW_TITLE_MATCHES:
+        if "completion_title_suffixes" in args:
+            return _verify_title_completion(args, before, after, goal_reference)
         return re.search(args["pattern"], after.title) is not None
 
     if kind is VerificationKind.FOCUS_MOVES_TO:

@@ -579,3 +579,135 @@ def compile_recipe(recipe_value: Mapping[str, Any]) -> CompiledRecipe:
         context_selectors=tuple(recipe_value["context_selectors"]),
         plan=compile_observation_plan(recipe_value),
     )
+
+
+# ---------------------------------------------------------------------------
+# Goal-derived title verification (Design section 7)
+# ---------------------------------------------------------------------------
+
+
+def normalise_title_text(value: str) -> str:
+    """Casefold and collapse whitespace, keeping punctuation.
+
+    The one normalisation both the title check and the derived reference use.
+    Two definitions would let a reference be derived under one rule and matched
+    under another.
+    """
+    return " ".join(value.casefold().strip().split())
+
+
+@dataclass(frozen=True)
+class GoalReferenceSpec:
+    """The compiled form of a recipe's `goal_reference` declaration.
+
+    Every field is a literal the recipe declared; none is a pattern the recipe
+    wrote. The compiler escapes each literal before matching, so a recipe can
+    say which words to strip but can never supply a regular expression -- the
+    extension point the design refuses to open.
+    """
+
+    strip_leading_token: str
+    alias_members: tuple[str, ...]
+    nonspecific_templates: tuple[str, ...]
+    trailing_preposition: str
+    basename_separators: tuple[str, ...]
+    minimum_length: int
+
+
+def _alias_alternation(members: Iterable[str]) -> str:
+    """A regex alternation over escaped alias members, whitespace-flexible.
+
+    `vs code` must also match `vs  code`, because goals are typed by people.
+    Escaping first and only then relaxing the spaces is what keeps this a
+    literal comparison: nothing the recipe wrote survives as syntax.
+    """
+    parts = []
+    for member in members:
+        words = member.split()
+        if not words:
+            continue
+        parts.append(r"\s+".join(re.escape(word) for word in words))
+    # No ordering rule here on purpose. Every pattern this alternation appears
+    # in is anchored, so a shorter member that matches first still forces the
+    # regex to backtrack into the longer one when the anchor fails. An
+    # ordering that changes no outcome would read as a safety measure while
+    # enforcing nothing (D031).
+    return "|".join(parts)
+
+
+def compile_goal_reference(
+    value: Mapping[str, Any], aliases: Mapping[str, Any]
+) -> GoalReferenceSpec:
+    """Bind a verified `goal_reference` to its pack alias group."""
+    alias = value["alias"]
+    members = aliases.get(alias)
+    if members is None:
+        raise UnknownAliasError(f"goal_reference names unknown alias {alias!r}")
+    return GoalReferenceSpec(
+        strip_leading_token=value["strip_leading_token"],
+        alias_members=tuple(members),
+        nonspecific_templates=tuple(value["nonspecific_templates"]),
+        trailing_preposition=value["strip_trailing_alias_clause"]["preposition"],
+        basename_separators=tuple(value["basename_separators"]),
+        minimum_length=int(value["minimum_length"]),
+    )
+
+
+def derive_goal_reference(spec: GoalReferenceSpec, goal: str) -> str:
+    """Reduce a goal to the reference a completed title must contain.
+
+    The six steps of Design section 7, in order. Each transformation applies to
+    the *original* remainder rather than to a normalised copy, so separator
+    splitting still sees the goal's real punctuation; only the final value is
+    normalised.
+    """
+    alternation = _alias_alternation(spec.alias_members)
+    text = goal.strip()
+
+    # 1-2. a leading `open`, on a word boundary so `opener` survives.
+    text = re.sub(
+        rf"^{re.escape(spec.strip_leading_token)}\b", "", text, flags=re.IGNORECASE
+    ).strip()
+
+    # 3. a WHOLE-remainder match of a nonspecific template. Whole-remainder is
+    #    the point: `a folder in vs code` names nothing, but `notes a folder in
+    #    vs code` names `notes` and must keep it.
+    if alternation:
+        for template in spec.nonspecific_templates:
+            words = template.split()
+            pattern = r"\s+".join(
+                f"(?:{alternation})" if word == "{alias}" else re.escape(word)
+                for word in words
+            )
+            text = re.sub(rf"^{pattern}\s*$", "", text, flags=re.IGNORECASE).strip()
+
+        # 4. a TRAILING alias clause: `... in vs code`.
+        text = re.sub(
+            rf"\s+{re.escape(spec.trailing_preposition)}\s+(?:{alternation})\s*$",
+            "",
+            text,
+            flags=re.IGNORECASE,
+        ).strip()
+
+    # 5. bare separator containment, deliberately NOT D072's path predicate.
+    #    The two answer different questions -- D072 asks whether a goal is
+    #    about a path, this asks whether a reference has a final segment -- and
+    #    using the stricter one here would silently change what gets verified
+    #    for a goal that grounds through its `folder` token instead.
+    if any(separator in text for separator in spec.basename_separators):
+        pattern = "[" + "".join(re.escape(s) for s in spec.basename_separators) + "]+"
+        segments = [segment for segment in re.split(pattern, text) if segment]
+        text = segments[-1] if segments else ""
+
+    # 6.
+    return normalise_title_text(text)
+
+
+def reference_is_specific(spec: GoalReferenceSpec, reference: str) -> bool:
+    """Whether condition 3 applies at all.
+
+    A shorter reference is not a weaker match, it is no evidence: `.` appears
+    in ordinary window titles and would satisfy the containment check without
+    the title having anything to do with the goal.
+    """
+    return len(reference) >= spec.minimum_length

@@ -1032,3 +1032,79 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+# ---------------------------------------------------------------------------
+# Schema v2 launch entry point
+# ---------------------------------------------------------------------------
+
+
+def run_tour_for_workflow(
+    workflow,
+    *,
+    seconds: float,
+    reload_catalog,
+    window_still_valid,
+    project_root,
+    clock=time.monotonic,
+    sleeper=time.sleep,
+    warmup_budget_s: float = DEFAULT_WARMUP_BUDGET_S,
+    create_overlay=None,
+) -> int:
+    """Launch a guided tour from a `CompiledWorkflow`, never from a path.
+
+    The production-facing shape of the v2 entry point: `--goal` and Ask hand
+    the exact object planning returned straight to the tour, with no second
+    `recipe_path_for()` lookup that could resolve to different bytes than the
+    ones the plan was authorized against.
+
+    Revalidation happens FIRST, before anything creates a window. Ordering is
+    the whole guarantee: an overlay is full-screen, topmost and click-through,
+    so a launch that aborts after creating one has already put a window over
+    the user's screen for a workflow it then refuses to run. On any change
+    this raises `WorkflowUnavailable` and nothing is drawn -- runtime never
+    substitutes the new artifacts transparently and never falls back to the
+    old in-memory workflow, because one runs bytes nobody accepted and the
+    other runs bytes someone withdrew.
+
+    `--recipe <path>` has no counterpart here on purpose. A path-based loader
+    exists only inside the developer acceptance harness and is unreachable
+    from planning, Ask, and this entry point.
+    """
+    from ghostcursor.packs.workflow import revalidate
+
+    revalidate(
+        workflow,
+        reload_catalog=reload_catalog,
+        window_still_valid=window_still_valid,
+        project_root=project_root,
+    )
+
+    # Only now may a window exist. Injected so a test can prove the ordering
+    # by asserting this was never reached.
+    if create_overlay is None:  # pragma: no cover - exercised at the cutover
+        from ghostcursor.overlay import window as overlay_window
+
+        create_overlay = overlay_window.create_overlay_window
+    return _run_compiled_tour(
+        workflow,
+        seconds=seconds,
+        clock=clock,
+        sleeper=sleeper,
+        warmup_budget_s=warmup_budget_s,
+        create_overlay=create_overlay,
+    )
+
+
+def _run_compiled_tour(workflow, **_kwargs) -> int:  # pragma: no cover - Task 9
+    """The compiled execution body. Deliberately not built yet.
+
+    Task 5 binds a workflow and proves the launch gate; Task 9 performs the
+    atomic cutover that makes this the only execution path. Raising here keeps
+    the two apart: nothing can quietly start depending on a half-migrated
+    executor, and the gate above is testable today without it.
+    """
+    raise NotImplementedError(
+        "compiled tour execution lands with the Task 9 cutover; "
+        "production still runs the v1 recipe path"
+    )
