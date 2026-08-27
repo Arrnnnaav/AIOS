@@ -31,6 +31,7 @@ import re
 from dataclasses import dataclass
 
 from ghostcursor.perception import uia
+from ghostcursor.perception.health import PerceptionUnhealthy
 from ghostcursor.perception.service import PerceptionService, run_observation_plan
 
 
@@ -218,11 +219,20 @@ class CompiledObservationSource:
     compiled path had simply not been given.
     """
 
-    def __init__(self, service, ladder, health=None, plan=None) -> None:
+    def __init__(
+        self, service, ladder, health=None, plan=None, clock=None, started_at=None
+    ) -> None:
         self.service = service
         self.ladder = ladder
         self.health = health
         self.plan = plan
+        self.clock = clock or ladder.clock
+        #: When the tour began, for the startup grace below. `ladder.age()` is
+        #: infinite until the first observation lands, and the health policy
+        #: reads that age as a stall -- so an unguarded check restarts a
+        #: perfectly healthy worker on the very first read and ends the tour on
+        #: the second, before perception has answered once.
+        self._started_at = started_at if started_at is not None else self.clock()
         self._last_observed_at: float | None = None
         self._step = -1
         #: The selector the current tier-2 request was made FOR. A request
@@ -233,10 +243,18 @@ class CompiledObservationSource:
     def __call__(self):
         from ghostcursor.reasoning.compiled_tour import TickInput
 
-        if self.health is not None:
+        if self.health is not None and self._health_may_report():
             # A dead worker leaves its last slot in place, and a slot that
             # never ages looks exactly like a screen that never changes.
-            self.health.check()
+            #
+            # The VERDICT is what matters, not the call. `check()` returning a
+            # reason means the allowed restart has already been spent and the
+            # tour is over; discarding it left the source publishing the last
+            # stale observation forever, so a dead worker looked like a static
+            # screen and the run timed out instead of failing with a cause.
+            reason = self.health.check()
+            if reason is not None:
+                raise PerceptionUnhealthy(reason)
 
         observation = self.service.latest()
         if observation is None:
@@ -269,6 +287,20 @@ class CompiledObservationSource:
             union=union + extra,
             focused_automation_id=snapshot.focused_automation_id,
         )
+
+    def _health_may_report(self) -> bool:
+        """The startup grace, matching the v1 driver exactly.
+
+        Suppressed only until the first observation lands OR the same
+        `dead_after_s` budget has elapsed from the tour's start. A worker that
+        never produces anything at all is still caught -- just from a start
+        time that exists, rather than from an infinite age that was never
+        about this worker.
+        """
+        if self.ladder.age() != float("inf"):
+            return True
+        budget = getattr(self.health, "dead_after_s", 0.0)
+        return self.clock() - self._started_at > budget
 
     def note_grounding(
         self, step_index: int, grounded: bool, selector_id: str | None = None
@@ -322,6 +354,6 @@ def build_compiled_perception(
     ladder = ladder or StalenessLadder(clock=clock)
     health = health or WorkerHealth(service=service, ladder=ladder)
     source = CompiledObservationSource(
-        service, ladder, health=health, plan=workflow.recipe.plan
+        service, ladder, health=health, plan=workflow.recipe.plan, clock=clock
     )
     return service, source

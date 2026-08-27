@@ -25,6 +25,7 @@ from enum import Enum
 from types import SimpleNamespace
 from typing import Callable, Sequence
 
+from ghostcursor.perception.health import PerceptionUnhealthy
 from ghostcursor.perception.uia import Element, ProviderQueryFault
 from ghostcursor.reasoning.grounding import GroundedTarget
 from ghostcursor.reasoning.loop import GuidedTour, State
@@ -324,7 +325,7 @@ def execute_compiled_workflow(
             )
         try:
             _current = observe()
-        except ProviderQueryFault as fault:
+        except (ProviderQueryFault, PerceptionUnhealthy) as fault:
             return TourResult(
                 outcome=RunOutcome.FAILED,
                 provenance=(),
@@ -349,7 +350,7 @@ def execute_compiled_workflow(
         _index[0] = tour.step_index
         try:
             state = tour.tick()
-        except ProviderQueryFault as fault:
+        except (ProviderQueryFault, PerceptionUnhealthy) as fault:
             # A faulted observation is not an empty screen. Ambiguity and an
             # over-limit read must reach the run record as a failure with a
             # reason, never as "the control is not there" -- flattening a

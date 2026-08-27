@@ -366,11 +366,22 @@ class _FakeService:
 
 
 class _Ladder:
-    def __init__(self):
+    """A minimal ladder for the tier-2 tests, which are not about staleness.
+
+    Carries a `clock` because the real `StalenessLadder` does and the source
+    reads it for the health grace -- a fake missing it would only prove the
+    source never asked.
+    """
+
+    def __init__(self, clock=None):
+        self.clock = clock or (lambda: 0.0)
         self.observations = 0
 
     def observed(self):
         self.observations += 1
+
+    def age(self):
+        return 0.0
 
     def freshness(self):
         from ghostcursor.reasoning.staleness import Freshness
@@ -443,35 +454,213 @@ def test_each_new_observation_ages_the_staleness_ladder() -> None:
     assert ladder.observations == 2
 
 
-def test_worker_health_is_checked_on_every_read() -> None:
-    """A dead worker leaves its last slot in place.
+class _AgeingLadder:
+    """A real-enough ladder: `age()` is infinite until something is observed.
 
-    A slot that never ages looks exactly like a screen that never changes, so
-    without this the tour waits out its whole timeout against a corpse.
+    That infinity is the whole reason the startup grace exists, so a fake that
+    reported a finite age would hide the bug this section is about.
     """
-    checks = []
 
-    class _Health:
-        def check(self):
-            checks.append(True)
+    def __init__(self, clock):
+        self.clock = clock
+        self._last = None
+        self.observations = 0
 
-    service = _FakeService([_Observation(_snapshot(), 1.0)])
-    source = CompiledObservationSource(service, _Ladder(), health=_Health())
-    source()
-    source()
-    assert len(checks) == 2
+    def observed(self):
+        self._last = self.clock()
+        self.observations += 1
+
+    def age(self):
+        if self._last is None:
+            return float("inf")
+        return self.clock() - self._last
+
+    def freshness(self):
+        from ghostcursor.reasoning.staleness import Freshness
+
+        return Freshness.FRESH
 
 
-def test_an_empty_slot_still_checks_health_and_returns_none() -> None:
-    checks = []
+class _Progress:
+    def __init__(self, last_completed_at=None, stage="walk", heartbeat=1):
+        self.last_completed_at = last_completed_at
+        self.stage = stage
+        self.heartbeat = heartbeat
 
-    class _Health:
-        def check(self):
-            checks.append(True)
 
-    source = CompiledObservationSource(_FakeService(), _Ladder(), health=_Health())
+class _HealthService(_FakeService):
+    """A service the REAL `WorkerHealth` can judge.
+
+    Exposes what the policy actually reads -- liveness, progress, heartbeat --
+    and records restarts, so the test observes the policy's decisions rather
+    than a counter of how often it was consulted.
+    """
+
+    def __init__(self, observations=(), alive=True, last_completed_at=None):
+        super().__init__(observations)
+        self.alive = alive
+        self.last_completed_at = last_completed_at
+        self.restarts = 0
+        self.heartbeat = 1
+
+    def is_alive(self):
+        return self.alive
+
+    def progress(self):
+        return _Progress(self.last_completed_at)
+
+    def restart(self):
+        self.restarts += 1
+        self.alive = True
+
+
+def _real_health(service, ladder, clock):
+    from ghostcursor.perception.health import WorkerHealth
+
+    return WorkerHealth(service=service, ladder=ladder, log=lambda _m: None)
+
+
+def test_a_healthy_worker_is_not_restarted_on_the_first_empty_read() -> None:
+    """The startup grace, against the real policy.
+
+    `ladder.age()` is infinite until the first observation lands, and the
+    policy reads that age as a stall. Unguarded, the very first empty-slot
+    read restarts a perfectly healthy worker and the next one ends the tour --
+    before perception has answered even once.
+    """
+    now = [0.0]
+    clock = lambda: now[0]
+    ladder = _AgeingLadder(clock)
+    service = _HealthService()
+    source = CompiledObservationSource(
+        service, ladder, health=_real_health(service, ladder, clock), clock=clock
+    )
+
     assert source() is None
-    assert checks == [True]
+    assert service.restarts == 0, "a healthy worker was restarted before it answered"
+
+    now[0] = 5.0
+    assert source() is None
+    assert service.restarts == 0
+
+
+def test_a_worker_that_never_answers_is_still_caught_after_the_grace() -> None:
+    """The grace bounds the wait; it does not remove the check.
+
+    A worker that produces nothing at all is caught from a start time that
+    exists, rather than from an infinite age that was never about this worker.
+    """
+    from ghostcursor.perception.health import PerceptionUnhealthy
+
+    now = [0.0]
+    clock = lambda: now[0]
+    ladder = _AgeingLadder(clock)
+    service = _HealthService()
+    health = _real_health(service, ladder, clock)
+    source = CompiledObservationSource(service, ladder, health=health, clock=clock)
+
+    source()
+    now[0] = health.dead_after_s + 1.0
+    source()  # the policy spends its one allowed restart here
+    assert service.restarts == 1
+
+    now[0] += health.dead_after_s + 1.0
+    with pytest.raises(PerceptionUnhealthy):
+        source()
+
+
+def test_a_terminal_health_verdict_is_raised_not_discarded() -> None:
+    """`check()` returning a reason is the END of the tour.
+
+    The restart has already been spent. Discarding the reason left the source
+    publishing its last stale observation forever -- a dead worker looking
+    exactly like a screen that stopped changing.
+    """
+    from ghostcursor.perception.health import PerceptionUnhealthy
+
+    now = [100.0]
+    clock = lambda: now[0]
+    ladder = _AgeingLadder(clock)
+    service = _HealthService(
+        [_Observation(_snapshot(title="stale"), 1.0)], last_completed_at=1.0
+    )
+    health = _real_health(service, ladder, clock)
+    source = CompiledObservationSource(service, ladder, health=health, clock=clock)
+
+    ladder.observed()  # an observation HAS landed, so the grace is over
+    now[0] += health.dead_after_s + 1.0
+
+    source()  # restart spent
+    assert service.restarts == 1
+    now[0] += health.dead_after_s + 1.0
+
+    with pytest.raises(PerceptionUnhealthy) as caught:
+        source()
+    assert "perception stopped working" in str(caught.value)
+
+
+def test_a_dead_worker_never_publishes_a_normal_looking_tick() -> None:
+    """The stale slot must not come back as an ordinary observation."""
+    from ghostcursor.perception.health import PerceptionUnhealthy
+
+    now = [0.0]
+    clock = lambda: now[0]
+    ladder = _AgeingLadder(clock)
+    service = _HealthService(
+        [_Observation(_snapshot(title="stale"), 1.0)], alive=False
+    )
+    health = _real_health(service, ladder, clock)
+    source = CompiledObservationSource(service, ladder, health=health, clock=clock)
+
+    ladder.observed()
+    source()  # restart spent; the fake comes back alive
+    service.alive = False
+
+    with pytest.raises(PerceptionUnhealthy):
+        source()
+
+
+def test_an_unhealthy_worker_ends_the_run_as_a_failure() -> None:
+    """It has to reach the run record with a cause, not time out."""
+    from ghostcursor.perception.health import PerceptionUnhealthy
+
+    workflow, _catalog = _workflow()
+
+    def _observe():
+        raise PerceptionUnhealthy("perception stopped working (exited); ending the tour")
+
+    class _Renderer:
+        def show(self, grounded, instruction_text):
+            pass
+
+        def clear(self):
+            pass
+
+        def settle(self):
+            pass
+
+    now = [0.0]
+    result = execute_compiled_workflow(
+        workflow,
+        observe=_observe,
+        renderer=_Renderer(),
+        clock=lambda: now[0],
+        sleeper=lambda s: now.__setitem__(0, now[0] + s),
+        seconds=5.0,
+    )
+    assert result.outcome is RunOutcome.FAILED
+    assert "perception stopped working" in result.detail
+
+
+def test_an_empty_slot_still_returns_none_while_healthy() -> None:
+    now = [0.0]
+    clock = lambda: now[0]
+    ladder = _AgeingLadder(clock)
+    service = _HealthService()
+    source = CompiledObservationSource(
+        service, ladder, health=_real_health(service, ladder, clock), clock=clock
+    )
+    assert source() is None
 
 
 # ---------------------------------------------------------------------------
@@ -921,4 +1110,59 @@ def test_a_fault_after_the_first_observation_also_ends_the_run() -> None:
     )
     assert result.outcome is RunOutcome.FAILED, result
     assert "matched 3 controls" in result.detail
+    assert len(reads) > 1, "the fault never reached the running loop"
+
+
+def test_a_worker_that_dies_mid_run_fails_the_run_with_its_cause() -> None:
+    """The tick handler, not the pre-loop one.
+
+    A worker that was never healthy is caught while waiting for the first
+    observation. A worker that dies once the tour is running takes a different
+    path -- and that is the realistic one: the worker answered, the user began
+    acting, and perception stopped. Testing only the first left the second
+    free to keep re-observing a corpse until the deadline, reporting a timeout
+    where the cause was known.
+    """
+    from ghostcursor.perception.health import PerceptionUnhealthy
+    from ghostcursor.reasoning.compiled_tour import TickInput
+
+    workflow, _catalog = _workflow()
+    reads = []
+
+    def _observe():
+        reads.append(True)
+        if len(reads) == 1:
+            matched = (
+                Element("Open Folder...", "Button", "", (1, 1, 2, 2), ("Button",)),
+            )
+            return TickInput(
+                title="Welcome - Visual Studio Code",
+                selectors={"open_folder": matched},
+                union=matched,
+            )
+        raise PerceptionUnhealthy(
+            "perception stopped working (exited); ending the tour"
+        )
+
+    class _Renderer:
+        def show(self, grounded, instruction_text):
+            pass
+
+        def clear(self):
+            pass
+
+        def settle(self):
+            pass
+
+    now = [0.0]
+    result = execute_compiled_workflow(
+        workflow,
+        observe=_observe,
+        renderer=_Renderer(),
+        clock=lambda: now[0],
+        sleeper=lambda s: now.__setitem__(0, now[0] + s),
+        seconds=5.0,
+    )
+    assert result.outcome is RunOutcome.FAILED, result
+    assert "perception stopped working" in result.detail
     assert len(reads) > 1, "the fault never reached the running loop"

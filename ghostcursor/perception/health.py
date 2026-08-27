@@ -38,6 +38,17 @@ DEFAULT_SLOW_AFTER_S = 2.0
 DEFAULT_DEAD_AFTER_S = 12.0
 
 
+class PerceptionUnhealthy(RuntimeError):
+    """The health policy has given up on this worker.
+
+    Raised rather than returned so a caller cannot mistake it for an ordinary
+    empty observation. `check()` returning a reason is the END of the tour --
+    the restart has already been spent -- and a source that discarded that
+    reason went on publishing the last stale slot, which reads exactly like a
+    screen that stopped changing.
+    """
+
+
 class WorkerHealth:
     def __init__(
         self,
