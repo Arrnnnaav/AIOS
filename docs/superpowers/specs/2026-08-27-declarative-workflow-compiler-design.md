@@ -260,6 +260,14 @@ bound pack and intent artifacts. Editing a title matcher, alias, phrase, or rule
 therefore invalidates the old acceptance rather than silently widening where the
 recipe applies.
 
+A **preserved** record is held to a different rule, and deliberately so. It
+describes what was accepted *then*, so requiring it to equal today's binding
+would erase the entire history on the next pack update — exactly the audit
+D070's rollback check depends on. Its own referenced pack, intent, recipe, and
+evidence artifacts must still resolve and verify against their recorded digests,
+and its pack and intent must still be the ones this entry belongs to; a record
+whose artifacts no longer verify is a diagnostic and is not rollback-eligible.
+
 Because pack identity and aliases are global, changing the top-level pack
 reference requires a fresh accepted adoption for **every intent that remains
 active** in the same atomic activation swap. Per-intent phrase or rule changes
@@ -315,9 +323,19 @@ typed into JSON.
 **`activation_generation` is an audit sequence, not authority.** It starts at
 `1` and increments by exactly one on every adoption, supersession, rollback, or
 withdrawal that changes `activation.json`. The loader rejects zero, negative,
-non-integer, or decreasing generations when it has a previous generation to
-compare. A generation may help cache invalidation and audit ordering, but only
-the digest of the exact activation bytes binds content.
+and non-integer generations always.
+
+**The sequence is checked against the bytes it describes.** When the loader has
+a previous catalog to compare, it compares the previous activation digest too:
+unchanged bytes must keep the same generation, because reloading one file is
+not an audit event; changed bytes must carry exactly the previous generation
+plus one. Rejecting only *decreasing* generations would be too weak — a
+withdrawal that edits `activation.json` while reusing its old number is neither
+decreasing nor a reload, and would pass unnoticed. A gap is rejected for the
+same reason: it means an activation change happened that this loader never saw.
+
+A generation may help cache invalidation and audit ordering, but only the digest
+of the exact activation bytes binds content.
 
 **Application identity scope is exact in v2.** The adoption record's kind must
 equal the trusted pack's `version_identity.kind`, and its value must equal the

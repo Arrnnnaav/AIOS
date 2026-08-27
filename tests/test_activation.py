@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -592,3 +593,220 @@ def test_activation_generation_is_checked_against_previous_catalog_not_used_as_a
     _write_authority(built["root"], "activation.json", built["activation"])
     accepted = load_catalog(tmp_path, previous=first)
     assert accepted.packs["vscode"].activation_generation == 2
+
+
+def test_preserved_history_survives_a_pack_update(tmp_path):
+    """A superseded record describes what was accepted then, not what is bound now."""
+
+    built = _one_pack(tmp_path)
+    entry = built["activation"]["intents"]["OPEN_FOLDER"]
+    first_id = entry["active_adoption_id"]
+    new_pack_ref = _write_json(
+        built["root"], "pack/vscode-v2.json", _pack(display="vscode v2")
+    )
+    second_id = "accept-open_folder-2"
+    entry["adoptions"][second_id] = _adoption(
+        built["recipe_refs"]["OPEN_FOLDER"],
+        new_pack_ref,
+        built["intent_refs"]["OPEN_FOLDER"],
+        _evidence(tmp_path, "vscode-open_folder-repack"),
+        identity="1.135.0",
+        supersedes_id=first_id,
+        supersedes_recipe=entry["adoptions"][first_id]["recipe"]["sha256"],
+        adopted_at="2026-08-27T02:00:00Z",
+    )
+    entry["active_adoption_id"] = second_id
+    built["activation"]["pack"] = new_pack_ref
+    built["activation"]["activation_generation"] = 2
+    _write_authority(built["root"], "activation.json", built["activation"])
+
+    catalog = load_catalog(tmp_path)
+    intent = catalog.packs["vscode"].intents["OPEN_FOLDER"]
+    assert intent.availability is IntentAvailability.ACTIVE
+    assert intent.active_adoption.adoption_id == second_id
+    assert set(intent.adoptions) == {first_id, second_id}
+    assert (
+        intent.adoption_for_identity(
+            first_id, ApplicationIdentity("executable_version", "1.134.0")
+        ).adoption_id
+        == first_id
+    )
+
+
+def test_historical_binding_must_still_verify_its_own_artifacts(tmp_path):
+    built = _one_pack(tmp_path)
+    entry = built["activation"]["intents"]["OPEN_FOLDER"]
+    first_id = entry["active_adoption_id"]
+    second_id = "accept-open_folder-2"
+    entry["adoptions"][second_id] = _adoption(
+        built["recipe_refs"]["OPEN_FOLDER"],
+        built["pack_ref"],
+        built["intent_refs"]["OPEN_FOLDER"],
+        _evidence(tmp_path, "vscode-open_folder-history"),
+        identity="1.135.0",
+        supersedes_id=first_id,
+        supersedes_recipe=entry["adoptions"][first_id]["recipe"]["sha256"],
+        adopted_at="2026-08-27T02:00:00Z",
+    )
+    entry["active_adoption_id"] = second_id
+    entry["adoptions"][first_id]["accepted_pack"]["sha256"] = "0" * 64
+    built["activation"]["activation_generation"] = 2
+    _write_authority(built["root"], "activation.json", built["activation"])
+
+    catalog = load_catalog(tmp_path)
+    intent = catalog.packs["vscode"].intents["OPEN_FOLDER"]
+    assert intent.availability is IntentAvailability.ACTIVE
+    assert first_id not in intent.adoptions
+    assert any(
+        item.code is DiagnosticCode.INACTIVE_ADOPTION_INVALID
+        for item in catalog.diagnostics
+    )
+
+
+def test_unknown_application_identity_never_activates(tmp_path):
+    built = _one_pack(tmp_path)
+    entry = built["activation"]["intents"]["OPEN_FOLDER"]
+    adoption = next(iter(entry["adoptions"].values()))
+    adoption["accepted_application_identity"]["value"] = "unknown"
+    _write_authority(built["root"], "activation.json", built["activation"])
+
+    catalog = load_catalog(tmp_path)
+    intent = catalog.packs["vscode"].intents["OPEN_FOLDER"]
+    assert intent.availability is IntentAvailability.KNOWN_INTENT_RECIPE_UNAVAILABLE
+    assert intent.active_adoption is None
+    assert any(
+        item.code is DiagnosticCode.ACTIVE_ADOPTION_INVALID
+        for item in catalog.diagnostics
+    )
+
+
+def test_changed_activation_bytes_cannot_reuse_the_previous_generation(tmp_path):
+    built = _one_pack(tmp_path)
+    first = load_catalog(tmp_path)
+    assert first.packs["vscode"].activation_generation == 1
+
+    reloaded = load_catalog(tmp_path, previous=first)
+    assert reloaded.packs["vscode"].activation_generation == 1
+
+    built["activation"]["intents"]["OPEN_FOLDER"]["active_adoption_id"] = None
+    _write_authority(built["root"], "activation.json", built["activation"])
+    withdrawn = load_catalog(tmp_path, previous=first)
+    assert "vscode" not in withdrawn.packs
+    assert any(
+        item.code is DiagnosticCode.GENERATION_INVALID for item in withdrawn.diagnostics
+    )
+
+    built["activation"]["activation_generation"] = 2
+    _write_authority(built["root"], "activation.json", built["activation"])
+    accepted = load_catalog(tmp_path, previous=first)
+    assert accepted.packs["vscode"].activation_generation == 2
+
+
+def test_two_independent_first_adoptions_are_rejected(tmp_path):
+    built = _one_pack(tmp_path)
+    entry = built["activation"]["intents"]["OPEN_FOLDER"]
+    entry["adoptions"]["accept-open_folder-2"] = _adoption(
+        built["recipe_refs"]["OPEN_FOLDER"],
+        built["pack_ref"],
+        built["intent_refs"]["OPEN_FOLDER"],
+        _evidence(tmp_path, "vscode-open_folder-second-root"),
+        identity="1.135.0",
+        adopted_at="2026-08-27T02:00:00Z",
+    )
+    _write_authority(built["root"], "activation.json", built["activation"])
+
+    catalog = load_catalog(tmp_path)
+    intent = catalog.packs["vscode"].intents["OPEN_FOLDER"]
+    assert intent.adoptions == {}
+    assert intent.availability is IntentAvailability.KNOWN_INTENT_RECIPE_UNAVAILABLE
+    assert any(
+        item.code is DiagnosticCode.ACTIVE_ADOPTION_INVALID
+        for item in catalog.diagnostics
+    )
+
+
+def test_duplicate_intent_is_detected_even_when_one_artifact_is_invalid(tmp_path):
+    one = _make_pack(tmp_path, directory="one", pack_id="one", active=False)
+    two = _make_pack(tmp_path, directory="two", pack_id="two", active=False)
+    two["activation"]["intents"]["OPEN_FOLDER"]["intent"]["sha256"] = "0" * 64
+    _write_authority(two["root"], "activation.json", two["activation"])
+    _write_index(
+        tmp_path,
+        [
+            {"pack_id": "one", "path": one["directory"]},
+            {"pack_id": "two", "path": two["directory"]},
+        ],
+    )
+
+    catalog = load_catalog(tmp_path)
+    assert not catalog.root_valid
+    assert catalog.packs == {}
+    assert any(
+        item.code is DiagnosticCode.DUPLICATE_INTENT for item in catalog.diagnostics
+    )
+
+
+def test_one_intent_may_repeat_a_phrase_across_its_own_rules(tmp_path):
+    built = _one_pack(tmp_path, active=False)
+    phrase = "open a folder in vs code"
+    repeated = _write_json(
+        built["root"],
+        "intents/open_folder-repeated.json",
+        {
+            "schema_version": 2,
+            "intent_id": "OPEN_FOLDER",
+            "canonical_target": "Visual Studio Code",
+            "rules": [
+                {"tier": "exact", "phrases": [phrase]},
+                {"tier": "exact", "phrases": [phrase]},
+            ],
+        },
+    )
+    built["activation"]["intents"]["OPEN_FOLDER"]["intent"] = repeated
+    _write_authority(built["root"], "activation.json", built["activation"])
+
+    catalog = load_catalog(tmp_path)
+    assert catalog.root_valid
+    assert set(catalog.packs["vscode"].intents) == {"OPEN_FOLDER"}
+    assert not any(
+        item.code is DiagnosticCode.DUPLICATE_EXACT_PHRASE
+        for item in catalog.diagnostics
+    )
+
+
+def test_pack_directories_that_resolve_to_one_place_load_no_packs(tmp_path):
+    built = _make_pack(tmp_path, directory="vscode", pack_id="vscode", active=False)
+    alias = built["root"].parent / "vscode_alias"
+    completed = subprocess.run(
+        ["cmd", "/c", "mklink", "/J", str(alias), str(built["root"])],
+        capture_output=True,
+        text=True,
+    )
+    if completed.returncode != 0 or not alias.exists():
+        pytest.skip(f"directory junction unavailable: {completed.stderr.strip()}")
+    assert not alias.is_symlink(), "a junction must not be caught by the symlink rule"
+
+    _write_index(
+        tmp_path,
+        [
+            {"pack_id": "vscode", "path": "vscode"},
+            {"pack_id": "alias", "path": "vscode_alias"},
+        ],
+    )
+    catalog = load_catalog(tmp_path)
+    assert not catalog.root_valid
+    assert catalog.packs == {}
+    assert any(
+        item.code is DiagnosticCode.ROOT_INDEX_INVALID for item in catalog.diagnostics
+    )
+
+
+def test_catalog_binds_the_exact_index_bytes(tmp_path):
+    _one_pack(tmp_path, active=False)
+    index_path = tmp_path / "ghostcursor" / "packs" / "index.json"
+
+    catalog = load_catalog(tmp_path)
+    assert catalog.index_sha256 == _sha(index_path.read_bytes())
+
+    missing = load_catalog(tmp_path / "empty")
+    assert missing.index_sha256 is None
