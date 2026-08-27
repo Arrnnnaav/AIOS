@@ -185,7 +185,16 @@ def test_artifact_ref_requires_canonical_relative_path_and_full_lowercase_digest
     good = "a" * 64
     assert ArtifactRef("pack/vscode.json", good).sha256 == good
 
-    for path in ("", "/absolute.json", "C:/absolute.json", "../escape.json", "a\\b.json", "a/./b.json"):
+    for path in (
+        "",
+        "/absolute.json",
+        "C:/absolute.json",
+        "C:drive-relative.json",
+        "d:folder/file.json",
+        "../escape.json",
+        "a\\b.json",
+        "a/./b.json",
+    ):
         with pytest.raises(ValueError):
             ArtifactRef(path, good)
     for digest in ("a" * 12, "A" * 64, "g" * 64):
@@ -348,6 +357,12 @@ def test_pack_kind_constraints_are_explicit(tmp_path):
 
     with pytest.raises(ValueError, match="planner_only"):
         _load_json(tmp_path, {**planner, "executable_names": ["host.exe"]}, ArtifactSchema.PACK)
+    with pytest.raises(ValueError, match="planner_only"):
+        _load_json(
+            tmp_path / "aliases",
+            {**planner, "aliases": {"vscode_names": ["vs code"]}},
+            ArtifactSchema.PACK,
+        )
     with pytest.raises(ValueError, match="application"):
         _load_json(tmp_path, _pack(executable_names=[]), ArtifactSchema.PACK)
 

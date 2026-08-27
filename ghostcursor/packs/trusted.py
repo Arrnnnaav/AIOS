@@ -16,7 +16,7 @@ _SHA256_RE = re.compile(r"[0-9a-f]{64}\Z")
 _PACK_ID_RE = re.compile(r"[a-z][a-z0-9_]*\Z")
 _INTENT_ID_RE = re.compile(r"[A-Z][A-Z0-9_]*\Z")
 _SELECTOR_ID_RE = re.compile(r"[a-z][a-z0-9_]*\Z")
-_WINDOWS_DRIVE_RE = re.compile(r"[A-Za-z]:/")
+_WINDOWS_DRIVE_RE = re.compile(r"[A-Za-z]:")
 _UTF8_BOM = b"\xef\xbb\xbf"
 
 
@@ -317,6 +317,7 @@ def _validate_pack(value: dict[str, Any], *, project_root: Path) -> None:
         if (
             executables
             or patterns
+            or value["aliases"]
             or value["tier2_capture"] != "disabled"
             or value["version_identity"] is not None
         ):
