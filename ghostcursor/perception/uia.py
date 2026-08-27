@@ -333,6 +333,86 @@ def _runtime_identity(info) -> object | None:
     return None
 
 
+@dataclass(frozen=True)
+class Candidate:
+    """One observed control, still paired with its live backend identity.
+
+    `Element` is the frozen value that crosses the worker boundary (D021) and
+    deliberately carries no backend identity. That makes it the wrong thing to
+    deduplicate: two genuinely different controls can agree on name, control
+    type, AutomationId and bbox. So identity is kept beside the element for as
+    long as the observation stays worker-side -- through cardinality, through
+    the published union -- and is dropped only when the elements cross to the
+    UI thread.
+
+    `identity` is `None` when the backend could not supply one. That is a real
+    answer, not a missing value, and every consumer must then retain the
+    candidate rather than guess it is a duplicate.
+    """
+
+    identity: object | None
+    element: Element
+
+
+def deduplicated(candidates) -> list[Candidate]:
+    """Collapse candidates the backend proves are the same control.
+
+    Identity-bearing duplicates collapse; identity-less candidates are all
+    retained. Never a value comparison: collapsing on value would hide a real
+    second match from the cardinality check, which is the one thing that check
+    exists to catch.
+    """
+    seen: list[object] = []
+    kept: list[Candidate] = []
+    for candidate in candidates:
+        if candidate.identity is not None and candidate.identity in seen:
+            continue
+        seen.append(candidate.identity)
+        kept.append(candidate)
+    return kept
+
+
+def apply_cardinality(
+    candidates,
+    *,
+    cardinality: str,
+    limit: int | None = None,
+    label: str = "action selector",
+) -> list[Candidate]:
+    """Judge one selector's declared cardinality over its own candidates.
+
+    Separated from the read so several selectors can judge one shared read
+    independently. Grouping selectors by query is a cost decision; it must
+    never merge their answers, and it must never re-read the screen per
+    selector -- two reads within one tick can observe two different screens,
+    so two selectors on one compiled query could then disagree about how many
+    controls exist.
+
+    Cardinality BEFORE the limit. Both faults would fire on a one-limit
+    selector that matched twice, and ambiguity is the more specific answer: it
+    says the filter names two controls, where the limit only says there were
+    more results than allowed.
+    """
+    chosen = list(candidates)
+
+    if cardinality == EXACTLY_ONE and len(chosen) > 1:
+        described = ", ".join(f"{c.element.name!r}@{c.element.bbox}" for c in chosen)
+        raise SelectorAmbiguityFault(
+            f"{label} matched {len(chosen)} controls, expected one: {described}"
+        )
+
+    # Raise, never truncate. Truncating discarded matches before the ambiguity
+    # check could see them, so a one-limit selector matching two controls
+    # returned the first one silently -- the exact "silently taking the first"
+    # failure the cardinality rule exists to prevent. The limit bounds how many
+    # trusted results a recipe may claim, not how long the read may take.
+    if limit is not None and len(chosen) > limit:
+        raise ProviderQueryFault(
+            f"{label} matched {len(chosen)} controls, over the result limit of {limit}"
+        )
+    return chosen
+
+
 def element_array_items(array) -> list:
     """Adapt an `IUIAutomationElementArray` to a plain list of raw elements.
 
@@ -341,6 +421,57 @@ def element_array_items(array) -> list:
     live path still reads `Length` and `GetElement` exactly once each.
     """
     return [array.GetElement(index) for index in range(array.Length)]
+
+
+def provider_candidates(find_all, make_info) -> list[Candidate]:
+    """Perform ONE provider `FindAll` and classify every result.
+
+    The read half of :func:`provider_exact`, separated so that several
+    selectors sharing one compiled query judge a single read rather than each
+    triggering their own. Two reads inside one tick can observe two different
+    screens, so per-selector reads let two selectors on the same query
+    disagree about how many controls exist -- a divergence no caller could
+    detect, because each read is individually consistent.
+
+    Returns candidates with identity attached and backend-proven duplicates
+    already collapsed. It applies no cardinality: that belongs to the
+    selector, not the query.
+    """
+    try:
+        raw_items = list(find_all())
+    except Exception as exc:  # noqa: BLE001 - re-raised as a typed fault
+        raise ProviderQueryFault(f"provider query failed: {exc}") from exc
+
+    candidates: list[Candidate] = []
+    for raw in raw_items:
+        if raw is None:
+            continue
+        try:
+            info = make_info(raw)
+            name = info.name or ""
+            control_type = info.control_type or ""
+            automation_id = info.automation_id or ""
+            rect = info.rectangle
+            bbox = (rect.left, rect.top, rect.right, rect.bottom)
+            identity = _runtime_identity(info)
+        except Exception as exc:  # noqa: BLE001 - classified below
+            if _is_dead_pointer(exc):
+                continue
+            raise ProviderQueryFault(f"provider property read failed: {exc}") from exc
+
+        candidates.append(
+            Candidate(
+                identity=identity,
+                element=Element(
+                    name=name,
+                    control_type=control_type,
+                    automation_id=automation_id,
+                    bbox=bbox,
+                    path=(control_type,),
+                ),
+            )
+        )
+    return deduplicated(candidates)
 
 
 def provider_exact(
@@ -367,53 +498,12 @@ def provider_exact(
     element: only a successful property read establishes presence, which is why
     a result whose read dies is dropped rather than counted.
     """
-    try:
-        raw_items = list(find_all())
-    except Exception as exc:  # noqa: BLE001 - re-raised as a typed fault
-        raise ProviderQueryFault(f"provider query failed: {exc}") from exc
-
-    found: list[Element] = []
-    identities: list[object] = []
-    for raw in raw_items:
-        if raw is None:
-            continue
-        try:
-            info = make_info(raw)
-            name = info.name or ""
-            control_type = info.control_type or ""
-            automation_id = info.automation_id or ""
-            rect = info.rectangle
-            bbox = (rect.left, rect.top, rect.right, rect.bottom)
-            identity = _runtime_identity(info)
-        except Exception as exc:  # noqa: BLE001 - classified below
-            if _is_dead_pointer(exc):
-                continue
-            raise ProviderQueryFault(f"provider property read failed: {exc}") from exc
-
-        # Provider results deduplicate ONLY when a stable backend runtime
-        # identity proves two results are the same control. With no identity
-        # available both are retained: collapsing them on value would hide a
-        # real second match, which is the ambiguity this call exists to detect.
-        if identity is not None and identity in identities:
-            continue
-        identities.append(identity)
-        found.append(
-            Element(
-                name=name,
-                control_type=control_type,
-                automation_id=automation_id,
-                bbox=bbox,
-                path=(control_type,),
-            )
-        )
-
-    if cardinality == EXACTLY_ONE and len(found) > 1:
-        candidates = ", ".join(f"{e.name!r}@{e.bbox}" for e in found)
-        raise SelectorAmbiguityFault(
-            f"provider action selector matched {len(found)} controls, "
-            f"expected one: {candidates}"
-        )
-    return found
+    chosen = apply_cardinality(
+        provider_candidates(find_all, make_info),
+        cardinality=cardinality,
+        label="provider selector",
+    )
+    return [candidate.element for candidate in chosen]
 
 
 #: Ceiling on how many elements one bounded walk may publish. Measured Button
@@ -423,14 +513,14 @@ def provider_exact(
 DEFAULT_DESCENDANT_LIMIT = 16
 
 
-def bounded_descendants(
+def bounded_candidates(
     walk,
     allowed_names,
     *,
     limit: int = DEFAULT_DESCENDANT_LIMIT,
     cardinality: str = AT_LEAST_ONE,
     normalise: str = NORMALISE_STRIP_LEADING_PRIVATE_USE,
-):
+) -> list[Candidate]:
     """Select trusted controls from a bounded, control-type-scoped walk.
 
     The second declared selector strategy. Measured on VS Code 1.134.0: the
@@ -455,8 +545,7 @@ def bounded_descendants(
     except Exception as exc:  # noqa: BLE001 - re-raised as a typed fault
         raise ProviderQueryFault(f"bounded walk failed: {exc}") from exc
 
-    selected: list[Element] = []
-    identities: list[object] = []
+    selected: list[Candidate] = []
     for control in controls:
         try:
             name = control.window_text() or ""
@@ -475,46 +564,39 @@ def bounded_descendants(
 
         if not is_on_screen(bbox):
             continue
-        # Shared-traversal candidates deduplicate on live backend identity
-        # only. Two selectors over one walk can reach the same control, and
-        # value equality cannot tell that from two distinct controls that
-        # happen to agree on every published field.
-        if identity is not None and identity in identities:
-            continue
-        identities.append(identity)
         selected.append(
-            Element(
-                name=name,
-                control_type=control_type,
-                automation_id=automation_id,
-                bbox=bbox,
-                path=(control_type,),
+            Candidate(
+                identity=identity,
+                element=Element(
+                    name=name,
+                    control_type=control_type,
+                    automation_id=automation_id,
+                    bbox=bbox,
+                    path=(control_type,),
+                ),
             )
         )
 
-    # Cardinality BEFORE the limit. Both faults would fire on a one-limit
-    # selector that matched twice, and ambiguity is the more specific answer:
-    # it says the filter names two controls, where the limit only says there
-    # were more results than allowed.
-    if cardinality == EXACTLY_ONE and len(selected) > 1:
-        candidates = ", ".join(f"{e.name!r}@{e.bbox}" for e in selected)
-        raise SelectorAmbiguityFault(
-            f"action selector matched {len(selected)} controls, expected one: "
-            f"{candidates}"
-        )
+    # Shared-traversal candidates deduplicate on live backend identity only.
+    # Two selectors over one walk can reach the same control, and value
+    # equality cannot tell that from two distinct controls that happen to
+    # agree on every published field.
+    return apply_cardinality(
+        deduplicated(selected),
+        cardinality=cardinality,
+        limit=limit,
+        label="bounded selector",
+    )
 
-    # Raise, never truncate. Truncating at the top of the loop discarded
-    # matches before the ambiguity check could see them, so a one-limit
-    # selector matching two controls returned the first one silently -- the
-    # exact "silently taking the first" failure the cardinality rule exists to
-    # prevent. The limit bounds how many trusted results a recipe may claim,
-    # not how long the walk may take.
-    if len(selected) > limit:
-        raise ProviderQueryFault(
-            f"bounded walk matched {len(selected)} controls, over the "
-            f"result limit of {limit}"
-        )
-    return selected
+
+def bounded_descendants(walk, allowed_names, **kwargs) -> list[Element]:
+    """:func:`bounded_candidates` for callers that need only the elements.
+
+    Backend identity is dropped here on purpose: a caller taking plain
+    elements has left the worker-side window in which identity is meaningful,
+    and a stale identity is worse than none.
+    """
+    return [candidate.element for candidate in bounded_candidates(walk, allowed_names, **kwargs)]
 
 
 def iter_elements(title_re: str) -> list[Element]:

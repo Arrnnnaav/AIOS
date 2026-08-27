@@ -36,7 +36,8 @@ import threading
 import time
 import os
 from dataclasses import dataclass
-from typing import Callable
+from types import MappingProxyType
+from typing import Callable, Mapping
 
 from ghostcursor.perception.focus import read_focused_automation_id
 from ghostcursor.perception.uia import Element, first_matching_hwnd, iter_elements
@@ -771,13 +772,35 @@ class PerceptionService:
 # --------------------------------------------------------------------------
 
 
+@dataclass(frozen=True)
+class TickObservation:
+    """What one bounded observation tick publishes.
+
+    Two views of the same read, and both are needed. `selectors` answers "what
+    did THIS selector match", which is what a step's action and its
+    verification each ask. `union` answers "what did this tick observe at
+    all", which is what anything reasoning over the screen as a whole needs --
+    and it cannot be rebuilt from `selectors` afterwards, because by then the
+    elements are frozen values with no backend identity and merging them would
+    have to fall back on value equality (D021, D069).
+
+    So the union is deduplicated worker-side, while the handles are still
+    live: identity-bearing duplicates collapse, identity-less candidates are
+    all retained. Two selectors matching the same control contribute it once;
+    two indistinguishable controls stay two.
+    """
+
+    selectors: Mapping[str, tuple[Element, ...]]
+    union: tuple[Element, ...]
+
+
 def run_observation_plan(
     plan,
     *,
     walk_for,
     query_for,
     make_info,
-) -> dict[str, tuple[Element, ...]]:
+) -> TickObservation:
     """Observe every selector in `plan` in one tick.
 
     `walk_for(control_type)` returns a callable performing one bounded walk of
@@ -785,6 +808,14 @@ def run_observation_plan(
     performing one provider `FindAll`; `make_info(raw)` wraps a provider result
     for property reads. All three are injected so the grouping and failure
     rules can be exercised with no live provider.
+
+    **Each compiled group is read exactly once.** A bounded traversal runs one
+    walk per control type; a provider query performs one `FindAll`. Every
+    selector in the group then judges its own cardinality and limit over that
+    single shared read. Reading per selector instead would let two selectors
+    on one compiled query observe two different screens within one tick and
+    disagree about how many controls exist -- a disagreement no caller could
+    detect, because each read is individually consistent.
 
     **A non-absence fault invalidates the entire tick.** The fault propagates
     and the caller publishes nothing. Publishing the selectors that did read
@@ -797,9 +828,10 @@ def run_observation_plan(
     from ghostcursor.perception import uia
 
     results: dict[str, tuple[Element, ...]] = {}
+    observed: list[uia.Candidate] = []
 
     for traversal in plan.traversals:
-        # One walk per unique control type, shared by every selector over it.
+        # ONE walk per unique control type, shared by every selector over it.
         walk = walk_for(traversal.control_type)
         try:
             candidates = list(walk())
@@ -811,33 +843,39 @@ def run_observation_plan(
             selector = plan.selectors[selector_id]
             # Each selector filters the SHARED candidates independently and
             # judges its own cardinality. The walk is shared; the answer is not.
-            results[selector_id] = tuple(
-                uia.bounded_descendants(
-                    lambda candidates=candidates: candidates,
-                    selector.names,
-                    limit=selector.result_limit,
-                    cardinality=selector.cardinality,
-                    normalise=selector.normalise,
-                )
+            chosen = uia.bounded_candidates(
+                lambda candidates=candidates: candidates,
+                selector.names,
+                limit=selector.result_limit,
+                cardinality=selector.cardinality,
+                normalise=selector.normalise,
             )
+            results[selector_id] = tuple(c.element for c in chosen)
+            observed.extend(chosen)
 
     for query in plan.queries:
-        find_all = query_for(query.control_type, query.name)
+        # ONE FindAll per compiled query, shared by every selector on it.
+        found = uia.provider_candidates(
+            query_for(query.control_type, query.name), make_info
+        )
         for selector_id in query.selector_ids:
             selector = plan.selectors[selector_id]
-            found = uia.provider_exact(
-                find_all, make_info, cardinality=selector.cardinality
+            chosen = uia.apply_cardinality(
+                found,
+                cardinality=selector.cardinality,
+                limit=selector.result_limit,
+                label="provider selector",
             )
-            if len(found) > selector.result_limit:
-                raise uia.ProviderQueryFault(
-                    f"provider query matched {len(found)} controls, over the "
-                    f"result limit of {selector.result_limit}"
-                )
-            results[selector_id] = tuple(found)
+            results[selector_id] = tuple(c.element for c in chosen)
+            observed.extend(chosen)
 
     missing = set(plan.selectors) - results.keys()
     if missing:  # pragma: no cover - every selector belongs to a group
-        raise uia.ProviderQueryFault(
-            f"plan left selectors unobserved: {sorted(missing)}"
-        )
-    return results
+        raise uia.ProviderQueryFault(f"plan left selectors unobserved: {sorted(missing)}")
+
+    # Deduplicate the union HERE, while the identities are still live. After
+    # this point only Elements survive, and merging those would mean value
+    # equality -- which cannot tell one control reached by two selectors from
+    # two controls that agree on every published field.
+    union = tuple(c.element for c in uia.deduplicated(observed))
+    return TickObservation(selectors=MappingProxyType(results), union=union)

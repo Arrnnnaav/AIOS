@@ -18,6 +18,16 @@ from ghostcursor.perception.uia import Element, iter_elements
 from ghostcursor.reasoning.schema import VerificationKind, VerificationRule
 
 
+class MissingSelectorObservation(LookupError):
+    """A rule asked a snapshot for a selector that snapshot never observed.
+
+    Raised rather than returned, for the same reason `ProviderQueryFault` is:
+    a returned empty result is indistinguishable from a real absence, and a
+    verification reading it would conclude the control is gone. This says the
+    observation is not trustworthy, which no boolean can say.
+    """
+
+
 @dataclass(frozen=True)
 class Snapshot:
     title: str
@@ -34,17 +44,31 @@ class Snapshot:
     selector_results: tuple[tuple[str, tuple[Element, ...]], ...] = ()
 
     def matched(self, selector_id: str) -> tuple[Element, ...]:
-        """What `selector_id` matched, or `()` when it matched nothing.
+        """What `selector_id` matched, or a fault when it was never observed.
 
-        `()` here always means a clean absence. A selector that faulted never
-        reaches a published snapshot at all, because a non-absence fault
-        invalidates the whole tick -- so an empty tuple cannot be a swallowed
-        failure.
+        Only an explicitly published empty tuple is a clean absence. A selector
+        absent from `selector_results` was not observed at all, and answering
+        `()` for it would flatten "no observation" into "the control is not
+        there" -- the exact collapse D069 exists to prevent, arriving one layer
+        later. It passed `element_disappears` for a snapshot that simply
+        omitted the selector.
+
+        Reasoning from the tick's own invariant ("a faulted selector never
+        reaches a published snapshot") is what made that look safe. That
+        invariant is real but it only *correlates* with the property wanted
+        here; it does not imply it. A snapshot can lack a selector for reasons
+        that have nothing to do with faults -- a plan and a rule that disagree
+        about a selector id, a snapshot built by a path that ran no plan -- and
+        in every one of those the honest answer is that nothing is known, not
+        that nothing is there (D031).
         """
         for observed_id, elements in self.selector_results:
             if observed_id == selector_id:
                 return elements
-        return ()
+        raise MissingSelectorObservation(
+            f"selector {selector_id!r} was never observed; "
+            f"this snapshot published {sorted(o for o, _ in self.selector_results)}"
+        )
 
 
 def _sort_elements(

@@ -34,6 +34,7 @@ from ghostcursor.perception.uia import (
     ProviderQueryFault,
     SelectorAmbiguityFault,
 )
+from ghostcursor.reasoning.verification import MissingSelectorObservation
 
 GLYPH = ""
 
@@ -292,15 +293,15 @@ def test_a_shared_traversal_runs_once_and_each_selector_filters_it() -> None:
     )
     plan = compile_observation_plan(_recipe())
 
-    results = run_observation_plan(
+    observed = run_observation_plan(
         plan, walk_for=walk_for, query_for=query_for, make_info=make_info
     )
     assert calls.count("Button") == 1, (
         "the Button walk must run once for both selectors"
     )
-    assert len(results["open_folder"]) == 1
-    assert len(results["folder_title"]) == 1
-    assert len(results["panel"]) == 1
+    assert len(observed.selectors["open_folder"]) == 1
+    assert len(observed.selectors["folder_title"]) == 1
+    assert len(observed.selectors["panel"]) == 1
 
 
 def test_the_published_name_is_the_raw_one_even_when_matching_normalised() -> None:
@@ -312,24 +313,24 @@ def test_the_published_name_is_the_raw_one_even_when_matching_normalised() -> No
     walk_for, query_for, make_info = _runner(
         {"Button": [_Ctl(f"{GLYPH} Open Folder...")], "Pane": []}
     )
-    results = run_observation_plan(
+    observed = run_observation_plan(
         compile_observation_plan(_recipe()),
         walk_for=walk_for,
         query_for=query_for,
         make_info=make_info,
     )
-    assert results["open_folder"][0].name == f"{GLYPH} Open Folder..."
+    assert observed.selectors["open_folder"][0].name == f"{GLYPH} Open Folder..."
 
 
 def test_a_clean_absence_publishes_an_empty_result() -> None:
     walk_for, query_for, make_info = _runner({"Button": [], "Pane": []})
-    results = run_observation_plan(
+    observed = run_observation_plan(
         compile_observation_plan(_recipe()),
         walk_for=walk_for,
         query_for=query_for,
         make_info=make_info,
     )
-    assert results == {"open_folder": (), "folder_title": (), "panel": ()}
+    assert dict(observed.selectors) == {"open_folder": (), "folder_title": (), "panel": ()}
 
 
 def test_cardinality_is_judged_per_selector_over_the_shared_candidates() -> None:
@@ -360,10 +361,10 @@ def test_cardinality_is_judged_per_selector_over_the_shared_candidates() -> None
             context=(),
         )
     )
-    results = run_observation_plan(
+    observed = run_observation_plan(
         verification_only, walk_for=walk_for, query_for=query_for, make_info=make_info
     )
-    assert len(results["folder_title"]) == 2
+    assert len(observed.selectors["folder_title"]) == 2
 
 
 def test_a_fault_invalidates_the_whole_tick_rather_than_publishing_a_part() -> None:
@@ -508,16 +509,47 @@ def test_a_rule_without_a_selector_keeps_the_v1_descriptor_behaviour() -> None:
     assert verify(rule, before, after) is True
 
 
-def test_an_unobserved_selector_reads_as_absence_not_an_error() -> None:
-    """`()` from `matched()` is always a clean absence.
+def test_an_unobserved_selector_faults_rather_than_reading_as_absence() -> None:
+    """Only a published empty tuple is a clean absence.
 
-    A selector that faulted never reaches a published snapshot, because the
-    fault invalidated the tick, so an empty tuple here cannot be a swallowed
-    failure.
+    Answering `()` for a selector the snapshot never observed flattens "no
+    observation" into "the control is not there". The two tests below show
+    what that cost: both presence rules passed on a snapshot that simply
+    omitted the selector.
     """
     snapshot = _snapshot(panel=(_element(),))
     assert snapshot.matched("panel") == (_element(),)
-    assert snapshot.matched("never_observed") == ()
+    with pytest.raises(MissingSelectorObservation):
+        snapshot.matched("never_observed")
+
+    observed_empty = _snapshot(panel=())
+    assert observed_empty.matched("panel") == ()
+
+
+def test_disappearance_is_not_concluded_from_a_missing_after_observation() -> None:
+    from ghostcursor.reasoning.schema import VerificationKind, VerificationRule
+    from ghostcursor.reasoning.verification import Snapshot, verify
+
+    rule = VerificationRule(VerificationKind.ELEMENT_DISAPPEARS, selector="panel")
+    unobserved = Snapshot(title="", elements=(), selector_results=())
+    with pytest.raises(MissingSelectorObservation):
+        verify(rule, _snapshot(panel=(_element(),)), unobserved)
+
+
+def test_appearance_is_not_concluded_from_a_missing_before_observation() -> None:
+    """The same hole in the other direction.
+
+    `element_appears` needs the control absent BEFORE. A snapshot that never
+    observed the selector satisfied that as readily as one that observed it
+    empty.
+    """
+    from ghostcursor.reasoning.schema import VerificationKind, VerificationRule
+    from ghostcursor.reasoning.verification import Snapshot, verify
+
+    rule = VerificationRule(VerificationKind.ELEMENT_APPEARS, selector="panel")
+    unobserved = Snapshot(title="", elements=(), selector_results=())
+    with pytest.raises(MissingSelectorObservation):
+        verify(rule, unobserved, _snapshot(panel=(_element(),)))
 
 
 # --------------------------------------------------------------------------
@@ -549,8 +581,10 @@ def test_a_none_normalise_selector_does_not_accept_a_glyph_prefixed_name() -> No
     walk_for, query_for, make_info = _runner(
         {"Button": [_Ctl(f"{GLYPH} Toggle Panel (Ctrl+J)")]}
     )
-    assert run_observation_plan(
-        plan, walk_for=walk_for, query_for=query_for, make_info=make_info
+    assert dict(
+        run_observation_plan(
+            plan, walk_for=walk_for, query_for=query_for, make_info=make_info
+        ).selectors
     ) == {"toggle": ()}
 
     walk_for, query_for, make_info = _runner(
@@ -559,7 +593,7 @@ def test_a_none_normalise_selector_does_not_accept_a_glyph_prefixed_name() -> No
     exact = run_observation_plan(
         plan, walk_for=walk_for, query_for=query_for, make_info=make_info
     )
-    assert len(exact["toggle"]) == 1
+    assert len(exact.selectors["toggle"]) == 1
 
 
 def test_two_selectors_over_one_walk_may_declare_different_normalisation() -> None:
@@ -585,8 +619,156 @@ def test_two_selectors_over_one_walk_may_declare_different_normalisation() -> No
     walk_for, query_for, make_info = _runner(
         {"Button": [_Ctl(f"{GLYPH} Open Folder...")]}
     )
-    results = run_observation_plan(
+    observed = run_observation_plan(
         plan, walk_for=walk_for, query_for=query_for, make_info=make_info
     )
-    assert results["strict"] == ()
-    assert len(results["lenient"]) == 1
+    assert observed.selectors["strict"] == ()
+    assert len(observed.selectors["lenient"]) == 1
+
+
+# --------------------------------------------------------------------------
+# One read per compiled group, one deduplicated published union
+# --------------------------------------------------------------------------
+
+
+def test_one_compiled_query_performs_exactly_one_find_all() -> None:
+    """Compiling a query once is worthless if it executes once per selector.
+
+    Cost is the smaller half. Two reads inside one tick observe two different
+    screens, so two selectors on the SAME compiled query could disagree about
+    how many controls exist -- and neither read looks wrong on its own, so
+    nothing downstream can detect the disagreement.
+    """
+    selectors = {
+        "extensions": _selector(strategy="provider_exact", names=("Extensions",),
+                                normalise="none"),
+        "extensions_again": _selector(strategy="provider_exact", names=("Extensions",),
+                                      normalise="none", cardinality=AT_LEAST_ONE),
+    }
+    plan = compile_observation_plan(
+        _recipe(selectors=selectors,
+                steps=[_step(target="extensions", selector="extensions_again")],
+                context=())
+    )
+    assert len(plan.queries) == 1
+    assert len(plan.queries[0].selector_ids) == 2
+
+    invocations = []
+
+    def query_for(control_type, name):
+        def _find_all():
+            invocations.append(name)
+            return ["Extensions"]
+
+        return _find_all
+
+    walk_for, _unused, make_info = _runner({})
+    observed = run_observation_plan(
+        plan, walk_for=walk_for, query_for=query_for, make_info=make_info
+    )
+    assert invocations == ["Extensions"], "one compiled query is one FindAll"
+    assert len(observed.selectors["extensions"]) == 1
+    assert len(observed.selectors["extensions_again"]) == 1
+
+
+def test_a_shared_read_is_judged_separately_by_each_selector() -> None:
+    """One read, two cardinalities, and the strict one still faults."""
+    selectors = {
+        "strict": _selector(strategy="provider_exact", names=("Extensions",),
+                            normalise="none"),
+        "lenient": _selector(strategy="provider_exact", names=("Extensions",),
+                             normalise="none", cardinality=AT_LEAST_ONE),
+    }
+    plan = compile_observation_plan(
+        _recipe(selectors=selectors,
+                steps=[_step(target="strict", selector="lenient")], context=())
+    )
+    walk_for, query_for, make_info = _runner(
+        {}, queries={"Extensions": ["Extensions", "Extensions"]}
+    )
+    with pytest.raises(SelectorAmbiguityFault):
+        run_observation_plan(
+            plan, walk_for=walk_for, query_for=query_for, make_info=make_info
+        )
+
+
+def test_the_published_union_collapses_one_control_reached_twice() -> None:
+    """Two selectors, one control, one entry in the union.
+
+    The union has to be built worker-side for this to be possible at all. By
+    the time only `Element`s remain there is no backend identity left, and
+    merging them would mean value equality -- which cannot tell one control
+    reached by two selectors from two controls that agree on every field.
+    """
+    plan = compile_observation_plan(
+        _recipe(
+            selectors={
+                "action": _selector(names=("Open Folder...",)),
+                "check": _selector(names=("Open Folder...",), cardinality=AT_LEAST_ONE),
+            },
+            steps=[_step(target="action", selector="check")],
+            context=(),
+        )
+    )
+    walk_for, query_for, make_info = _runner(
+        {"Button": [_Ctl("Open Folder...", runtime_id=(42, 7))]}
+    )
+    observed = run_observation_plan(
+        plan, walk_for=walk_for, query_for=query_for, make_info=make_info
+    )
+    assert len(observed.selectors["action"]) == 1
+    assert len(observed.selectors["check"]) == 1
+    assert len(observed.union) == 1
+
+
+def test_the_union_keeps_two_controls_the_backend_cannot_tell_apart() -> None:
+    """No identity means retain both -- never a value merge.
+
+    These two agree on name, control type, AutomationId and bbox. Collapsing
+    them would report one control where the screen has two, which is the
+    ambiguity the cardinality rule exists to surface.
+    """
+    plan = compile_observation_plan(
+        _recipe(
+            selectors={"check": _selector(names=("Open Folder...",),
+                                          cardinality=AT_LEAST_ONE)},
+            steps=[_step(target=None, selector="check")],
+            context=(),
+        )
+    )
+    walk_for, query_for, make_info = _runner(
+        {"Button": [_Ctl("Open Folder..."), _Ctl("Open Folder...")]}
+    )
+    observed = run_observation_plan(
+        plan, walk_for=walk_for, query_for=query_for, make_info=make_info
+    )
+    assert observed.selectors["check"][0] == observed.selectors["check"][1]
+    assert len(observed.union) == 2
+
+
+def test_the_union_spans_every_group_in_the_tick() -> None:
+    plan = compile_observation_plan(_recipe())
+    walk_for, query_for, make_info = _runner(
+        {
+            "Button": [_Ctl("Open Folder...", runtime_id=(1,))],
+            "Pane": [_Ctl("Terminal Section", "Pane", runtime_id=(2,))],
+        }
+    )
+    observed = run_observation_plan(
+        plan, walk_for=walk_for, query_for=query_for, make_info=make_info
+    )
+    assert {e.name for e in observed.union} == {"Open Folder...", "Terminal Section"}
+
+
+def test_a_fault_publishes_no_union_either() -> None:
+    walk_for, query_for, make_info = _runner(
+        {
+            "Button": [_Ctl("Open Folder...")],
+            "Pane": [_Ctl("Terminal Section", "Pane", raises=OSError("gone"))],
+        }
+    )
+    with pytest.raises(ProviderQueryFault):
+        run_observation_plan(
+            compile_observation_plan(_recipe()),
+            walk_for=walk_for, query_for=query_for, make_info=make_info,
+        )
