@@ -159,41 +159,53 @@ def compiled_perception_service(
     )
 
 
-def merge_ocr(plan, selectors, ocr_elements):
-    """Escalate a selector that UIA could not see to what OCR read.
+def merge_ocr(plan, selectors, ocr_elements, selector_id):
+    """Escalate ONE selector -- the one the read was requested for.
 
-    Only where tier 1 found NOTHING. OCR never displaces a confirmed control:
-    a pixel guess must not overwrite a real one, and a selector that already
-    matched has no failure to escalate from.
+    Scoped deliberately. A tier-2 read is requested because a specific
+    selector could not be grounded, so answering every selector in the recipe
+    with it lets an action target's failure populate a verification or context
+    selector before the action has happened. An `accept_if_already_present`
+    verification fed that way completes a step the user never performed, which
+    is the worst possible direction for this to be wrong in.
 
     Matching uses the selector's own declared names and normalisation, so an
-    OCR escalation is bounded by the same trusted vocabulary as the walk. The
-    published element keeps `source="ocr"`, which is what makes the hint render
-    in the inferred colour and what stops `promote()` persisting it (D006,
-    D030).
+    escalation is bounded by the same trusted vocabulary as the walk. The
+    published element keeps `source="ocr"`, which is what renders the hint in
+    the inferred colour and what stops `promote()` persisting it (D006, D030).
+
+    Cardinality and the result limit bind exactly as they do for UIA: an
+    ambiguous read FAULTS and an over-limit read FAULTS. Neither may become a
+    clean absence, which would report "the control is not on screen" about a
+    screen that showed it twice, and neither may truncate.
     """
-    if not ocr_elements:
+    if not ocr_elements or not selector_id:
         return selectors
 
-    merged = dict(selectors)
-    for selector_id, selector in plan.selectors.items():
-        if merged.get(selector_id):
-            continue
-        matches = tuple(
-            element
-            for element in ocr_elements
-            if uia.matches_trusted_name(
-                element.name, selector.names, normalise=selector.normalise
-            )
+    selector = plan.selectors.get(selector_id)
+    if selector is None or selectors.get(selector_id):
+        # A selector that already matched has no failure to escalate from, and
+        # OCR must never displace a confirmed control.
+        return selectors
+
+    matches = [
+        uia.Candidate(identity=None, element=element)
+        for element in ocr_elements
+        if uia.matches_trusted_name(
+            element.name, selector.names, normalise=selector.normalise
         )
-        if not matches:
-            continue
-        # The declared cardinality still binds. An ambiguous OCR read is not a
-        # target, and silently taking the first is exactly what the rule
-        # forbids for a confirmed control.
-        if selector.cardinality == uia.EXACTLY_ONE and len(matches) > 1:
-            continue
-        merged[selector_id] = matches
+    ]
+    if not matches:
+        return selectors
+
+    chosen = uia.apply_cardinality(
+        matches,
+        cardinality=selector.cardinality,
+        limit=selector.result_limit,
+        label=f"ocr selector {selector_id!r}",
+    )
+    merged = dict(selectors)
+    merged[selector_id] = tuple(candidate.element for candidate in chosen)
     return merged
 
 
@@ -213,6 +225,10 @@ class CompiledObservationSource:
         self.plan = plan
         self._last_observed_at: float | None = None
         self._step = -1
+        #: The selector the current tier-2 request was made FOR. A request
+        #: carries a step index across the worker boundary; which selector
+        #: failed is known only here, and it is what scopes the answer.
+        self._requested_selector: str | None = None
 
     def __call__(self):
         from ghostcursor.reasoning.compiled_tour import TickInput
@@ -233,7 +249,12 @@ class CompiledObservationSource:
 
         selectors = dict(snapshot.selector_results)
         if self.plan is not None and observation.tier2_step == self._step:
-            selectors = merge_ocr(self.plan, selectors, observation.ocr_elements)
+            selectors = merge_ocr(
+                self.plan,
+                selectors,
+                observation.ocr_elements,
+                self._requested_selector,
+            )
 
         union = tuple(snapshot.elements)
         extra = tuple(
@@ -249,23 +270,32 @@ class CompiledObservationSource:
             focused_automation_id=snapshot.focused_automation_id,
         )
 
-    def note_grounding(self, step_index: int, grounded: bool) -> None:
+    def note_grounding(
+        self, step_index: int, grounded: bool, selector_id: str | None = None
+    ) -> None:
         """The decision half of tier 2 (D035).
 
-        Only the tick loop knows which step is current and whether grounding
-        just failed, so it is the only thing that can ask -- and the worker
-        does the reading, on its own thread, publishing the answer on a LATER
-        observation. Absence of a request means "not wanted": there is no
-        `wanted` flag, so a success and a step boundary must both cancel or
-        OCR keeps running for a step that no longer needs it.
+        Only the tick loop knows which step is current, which selector it was
+        trying to ground, and whether that just failed -- so it is the only
+        thing that can ask. The worker does the reading, on its own thread,
+        publishing the answer on a LATER observation.
+
+        `selector_id` is what scopes the answer. Absence of a request means
+        "not wanted": there is no `wanted` flag, so a success and a step
+        boundary must both cancel, or OCR keeps running for a step that no
+        longer needs it -- and its result would then be merged into whatever
+        selector asked most recently.
         """
         if step_index != self._step:
             self.service.cancel_tier2()
             self._step = step_index
+            self._requested_selector = None
         if grounded:
             self.service.report_tier2_grounded(step_index)
             self.service.cancel_tier2()
+            self._requested_selector = None
         else:
+            self._requested_selector = selector_id
             self.service.request_tier2(step_index)
 
 

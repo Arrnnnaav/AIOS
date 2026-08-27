@@ -1478,3 +1478,71 @@ def test_every_artifact_is_revalidated_not_just_the_recipe(
 
     with pytest.raises(CandidateRejected):
         revalidate_candidate(graph)
+
+
+def test_the_worker_is_stopped_when_the_renderer_cannot_be_built(candidate) -> None:
+    """Registered teardown, not two statements in one `finally`.
+
+    A `make_renderer()` that raises left the worker walking UIA against the
+    user's application forever, because the only `stop` was on a line the
+    exception skipped.
+    """
+    from ghostcursor.devtools.candidate_acceptance import accept_candidate
+
+    graph = _load(candidate)
+    target = bind_candidate_target(graph, windows=[_window()], project_root=PROJECT_ROOT)
+    workflow = candidate_workflow(
+        graph, "Open a folder in VS Code", target, project_root=PROJECT_ROOT
+    )
+    perception = _perception(_screen(["Welcome - Visual Studio Code"])[0])
+
+    def _explode():
+        raise RuntimeError("no overlay today")
+
+    with pytest.raises(RuntimeError):
+        accept_candidate(
+            graph,
+            workflow,
+            start_perception=perception,
+            make_renderer=_explode,
+            read_window=_reader(),
+            project_root=PROJECT_ROOT,
+        )
+    assert perception.stopped, "the worker outlived a failed renderer build"
+
+
+def test_the_worker_is_stopped_when_disposing_the_overlay_raises(candidate) -> None:
+    """Teardown order must not let one failure skip another.
+
+    `dispose()` and `stop_perception()` as two statements in one `finally`
+    meant a raising dispose skipped the stop entirely.
+    """
+    from ghostcursor.devtools.candidate_acceptance import accept_candidate
+
+    graph = _load(candidate)
+    target = bind_candidate_target(graph, windows=[_window()], project_root=PROJECT_ROOT)
+    workflow = candidate_workflow(
+        graph, r"Open C:\Projects\Demo in VS Code", target, project_root=PROJECT_ROOT
+    )
+    perception = _perception(_screen(["Welcome - Visual Studio Code"])[0])
+
+    def _bad_factory():
+        def _dispose():
+            raise RuntimeError("the overlay refused to close")
+
+        return _Renderer(), _dispose
+
+    read, sleep = _clock()
+    with pytest.raises(RuntimeError):
+        accept_candidate(
+            graph,
+            workflow,
+            start_perception=perception,
+            make_renderer=_bad_factory,
+            read_window=_reader(),
+            project_root=PROJECT_ROOT,
+            clock=read,
+            sleeper=sleep,
+            seconds=2.0,
+        )
+    assert perception.stopped, "a raising dispose skipped the worker shutdown"

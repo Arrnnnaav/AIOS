@@ -253,7 +253,9 @@ def _ocr(name, bbox=(5, 5, 50, 20)):
 def test_ocr_escalates_a_selector_uia_could_not_see() -> None:
     workflow, _catalog = _workflow()
     plan = workflow.recipe.plan
-    merged = merge_ocr(plan, {"open_folder": ()}, (_ocr("Open Folder..."),))
+    merged = merge_ocr(
+        plan, {"open_folder": ()}, (_ocr("Open Folder..."),), "open_folder"
+    )
     assert len(merged["open_folder"]) == 1
     assert merged["open_folder"][0].source == "ocr"
 
@@ -267,7 +269,10 @@ def test_ocr_never_displaces_a_confirmed_control() -> None:
     workflow, _catalog = _workflow()
     confirmed = Element("Open Folder...", "Button", "", (1, 1, 2, 2), ("Button",))
     merged = merge_ocr(
-        workflow.recipe.plan, {"open_folder": (confirmed,)}, (_ocr("Open Folder..."),)
+        workflow.recipe.plan,
+        {"open_folder": (confirmed,)},
+        (_ocr("Open Folder..."),),
+        "open_folder",
     )
     assert merged["open_folder"] == (confirmed,)
 
@@ -275,24 +280,65 @@ def test_ocr_never_displaces_a_confirmed_control() -> None:
 def test_ocr_matching_uses_the_selectors_own_trusted_names() -> None:
     workflow, _catalog = _workflow()
     merged = merge_ocr(
-        workflow.recipe.plan, {"open_folder": ()}, (_ocr("Something Else"),)
+        workflow.recipe.plan, {"open_folder": ()}, (_ocr("Something Else"),), "open_folder"
     )
     assert merged["open_folder"] == ()
 
 
-def test_an_ambiguous_ocr_read_is_not_a_target() -> None:
-    """The declared cardinality still binds.
+def test_an_ambiguous_ocr_read_faults_rather_than_reading_as_absence() -> None:
+    """The declared cardinality binds, and it fails CLOSED.
 
-    Silently taking the first is what the rule forbids for a confirmed
-    control; a pixel guess does not get a weaker rule.
+    Returning an empty result would report "the control is not on screen"
+    about a screen that showed it twice -- the flattening of a fault into an
+    absence that D069 exists to prevent, arriving through the OCR door. A
+    pixel guess does not get a weaker rule than a confirmed control.
     """
+    from ghostcursor.perception.uia import SelectorAmbiguityFault
+
     workflow, _catalog = _workflow()
-    merged = merge_ocr(
-        workflow.recipe.plan,
-        {"open_folder": ()},
-        (_ocr("Open Folder...", (1, 1, 2, 2)), _ocr("Open Folder...", (9, 9, 10, 10))),
+    with pytest.raises(SelectorAmbiguityFault):
+        merge_ocr(
+            workflow.recipe.plan,
+            {"open_folder": ()},
+            (
+                _ocr("Open Folder...", (1, 1, 2, 2)),
+                _ocr("Open Folder...", (9, 9, 10, 10)),
+            ),
+            "open_folder",
+        )
+
+
+def test_an_over_limit_ocr_read_faults_rather_than_truncating() -> None:
+    """`result_limit` raises, never truncates -- for OCR exactly as for UIA."""
+    from ghostcursor.perception.uia import ProviderQueryFault
+    from test_compiled_workflow import _adoption, _catalog, _recipe_value, _selector
+
+    recipe = _recipe_value()
+    recipe["selectors"] = {"open_folder": _selector(cardinality="at_least_one")}
+    recipe["selectors"]["open_folder"]["result_limit"] = 2
+    recipe["steps"][0]["target_selector"] = None
+    recipe["steps"][0]["verification_rule"] = {
+        "kind": "element_appears",
+        "selector": "open_folder",
+        "args": {},
+        "timeout_s": 20.0,
+    }
+    adoption = _adoption()
+    object.__setattr__(adoption, "recipe_value", recipe)
+    catalog, pack, intent = _catalog(adoption=adoption)
+
+    from ghostcursor.packs.workflow import materialize
+    from test_compiled_workflow import _target, _window
+
+    workflow = materialize(
+        catalog, pack, intent, "Open a folder in VS Code",
+        _target(_window(hwnd=TARGET_HWND)),
     )
-    assert merged["open_folder"] == ()
+    three = tuple(
+        _ocr("Open Folder...", (i, i, i + 1, i + 1)) for i in range(1, 4)
+    )
+    with pytest.raises(ProviderQueryFault):
+        merge_ocr(workflow.recipe.plan, {"open_folder": ()}, three, "open_folder")
 
 
 class _FakeService:
@@ -342,10 +388,10 @@ def test_a_failed_grounding_requests_tier_two_and_a_success_cancels_it() -> None
     service = _FakeService()
     source = CompiledObservationSource(service, _Ladder())
 
-    source.note_grounding(0, False)
+    source.note_grounding(0, False, "open_folder")
     assert service.requested == [0]
 
-    source.note_grounding(0, True)
+    source.note_grounding(0, True, "open_folder")
     assert service.grounded == [0]
     assert service.cancelled >= 1
 
@@ -355,9 +401,9 @@ def test_a_step_boundary_cancels_the_previous_steps_request() -> None:
     another's question."""
     service = _FakeService()
     source = CompiledObservationSource(service, _Ladder())
-    source.note_grounding(0, False)
+    source.note_grounding(0, False, "open_folder")
     before = service.cancelled
-    source.note_grounding(1, False)
+    source.note_grounding(1, False, "open_folder")
     assert service.cancelled > before
 
 
@@ -560,7 +606,7 @@ def test_the_source_merges_published_ocr_for_the_requested_step() -> None:
     source = CompiledObservationSource(
         service, _Ladder(), plan=workflow.recipe.plan
     )
-    source.note_grounding(0, False)
+    source.note_grounding(0, False, "open_folder")
 
     service.observations.append(
         _Observation(
@@ -585,7 +631,7 @@ def test_ocr_published_for_another_step_is_not_merged() -> None:
     source = CompiledObservationSource(
         service, _Ladder(), plan=workflow.recipe.plan
     )
-    source.note_grounding(1, False)
+    source.note_grounding(1, False, "open_folder")
 
     service.observations.append(
         _Observation(
@@ -636,9 +682,12 @@ def test_the_executor_asks_for_tier_two_when_grounding_fails() -> None:
         clock=lambda: now[0],
         sleeper=lambda s: now.__setitem__(0, now[0] + s),
         seconds=5.0,
-        on_grounding=lambda step, ok: (grounded if ok else requests).append(step),
+        on_grounding=lambda step, ok, sel: (
+            (grounded if ok else requests).append((step, sel))
+        ),
     )
     assert requests, "a failed grounding never asked for tier 2"
+    assert set(requests) == {(0, "open_folder")}, requests
     assert grounded == []
 
 
@@ -676,6 +725,200 @@ def test_the_executor_reports_a_successful_grounding_too() -> None:
         clock=lambda: now[0],
         sleeper=lambda s: now.__setitem__(0, now[0] + s),
         seconds=2.0,
-        on_grounding=lambda step, ok: reported.append((step, ok)),
+        on_grounding=lambda step, ok, sel: reported.append((step, ok, sel)),
     )
-    assert (0, True) in reported
+    assert (0, True, "open_folder") in reported
+
+
+def _two_selector_workflow():
+    """A recipe with an action target AND a separate verification selector."""
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from ghostcursor.packs.workflow import materialize
+    from test_compiled_workflow import (
+        _adoption,
+        _catalog,
+        _recipe_value,
+        _selector,
+        _target,
+        _window,
+    )
+
+    recipe = _recipe_value()
+    recipe["selectors"] = {
+        "open_folder": _selector(names=("Open Folder...",)),
+        "folder_ready": _selector(
+            names=("Open Folder...",), cardinality="at_least_one"
+        ),
+    }
+    recipe["steps"][0]["target_selector"] = "open_folder"
+    recipe["steps"][0]["verification_rule"] = {
+        "kind": "element_appears",
+        "selector": "folder_ready",
+        "args": {"accept_if_already_present": True},
+        "timeout_s": 20.0,
+    }
+    adoption = _adoption()
+    object.__setattr__(adoption, "recipe_value", recipe)
+    catalog, pack, intent = _catalog(adoption=adoption)
+    return materialize(
+        catalog, pack, intent, "Open a folder in VS Code",
+        _target(_window(hwnd=TARGET_HWND)),
+    )
+
+
+def test_ocr_answers_only_the_selector_it_was_requested_for() -> None:
+    """A read requested for the ACTION target must not fill a verification one.
+
+    Both selectors here name the same control, so an unscoped merge populates
+    both from one read. The verification selector uses
+    `accept_if_already_present`, so filling it would complete a step the user
+    never performed -- the worst direction for this to be wrong in.
+    """
+    workflow = _two_selector_workflow()
+    plan = workflow.recipe.plan
+    assert set(plan.selectors) == {"open_folder", "folder_ready"}
+
+    merged = merge_ocr(
+        plan,
+        {"open_folder": (), "folder_ready": ()},
+        (_ocr("Open Folder..."),),
+        "open_folder",
+    )
+    assert len(merged["open_folder"]) == 1
+    assert merged["folder_ready"] == (), "an unrequested selector was populated"
+
+
+def test_the_source_scopes_the_merge_to_the_requesting_selector() -> None:
+    workflow = _two_selector_workflow()
+    service = _FakeService()
+    source = CompiledObservationSource(
+        service, _Ladder(), plan=workflow.recipe.plan
+    )
+    source.note_grounding(0, False, "open_folder")
+
+    service.observations.append(
+        _Observation(
+            _snapshot(selectors=(("open_folder", ()), ("folder_ready", ()))),
+            observed_at=1.0,
+            ocr_elements=(_ocr("Open Folder..."),),
+            tier2_step=0,
+        )
+    )
+    tick = source()
+    assert len(tick.selectors["open_folder"]) == 1
+    assert tick.selectors["folder_ready"] == ()
+
+
+def test_a_cancelled_request_leaves_no_selector_to_merge_into() -> None:
+    """A stale request must not let a late OCR read answer for a step that
+    already grounded."""
+    workflow = _two_selector_workflow()
+    service = _FakeService()
+    source = CompiledObservationSource(
+        service, _Ladder(), plan=workflow.recipe.plan
+    )
+    source.note_grounding(0, False, "open_folder")
+    source.note_grounding(0, True, "open_folder")
+
+    service.observations.append(
+        _Observation(
+            _snapshot(selectors=(("open_folder", ()), ("folder_ready", ()))),
+            observed_at=1.0,
+            ocr_elements=(_ocr("Open Folder..."),),
+            tier2_step=0,
+        )
+    )
+    tick = source()
+    assert tick.selectors["open_folder"] == ()
+    assert tick.selectors["folder_ready"] == ()
+
+
+def test_an_ocr_fault_ends_the_run_as_a_failure_not_an_absence() -> None:
+    """The fault has to reach the run record with a reason.
+
+    Letting it escape as an exception loses the record entirely; swallowing it
+    reports "the control is not there" about a screen that showed it twice.
+    """
+    from ghostcursor.perception.uia import SelectorAmbiguityFault
+
+    workflow, _catalog = _workflow()
+
+    def _observe():
+        raise SelectorAmbiguityFault("ocr selector 'open_folder' matched 2 controls")
+
+    class _Renderer:
+        def show(self, grounded, instruction_text):
+            pass
+
+        def clear(self):
+            pass
+
+        def settle(self):
+            pass
+
+    now = [0.0]
+    result = execute_compiled_workflow(
+        workflow,
+        observe=_observe,
+        renderer=_Renderer(),
+        clock=lambda: now[0],
+        sleeper=lambda s: now.__setitem__(0, now[0] + s),
+        seconds=5.0,
+    )
+    assert result.outcome is RunOutcome.FAILED
+    assert "matched 2 controls" in result.detail
+
+
+def test_a_fault_after_the_first_observation_also_ends_the_run() -> None:
+    """The tick handler, not the pre-loop one.
+
+    A fault on the very first read is caught while waiting for an observation
+    to exist. A fault raised once the state machine is running takes a
+    different path, and testing only the first left the second free to swallow
+    it and keep re-observing until the deadline -- reporting a timeout where a
+    screen showed the control twice.
+    """
+    from ghostcursor.perception.uia import SelectorAmbiguityFault
+    from ghostcursor.reasoning.compiled_tour import TickInput
+
+    workflow, _catalog = _workflow()
+    reads = []
+
+    def _observe():
+        reads.append(True)
+        if len(reads) == 1:
+            matched = (
+                Element("Open Folder...", "Button", "", (1, 1, 2, 2), ("Button",)),
+            )
+            return TickInput(
+                title="Welcome - Visual Studio Code",
+                selectors={"open_folder": matched},
+                union=matched,
+            )
+        raise SelectorAmbiguityFault("ocr selector 'open_folder' matched 3 controls")
+
+    class _Renderer:
+        def show(self, grounded, instruction_text):
+            pass
+
+        def clear(self):
+            pass
+
+        def settle(self):
+            pass
+
+    now = [0.0]
+    result = execute_compiled_workflow(
+        workflow,
+        observe=_observe,
+        renderer=_Renderer(),
+        clock=lambda: now[0],
+        sleeper=lambda s: now.__setitem__(0, now[0] + s),
+        seconds=5.0,
+    )
+    assert result.outcome is RunOutcome.FAILED, result
+    assert "matched 3 controls" in result.detail
+    assert len(reads) > 1, "the fault never reached the running loop"

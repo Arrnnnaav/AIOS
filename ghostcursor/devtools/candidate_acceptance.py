@@ -33,6 +33,7 @@ Reachability is asserted by test, not left to convention: nothing in
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import json
 import sys
@@ -586,30 +587,34 @@ def accept_candidate(
     # worker can publish an observation taken while the artifacts were still
     # unverified and the window unchecked -- and the run would then be free to
     # consume it, so the gates would have bounded nothing.
-    observe, on_grounding, stop_perception = start_perception()
-    renderer, dispose = make_renderer()
-    kwargs = {
-        "observe": observe,
-        "renderer": renderer,
-        "seconds": seconds,
-        "pump": pump,
-        "on_grounding": on_grounding,
-    }
-    if clock is not None:
-        kwargs["clock"] = clock
-    if sleeper is not None:
-        kwargs["sleeper"] = sleeper
-    if should_abort is not None:
-        kwargs["should_abort"] = should_abort
-    try:
+    #
+    # `ExitStack`, not two calls in one `finally`. Each teardown is registered
+    # the moment its resource exists, so the worker is stopped even when the
+    # renderer never got built, and stopping still happens when disposing the
+    # overlay raises. Two statements in one `finally` gave neither guarantee:
+    # a `make_renderer()` that raised left the worker walking UIA forever, and
+    # a `dispose()` that raised skipped the line after it.
+    with contextlib.ExitStack() as cleanup:
+        observe, on_grounding, stop_perception = start_perception()
+        cleanup.callback(stop_perception)
+
+        renderer, dispose = make_renderer()
+        cleanup.callback(dispose)
+
+        kwargs = {
+            "observe": observe,
+            "renderer": renderer,
+            "seconds": seconds,
+            "pump": pump,
+            "on_grounding": on_grounding,
+        }
+        if clock is not None:
+            kwargs["clock"] = clock
+        if sleeper is not None:
+            kwargs["sleeper"] = sleeper
+        if should_abort is not None:
+            kwargs["should_abort"] = should_abort
         result = execute_compiled_workflow(workflow, **kwargs)
-    finally:
-        # Every exit: pass, fail, timeout, abort, exception. An overlay is
-        # click-through, topmost and has no title bar, so one left behind is
-        # one the user cannot close, and a worker left running keeps walking
-        # UIA against an application nobody is guiding any more.
-        dispose()
-        stop_perception()
     return record_for(graph, workflow.target, result)
 
 

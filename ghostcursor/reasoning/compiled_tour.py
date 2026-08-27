@@ -25,7 +25,7 @@ from enum import Enum
 from types import SimpleNamespace
 from typing import Callable, Sequence
 
-from ghostcursor.perception.uia import Element
+from ghostcursor.perception.uia import Element, ProviderQueryFault
 from ghostcursor.reasoning.grounding import GroundedTarget
 from ghostcursor.reasoning.loop import GuidedTour, State
 from ghostcursor.reasoning.schema import (
@@ -192,7 +192,7 @@ def execute_compiled_workflow(
     tick_interval_s: float = 0.25,
     should_abort: Callable[[], bool] | None = None,
     pump: Callable[[], None] | None = None,
-    on_grounding: Callable[[int, bool], None] | None = None,
+    on_grounding: Callable[..., None] | None = None,
 ) -> TourResult:
     """Run one compiled workflow to a terminal state and report what happened.
 
@@ -234,14 +234,14 @@ def execute_compiled_workflow(
             # failed, so it is the only thing that can ask for an OCR read.
             # The worker does the reading and publishes the answer later.
             if on_grounding is not None:
-                on_grounding(index, False)
+                on_grounding(index, False, compiled.target_selector)
             return None
         element = matched[0]
         if on_grounding is not None:
             # Cancel, not merely stop asking. Absence of a request means "not
             # wanted" -- there is no `wanted` flag -- so a success that did not
             # cancel would leave OCR running for a step that no longer needs it.
-            on_grounding(index, True)
+            on_grounding(index, True, compiled.target_selector)
         provenance.record(index, element.source)
         return GroundedTarget(
             bbox=element.bbox,
@@ -322,7 +322,16 @@ def execute_compiled_workflow(
                 steps_total=len(steps),
                 detail=f"no observation published within {seconds:g}s",
             )
-        _current = observe()
+        try:
+            _current = observe()
+        except ProviderQueryFault as fault:
+            return TourResult(
+                outcome=RunOutcome.FAILED,
+                provenance=(),
+                steps_completed=0,
+                steps_total=len(steps),
+                detail=str(fault),
+            )
         if _current is None:
             sleeper(tick_interval_s)
 
@@ -338,7 +347,21 @@ def execute_compiled_workflow(
             )
 
         _index[0] = tour.step_index
-        state = tour.tick()
+        try:
+            state = tour.tick()
+        except ProviderQueryFault as fault:
+            # A faulted observation is not an empty screen. Ambiguity and an
+            # over-limit read must reach the run record as a failure with a
+            # reason, never as "the control is not there" -- flattening a
+            # fault into absence is the collapse D069 exists to prevent, and a
+            # run that ended because of one has to say so.
+            return TourResult(
+                outcome=RunOutcome.FAILED,
+                provenance=provenance.as_tuple(),
+                steps_completed=tour.step_index,
+                steps_total=len(steps),
+                detail=str(fault),
+            )
 
         if state is State.DONE:
             return TourResult(
