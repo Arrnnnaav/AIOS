@@ -743,3 +743,35 @@ def iter_vscode_terminal_elements(title_re: str) -> list[Element]:
         except Exception:
             continue
     return elements
+
+
+def control_type_walk(hwnd: int, control_type: str):
+    """Bounded descendants of ONE window, filtered to one control type.
+
+    The compiled plan's replacement for `_vscode_button_walk` and its siblings.
+    Those exist once per workflow and are what "adding a workflow requires new
+    Python" actually meant; this takes the control type as data, so a new
+    selector needs a new recipe and nothing else.
+
+    Still a bounded, type-scoped walk, never the generic full-tree descent --
+    that is the stall this project measured and narrowed away from, and making
+    the filter declarative does not make the full walk affordable.
+    """
+    window = Desktop(backend="uia").window(handle=hwnd)
+    return window.descendants(control_type=control_type)
+
+
+def provider_query_for(hwnd: int, control_type: str, name: str):
+    """One provider-side `FindAll` against one window, by type and exact name.
+
+    Returns the raw results; `provider_exact()` classifies them. Split that way
+    because presence is established by a successful property READ, never by a
+    result existing (D069), and that judgement belongs with the classifier.
+    """
+    window = Desktop(backend="uia").window(handle=hwnd)
+    matched = window.descendants(control_type=control_type)
+    return [
+        control
+        for control in matched
+        if (control.element_info.name or "") == name
+    ]

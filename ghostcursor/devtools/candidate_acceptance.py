@@ -33,6 +33,7 @@ Reachability is asserted by test, not left to convention: nothing in
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from dataclasses import dataclass
@@ -47,6 +48,12 @@ from ghostcursor.packs.activation import (
     VerifiedPack,
 )
 from ghostcursor.packs.compile import CompiledRecipe, compile_recipe
+from ghostcursor.reasoning.compiled_tour import (
+    GroundingProvenance,
+    RunOutcome,
+    TourResult,
+    execute_compiled_workflow,
+)
 from ghostcursor.packs.trusted import (
     ArtifactRef,
     ArtifactSchema,
@@ -58,6 +65,7 @@ from ghostcursor.packs.workflow import (
     TargetContext,
     WindowCandidate,
     WorkflowUnavailable,
+    live_window_reader,
     resolve_target,
 )
 
@@ -92,12 +100,56 @@ class CandidateGraph:
 
 
 @dataclass(frozen=True)
-class RunRecord:
-    """What one acceptance attempt is allowed to claim.
+class PreparationRecord:
+    """A candidate was loaded and bound. **This is not acceptance evidence.**
 
-    Deliberately small and deliberately explicit about provenance. Raw logs stay
-    under `.artifacts/` and never become the durable evidence reference -- an
-    ignored file cannot be cited, and evidence that names an uncommitted file
+    Useful for checking that a graph resolves and finds its window before
+    anyone stands in front of a screen for two minutes. It says nothing about
+    whether the workflow works, so it carries no outcome and no provenance,
+    and it names itself as non-evidence in its own payload -- a record whose
+    status depends on the reader knowing which function produced it is one
+    that will eventually be cited by someone who does not.
+    """
+
+    pack_id: str
+    intent_id: str
+    digests: Mapping[str, str]
+    application_identity_kind: str
+    application_identity_value: str
+    target_hwnd: int
+    target_title: str
+
+    def to_json(self) -> str:
+        return json.dumps(
+            {
+                "record_kind": "preparation",
+                "is_acceptance_evidence": False,
+                "pack_id": self.pack_id,
+                "intent_id": self.intent_id,
+                "digests": dict(self.digests),
+                "application_identity": {
+                    "kind": self.application_identity_kind,
+                    "value": self.application_identity_value,
+                },
+                "target": {"hwnd": self.target_hwnd, "title": self.target_title},
+            },
+            indent=2,
+            sort_keys=True,
+        )
+
+
+@dataclass(frozen=True)
+class RunRecord:
+    """What one acceptance RUN is allowed to claim.
+
+    Constructed only by `record_for()`, and only from a `TourResult` the
+    executor returned. Nothing here is a caller-supplied string: a record that
+    could be told its own outcome can say "passed" with no tour having
+    happened, which makes it worthless as evidence however carefully the rest
+    of the harness is bounded.
+
+    Raw logs stay under `.artifacts/` and never become the durable reference --
+    an ignored file cannot be cited, and evidence naming an uncommitted file
     names nothing (D034).
     """
 
@@ -109,13 +161,23 @@ class RunRecord:
     target_hwnd: int
     target_title: str
     target_executable: str
-    outcome: str
-    grounding_provenance: tuple[str, ...]
-    notes: str = ""
+    outcome: RunOutcome
+    grounding_provenance: tuple[GroundingProvenance, ...]
+    steps_completed: int
+    steps_total: int
+    detail: str = ""
+
+    @property
+    def grounded_by_uia_only(self) -> bool:
+        return bool(self.grounding_provenance) and set(self.grounding_provenance) == {
+            GroundingProvenance.UIA
+        }
 
     def to_json(self) -> str:
         return json.dumps(
             {
+                "record_kind": "run",
+                "is_acceptance_evidence": True,
                 "pack_id": self.pack_id,
                 "intent_id": self.intent_id,
                 "digests": dict(self.digests),
@@ -128,9 +190,14 @@ class RunRecord:
                     "title": self.target_title,
                     "executable": self.target_executable,
                 },
-                "outcome": self.outcome,
-                "grounding_provenance": list(self.grounding_provenance),
-                "notes": self.notes,
+                "outcome": self.outcome.value,
+                "grounding_provenance": [p.value for p in self.grounding_provenance],
+                "grounded_by_uia_only": self.grounded_by_uia_only,
+                "steps": {
+                    "completed": self.steps_completed,
+                    "total": self.steps_total,
+                },
+                "detail": self.detail,
             },
             indent=2,
             sort_keys=True,
@@ -345,28 +412,36 @@ def candidate_workflow(
     return materialize(catalog, pack, verified_intent, goal, target)
 
 
-def record_for(
-    graph: CandidateGraph,
-    target: TargetContext,
-    *,
-    outcome: str,
-    grounding_provenance: Sequence[str],
-    notes: str = "",
-) -> RunRecord:
-    """Assemble the durable record of one acceptance attempt.
+def preparation_record(
+    graph: CandidateGraph, target: TargetContext
+) -> PreparationRecord:
+    return PreparationRecord(
+        pack_id=graph.pack.value["pack_id"],
+        intent_id=graph.intent.value["intent_id"],
+        digests=graph.digests,
+        application_identity_kind=target.identity.kind,
+        application_identity_value=target.identity.value,
+        target_hwnd=target.hwnd,
+        target_title=target.title,
+    )
 
-    `grounding_provenance` is required rather than defaulted, because an
-    Open Folder gate that asserts only completion cannot see a tier going dark:
-    fallback OCR preserves the outcome while the preferred tier is gone (D069).
-    A record that does not say which tier grounded cannot support the claim the
-    evidence needs to make.
+
+def record_for(
+    graph: CandidateGraph, target: TargetContext, result: TourResult
+) -> RunRecord:
+    """Assemble the durable record of one acceptance run.
+
+    Takes the executor's `TourResult` and nothing else. There is no parameter
+    an operator could use to state an outcome, because an outcome that can be
+    stated can be stated falsely, and a record that can be stated falsely is
+    not evidence.
+
+    Provenance is not defaulted either: `TourResult` carries what actually
+    grounded each step, so a run that grounded nothing reports nothing and a
+    run that fell back to OCR says so. An outcome-only record cannot see a
+    perception tier going dark, because fallback OCR preserves the outcome
+    (D069).
     """
-    provenance = tuple(grounding_provenance)
-    if not provenance:
-        raise CandidateRejected(
-            "a run record must name the grounding provenance; a completed "
-            "outcome alone cannot show which perception tier produced it"
-        )
     return RunRecord(
         pack_id=graph.pack.value["pack_id"],
         intent_id=graph.intent.value["intent_id"],
@@ -376,10 +451,80 @@ def record_for(
         target_hwnd=target.hwnd,
         target_title=target.title,
         target_executable=target.app.executable_name,
-        outcome=outcome,
-        grounding_provenance=provenance,
-        notes=notes,
+        outcome=result.outcome,
+        grounding_provenance=result.provenance,
+        steps_completed=result.steps_completed,
+        steps_total=result.steps_total,
+        detail=result.detail,
     )
+
+
+def rehash_candidate(graph: CandidateGraph) -> None:
+    """Re-read and re-hash the three named files immediately before launch.
+
+    The digests were verified when the graph was loaded. Between then and the
+    launch a human has been arranging windows, and an editor left open on the
+    candidate is the ordinary way those bytes change. Evidence has to name the
+    bytes that RAN, so this refuses rather than recording digests for content
+    that is no longer on disk.
+    """
+    for label, artifact in (
+        ("pack", graph.pack),
+        ("intent", graph.intent),
+        ("recipe", graph.recipe),
+    ):
+        current = hashlib.sha256(artifact.path.read_bytes()).hexdigest()
+        if current != artifact.sha256:
+            raise CandidateRejected(
+                f"the {label} artifact changed since it was loaded: "
+                f"{artifact.sha256} -> {current}"
+            )
+
+
+def accept_candidate(
+    graph: CandidateGraph,
+    workflow,
+    *,
+    observe,
+    renderer,
+    read_window,
+    project_root: Path,
+    clock=None,
+    sleeper=None,
+    seconds: float = 120.0,
+    should_abort=None,
+) -> RunRecord:
+    """Run one candidate through the production executor and record the result.
+
+    Ordered deliberately: rehash the explicit files, revalidate the live
+    target, and only then execute. Each step invalidates something the one
+    before it cannot see -- edited bytes, a window that closed or updated, and
+    finally whether the workflow actually works.
+
+    `execute_compiled_workflow()` is the same executor the production entry
+    point calls. Acceptance that ran anything else would certify something
+    production does not do.
+    """
+    from ghostcursor.packs.workflow import validate_live_target
+
+    rehash_candidate(graph)
+    validate_live_target(
+        workflow,
+        _as_verified_pack(graph),
+        workflow.adoption,
+        read_window=read_window,
+        project_root=project_root,
+    )
+
+    kwargs = {"observe": observe, "renderer": renderer, "seconds": seconds}
+    if clock is not None:
+        kwargs["clock"] = clock
+    if sleeper is not None:
+        kwargs["sleeper"] = sleeper
+    if should_abort is not None:
+        kwargs["should_abort"] = should_abort
+    result = execute_compiled_workflow(workflow, **kwargs)
+    return record_for(graph, workflow.target, result)
 
 
 # ---------------------------------------------------------------------------
@@ -413,6 +558,20 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("--target", default=None, help="narrow the title set")
+    parser.add_argument(
+        "--seconds",
+        type=float,
+        default=120.0,
+        help="how long the run may take before it is recorded as timed out",
+    )
+    parser.add_argument(
+        "--prepare-only",
+        action="store_true",
+        help=(
+            "load and bind the candidate without running it. Emits a "
+            "PREPARATION record, which is explicitly not acceptance evidence."
+        ),
+    )
     return parser
 
 
@@ -454,19 +613,94 @@ def main(
         return 3
 
     workflow = candidate_workflow(graph, args.goal, target, project_root=project_root)
-    print(
-        record_for(
+
+    if args.prepare_only:
+        # A preparation record, and it says so. It proves the graph resolves
+        # and finds its window; it proves nothing about the workflow, so it
+        # must never be mistaken for the run record acceptance cites.
+        print(preparation_record(graph, target).to_json())
+        return 0
+
+    try:
+        record = accept_candidate(
             graph,
-            target,
-            outcome="prepared",
-            grounding_provenance=("pending",),
-            notes=(
-                f"compiled {len(workflow.recipe.steps)} step(s); run the tour "
-                "manually and record the observed outcome and provenance"
-            ),
-        ).to_json()
+            workflow,
+            observe=_live_observer(workflow),
+            renderer=_live_renderer(),
+            read_window=live_window_reader(),
+            project_root=project_root,
+            seconds=args.seconds,
+        )
+    except (CandidateRejected, WorkflowUnavailable) as exc:
+        print(f"run refused: {exc}", file=sys.stderr)
+        return 4
+
+    print(record.to_json())
+    return 0 if record.outcome is RunOutcome.PASSED else 1
+
+
+def _live_renderer():  # pragma: no cover - needs a real desktop
+    """The production overlay renderer, created only when a run really starts."""
+    from ghostcursor.overlay import window as overlay_window
+    from ghostcursor.reasoning.renderer import OverlayRenderer
+    from ghostcursor.reasoning.staleness import Freshness
+
+    # A candidate run has no staleness ladder: perception here is synchronous,
+    # so every observation the executor renders from is the one it just took.
+    # Reporting FRESH is the honest answer, not a convenient default.
+    return OverlayRenderer(
+        overlay_window.create_overlay_window(),
+        freshness_source=lambda: Freshness.FRESH,
     )
-    return 0
+
+
+def _live_observer(workflow):  # pragma: no cover - needs a real desktop
+    """One tick of real perception for the bound window, shaped for the executor.
+
+    Reads the compiled plan, not a per-workflow walker. `control_type_walk`
+    takes the control type as data, so a candidate that selects a control type
+    nothing has selected before needs no Python at all -- which is the whole
+    claim this milestone exists to make.
+    """
+    import win32gui
+
+    from ghostcursor.perception import uia
+    from ghostcursor.perception.service import run_observation_plan
+    from ghostcursor.reasoning.compiled_tour import TickInput
+
+    hwnd = workflow.target.hwnd
+
+    class _Info:
+        """Property reads for one provider result, in one place."""
+
+        def __init__(self, control):
+            info = control.element_info
+            self.name = info.name or ""
+            self.control_type = info.control_type or ""
+            self.automation_id = info.automation_id or ""
+            self.rectangle = control.rectangle()
+            runtime_id = getattr(info, "runtime_id", None)
+            if runtime_id:
+                self.runtime_id = tuple(runtime_id)
+
+    def _observe() -> TickInput:
+        observation = run_observation_plan(
+            workflow.recipe.plan,
+            walk_for=lambda control_type: (
+                lambda: uia.control_type_walk(hwnd, control_type)
+            ),
+            query_for=lambda control_type, name: (
+                lambda: uia.provider_query_for(hwnd, control_type, name)
+            ),
+            make_info=_Info,
+        )
+        return TickInput(
+            title=win32gui.GetWindowText(hwnd),
+            selectors=dict(observation.selectors),
+            union=observation.union,
+        )
+
+    return _observe
 
 
 def _live_windows(graph: CandidateGraph) -> list[WindowCandidate]:  # pragma: no cover

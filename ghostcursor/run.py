@@ -1106,6 +1106,8 @@ def _launch_compiled_workflow(
     sleeper,
     warmup_budget_s: float,
     create_overlay,
+    observe=None,
+    renderer=None,
 ) -> int:
     """The revalidation seam. Private, and hermetic tests are its only callers.
 
@@ -1133,18 +1135,95 @@ def _launch_compiled_workflow(
         sleeper=sleeper,
         warmup_budget_s=warmup_budget_s,
         create_overlay=create_overlay,
+        observe=observe,
+        renderer=renderer,
     )
 
 
-def _run_compiled_tour(workflow, **_kwargs) -> int:  # pragma: no cover - Task 9
-    """The compiled execution body. Deliberately not built yet.
+def _run_compiled_tour(
+    workflow,
+    *,
+    seconds: float,
+    clock,
+    sleeper,
+    warmup_budget_s: float,
+    create_overlay,
+    observe=None,
+    renderer=None,
+) -> int:
+    """Run the compiled workflow through the shared executor.
 
-    Task 5 binds a workflow and proves the launch gate; Task 9 performs the
-    atomic cutover that makes this the only execution path. Raising here keeps
-    the two apart: nothing can quietly start depending on a half-migrated
-    executor, and the gate above is testable today without it.
+    The SAME `execute_compiled_workflow()` the candidate harness calls. Two
+    executors would mean acceptance certified semantics production does not
+    have, so there is one, and the cutover changes only which authority path
+    arrives here.
+
+    The overlay is created here and nowhere earlier: revalidation has already
+    run and passed by the time this is reached.
     """
-    raise NotImplementedError(
-        "compiled tour execution lands with the Task 9 cutover; "
-        "production still runs the v1 recipe path"
+    from ghostcursor.reasoning.compiled_tour import (
+        RunOutcome,
+        execute_compiled_workflow,
     )
+    from ghostcursor.reasoning.renderer import OverlayRenderer
+    from ghostcursor.reasoning.staleness import Freshness
+
+    hwnd = create_overlay()
+    if renderer is None:
+        renderer = OverlayRenderer(hwnd, freshness_source=lambda: Freshness.FRESH)
+    if observe is None:  # pragma: no cover - needs a real desktop
+        observe = _live_observation_source(workflow)
+
+    result = execute_compiled_workflow(
+        workflow,
+        observe=observe,
+        renderer=renderer,
+        clock=clock,
+        sleeper=sleeper,
+        seconds=seconds,
+        should_abort=escape_pressed,
+    )
+    print(
+        f"{result.outcome.value}: {result.steps_completed}/{result.steps_total} "
+        f"step(s), grounded by "
+        f"{', '.join(p.value for p in result.provenance) or 'nothing'}"
+    )
+    return 0 if result.outcome is RunOutcome.PASSED else 1
+
+
+def _live_observation_source(workflow):  # pragma: no cover - needs a real desktop
+    """Real perception for the bound window, driven by the compiled plan."""
+    from ghostcursor.perception.service import run_observation_plan
+    from ghostcursor.reasoning.compiled_tour import TickInput
+
+    hwnd = workflow.target.hwnd
+
+    class _Info:
+        def __init__(self, control):
+            info = control.element_info
+            self.name = info.name or ""
+            self.control_type = info.control_type or ""
+            self.automation_id = info.automation_id or ""
+            self.rectangle = control.rectangle()
+            runtime_id = getattr(info, "runtime_id", None)
+            if runtime_id:
+                self.runtime_id = tuple(runtime_id)
+
+    def _observe() -> TickInput:
+        observation = run_observation_plan(
+            workflow.recipe.plan,
+            walk_for=lambda control_type: (
+                lambda: uia.control_type_walk(hwnd, control_type)
+            ),
+            query_for=lambda control_type, name: (
+                lambda: uia.provider_query_for(hwnd, control_type, name)
+            ),
+            make_info=_Info,
+        )
+        return TickInput(
+            title=win32gui.GetWindowText(hwnd),
+            selectors=dict(observation.selectors),
+            union=observation.union,
+        )
+
+    return _observe

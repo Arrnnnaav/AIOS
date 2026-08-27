@@ -32,6 +32,7 @@ from ghostcursor.devtools.candidate_acceptance import (
     record_for,
 )
 from ghostcursor.packs.workflow import AppSnapshot, WindowCandidate, WorkflowUnavailable
+from ghostcursor.reasoning.compiled_tour import GroundingProvenance, RunOutcome
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -180,6 +181,18 @@ def _window(
         title=title,
         app=AppSnapshot(executable_name=exe, version=version, process_id=pid),
     )
+
+
+def _reader(window=None, *, missing=False):
+    """A fake SCREEN, never a fake verdict."""
+
+    def _read(hwnd):
+        if missing:
+            return None
+        live = window if window is not None else _window()
+        return WindowCandidate(hwnd=hwnd, title=live.title, app=live.app)
+
+    return _read
 
 
 # ---------------------------------------------------------------------------
@@ -354,15 +367,13 @@ def test_target_resolution_reuses_the_production_rules(candidate) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_acceptance_runs_the_same_compiled_workflow_production_would(candidate) -> None:
+def test_acceptance_compiles_the_same_workflow_production_would(candidate) -> None:
     """A second compiler would certify semantics production does not have."""
     from ghostcursor.packs.compile import compile_recipe
     from ghostcursor.packs.workflow import CompiledWorkflow
 
     graph = _load(candidate)
-    target = bind_candidate_target(
-        graph, windows=[_window()], project_root=PROJECT_ROOT
-    )
+    target = bind_candidate_target(graph, windows=[_window()], project_root=PROJECT_ROOT)
     workflow = candidate_workflow(
         graph, r"Open C:\Projects\Demo in VS Code", target, project_root=PROJECT_ROOT
     )
@@ -371,12 +382,10 @@ def test_acceptance_runs_the_same_compiled_workflow_production_would(candidate) 
     assert workflow.goal_reference_for(0) == "demo"
 
 
-def test_the_synthesised_adoption_never_reaches_disk(candidate, tmp_path) -> None:
+def test_the_synthesised_adoption_never_reaches_disk(candidate) -> None:
     """A candidate has no adoption record; one is built for the run and dropped."""
     graph = _load(candidate)
-    target = bind_candidate_target(
-        graph, windows=[_window()], project_root=PROJECT_ROOT
-    )
+    target = bind_candidate_target(graph, windows=[_window()], project_root=PROJECT_ROOT)
     workflow = candidate_workflow(
         graph, "Open a folder in VS Code", target, project_root=PROJECT_ROOT
     )
@@ -386,19 +395,404 @@ def test_the_synthesised_adoption_never_reaches_disk(candidate, tmp_path) -> Non
 
 
 # ---------------------------------------------------------------------------
-# The run record
+# Running the candidate through the production executor
 # ---------------------------------------------------------------------------
 
 
-def test_a_run_record_names_all_three_digests_and_the_identity(candidate) -> None:
-    graph = _load(candidate)
-    target = bind_candidate_target(
-        graph, windows=[_window()], project_root=PROJECT_ROOT
+class _Renderer:
+    """Counts what was drawn. The executor must actually reach the hint."""
+
+    def __init__(self):
+        self.shown = []
+        self.cleared = 0
+
+    def show(self, grounded, instruction_text):
+        self.shown.append((grounded, instruction_text))
+
+    def clear(self):
+        self.cleared += 1
+
+    def settle(self):
+        pass
+
+
+def _element(name="Open Folder...", source="uia", bbox=(10, 20, 110, 60)):
+    from ghostcursor.perception.uia import Element
+
+    return Element(
+        name=name,
+        control_type="Button",
+        automation_id="",
+        bbox=bbox,
+        path=("Button",),
+        source=source,
     )
-    record = record_for(graph, target, outcome="passed", grounding_provenance=("uia",))
+
+
+def _screen(titles, *, present=True, source="uia"):
+    """A scripted screen: one `TickInput` per observation, then the last repeats.
+
+    The title sequence is what drives verification -- the compiled Open Folder
+    rule completes when the title changes to a workspace title.
+    """
+    from ghostcursor.reasoning.compiled_tour import TickInput
+
+    sequence = list(titles)
+
+    def _observe():
+        title = sequence.pop(0) if len(sequence) > 1 else sequence[0]
+        matched = (_element(source=source),) if present else ()
+        return TickInput(
+            title=title,
+            selectors={"open_folder": matched},
+            union=matched,
+        )
+
+    return _observe
+
+
+def _clock():
+    now = [0.0]
+
+    def _read():
+        return now[0]
+
+    def _sleep(seconds):
+        now[0] += seconds
+
+    return _read, _sleep
+
+
+def _accept(candidate, *, observe, renderer=None, seconds=120.0, read_window=None,
+            goal=r"Open C:\Projects\Demo in VS Code"):
+    from ghostcursor.devtools.candidate_acceptance import accept_candidate
+
+    graph = _load(candidate)
+    target = bind_candidate_target(graph, windows=[_window()], project_root=PROJECT_ROOT)
+    workflow = candidate_workflow(graph, goal, target, project_root=PROJECT_ROOT)
+    read, sleep = _clock()
+    return graph, accept_candidate(
+        graph,
+        workflow,
+        observe=observe,
+        renderer=renderer if renderer is not None else _Renderer(),
+        read_window=read_window or _reader(),
+        project_root=PROJECT_ROOT,
+        clock=read,
+        sleeper=sleep,
+        seconds=seconds,
+    )
+
+
+def test_acceptance_actually_runs_the_workflow_and_records_what_happened(
+    candidate,
+) -> None:
+    """The record has to come from a run, not from a caller's description.
+
+    A harness that compiles a candidate and then asks the operator to type an
+    outcome certifies nothing: the same record could be produced with no tour
+    having happened at all.
+    """
+    renderer = _Renderer()
+    graph, record = _accept(
+        candidate,
+        observe=_screen(
+            ["Welcome - Visual Studio Code", "demo - Visual Studio Code"]
+        ),
+        renderer=renderer,
+    )
+
+    assert record.outcome is RunOutcome.PASSED
+    assert record.grounding_provenance == (GroundingProvenance.UIA,)
+    assert record.steps_completed == record.steps_total == 1
+    assert renderer.shown, "the executor never rendered a hint"
+    assert record.digests == dict(graph.digests)
+
+
+def test_a_workflow_that_never_completes_is_recorded_as_timed_out(candidate) -> None:
+    """A timeout is its own finding.
+
+    "The user did not finish in two minutes" and "the workflow cannot work"
+    are different things, and a record that conflated them would report a
+    working workflow as broken.
+    """
+    _graph, record = _accept(
+        candidate,
+        observe=_screen(["Welcome - Visual Studio Code"]),
+        seconds=5.0,
+    )
+    assert record.outcome is RunOutcome.TIMED_OUT
+    assert record.steps_completed == 0
+    assert "within 5s" in record.detail
+
+
+def test_a_target_that_never_appears_is_recorded_as_failed(candidate) -> None:
+    """FAILED specifically, not "one of the unhappy outcomes".
+
+    Accepting either FAILED or TIMED_OUT here made the test pass no matter
+    what the executor did with a loop that gave up -- including reporting it
+    as a pass, which is a different bug entirely.
+    """
+    _graph, record = _accept(
+        candidate,
+        observe=_screen(["Welcome - Visual Studio Code"], present=False),
+        seconds=600.0,
+    )
+    assert record.outcome is RunOutcome.FAILED
+    assert record.grounding_provenance == ()
+    assert record.steps_completed == 0
+
+
+def test_a_failed_loop_is_never_reported_as_a_pass(candidate) -> None:
+    """The two unhappy outcomes are distinguishable from each other and from
+    a pass."""
+    _graph, failed = _accept(
+        candidate,
+        observe=_screen(["Welcome - Visual Studio Code"], present=False),
+        seconds=600.0,
+    )
+    _graph2, timed_out = _accept(
+        candidate,
+        observe=_screen(["Welcome - Visual Studio Code"]),
+        seconds=5.0,
+    )
+    assert failed.outcome is RunOutcome.FAILED
+    assert timed_out.outcome is RunOutcome.TIMED_OUT
+    assert failed.outcome is not timed_out.outcome
+
+
+def test_the_executor_refuses_to_ground_an_ambiguous_selector(candidate) -> None:
+    """An action selector naming two controls is not a target.
+
+    `run_observation_plan` would have faulted before this, so the guard is
+    unreachable through the normal path -- and that is exactly why it is
+    tested directly. The executor is what points a user at a rectangle, and it
+    does not get to pick one of two when it was told there would be one.
+    """
+    from ghostcursor.reasoning.compiled_tour import (
+        TickInput,
+        execute_compiled_workflow,
+    )
+
+    graph = _load(candidate)
+    target = bind_candidate_target(graph, windows=[_window()], project_root=PROJECT_ROOT)
+    workflow = candidate_workflow(
+        graph, "Open a folder in VS Code", target, project_root=PROJECT_ROOT
+    )
+
+    two = (_element(bbox=(0, 0, 10, 10)), _element(bbox=(50, 50, 60, 60)))
+
+    def _observe():
+        return TickInput(
+            title="Welcome - Visual Studio Code",
+            selectors={"open_folder": two},
+            union=two,
+        )
+
+    read, sleep = _clock()
+    result = execute_compiled_workflow(
+        workflow,
+        observe=_observe,
+        renderer=_Renderer(),
+        clock=read,
+        sleeper=sleep,
+        seconds=600.0,
+    )
+    assert result.outcome is RunOutcome.FAILED
+    assert result.provenance == (), "an ambiguous match must not be grounded"
+
+
+def test_the_run_verifies_against_the_workflows_own_goal_reference(
+    candidate,
+) -> None:
+    """The reference is what makes verification about THIS goal.
+
+    Without it the title check falls back to conditions 1 and 2 -- the title
+    changed and still looks like VS Code -- which any other folder opening
+    also satisfies. A run that opened the wrong folder would be recorded as a
+    pass.
+    """
+    _graph, wrong_folder = _accept(
+        candidate,
+        observe=_screen(
+            ["Welcome - Visual Studio Code", "unrelated - Visual Studio Code"]
+        ),
+        seconds=30.0,
+        goal=r"Open C:\Projects\Demo in VS Code",
+    )
+    assert wrong_folder.outcome is not RunOutcome.PASSED
+
+    _graph2, right_folder = _accept(
+        candidate,
+        observe=_screen(
+            ["Welcome - Visual Studio Code", "demo - Visual Studio Code"]
+        ),
+        seconds=30.0,
+        goal=r"Open C:\Projects\Demo in VS Code",
+    )
+    assert right_folder.outcome is RunOutcome.PASSED
+
+
+def test_the_record_reports_the_tier_that_actually_grounded(candidate) -> None:
+    """Outcome alone cannot see a perception tier going dark.
+
+    Fallback OCR completes the workflow exactly as UIA would, so an
+    outcome-only record shows a passing run in both cases. Open Folder's gate
+    turns on this field, not on the outcome (D069).
+    """
+    _graph, uia_run = _accept(
+        candidate,
+        observe=_screen(["Welcome - Visual Studio Code", "demo - Visual Studio Code"]),
+    )
+    _graph2, ocr_run = _accept(
+        candidate,
+        observe=_screen(
+            ["Welcome - Visual Studio Code", "demo - Visual Studio Code"], source="ocr"
+        ),
+    )
+
+    assert uia_run.outcome is ocr_run.outcome is RunOutcome.PASSED
+    assert uia_run.grounded_by_uia_only
+    assert not ocr_run.grounded_by_uia_only
+    assert ocr_run.grounding_provenance == (GroundingProvenance.OCR,)
+
+
+def test_a_record_cannot_be_told_its_own_outcome(candidate) -> None:
+    """There is no parameter for it, by construction.
+
+    An outcome that can be stated can be stated falsely, and the reviewer's
+    objection was exactly this: a record accepting arbitrary strings can say
+    "passed" with nothing having run.
+    """
+    import inspect
+
+    from ghostcursor.devtools.candidate_acceptance import record_for
+
+    parameters = list(inspect.signature(record_for).parameters)
+    assert parameters == ["graph", "target", "result"]
+
+    outcomes = {member.value for member in RunOutcome}
+    assert outcomes == {"passed", "failed", "timed_out", "aborted"}
+    with pytest.raises(ValueError):
+        RunOutcome("prepared")
+    with pytest.raises(ValueError):
+        GroundingProvenance("pending")
+
+
+def test_the_candidate_files_are_rehashed_immediately_before_launch(
+    candidate,
+) -> None:
+    """Evidence has to name the bytes that RAN.
+
+    The digests were checked at load. Between then and the launch a human is
+    arranging windows, and an editor left open on the candidate is the ordinary
+    way those bytes change.
+    """
+    from ghostcursor.devtools.candidate_acceptance import accept_candidate
+
+    graph = _load(candidate)
+    target = bind_candidate_target(graph, windows=[_window()], project_root=PROJECT_ROOT)
+    workflow = candidate_workflow(
+        graph, "Open a folder in VS Code", target, project_root=PROJECT_ROOT
+    )
+
+    candidate["paths"]["recipe"].write_bytes(
+        candidate["paths"]["recipe"].read_bytes() + b"\n"
+    )
+    with pytest.raises(CandidateRejected, match="changed since it was loaded"):
+        accept_candidate(
+            graph,
+            workflow,
+            observe=_screen(["Welcome - Visual Studio Code"]),
+            renderer=_Renderer(),
+            read_window=_reader(),
+            project_root=PROJECT_ROOT,
+        )
+
+
+def test_the_live_target_is_revalidated_before_the_run(candidate) -> None:
+    """A window that closed or updated between binding and launch aborts."""
+    from ghostcursor.devtools.candidate_acceptance import accept_candidate
+
+    graph = _load(candidate)
+    target = bind_candidate_target(graph, windows=[_window()], project_root=PROJECT_ROOT)
+    workflow = candidate_workflow(
+        graph, "Open a folder in VS Code", target, project_root=PROJECT_ROOT
+    )
+    with pytest.raises(WorkflowUnavailable):
+        accept_candidate(
+            graph,
+            workflow,
+            observe=_screen(["Welcome - Visual Studio Code"]),
+            renderer=_Renderer(),
+            read_window=_reader(missing=True),
+            project_root=PROJECT_ROOT,
+        )
+
+
+def test_nothing_runs_when_the_rehash_or_revalidation_fails(candidate) -> None:
+    """Order matters: neither failure may reach the executor.
+
+    A run that started and then aborted has already put an overlay on the
+    user's screen and already begun producing observations a record could be
+    built from.
+    """
+    from ghostcursor.devtools.candidate_acceptance import accept_candidate
+
+    graph = _load(candidate)
+    target = bind_candidate_target(graph, windows=[_window()], project_root=PROJECT_ROOT)
+    workflow = candidate_workflow(
+        graph, "Open a folder in VS Code", target, project_root=PROJECT_ROOT
+    )
+    observed = []
+
+    def _observe():
+        observed.append(True)
+        raise AssertionError("the executor ran despite a failed precondition")
+
+    candidate["paths"]["pack"].write_bytes(
+        candidate["paths"]["pack"].read_bytes() + b"\n"
+    )
+    with pytest.raises(CandidateRejected):
+        accept_candidate(
+            graph,
+            workflow,
+            observe=_observe,
+            renderer=_Renderer(),
+            read_window=_reader(),
+            project_root=PROJECT_ROOT,
+        )
+    assert observed == []
+
+
+def test_a_preparation_record_names_itself_as_non_evidence(candidate) -> None:
+    """It proves the graph resolves and nothing else.
+
+    A record whose status depends on the reader knowing which function produced
+    it will eventually be cited by someone who does not.
+    """
+    from ghostcursor.devtools.candidate_acceptance import preparation_record
+
+    graph = _load(candidate)
+    target = bind_candidate_target(graph, windows=[_window()], project_root=PROJECT_ROOT)
+    payload = json.loads(preparation_record(graph, target).to_json())
+
+    assert payload["record_kind"] == "preparation"
+    assert payload["is_acceptance_evidence"] is False
+    assert "outcome" not in payload
+    assert "grounding_provenance" not in payload
+
+
+def test_a_run_record_names_all_three_digests_and_the_identity(candidate) -> None:
+    _graph, record = _accept(
+        candidate,
+        observe=_screen(["Welcome - Visual Studio Code", "demo - Visual Studio Code"]),
+    )
     payload = json.loads(record.to_json())
 
-    assert payload["digests"] == dict(graph.digests)
+    assert payload["record_kind"] == "run"
+    assert payload["is_acceptance_evidence"] is True
+    assert set(payload["digests"]) == {"pack", "intent", "recipe"}
     assert payload["application_identity"] == {
         "kind": "executable_version",
         "value": "1.134.0",
@@ -406,33 +800,16 @@ def test_a_run_record_names_all_three_digests_and_the_identity(candidate) -> Non
     assert payload["target"]["executable"] == "code.exe"
     assert payload["outcome"] == "passed"
     assert payload["grounding_provenance"] == ["uia"]
-
-
-def test_a_record_without_provenance_is_refused(candidate) -> None:
-    """An outcome-only record cannot see a perception tier going dark.
-
-    Fallback OCR preserves the outcome while the preferred tier is gone, so a
-    record that does not name which tier grounded cannot support the claim the
-    acceptance evidence has to make (D069).
-    """
-    graph = _load(candidate)
-    target = bind_candidate_target(
-        graph, windows=[_window()], project_root=PROJECT_ROOT
-    )
-    with pytest.raises(CandidateRejected, match="grounding provenance"):
-        record_for(graph, target, outcome="passed", grounding_provenance=())
+    assert payload["grounded_by_uia_only"] is True
 
 
 def test_the_record_is_the_durable_reference_not_a_log_path(candidate) -> None:
     """Evidence that names an uncommitted file names nothing (D034)."""
-    graph = _load(candidate)
-    target = bind_candidate_target(
-        graph, windows=[_window()], project_root=PROJECT_ROOT
+    _graph, record = _accept(
+        candidate,
+        observe=_screen(["Welcome - Visual Studio Code", "demo - Visual Studio Code"]),
     )
-    payload = record_for(
-        graph, target, outcome="passed", grounding_provenance=("uia",)
-    ).to_json()
-    assert ".artifacts" not in payload
+    assert ".artifacts" not in record.to_json()
 
 
 # ---------------------------------------------------------------------------
@@ -477,21 +854,35 @@ def test_no_production_module_imports_the_harness(module) -> None:
 
 
 def test_the_production_parser_exposes_no_candidate_option() -> None:
-    """`--recipe <path>` and the harness must not meet.
+    """The harness's explicit-path options must have no production counterpart.
 
-    The harness takes explicit candidate paths because that is its entire job.
-    A production flag doing the same thing would be the path-based loader the
-    v2 entry point exists to remove.
+    Checked by building the real parser and reading its options. An earlier
+    version grepped run.py's source, which meant a docstring mentioning the
+    word "candidate" failed the test while a genuine `--candidate` flag added
+    beside an existing mention would have passed it -- a check keyed on prose
+    rather than on behaviour.
     """
+    import argparse
+    from unittest import mock
+
     import ghostcursor.run as run
 
-    parser = run.build_parser() if hasattr(run, "build_parser") else None
-    if parser is None:
-        source = (PROJECT_ROOT / "ghostcursor" / "run.py").read_text(encoding="utf-8")
-        assert "candidate" not in source.lower()
-        return
-    options = {action.dest for action in parser._actions}
-    assert not any("candidate" in name for name in options)
+    built = []
+
+    def _capture(self, *args, **kwargs):
+        built.append(self)
+        raise SystemExit(0)
+
+    with mock.patch.object(argparse.ArgumentParser, "parse_args", _capture):
+        with pytest.raises(SystemExit):
+            run.main()
+
+    assert built, "run.main() built no parser"
+    options = {action.dest for action in built[0]._actions}
+    assert not any("candidate" in name for name in options), sorted(options)
+    assert not any("pack" in name for name in options)
+    assert not any("sha256" in name for name in options)
+    assert "recipe" in options, "the v1 recipe path is still present until Task 9"
 
 
 def test_the_harness_cannot_write_activation(candidate) -> None:
@@ -619,12 +1010,15 @@ def test_the_command_prepares_a_record_for_a_valid_candidate(candidate, capsys) 
             candidate["digests"]["recipe"],
             "--goal",
             r"Open C:\Projects\Demo in VS Code",
+            "--prepare-only",
         ],
         project_root=PROJECT_ROOT,
         list_windows=lambda: [_window()],
     )
     assert exit_code == 0
     payload = json.loads(capsys.readouterr().out)
+    assert payload["record_kind"] == "preparation"
+    assert payload["is_acceptance_evidence"] is False
     assert payload["digests"]["recipe"] == candidate["digests"]["recipe"]
     assert payload["application_identity"]["value"] == "1.134.0"
 

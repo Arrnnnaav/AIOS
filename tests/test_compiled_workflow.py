@@ -1103,19 +1103,35 @@ def CompiledWorkflowReplacement(workflow, **changes):
 # ---------------------------------------------------------------------------
 
 
-def _launch(workflow, catalog, *, live=None, missing=False, create_overlay=lambda: 1):
+def _driven_clock():
+    """A clock the sleeper advances.
+
+    Never a frozen clock: the executor's only bound is the deadline, so a
+    `clock` that cannot move turns a tour that does not complete into an
+    infinite loop. A test that supplies one is testing a caller error, not the
+    executor.
+    """
+    now = [0.0]
+    return (lambda: now[0]), (lambda seconds: now.__setitem__(0, now[0] + seconds))
+
+
+def _launch(workflow, catalog, *, live=None, missing=False, create_overlay=lambda: 1,
+            observe=None, renderer=None, seconds=1.0):
     from ghostcursor.run import _launch_compiled_workflow
 
+    clock, sleeper = _driven_clock()
     return _launch_compiled_workflow(
         workflow,
-        seconds=1.0,
+        seconds=seconds,
         reload_catalog=lambda: catalog,
         read_window=_reader(live, missing=missing),
         project_root=PROJECT_ROOT,
-        clock=lambda: 0.0,
-        sleeper=lambda _s: None,
+        clock=clock,
+        sleeper=sleeper,
         warmup_budget_s=2.0,
         create_overlay=create_overlay,
+        observe=observe,
+        renderer=renderer,
     )
 
 
@@ -1199,10 +1215,54 @@ def test_the_injection_seam_is_private() -> None:
 
 
 def test_a_revalidated_launch_reaches_the_execution_body() -> None:
-    """The gate passes and hands over; the body itself lands at the cutover."""
+    """The gate passes, the overlay is created, and the shared executor runs.
+
+    The same `execute_compiled_workflow()` the candidate harness calls. Two
+    executors would let acceptance certify semantics production does not have,
+    so the cutover changes which authority path arrives here and nothing about
+    what happens once it does.
+    """
+    from ghostcursor.perception.uia import Element
+    from ghostcursor.reasoning.compiled_tour import TickInput
+
     workflow, catalog = _workflow()
-    with pytest.raises(NotImplementedError, match="Task 9"):
-        _launch(workflow, catalog)
+    created = []
+    titles = ["Welcome - Visual Studio Code", "demo - Visual Studio Code"]
+
+    def _observe():
+        title = titles.pop(0) if len(titles) > 1 else titles[0]
+        matched = (
+            Element(
+                name="Open Folder...",
+                control_type="Button",
+                automation_id="",
+                bbox=(10, 20, 110, 60),
+                path=("Button",),
+            ),
+        )
+        return TickInput(title=title, selectors={"open_folder": matched},
+                         union=matched)
+
+    class _Renderer:
+        def show(self, grounded, instruction_text):
+            pass
+
+        def clear(self):
+            pass
+
+        def settle(self):
+            pass
+
+    exit_code = _launch(
+        workflow,
+        catalog,
+        seconds=60.0,
+        create_overlay=lambda: created.append(True) or 1,
+        observe=_observe,
+        renderer=_Renderer(),
+    )
+    assert exit_code == 0
+    assert created == [True], "the overlay is created once, after revalidation"
 
 
 # ---------------------------------------------------------------------------
