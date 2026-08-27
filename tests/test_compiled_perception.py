@@ -15,6 +15,7 @@ titled. Nothing between those and the tour result is a stand-in.
 
 from __future__ import annotations
 
+import ast
 import threading
 
 import pytest
@@ -1302,20 +1303,8 @@ def test_no_compiled_entry_point_drives_the_worker_directly(module, function) ->
     )
 
 
-@pytest.mark.parametrize("module,function", sorted(UNPACKING.items()))
-def test_every_compiled_entry_point_keeps_the_stop_seam(module, function) -> None:
-    """The RETURNED stop, neither reached past nor discarded.
-
-    Stopping the service directly leaves the composition believing it is still
-    running, so a later start is a no-op and the health grace is never armed
-    for the worker that followed. Discarding the seam stops nothing at all.
-
-    Checked by NAME: a `finally` that calls some `stop_perception` the start
-    never bound to satisfies a text search while doing nothing.
-    """
-    import ast
-
-    node = _function(module, function)
+def bound_stop_seam(node) -> str:
+    """The name the three start seams were unpacked into, third position."""
     bound = [
         target.elts[2].id
         for statement in ast.walk(node)
@@ -1325,24 +1314,25 @@ def test_every_compiled_entry_point_keeps_the_stop_seam(module, function) -> Non
         and len(target.elts) == 3
         and all(isinstance(element, ast.Name) for element in target.elts)
     ]
-    assert len(bound) == 1, f"{function} does not unpack the start seams exactly once"
-    stop_name = bound[0]
-    assert not stop_name.startswith("_"), (
-        f"{function} discards the stop seam it was handed ({stop_name})"
-    )
+    assert len(bound) == 1, "the start seams are not unpacked exactly once"
+    return bound[0]
 
-    # The SHAPE of the cleanup, not merely that the name appears somewhere.
-    # A guard reading `if stop_perception is not None` mentions it while
-    # stopping nothing, and "passed to any call" accepts `print(stop)` -- both
-    # satisfy a laxer check while leaving a worker running.
-    #
-    # Two acceptable shapes, because the two paths genuinely differ:
-    # production owns its `finally`, while the harness registers on an
-    # `ExitStack` so the teardown survives a failure in the one beside it.
-    # The ExitStack this function actually opened, so the receiver is checked
-    # against a real binding rather than against a name someone chose. Any
-    # other object's `.callback` registers on a stack that will not unwind
-    # here.
+
+def stop_seam_registrations(node, stop_name: str) -> list:
+    """Every registration of `stop_name` as a cleanup callback on this function.
+
+    ONE detector, used by the real-source assertion and by the near-miss cases
+    alike. Two copies would let a weakening survive twice over: the real source
+    happens to satisfy the weakened copy, and the near-miss test exercises the
+    untouched one -- so the self-check would prove a duplicate works and say
+    nothing about the guard.
+
+    The SHAPE of the cleanup, not a mention of the name. A guard reading
+    `if stop_perception is not None` mentions it while stopping nothing;
+    `other.callback(stop)` registers on a stack that does not unwind here; and
+    `cleanup.callback(print, stop)` registers a print. All three leave the
+    worker running.
+    """
     stacks = {
         item.optional_vars.id
         for statement in ast.walk(node)
@@ -1351,22 +1341,25 @@ def test_every_compiled_entry_point_keeps_the_stop_seam(module, function) -> Non
         if isinstance(item.optional_vars, ast.Name)
         and "ExitStack" in ast.unparse(item.context_expr)
     }
-    registered = [
+    return [
         child
         for child in ast.walk(node)
         if isinstance(child, ast.Call)
         and isinstance(child.func, ast.Attribute)
         and child.func.attr == "callback"
-        # The receiver must be the stack this function opened...
+        # The receiver must be the stack this function actually opened...
         and isinstance(child.func.value, ast.Name)
         and child.func.value.id in stacks
         # ...and the seam must be the CALLBACK, not an argument to one.
-        # `cleanup.callback(print, stop_perception)` registers a print.
         and child.args
         and isinstance(child.args[0], ast.Name)
         and child.args[0].id == stop_name
     ]
-    in_finally = [
+
+
+def stop_seam_calls_in_finally(node, stop_name: str) -> list:
+    """Every call of `stop_name` from a `finally` block on this function."""
+    return [
         child
         for handler in ast.walk(node)
         if isinstance(handler, ast.Try)
@@ -1376,7 +1369,28 @@ def test_every_compiled_entry_point_keeps_the_stop_seam(module, function) -> Non
         and isinstance(child.func, ast.Name)
         and child.func.id == stop_name
     ]
-    assert registered or in_finally, (
+
+
+@pytest.mark.parametrize("module,function", sorted(UNPACKING.items()))
+def test_every_compiled_entry_point_keeps_the_stop_seam(module, function) -> None:
+    """The RETURNED stop, neither reached past nor discarded.
+
+    Stopping the service directly leaves the composition believing it is still
+    running, so a later start is a no-op and the health grace is never armed
+    for the worker that followed. Discarding the seam stops nothing at all.
+
+    Two acceptable shapes, because the two paths genuinely differ: production
+    owns its `finally`, while the harness registers on an `ExitStack` so the
+    teardown survives a failure in the one beside it.
+    """
+    node = _function(module, function)
+    stop_name = bound_stop_seam(node)
+    assert not stop_name.startswith("_"), (
+        f"{function} discards the stop seam it was handed ({stop_name})"
+    )
+    assert stop_seam_registrations(node, stop_name) or stop_seam_calls_in_finally(
+        node, stop_name
+    ), (
         f"{function} neither registers {stop_name!r} as a cleanup callback nor "
         "calls it from a finally block"
     )
@@ -1570,17 +1584,22 @@ def test_the_returned_stop_is_the_compositions_own() -> None:
         ("cleanup.callback(print, stop_perception)", False),
         ("print(stop_perception)", False),
         ("if stop_perception is not None:\n            pass", False),
+        # `push` takes an EXIT callback -- called with exception details,
+        # not with no arguments -- and `enter_context` expects a context
+        # manager, so neither registers this teardown even though both are
+        # ExitStack methods on the right receiver.
+        ("cleanup.push(stop_perception)", False),
+        ("cleanup.enter_context(stop_perception)", False),
     ],
 )
 def test_the_cleanup_check_accepts_only_the_real_registration(line, accepted) -> None:
-    """Mutation-verify the check itself (D018).
+    """Mutation-verify the detector ITSELF (D018).
 
-    The assertion it makes is structural, so the only way to know it is
-    discriminating is to feed it the near-misses. Each of these mentions the
-    seam and leaves the worker running.
+    Runs `stop_seam_registrations()` -- the same function the real-source
+    assertion runs -- over synthetic near-misses. A copy of its logic here
+    would verify the copy: weakening the real one would then pass both,
+    because production happens to satisfy the weakened form.
     """
-    import ast
-
     source = (
         "def accept_candidate(graph, workflow, *, start_perception, make_renderer):\n"
         "    with contextlib.ExitStack() as cleanup:\n"
@@ -1594,34 +1613,50 @@ def test_the_cleanup_check_accepts_only_the_real_registration(line, accepted) ->
     node = next(
         n for n in ast.walk(ast.parse(source)) if isinstance(n, ast.FunctionDef)
     )
-    bound = [
-        target.elts[2].id
-        for statement in ast.walk(node)
-        if isinstance(statement, ast.Assign)
-        for target in statement.targets
-        if isinstance(target, ast.Tuple)
-        and len(target.elts) == 3
-        and all(isinstance(element, ast.Name) for element in target.elts)
-    ]
-    stop_name = bound[0]
-    stacks = {
-        item.optional_vars.id
-        for statement in ast.walk(node)
-        if isinstance(statement, (ast.With, ast.AsyncWith))
-        for item in statement.items
-        if isinstance(item.optional_vars, ast.Name)
-        and "ExitStack" in ast.unparse(item.context_expr)
-    }
-    registered = [
-        child
-        for child in ast.walk(node)
-        if isinstance(child, ast.Call)
-        and isinstance(child.func, ast.Attribute)
-        and child.func.attr == "callback"
-        and isinstance(child.func.value, ast.Name)
-        and child.func.value.id in stacks
-        and child.args
-        and isinstance(child.args[0], ast.Name)
-        and child.args[0].id == stop_name
-    ]
-    assert bool(registered) is accepted, line
+    stop_name = bound_stop_seam(node)
+    assert bool(stop_seam_registrations(node, stop_name)) is accepted, line
+
+
+def test_a_callback_on_a_non_exitstack_binding_is_not_a_registration() -> None:
+    """The receiver must be an ExitStack, not merely something named `cleanup`.
+
+    Deriving the stack from the `with` binding is what makes the receiver
+    check mean anything. Without it, any context manager bound to any name
+    would qualify -- and `.callback` on something that is not an ExitStack
+    registers no teardown at all.
+    """
+    source = (
+        "def accept_candidate(graph, workflow, *, start_perception, make_renderer):\n"
+        "    with open_report() as cleanup:\n"
+        "        observe, on_grounding, stop_perception = start_perception()\n"
+        "        cleanup.callback(stop_perception)\n"
+        "        result = execute_compiled_workflow(workflow)\n"
+        "    return result\n"
+    )
+    node = next(
+        n for n in ast.walk(ast.parse(source)) if isinstance(n, ast.FunctionDef)
+    )
+    stop_name = bound_stop_seam(node)
+    assert stop_seam_registrations(node, stop_name) == []
+
+
+def test_an_exitstack_bound_under_any_name_still_counts() -> None:
+    """The check is on the OBJECT, not on the identifier.
+
+    Renaming the variable is not a weakening, so a check keyed on the literal
+    name `cleanup` would fail an honest refactor while still passing the real
+    bypasses above.
+    """
+    source = (
+        "def accept_candidate(graph, workflow, *, start_perception, make_renderer):\n"
+        "    with contextlib.ExitStack() as teardown:\n"
+        "        observe, on_grounding, stop_perception = start_perception()\n"
+        "        teardown.callback(stop_perception)\n"
+        "        result = execute_compiled_workflow(workflow)\n"
+        "    return result\n"
+    )
+    node = next(
+        n for n in ast.walk(ast.parse(source)) if isinstance(n, ast.FunctionDef)
+    )
+    stop_name = bound_stop_seam(node)
+    assert stop_seam_registrations(node, stop_name)
