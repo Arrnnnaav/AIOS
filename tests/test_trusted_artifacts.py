@@ -598,6 +598,54 @@ def test_selector_required_and_selector_forbidden_verification_kinds(tmp_path):
             _load_json(tmp_path, _recipe(steps=[step]), ArtifactSchema.RECIPE)
 
 
+def test_property_changes_requires_an_exactly_one_selector(tmp_path):
+    """The one verification kind that may not use `at_least_one`.
+
+    The other two ask whether ANY match exists, which several results answer
+    as well as one. A property change must be attributed to a control, and
+    nothing carries backend identity across ticks -- so with several matches
+    the rule can only compare two result sets positionally, and UIA
+    guarantees no traversal order. Two unchanged controls returned in the
+    opposite order then read as a change.
+    """
+    rule = {
+        "kind": "property_changes",
+        "selector": "export_status",
+        "args": {"property": "bbox"},
+        "timeout_s": 30.0,
+    }
+    with pytest.raises(ValueError, match="exactly_one"):
+        _load_json(
+            tmp_path,
+            _recipe(steps=[_step(verification_rule=rule)]),
+            ArtifactSchema.RECIPE,
+        )
+
+
+def test_property_changes_accepts_the_action_selector_it_can_attribute(tmp_path):
+    """`exactly_one` is what makes the question answerable, so it loads."""
+    rule = {
+        "kind": "property_changes",
+        "selector": "export_button",
+        "args": {"property": "bbox"},
+        "timeout_s": 30.0,
+    }
+    recipe = _recipe(
+        selectors={
+            "export_button": _selector(),
+            "export_status": _selector(
+                names=["Export finished: table.csv"], cardinality="at_least_one"
+            ),
+        },
+        steps=[
+            _step(verification_rule=rule),
+            _step(target_selector=None, user_action="observe"),
+        ],
+    )
+    loaded = _load_json(tmp_path, recipe, ArtifactSchema.RECIPE)
+    assert loaded.value["steps"][0]["verification_rule"]["kind"] == "property_changes"
+
+
 def test_any_meaningful_change_requires_context_selector(tmp_path):
     step = _step(
         user_action="observe",

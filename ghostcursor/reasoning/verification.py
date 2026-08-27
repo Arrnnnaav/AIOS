@@ -14,7 +14,11 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from ghostcursor.perception.uia import Element, iter_elements
+from ghostcursor.perception.uia import (
+    Element,
+    SelectorAmbiguityFault,
+    iter_elements,
+)
 from ghostcursor.reasoning.schema import VerificationKind, VerificationRule
 
 
@@ -155,8 +159,12 @@ def _verify_by_selector(
     """Decide one of the three selector-backed kinds from observed results.
 
     The selector, not a descriptor, is what a compiled recipe declares, and the
-    observation plan already evaluated its cardinality. So the question here is
-    only about presence over time, and `matched()` answers it directly.
+    observation plan already evaluated each selector's cardinality within its
+    own tick. What no plan can establish is identity ACROSS ticks: two ticks
+    are two independent reads, and nothing links a control in one to a control
+    in the other. So the two presence kinds -- which only ask whether any match
+    exists -- are answered directly from `matched()`, while `property_changes`
+    additionally requires that each side name exactly one control.
     """
     was, now = before.matched(rule.selector), after.matched(rule.selector)
 
@@ -170,8 +178,29 @@ def _verify_by_selector(
     # disappearance, which are different rules.
     if not was or not now:
         return False
+
+    # One control on each side, or the question is unanswerable. Comparing two
+    # result SETS can only be positional, and UIA guarantees no traversal
+    # order (see `_sort_elements` above, which exists for exactly this
+    # reason) -- so two unchanged controls returned in the opposite order read
+    # as a change. Sorting would fix that one case and not the real problem:
+    # nothing carries backend identity across ticks, so with several matches
+    # there is no way to say WHICH control changed, and a rule that cannot
+    # attribute a change cannot report one.
+    #
+    # The schema already requires `exactly_one` for this kind. This guard is
+    # not a restatement of it: the schema binds what a trusted recipe may
+    # declare, and this binds what the verifier will act on, so a rule reaching
+    # here by any other route still fails closed rather than guessing.
+    if len(was) > 1 or len(now) > 1:
+        raise SelectorAmbiguityFault(
+            f"property_changes selector {rule.selector!r} matched "
+            f"{len(was)} controls before and {len(now)} after; a property "
+            f"change cannot be attributed among several controls"
+        )
+
     prop = rule.args["property"]
-    return [getattr(e, prop) for e in was] != [getattr(e, prop) for e in now]
+    return getattr(was[0], prop) != getattr(now[0], prop)
 
 
 def verify(rule: VerificationRule, before: Snapshot, after: Snapshot) -> bool:

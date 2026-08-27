@@ -351,7 +351,11 @@ def _validate_pack(value: dict[str, Any], *, project_root: Path) -> None:
 
     executables = _string_list(value["executable_names"], "pack.executable_names")
     for executable in executables:
-        if executable != executable.casefold() or "/" in executable or "\\" in executable:
+        if (
+            executable != executable.casefold()
+            or "/" in executable
+            or "\\" in executable
+        ):
             raise ValueError("executable names must be lowercase basenames")
     patterns = _string_list(value["title_patterns"], "pack.title_patterns")
     for pattern in patterns:
@@ -459,7 +463,14 @@ def _validate_selector(selector_id: str, value: Any) -> None:
     label = f"recipe.selectors.{selector_id}"
     _exact_fields(
         value,
-        {"strategy", "control_type", "names", "normalise", "cardinality", "result_limit"},
+        {
+            "strategy",
+            "control_type",
+            "names",
+            "normalise",
+            "cardinality",
+            "result_limit",
+        },
         label,
     )
     if value["strategy"] not in {"provider_exact", "bounded_descendants"}:
@@ -527,7 +538,16 @@ def _validate_recipe(value: dict[str, Any]) -> None:
         raise ValueError(f"recipe has unused selectors: {sorted(unused)}")
 
 
-_ACTIONS = {"click", "press_keys", "type", "drag", "select", "scroll", "observe", "wait"}
+_ACTIONS = {
+    "click",
+    "press_keys",
+    "type",
+    "drag",
+    "select",
+    "scroll",
+    "observe",
+    "wait",
+}
 _TARGETED_ACTIONS = {"click", "type", "drag", "select", "scroll"}
 _SELECTOR_VERIFICATIONS = {"element_appears", "element_disappears", "property_changes"}
 _NO_SELECTOR_VERIFICATIONS = {
@@ -638,6 +658,22 @@ def _validate_verification(
             raise ValueError(f"{label}.selector is required")
         selector = _string(selector, f"{label}.selector")
         _require_selector(selectors, selector, "verification selector")
+        # `property_changes` is the one verification that must name a single
+        # control. The others ask whether ANY match exists, which several
+        # results answer as well as one. A property change has to be
+        # attributed to a control, and nothing carries backend identity across
+        # ticks -- so with several matches the rule can only compare the two
+        # result sets positionally, and UIA guarantees no traversal order.
+        # Two unchanged controls returned in the opposite order then read as a
+        # change. `at_least_one` is not a weaker answer here, it is an
+        # unanswerable question.
+        if (
+            kind == "property_changes"
+            and selectors[selector]["cardinality"] != "exactly_one"
+        ):
+            raise ValueError(
+                "property_changes selectors must use exactly_one cardinality"
+            )
     elif selector is not None:
         raise ValueError(f"{label}.selector is forbidden for {kind}")
 
@@ -659,7 +695,11 @@ def _validate_verification(
 
 
 def _validate_verification_args(kind: str, args: dict[str, Any], label: str) -> None:
-    option_fields = {"fail_after_timeout", "timeout_from_hint", "accept_if_already_present"}
+    option_fields = {
+        "fail_after_timeout",
+        "timeout_from_hint",
+        "accept_if_already_present",
+    }
     if kind == "element_appears":
         required: set[str] = set()
     elif kind == "element_disappears":
@@ -686,7 +726,10 @@ def _validate_verification_args(kind: str, args: dict[str, Any], label: str) -> 
             raise ValueError(f"{label}.args.{option} must be boolean")
     if args.get("accept_if_already_present") is True and kind != "element_appears":
         raise ValueError("accept_if_already_present is limited to element_appears")
-    if args.get("timeout_from_hint") is True and args.get("fail_after_timeout") is not True:
+    if (
+        args.get("timeout_from_hint") is True
+        and args.get("fail_after_timeout") is not True
+    ):
         raise ValueError("timeout_from_hint requires fail_after_timeout")
     if "property" in args:
         _string(args["property"], f"{label}.args.property")
@@ -735,9 +778,13 @@ def _validate_goal_reference(value: Any, verification_label: str) -> None:
     for index, template in enumerate(templates):
         remainder = template.replace("{alias}", "")
         if template.count("{alias}") != 1 or "{" in remainder or "}" in remainder:
-            raise ValueError(f"{label}.nonspecific_templates[{index}] has invalid placeholder")
+            raise ValueError(
+                f"{label}.nonspecific_templates[{index}] has invalid placeholder"
+            )
         if template != " ".join(template.casefold().split()):
-            raise ValueError(f"{label}.nonspecific_templates[{index}] is not normalized")
+            raise ValueError(
+                f"{label}.nonspecific_templates[{index}] is not normalized"
+            )
     trailing = value["strip_trailing_alias_clause"]
     _exact_fields(trailing, {"preposition"}, f"{label}.strip_trailing_alias_clause")
     _normalized_literal(

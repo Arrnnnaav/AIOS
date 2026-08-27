@@ -475,6 +475,36 @@ def test_selector_backed_presence_verification(kind, before, after, expected) ->
     assert verify(rule, _snapshot(panel=before), _snapshot(panel=after)) is expected
 
 
+def test_property_changes_is_not_concluded_from_traversal_order() -> None:
+    """Two unchanged controls, returned in the opposite order, are unchanged.
+
+    A positional comparison of two result sets called this a change. UIA
+    guarantees no traversal order, so the reversal alone was enough -- nothing
+    on screen had to move. The rule now refuses the question instead of
+    answering it wrongly: nothing carries backend identity across ticks, so
+    with several matches there is no way to say WHICH control changed.
+    """
+    from ghostcursor.reasoning.schema import VerificationKind, VerificationRule
+    from ghostcursor.reasoning.verification import verify
+
+    rule = VerificationRule(
+        VerificationKind.PROPERTY_CHANGES, args={"property": "bbox"}, selector="panel"
+    )
+    first = _element(bbox=(0, 0, 1, 1))
+    second = _element(bbox=(9, 9, 10, 10))
+
+    with pytest.raises(SelectorAmbiguityFault):
+        verify(rule, _snapshot(panel=(first, second)), _snapshot(panel=(second, first)))
+
+    # Same refusal when only one side is ambiguous: the attribution problem is
+    # not symmetric, and one nameable control on the other side does not solve
+    # it.
+    with pytest.raises(SelectorAmbiguityFault):
+        verify(rule, _snapshot(panel=(first,)), _snapshot(panel=(first, second)))
+    with pytest.raises(SelectorAmbiguityFault):
+        verify(rule, _snapshot(panel=(first, second)), _snapshot(panel=(first,)))
+
+
 def test_property_changes_needs_the_control_present_on_both_sides() -> None:
     from ghostcursor.reasoning.schema import VerificationKind, VerificationRule
     from ghostcursor.reasoning.verification import verify
