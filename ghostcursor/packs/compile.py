@@ -282,10 +282,14 @@ def _compile_rules(
 def compile_matcher(catalog: VerifiedCatalog) -> CompiledMatcher:
     """Compile every verified intent in `catalog` into a deterministic matcher.
 
-    An intent whose rules cannot be compiled contributes no rules and earns a
-    diagnostic.  It can then never match, which is the fail-closed direction:
-    the alternative is a partially compiled rule that matches more goals than
-    the artifact declared.
+    An intent whose rules cannot be compiled is **excluded entirely** and earns
+    a diagnostic.  Contributing an empty rule set instead would leave it
+    unmatchable but still registered, and a registered id is model-visible and
+    carries recipe authority -- so a cross-file-invalid artifact would keep a
+    seat at execution.  The spec scopes an invalid intent artifact to
+    "excluded from matching + registry diagnostic", and this is the single
+    place that exclusion is decided: `compile_planner()` registers exactly what
+    survives here.
     """
     if not catalog.root_valid:
         return CompiledMatcher((), ())
@@ -306,7 +310,7 @@ def compile_matcher(catalog: VerifiedCatalog) -> CompiledMatcher:
                         intent_id=intent_id,
                     )
                 )
-                phrases, heuristic = (), ()
+                continue
             intents.append(
                 CompiledIntent(
                     intent_id=intent_id,
@@ -333,8 +337,8 @@ def _recipe_path(pack: VerifiedPack, intent_id: str) -> Path | None:
 def compile_planner(catalog: VerifiedCatalog) -> tuple["IntentSpec", ...]:
     """Compile the planner's intent registrations from a verified catalog.
 
-    Registration and recipe authority are separate.  Every verified intent is
-    registered so the planner can name it, but only an intent with an active
+    Registration and recipe authority are separate.  Every intent that compiles
+    is registered so the planner can name it, but only an intent with an active
     adoption carries a recipe path: an intent whose recipe is unavailable is
     still a known intent, which is what makes
     `KNOWN_INTENT_RECIPE_UNAVAILABLE` distinguishable from an unsupported goal.
@@ -354,7 +358,12 @@ def compile_planner(catalog: VerifiedCatalog) -> tuple["IntentSpec", ...]:
     specs: list[IntentSpec] = []
     for pack in catalog.packs.values():
         for intent_id in pack.intents:
-            compiled = by_id[intent_id]
+            compiled = by_id.get(intent_id)
+            if compiled is None:
+                # Excluded by `compile_matcher()` with a diagnostic.  Skipping
+                # it here is what keeps an invalid artifact out of the
+                # model-visible registry and away from recipe authority.
+                continue
             specs.append(
                 IntentSpec(
                     intent_id=intent_id,

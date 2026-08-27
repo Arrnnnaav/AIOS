@@ -27,7 +27,7 @@ from pathlib import Path
 import pytest
 
 from ghostcursor.packs import compile as packs_compile
-from ghostcursor.packs.activation import IntentAvailability
+from ghostcursor.packs.activation import DiagnosticCode, IntentAvailability
 from ghostcursor.packs.compile import (
     EXACT_CONFIDENCE,
     HEURISTIC_CONFIDENCE,
@@ -361,8 +361,42 @@ def test_a_clause_whose_alias_is_missing_never_becomes_vacuously_true() -> None:
     catalog = _catalog_with(OPEN_FOLDER, aliases={})
     compiled = compile_matcher(catalog)
     assert compiled.diagnostics
-    assert compiled.intents[0].heuristic_rules == ()
+    assert compiled.intents == ()
     assert compiled.classify("open anything at all").intent_id is None
+
+
+def test_an_intent_that_fails_to_compile_leaves_the_registry_too() -> None:
+    """Exclusion covers matching *and* the model-visible registry.
+
+    An intent that only lost its rules would still be a registered id carrying
+    a recipe path.  A registered id is an allowlist boundary the model can
+    name (D058), and a recipe path is execution authority -- so a cross-file
+    invalid artifact would keep a seat at execution while looking harmless.
+    """
+    catalog = _catalog_with(OPEN_FOLDER, aliases={})
+
+    matcher = compile_matcher(catalog)
+    assert [d.code for d in matcher.diagnostics] == [DiagnosticCode.INTENT_INVALID]
+    assert matcher.diagnostics[0].intent_id == "OPEN_FOLDER"
+
+    specs = compile_planner(catalog)
+    assert specs == (), "an invalid intent must not reach the planner registry"
+
+
+def test_a_valid_intent_survives_a_sibling_that_fails_to_compile() -> None:
+    """Exclusion is intent-scoped, not pack-scoped.
+
+    OPEN_TERMINAL also references the alias, so the fixture gives only
+    EXPORT_DATA rules that can compile without one -- and it must still
+    register and still match.
+    """
+    catalog = _catalog_with(EXPORT_DATA, OPEN_FOLDER, aliases={})
+    specs = compile_planner(catalog)
+    assert [spec.intent_id for spec in specs] == ["EXPORT_DATA"]
+
+    matcher = compile_matcher(catalog)
+    assert matcher.classify("export as csv").intent_id == "EXPORT_DATA"
+    assert matcher.classify("open a folder in vs code").intent_id is None
 
 
 def test_confidence_comes_from_the_tier_and_only_from_the_tier(
@@ -401,11 +435,26 @@ def test_every_corpus_row_matches_its_recorded_v1_outcome(corpus: dict) -> None:
     failures = []
     for row in corpus["rows"]:
         intent_id, confidence, _reason = deterministic_intent(row["goal"])
-        actual = (intent_id, confidence)
-        expected = (row["expected_v1"], row["v1_confidence"])
+        # `_fallback()` has no ambiguity concept -- it resolves collisions by
+        # source order -- so its kind is fully determined by whether it
+        # grounded.  Deriving it here rather than trusting the column is what
+        # makes the column checked instead of merely rendered.
+        kind = "matched" if intent_id is not None else "no_match"
+        actual = (intent_id, confidence, kind)
+        expected = (row["expected_v1"], row["v1_confidence"], row["v1_kind"])
         if actual != expected:
             failures.append((row["goal"], expected, actual))
     assert failures == []
+
+
+def test_no_corpus_row_claims_v1_was_ambiguous(corpus: dict) -> None:
+    """`ambiguous` is a v2-only outcome.
+
+    v1 returns whichever rule its source order reaches first, so a v1 column
+    reading `ambiguous` would describe behaviour that cannot occur -- and would
+    quietly reclassify a real divergence as agreement.
+    """
+    assert {row["v1_kind"] for row in corpus["rows"]} == {"matched", "no_match"}
 
 
 def test_no_unlisted_divergence_from_the_production_matcher(
@@ -476,6 +525,15 @@ def test_every_divergence_class_records_its_d072_reason(corpus: dict) -> None:
         assert definition["representatives_summary"].strip(), name
 
 
+def _check_renderer() -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [sys.executable, str(RENDERER), "--check"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+
 def test_the_evidence_document_is_a_faithful_render_of_the_corpus() -> None:
     """Run the renderer's `--check` mode rather than comparing two copies.
 
@@ -483,13 +541,34 @@ def test_the_evidence_document_is_a_faithful_render_of_the_corpus() -> None:
     source, so the only thing worth asserting is that regenerating produces no
     difference.
     """
-    result = subprocess.run(
-        [sys.executable, str(RENDERER), "--check"],
-        cwd=REPO_ROOT,
-        capture_output=True,
-        text=True,
-    )
-    assert result.returncode == 0, result.stderr
+    assert _check_renderer().returncode == 0, _check_renderer().stderr
+
+
+def test_the_evidence_document_is_utf8_lf_without_a_bom() -> None:
+    raw = EVIDENCE_PATH.read_bytes()
+    assert b"\r\n" not in raw
+    assert not raw.startswith(b"\xef\xbb\xbf")
+    raw.decode("utf-8")
+
+
+def test_check_mode_detects_a_byte_difference_text_mode_would_hide() -> None:
+    """A CRLF copy differs in bytes while reading back identical as text.
+
+    `Path.read_text()` folds CRLF to LF on Windows, so a check built on text
+    comparison passes over a file whose bytes changed.  The plan requires
+    `--check` to fail on *any* byte difference, which is only observable if the
+    comparison is made on bytes.
+    """
+    original = EVIDENCE_PATH.read_bytes()
+    assert b"\r\n" not in original
+
+    EVIDENCE_PATH.write_bytes(original.replace(b"\n", b"\r\n"))
+    try:
+        crlf = _check_renderer()
+        assert crlf.returncode == 1, "--check accepted a CRLF copy of the document"
+    finally:
+        EVIDENCE_PATH.write_bytes(original)
+    assert _check_renderer().returncode == 0
 
 
 # --------------------------------------------------------------------------

@@ -53,9 +53,7 @@ def render_result(rows: list[dict]) -> str:
         1 for row in rows if row["diverges"] and row["divergence_class"] is None
     )
     kinds = Counter(row["v2_kind"] for row in rows)
-    outside = sum(
-        1 for row in rows if row["v2_confidence"] not in ALLOWED_CONFIDENCES
-    )
+    outside = sum(1 for row in rows if row["v2_confidence"] not in ALLOWED_CONFIDENCES)
     return "\n".join(
         [
             "| | |",
@@ -148,8 +146,16 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     document = load_corpus()
-    current = DOCUMENT_PATH.read_text(encoding="utf-8")
-    rendered = render_document(current, document)
+
+    # Bytes, never `read_text()`.  Text mode on Windows folds CRLF to LF on the
+    # way in, so a CRLF copy of this document reads back identical to the LF
+    # bytes the renderer emits, and `--check` would pass over a file whose
+    # bytes differ.  Comparing bytes is also what enforces the encoding the
+    # trusted artifacts require: UTF-8, LF, no BOM, which is exactly what
+    # `render_document()` produces.
+    current = DOCUMENT_PATH.read_bytes()
+    text = current.decode("utf-8").replace("\r\n", "\n")
+    rendered = render_document(text, document).encode("utf-8")
 
     if args.check:
         if rendered != current:
@@ -162,7 +168,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if rendered != current:
-        DOCUMENT_PATH.write_text(rendered, encoding="utf-8", newline="\n")
+        DOCUMENT_PATH.write_bytes(rendered)
         print(f"rewrote {DOCUMENT_PATH}")
     else:
         print(f"{DOCUMENT_PATH} already current")
