@@ -666,8 +666,11 @@ class PerceptionService:
                     self._progress(generation, stage="walk")
                     if debug:
                         print("Ghost Cursor: UIA walk starting")
+                    plan_title = None
                     if self.plan_runner is not None:
-                        selector_results, elements = self.plan_runner(target_hwnd)
+                        selector_results, elements, plan_title = self.plan_runner(
+                            target_hwnd
+                        )
                         elements = tuple(elements)
                     else:
                         selector_results = ()
@@ -687,6 +690,7 @@ class PerceptionService:
                             observed_at=observed_at,
                             focused_automation_id=focused_now,
                             selector_results=selector_results,
+                            title=plan_title,
                         ),
                         elements,
                         observed_at,

@@ -98,15 +98,25 @@ def take_snapshot(
     observed_at: float = 0.0,
     focused_automation_id: str = "",
     selector_results: tuple[tuple[str, tuple[Element, ...]], ...] = (),
+    title: str | None = None,
 ) -> Snapshot:
+    """Freeze one observation.
+
+    `title` overrides the foreground-window read. A compiled workflow is bound
+    to ONE captured window, and the title it verifies against is that window's
+    -- not whatever happens to be in front. The two agree while the target has
+    focus and diverge exactly when it does not, which is the moment a title
+    check would silently start reading somebody else's window.
+    """
     import win32gui
 
     if elements is None:
         elements = iter_elements(title_re)
-    try:
-        title = win32gui.GetWindowText(win32gui.GetForegroundWindow())
-    except Exception:
-        title = ""
+    if title is None:
+        try:
+            title = win32gui.GetWindowText(win32gui.GetForegroundWindow())
+        except Exception:
+            title = ""
     return Snapshot(
         title=title,
         elements=_sort_elements(elements),

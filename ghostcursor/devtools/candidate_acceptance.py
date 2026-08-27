@@ -545,7 +545,7 @@ def accept_candidate(
     graph: CandidateGraph,
     workflow,
     *,
-    observe,
+    start_perception,
     make_renderer,
     read_window,
     project_root: Path,
@@ -582,12 +582,18 @@ def accept_candidate(
     # caller writing `accept_candidate(..., renderer=_live_renderer())` had
     # already put a full-screen topmost window on the user's screen before
     # this function could refuse the run.
+    # Perception starts HERE, after both gates. Starting it earlier means the
+    # worker can publish an observation taken while the artifacts were still
+    # unverified and the window unchecked -- and the run would then be free to
+    # consume it, so the gates would have bounded nothing.
+    observe, on_grounding, stop_perception = start_perception()
     renderer, dispose = make_renderer()
     kwargs = {
         "observe": observe,
         "renderer": renderer,
         "seconds": seconds,
         "pump": pump,
+        "on_grounding": on_grounding,
     }
     if clock is not None:
         kwargs["clock"] = clock
@@ -600,8 +606,10 @@ def accept_candidate(
     finally:
         # Every exit: pass, fail, timeout, abort, exception. An overlay is
         # click-through, topmost and has no title bar, so one left behind is
-        # one the user cannot close.
+        # one the user cannot close, and a worker left running keeps walking
+        # UIA against an application nobody is guiding any more.
         dispose()
+        stop_perception()
     return record_for(graph, workflow.target, result)
 
 
@@ -701,14 +709,12 @@ def main(
 
     import time
 
-    observe, ladder, pump, stop_perception = _live_acceptance_seams(
-        workflow, time.monotonic
-    )
+    start_perception, ladder, pump = _live_acceptance_seams(workflow, time.monotonic)
     try:
         record = accept_candidate(
             graph,
             workflow,
-            observe=observe,
+            start_perception=start_perception,
             make_renderer=_live_renderer_factory(ladder),
             read_window=live_window_reader(),
             project_root=project_root,
@@ -718,8 +724,6 @@ def main(
     except (CandidateRejected, WorkflowUnavailable) as exc:
         print(f"run refused: {exc}", file=sys.stderr)
         return 4
-    finally:
-        stop_perception()
 
     print(record.to_json())
     return 0 if record.outcome is RunOutcome.PASSED else 1
@@ -754,31 +758,26 @@ def _live_renderer_factory(ladder):  # pragma: no cover - needs a real desktop
 
 
 def _live_acceptance_seams(workflow, clock):  # pragma: no cover - real desktop
-    """The same worker, staleness ladder, and pump production uses.
+    """The same composition production uses, started only when asked.
 
     Acceptance that observed differently from production would certify
-    something production does not do -- which is the same objection that
-    forbids a second executor, one layer down.
+    something production does not do -- the same objection that forbids a
+    second executor, one layer down. So this returns the production wiring and
+    a `start()` the harness calls after its gates, never a running worker.
     """
     from ghostcursor.perception import tier2 as tier2_module
-    from ghostcursor.reasoning.staleness import StalenessLadder
-    from ghostcursor.run import (
-        compiled_perception_service,
-        published_observation_source,
-        pump_messages,
-    )
+    from ghostcursor.perception.compiled import build_compiled_perception
+    from ghostcursor.run import pump_messages
 
-    service = compiled_perception_service(
+    service, source = build_compiled_perception(
         workflow, clock, tier2=tier2_module.build_controller(clock)
     )
-    ladder = StalenessLadder(clock=clock)
-    service.start()
-    return (
-        published_observation_source(service),
-        ladder,
-        pump_messages,
-        service.stop,
-    )
+
+    def _start():
+        service.start()
+        return source, source.note_grounding, service.stop
+
+    return _start, source.ladder, pump_messages
 
 
 def _live_windows(graph: CandidateGraph) -> list[WindowCandidate]:  # pragma: no cover

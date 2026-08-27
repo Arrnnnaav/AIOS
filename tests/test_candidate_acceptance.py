@@ -399,6 +399,19 @@ def test_the_synthesised_adoption_never_reaches_disk(candidate) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _perception(observe, *, started=None):
+    """A `start_perception` seam: nothing runs until the gates have passed."""
+    stopped = []
+
+    def _start():
+        if started is not None:
+            started.append(True)
+        return observe, None, lambda: stopped.append(True)
+
+    _start.stopped = stopped
+    return _start
+
+
 def _factory(renderer=None):
     """A renderer FACTORY, plus the disposal the harness must always call.
 
@@ -510,7 +523,7 @@ def _accept(candidate, *, screen, renderer=None, seconds=120.0, read_window=None
     return graph, accept_candidate(
         graph,
         workflow,
-        observe=observe,
+        start_perception=_perception(observe),
         make_renderer=_factory(renderer),
         read_window=read_window or _reader(),
         project_root=PROJECT_ROOT,
@@ -762,7 +775,7 @@ def test_the_candidate_files_are_rehashed_immediately_before_launch(
         accept_candidate(
             graph,
             workflow,
-            observe=_screen(["Welcome - Visual Studio Code"])[0],
+            start_perception=_perception(_screen(["Welcome - Visual Studio Code"])[0]),
             make_renderer=_factory(),
             read_window=_reader(),
             project_root=PROJECT_ROOT,
@@ -782,7 +795,7 @@ def test_the_live_target_is_revalidated_before_the_run(candidate) -> None:
         accept_candidate(
             graph,
             workflow,
-            observe=_screen(["Welcome - Visual Studio Code"])[0],
+            start_perception=_perception(_screen(["Welcome - Visual Studio Code"])[0]),
             make_renderer=_factory(),
             read_window=_reader(missing=True),
             project_root=PROJECT_ROOT,
@@ -803,10 +816,9 @@ def test_nothing_runs_when_the_rehash_or_revalidation_fails(candidate) -> None:
     workflow = candidate_workflow(
         graph, "Open a folder in VS Code", target, project_root=PROJECT_ROOT
     )
-    observed = []
+    started = []
 
     def _observe():
-        observed.append(True)
         raise AssertionError("the executor ran despite a failed precondition")
 
     candidate["paths"]["pack"].write_bytes(
@@ -816,12 +828,12 @@ def test_nothing_runs_when_the_rehash_or_revalidation_fails(candidate) -> None:
         accept_candidate(
             graph,
             workflow,
-            observe=_observe,
+            start_perception=_perception(_observe, started=started),
             make_renderer=_factory(),
             read_window=_reader(),
             project_root=PROJECT_ROOT,
         )
-    assert observed == []
+    assert started == [], "perception started before the gates passed"
 
 
 def test_a_preparation_record_names_itself_as_non_evidence(candidate) -> None:
@@ -1290,7 +1302,7 @@ def test_an_unpublished_slot_is_waited_through_not_blocked_on(candidate) -> None
     record = accept_candidate(
         graph,
         workflow,
-        observe=lambda: None,
+        start_perception=_perception(lambda: None),
         make_renderer=_factory(),
         read_window=_reader(),
         project_root=PROJECT_ROOT,
@@ -1349,7 +1361,7 @@ def test_the_overlay_is_created_only_after_both_gates_pass(candidate) -> None:
         accept_candidate(
             graph,
             workflow,
-            observe=_screen(["Welcome - Visual Studio Code"])[0],
+            start_perception=_perception(_screen(["Welcome - Visual Studio Code"])[0]),
             make_renderer=factory,
             read_window=_reader(),
             project_root=PROJECT_ROOT,
@@ -1393,7 +1405,7 @@ def test_the_overlay_is_disposed_on_every_outcome(candidate) -> None:
         accept_candidate(
             graph,
             workflow,
-            observe=observe,
+            start_perception=_perception(observe),
             make_renderer=factory,
             read_window=_reader(),
             project_root=PROJECT_ROOT,
@@ -1421,7 +1433,7 @@ def test_the_overlay_is_disposed_when_the_executor_raises(candidate) -> None:
         accept_candidate(
             graph,
             workflow,
-            observe=_boom,
+            start_perception=_perception(_boom),
             make_renderer=factory,
             read_window=_reader(),
             project_root=PROJECT_ROOT,

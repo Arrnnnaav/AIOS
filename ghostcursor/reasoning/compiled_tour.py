@@ -192,6 +192,7 @@ def execute_compiled_workflow(
     tick_interval_s: float = 0.25,
     should_abort: Callable[[], bool] | None = None,
     pump: Callable[[], None] | None = None,
+    on_grounding: Callable[[int, bool], None] | None = None,
 ) -> TourResult:
     """Run one compiled workflow to a terminal state and report what happened.
 
@@ -227,8 +228,20 @@ def execute_compiled_workflow(
         if len(matched) != 1:
             # Zero is a clean absence and the loop keeps re-observing. More
             # than one cannot reach here: the observation would have faulted.
+            #
+            # Telling the source is the DECISION half of tier 2 (D035): only
+            # this loop knows which step is current and whether grounding just
+            # failed, so it is the only thing that can ask for an OCR read.
+            # The worker does the reading and publishes the answer later.
+            if on_grounding is not None:
+                on_grounding(index, False)
             return None
         element = matched[0]
+        if on_grounding is not None:
+            # Cancel, not merely stop asking. Absence of a request means "not
+            # wanted" -- there is no `wanted` flag -- so a success that did not
+            # cancel would leave OCR running for a step that no longer needs it.
+            on_grounding(index, True)
         provenance.record(index, element.source)
         return GroundedTarget(
             bbox=element.bbox,
