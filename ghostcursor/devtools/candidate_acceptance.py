@@ -821,42 +821,15 @@ def _live_acceptance_seams(workflow, clock):  # pragma: no cover - real desktop
 
 
 def _live_windows(graph: CandidateGraph) -> list[WindowCandidate]:  # pragma: no cover
-    """Enumerate real windows for the candidate pack's executables."""
-    import os
+    """The PRODUCTION enumerator, applied to the candidate pack.
 
-    import win32gui
-    import win32process
+    Not a copy. A second enumerator here would let acceptance see a different
+    set of candidate windows than production does -- the same objection that
+    forbids a second executor one layer up.
+    """
+    from ghostcursor.packs.workflow import live_windows_for
 
-    from ghostcursor.perception.appinfo import _exe_path_for_pid, _version_for
-
-    wanted = {name.casefold() for name in graph.pack.value["executable_names"]}
-    found: list[WindowCandidate] = []
-
-    def _collect(hwnd, _):
-        if not win32gui.IsWindowVisible(hwnd) or win32gui.IsIconic(hwnd):
-            return
-        pid = win32process.GetWindowThreadProcessId(hwnd)[1]
-        exe_path = _exe_path_for_pid(pid)
-        if not exe_path:
-            return
-        name = os.path.basename(exe_path).casefold()
-        if name not in wanted:
-            return
-        kind = "appx" if "WindowsApps" in exe_path else "win32"
-        found.append(
-            WindowCandidate(
-                hwnd=hwnd,
-                title=win32gui.GetWindowText(hwnd),
-                app=AppSnapshot(
-                    executable_name=name,
-                    version=_version_for(exe_path, kind),
-                    process_id=pid,
-                ),
-            )
-        )
-
-    win32gui.EnumWindows(_collect, None)
-    return found
+    return live_windows_for(_as_verified_pack(graph))
 
 
 if __name__ == "__main__":  # pragma: no cover

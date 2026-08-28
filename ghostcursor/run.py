@@ -1363,6 +1363,16 @@ def _run_compiled_tour(
         f"step(s), grounded by "
         f"{', '.join(p.value for p in result.provenance) or 'nothing'}"
     )
+    # Always, not only on failure. A timeout is the case that needs the marks,
+    # and a run that printed them only when something went wrong would give no
+    # baseline to compare the bad run against.
+    print(
+        "timing: "
+        + (
+            ", ".join(f"{name}={value:.2f}s" for name, value in result.timing.items())
+            or "nothing recorded"
+        )
+    )
     return 0 if result.outcome is RunOutcome.PASSED else 1
 
 

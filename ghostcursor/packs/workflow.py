@@ -259,6 +259,116 @@ def resolve_target(
     )
 
 
+def live_windows_for(pack: VerifiedPack) -> list[WindowCandidate]:  # pragma: no cover
+    """Every visible window owned by one of the pack's executables.
+
+    Production's enumerator, and the acceptance harness's too. A second copy
+    in the harness would let acceptance see a different set of candidate
+    windows than production does, which is the same objection that forbids a
+    second executor one layer up.
+
+    Minimised windows are excluded deliberately: a hint drawn over a window
+    the user cannot see points at nothing.
+    """
+    import os
+
+    import win32gui
+    import win32process
+
+    from ghostcursor.perception.appinfo import _exe_path_for_pid, _version_for
+
+    wanted = {name.casefold() for name in pack.pack_value["executable_names"]}
+    found: list[WindowCandidate] = []
+
+    def _collect(hwnd, _):
+        # Returns None on every path, deliberately. An `EnumWindows` callback
+        # that returns a falsy value stops the enumeration, so a filter
+        # written as one expression silently truncates the walk at the first
+        # window it rejects.
+        if not win32gui.IsWindowVisible(hwnd) or win32gui.IsIconic(hwnd):
+            return
+        pid = win32process.GetWindowThreadProcessId(hwnd)[1]
+        exe_path = _exe_path_for_pid(pid)
+        if not exe_path:
+            return
+        name = os.path.basename(exe_path).casefold()
+        if name not in wanted:
+            return
+        kind = "appx" if "WindowsApps" in exe_path else "win32"
+        found.append(
+            WindowCandidate(
+                hwnd=hwnd,
+                title=win32gui.GetWindowText(hwnd),
+                app=AppSnapshot(
+                    executable_name=name,
+                    version=_version_for(exe_path, kind),
+                    process_id=pid,
+                ),
+            )
+        )
+
+    win32gui.EnumWindows(_collect, None)
+    return found
+
+
+def bind_workflow(
+    catalog: VerifiedCatalog,
+    intent_id: str,
+    goal: str,
+    *,
+    target_title_re: str | None = None,
+    project_root: Path,
+):
+    """Bind a classified intent to one live window, or refuse.
+
+    The production launch path's target step. `target_title_re` is the
+    operator's narrowing and the ONLY way to disambiguate: with several
+    matching windows and no pattern specific enough to leave one, this
+    refuses. Nothing falls back to the foreground (D075).
+
+    **The window list is not a parameter.** It carries the PID, executable,
+    title and version that authorize the launch, so a caller who supplied it
+    would be supplying the identity revalidation then checks. This function
+    enumerates them itself; `_bind_workflow_with_windows` is the seam hermetic
+    tests drive, and it is private for that reason.
+    """
+    pack, intent = _catalog_entry(catalog, intent_id)
+    return _bind_workflow_with_windows(
+        catalog,
+        pack,
+        intent,
+        goal,
+        windows=live_windows_for(pack),
+        target_title_re=target_title_re,
+        project_root=project_root,
+    )
+
+
+def _catalog_entry(catalog: VerifiedCatalog, intent_id: str):
+    """The verified pack and intent for one id, or a refusal naming it."""
+    for pack in catalog.packs.values():
+        intent = pack.intents.get(intent_id)
+        if intent is not None:
+            return pack, intent
+    raise WorkflowUnavailable(f"no verified pack provides intent {intent_id!r}")
+
+
+def _bind_workflow_with_windows(
+    catalog: VerifiedCatalog,
+    pack: VerifiedPack,
+    intent: VerifiedIntent,
+    goal: str,
+    *,
+    windows: list[WindowCandidate],
+    target_title_re: str | None,
+    project_root: Path,
+):
+    target = resolve_target(
+        pack, windows, target_title_re=target_title_re, project_root=project_root
+    )
+    return materialize(catalog, pack, intent, goal, target)
+
+
 # ---------------------------------------------------------------------------
 # The bound workflow
 # ---------------------------------------------------------------------------

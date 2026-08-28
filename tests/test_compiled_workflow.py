@@ -749,6 +749,133 @@ def test_one_matching_window_needs_no_narrowing_at_all() -> None:
         project_root=PROJECT_ROOT,
     )
     assert target.hwnd == 7
+# ---------------------------------------------------------------------------
+# The production binding path, window by window
+# ---------------------------------------------------------------------------
+#
+# `resolve_target` is tested directly above. These drive the seam production
+# actually calls -- catalog in, bound `CompiledWorkflow` out -- because a
+# correct resolver reached through a wrapper that drops the narrowing, or
+# picks the wrong pack, is still a wrong target.
+
+
+def _bind(windows, narrowing=None, goal="Open a folder in VS Code"):
+    from ghostcursor.packs.workflow import _bind_workflow_with_windows
+
+    catalog, pack, intent = _catalog()
+    return _bind_workflow_with_windows(
+        catalog,
+        pack,
+        intent,
+        goal,
+        windows=windows,
+        target_title_re=narrowing,
+        project_root=PROJECT_ROOT,
+    )
+
+
+def test_the_launch_path_binds_a_single_window_without_narrowing() -> None:
+    """The ordinary case: one window, no flag, and it just runs."""
+    workflow = _bind([_window(hwnd=7, title="only - Visual Studio Code")])
+    assert workflow.target.hwnd == 7
+
+
+def test_the_launch_path_refuses_two_windows_without_narrowing() -> None:
+    """No flag and no way to tell them apart is a refusal, not a guess."""
+    with pytest.raises(WorkflowUnavailable) as caught:
+        _bind(
+            [
+                _window(hwnd=1, title="a - Visual Studio Code"),
+                _window(hwnd=2, title="b - Visual Studio Code"),
+            ]
+        )
+    assert "1 'a - Visual Studio Code'" in str(caught.value)
+    assert "2 'b - Visual Studio Code'" in str(caught.value)
+
+
+def test_the_launch_path_honours_an_exact_narrowing() -> None:
+    """The operator's flag reaches `resolve_target` and decides the target."""
+    workflow = _bind(
+        [
+            _window(hwnd=1, title="alpha - Visual Studio Code"),
+            _window(hwnd=2, title="beta - Visual Studio Code"),
+        ],
+        narrowing="^beta",
+    )
+    assert workflow.target.hwnd == 2
+
+
+def test_the_launch_path_refuses_a_narrowing_that_still_matches_several() -> None:
+    """A flag that does not reach one window is not a choice.
+
+    This is the row that decided the policy: under the old order such a
+    pattern fell through to the foreground, so an operator who thought they
+    had disambiguated had not.
+    """
+    with pytest.raises(WorkflowUnavailable) as caught:
+        _bind(
+            [
+                _window(hwnd=1, title="alpha - Visual Studio Code"),
+                _window(hwnd=2, title="beta - Visual Studio Code"),
+            ],
+            narrowing="Visual Studio Code",
+        )
+    assert "even after narrowing" in str(caught.value)
+
+
+def test_the_launch_path_ignores_which_window_is_focused(monkeypatch) -> None:
+    """Focus changes nothing, whichever window holds it.
+
+    Driven through a real `GetForegroundWindow` stub rather than a parameter,
+    because the parameter is gone: the only way the tie-break could return is
+    the resolver fetching the foreground itself, and this is what that would
+    look like from the outside.
+    """
+    import win32gui
+
+    windows = [
+        _window(hwnd=1, title="a - Visual Studio Code"),
+        _window(hwnd=2, title="b - Visual Studio Code"),
+    ]
+    for focused in (0, 1, 2, 999):
+        monkeypatch.setattr(win32gui, "GetForegroundWindow", lambda f=focused: f)
+        with pytest.raises(WorkflowUnavailable):
+            _bind(windows)
+
+
+def test_the_bound_workflow_carries_the_chosen_handle_onward() -> None:
+    """Binding is not advice: the handle travels into execution unchanged.
+
+    Perception pins its worker to this handle and revalidation re-reads this
+    handle, so a target chosen here and rediscovered later by title could move
+    to a different window at exactly the moment the title changes -- which for
+    Open Folder is the verified outcome itself.
+    """
+    workflow = _bind([_window(hwnd=4242, title="only - Visual Studio Code")])
+    assert workflow.target.hwnd == 4242
+    assert workflow.target.title == "only - Visual Studio Code"
+
+
+def test_the_public_binding_never_accepts_a_window_list() -> None:
+    """Windows carry the PID, executable, title and version that authorize a
+    launch, so a caller who supplied them would supply the identity
+    revalidation then checks. The public entry enumerates them itself."""
+    import inspect
+
+    from ghostcursor.packs.workflow import bind_workflow
+
+    parameters = set(inspect.signature(bind_workflow).parameters)
+    for authority in ("windows", "list_windows", "candidates"):
+        assert authority not in parameters, authority
+
+
+def test_an_unknown_intent_refuses_before_any_window_is_read() -> None:
+    """A refusal that named no pack would send the operator hunting."""
+    from ghostcursor.packs.workflow import _catalog_entry
+
+    catalog, _pack, _intent = _catalog()
+    with pytest.raises(WorkflowUnavailable, match="OPEN_EXTENSIONS"):
+        _catalog_entry(catalog, "OPEN_EXTENSIONS")
 
 
 def test_target_narrowing_can_filter_but_never_replace_the_executable_check() -> None:
@@ -1481,6 +1608,63 @@ def test_the_live_compiled_launch_owns_and_disposes_the_control_bar(
     # The production launch reports progress to its own rail, not just the
     # harness one -- the two wire the executor separately.
     assert controls.steps_reported == [(0, 1)]
+
+
+def test_the_production_launch_always_prints_its_timing(capsys) -> None:
+    """Every run, not only the failing ones.
+
+    A timeout is the case that needs the marks, and a launch that printed them
+    only on failure would leave nothing to compare the bad run against. This
+    run SUCCEEDS, and must still say when its landmarks happened.
+    """
+    from ghostcursor.perception.uia import Element
+    from ghostcursor.reasoning.compiled_tour import TickInput
+
+    workflow, catalog = _workflow()
+    slot = {"value": None}
+    target = Element("Open Folder...", "Button", "", (10, 20, 110, 60))
+
+    titles = iter(
+        ["Welcome - Visual Studio Code"] * 3 + ["demo - Visual Studio Code"] * 40
+    )
+
+    def _publish():
+        # A baseline first, then the changed title: `window_title_matches`
+        # verifies a CHANGE, so a title that was always the goal's would time
+        # out and the run would never reach the success path being asserted.
+        slot["value"] = TickInput(
+            title=next(titles, "demo - Visual Studio Code"),
+            selectors={"open_folder": (target,)},
+            union=(target,),
+        )
+
+    class _Renderer:
+        def show(self, grounded, instruction_text):
+            pass
+
+        def clear(self):
+            pass
+
+        def settle(self):
+            pass
+
+    _publish()
+    exit_code = _launch(
+        workflow,
+        catalog,
+        seconds=60.0,
+        create_overlay=lambda: 1,
+        observe=lambda: slot["value"],
+        renderer=_Renderer(),
+        on_sleep=_publish,
+    )
+
+    assert exit_code == 0
+    printed = capsys.readouterr().out
+    assert "timing: " in printed
+    assert "first_observation_s=" in printed
+    assert "ended_s=" in printed
+    assert "nothing recorded" not in printed
 
 
 # ---------------------------------------------------------------------------
