@@ -1333,6 +1333,7 @@ def test_the_live_compiled_launch_owns_and_disposes_the_control_bar(
         def __init__(self):
             self.polls = 0
             self.disposed = False
+            self.steps_reported = []
 
         def poll(self):
             self.polls += 1
@@ -1342,6 +1343,9 @@ def test_the_live_compiled_launch_owns_and_disposes_the_control_bar(
 
         def should_pause(self):
             return self.polls == 1
+
+        def report_step(self, index, total):
+            self.steps_reported.append((index, total))
 
         def dispose(self):
             self.disposed = True
@@ -1366,6 +1370,9 @@ def test_the_live_compiled_launch_owns_and_disposes_the_control_bar(
     assert exit_code == 0
     assert controls.polls >= 2
     assert controls.disposed is True
+    # The production launch reports progress to its own rail, not just the
+    # harness one -- the two wire the executor separately.
+    assert controls.steps_reported == [(0, 1)]
 
 
 # ---------------------------------------------------------------------------

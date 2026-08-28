@@ -323,6 +323,10 @@ class CompiledTourControls:
         self._escape_source = escape_source or escape_pressed
         self._stop_requested = False
         self._paused = False
+        #: What the bar should say while the tour is simply running. The
+        #: executor replaces it as steps advance; until it does, a rail that
+        #: named no step at all was the state this text is here to end.
+        self._step_text = "Running"
 
     def poll(self) -> None:
         """Pump once and consume each edge-triggered bar request once."""
@@ -334,11 +338,32 @@ class CompiledTourControls:
             self._bar.set_status(self.hwnd, "Stopping…")
         if requests.pause_requested:
             self._paused = not self._paused
-            self._bar.set_status(self.hwnd, "Paused" if self._paused else "Running")
+            # Resuming restores the STEP, not the word "Running": the executor
+            # reports only on change, so a resume that wrote "Running" would
+            # leave the rail lying about progress until the next step began --
+            # and on the last step, until the tour ended.
+            self._bar.set_status(
+                self.hwnd, "Paused" if self._paused else self._step_text
+            )
         if requests.ask_requested:
             self._bar.set_status(
                 self.hwnd, "Finish or stop the active tour before asking"
             )
+
+    def report_step(self, index: int, total: int) -> None:
+        """Show which step is running. Called BY the executor, never polled.
+
+        The rail cannot read reasoning state and must not: a surface that
+        counted steps itself could disagree with the executor about which one
+        is running, which is the invented progress this class exists to avoid.
+
+        A stop already under way keeps its own message -- "Stopping…" is the
+        more urgent fact, and overwriting it would make the rail look like it
+        had ignored the request.
+        """
+        self._step_text = f"Step {index + 1} of {total}"
+        if not self._paused and not self._stop_requested:
+            self._bar.set_status(self.hwnd, self._step_text)
 
     def should_abort(self) -> bool:
         return self._stop_requested or self._escape_source()
@@ -1318,6 +1343,7 @@ def _run_compiled_tour(
                 ),
                 pump=_pump_compiled_ui,
                 on_grounding=on_grounding,
+                on_step=(controls.report_step if controls is not None else None),
             )
         finally:
             if stop_perception is not None:  # pragma: no cover - real desktop

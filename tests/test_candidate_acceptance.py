@@ -540,6 +540,7 @@ def test_acceptance_wires_and_disposes_the_compiled_control_bar(candidate) -> No
         def __init__(self):
             self.polls = 0
             self.disposed = False
+            self.steps_reported = []
 
         def poll(self):
             self.polls += 1
@@ -550,6 +551,9 @@ def test_acceptance_wires_and_disposes_the_compiled_control_bar(candidate) -> No
         def should_pause(self):
             # Hold the state machine for one pumped turn, then release it.
             return self.polls == 1
+
+        def report_step(self, index, total):
+            self.steps_reported.append((index, total))
 
         def dispose(self):
             self.disposed = True
@@ -570,6 +574,8 @@ def test_acceptance_wires_and_disposes_the_compiled_control_bar(candidate) -> No
     assert record.outcome is RunOutcome.PASSED
     assert controls.polls >= 2
     assert controls.disposed is True
+    # Acceptance runs the rail production runs, progress reporting included.
+    assert controls.steps_reported == [(0, 1)]
 
 
 def test_acceptance_actually_runs_the_workflow_and_records_what_happened(

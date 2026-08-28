@@ -2063,3 +2063,159 @@ def test_an_exitstack_bound_under_any_name_still_counts() -> None:
     )
     stop_name = bound_stop_seam(node)
     assert stop_seam_registrations(node, stop_name)
+# ---------------------------------------------------------------------------
+# Which step is running
+# ---------------------------------------------------------------------------
+
+
+def _two_step_workflow():
+    """Step 1 completes on its own; step 2 dwells waiting for a confirmation.
+
+    The dwelling second step is the point: it keeps the loop ticking for many
+    iterations on one step, so a per-tick report cannot pass as a per-step one.
+    """
+    import sys
+    from copy import deepcopy
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from ghostcursor.packs.workflow import materialize
+    from test_compiled_workflow import (
+        _adoption,
+        _catalog,
+        _recipe_value,
+        _selector,
+        _target,
+        _window,
+    )
+
+    recipe = _recipe_value()
+    recipe["selectors"] = {"open_folder": _selector(names=("Open Folder...",))}
+    first = recipe["steps"][0]
+    first["target_selector"] = "open_folder"
+    first["verification_rule"] = {
+        "kind": "element_appears",
+        "selector": "open_folder",
+        "args": {"accept_if_already_present": True},
+        "timeout_s": 20.0,
+    }
+    second = deepcopy(first)
+    second["instruction_text"] = "Check the result."
+    second["user_action"] = "observe"
+    second["verification_rule"] = {
+        "kind": "user_confirms",
+        "args": {},
+        "timeout_s": 20.0,
+    }
+    recipe["steps"] = [first, second]
+    adoption = _adoption()
+    object.__setattr__(adoption, "recipe_value", recipe)
+    catalog, pack, intent = _catalog(adoption=adoption)
+    return materialize(
+        catalog,
+        pack,
+        intent,
+        "Open a folder in VS Code",
+        _target(_window(hwnd=TARGET_HWND)),
+    )
+
+
+class _NullRenderer:
+    def show(self, grounded, instruction_text):
+        pass
+
+    def clear(self):
+        pass
+
+    def settle(self):
+        pass
+
+
+def _run_two_step(**kwargs):
+    workflow = _two_step_workflow()
+    target = Element("Open Folder...", "Button", "", (10, 20, 110, 60))
+    now = [0.0]
+
+    def _sleep(seconds):
+        now[0] += seconds
+
+    def _observe():
+        # A NEW timestamp every read, so the dwelling step keeps ticking
+        # forward rather than stalling on `_is_newer`.
+        return TickInput(
+            title=f"Welcome {now[0]:.2f} - Visual Studio Code",
+            selectors={"open_folder": (target,)},
+            union=(target,),
+        )
+
+    return execute_compiled_workflow(
+        workflow,
+        observe=_observe,
+        renderer=_NullRenderer(),
+        clock=lambda: now[0],
+        sleeper=_sleep,
+        seconds=6.0,
+        **kwargs,
+    )
+
+
+def test_every_step_is_reported_once_in_order() -> None:
+    """The rail is TOLD which step is running; it never counts them itself.
+
+    A surface that counted steps could disagree with the executor about which
+    one is active -- progress it invented rather than observed.
+    """
+    reported = []
+    result = _run_two_step(on_step=lambda index, total: reported.append((index, total)))
+
+    assert result.outcome is RunOutcome.TIMED_OUT, "step 2 was meant to dwell"
+    assert reported == [(0, 2), (1, 2)]
+
+
+def test_a_dwelling_step_is_reported_once_not_once_per_tick() -> None:
+    """Step 2 never completes here, so the loop ticks it many times over.
+
+    Reporting on every tick would repaint the same string several times a
+    second, and would make the report a heartbeat rather than a transition.
+    """
+    reported = []
+    _run_two_step(on_step=lambda index, total: reported.append((index, total)))
+
+    assert reported.count((1, 2)) == 1, reported
+
+
+def test_the_finished_tour_reports_no_step_beyond_the_last() -> None:
+    """A completed tour has no current step, so there is no "step 3 of 2"."""
+    workflow = _two_step_workflow()
+    target = Element("Open Folder...", "Button", "", (10, 20, 110, 60))
+    now = [0.0]
+    reported = []
+
+    def _observe():
+        return TickInput(
+            title=f"Welcome {now[0]:.2f} - Visual Studio Code",
+            selectors={"open_folder": (target,)},
+            union=(target,),
+        )
+
+    result = execute_compiled_workflow(
+        workflow,
+        observe=_observe,
+        renderer=_NullRenderer(),
+        clock=lambda: now[0],
+        sleeper=lambda seconds: now.__setitem__(0, now[0] + seconds),
+        seconds=6.0,
+        # Confirm immediately, so the dwelling step completes and the tour ends.
+        confirmation_requested=lambda: True,
+        on_step=lambda index, total: reported.append((index, total)),
+    )
+
+    assert result.outcome is RunOutcome.PASSED
+    assert reported == [(0, 2), (1, 2)], reported
+    assert all(index < total for index, total in reported)
+
+
+def test_the_executor_runs_without_a_progress_listener() -> None:
+    """`on_step` is optional: the ESC-only path wires no control rail at all."""
+    result = _run_two_step()
+    assert result.outcome is RunOutcome.TIMED_OUT

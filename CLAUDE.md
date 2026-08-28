@@ -137,7 +137,11 @@ slice before starting the next mutation.
 
 The control surface is a vertical middle-right rail, not a horizontal toolbar.
 Compact geometry is 148×192px with Stop/Pause/Ask stacked vertically and
-status below. Ask preserves the right edge and centre, expands left to
+status below. The status line shows `Step N of M`, and the executor REPORTS
+it through `on_step` — the rail never counts steps itself, or it could
+disagree with the executor about which one is running. A resume restores the
+step text, never the word `Running`, and a requested stop keeps `Stopping…`.
+Ask preserves the right edge and centre, expands left to
 520×260px, and adds a 372px prompt column containing `Type your goal:` and a
 multiline scrollable EDIT. Never create panel children outside the current
 parent rectangle: Win32 clips them even though their HWNDs exist. The prompt

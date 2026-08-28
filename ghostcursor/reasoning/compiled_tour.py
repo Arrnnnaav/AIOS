@@ -197,6 +197,7 @@ def execute_compiled_workflow(
     confirmation_requested: Callable[[], bool] | None = None,
     pump: Callable[[], None] | None = None,
     on_grounding: Callable[..., None] | None = None,
+    on_step: Callable[[int, int], None] | None = None,
 ) -> TourResult:
     """Run one compiled workflow to a terminal state and report what happened.
 
@@ -300,6 +301,12 @@ def execute_compiled_workflow(
         ),
     )
 
+    #: The step index last REPORTED, so progress is announced on change
+    #: rather than on every tick. -1 rather than 0 so the first step is
+    #: announced too: a run that named no step until the second one would
+    #: leave the first looking like no step at all.
+    _reported = [-1]
+
     started = clock()
 
     def _tend() -> None:
@@ -369,6 +376,19 @@ def execute_compiled_workflow(
                 )
             sleeper(tick_interval_s)
             continue
+
+        # Progress is REPORTED to the surface, never asked for by it. A bar
+        # that computed its own step number could disagree with the executor
+        # about which step is running -- which is the "invents progress"
+        # failure the control rail is built to avoid. On change only: a
+        # per-tick write would repaint the same string four times a second.
+        if tour.step_index != _reported[0]:
+            _reported[0] = tour.step_index
+            # A finished tour has no current step, so there is no "step 3 of
+            # 2" to announce. The terminal index is still recorded above, so
+            # nothing re-announces the last step either.
+            if on_step is not None and tour.step_index < len(steps):
+                on_step(tour.step_index, len(steps))
 
         _index[0] = tour.step_index
         # Confirmation is an explicit user action, not an observation.  The

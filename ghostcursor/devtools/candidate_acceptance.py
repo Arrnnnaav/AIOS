@@ -633,6 +633,7 @@ def accept_candidate(
             kwargs["sleeper"] = sleeper
         if controls is not None:
             kwargs["should_pause"] = controls.should_pause
+            kwargs["on_step"] = controls.report_step
         if confirmation_requested is not None:
             kwargs["confirmation_requested"] = confirmation_requested
         result = execute_compiled_workflow(workflow, **kwargs)
