@@ -1809,3 +1809,131 @@ def test_the_validator_does_not_trust_the_arguments_it_is_handed() -> None:
             read_window=_reader(),
             project_root=PROJECT_ROOT,
         )
+def test_two_windows_sharing_a_title_still_refuse_usefully() -> None:
+    """The live shape, which distinct-title tests do not reach.
+
+    Two Synthetic Export demo windows were up during acceptance and both were
+    titled exactly `'Synthetic Export'`. Every other ambiguity test here uses
+    distinct titles, so the diagnostic's usefulness in the one case where the
+    title cannot separate them was untested.
+
+    The handles are the whole answer here: a message listing two identical
+    titles and nothing else tells the operator there is a conflict and gives
+    them no way to see which windows, or to act. See
+    `docs/superpowers/FOLLOWUPS.md` -- narrowing cannot resolve this shape at
+    all, which is why the handles have to be in the message.
+    """
+    _catalog_, pack, _intent = _catalog()
+    windows = [
+        _window(hwnd=3607180, title="demo - Visual Studio Code"),
+        _window(hwnd=328996, title="demo - Visual Studio Code"),
+    ]
+    with pytest.raises(WorkflowUnavailable) as caught:
+        resolve_target(pack, windows, project_root=PROJECT_ROOT)
+
+    message = str(caught.value)
+    assert "3607180" in message and "328996" in message, message
+    # And a narrowing cannot rescue it, however specific: the titles are equal,
+    # so any pattern matching one matches both.
+    with pytest.raises(WorkflowUnavailable) as narrowed:
+        resolve_target(
+            pack,
+            windows,
+            target_title_re="^demo - Visual Studio Code$",
+            project_root=PROJECT_ROOT,
+        )
+    assert "even after narrowing" in str(narrowed.value)
+    assert "3607180" in str(narrowed.value)
+
+
+def test_every_production_caller_of_the_executor_consumes_its_timing() -> None:
+    """The D076 landmarks must survive the cutover, whatever calls the executor.
+
+    `test_the_production_launch_always_prints_its_timing` pins the launch
+    function that exists today. It says nothing about a launch path Task 9
+    introduces: a new entry point could call `execute_compiled_workflow` and
+    drop `result.timing` on the floor with every existing test still green,
+    and the first anyone would know is a timeout nobody could diagnose --
+    which is exactly the hole D075 was written to close.
+
+    So the rule is about the CALL, not about one function's name: whatever
+    invokes the executor in production must do something with the timing.
+    """
+    import ast
+
+    modules = [
+        PROJECT_ROOT / "ghostcursor" / "run.py",
+        PROJECT_ROOT / "ghostcursor" / "devtools" / "candidate_acceptance.py",
+    ]
+
+    def result_names_consuming_timing(function: ast.FunctionDef, calls) -> bool:
+        """Prove the executor result reaches a timing-aware consumer.
+
+        A caller may print/read ``result.timing`` (the production path), or
+        pass the result to ``record_for`` (the acceptance path, which copies
+        ``result.timing`` into the persisted record).  Looking for the word
+        ``timing`` in source, including docstrings and comments, proves
+        neither shape.
+        """
+        result_names = set()
+        for child in ast.walk(function):
+            value = None
+            targets = ()
+            if isinstance(child, ast.Assign):
+                value = child.value
+                targets = child.targets
+            elif isinstance(child, ast.AnnAssign):
+                value = child.value
+                targets = (child.target,)
+            if not isinstance(value, ast.Call) or value not in calls:
+                continue
+            for target in targets:
+                if isinstance(target, ast.Name):
+                    result_names.add(target.id)
+
+        if not result_names:
+            return False
+
+        for child in ast.walk(function):
+            if isinstance(child, ast.Attribute) and child.attr == "timing":
+                if isinstance(child.value, ast.Name) and child.value.id in result_names:
+                    return True
+            if (
+                isinstance(child, ast.Call)
+                and isinstance(child.func, ast.Name)
+                and child.func.id == "record_for"
+                and any(
+                    isinstance(argument, ast.Name)
+                    and argument.id in result_names
+                    for argument in child.args
+                )
+            ):
+                return True
+        return False
+
+    callers = []
+    for module in modules:
+        tree = ast.parse(module.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.FunctionDef):
+                continue
+            source = ast.unparse(node)
+            if "execute_compiled_workflow(" not in source:
+                continue
+            # The import statement alone is not a call site.
+            calls = [
+                child
+                for child in ast.walk(node)
+                if isinstance(child, ast.Call)
+                and getattr(child.func, "id", "") == "execute_compiled_workflow"
+            ]
+            if calls:
+                callers.append(
+                    (module.name, node.name, result_names_consuming_timing(node, calls))
+                )
+
+    assert callers, "nothing calls the executor: the scan is looking in the wrong place"
+    missing = [(m, f) for m, f, uses in callers if not uses]
+    assert not missing, (
+        f"these call the compiled executor and ignore its timing: {missing}"
+    )
