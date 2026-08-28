@@ -222,6 +222,23 @@ def test_the_document_names_every_tested_digest_in_full(tmp_path) -> None:
     assert "quarantined" in rendered
 
 
+def test_a_failures_own_reason_reaches_the_document(tmp_path) -> None:
+    """"Failed" without the reason makes the reader go back to the raw records.
+
+    The reason comes from the record, so it stays derived rather than
+    described: nobody gets to explain a failure into something milder.
+    """
+    records = _complete()
+    records.append(
+        _record("OPEN_TERMINAL", outcome="failed", steps=(0, 1))
+        | {"detail": "verification timed out after 20s"}
+    )
+    rendered = render(group(records))
+    assert "verification timed out after 20s" in rendered
+    # A clean run has no reason to give, and an empty cell breaks the table.
+    assert "| -- |" in rendered
+
+
 def test_the_document_records_the_application_identity(tmp_path) -> None:
     rendered = render(group(_complete()))
     assert "executable_version" in rendered

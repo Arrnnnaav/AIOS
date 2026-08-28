@@ -614,6 +614,12 @@ the recipe.
   were accepted against in v1, which is what makes that acceptance transfer.
   The count is read from the compiled plan, so a new workflow still needs no
   new Python.
+
+  The gain is real but modest, and it is not a fix for any known timeout:
+  measured on live VS Code 1.135.0.0, the full tree takes 0.093-0.110s against
+  0.031-0.047s type-scoped, with a complete plan tick at 0.063s
+  (`docs/evidence/compiled-walk-latency.md`). The reasons to narrow it are the
+  standing prohibition and parity with the certified walk, not latency.
 - **`provider_exact`** — one provider call per unique query. It performs no
   traversal, so grouping it by control type is meaningless.
 

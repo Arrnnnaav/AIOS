@@ -137,8 +137,8 @@ def render(by_intent: dict) -> str:
             lines.append(f"  - `{name}` -- `{digest}`")
         lines += [
             "",
-            "| Run | Outcome | Steps | Grounding | UIA only | Target |",
-            "|---|---|---|---|---|---|",
+            "| Run | Outcome | Steps | Grounding | UIA only | Target | Detail |",
+            "|---|---|---|---|---|---|---|",
         ]
         for record in runs:
             steps = record["steps"]
@@ -148,7 +148,11 @@ def render(by_intent: dict) -> str:
             lines.append(
                 f"| `{record['_source']}` | {record['outcome']} "
                 f"| {steps['completed']}/{steps['total']} | {provenance} "
-                f"| {uia_only} | `{target['executable']}` -- {target['title']!r} |"
+                f"| {uia_only} | `{target['executable']}` -- {target['title']!r} "
+                # A failure's own reason, from the record. Without it the table
+                # says a run failed and not what it reported, which is the half
+                # a reader actually needs.
+                f"| {record.get('detail') or '--'} |"
             )
         lines.append("")
         if intent_id in UIA_PROVENANCE_REQUIRED:

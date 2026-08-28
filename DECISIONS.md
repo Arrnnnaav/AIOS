@@ -3159,6 +3159,19 @@ callers.
 Open Folder acceptance then failed 0/3 with the folder title having already
 changed while the cursor stayed on Open Folder until the 20-second timeout.
 
+**That failure is NOT explained by the walk.** Measured afterwards on live VS
+Code 1.135.0.0, the full tree takes 0.093-0.110s for 169 controls against
+0.031-0.047s for 49 Buttons, and a complete plan tick is 0.063s
+(`docs/evidence/compiled-walk-latency.md`). A tenth of a second cannot produce
+a 20-second timeout. Open Folder passed 3/3 on the day the walk changed, but
+the two are not shown to be connected: the passing runs also pinned the target
+with `--target '^Welcome - Visual Studio Code$'` while the earlier attempts
+bound whichever VS Code window was found first, and the original failure was
+reported from a session whose conditions were not recorded. The cause of that
+failure remains open. This paragraph exists because the causal claim was
+asserted here before the measurement was taken, which is the D034 defect this
+same decision criticises one section below.
+
 **The rejected fix.** A second title channel read `GetWindowText` on the bound
 HWND from the reasoning tick, bypassing the worker. Four objections, any one
 sufficient:
@@ -3202,6 +3215,7 @@ and `test_the_window_api_guard_catches_every_import_spelling` exercises that one
 detector over synthetic near-misses. Mutation audit: 5/5 on the walk shape, 9/9
 on the guard detector, and the reverted patch itself as the tenth.
 
-**Cost.** Three Open Folder acceptance attempts, and a shipped commit that
-broadened a certified walk while its tests stayed green — none of them asserted
-the walk that was issued.
+**Cost.** A shipped commit that broadened a certified walk while its tests
+stayed green — none of them asserted the walk that was issued. And one asserted
+cause that measurement then withdrew, written by the same controller that had
+just rejected another patch for exactly that.
