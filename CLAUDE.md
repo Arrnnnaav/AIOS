@@ -467,6 +467,15 @@ the first. A **verification** selector may be `AT_LEAST_ONE`, because "an
 `Installed Section` exists" does not require choosing one control on the user's
 behalf. Recipes declare the strategy; the compiler never infers it.
 
+**The compiled walk's shape follows traversal count, and the title stays on the
+worker (D074).** One backend enumeration is the unit of cost: a plan with one
+traversal takes a type-scoped walk, two or more take one shared full
+enumeration. Both VS Code recipes declare `Button` alone, so both must issue
+`descendants(control_type="Button")` — the certified `_vscode_button_walk`,
+never the generic full Electron descendant walk. Never re-read the window title
+from the reasoning tick; that thread polls ESC and pumps messages, and no
+cross-process window read belongs on it unmeasured.
+
 **Never write an observed Codicon glyph into a recipe (D069).** A private-use
 codepoint is version-sensitive. Match a normalised name instead:
 `normalise_accessible_name()` strips a leading private-use character; matching is

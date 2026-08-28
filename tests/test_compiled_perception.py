@@ -31,6 +31,7 @@ from ghostcursor.perception.compiled import (
     compiled_plan_runner,
     merge_ocr,
 )
+from ghostcursor.perception import uia
 from ghostcursor.perception.uia import Element
 from ghostcursor.packs.compile import CompiledRecipe, CompiledStep, CompiledVerification
 from ghostcursor.reasoning.compiled_tour import (
@@ -182,7 +183,7 @@ def test_a_provider_query_flows_end_to_end_into_a_selector_result() -> None:
 
     runner = compiled_plan_runner(
         workflow,
-        walk=lambda hwnd: [],
+        walk=lambda hwnd, control_type: [],
         query=lambda hwnd, control_type, name: (
             [_RawElement(name)] if hwnd == TARGET_HWND else []
         ),
@@ -222,7 +223,7 @@ def test_the_plan_runner_queries_the_captured_handle_not_the_resolved_one() -> N
     seen = []
     runner = compiled_plan_runner(
         workflow,
-        walk=lambda hwnd: seen.append(hwnd) or [],
+        walk=lambda hwnd, control_type: seen.append(hwnd) or [],
         query=lambda hwnd, control_type, name: [],
         read_title=lambda hwnd: "t",
     )
@@ -239,7 +240,7 @@ def test_the_published_title_is_the_bound_windows_not_the_foreground() -> None:
     workflow, _catalog = _workflow()
     runner = compiled_plan_runner(
         workflow,
-        walk=lambda hwnd: [],
+        walk=lambda hwnd, control_type: [],
         query=lambda hwnd, control_type, name: [],
         read_title=lambda hwnd: f"title-of-{hwnd}",
     )
@@ -943,7 +944,7 @@ def test_a_real_worker_drives_a_real_tour_to_completion() -> None:
     titles = ["Welcome - Visual Studio Code"]
     lock = threading.Lock()
 
-    def _walk(hwnd):
+    def _walk(hwnd, control_type):
         return [_PywinautoControl("Open Folder...")]
 
     def _read_title(hwnd):
@@ -1005,18 +1006,32 @@ def test_a_real_worker_drives_a_real_tour_to_completion() -> None:
 
 
 def test_the_composed_stack_never_walks_on_the_calling_thread() -> None:
-    """Which thread the UIA calls happen on, observed rather than asserted.
+    """Which thread the window calls happen on, observed rather than asserted.
 
     A source-level scan can say the executor imports nothing that walks. Only
-    running it can say the walk actually happened somewhere else.
+    running it can say the walk actually happened somewhere else -- and only
+    running it catches a reader BUILT elsewhere and handed in, which no import
+    scan of the executor can see.
+
+    The title is checked beside the walk because it is the one that nearly
+    moved: reading it from the reasoning tick looks harmless next to a UIA
+    descent, but that thread is what polls ESC and pumps messages, and
+    `GetWindowText` on a cross-process window is the call this file's own
+    plan-runner docstring warns can block on a hung one. Both belong on the
+    worker or neither does.
     """
     workflow, _catalog = _workflow()
     caller = threading.get_ident()
     walk_threads = set()
+    title_threads = set()
 
-    def _walk(hwnd):
+    def _walk(hwnd, control_type):
         walk_threads.add(threading.get_ident())
         return [_PywinautoControl("Open Folder...")]
+
+    def _read_title(hwnd):
+        title_threads.add(threading.get_ident())
+        return "Welcome - Visual Studio Code"
 
     service = compiled_perception_service(
         workflow,
@@ -1025,7 +1040,7 @@ def test_the_composed_stack_never_walks_on_the_calling_thread() -> None:
             workflow,
             walk=_walk,
             query=lambda hwnd, control_type, name: [],
-            read_title=lambda hwnd: "Welcome - Visual Studio Code",
+            read_title=_read_title,
             make_info=PywinautoElementInfo,
         ),
         interval_s=0.01,
@@ -1034,16 +1049,26 @@ def test_the_composed_stack_never_walks_on_the_calling_thread() -> None:
         workflow, __import__("time").monotonic, service=service
     )
     source, _hook, stop_perception = perception.start()
+    ticks = 0
     try:
         deadline = __import__("time").monotonic() + 2.0
-        while not walk_threads and __import__("time").monotonic() < deadline:
-            source()
+        while (
+            not walk_threads or ticks < 5
+        ) and __import__("time").monotonic() < deadline:
+            tick = source()
+            if tick is not None:
+                ticks += 1
+                # The title still ARRIVES; it just arrives from the worker.
+                assert tick.title == "Welcome - Visual Studio Code"
             __import__("time").sleep(0.01)
     finally:
         stop_perception()
 
     assert walk_threads, "the worker never walked"
+    assert title_threads, "the title was never read"
+    assert ticks, "no observation reached the caller"
     assert caller not in walk_threads, "UIA ran on the calling thread (D021)"
+    assert caller not in title_threads, "the title was read on the calling thread"
 
 
 def test_the_source_merges_published_ocr_for_the_requested_step() -> None:
@@ -1236,8 +1261,8 @@ def test_the_production_runner_enumerates_mixed_control_types_once() -> None:
     )
     calls = []
 
-    def _walk(hwnd):
-        calls.append(hwnd)
+    def _walk(hwnd, control_type):
+        calls.append((hwnd, control_type))
         return [
             _PywinautoControl("Open Folder...", "Button"),
             _PywinautoControl("Export complete", "Text"),
@@ -1253,11 +1278,94 @@ def test_the_production_runner_enumerates_mixed_control_types_once() -> None:
     )(TARGET_HWND)
 
     observed = dict(selectors)
-    assert calls == [TARGET_HWND]
+    # None is the shared enumeration: two traversals, one backend read.
+    assert calls == [(TARGET_HWND, None)]
     assert len(observed["open_folder"]) == 1
     assert observed["open_folder"][0].control_type == "Button"
     assert len(observed["folder_ready"]) == 1
     assert observed["folder_ready"][0].control_type == "Text"
+
+
+def test_a_single_traversal_plan_takes_the_type_scoped_walk() -> None:
+    """One traversal buys back no enumeration, so the full tree is pure cost.
+
+    Open Folder and Open Terminal both declare Button alone. The shared
+    enumeration was adopted after live Synthetic measurement put two
+    type-scoped calls over eight seconds against about four for one -- a
+    trade that only exists when there are two calls to trade. Applying it
+    here walks the entire Electron tree for the same single read.
+    """
+    workflow, _catalog = _workflow()
+    calls = []
+
+    def _walk(hwnd, control_type):
+        calls.append((hwnd, control_type))
+        return [_PywinautoControl("Open Folder...", "Button")]
+
+    selectors, _union, _title = compiled_plan_runner(
+        workflow,
+        walk=_walk,
+        query=lambda hwnd, control_type, name: [],
+        read_title=lambda hwnd: "Welcome - Visual Studio Code",
+        make_info=PywinautoElementInfo,
+    )(TARGET_HWND)
+
+    assert calls == [(TARGET_HWND, "Button")], "the full tree was walked instead"
+    assert len(dict(selectors)["open_folder"]) == 1
+
+
+def test_live_walk_narrows_to_the_declared_control_type() -> None:
+    """The production default dispatches; nothing else chooses the shape."""
+    from ghostcursor.perception import compiled as compiled_module
+
+    seen = []
+    original_full = uia.descendant_walk
+    original_typed = uia.control_type_walk
+    uia.descendant_walk = lambda hwnd: seen.append(("full", hwnd)) or []
+    uia.control_type_walk = lambda hwnd, control_type: (
+        seen.append(("typed", hwnd, control_type)) or []
+    )
+    try:
+        compiled_module.live_walk(7, "Button")
+        compiled_module.live_walk(7, None)
+    finally:
+        uia.descendant_walk = original_full
+        uia.control_type_walk = original_typed
+
+    assert seen == [("typed", 7, "Button"), ("full", 7)]
+
+
+def test_the_type_scoped_walk_is_the_certified_vscode_walk() -> None:
+    """Migration must not broaden certified behaviour.
+
+    `_vscode_button_walk` is the walk both VS Code workflows were accepted
+    against. `control_type_walk` is the same call with the type taken as data,
+    which is the whole of what "declarative" buys here. If the two ever
+    diverge, the compiled path is observing a screen v1 was never certified
+    on, and the acceptance runs stop transferring.
+    """
+    import inspect
+    import textwrap
+
+    def _body(function):
+        tree = ast.parse(textwrap.dedent(inspect.getsource(function)))
+        return [
+            ast.dump(statement, annotate_fields=False)
+            for statement in tree.body[0].body
+            if not isinstance(statement, ast.Expr)
+            or not isinstance(statement.value, ast.Constant)
+        ]
+
+    certified = _body(uia._vscode_button_walk)
+    compiled_walk = _body(uia.control_type_walk)
+    assert len(certified) == len(compiled_walk) == 2
+
+    # The window is resolved identically...
+    assert certified[0] == compiled_walk[0]
+    # ...and the only difference is the literal type becoming the parameter.
+    assert certified[1] == compiled_walk[1].replace(
+        "Name('control_type', Load())", "Constant('Button')"
+    )
 
 
 def test_ocr_answers_only_the_selector_it_was_requested_for() -> None:
@@ -1520,7 +1628,7 @@ def test_the_composition_arms_the_grace_when_it_starts_the_worker() -> None:
         lambda: now[0],
         plan_runner=compiled_plan_runner(
             workflow,
-            walk=lambda hwnd: [],
+            walk=lambda hwnd, control_type: [],
             query=lambda hwnd, control_type, name: [],
             read_title=lambda hwnd: "t",
             make_info=PywinautoElementInfo,

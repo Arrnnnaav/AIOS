@@ -88,10 +88,23 @@ class PywinautoElementInfo:
             self.runtime_id = tuple(runtime_id)
 
 
+def live_walk(hwnd: int, control_type):
+    """The one live traversal seam: type-scoped when asked, full when not.
+
+    `control_type is None` means the caller wants ONE shared enumeration for a
+    plan with several traversals. Anything else is the certified type-scoped
+    walk -- byte-identical to `_vscode_button_walk`, which is what both VS Code
+    workflows were accepted against.
+    """
+    if control_type is None:
+        return uia.descendant_walk(hwnd)
+    return uia.control_type_walk(hwnd, control_type)
+
+
 def compiled_plan_runner(
     workflow,
     *,
-    walk=uia.descendant_walk,
+    walk=live_walk,
     query=uia.provider_query_for,
     read_title=None,
     make_info=RawElementInfo,
@@ -107,9 +120,30 @@ def compiled_plan_runner(
     the two agree, and taking it from the workflow makes the pinning explicit
     at the place that would otherwise be free to drift.
 
+    **The traversal shape is chosen by traversal COUNT, from the plan.** One
+    backend enumeration is the unit of cost, so:
+
+    - one traversal  -> one type-scoped walk. Strictly narrower than the full
+      tree for the same single enumeration, so there is nothing to trade.
+    - two or more    -> one shared full enumeration, which every traversal then
+      filters by its declared control type. Live Synthetic measurement put two
+      type-scoped calls over eight seconds against about four for one
+      enumeration.
+
+    Both VS Code recipes declare Button alone, so both take the type-scoped
+    walk and reproduce `_vscode_button_walk` exactly -- the walk their v1
+    acceptance was measured against. Applying the Synthetic result to them
+    instead bought back no enumeration and paid the whole Electron tree for it:
+    the generic full-tree descent this project measured and narrowed away from,
+    and which CLAUDE.md forbids for these targets by name.
+
+    The count comes from the compiled plan, so a new workflow still needs no
+    new Python -- the rule reads data, exactly like every other plan decision.
+
     Returns `(selector_results, elements, title)`. The title is read HERE, on
-    the worker: `GetWindowText` against another process is a `SendMessage` and
-    can block on a hung window, which on the UI thread is the freeze again.
+    the worker, never from the reasoning tick: that thread polls ESC and pumps
+    messages, and a bounded walk is what keeps the title arriving promptly
+    enough that a second channel is not worth putting there.
     """
     if read_title is None:  # pragma: no cover - needs a real desktop
         import win32gui
@@ -117,11 +151,20 @@ def compiled_plan_runner(
         read_title = win32gui.GetWindowText
 
     hwnd = workflow.target.hwnd
+    plan = workflow.recipe.plan
+    # Decided ONCE, from the plan, not per tick: the shape cannot drift between
+    # ticks of a single run, and the reason it was chosen stays inspectable.
+    shared = len(plan.traversals) > 1
 
     def _run(_resolved_hwnd: int):
         observation = run_observation_plan(
-            workflow.recipe.plan,
-            walk_all=lambda: walk(hwnd),
+            plan,
+            walk_all=(lambda: walk(hwnd, None)) if shared else None,
+            walk_for=(
+                None
+                if shared
+                else lambda control_type: (lambda: walk(hwnd, control_type))
+            ),
             query_for=lambda control_type, name: (
                 lambda: query(hwnd, control_type, name)
             ),

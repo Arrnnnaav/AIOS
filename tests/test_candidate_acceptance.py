@@ -1322,6 +1322,140 @@ def test_the_executor_never_observes_on_its_own_thread() -> None:
     assert "provider_query_for" not in source
 
 
+#: The only definitions in `compiled.py` that may touch a window API. Everything
+#: they build runs on the perception worker; everything else in the module runs
+#: on the reasoning tick, which polls ESC and pumps messages.
+WORKER_SIDE = {"live_walk", "compiled_plan_runner", "compiled_perception_service"}
+
+WINDOW_APIS = {"win32gui", "win32api", "Desktop", "pywinauto", "comtypes"}
+
+
+#: The only definitions in `compiled.py` that may touch a window API. Everything
+#: they build runs on the perception worker; everything else in the module runs
+#: on the reasoning tick, which polls ESC and pumps messages.
+WORKER_SIDE = {"live_walk", "compiled_plan_runner", "compiled_perception_service"}
+
+WINDOW_APIS = {"win32gui", "win32api", "Desktop", "pywinauto", "comtypes"}
+
+
+def window_api_offenders(source: str, allowlist: set) -> list:
+    """Every window-API reference outside `allowlist`, in one module's source.
+
+    ONE detector, shared by the real-source assertion and by the synthetic
+    near-misses below. Two copies would let a weakening survive twice: the real
+    module happens to satisfy the weakened copy, and the near-miss cases
+    exercise the untouched one.
+
+    Four import spellings reach the same API and each needs its own branch --
+    `win32gui.GetWindowText(...)`, `import win32gui as w` then `w.…`,
+    `from win32gui import GetWindowText`, and a bare name already in scope.
+    """
+    import ast
+
+    offenders = []
+    for node in ast.parse(source).body:
+        if not isinstance(node, (ast.FunctionDef, ast.ClassDef)):
+            continue
+        if node.name in allowlist:
+            continue
+        for child in ast.walk(node):
+            if isinstance(child, ast.Name) and child.id in WINDOW_APIS:
+                offenders.append((node.name, child.id, child.lineno))
+            elif isinstance(child, ast.Attribute) and child.attr in WINDOW_APIS:
+                offenders.append((node.name, child.attr, child.lineno))
+            elif isinstance(child, ast.Import):
+                offenders += [
+                    (node.name, alias.name, child.lineno)
+                    for alias in child.names
+                    if alias.name.split(".")[0] in WINDOW_APIS
+                ]
+            elif isinstance(child, ast.ImportFrom) and child.module:
+                if child.module.split(".")[0] in WINDOW_APIS:
+                    offenders.append((node.name, child.module, child.lineno))
+    return offenders
+
+
+def test_only_the_worker_side_of_the_composition_touches_a_window_api() -> None:
+    """A reader BUILT on the control side is the bypass a thread test can miss.
+
+    `test_the_composed_stack_never_walks_on_the_calling_thread` observes the
+    injected walk and title doubles, so it catches the control thread calling
+    *those*. It cannot see a fresh `win32gui` reader created inside
+    `build_compiled_perception` and closed over by the observation source --
+    the doubles are simply never called, and the assertion passes while the
+    control thread reads a cross-process window on every tick.
+
+    `GetWindowText` is documented as not sending `WM_GETTEXT` across processes,
+    so such a read may well be safe. It has not been measured here, this
+    module's own plan-runner docstring says the opposite, and the thread that
+    would pay for a wrong answer is the one holding the user's only escape from
+    a full-screen overlay. Measure it before moving it, not after.
+    """
+    source = (
+        PROJECT_ROOT / "ghostcursor" / "perception" / "compiled.py"
+    ).read_text(encoding="utf-8")
+    assert not window_api_offenders(source, WORKER_SIDE)
+
+
+@pytest.mark.parametrize(
+    "body,flagged",
+    [
+        ("    return snapshot.title", False),
+        # The four spellings that reach the same API.
+        ("    import win32gui\n    return win32gui.GetWindowText(h)", True),
+        ("    import win32gui as w\n    return w.GetWindowText(h)", True),
+        ("    from win32gui import GetWindowText\n    return GetWindowText(h)", True),
+        ("    return Desktop(backend='uia').window(handle=h)", True),
+        # Reached through a module this package DOES legitimately import, so
+        # the bare name is innocent and only the attribute gives it away.
+        ("    return uia.Desktop(backend='uia')", True),
+        # A dotted module is judged by its root package.
+        ("    from pywinauto.controls import uiawrapper\n    return uiawrapper", True),
+        # A name or module that merely CONTAINS one is not one.
+        ("    return win32gui_free_title(h)", False),
+        ("    import win32gui_shim\n    return win32gui_shim.read(h)", False),
+        ("    from win32gui_shim import read\n    return read(h)", False),
+    ],
+)
+def test_the_window_api_guard_catches_every_import_spelling(body, flagged) -> None:
+    """Mutation-verify the detector ITSELF (D018).
+
+    Runs `window_api_offenders()` -- the same function the real-source
+    assertion runs -- over synthetic near-misses, one per branch. Without
+    these, three of the four branches are unexercised: the real module reaches
+    `win32gui` through an attribute, so dropping import handling entirely
+    leaves the real assertion green.
+    """
+    for source in (
+        f"def observe(h):\n{body}\n",
+        # The observation source is a CLASS. A function-only scan would walk
+        # straight past the one definition this guard exists to cover.
+        f"class CompiledObservationSource:\n    def __call__(self, h):\n"
+        + "".join(f"    {line}\n" for line in body.splitlines()),
+    ):
+        assert bool(window_api_offenders(source, set())) is flagged, source
+
+
+def test_the_worker_side_allowlist_names_only_definitions_that_exist() -> None:
+    """An allowlist entry that matches nothing exempts nothing, silently.
+
+    A rename would otherwise leave the guard passing over a definition it no
+    longer covers, or -- worse -- leave a stale name behind that a future
+    control-side function could be given.
+    """
+    import ast
+
+    source = (
+        PROJECT_ROOT / "ghostcursor" / "perception" / "compiled.py"
+    ).read_text(encoding="utf-8")
+    defined = {
+        node.name
+        for node in ast.parse(source).body
+        if isinstance(node, (ast.FunctionDef, ast.ClassDef))
+    }
+    assert WORKER_SIDE <= defined, sorted(WORKER_SIDE - defined)
+
+
 def test_an_unpublished_slot_is_waited_through_not_blocked_on(candidate) -> None:
     """`None` means "nothing published yet", and the loop stays responsive.
 

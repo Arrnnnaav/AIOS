@@ -547,6 +547,43 @@ def test_the_observation_plan_matches_its_reviewed_shape(intent_id, digests) -> 
     assert covered == set(plan.selectors)
 
 
+@pytest.mark.parametrize("intent_id", ["OPEN_FOLDER", "OPEN_TERMINAL"])
+def test_the_vscode_candidates_are_walked_type_scoped_not_full_tree(
+    intent_id, digests
+) -> None:
+    """Both VS Code recipes declare Button alone, so both stay narrow.
+
+    CLAUDE.md forbids the generic full Electron descendant walk for these
+    targets by name, and `_vscode_button_walk` -- one type-scoped call -- is
+    what their v1 acceptance was measured against. The shared full enumeration
+    is only cheaper when it replaces two or more calls; with one traversal it
+    replaces one, so it buys nothing back and pays the whole tree.
+
+    Asserted through the runner rather than on the traversal count alone: the
+    count is what the rule reads, but the walk it issues is the property.
+    """
+    from types import SimpleNamespace
+
+    from ghostcursor.perception.compiled import compiled_plan_runner
+
+    graph = _graph(intent_id, digests)
+    plan = graph.compiled.plan
+    assert len(plan.traversals) == 1, "a second control type would change the shape"
+
+    requested = []
+    compiled_plan_runner(
+        SimpleNamespace(
+            target=SimpleNamespace(hwnd=4242),
+            recipe=SimpleNamespace(plan=plan),
+        ),
+        walk=lambda hwnd, control_type: requested.append((hwnd, control_type)) or [],
+        query=lambda hwnd, control_type, name: [],
+        read_title=lambda hwnd: "",
+    )(4242)
+
+    assert requested == [(4242, "Button")]
+
+
 # ---------------------------------------------------------------------------
 # Quarantine
 # ---------------------------------------------------------------------------

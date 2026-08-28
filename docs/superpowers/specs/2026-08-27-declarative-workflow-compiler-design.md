@@ -591,15 +591,39 @@ the recipe.
 
 ### Observation plan — grouping is strategy-specific
 
-- **`bounded_descendants`** — one backend descendant enumeration per tick;
-  every selector first filters that shared result by its declared
-  `control_type`, then independently evaluates names and cardinality. The
-  shared enumeration does not broaden a selector's answer. This replaces the
-  original per-control-type grouping after live Synthetic measurement found
+- **`bounded_descendants`** — **one backend descendant enumeration per tick,
+  and the traversal count in the compiled plan chooses its shape.** One
+  enumeration is the unit of cost, so with a single traversal the walk is
+  type-scoped, and with two or more it is one shared full enumeration that
+  every traversal then filters by its declared `control_type`. Neither shape
+  broadens a selector's answer.
+
+  The shared enumeration was adopted after live Synthetic measurement found
   two type-scoped calls took over eight seconds while one enumeration took
   about four, making every cursor hide before the next complete observation.
+  That trade only exists where there are two calls to trade. Both VS Code
+  recipes declare `Button` alone, so for them the shared enumeration replaces
+  exactly one call: it buys back no enumeration and pays the entire Electron
+  tree, which is the generic full-tree descent this project measured and
+  narrowed away from, and which CLAUDE.md forbids for these targets by name.
+  Applying the Synthetic result to them was a generalisation from the one
+  recipe where it pays to the two where it only costs.
+
+  With one traversal the walk is therefore `descendants(control_type=…)` —
+  byte-identical to `_vscode_button_walk`, the walk both VS Code workflows
+  were accepted against in v1, which is what makes that acceptance transfer.
+  The count is read from the compiled plan, so a new workflow still needs no
+  new Python.
 - **`provider_exact`** — one provider call per unique query. It performs no
   traversal, so grouping it by control type is meaningless.
+
+The window title is read on the **worker**, in the same tick as the selectors,
+and is never re-read from the reasoning tick. That thread polls ESC and pumps
+messages, and `GetWindowText` against another process is the call this
+project's own perception code warns can block on a hung window — the D021
+freeze, on the one thread that must stay responsive. A bounded walk is what
+keeps the title arriving promptly enough that a second channel there is not
+worth its risk.
 
 Cardinality is evaluated **per selector, before** publishing the deduplicated
 union. **Any non-absence selector fault invalidates the entire tick** — never

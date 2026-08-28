@@ -3136,3 +3136,72 @@ Open Folder degradation demonstrated the need for exact equality.
 This is not an exemption from version scoping. It makes the scope meaningful for
 both classes of application. Adding another strategy requires a new decision;
 packs cannot provide a plugin or arbitrary version command.
+
+## D074 — The compiled walk's shape is chosen by traversal count, and the title stays on the worker
+
+**Context.** `bd6780e` replaced the compiled plan's per-control-type traversal
+with a single shared `descendants()` enumeration that every selector then
+filters. The change was justified by live Synthetic Export measurement: two
+type-scoped calls took over eight seconds against about four for one
+enumeration, which pushed every complete observation past the five-second
+honest-hide boundary.
+
+**What went wrong.** The measurement was taken on the one migrated recipe that
+declares two control types. It was then applied to all three. Both VS Code
+recipes declare `Button` alone, so for them the shared enumeration replaced
+exactly one call: it bought back no enumeration and paid the entire Electron
+descendant tree instead of a Button-scoped walk. That is the generic full-tree
+descent this project measured and narrowed away from, and CLAUDE.md forbids it
+for these targets by name. `control_type_walk` — written for the compiled plan
+and byte-identical to the certified `_vscode_button_walk` — was left with no
+callers.
+
+Open Folder acceptance then failed 0/3 with the folder title having already
+changed while the cursor stayed on Open Folder until the 20-second timeout.
+
+**The rejected fix.** A second title channel read `GetWindowText` on the bound
+HWND from the reasoning tick, bypassing the worker. Four objections, any one
+sufficient:
+
+1. It treated the symptom. The lag was the full-tree walk introduced above.
+2. It moved a cross-process window read onto the thread that polls ESC and
+   pumps messages. `GetWindowText` is documented as not sending `WM_GETTEXT`
+   across processes, so it may well be safe — but it was unmeasured, this
+   project's own perception code asserts the opposite, and the thread at risk
+   holds the user's only escape from a full-screen overlay.
+3. It was wired only when the composition owned its service, so every composed
+   test ran the old path and nothing asserted the production wiring.
+4. Its supporting measurement polled `GetWindowText` from a separate process
+   and never observed the worker at all, so it could not show what it claimed
+   (D034); the log was also uncommitted under ignored `.artifacts/`.
+
+**Decision.** One backend enumeration is the unit of cost, so the compiled plan
+chooses the shape by traversal count: one traversal takes a type-scoped walk,
+two or more take one shared full enumeration. The count is read from the plan,
+so a new workflow still needs no new Python. The window title is read on the
+worker, in the same tick as the selectors, and never re-read from the reasoning
+tick.
+
+**What enforces it.** `test_a_single_traversal_plan_takes_the_type_scoped_walk`
+and `test_the_vscode_candidates_are_walked_type_scoped_not_full_tree` assert the
+walk actually issued, not the traversal count that decides it;
+`test_the_type_scoped_walk_is_the_certified_vscode_walk` compares
+`control_type_walk` against `_vscode_button_walk` statement by statement, so the
+two cannot diverge and quietly strand the v1 acceptance.
+
+For the title, one guard is behavioural and one structural, because neither
+covers the other. `test_the_composed_stack_never_walks_on_the_calling_thread`
+runs the real composition and records which thread reads the title, but it can
+only see the *injected* reader — a fresh `win32gui` reader built inside
+`build_compiled_perception` never calls the double, so the assertion would pass
+while the control thread read a window every tick. That is exactly the shape of
+the rejected patch, so
+`test_only_the_worker_side_of_the_composition_touches_a_window_api` scans
+`compiled.py` for window-API references outside a named worker-side allowlist,
+and `test_the_window_api_guard_catches_every_import_spelling` exercises that one
+detector over synthetic near-misses. Mutation audit: 5/5 on the walk shape, 9/9
+on the guard detector, and the reverted patch itself as the tenth.
+
+**Cost.** Three Open Folder acceptance attempts, and a shipped commit that
+broadened a certified walk while its tests stayed green — none of them asserted
+the walk that was issued.
