@@ -505,8 +505,8 @@ def _clock():
     return _read, _sleep
 
 
-def _accept(candidate, *, screen, renderer=None, seconds=120.0, read_window=None,
-            goal=r"Open C:\Projects\Demo in VS Code"):
+def _accept(candidate, *, screen, renderer=None, controls=None, seconds=120.0,
+            read_window=None, goal=r"Open C:\Projects\Demo in VS Code"):
     from ghostcursor.devtools.candidate_acceptance import accept_candidate
 
     observe, publish = screen
@@ -525,12 +525,51 @@ def _accept(candidate, *, screen, renderer=None, seconds=120.0, read_window=None
         workflow,
         start_perception=_perception(observe),
         make_renderer=_factory(renderer),
+        make_controls=(lambda: controls) if controls is not None else None,
         read_window=read_window or _reader(),
         project_root=PROJECT_ROOT,
         clock=read,
         sleeper=_between_ticks,
         seconds=seconds,
     )
+
+
+def test_acceptance_wires_and_disposes_the_compiled_control_bar(candidate) -> None:
+    """The human acceptance path must exercise the same safety UI it certifies."""
+    class _Controls:
+        def __init__(self):
+            self.polls = 0
+            self.disposed = False
+
+        def poll(self):
+            self.polls += 1
+
+        def should_abort(self):
+            return False
+
+        def should_pause(self):
+            # Hold the state machine for one pumped turn, then release it.
+            return self.polls == 1
+
+        def dispose(self):
+            self.disposed = True
+
+    controls = _Controls()
+    _graph, record = _accept(
+        candidate,
+        screen=_screen(
+            [
+                "Welcome - Visual Studio Code",
+                "Welcome - Visual Studio Code",
+                "demo - Visual Studio Code",
+            ]
+        ),
+        controls=controls,
+    )
+
+    assert record.outcome is RunOutcome.PASSED
+    assert controls.polls >= 2
+    assert controls.disposed is True
 
 
 def test_acceptance_actually_runs_the_workflow_and_records_what_happened(

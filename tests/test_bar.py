@@ -5,12 +5,68 @@ tests/test_overlay.py. Every path tears both windows down in a finally block:
 a stranded full-screen window is the failure that locks a user out.
 """
 
+from types import SimpleNamespace
+
 import pytest
 import win32con
 import win32gui
 
 from ghostcursor.overlay import dpi  # noqa: F401  -- DPI before any window (D010)
 from ghostcursor.overlay import bar, window as ov
+from ghostcursor.run import CompiledTourControls
+
+
+class _BarApi:
+    def __init__(self):
+        self.requests = SimpleNamespace(
+            stop_requested=False, pause_requested=False, ask_requested=False
+        )
+        self.statuses = []
+        self.clears = 0
+        self.destroyed = []
+
+    def bar_state(self, hwnd):
+        return self.requests
+
+    def clear_requests(self, hwnd):
+        self.clears += 1
+        self.requests = SimpleNamespace(
+            stop_requested=False, pause_requested=False, ask_requested=False
+        )
+
+    def set_status(self, hwnd, text):
+        self.statuses.append(text)
+
+    def destroy_bar_window(self, hwnd):
+        self.destroyed.append(hwnd)
+
+
+def test_compiled_controls_make_stop_pause_and_ask_real_actions():
+    api = _BarApi()
+    pumps = []
+    controls = CompiledTourControls(
+        42, bar_api=api, pump_messages=lambda: pumps.append("pump"),
+        escape_source=lambda: False,
+    )
+
+    api.requests.stop_requested = True
+    api.requests.pause_requested = True
+    api.requests.ask_requested = True
+    controls.poll()
+
+    assert pumps == ["pump"]
+    assert api.clears == 1
+    assert controls.should_abort() is True
+    assert controls.should_pause() is True
+    assert api.statuses[-1] == "Finish or stop the active tour before asking"
+
+    api.requests.pause_requested = True
+    controls.poll()
+    assert controls.should_pause() is False
+    assert api.statuses[-1] == "Running"
+
+    controls.dispose()
+    assert api.destroyed == [42]
 
 
 def test_the_bar_can_be_clicked_and_focused_and_the_overlay_cannot():

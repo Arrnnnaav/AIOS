@@ -1285,6 +1285,89 @@ def test_a_revalidated_launch_reaches_the_execution_body() -> None:
     assert created == [True], "the overlay is created once, after revalidation"
 
 
+def test_the_live_compiled_launch_owns_and_disposes_the_control_bar(
+    monkeypatch,
+) -> None:
+    """Production must not regress to the cursor-only surface the harness exposed."""
+    from ghostcursor import run
+    from ghostcursor.perception.uia import Element
+    from ghostcursor.reasoning import renderer as renderer_module
+    from ghostcursor.reasoning.compiled_tour import TickInput
+
+    workflow, catalog = _workflow()
+    titles = [
+        "Welcome - Visual Studio Code",
+        "Welcome - Visual Studio Code",
+        "demo - Visual Studio Code",
+    ]
+    slot = {}
+
+    def _publish():
+        title = titles.pop(0) if len(titles) > 1 else titles[0]
+        matched = (
+            Element(
+                name="Open Folder...", control_type="Button", automation_id="",
+                bbox=(10, 20, 110, 60), path=("Button",),
+            ),
+        )
+        slot["value"] = TickInput(
+            title=title, selectors={"open_folder": matched}, union=matched
+        )
+
+    class _Renderer:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def show(self, grounded, instruction_text):
+            pass
+
+        def clear(self):
+            pass
+
+        def settle(self):
+            pass
+
+    class _Controls:
+        hwnd = 77
+
+        def __init__(self):
+            self.polls = 0
+            self.disposed = False
+
+        def poll(self):
+            self.polls += 1
+
+        def should_abort(self):
+            return False
+
+        def should_pause(self):
+            return self.polls == 1
+
+        def dispose(self):
+            self.disposed = True
+
+    controls = _Controls()
+    monkeypatch.setattr(renderer_module, "OverlayRenderer", _Renderer)
+    monkeypatch.setattr(
+        run, "create_compiled_tour_controls", lambda: controls
+    )
+    _publish()
+
+    exit_code = _launch(
+        workflow,
+        catalog,
+        seconds=60.0,
+        create_overlay=lambda: 1,
+        observe=lambda: slot["value"],
+        renderer=None,
+        on_sleep=_publish,
+    )
+
+    assert exit_code == 0
+    assert controls.polls >= 2
+    assert controls.disposed is True
+
+
 # ---------------------------------------------------------------------------
 # Immutability of the bound workflow
 # ---------------------------------------------------------------------------

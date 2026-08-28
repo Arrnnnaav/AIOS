@@ -548,6 +548,7 @@ def accept_candidate(
     *,
     start_perception,
     make_renderer,
+    make_controls=None,
     read_window,
     project_root: Path,
     clock=None,
@@ -602,19 +603,36 @@ def accept_candidate(
         renderer, dispose = make_renderer()
         cleanup.callback(dispose)
 
+        controls = make_controls() if make_controls is not None else None
+        if controls is not None:
+            cleanup.callback(controls.dispose)
+
+        def _pump_ui():
+            if controls is not None:
+                controls.poll()
+            elif pump is not None:
+                pump()
+
+        def _should_abort():
+            requested = should_abort is not None and should_abort()
+            return requested or (
+                controls is not None and controls.should_abort()
+            )
+
         kwargs = {
             "observe": observe,
             "renderer": renderer,
             "seconds": seconds,
-            "pump": pump,
+            "pump": _pump_ui,
             "on_grounding": on_grounding,
+            "should_abort": _should_abort,
         }
         if clock is not None:
             kwargs["clock"] = clock
         if sleeper is not None:
             kwargs["sleeper"] = sleeper
-        if should_abort is not None:
-            kwargs["should_abort"] = should_abort
+        if controls is not None:
+            kwargs["should_pause"] = controls.should_pause
         if confirmation_requested is not None:
             kwargs["confirmation_requested"] = confirmation_requested
         result = execute_compiled_workflow(workflow, **kwargs)
@@ -718,7 +736,10 @@ def main(
     import time
 
     start_perception, ladder, pump = _live_acceptance_seams(workflow, time.monotonic)
-    from ghostcursor.run import space_confirmation_requested
+    from ghostcursor.run import (
+        create_compiled_tour_controls,
+        space_confirmation_requested,
+    )
 
     try:
         record = accept_candidate(
@@ -726,6 +747,7 @@ def main(
             workflow,
             start_perception=start_perception,
             make_renderer=_live_renderer_factory(ladder),
+            make_controls=create_compiled_tour_controls,
             read_window=live_window_reader(),
             project_root=project_root,
             seconds=args.seconds,

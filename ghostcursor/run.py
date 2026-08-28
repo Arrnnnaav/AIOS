@@ -299,6 +299,68 @@ def space_confirmation_requested(
     )
 
 
+class CompiledTourControls:
+    """Focusable Stop/Pause/Ask host for the shared compiled executor.
+
+    The cursor overlay is deliberately click-through and can never host a
+    button. A compiled tour therefore needs the same separate focusable rail
+    as the v1 tour. `poll()` is called from the executor's message-pump seam;
+    the executor reads the resulting abort/pause state through callbacks, so
+    the bar never reaches into reasoning state or invents progress.
+    """
+
+    def __init__(
+        self,
+        hwnd: int,
+        *,
+        bar_api=bar,
+        pump_messages=window.pump_messages_nonblocking,
+        escape_source=None,
+    ) -> None:
+        self.hwnd = hwnd
+        self._bar = bar_api
+        self._pump_messages = pump_messages
+        self._escape_source = escape_source or escape_pressed
+        self._stop_requested = False
+        self._paused = False
+
+    def poll(self) -> None:
+        """Pump once and consume each edge-triggered bar request once."""
+        self._pump_messages()
+        requests = self._bar.bar_state(self.hwnd)
+        self._bar.clear_requests(self.hwnd)
+        if requests.stop_requested:
+            self._stop_requested = True
+            self._bar.set_status(self.hwnd, "Stopping…")
+        if requests.pause_requested:
+            self._paused = not self._paused
+            self._bar.set_status(self.hwnd, "Paused" if self._paused else "Running")
+        if requests.ask_requested:
+            self._bar.set_status(
+                self.hwnd, "Finish or stop the active tour before asking"
+            )
+
+    def should_abort(self) -> bool:
+        return self._stop_requested or self._escape_source()
+
+    def should_pause(self) -> bool:
+        return self._paused
+
+    def dispose(self) -> None:
+        self._bar.destroy_bar_window(self.hwnd)
+
+
+def create_compiled_tour_controls() -> CompiledTourControls:
+    """Create the real compiled control rail without stealing app focus."""
+    hwnd = bar.create_bar_window()
+    try:
+        bar.set_status(hwnd, "Running")
+        return CompiledTourControls(hwnd)
+    except Exception:
+        bar.destroy_bar_window(hwnd)
+        raise
+
+
 def run_tour(
     recipe_path: str,
     title_re: str,
@@ -1186,6 +1248,7 @@ def _run_compiled_tour(
     # user cannot tell from a live one.
     renderer_ladder = [None]
     hwnd = create_overlay()
+    controls = None
     try:
         if renderer is None:
             renderer = OverlayRenderer(
@@ -1196,6 +1259,12 @@ def _run_compiled_tour(
                     else Freshness.HIDDEN
                 ),
             )
+            try:
+                controls = create_compiled_tour_controls()
+            except Exception as exc:
+                # Additive safety UI: ESC remains the mandatory escape hatch
+                # if the separate focusable rail cannot be registered.
+                print(f"Control bar unavailable: {exc}")
         else:
             renderer_ladder = None
         stop_perception = None
@@ -1222,6 +1291,12 @@ def _run_compiled_tour(
             observe, on_grounding, stop_perception = perception.start()
 
         try:
+            def _pump_compiled_ui():
+                if controls is not None:
+                    controls.poll()
+                else:
+                    pump_messages()
+
             result = execute_compiled_workflow(
                 workflow,
                 observe=observe,
@@ -1229,21 +1304,33 @@ def _run_compiled_tour(
                 clock=clock,
                 sleeper=sleeper,
                 seconds=seconds,
-                should_abort=escape_pressed,
-                confirmation_requested=lambda: space_confirmation_requested(
-                    workflow.target.hwnd
+                should_abort=(
+                    controls.should_abort
+                    if controls is not None
+                    else escape_pressed
                 ),
-                pump=pump_messages,
+                should_pause=(
+                    controls.should_pause if controls is not None else None
+                ),
+                confirmation_requested=lambda: space_confirmation_requested(
+                    workflow.target.hwnd,
+                    controls.hwnd if controls is not None else None,
+                ),
+                pump=_pump_compiled_ui,
                 on_grounding=on_grounding,
             )
         finally:
             if stop_perception is not None:  # pragma: no cover - real desktop
                 stop_perception()
     finally:
-        # Every exit path, exceptions included. The overlay is full-screen,
-        # topmost, click-through and has no title bar: one left behind after a
-        # failure, a timeout or an ESC is one the user cannot close.
-        _destroy_overlay(hwnd)
+        try:
+            if controls is not None:
+                controls.dispose()
+        finally:
+            # Every exit path, exceptions included. The overlay is full-screen,
+            # topmost, click-through and has no title bar: one left behind after
+            # a failure, a timeout or an ESC is one the user cannot close.
+            _destroy_overlay(hwnd)
 
     print(
         f"{result.outcome.value}: {result.steps_completed}/{result.steps_total} "

@@ -193,6 +193,7 @@ def execute_compiled_workflow(
     seconds: float = 120.0,
     tick_interval_s: float = 0.25,
     should_abort: Callable[[], bool] | None = None,
+    should_pause: Callable[[], bool] | None = None,
     confirmation_requested: Callable[[], bool] | None = None,
     pump: Callable[[], None] | None = None,
     on_grounding: Callable[..., None] | None = None,
@@ -351,6 +352,23 @@ def execute_compiled_workflow(
                 steps_total=len(steps),
                 detail="aborted by the operator",
             )
+
+        # Pause is an operator instruction, not an empty observation and not a
+        # verification result. Keep pumping the focusable control bar and keep
+        # the run deadline honest, but do not advance the state machine while
+        # paused. Perception may continue publishing in the background; the
+        # next unpaused tick takes one coherent latest snapshot as usual.
+        if should_pause is not None and should_pause():
+            if clock() - started >= seconds:
+                return TourResult(
+                    outcome=RunOutcome.TIMED_OUT,
+                    provenance=provenance.as_tuple(),
+                    steps_completed=tour.step_index,
+                    steps_total=len(steps),
+                    detail=f"no terminal state within {seconds:g}s",
+                )
+            sleeper(tick_interval_s)
+            continue
 
         _index[0] = tour.step_index
         # Confirmation is an explicit user action, not an observation.  The

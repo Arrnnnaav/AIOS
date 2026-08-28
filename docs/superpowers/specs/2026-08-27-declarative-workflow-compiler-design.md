@@ -802,6 +802,17 @@ from the production parser, planning, Ask, and `run_tour` entry points. The
 non-recipe raw overlay mode is unaffected because it grants no workflow
 authority.
 
+Compiled execution preserves the existing two-window safety surface: the
+full-screen cursor overlay remains click-through, while a separate focusable
+Stop/Pause/Ask control rail is visible for the active tour. Stop aborts the
+shared executor, Pause suspends state-machine progression while message pumping
+and the run deadline remain live, and Ask reports that the active tour must be
+finished or stopped before a new goal can start. Both production and candidate
+acceptance use this same control contract. The rail is created only after the
+artifact and live-target gates pass and is destroyed on every terminal,
+exception, and teardown path; failure to create it never removes the global ESC
+escape hatch.
+
 ### Pre-launch revalidation
 
 Immediately before tour launch, reload and revalidate **all** of:
