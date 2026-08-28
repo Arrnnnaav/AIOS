@@ -308,7 +308,7 @@ normalised name on a selector, which restores exact-rung semantics without
 losing observation fidelity — a better fix than widening rung 2 globally.
 
 
-## Declarative workflow compiler (designed and planned; implementation not started)
+## Declarative workflow compiler (Tasks 1-10 implemented; D032 review pending)
 
 Moved out of `CLAUDE.md` under D071: unresolved work is owned here, not by the
 rules file.
@@ -317,48 +317,51 @@ rules file.
 
 - [Design spec](specs/2026-08-27-declarative-workflow-compiler-design.md)
 - [Implementation plan](plans/2026-08-27-declarative-workflow-compiler.md)
+- [Task 9/10 recertification evidence](../evidence/schema-v2-task9-recertification.md)
 
-Both passed independent D032 review through `af47bcf`. No implementation code
-has started. The remaining top-level trigger is explicit owner authorization to
-begin Task 1 of the approved plan.
+The design and plan passed independent D032 review through `af47bcf`.
+Implementation has reached the schema-v2 production cutover and all Task 10
+technical gates pass on `1ba371a`. The remaining gate before Open Extensions is
+independent D032 review of that exact tree and its committed recertification
+evidence; do not redesign or restart Tasks 1-10.
 
 ### Recipe schema v2 and the declarative workflow compiler
 
 Built around the two measured selector strategies, `provider_exact` and
 `bounded_descendants`. Recipes declare strategy; the compiler never infers it.
 
-**State/trigger:** design and planning are complete; begin only when the owner
-authorizes implementation from the approved plan.
+**State/trigger:** implemented and recertified technically through plan Task 10;
+await the independent evidence review named above.
 
 ### Declarative intent registration
 
-`registry()` in `ghostcursor/reasoning/planner.py` is still a hardcoded Python
-dictionary, so Open Extensions cannot be a data-only workflow while it stays
-one. This is a prerequisite for the proof, not an optional cleanup.
+The hardcoded planner dictionary and `_fallback()` are gone. The installed v2
+catalog and compiled matcher are the production registration authority.
 
-**State/trigger:** scheduled by plan Task 3 after strict schema and activation
-loading. It is not a separate design task.
+**State/trigger:** complete in plan Tasks 1-3 and activated by Task 9.
 
 ### Migrate the existing workflows, then add Open Extensions
 
-Migrate Synthetic Export, Open Folder, and Open Terminal to schema v2, then add
-Open Extensions through pack and recipe data with no workflow-specific change
-under `ghostcursor/**/*.py`. The proof is the whole diff from the compiler
-baseline through adopted Open Extensions containing no such Python.
+Synthetic Export, Open Folder, and Open Terminal are installed and active under
+schema v2. Add Open Extensions through pack and recipe data with no
+workflow-specific change under `ghostcursor/**/*.py`. The proof is the whole
+diff from the independently approved compiler baseline through adopted Open
+Extensions containing no such Python.
 
-**State/trigger:** scheduled by plan Tasks 7–12 after the compiler baseline and
-its review gates pass.
+**State/trigger:** Tasks 7-10 are implemented; begin Tasks 11-12 only after the
+Task 10 evidence receives independent D032 approval.
 
 ### Acceptance budget
 
 At least twelve successful human-driven real-desktop runs: 3/3 each for
-Synthetic Export, Open Folder, Open Terminal, and Open Extensions. Application
-identity drift resets affected campaigns and may increase the total. All four
-receive new artifact bytes, so D070 requires fresh acceptance for each. Open
-Folder's gate must assert UIA provenance rather than mere completion.
+Synthetic Export, Open Folder, Open Terminal, and Open Extensions. The first
+nine are complete and recorded in
+`docs/evidence/schema-v2-candidate-acceptance.md`; Open Folder was UIA-only.
+Application identity drift resets affected campaigns and may increase the
+total. Open Extensions still requires its own 3/3 on its exact candidate bytes.
 
-**State/trigger:** scheduled by plan Tasks 8 and 12 when exact candidate
-artifacts and independent reviewers are available.
+**State/trigger:** Task 8 complete; Task 12 remains after the compiler baseline
+review and Task 11 candidate.
 
 ### Unresolved — the original OPEN_FOLDER acceptance timeout
 
@@ -430,8 +433,8 @@ stops moving once an action is detected; `_observed` carries the latest
 snapshot for grounding, interrupt detection and the newness gate. After the
 clock arms, a grounding failure no longer counts against the step.
 
-**Still required before Task 9:** re-run Open Folder acceptance. Its 3/3 was
-measured on the racing behaviour, and this changes the shared v1 loop.
+**Completed before Task 9:** Open Folder acceptance was re-run 3/3 after D076,
+followed by the complete isolated regression lanes recorded in `bae0cee`.
 
 ### Open — identical window titles cannot be narrowed, so fail-closed can strand the user
 
