@@ -1,0 +1,43 @@
+{
+  "activation_generation": 1,
+  "intents": {
+    "OPEN_FOLDER": {
+      "active_adoption_id": "accept-open-folder-1",
+      "adoptions": {
+        "accept-open-folder-1": {
+          "accepted_application_identity": {"kind": "executable_version", "value": "1.135.0.0"},
+          "accepted_intent": {"path": "intents/open_folder.c93f0d97fb55575f.json", "sha256": "c93f0d97fb55575f43c4ebae593c3f7e19d89dc653a87f26555f5d2b59e60391"},
+          "accepted_pack": {"path": "pack/vscode.185cd7431e4f7e5e.json", "sha256": "185cd7431e4f7e5ecd2d9e372a15690edd496a26667bafbb59f218762bb2f992"},
+          "adopted_at": "2026-08-28T00:00:00Z",
+          "evidence": {"path": "docs/evidence/schema-v2-candidate-acceptance.md", "sha256": "5222a3cb4fc8635fa92df98df754032b6574c1f1d5f1c2f21801a263cec4b937"},
+          "recipe": {"path": "recipes/open_folder.f47777c8ce19731a.json", "sha256": "f47777c8ce19731ae00bb3ef61e414830d12a027b58566f82fe35ed138982b06"},
+          "review_commit": "bae0ceea8e6db86106491ec833da48f427f7918d",
+          "reviewer_id": "independent-d032-reviewer",
+          "supersedes_adoption_id": null,
+          "supersedes_recipe_sha256": null
+        }
+      },
+      "intent": {"path": "intents/open_folder.c93f0d97fb55575f.json", "sha256": "c93f0d97fb55575f43c4ebae593c3f7e19d89dc653a87f26555f5d2b59e60391"}
+    },
+    "OPEN_TERMINAL": {
+      "active_adoption_id": "accept-open-terminal-1",
+      "adoptions": {
+        "accept-open-terminal-1": {
+          "accepted_application_identity": {"kind": "executable_version", "value": "1.135.0.0"},
+          "accepted_intent": {"path": "intents/open_terminal.14b34da80866ed0c.json", "sha256": "14b34da80866ed0cbe58e3356c2b46ded3b6115ada60f204dd4222f8080c5fb1"},
+          "accepted_pack": {"path": "pack/vscode.185cd7431e4f7e5e.json", "sha256": "185cd7431e4f7e5ecd2d9e372a15690edd496a26667bafbb59f218762bb2f992"},
+          "adopted_at": "2026-08-28T00:00:00Z",
+          "evidence": {"path": "docs/evidence/schema-v2-candidate-acceptance.md", "sha256": "5222a3cb4fc8635fa92df98df754032b6574c1f1d5f1c2f21801a263cec4b937"},
+          "recipe": {"path": "recipes/open_terminal.9401a6af0e68e001.json", "sha256": "9401a6af0e68e001dceaeaf1b78e6a1586492e96f7a7f9b03744725e01fb5766"},
+          "review_commit": "bae0ceea8e6db86106491ec833da48f427f7918d",
+          "reviewer_id": "independent-d032-reviewer",
+          "supersedes_adoption_id": null,
+          "supersedes_recipe_sha256": null
+        }
+      },
+      "intent": {"path": "intents/open_terminal.14b34da80866ed0c.json", "sha256": "14b34da80866ed0cbe58e3356c2b46ded3b6115ada60f204dd4222f8080c5fb1"}
+    }
+  },
+  "pack": {"path": "pack/vscode.185cd7431e4f7e5e.json", "sha256": "185cd7431e4f7e5ecd2d9e372a15690edd496a26667bafbb59f218762bb2f992"},
+  "schema_version": 2
+}

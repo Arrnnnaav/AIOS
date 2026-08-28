@@ -7,7 +7,6 @@ trusted registry.
 from __future__ import annotations
 
 import json
-import os
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -18,7 +17,6 @@ from ghostcursor.inference.ollama import (
     GenerateResponse,
     generate_structured,
 )
-from ghostcursor.reasoning.schema import Recipe
 
 
 class PlanStatus(Enum):
@@ -49,7 +47,7 @@ class PlanResult:
     intent_id: str | None
     confidence: float
     explanation: str
-    plan: Recipe | None = None
+    plan: object | None = None
 
 
 @dataclass(frozen=True)
@@ -70,70 +68,18 @@ class ModelInputRejected(ValueError):
 
 
 _ROOT = Path(__file__).resolve().parent
-_RECIPE_DIR = _ROOT / "recipes"
 
 
-def registry() -> dict[str, IntentSpec]:
+def compiled_registry() -> dict[str, IntentSpec]:
+    """Return registrations compiled from the installed v2 catalog."""
+    from ghostcursor.packs.activation import load_catalog
+    from ghostcursor.packs.compile import compile_planner
+
+    project_root = _ROOT.parent.parent
     return {
-        "EXPORT_DATA": IntentSpec(
-            "EXPORT_DATA",
-            ("export this table as csv", "export as csv", "export data", "export the current file"),
-            _RECIPE_DIR / "synthetic_export.json",
-            "Synthetic Export",
-        ),
-        "CREATE_DOCUMENT": IntentSpec("CREATE_DOCUMENT", ("create a document", "new document"), None),
-        "OPEN_SETTINGS": IntentSpec("OPEN_SETTINGS", ("open settings", "show settings"), None),
-        "OPEN_FOLDER": IntentSpec(
-            "OPEN_FOLDER",
-            (
-                "open a folder in vs code",
-                "open a folder in vscode",
-                "open a folder in visual studio code",
-            ),
-            _ROOT.parent / "packs" / "recipes" / "vscode" / "open_folder.json",
-        ),
-        "OPEN_TERMINAL": IntentSpec(
-            "OPEN_TERMINAL",
-            (
-                "open the integrated terminal in vs code",
-                "open the integrated terminal in vscode",
-                "open a terminal in vs code",
-                "open a terminal in vscode",
-            ),
-            _ROOT.parent / "packs" / "recipes" / "vscode" / "open_terminal.json",
-        ),
+        spec.intent_id: spec
+        for spec in compile_planner(load_catalog(project_root))
     }
-
-
-def _fallback(goal: str) -> tuple[str | None, float, str]:
-    normalized = " ".join(goal.lower().split())
-    specs = registry()
-    for phrase in specs["EXPORT_DATA"].phrases:
-        if normalized == phrase:
-            return "EXPORT_DATA", 0.95, f"matched exact phrase: {phrase}"
-    if any(word in normalized for word in ("csv", "spreadsheet", "table")) and any(
-        word in normalized for word in ("export", "save", "download")
-    ):
-        return "EXPORT_DATA", 0.85, "matched a known export synonym"
-    for phrase in specs["OPEN_FOLDER"].phrases:
-        if normalized == phrase:
-            return "OPEN_FOLDER", 0.95, f"matched exact phrase: {phrase}"
-    if (
-        "open" in normalized
-        and any(alias in normalized for alias in ("vs code", "vscode", "visual studio code"))
-        and ("folder" in normalized or "\\" in normalized or "/" in normalized)
-    ):
-        return "OPEN_FOLDER", 0.85, "matched the VS Code open-folder intent"
-    for phrase in specs["OPEN_TERMINAL"].phrases:
-        if normalized == phrase:
-            return "OPEN_TERMINAL", 0.95, f"matched exact phrase: {phrase}"
-    if (
-        any(word in normalized for word in ("open", "show"))
-        and "terminal" in normalized
-        and any(alias in normalized for alias in ("vs code", "vscode", "visual studio code"))
-    ):
-        return "OPEN_TERMINAL", 0.85, "matched the VS Code integrated-terminal intent"
-    return None, 0.0, "no trusted intent matched"
 
 
 def deterministic_intent(goal: str) -> tuple[str | None, float, str]:
@@ -142,7 +88,22 @@ def deterministic_intent(goal: str) -> tuple[str | None, float, str]:
     The evaluation gate calls this same function rather than maintaining a
     second, potentially drifting implementation of deterministic grounding.
     """
-    return _fallback(goal)
+    from ghostcursor.packs.activation import load_catalog
+    from ghostcursor.packs.compile import compile_matcher
+
+    project_root = Path(__file__).resolve().parent.parent.parent
+    catalog = load_catalog(project_root)
+    outcome = compile_matcher(catalog).classify(goal)
+    return outcome.intent_id, outcome.confidence, outcome.reason
+
+
+def _production_intent_ids() -> tuple[str, ...]:
+    """Return model-visible IDs from the verified v2 catalog only."""
+    from ghostcursor.packs.activation import load_catalog
+    from ghostcursor.packs.compile import compile_planner
+
+    project_root = Path(__file__).resolve().parent.parent.parent
+    return tuple(sorted(spec.intent_id for spec in compile_planner(load_catalog(project_root))))
 
 
 def planner_response_schema(intent_ids: tuple[str, ...]) -> dict:
@@ -195,7 +156,7 @@ def parse_intent_decision(raw: object, intent_ids: tuple[str, ...]) -> IntentDec
 def infer_intent(goal: str, endpoint: str, model: str, timeout: float) -> IntentInference:
     if len(goal) > MAX_GOAL_CHARS:
         raise ModelInputRejected(f"goal exceeds {MAX_GOAL_CHARS} characters")
-    intent_ids = tuple(sorted(registry()))
+    intent_ids = _production_intent_ids()
     prompt = (
         "Classify the goal using one registered intent. Use JSON null for intent_id "
         "when none fits. Return only intent_id, confidence, and explanation. "
@@ -218,155 +179,25 @@ def _model_intent(goal: str, endpoint: str, model: str, timeout: float) -> Inten
     return infer_intent(goal, endpoint, model, timeout).decision
 
 
-def _trusted_recipe(spec: IntentSpec) -> Recipe | None:
-    if spec.recipe_path is None:
-        return None
-    trusted_root = _RECIPE_DIR.resolve()
-    pack_root = (_ROOT.parent / "packs" / "recipes").resolve()
-    if spec.recipe_path.is_symlink():
-        raise ValueError("recipe path must not be a symlink")
-    path = spec.recipe_path.resolve(strict=True)
-    if path.parent != trusted_root and not str(path).startswith(str(pack_root) + os.sep):
-        raise ValueError("recipe path is outside the trusted recipe directory")
-    recipe = Recipe.load(path)
-    if path.parent == trusted_root and (recipe.intent != "export the current file" or recipe.app_id != "synthetic"):
-        raise ValueError("recipe registry metadata does not match the trusted recipe")
-    return recipe
-
-
-def recipe_path_for(intent_id: str) -> Path:
-    """Return a validated recipe path for a planned intent."""
-    spec = registry()[intent_id]
-    if spec.recipe_path is None:
-        raise ValueError(f"no recipe is registered for {intent_id}")
-    _trusted_recipe(spec)
-    return spec.recipe_path.resolve()
-
-
-def resolve_model_decision(goal: str, decision: IntentDecision) -> PlanResult:
-    """Pure authority policy: model advice plus deterministic trusted grounding."""
-    fallback_id, fallback_confidence, fallback_explanation = _fallback(goal)
-    if decision.intent_id is None:
-        if fallback_id is None:
-            return PlanResult(
-                PlanStatus.UNSUPPORTED_GOAL,
-                None,
-                0.0,
-                f"model abstained: {decision.explanation}",
-            )
-        recipe = _trusted_recipe(registry()[fallback_id])
-        return PlanResult(
-            PlanStatus.MODEL_ABSTAINED_FALLBACK,
-            fallback_id,
-            fallback_confidence,
-            f"model abstained; {fallback_explanation}",
-            recipe,
-        )
-
-    spec = registry()[decision.intent_id]
-    # A registered ID is only an allowlist boundary. An available recipe gains
-    # authority only when the deterministic classifier independently agrees.
-    if spec.recipe_path is not None and fallback_id != decision.intent_id:
-        if fallback_id is not None:
-            recipe = _trusted_recipe(registry()[fallback_id])
-            return PlanResult(
-                PlanStatus.INVALID_MODEL_OUTPUT,
-                fallback_id,
-                fallback_confidence,
-                (
-                    f"model selected ungrounded intent {decision.intent_id}; "
-                    f"{fallback_explanation}"
-                ),
-                recipe,
-            )
-        return PlanResult(
-            PlanStatus.UNSUPPORTED_GOAL,
-            None,
-            0.0,
-            (
-                f"model selected ungrounded intent {decision.intent_id}; "
-                "no trusted intent matched"
-            ),
-        )
-    recipe = _trusted_recipe(spec)
-    if recipe is None:
-        return PlanResult(
-            PlanStatus.KNOWN_INTENT_RECIPE_UNAVAILABLE,
-            decision.intent_id,
-            decision.confidence,
-            decision.explanation,
-        )
-    return PlanResult(
-        PlanStatus.SUPPORTED,
-        decision.intent_id,
-        decision.confidence,
-        decision.explanation,
-        recipe,
-    )
-
-
 def plan_goal(goal: str, *, endpoint: str = "http://127.0.0.1:11434", model: str = DEFAULT_MODEL, timeout: float = 15.0, use_model: bool = True) -> PlanResult:
-    """Classify one goal and load only a trusted local recipe."""
-    if not goal or not goal.strip():
-        return PlanResult(PlanStatus.UNSUPPORTED_GOAL, None, 0.0, "goal is empty")
-    fallback_id, fallback_confidence, fallback_explanation = _fallback(goal)
-    if use_model:
-        try:
-            return resolve_model_decision(goal, _model_intent(goal, endpoint, model, timeout))
-        except (OSError, TimeoutError, ConnectionError) as exc:
-            if fallback_id:
-                recipe = _trusted_recipe(registry()[fallback_id])
-                return PlanResult(
-                    PlanStatus.MODEL_UNAVAILABLE_FALLBACK,
-                    fallback_id,
-                    fallback_confidence,
-                    f"{fallback_explanation} (Ollama request failed: {type(exc).__name__})",
-                    recipe,
-                )
-            return PlanResult(
-                PlanStatus.UNSUPPORTED_GOAL,
-                None,
-                0.0,
-                f"model unavailable ({type(exc).__name__}); no trusted intent matched",
-            )
-        except (ValueError, KeyError, json.JSONDecodeError) as exc:
-            if fallback_id:
-                recipe = _trusted_recipe(registry()[fallback_id])
-                return PlanResult(
-                    PlanStatus.INVALID_MODEL_OUTPUT,
-                    fallback_id,
-                    fallback_confidence,
-                    f"{fallback_explanation} ({type(exc).__name__})",
-                    recipe,
-                )
-            return PlanResult(
-                PlanStatus.UNSUPPORTED_GOAL,
-                None,
-                0.0,
-                "model output was invalid and no trusted intent matched",
-            )
-    if fallback_id:
-        recipe = _trusted_recipe(registry()[fallback_id])
-        status = PlanStatus.MODEL_UNAVAILABLE_FALLBACK if use_model else PlanStatus.SUPPORTED
-        return PlanResult(status, fallback_id, fallback_confidence, fallback_explanation, recipe)
-    return PlanResult(PlanStatus.UNSUPPORTED_GOAL, None, 0.0, "no trusted intent matched")
+    """Classify and materialize a goal through the installed v2 authority."""
+    return plan_compiled_goal(
+        goal,
+        endpoint=endpoint,
+        model=model,
+        timeout=timeout,
+        use_model=use_model,
+    )
 
 
 # ---------------------------------------------------------------------------
 # Schema v2: classification with no recipe loading
 # ---------------------------------------------------------------------------
 #
-# `resolve_model_decision()` above is still production authority and still
-# loads a recipe inline. That coupling is what this replaces: it made naming an
-# intent and gaining the right to execute one the same act, so every test of
-# the authority policy had to have a loadable recipe on disk, and the policy
-# could not be reasoned about without one.
-#
-# Here classification is pure. It names an intent and says nothing about what
-# may run. Materialization -- an active adoption, a live window, an exactly
+# Classification is pure. It names an intent and says nothing about what may
+# run. Materialization -- an active adoption, a live window, and an exactly
 # equal application identity -- happens in `ghostcursor.packs.workflow`, which
-# is the only thing that can grant execution. Production keeps the v1 path
-# until the atomic cutover.
+# is the only thing that can grant execution.
 
 
 @dataclass(frozen=True)
@@ -449,4 +280,152 @@ def classify_decision(
         decision.intent_id,
         decision.confidence,
         decision.explanation,
+    )
+
+
+def resolve_model_decision(goal: str, decision: IntentDecision) -> Classification:
+    """Apply the v2 model policy without loading or returning a recipe."""
+    from ghostcursor.packs.activation import load_catalog
+    from ghostcursor.packs.compile import compile_matcher, compile_planner
+
+    project_root = Path(__file__).resolve().parent.parent.parent
+    catalog = load_catalog(project_root)
+    specs = compile_planner(catalog)
+    available = frozenset(spec.intent_id for spec in specs if spec.recipe_path is not None)
+    matcher = compile_matcher(catalog)
+
+    def deterministic(text: str) -> tuple[str | None, float, str]:
+        outcome = matcher.classify(text)
+        return outcome.intent_id, outcome.confidence, outcome.reason
+
+    return classify_decision(
+        goal,
+        decision,
+        deterministic=deterministic,
+        available=available,
+    )
+
+
+def plan_compiled_goal(
+    goal: str,
+    *,
+    target_title_re: str | None = None,
+    endpoint: str = "http://127.0.0.1:11434",
+    model: str = DEFAULT_MODEL,
+    timeout: float = 15.0,
+    use_model: bool = True,
+) -> PlanResult:
+    """Classify and materialize one goal from the verified v2 catalog.
+
+    This is the production authority seam used by the schema-v2 CLI path.
+    Classification is performed by the compiled matcher, while execution is
+    granted only after the verified catalog binds an adopted recipe to one
+    live target window.  The legacy ``plan_goal`` remains available to the
+    model-gate tests until the atomic cutover removes its authority path.
+    """
+    from ghostcursor.packs.activation import load_catalog
+    from ghostcursor.packs.compile import compile_matcher, compile_planner
+    from ghostcursor.packs.workflow import WorkflowUnavailable, bind_workflow
+
+    project_root = Path(__file__).resolve().parent.parent.parent
+    catalog = load_catalog(project_root)
+    specs = compile_planner(catalog)
+    available = frozenset(spec.intent_id for spec in specs if spec.recipe_path is not None)
+    matcher = compile_matcher(catalog)
+
+    def deterministic(text: str) -> tuple[str | None, float, str]:
+        outcome = matcher.classify(text)
+        return outcome.intent_id, outcome.confidence, outcome.reason
+
+    fallback = matcher.classify(goal)
+    if not use_model:
+        classification = classify_decision(
+            goal,
+            IntentDecision(fallback.intent_id, fallback.confidence, fallback.reason),
+            deterministic=deterministic,
+            available=available,
+        )
+    else:
+        try:
+            decision = infer_intent(
+                goal,
+                endpoint=endpoint,
+                model=model,
+                timeout=timeout,
+            ).decision
+            classification = classify_decision(
+                goal,
+                decision,
+                deterministic=deterministic,
+                available=available,
+            )
+        except (OSError, TimeoutError, ConnectionError) as exc:
+            if fallback.intent_id is None:
+                return PlanResult(
+                    PlanStatus.UNSUPPORTED_GOAL,
+                    None,
+                    0.0,
+                    f"model unavailable ({type(exc).__name__}); no trusted intent matched",
+                )
+            classification = Classification(
+                PlanStatus.MODEL_UNAVAILABLE_FALLBACK,
+                fallback.intent_id,
+                fallback.confidence,
+                f"{fallback.reason} (Ollama request failed: {type(exc).__name__})",
+            )
+        except (ValueError, KeyError, json.JSONDecodeError) as exc:
+            if fallback.intent_id is None:
+                return PlanResult(
+                    PlanStatus.UNSUPPORTED_GOAL,
+                    None,
+                    0.0,
+                    "model output was invalid and no trusted intent matched",
+                )
+            classification = Classification(
+                PlanStatus.INVALID_MODEL_OUTPUT,
+                fallback.intent_id,
+                fallback.confidence,
+                f"{fallback.reason} ({type(exc).__name__})",
+            )
+
+    if classification.intent_id is None:
+        return PlanResult(
+            classification.status,
+            None,
+            classification.confidence,
+            classification.explanation,
+        )
+    if classification.status not in {
+        PlanStatus.SUPPORTED,
+        PlanStatus.MODEL_UNAVAILABLE_FALLBACK,
+        PlanStatus.INVALID_MODEL_OUTPUT,
+    }:
+        return PlanResult(
+            classification.status,
+            classification.intent_id,
+            classification.confidence,
+            classification.explanation,
+        )
+
+    try:
+        workflow = bind_workflow(
+            catalog,
+            classification.intent_id,
+            goal,
+            target_title_re=target_title_re,
+            project_root=project_root,
+        )
+    except WorkflowUnavailable as exc:
+        return PlanResult(
+            PlanStatus.KNOWN_INTENT_RECIPE_UNAVAILABLE,
+            classification.intent_id,
+            classification.confidence,
+            str(exc),
+        )
+    return PlanResult(
+        classification.status,
+        classification.intent_id,
+        classification.confidence,
+        classification.explanation,
+        workflow,
     )

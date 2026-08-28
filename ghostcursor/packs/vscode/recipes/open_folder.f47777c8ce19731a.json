@@ -1,0 +1,76 @@
+{
+  "context_selectors": [],
+  "intent_id": "OPEN_FOLDER",
+  "schema_version": 2,
+  "selectors": {
+    "open_folder": {
+      "cardinality": "exactly_one",
+      "control_type": "Button",
+      "names": [
+        "Open Folder...",
+        "Open Folder…"
+      ],
+      "normalise": "strip_leading_private_use",
+      "result_limit": 4,
+      "strategy": "bounded_descendants"
+    }
+  },
+  "step_key_namespace": "open a folder in vscode",
+  "steps": [
+    {
+      "instruction_text": "Click Open Folder… and select the folder in the Windows dialog.",
+      "preconditions": [],
+      "provenance": {
+        "created_at": "2026-08-24",
+        "model": "none",
+        "prompt_version": "none",
+        "source_tier": "official-docs-hand-authored",
+        "source_urls": [
+          "https://code.visualstudio.com/docs/getstarted/getting-started"
+        ]
+      },
+      "risk": "normal",
+      "target_descriptor": {
+        "claimed": {
+          "name": "Open Folder...",
+          "name_synonyms": [
+            "Open Folder…",
+            "Open Folder"
+          ],
+          "ocr_text": "Open Folder...",
+          "visual_description": "the Open Folder action in the VS Code Welcome page"
+        },
+        "confirmed": []
+      },
+      "target_selector": "open_folder",
+      "user_action": "click",
+      "verification_rule": {
+        "args": {
+          "completion_title_suffixes": [
+            "visual studio code",
+            " - code"
+          ],
+          "fail_after_timeout": true,
+          "goal_reference": {
+            "alias": "vscode_names",
+            "basename_separators": [
+              "/",
+              "\\"
+            ],
+            "minimum_length": 2,
+            "nonspecific_templates": [
+              "a folder in {alias}",
+              "folder in {alias}"
+            ],
+            "strip_leading_token": "open",
+            "strip_trailing_alias_clause": {
+              "preposition": "in"
+            }
+          }
+        },
+        "kind": "window_title_matches",
+        "timeout_s": 20.0
+      }
+    }
+  ]
+}

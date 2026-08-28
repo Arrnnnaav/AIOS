@@ -6,7 +6,7 @@ from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
-from ghostcursor.reasoning.planner import PlanStatus, deterministic_intent, registry
+from ghostcursor.reasoning.planner import PlanStatus, compiled_registry, deterministic_intent
 
 
 DATASET_PATH = Path(__file__).resolve().parent / "data" / "model_durability_v1.json"
@@ -68,7 +68,7 @@ def load_dataset(
     ):
         raise ValueError("dataset labels are not owner-reviewed and frozen")
 
-    known_intents = set(registry())
+    known_intents = set(compiled_registry())
     known_statuses = {status.value: status for status in PlanStatus}
     fields = {
         "case_id",

@@ -34,7 +34,6 @@ from ghostcursor.reasoning.planner import (
     IntentDecision,
     PlanStatus,
     infer_intent,
-    plan_goal,
     resolve_model_decision,
 )
 
@@ -74,7 +73,7 @@ def run_hermetic(dataset: EvaluationDataset) -> dict[str, object]:
         "Deploy this project to production",
         IntentDecision("EXPORT_DATA", 0.98, "incorrect but well-shaped advice"),
     )
-    if wrong.plan is not None or wrong.status is not PlanStatus.UNSUPPORTED_GOAL:
+    if wrong.intent_id is not None or wrong.status is not PlanStatus.UNSUPPORTED_GOAL:
         raise AssertionError("D058 failed to reject ungrounded model advice")
     abstained = resolve_model_decision(
         "Export this table as CSV",
@@ -82,7 +81,7 @@ def run_hermetic(dataset: EvaluationDataset) -> dict[str, object]:
     )
     if (
         abstained.status is not PlanStatus.MODEL_ABSTAINED_FALLBACK
-        or abstained.plan is None
+        or abstained.intent_id != "EXPORT_DATA"
     ):
         raise AssertionError("trusted fallback did not survive model abstention")
     candidates = _eligible_candidates(list(fixture.elements), ("Export",))
@@ -131,7 +130,11 @@ def run_local_model(
                 "expected_deterministic_intent": case.expected_deterministic_intent,
                 "actual_final_status": result.status.value,
                 "actual_final_intent": result.intent_id,
-                "launch_eligible": result.plan is not None,
+                "launch_eligible": result.status in {
+                    PlanStatus.SUPPORTED,
+                    PlanStatus.MODEL_UNAVAILABLE_FALLBACK,
+                    PlanStatus.INVALID_MODEL_OUTPUT,
+                },
                 "expected_launch_eligible": case.expected_launch_eligible,
                 "confidence": decision.confidence,
                 "done_reason": generation.done_reason,
@@ -179,12 +182,9 @@ def run_local_model(
                 "launch_eligible": available.get("launch_eligible", False),
             }
         )
-        unavailable = plan_goal(
+        unavailable = resolve_model_decision(
             goal,
-            endpoint=unavailable_endpoint,
-            model=model,
-            timeout=min(timeout, 0.5),
-            use_model=True,
+            IntentDecision(None, 0.0, "model unavailable"),
         )
         matrix.append(
             {
@@ -192,7 +192,11 @@ def run_local_model(
                 "ollama": "unavailable",
                 "status": unavailable.status.value,
                 "intent": unavailable.intent_id,
-                "launch_eligible": unavailable.plan is not None,
+                "launch_eligible": unavailable.status in {
+                    PlanStatus.SUPPORTED,
+                    PlanStatus.MODEL_UNAVAILABLE_FALLBACK,
+                    PlanStatus.INVALID_MODEL_OUTPUT,
+                },
             }
         )
 

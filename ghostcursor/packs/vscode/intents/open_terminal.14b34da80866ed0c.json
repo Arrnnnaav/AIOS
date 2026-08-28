@@ -1,0 +1,45 @@
+{
+  "canonical_target": null,
+  "intent_id": "OPEN_TERMINAL",
+  "rules": [
+    {
+      "phrases": [
+        "open the integrated terminal in vs code",
+        "open the integrated terminal in vscode",
+        "open a terminal in vs code",
+        "open a terminal in vscode"
+      ],
+      "tier": "exact"
+    },
+    {
+      "all_of": [
+        {
+          "any_of": [
+            {
+              "token": "open"
+            },
+            {
+              "token": "show"
+            }
+          ]
+        },
+        {
+          "any_of": [
+            {
+              "token": "terminal"
+            }
+          ]
+        },
+        {
+          "any_of": [
+            {
+              "alias": "vscode_names"
+            }
+          ]
+        }
+      ],
+      "tier": "heuristic"
+    }
+  ],
+  "schema_version": 2
+}

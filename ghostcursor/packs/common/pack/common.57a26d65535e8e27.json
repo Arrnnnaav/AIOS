@@ -1,0 +1,11 @@
+{
+  "aliases": {},
+  "display_name": "Common planner intents",
+  "executable_names": [],
+  "pack_id": "common",
+  "pack_kind": "planner_only",
+  "schema_version": 2,
+  "tier2_capture": "disabled",
+  "title_patterns": [],
+  "version_identity": null
+}

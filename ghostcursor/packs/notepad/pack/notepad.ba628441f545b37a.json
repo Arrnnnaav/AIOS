@@ -1,0 +1,11 @@
+{
+  "aliases": {},
+  "display_name": "Notepad",
+  "executable_names": ["notepad.exe"],
+  "pack_id": "notepad",
+  "pack_kind": "application",
+  "schema_version": 2,
+  "tier2_capture": "disabled",
+  "title_patterns": [".*Notepad.*"],
+  "version_identity": {"kind": "executable_version"}
+}

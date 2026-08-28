@@ -1010,7 +1010,7 @@ def test_the_production_parser_exposes_no_candidate_option() -> None:
     assert not any("candidate" in name for name in options), sorted(options)
     assert not any("pack" in name for name in options)
     assert not any("sha256" in name for name in options)
-    assert "recipe" in options, "the v1 recipe path is still present until Task 9"
+    assert "recipe" not in options, "production must not accept a recipe path"
 
 
 def test_the_harness_cannot_write_activation(candidate) -> None:

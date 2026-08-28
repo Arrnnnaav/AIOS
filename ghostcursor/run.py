@@ -868,9 +868,9 @@ def run_tour(
                     if submitted is not None:
                         # Ask uses the same planner as --goal, but an active
                         # tour is never replaced behind the user's back.
-                        from ghostcursor.reasoning.planner import plan_goal
+                        from ghostcursor.reasoning.planner import plan_compiled_goal
 
-                        asked = plan_goal(submitted)
+                        asked = plan_compiled_goal(submitted, target_title_re=title_re)
                         # A supported nested tour deliberately keeps its own
                         # control bar alive after completion. Announce the Ask
                         # result before entering that blocking session so the
@@ -878,30 +878,20 @@ def run_tour(
                         # only when the session timeout eventually returns.
                         print(f"Ask received: {submitted!r} — {asked.status.value}")
                         if asked.plan is not None and asked.intent_id is not None:
-                            from ghostcursor.reasoning.planner import recipe_path_for
-
                             # A terminal tour is an idle host for Ask. Tear
                             # down this bar before launching the nested tour
                             # so the user never sees two interactive bars.
-                            launch_target = (
-                                "Synthetic Export"
-                                if asked.intent_id == "EXPORT_DATA"
-                                else title_re
-                            )
-                            launch_path = str(recipe_path_for(asked.intent_id))
                             bar.set_status(bar_hwnd, f"Starting {asked.intent_id}…")
                             bar.restore_focus_if_safe(bar_hwnd, target_hwnd)
                             old_bar = bar_hwnd
                             bar_hwnd = None
                             bar.destroy_bar_window(old_bar)
-                            run_tour(
-                                launch_path,
-                                launch_target,
-                                max(1.0, deadline - clock()),
+                            run_tour_for_workflow(
+                                asked.plan,
+                                seconds=max(1.0, deadline - clock()),
                                 clock=clock,
                                 sleeper=sleeper,
                                 warmup_budget_s=warmup_budget_s,
-                                ai_goal=submitted,
                             )
                             bar_hwnd = bar.create_bar_window()
                             bar.set_status(bar_hwnd, "Ready")
@@ -1068,28 +1058,22 @@ def main() -> int:
         help="stop automatically after this long (safety net)",
     )
     source = parser.add_mutually_exclusive_group()
-    source.add_argument("--recipe", help="path to a recipe JSON to run as a guided tour")
     source.add_argument("--goal", help="natural-language goal to classify and guide")
     args = parser.parse_args()
 
-    if args.recipe:
-        return run_tour(args.recipe, args.target or DEFAULT_TARGET, args.seconds)
     if args.goal:
-        from ghostcursor.reasoning.planner import PlanStatus, plan_goal, recipe_path_for
+        from ghostcursor.reasoning.planner import PlanStatus, plan_compiled_goal
 
-        result = plan_goal(args.goal)
+        result = plan_compiled_goal(args.goal, target_title_re=args.target)
         print(f"Planner: {result.status.value} ({result.confidence:.2f}) — {result.explanation}")
         if result.plan is None or result.intent_id is None:
             return 2
-        target = args.target
-        if target is None:
-            target = "Synthetic Export" if result.intent_id == "EXPORT_DATA" else None
-        if target is None:
-            print("This intent requires an explicit --target.")
-            return 2
         if result.status not in (PlanStatus.SUPPORTED, PlanStatus.MODEL_UNAVAILABLE_FALLBACK, PlanStatus.INVALID_MODEL_OUTPUT):
             return 2
-        return run_tour(str(recipe_path_for(result.intent_id)), target, args.seconds, ai_goal=args.goal)
+        return run_tour_for_workflow(
+            result.plan,
+            seconds=args.seconds,
+        )
 
     target = args.target or DEFAULT_TARGET
     hwnd = window.create_overlay_window()
@@ -1128,10 +1112,6 @@ def main() -> int:
     return 0
 
 
-if __name__ == "__main__":
-    raise SystemExit(main())
-
-
 # ---------------------------------------------------------------------------
 # Schema v2 launch entry point
 # ---------------------------------------------------------------------------
@@ -1148,9 +1128,9 @@ def run_tour_for_workflow(
     """Launch a guided tour from a `CompiledWorkflow`, never from a path.
 
     The production-facing v2 entry point: `--goal` and Ask hand the exact
-    object planning returned straight to the tour, with no second
-    `recipe_path_for()` lookup that could resolve to different bytes than the
-    ones the plan was authorized against.
+    object planning returned straight to the tour, with no second artifact
+    lookup that could resolve to different bytes than the ones the plan was
+    authorized against.
 
     **Every authority input is chosen here, not accepted here.** The window
     reader, the catalog loader, and the project root are what revalidation
@@ -1398,3 +1378,7 @@ def pump_messages() -> None:
         pythoncom.PumpWaitingMessages()
     except Exception:
         pass
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

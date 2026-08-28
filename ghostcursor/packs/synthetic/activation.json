@@ -1,0 +1,25 @@
+{
+  "activation_generation": 1,
+  "intents": {
+    "EXPORT_DATA": {
+      "active_adoption_id": "accept-export-data-1",
+      "adoptions": {
+        "accept-export-data-1": {
+          "accepted_application_identity": {"kind": "content_sha256", "value": "c97b33ed325bdf1a8e16060d684eb17de65062242e79e3914b5f5d1f6128fe6a"},
+          "accepted_intent": {"path": "intents/open_export.b44a6bdf9c0a53c2.json", "sha256": "b44a6bdf9c0a53c224e654d66ddd3944c2b0c8eb0a13f90f13e9afe6eb6ef219"},
+          "accepted_pack": {"path": "pack/synthetic.abbf4db4a8a60e1f.json", "sha256": "abbf4db4a8a60e1f8caae3b4b1e95a59d691aa0b71769bbeecba037540e8a004"},
+          "adopted_at": "2026-08-28T00:00:00Z",
+          "evidence": {"path": "docs/evidence/schema-v2-candidate-acceptance.md", "sha256": "5222a3cb4fc8635fa92df98df754032b6574c1f1d5f1c2f21801a263cec4b937"},
+          "recipe": {"path": "recipes/open_export.c2420d7c005616df.json", "sha256": "c2420d7c005616df4620c61557269a345deb00e1a408cbf579badab85f26a8bf"},
+          "review_commit": "bae0ceea8e6db86106491ec833da48f427f7918d",
+          "reviewer_id": "independent-d032-reviewer",
+          "supersedes_adoption_id": null,
+          "supersedes_recipe_sha256": null
+        }
+      },
+      "intent": {"path": "intents/open_export.b44a6bdf9c0a53c2.json", "sha256": "b44a6bdf9c0a53c224e654d66ddd3944c2b0c8eb0a13f90f13e9afe6eb6ef219"}
+    }
+  },
+  "pack": {"path": "pack/synthetic.abbf4db4a8a60e1f.json", "sha256": "abbf4db4a8a60e1f8caae3b4b1e95a59d691aa0b71769bbeecba037540e8a004"},
+  "schema_version": 2
+}

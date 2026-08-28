@@ -1,0 +1,9 @@
+{
+  "activation_generation": 1,
+  "intents": {
+    "CREATE_DOCUMENT": {"active_adoption_id": null, "adoptions": {}, "intent": {"path": "intents/create_document.e949c15810efceef.json", "sha256": "e949c15810efceeff4372bfe99602457e55a023741af50d2e4e8d982e5e8628e"}},
+    "OPEN_SETTINGS": {"active_adoption_id": null, "adoptions": {}, "intent": {"path": "intents/open_settings.1a9b0c0907bc3bcf.json", "sha256": "1a9b0c0907bc3bcf75a71819b1124db693345f926f2c03c5d9af34deb23a15e4"}}
+  },
+  "pack": {"path": "pack/common.57a26d65535e8e27.json", "sha256": "57a26d65535e8e2702a79950fba669f6a76c932a93d971775e43860ea9314ae2"},
+  "schema_version": 2
+}

@@ -10,11 +10,13 @@ import os
 import time
 from dataclasses import dataclass
 from typing import Callable
+from pathlib import Path
 
 import win32gui
 import win32process
 
 from ghostcursor.packs.registry import AppPack, PackRegistry
+from ghostcursor.packs.activation import load_catalog
 from ghostcursor.perception.appinfo import _exe_path_for_pid
 
 
@@ -47,7 +49,12 @@ class ForegroundWatcher:
         foreground_source: Callable[[], ForegroundIdentity | None] = foreground_identity,
         log: Callable[[str], None] = print,
     ) -> None:
-        self.registry = registry or PackRegistry()
+        if registry is not None:
+            self.registry = registry
+        else:
+            project_root = Path(__file__).resolve().parent.parent
+            catalog = load_catalog(project_root)
+            self.registry = PackRegistry.from_verified(catalog.packs.values())
         self.interval_s = interval_s
         self.foreground_source = foreground_source
         self.log = log

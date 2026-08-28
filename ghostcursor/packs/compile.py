@@ -18,9 +18,9 @@ The matcher implements D072's grammar exactly and nothing beyond it:
   deduplicate to that intent; two *different* intents matching inside one tier
   resolve to no intent at all.
 
-`_fallback()` in `ghostcursor.reasoning.planner` remains the production matcher
-until the atomic cutover.  This module is compared against it by
-`tests/test_compiled_matcher.py`; production does not choose between them.
+The compiled matcher is the production matcher after the schema-v2 cutover.
+The compatibility corpus in `tests/test_compiled_matcher.py` remains an
+independent differential check, not a second runtime authority.
 """
 
 from __future__ import annotations

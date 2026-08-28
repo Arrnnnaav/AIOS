@@ -1,0 +1,18 @@
+{
+  "aliases": {},
+  "display_name": "Synthetic Export",
+  "executable_names": [
+    "python.exe"
+  ],
+  "pack_id": "synthetic",
+  "pack_kind": "application",
+  "schema_version": 2,
+  "tier2_capture": "disabled",
+  "title_patterns": [
+    "^Synthetic Export$"
+  ],
+  "version_identity": {
+    "kind": "content_sha256",
+    "path": "ghostcursor/demo/synthetic_export_app.py"
+  }
+}
