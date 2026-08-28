@@ -944,6 +944,24 @@ fresh acceptance for each unless a separate decision grants migration parity.
 Open Folder's gate must assert **UIA provenance**, not merely that the workflow
 completed — fallback OCR preserves the outcome while the preferred tier is dark.
 
+**The evidence document is rendered from the run records, never authored.** The
+acceptance harness prints one JSON record per run; those land under ignored
+`.artifacts/`, and `tools/render_acceptance_evidence.py` derives the committed
+document from them:
+
+```powershell
+py -3.12 tools/render_acceptance_evidence.py `
+  --records .artifacts/task8 `
+  --out docs/evidence/schema-v2-candidate-acceptance.md
+```
+
+It refuses rather than renders whenever the records do not support the claim: a
+`--prepare-only` preparation record, fewer than three passes, runs spanning two
+digest sets or two application versions, or an Open Folder pass that was not
+grounded by UIA alone. `--check` re-renders and compares, so a hand-edited table
+fails instead of being believed. Failed attempts stay in the table — three
+passes among five attempts is not 3/3, and the count must show it.
+
 ---
 
 ## 10. Testing
