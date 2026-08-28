@@ -351,7 +351,7 @@ def test_target_resolution_reuses_the_production_rules(candidate) -> None:
         bind_candidate_target(
             graph, windows=[_window(exe="chrome.exe")], project_root=PROJECT_ROOT
         )
-    with pytest.raises(WorkflowUnavailable, match="none is in the foreground"):
+    with pytest.raises(WorkflowUnavailable, match="narrow to exactly one"):
         bind_candidate_target(
             graph,
             windows=[
@@ -1725,3 +1725,67 @@ def test_the_worker_is_stopped_when_disposing_the_overlay_raises(candidate) -> N
             seconds=2.0,
         )
     assert perception.stopped, "a raising dispose skipped the worker shutdown"
+def test_the_record_carries_the_executors_timing_verbatim(candidate) -> None:
+    """The marks are evidence, and evidence that stops at the executor is none.
+
+    `record_for` is the only thing that builds a `RunRecord`, so a timing the
+    executor measured and the record dropped would be measured nowhere a
+    reviewer can reach.
+    """
+    from ghostcursor.devtools.candidate_acceptance import record_for
+    from ghostcursor.reasoning.compiled_tour import (
+        GroundingProvenance,
+        RunOutcome,
+        TourResult,
+    )
+
+    graph = _load(candidate)
+    target = bind_candidate_target(
+        graph, windows=[_window()], project_root=PROJECT_ROOT
+    )
+    result = TourResult(
+        outcome=RunOutcome.TIMED_OUT,
+        provenance=(GroundingProvenance.UIA,),
+        steps_completed=0,
+        steps_total=1,
+        detail="no terminal state within 90s",
+        timing={"first_observation_s": 0.5, "first_hint_s": 1.25, "ended_s": 90.0},
+    )
+
+    record = record_for(graph, target, result)
+    assert record.timing == {
+        "first_observation_s": 0.5,
+        "first_hint_s": 1.25,
+        "ended_s": 90.0,
+    }
+
+    payload = json.loads(record.to_json())
+    assert payload["timing"] == {
+        "ended_s": 90.0,
+        "first_hint_s": 1.25,
+        "first_observation_s": 0.5,
+    }
+
+
+def test_a_run_with_no_marks_still_carries_a_timing_object(candidate) -> None:
+    """An empty object reads as "nothing happened"; a missing key reads as
+    "this harness does not record timing", and a reader cannot tell which
+    failure they are looking at."""
+    from ghostcursor.devtools.candidate_acceptance import record_for
+    from ghostcursor.reasoning.compiled_tour import RunOutcome, TourResult
+
+    graph = _load(candidate)
+    target = bind_candidate_target(
+        graph, windows=[_window()], project_root=PROJECT_ROOT
+    )
+    record = record_for(
+        graph,
+        target,
+        TourResult(
+            outcome=RunOutcome.ABORTED,
+            provenance=(),
+            steps_completed=0,
+            steps_total=1,
+        ),
+    )
+    assert json.loads(record.to_json())["timing"] == {}

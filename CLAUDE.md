@@ -471,6 +471,22 @@ the first. A **verification** selector may be `AT_LEAST_ONE`, because "an
 `Installed Section` exists" does not require choosing one control on the user's
 behalf. Recipes declare the strategy; the compiler never infers it.
 
+**One matching window or none — never the foreground (D075).** After the
+executable, title-pattern and optional narrowing filters, exactly one window
+may survive; anything else refuses and names every candidate with its handle. A
+narrowing that still leaves several is the same refusal. There is no foreground
+tie-break and `resolve_target` may not read the foreground by any route: a real
+foreground handle never matches a synthetic candidate, so a reintroduced
+tie-break would pass every hermetic test while silently binding the wrong
+workspace live. Prompting the operator to choose may be added later; choosing
+for them may not.
+
+**Every compiled run record carries its timing (D075).** `TourResult.timing`
+holds seconds from the run's start to each landmark that occurred — first
+observation, first hint, first title change, verification-clock start, end —
+and every exit path records it, the failing ones especially. An absent mark
+means the event never happened, which is itself the finding.
+
 **The compiled walk's shape follows traversal count, and the title stays on the
 worker (D074).** One backend enumeration is the unit of cost: a plan with one
 traversal takes a type-scoped walk, two or more take one shared full

@@ -2219,3 +2219,156 @@ def test_the_executor_runs_without_a_progress_listener() -> None:
     """`on_step` is optional: the ESC-only path wires no control rail at all."""
     result = _run_two_step()
     assert result.outcome is RunOutcome.TIMED_OUT
+# ---------------------------------------------------------------------------
+# What a record can say about WHEN
+# ---------------------------------------------------------------------------
+
+
+def test_a_timed_out_run_still_records_its_landmarks() -> None:
+    """The whole point. A timeout that recorded nothing is what left this
+    milestone unable to explain an Open Folder failure after the fact.
+
+    "Timed out" alone cannot separate an operator slower than a 20s budget
+    from a world that never changed at all, and those call for opposite
+    responses -- one is pacing, the other is a broken workflow.
+    """
+    result = _run_two_step()
+
+    assert result.outcome is RunOutcome.TIMED_OUT
+    assert result.timing["first_observation_s"] >= 0.0
+    assert "first_hint_s" in result.timing
+    assert result.timing["ended_s"] >= result.timing["first_hint_s"]
+
+
+def test_the_verification_clock_reaches_the_record() -> None:
+    """When the bounded clock STARTED is half of why a timeout happened.
+
+    `fail_after_timeout` measures from that mark, so a record without it can
+    say a step ran out of time and not what it was counting from -- which is
+    the difference between an operator who was slow and a verification that
+    armed on the wrong event.
+    """
+    result = _run_two_step()
+
+    assert result.outcome is RunOutcome.TIMED_OUT
+    started = result.timing["verification_started_s"]
+    assert started >= result.timing["first_hint_s"], result.timing
+    assert started < result.timing["ended_s"]
+
+
+def test_the_title_change_is_marked_when_it_happens_and_not_before() -> None:
+    """Open Folder's verified outcome IS the title change.
+
+    When it landed relative to the verification clock is exactly the evidence
+    that was missing: a title that changed after the budget expired and one
+    that never changed produce the same outcome and want different answers.
+    """
+    workflow = _two_step_workflow()
+    target = Element("Open Folder...", "Button", "", (10, 20, 110, 60))
+    now = [0.0]
+    title = ["Welcome - Visual Studio Code"]
+
+    def _sleep(seconds):
+        now[0] += seconds
+        if now[0] >= 2.0:
+            title[0] = "demo - Visual Studio Code"
+
+    def _observe():
+        return TickInput(
+            title=title[0],
+            selectors={"open_folder": (target,)},
+            union=(target,),
+        )
+
+    result = execute_compiled_workflow(
+        workflow,
+        observe=_observe,
+        renderer=_NullRenderer(),
+        clock=lambda: now[0],
+        sleeper=_sleep,
+        seconds=6.0,
+    )
+
+    assert result.timing["title_changed_s"] >= 2.0
+    assert result.timing["title_changed_s"] < result.timing["ended_s"]
+
+
+def test_a_title_that_never_changes_is_marked_nowhere() -> None:
+    """An absent mark is an answer, not a gap: nothing ever happened.
+
+    A constant title on purpose. `_run_two_step` bakes a moving timestamp into
+    the title so its dwelling step keeps ticking, which would satisfy this
+    assertion's opposite and prove nothing.
+    """
+    workflow = _two_step_workflow()
+    target = Element("Open Folder...", "Button", "", (10, 20, 110, 60))
+    now = [0.0]
+    result = execute_compiled_workflow(
+        workflow,
+        observe=lambda: TickInput(
+            title="Welcome - Visual Studio Code",
+            selectors={"open_folder": (target,)},
+            union=(target,),
+        ),
+        renderer=_NullRenderer(),
+        clock=lambda: now[0],
+        sleeper=lambda s: now.__setitem__(0, now[0] + s),
+        seconds=6.0,
+    )
+
+    assert result.outcome is RunOutcome.TIMED_OUT
+    assert "title_changed_s" not in result.timing
+    # The marks that DID happen are still there, so absence means absence and
+    # not "timing was never recorded for this run".
+    assert "first_observation_s" in result.timing
+
+
+def test_the_landmarks_record_the_first_occurrence_only() -> None:
+    """A mark that keeps moving is a heartbeat; these answer "when first"."""
+    workflow = _two_step_workflow()
+    target = Element("Open Folder...", "Button", "", (10, 20, 110, 60))
+    now = [0.0]
+    titles = iter(["a", "b", "c", "d", "e", "f", "g", "h"])
+    last = ["Welcome - Visual Studio Code"]
+
+    def _observe():
+        # Changes on EVERY read after the first, so a mark that re-records
+        # would keep climbing towards the end of the run.
+        try:
+            last[0] = next(titles)
+        except StopIteration:
+            pass
+        return TickInput(
+            title=last[0], selectors={"open_folder": (target,)}, union=(target,)
+        )
+
+    result = execute_compiled_workflow(
+        workflow,
+        observe=_observe,
+        renderer=_NullRenderer(),
+        clock=lambda: now[0],
+        sleeper=lambda s: now.__setitem__(0, now[0] + s),
+        seconds=6.0,
+    )
+
+    assert result.timing["title_changed_s"] < 1.0, result.timing
+
+
+def test_an_aborted_run_before_any_observation_still_reports_its_end() -> None:
+    """Every exit carries the snapshot, including the earliest ones."""
+    workflow = _two_step_workflow()
+    now = [0.0]
+    result = execute_compiled_workflow(
+        workflow,
+        observe=lambda: None,
+        renderer=_NullRenderer(),
+        clock=lambda: now[0],
+        sleeper=lambda s: now.__setitem__(0, now[0] + s),
+        seconds=6.0,
+        should_abort=lambda: True,
+    )
+
+    assert result.outcome is RunOutcome.ABORTED
+    assert "ended_s" in result.timing
+    # Nothing was ever observed, so there is no observation mark to give.
+    assert "first_observation_s" not in result.timing

@@ -612,7 +612,13 @@ def test_a_title_match_without_the_executable_is_not_a_target() -> None:
         resolve_target(pack, [browser], project_root=PROJECT_ROOT)
 
 
-def test_two_candidates_without_a_foreground_are_ambiguous() -> None:
+def test_two_matching_windows_refuse_rather_than_pick_one() -> None:
+    """Ambiguity fails closed. A window is the outermost selector.
+
+    An `EXACTLY_ONE` action selector already refuses to choose one control
+    among several rather than taking the first; choosing one WINDOW among
+    several is the same decision at a larger scale, and gets the same answer.
+    """
     _catalog_, pack, _intent = _catalog()
     windows = [
         _window(hwnd=1, title="a - Visual Studio Code"),
@@ -620,27 +626,129 @@ def test_two_candidates_without_a_foreground_are_ambiguous() -> None:
     ]
     with pytest.raises(WorkflowUnavailable) as caught:
         resolve_target(pack, windows, project_root=PROJECT_ROOT)
-    assert "none is in the foreground" in str(caught.value)
+
+    message = str(caught.value)
+    # Every candidate, with its handle: two windows can share a title, and the
+    # handle is the only thing that always separates them. Without the list
+    # the operator is told to narrow and given nothing to narrow against.
+    assert "1 'a - Visual Studio Code'" in message
+    assert "2 'b - Visual Studio Code'" in message
 
 
-def test_the_foreground_window_wins_among_several_candidates() -> None:
+def test_the_focused_window_gets_no_say_in_which_one_is_chosen() -> None:
+    """No foreground tie-break, in either direction.
+
+    It used to break ties, and two matching windows then resolved silently to
+    whichever happened to be focused -- a different workspace, with a trusted
+    recipe pointed at it and nothing to show a choice had been made. Neither
+    candidate being focused, nor one of them being focused, may change the
+    answer now: both are the same refusal.
+    """
     _catalog_, pack, _intent = _catalog()
     windows = [
         _window(hwnd=1, title="a - Visual Studio Code"),
         _window(hwnd=2, title="b - Visual Studio Code"),
     ]
-    target = resolve_target(pack, windows, foreground_hwnd=2, project_root=PROJECT_ROOT)
-    assert target.hwnd == 2
+    with pytest.raises(WorkflowUnavailable):
+        resolve_target(pack, windows, project_root=PROJECT_ROOT)
+
+    # The resolver cannot even be TOLD which window is focused any more. A
+    # parameter that no longer decides anything reads like a guard while
+    # enforcing nothing, so it is gone rather than ignored.
+    import ast
+    import inspect
+
+    # Membership on `.parameters` is by exact NAME, so `"foreground" not in`
+    # would only ever have refused a parameter called exactly that -- and the
+    # one being refused is `foreground_hwnd`. Scan the names instead.
+    named = [
+        name
+        for name in inspect.signature(resolve_target).parameters
+        if "foreground" in name
+    ]
+    assert not named, named
+
+    # And it must not fetch the foreground itself. With the parameter gone
+    # that is the only way the tie-break could return, and no behavioural
+    # test would see it: a real `GetForegroundWindow()` never matches a
+    # synthetic candidate, so the resolver would keep refusing here while
+    # silently choosing on a live desktop.
+    source = ast.unparse(
+        next(
+            node
+            for node in ast.parse(
+                (
+                    PROJECT_ROOT / "ghostcursor" / "packs" / "workflow.py"
+                ).read_text(encoding="utf-8")
+            ).body
+            if isinstance(node, ast.FunctionDef) and node.name == "resolve_target"
+        )
+    )
+    # The docstring explains WHY there is no tie-break, so scan code only.
+    body = ast.parse(
+        (PROJECT_ROOT / "ghostcursor" / "packs" / "workflow.py").read_text(
+            encoding="utf-8"
+        )
+    )
+    resolver = next(
+        node
+        for node in body.body
+        if isinstance(node, ast.FunctionDef) and node.name == "resolve_target"
+    )
+    calls = [
+        ast.unparse(node)
+        for node in ast.walk(resolver)
+        if isinstance(node, (ast.Name, ast.Attribute))
+        and "oreground" in ast.unparse(node)
+    ]
+    assert not calls, calls
 
 
-def test_a_foreground_window_that_is_not_a_candidate_is_ignored() -> None:
-    """Foreground is a tie-break among candidates, never an override."""
+def test_a_narrowing_that_does_not_narrow_to_one_still_refuses() -> None:
+    """The subtle case, and the reason foreground had to go rather than yield.
+
+    An operator who passes an explicit pattern believes they disambiguated.
+    Under the old order a pattern matching two windows fell through to the
+    foreground tie-break anyway, so the narrowing looked authoritative and was
+    not. A pattern that fails to reach one window is not a choice.
+    """
     _catalog_, pack, _intent = _catalog()
-    windows = [_window(hwnd=1, title="a - Visual Studio Code")]
+    windows = [
+        _window(hwnd=1, title="alpha - Visual Studio Code"),
+        _window(hwnd=2, title="beta - Visual Studio Code"),
+    ]
+    with pytest.raises(WorkflowUnavailable) as caught:
+        resolve_target(
+            pack,
+            windows,
+            target_title_re="Visual Studio Code",
+            project_root=PROJECT_ROOT,
+        )
+    assert "even after narrowing" in str(caught.value)
+
+
+def test_a_narrowing_that_reaches_exactly_one_window_is_accepted() -> None:
+    """Fail-closed is not fail-always: specific enough still resolves."""
+    _catalog_, pack, _intent = _catalog()
+    windows = [
+        _window(hwnd=1, title="alpha - Visual Studio Code"),
+        _window(hwnd=2, title="beta - Visual Studio Code"),
+    ]
     target = resolve_target(
-        pack, windows, foreground_hwnd=999, project_root=PROJECT_ROOT
+        pack, windows, target_title_re="^alpha", project_root=PROJECT_ROOT
     )
     assert target.hwnd == 1
+
+
+def test_one_matching_window_needs_no_narrowing_at_all() -> None:
+    """The ordinary case is untouched: a single window still just works."""
+    _catalog_, pack, _intent = _catalog()
+    target = resolve_target(
+        pack,
+        [_window(hwnd=7, title="only - Visual Studio Code")],
+        project_root=PROJECT_ROOT,
+    )
+    assert target.hwnd == 7
 
 
 def test_target_narrowing_can_filter_but_never_replace_the_executable_check() -> None:

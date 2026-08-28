@@ -359,3 +359,33 @@ Folder's gate must assert UIA provenance rather than mere completion.
 
 **State/trigger:** scheduled by plan Tasks 8 and 12 when exact candidate
 artifacts and independent reviewers are available.
+
+### Unresolved — the original OPEN_FOLDER acceptance timeout
+
+Three OPEN_FOLDER attempts failed before the Task 8 runs, each with the folder
+title having already changed while the cursor stayed on Open Folder until the
+20-second verification timeout. Nine runs later passed 3/3 with UIA-only
+grounding, so the workflow works; **why the earlier attempts failed is still
+not known.**
+
+The first explanation offered — that the unbounded full-tree walk was too slow
+— was measured and withdrawn: on live VS Code the full tree takes 0.093-0.110s
+and a whole plan tick 0.063s, which cannot produce a 20-second timeout
+(`docs/evidence/compiled-walk-latency.md`, D074).
+
+Two differences between the failing and passing attempts were never controlled:
+the passing runs pinned the window with `--target`, and the failing ones bound
+whichever VS Code window the resolver picked. The failing session also recorded
+no timings, so operator pacing — the confirmed cause of the one OPEN_TERMINAL
+failure in Task 8 — cannot be ruled out or in.
+
+**Containment now in place (D075).** Ambiguous target binding fails closed, so
+the resolver can no longer choose a window silently. Every run record carries
+its landmarks, so a recurrence arrives with the timeline that was missing.
+
+**Trigger.** Reopen if any compiled run times out with a `title_changed_s` mark
+present and earlier than `ended_s`, or with `verification_started_s` absent
+while the step rendered a hint. Either shape says the verification clock armed
+on the wrong event rather than the operator being slow, which would be a real
+defect and not pacing. Until then this is an accepted operational risk, not a
+known bug.

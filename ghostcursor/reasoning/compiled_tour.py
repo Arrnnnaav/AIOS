@@ -20,10 +20,10 @@ not in how observe-act-verify behaves.
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from types import SimpleNamespace
-from typing import Callable, Sequence
+from typing import Callable, Mapping, Sequence
 
 from ghostcursor.perception.health import PerceptionUnhealthy
 from ghostcursor.perception.uia import Element, ProviderQueryFault
@@ -84,6 +84,13 @@ class TourResult:
     steps_completed: int
     steps_total: int
     detail: str = ""
+    #: Seconds from the start of the run to each landmark, for the marks that
+    #: happened. A record naming only the outcome cannot tell a user who was
+    #: slower than a 20s budget from a world that never changed, and those two
+    #: findings call for opposite responses -- one is operator pacing, the
+    #: other is a broken workflow. Absent keys mean the mark never occurred,
+    #: which is itself the answer in several failure shapes.
+    timing: Mapping[str, float] = field(default_factory=dict)
 
     @property
     def grounded_by_uia_only(self) -> bool:
@@ -301,6 +308,28 @@ def execute_compiled_workflow(
         ),
     )
 
+    #: Landmarks, in seconds from the start of the run. Recorded once each:
+    #: a mark that keeps moving is a heartbeat, and the question these answer
+    #: is WHEN something first happened.
+    marks: dict[str, float] = {}
+    first_title = [None]
+
+    def _mark(name: str) -> None:
+        marks.setdefault(name, clock() - started)
+
+    def _timing() -> dict[str, float]:
+        """Snapshot taken at every exit, including the failing ones.
+
+        Especially the failing ones: a timeout that recorded nothing is the
+        record that sent this milestone back to guessing about Open Folder.
+        """
+        out = dict(marks)
+        started_at = tour.verification_started_at
+        if started_at is not None:
+            out.setdefault("verification_started_s", started_at - started)
+        out["ended_s"] = clock() - started
+        return out
+
     #: The step index last REPORTED, so progress is announced on change
     #: rather than on every tick. -1 rather than 0 so the first step is
     #: announced too: a run that named no step until the second one would
@@ -327,6 +356,7 @@ def execute_compiled_workflow(
                 steps_completed=0,
                 steps_total=len(steps),
                 detail="aborted before the first observation",
+                timing=_timing(),
             )
         if clock() - started >= seconds:
             return TourResult(
@@ -335,6 +365,7 @@ def execute_compiled_workflow(
                 steps_completed=0,
                 steps_total=len(steps),
                 detail=f"no observation published within {seconds:g}s",
+                timing=_timing(),
             )
         try:
             _current = observe()
@@ -345,9 +376,13 @@ def execute_compiled_workflow(
                 steps_completed=0,
                 steps_total=len(steps),
                 detail=str(fault),
+                timing=_timing(),
             )
         if _current is None:
             sleeper(tick_interval_s)
+        else:
+            _mark("first_observation_s")
+            first_title[0] = _current.title
 
     while True:
         _tend()
@@ -358,6 +393,7 @@ def execute_compiled_workflow(
                 steps_completed=tour.step_index,
                 steps_total=len(steps),
                 detail="aborted by the operator",
+                timing=_timing(),
             )
 
         # Pause is an operator instruction, not an empty observation and not a
@@ -373,6 +409,7 @@ def execute_compiled_workflow(
                     steps_completed=tour.step_index,
                     steps_total=len(steps),
                     detail=f"no terminal state within {seconds:g}s",
+                    timing=_timing(),
                 )
             sleeper(tick_interval_s)
             continue
@@ -389,6 +426,12 @@ def execute_compiled_workflow(
             # nothing re-announces the last step either.
             if on_step is not None and tour.step_index < len(steps):
                 on_step(tour.step_index, len(steps))
+
+        if _current is not None and _current.title != first_title[0]:
+            # The Open Folder signal specifically: the title is the verified
+            # outcome, so when it changed relative to the verification clock
+            # is the difference between a slow operator and a dead workflow.
+            _mark("title_changed_s")
 
         _index[0] = tour.step_index
         # Confirmation is an explicit user action, not an observation.  The
@@ -418,7 +461,13 @@ def execute_compiled_workflow(
                 steps_completed=tour.step_index,
                 steps_total=len(steps),
                 detail=str(fault),
+                timing=_timing(),
             )
+
+        if state is State.AWAITING_USER_ACTION:
+            # The hint is on screen from here, which is where a
+            # `timeout_from_hint` recipe starts counting.
+            _mark("first_hint_s")
 
         if state is State.DONE:
             return TourResult(
@@ -426,6 +475,7 @@ def execute_compiled_workflow(
                 provenance=provenance.as_tuple(),
                 steps_completed=len(steps),
                 steps_total=len(steps),
+                timing=_timing(),
             )
         if state is State.FAILED:
             return TourResult(
@@ -434,6 +484,7 @@ def execute_compiled_workflow(
                 steps_completed=tour.step_index,
                 steps_total=len(steps),
                 detail=getattr(tour, "failure_reason", "") or "",
+                timing=_timing(),
             )
 
         if clock() - started >= seconds:
@@ -447,5 +498,6 @@ def execute_compiled_workflow(
                 steps_completed=tour.step_index,
                 steps_total=len(steps),
                 detail=f"no terminal state within {seconds:g}s",
+                timing=_timing(),
             )
         sleeper(tick_interval_s)

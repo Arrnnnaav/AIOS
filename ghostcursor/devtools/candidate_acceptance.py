@@ -37,7 +37,7 @@ import contextlib
 import hashlib
 import json
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Mapping, Sequence
 
@@ -189,6 +189,10 @@ class RunRecord:
     steps_completed: int
     steps_total: int
     detail: str = ""
+    #: Landmarks in seconds from the run's start, straight from the executor.
+    #: A timeout record that says only "timed out" is what left this
+    #: milestone unable to explain an Open Folder failure after the fact.
+    timing: Mapping[str, float] = field(default_factory=dict)
 
     @property
     def grounded_by_uia_only(self) -> bool:
@@ -221,6 +225,7 @@ class RunRecord:
                     "total": self.steps_total,
                 },
                 "detail": self.detail,
+                "timing": {k: round(v, 3) for k, v in sorted(self.timing.items())},
             },
             indent=2,
             sort_keys=True,
@@ -360,7 +365,6 @@ def bind_candidate_target(
     *,
     windows: Sequence[WindowCandidate],
     project_root: Path,
-    foreground_hwnd: int = 0,
     target_title_re: str | None = None,
     expected_identity: str | None = None,
 ) -> TargetContext:
@@ -375,7 +379,6 @@ def bind_candidate_target(
     target = resolve_target(
         pack,
         list(windows),
-        foreground_hwnd=foreground_hwnd,
         target_title_re=target_title_re,
         project_root=project_root,
     )
@@ -489,6 +492,7 @@ def record_for(
         steps_completed=result.steps_completed,
         steps_total=result.steps_total,
         detail=result.detail,
+        timing=result.timing,
     )
 
 

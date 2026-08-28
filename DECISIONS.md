@@ -3219,3 +3219,72 @@ on the guard detector, and the reverted patch itself as the tenth.
 stayed green — none of them asserted the walk that was issued. And one asserted
 cause that measurement then withdrew, written by the same controller that had
 just rejected another patch for exactly that.
+
+## D075 — One matching window or none, and every run says when things happened
+
+**Context.** Task 8's acceptance runs needed `--target` to bind the intended VS
+Code window. Task 9 moves target resolution onto the production path, so the
+policy had to be settled before the cutover rather than discovered by it.
+
+**What the resolver did.** Filter by the pack's executable and title patterns,
+apply the optional narrowing, prefer the foreground window if it survived, else
+require exactly one. Measured across the matrix (hermetic, `resolve_target`
+called directly):
+
+| Case | Result |
+|---|---|
+| 1 window, no narrowing, no foreground | binds it |
+| 2 windows, no narrowing, no foreground | refuses, names both |
+| 2 windows, foreground is the intended one | binds it |
+| **2 windows, foreground is the WRONG one** | **binds the wrong one, silently** |
+| 2 windows, exact narrowing | binds the intended one |
+| 2 windows, exact narrowing, foreground wrong | narrowing wins |
+| **2 windows, narrowing too loose** | **falls through to foreground, silently** |
+
+The last row is the one that decided this. An operator who passes an explicit
+pattern believes they have disambiguated; a pattern matching two windows fell
+through to the foreground anyway, so the narrowing looked authoritative and was
+not.
+
+**Decision.** No foreground tie-break, in either direction. Exactly one window
+after all filters, or refuse and name every candidate with its handle — handles
+as well as titles, because two windows can share a title. A narrowing that
+still leaves several is the same refusal, and says so.
+
+The justification is not novel: an `EXACTLY_ONE` action selector already
+refuses to take the first of several matching controls (D069). A window is the
+outermost selector, and choosing one there is the same decision at a larger
+scale. `foreground_hwnd` is removed rather than ignored — a parameter that
+decides nothing reads like a guard while enforcing nothing (D031).
+
+Prompting the operator to choose is a reasonable future improvement and is
+recorded as such. Silently choosing for them is not.
+
+**Why a structural guard as well as a behavioural one.** With the parameter
+gone, the tie-break could only return by the resolver calling
+`GetForegroundWindow()` itself — and no hermetic test would see it, because a
+real foreground handle never matches a synthetic candidate. The resolver would
+keep refusing under test while silently choosing on a live desktop. So the test
+also scans `resolve_target`'s own AST for any foreground reference. Mutation
+audit: 7/7, including both ways the tie-break could come back.
+
+**The second half: every run record now says WHEN.** The original Open Folder
+failure could not be explained after the fact because the record said only that
+verification timed out. `TourResult.timing` now carries seconds from the run's
+start to each landmark that occurred — first observation, first hint, first
+title change, verification-clock start, end — and every exit path snapshots it,
+the failing ones especially. An absent mark is an answer rather than a gap: a
+title that never changed is a different finding from one that changed after the
+budget expired, and "timed out" alone cannot tell them apart. `GuidedTour`
+exposes `verification_started_at` read-only so a record can say what the
+bounded clock was counting from.
+
+**Status of the original failure.** Still unexplained; see
+`docs/evidence/compiled-walk-latency.md` for what was withdrawn and
+`docs/superpowers/FOLLOWUPS.md` for the trigger. It is now *contained* rather
+than understood: ambiguous target binding can no longer happen silently, and
+any recurrence arrives with its timeline attached.
+
+**Cost.** Nine acceptance runs that needed an operator flag production did not
+have, and one failure this project could not diagnose because nothing recorded
+the time.

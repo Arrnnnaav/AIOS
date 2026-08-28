@@ -128,6 +128,18 @@ class GuidedTour:
         self._verification_started_at: float | None = None
 
     @property
+    def verification_started_at(self) -> float | None:
+        """When this step's bounded verification clock started, if it has.
+
+        Read-only, and exposed so a run record can say WHY a step timed out
+        rather than only that it did. `fail_after_timeout` measures from this
+        mark, so a record without it cannot distinguish "the user was slower
+        than the budget" from "the world never changed at all" -- and those
+        call for opposite responses.
+        """
+        return self._verification_started_at
+
+    @property
     def current_step(self) -> Step | None:
         if self.step_index >= len(self.recipe.steps):
             return None

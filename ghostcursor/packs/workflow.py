@@ -190,15 +190,27 @@ def resolve_target(
     pack: VerifiedPack,
     candidates: Mapping[int, WindowCandidate] | list[WindowCandidate],
     *,
-    foreground_hwnd: int = 0,
     target_title_re: str | None = None,
     project_root: Path,
 ) -> TargetContext:
     """Choose exactly one window, deterministically, or refuse.
 
     Order is fixed: filter by the pack's verified identity, apply the optional
-    user narrowing, then prefer the foreground window if it survived, else
-    require exactly one.
+    user narrowing, then require **exactly one** survivor.
+
+    **There is no foreground tie-break.** One used to break ties, and it made
+    two matching windows resolve silently to whichever happened to be focused
+    -- a different workspace, with a trusted recipe pointed at it and no sign
+    anything was chosen. Worse, an explicit narrowing that failed to narrow to
+    one still fell through to it, so an operator who thought they had
+    disambiguated had not. This project already refuses to pick one control
+    among several for an `EXACTLY_ONE` action selector; a window is the
+    outermost selector, and choosing one there is the same decision at a
+    larger scale.
+
+    Ambiguity therefore refuses, and names every candidate with its handle so
+    the operator can narrow rather than guess. Prompting them to choose is a
+    reasonable future improvement; silently choosing for them is not.
 
     `target_title_re` may only NARROW. It cannot replace the executable check,
     because a title is free text that collides with browser tabs and terminals
@@ -230,15 +242,16 @@ def resolve_target(
     if not matching:
         raise WorkflowUnavailable(f"no window matches pack {pack.pack_id}")
 
-    chosen = next((w for w in matching if w.hwnd == foreground_hwnd), None)
-    if chosen is None:
-        if len(matching) > 1:
-            titles = ", ".join(repr(w.title) for w in matching)
-            raise WorkflowUnavailable(
-                f"{len(matching)} windows match pack {pack.pack_id} and none is "
-                f"in the foreground: {titles}"
-            )
-        chosen = matching[0]
+    if len(matching) > 1:
+        # Handles as well as titles: two windows can share a title, and the
+        # handle is the only thing that always tells them apart.
+        listed = ", ".join(f"{w.hwnd} {w.title!r}" for w in matching)
+        narrowed = " even after narrowing" if target_title_re is not None else ""
+        raise WorkflowUnavailable(
+            f"{len(matching)} windows match pack {pack.pack_id}{narrowed}; "
+            f"narrow to exactly one with a more specific title pattern: {listed}"
+        )
+    chosen = matching[0]
 
     identity = resolve_application_identity(pack, chosen.app, project_root=project_root)
     return TargetContext(
