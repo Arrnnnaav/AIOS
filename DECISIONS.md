@@ -3350,7 +3350,25 @@ one observation twice would answer yes forever.
 
 **Scope.** This is the shared `GuidedTour` loop, so it changes the certified v1
 workflows as well as the compiled ones, and their acceptance was measured on
-the racing behaviour. Re-run required.
+the racing behaviour.
+
+**Re-run, complete.** Every lane, each desktop lane alone (D025):
+
+| Lane | Result |
+|---|---|
+| hermetic | 1004 passed, 70 deselected |
+| interactive | 54 passed |
+| pixel | 3 passed |
+| `tests.test_overlay` | 16/16 checks |
+| `tests.test_end_to_end` | 8/8 checks |
+| `test_hung_window.py` | 4 passed, 46.6s |
+| `test_perception_service_hung.py` | 2 passed, 9.4s |
+| `test_run_threaded.py` | 7 passed, 72.4s |
+
+Schema-v2 acceptance was re-run in full: 9/9, all UIA-only
+(`docs/evidence/schema-v2-candidate-acceptance.md`). Open Folder run 2 carried
+a 0.500s action-to-title gap — the same gap that failed before this fix — and
+passed, which is the live evidence rather than the nine green outcomes.
 
 **Mutation audit.** 7/7, including both directions of each reference and the
 re-hint guard. Two survivors along the way were real gaps — nothing asserted
