@@ -383,9 +383,46 @@ failure in Task 8 — cannot be ruled out or in.
 the resolver can no longer choose a window silently. Every run record carries
 its landmarks, so a recurrence arrives with the timeline that was missing.
 
+**Update, same day.** The trigger below fired on its first live use: a smoke
+run failed with `title_changed_s` present and earlier than `ended_s`. The cause
+is recorded in the entry that follows this one. Whether it is also the cause of
+the original three failures is still unproven — their symptom differed and no
+record of them survives.
+
 **Trigger.** Reopen if any compiled run times out with a `title_changed_s` mark
 present and earlier than `ended_s`, or with `verification_started_s` absent
 while the step rendered a hint. Either shape says the verification clock armed
 on the wrong event rather than the operator being slow, which would be a real
 defect and not pacing. Until then this is an accepted operational risk, not a
 known bug.
+
+### Open — a step's action can remove the step's own target
+
+Reproduced live, 2026-08-28, with the D075 timing landmarks:
+`docs/evidence/open-folder-target-disappearance.md`.
+
+Opening a folder replaces VS Code's Welcome page, so `Open Folder...` stops
+existing the moment the step succeeds. The grounding grace — 10s, meant for a
+minimised window or an alt-tab **before** the action — then counts down against
+a step whose goal has already been met, and reports `cannot find 'Open
+Folder...' on screen` ten seconds after the title already changed.
+
+Two runs, same setup: a 0.25s gap between action detection and title change
+passed; a 0.5s gap failed. **A certified workflow's outcome currently depends
+on a sub-second race.**
+
+**Proposed direction.** Once a step's verification clock has armed
+(`_verification_started_at` is set), stop counting grounding failure against
+it: after the action, the verification rule is the authority on success, and a
+vanished target is an expected consequence of many actions rather than evidence
+of a lost window. The step stays bounded — by `timeout_s` where
+`fail_after_timeout` is set, and by the run deadline otherwise.
+
+Both alternatives were considered and are worse: evaluating verification from
+`DECIDING` duplicates the rule in a second place, and re-checking verification
+before declaring grounding failure leaves the same race, only narrower.
+
+**This changes the shared `GuidedTour` loop, so it affects the certified v1
+workflows too** and needs their regression runs, not only the compiled ones.
+
+**Blocks Task 9.** Do not begin the cutover while this is open.
