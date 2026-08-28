@@ -432,3 +432,36 @@ clock arms, a grounding failure no longer counts against the step.
 
 **Still required before Task 9:** re-run Open Folder acceptance. Its 3/3 was
 measured on the racing behaviour, and this changes the shared v1 loop.
+
+### Open — identical window titles cannot be narrowed, so fail-closed can strand the user
+
+Hit live during the post-D076 acceptance runs. Two Synthetic Export demo
+windows were up and the resolver refused, correctly:
+
+```
+no acceptable target: 2 windows match pack synthetic; narrow to exactly one
+with a more specific title pattern: 3607180 'Synthetic Export', 328996 'Synthetic Export'
+```
+
+Before D075 this would have bound whichever window was focused, silently. The
+refusal is the right behaviour and listing the handles is what made it
+actionable.
+
+But **the two titles are byte-identical**, so the narrowing the message asks
+for does not exist. `target_title_re` cannot separate them at any level of
+specificity. For this shape the operator's only recourse is to close one
+window.
+
+That is the case D075 deferred: "prompting the operator to choose is a
+reasonable future improvement". It is now a demonstrated gap rather than a
+hypothetical one, because a user cannot always close the other window — two
+projects open in the same editor is ordinary.
+
+**Trigger.** Implement window selection by handle before shipping to anyone who
+is not the author: either a `--target-hwnd` that takes a handle from the
+refusal message verbatim, or the pick-a-window prompt. The refusal already
+prints the handles, so the data is there.
+
+**Not urgent for the milestone.** Every workflow in Task 8 was accepted with
+one window per application, and the refusal is safe. This blocks a usable
+product, not the compiler proof.

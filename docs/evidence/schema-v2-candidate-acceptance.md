@@ -55,7 +55,6 @@ outcome-only gate cannot see a tier going dark (D069).
 
 | Run | Outcome | Steps | Grounding | UIA only | Target | Detail |
 |---|---|---|---|---|---|---|
-| `open_terminal-run1.json` | failed | 0/1 | uia | yes | `code.exe` -- 'Mermaid Diagram - enterprice agent ecommerce - Visual Studio Code' | verification timed out after 20s |
-| `open_terminal-run2.json` | passed | 1/1 | uia | yes | `code.exe` -- 'Mermaid Diagram - enterprice agent ecommerce - Visual Studio Code' | -- |
-| `open_terminal-run3.json` | passed | 1/1 | uia | yes | `code.exe` -- 'Mermaid Diagram - enterprice agent ecommerce - Visual Studio Code' | -- |
-| `open_terminal-run4.json` | passed | 1/1 | uia | yes | `code.exe` -- 'Mermaid Diagram - enterprice agent ecommerce - Visual Studio Code' | -- |
+| `open_terminal-run1.json` | passed | 1/1 | uia | yes | `code.exe` -- 'matcher.py - ai-finance-controller - Visual Studio Code' | -- |
+| `open_terminal-run2.json` | passed | 1/1 | uia | yes | `code.exe` -- 'matcher.py - ai-finance-controller - Visual Studio Code' | -- |
+| `open_terminal-run3.json` | passed | 1/1 | uia | yes | `code.exe` -- 'matcher.py - ai-finance-controller - Visual Studio Code' | -- |
