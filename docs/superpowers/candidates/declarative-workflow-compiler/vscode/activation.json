@@ -1,6 +1,14 @@
 {
   "activation_generation": 1,
   "intents": {
+    "OPEN_EXTENSIONS": {
+      "active_adoption_id": null,
+      "adoptions": {},
+      "intent": {
+        "path": "intents/open_extensions.f4c5f6a24ab49466.json",
+        "sha256": "f4c5f6a24ab494660fa51cd9b1676ed437cc79c5877eb735b34607771446e025"
+      }
+    },
     "OPEN_FOLDER": {
       "active_adoption_id": null,
       "adoptions": {},

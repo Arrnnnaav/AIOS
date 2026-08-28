@@ -1,0 +1,7 @@
+{
+  "compiler_baseline_commit": "41682ee5b41a8742b0b0ec8d60ffeca4014d0b44",
+  "compiler_baseline_tree": "fd6824109c6bf8b509bc3da4fd6b49a696e136a5",
+  "proof": "open_extensions_data_only",
+  "schema_version": 1,
+  "task9_cutover_commit": "108b6fb3f0fee5c4fd564d093f4229accfa74ba2"
+}

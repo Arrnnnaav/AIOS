@@ -1,4 +1,5 @@
 import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -120,14 +121,12 @@ def test_unmatched_goal_is_explicitly_unsupported():
     assert result.plan is None
 
 
-def test_valid_unavailable_model_intent_is_not_fallback(monkeypatch):
-    monkeypatch.setattr(
-        "ghostcursor.reasoning.planner._model_intent",
-        lambda *args: IntentDecision("OPEN_SETTINGS", 0.9, "settings"),
+def test_valid_unavailable_model_intent_is_not_fallback():
+    result = planner.resolve_model_decision(
+        "open settings", IntentDecision("OPEN_SETTINGS", 0.9, "settings")
     )
-    result = plan_goal("open settings")
     assert result.status is PlanStatus.KNOWN_INTENT_RECIPE_UNAVAILABLE
-    assert result.plan is None
+    assert result.intent_id == "OPEN_SETTINGS"
 
 
 def test_malformed_model_output_keeps_a_valid_fallback():
@@ -136,8 +135,8 @@ def test_malformed_model_output_keeps_a_valid_fallback():
     assert planner.deterministic_intent("Export this table as CSV")[:2] == ("EXPORT_DATA", 0.95)
 def test_malformed_model_output_without_fallback_is_unsupported(monkeypatch):
     monkeypatch.setattr(
-        "ghostcursor.reasoning.planner._model_intent",
-        lambda *args: (_ for _ in ()).throw(ValueError("bad JSON")),
+        "ghostcursor.reasoning.planner.infer_intent",
+        lambda *args, **kwargs: (_ for _ in ()).throw(ValueError("bad JSON")),
     )
 
     result = plan_goal("Deploy this project to production")
@@ -149,8 +148,8 @@ def test_malformed_model_output_without_fallback_is_unsupported(monkeypatch):
 
 def test_unavailable_model_without_fallback_is_unsupported(monkeypatch):
     monkeypatch.setattr(
-        "ghostcursor.reasoning.planner._model_intent",
-        lambda *args: (_ for _ in ()).throw(TimeoutError("offline")),
+        "ghostcursor.reasoning.planner.infer_intent",
+        lambda *args, **kwargs: (_ for _ in ()).throw(TimeoutError("offline")),
     )
 
     result = plan_goal("Deploy this project to production")
@@ -162,8 +161,12 @@ def test_unavailable_model_without_fallback_is_unsupported(monkeypatch):
 
 def test_model_cannot_attach_an_ungrounded_executable_intent(monkeypatch):
     monkeypatch.setattr(
-        "ghostcursor.reasoning.planner._model_intent",
-        lambda *args: IntentDecision("EXPORT_DATA", 0.98, "deployment needs an export"),
+        "ghostcursor.reasoning.planner.infer_intent",
+        lambda *args, **kwargs: SimpleNamespace(
+            decision=IntentDecision(
+                "EXPORT_DATA", 0.98, "deployment needs an export"
+            )
+        ),
     )
 
     result = plan_goal("Deploy this project to production")
@@ -188,8 +191,10 @@ def test_valid_model_abstention_uses_explicit_trusted_fallback_status():
     assert result.intent_id == "OPEN_FOLDER"
 def test_valid_model_abstention_without_fallback_is_unsupported(monkeypatch):
     monkeypatch.setattr(
-        "ghostcursor.reasoning.planner._model_intent",
-        lambda *args: IntentDecision(None, 0.8, "none fits"),
+        "ghostcursor.reasoning.planner.infer_intent",
+        lambda *args, **kwargs: SimpleNamespace(
+            decision=IntentDecision(None, 0.8, "none fits")
+        ),
     )
 
     result = plan_goal("Deploy this project to production")

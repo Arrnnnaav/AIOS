@@ -1,0 +1,61 @@
+{
+  "context_selectors": [],
+  "intent_id": "OPEN_EXTENSIONS",
+  "schema_version": 2,
+  "selectors": {
+    "extensions_tab": {
+      "cardinality": "exactly_one",
+      "control_type": "TabItem",
+      "names": [
+        "Extensions (Ctrl+Shift+X)"
+      ],
+      "normalise": "none",
+      "result_limit": 8,
+      "strategy": "provider_exact"
+    },
+    "installed_section": {
+      "cardinality": "at_least_one",
+      "control_type": "Button",
+      "names": [
+        "Installed Section"
+      ],
+      "normalise": "none",
+      "result_limit": 8,
+      "strategy": "provider_exact"
+    }
+  },
+  "step_key_namespace": "open extensions in vscode",
+  "steps": [
+    {
+      "instruction_text": "Click Extensions (Ctrl+Shift+X) in the Activity Bar.",
+      "preconditions": [],
+      "provenance": {
+        "created_at": "2026-08-29",
+        "model": "none",
+        "prompt_version": "none",
+        "source_tier": "official-docs-hand-authored",
+        "source_urls": [
+          "https://code.visualstudio.com/docs/configure/extensions/extension-marketplace"
+        ]
+      },
+      "risk": "normal",
+      "target_descriptor": {
+        "claimed": {
+          "name": "Extensions (Ctrl+Shift+X)",
+          "name_synonyms": [],
+          "ocr_text": null,
+          "visual_description": "the Extensions icon in the VS Code Activity Bar"
+        },
+        "confirmed": []
+      },
+      "target_selector": "extensions_tab",
+      "user_action": "click",
+      "verification_rule": {
+        "args": {},
+        "kind": "element_appears",
+        "selector": "installed_section",
+        "timeout_s": 20.0
+      }
+    }
+  ]
+}

@@ -42,6 +42,7 @@ MIGRATIONS = {
     "OPEN_FOLDER": ("vscode", "open_folder", "vscode/open_folder.json"),
     "OPEN_TERMINAL": ("vscode", "open_terminal", "vscode/open_terminal.json"),
 }
+CANDIDATE_INTENTS = set(MIGRATIONS) | {"OPEN_EXTENSIONS"}
 
 CR = bytes([13])
 UTF8_BOM = bytes([0xEF, 0xBB, 0xBF])
@@ -596,17 +597,18 @@ def test_the_candidates_live_outside_the_trusted_pack_root() -> None:
     assert resolved != trusted
 
 
-def test_production_has_no_index_that_could_reach_them() -> None:
+def test_production_index_does_not_reach_the_candidate_graph() -> None:
     """Committing a candidate must not make it discoverable.
 
-    Production still loads v1 manifests; `packs/index.json` does not exist, so
-    the activation graph names nothing. Task 9 is what changes that, and only
-    for artifacts that have been accepted and installed.
+    Production's installed index names its own pack directories. The candidate
+    has a separate index only so a temporary catalog can verify the complete
+    graph before acceptance; that index is never a production root.
     """
     from ghostcursor.packs.activation import load_catalog
 
     catalog = load_catalog(REPO_ROOT)
     assert set(catalog.packs) == {"common", "notepad", "synthetic", "vscode"}
+    assert "OPEN_EXTENSIONS" not in catalog.packs["vscode"].intents
 
 
 def test_the_production_registry_never_scans_the_candidate_directory() -> None:
@@ -634,9 +636,9 @@ def test_no_production_module_references_the_candidate_directory() -> None:
 def test_the_compiled_registry_never_scans_the_candidate_directory() -> None:
     """The candidates grant no planner authority.
 
-    Production authority is still the hardcoded registry until the Task 9
-    cutover; a candidate that had quietly joined it would be executable
-    without ever having been accepted.
+    Production authority comes from the installed catalog. A quarantined
+    candidate that had quietly joined it would be executable without ever
+    having been accepted.
     """
     from ghostcursor.reasoning.planner import compiled_registry
 
@@ -716,7 +718,11 @@ def test_the_candidate_graph_verifies_as_a_whole(catalog) -> None:
     assert catalog.root_valid, catalog.diagnostics
     assert catalog.diagnostics == ()
     assert set(catalog.packs) == {"synthetic", "vscode"}
-    assert set(catalog.packs["vscode"].intents) == {"OPEN_FOLDER", "OPEN_TERMINAL"}
+    assert set(catalog.packs["vscode"].intents) == {
+        "OPEN_EXTENSIONS",
+        "OPEN_FOLDER",
+        "OPEN_TERMINAL",
+    }
     assert set(catalog.packs["synthetic"].intents) == {"EXPORT_DATA"}
 
     for pack in catalog.packs.values():
@@ -735,7 +741,7 @@ def test_the_candidate_intents_compile_into_one_matcher(catalog) -> None:
 
     matcher = compile_matcher(catalog)
     assert matcher.diagnostics == ()
-    assert {intent.intent_id for intent in matcher.intents} == set(MIGRATIONS)
+    assert {intent.intent_id for intent in matcher.intents} == CANDIDATE_INTENTS
 
 
 def test_the_candidate_matcher_reproduces_the_whole_d072_corpus(catalog) -> None:
@@ -828,7 +834,7 @@ def test_the_candidate_catalog_grants_no_execution_authority(catalog) -> None:
     from ghostcursor.packs.compile import compile_planner
 
     specs = compile_planner(catalog)
-    assert {spec.intent_id for spec in specs} == set(MIGRATIONS)
+    assert {spec.intent_id for spec in specs} == CANDIDATE_INTENTS
     for spec in specs:
         assert spec.recipe_path is None, spec.intent_id
 
@@ -946,6 +952,7 @@ def test_the_candidate_directory_holds_no_orphaned_artifact(digests) -> None:
     referenced |= {
         CANDIDATE_ROOT / "digests.json",
         CANDIDATE_ROOT / "index.json",
+        CANDIDATE_ROOT / "proof-baseline.json",
         CANDIDATE_ROOT / "synthetic" / "activation.json",
         CANDIDATE_ROOT / "vscode" / "activation.json",
     }

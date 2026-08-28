@@ -1,11 +1,10 @@
-"""Author the three schema-v2 migration candidates as quarantined artifacts.
+"""Author schema-v2 workflow candidates as quarantined artifacts.
 
-The v1 recipes are the specification. This script does not invent behaviour: it
-re-expresses what `ghostcursor/packs/recipes/` already certifies in the v2
-schema, and `tests/test_migrated_candidates.py` is what checks the
-re-expression against the originals. Migration changes representation, not
-selectors, title behaviour, step identity, provenance, wrong-action surface,
-OCR policy, or verification meaning.
+For migrated workflows, the preserved v1 fixtures are the specification and
+`tests/test_migrated_candidates.py` checks the re-expression field by field.
+Open Extensions is the data-only proof: its reviewed selector measurements and
+the frozen compiler grammar are expressed here without a workflow-specific
+change under `ghostcursor/**/*.py`.
 
 Two things it is careful about:
 
@@ -40,6 +39,13 @@ CANDIDATE_ROOT = (
 #: resolves by exact path and compares the FULL digest it was given, so this
 #: fragment is never parsed and never trusted.
 FILENAME_DIGEST_CHARS = 16
+
+# The independently recertified compiler tree from which the Open Extensions
+# proof starts. The proof is the diff from these exact bytes, not from a moving
+# branch name or whichever commit happens to precede the candidate.
+COMPILER_BASELINE_COMMIT = "41682ee5b41a8742b0b0ec8d60ffeca4014d0b44"
+COMPILER_BASELINE_TREE = "fd6824109c6bf8b509bc3da4fd6b49a696e136a5"
+CUTOVER_COMMIT = "108b6fb3f0fee5c4fd564d093f4229accfa74ba2"
 
 
 def canonical_bytes(value) -> bytes:
@@ -440,6 +446,96 @@ OPEN_TERMINAL_RECIPE = {
     ],
 }
 
+OPEN_EXTENSIONS_INTENT = {
+    "schema_version": 2,
+    "intent_id": "OPEN_EXTENSIONS",
+    "canonical_target": None,
+    "rules": [
+        {
+            "tier": "exact",
+            "phrases": [
+                "open extensions in vs code",
+                "open extensions in vscode",
+                "open the extensions view in vs code",
+                "open the extensions view in vscode",
+            ],
+        },
+        {
+            "tier": "heuristic",
+            "all_of": [
+                {"any_of": [{"token": "open"}, {"token": "show"}]},
+                {"any_of": [{"token": "extensions"}]},
+                {"any_of": [{"alias": "vscode_names"}]},
+            ],
+        },
+    ],
+}
+
+OPEN_EXTENSIONS_RECIPE = {
+    "schema_version": 2,
+    "intent_id": "OPEN_EXTENSIONS",
+    "step_key_namespace": "open extensions in vscode",
+    "selectors": {
+        # The bare accessible name matches a TabItem and a Group. FindAll made
+        # that ambiguity visible; the reviewed TabItem condition resolves one
+        # control 3/3 and is therefore required, never inferred (D069).
+        "extensions_tab": {
+            "strategy": "provider_exact",
+            "control_type": "TabItem",
+            "names": ["Extensions (Ctrl+Shift+X)"],
+            "normalise": "none",
+            "cardinality": "exactly_one",
+            "result_limit": 8,
+        },
+        "installed_section": {
+            "strategy": "provider_exact",
+            "control_type": "Button",
+            "names": ["Installed Section"],
+            "normalise": "none",
+            "cardinality": "at_least_one",
+            "result_limit": 8,
+        },
+    },
+    "context_selectors": [],
+    "steps": [
+        {
+            "user_action": "click",
+            "target_selector": "extensions_tab",
+            "target_descriptor": {
+                "claimed": {
+                    "name": "Extensions (Ctrl+Shift+X)",
+                    "name_synonyms": [],
+                    "ocr_text": None,
+                    "visual_description": (
+                        "the Extensions icon in the VS Code Activity Bar"
+                    ),
+                },
+                "confirmed": [],
+            },
+            "instruction_text": (
+                "Click Extensions (Ctrl+Shift+X) in the Activity Bar."
+            ),
+            "verification_rule": {
+                "kind": "element_appears",
+                "selector": "installed_section",
+                "args": {},
+                "timeout_s": 20.0,
+            },
+            "risk": "normal",
+            "preconditions": [],
+            "provenance": {
+                "source_urls": [
+                    "https://code.visualstudio.com/docs/configure/extensions/extension-marketplace"
+                ],
+                "source_tier": "official-docs-hand-authored",
+                "model": "none",
+                "prompt_version": "none",
+                "created_at": "2026-08-29",
+            },
+        }
+    ],
+}
+
 
 PACKS = {
     "synthetic": {
@@ -452,10 +548,12 @@ PACKS = {
         "intents": {
             "open_folder": OPEN_FOLDER_INTENT,
             "open_terminal": OPEN_TERMINAL_INTENT,
+            "open_extensions": OPEN_EXTENSIONS_INTENT,
         },
         "recipes": {
             "open_folder": OPEN_FOLDER_RECIPE,
             "open_terminal": OPEN_TERMINAL_RECIPE,
+            "open_extensions": OPEN_EXTENSIONS_RECIPE,
         },
     },
 }
@@ -493,8 +591,9 @@ def activation_fixtures(artifacts: dict) -> dict[str, bytes]:
     gaining authority to run.
 
     These live beside the artifacts, outside `ghostcursor/packs/`. Production
-    reads `ghostcursor/packs/index.json`, which does not exist; a test
-    assembles a throwaway tree to load these, and nothing installs them.
+    reads its own `ghostcursor/packs/index.json`, which names only installed
+    packs. A test assembles a throwaway tree to load this candidate graph, and
+    nothing installs it.
     """
     by_pack: dict[str, dict[str, dict]] = {}
     for relative, entry in artifacts.items():
@@ -567,6 +666,19 @@ def digest_record(artifacts: dict) -> bytes:
     )
 
 
+def proof_baseline_record() -> bytes:
+    """Bind the data-only proof to the independently recertified compiler."""
+    return canonical_bytes(
+        {
+            "schema_version": 1,
+            "proof": "open_extensions_data_only",
+            "compiler_baseline_commit": COMPILER_BASELINE_COMMIT,
+            "compiler_baseline_tree": COMPILER_BASELINE_TREE,
+            "task9_cutover_commit": CUTOVER_COMMIT,
+        }
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true")
@@ -579,6 +691,7 @@ def main(argv: list[str] | None = None) -> int:
     for path, raw in activation_fixtures(artifacts).items():
         written[CANDIDATE_ROOT / path] = raw
     written[CANDIDATE_ROOT / "digests.json"] = digest_record(artifacts)
+    written[CANDIDATE_ROOT / "proof-baseline.json"] = proof_baseline_record()
 
     # Content-addressed names change when content does, so an edit leaves the
     # PREVIOUS file behind under its old digest. An orphan is not harmless

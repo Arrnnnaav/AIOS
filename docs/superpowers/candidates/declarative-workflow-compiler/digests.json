@@ -3,9 +3,11 @@
     "synthetic/intents/open_export.b44a6bdf9c0a53c2.json": "b44a6bdf9c0a53c224e654d66ddd3944c2b0c8eb0a13f90f13e9afe6eb6ef219",
     "synthetic/pack/synthetic.abbf4db4a8a60e1f.json": "abbf4db4a8a60e1f8caae3b4b1e95a59d691aa0b71769bbeecba037540e8a004",
     "synthetic/recipes/open_export.c2420d7c005616df.json": "c2420d7c005616df4620c61557269a345deb00e1a408cbf579badab85f26a8bf",
+    "vscode/intents/open_extensions.f4c5f6a24ab49466.json": "f4c5f6a24ab494660fa51cd9b1676ed437cc79c5877eb735b34607771446e025",
     "vscode/intents/open_folder.c93f0d97fb55575f.json": "c93f0d97fb55575f43c4ebae593c3f7e19d89dc653a87f26555f5d2b59e60391",
     "vscode/intents/open_terminal.14b34da80866ed0c.json": "14b34da80866ed0cbe58e3356c2b46ded3b6115ada60f204dd4222f8080c5fb1",
     "vscode/pack/vscode.185cd7431e4f7e5e.json": "185cd7431e4f7e5ecd2d9e372a15690edd496a26667bafbb59f218762bb2f992",
+    "vscode/recipes/open_extensions.b749cca0ff2f1292.json": "b749cca0ff2f12929321effc46383baba7816bfd5b043e1f94e4e38e3ea1cca7",
     "vscode/recipes/open_folder.f47777c8ce19731a.json": "f47777c8ce19731ae00bb3ef61e414830d12a027b58566f82fe35ed138982b06",
     "vscode/recipes/open_terminal.9401a6af0e68e001.json": "9401a6af0e68e001dceaeaf1b78e6a1586492e96f7a7f9b03744725e01fb5766"
   },

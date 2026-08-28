@@ -1,0 +1,45 @@
+{
+  "canonical_target": null,
+  "intent_id": "OPEN_EXTENSIONS",
+  "rules": [
+    {
+      "phrases": [
+        "open extensions in vs code",
+        "open extensions in vscode",
+        "open the extensions view in vs code",
+        "open the extensions view in vscode"
+      ],
+      "tier": "exact"
+    },
+    {
+      "all_of": [
+        {
+          "any_of": [
+            {
+              "token": "open"
+            },
+            {
+              "token": "show"
+            }
+          ]
+        },
+        {
+          "any_of": [
+            {
+              "token": "extensions"
+            }
+          ]
+        },
+        {
+          "any_of": [
+            {
+              "alias": "vscode_names"
+            }
+          ]
+        }
+      ],
+      "tier": "heuristic"
+    }
+  ],
+  "schema_version": 2
+}
