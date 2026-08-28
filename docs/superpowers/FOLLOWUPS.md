@@ -396,7 +396,7 @@ on the wrong event rather than the operator being slow, which would be a real
 defect and not pacing. Until then this is an accepted operational risk, not a
 known bug.
 
-### Open — a step's action can remove the step's own target
+### Resolved (D076) — a step's action can remove the step's own target
 
 Reproduced live, 2026-08-28, with the D075 timing landmarks:
 `docs/evidence/open-folder-target-disappearance.md`.
@@ -425,4 +425,10 @@ before declaring grounding failure leaves the same race, only narrower.
 **This changes the shared `GuidedTour` loop, so it affects the certified v1
 workflows too** and needs their regression runs, not only the compiled ones.
 
-**Blocks Task 9.** Do not begin the cutover while this is open.
+**Resolved by D076.** `_before` is now the verification baseline alone and
+stops moving once an action is detected; `_observed` carries the latest
+snapshot for grounding, interrupt detection and the newness gate. After the
+clock arms, a grounding failure no longer counts against the step.
+
+**Still required before Task 9:** re-run Open Folder acceptance. Its 3/3 was
+measured on the racing behaviour, and this changes the shared v1 loop.

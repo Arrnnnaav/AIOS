@@ -3288,3 +3288,75 @@ any recurrence arrives with its timeline attached.
 **Cost.** Nine acceptance runs that needed an operator flag production did not
 have, and one failure this project could not diagnose because nothing recorded
 the time.
+
+## D076 — The verification baseline and the latest observation are two things
+
+**Context.** Two Open Folder smoke runs, identical setup, opposite outcomes.
+The D075 landmarks made the difference legible on their first live failure:
+`docs/evidence/open-folder-target-disappearance.md`.
+
+**What happened.** Opening a folder replaces VS Code's Welcome page, so
+`Open Folder...` stops existing at the moment the step succeeds. Probing the
+window straight after the action returns `open_folder: 0`. The step's action
+removes the step's own target.
+
+The loop then entered its grounding-failure cycle: `AWAITING` saw the elements
+change, returned to `OBSERVING`, which **re-baselined `_before` to a
+post-action snapshot**, and `DECIDING` could no longer ground. Ten seconds
+later — `DEFAULT_GROUNDING_GRACE_S` — the step failed with `cannot find 'Open
+Folder...' on screen`, 10.047s after the title had already changed to the
+verified outcome.
+
+Whether the step passed was a race between the title-change verification and
+the target's disappearance. The two runs differ only in the gap between action
+detection and title change: 0.25s and verification won, 0.5s and grounding
+failure won.
+
+**Root cause.** `_before` was answering two questions at once. Verification
+asks *what did the world look like before the user acted*, and that must stop
+moving once an action is detected. Interrupt detection, the newness gate and
+grounding ask *what does it look like now*. One field cannot be both, and the
+re-baseline is where the two collided.
+
+**Decision.** Two references.
+
+- `_before` is the verification baseline. `OBSERVING` sets it only while
+  `_verification_started_at` is None.
+- `_observed` is the latest snapshot, updated by `OBSERVING` and by `AWAITING`.
+  Grounding, `_is_newer`, `elements_changed` and the title-churn check all read
+  it.
+
+And, once the verification clock has armed, a grounding failure no longer
+counts against the step: the target vanishing is an ordinary consequence of the
+action, and from that point the verification rule decides, bounded by its own
+`timeout_s` where the recipe sets one and by the run deadline otherwise. The
+grounding grace keeps its real job — a window minimised or alt-tabbed away
+**before** the action still fails the step.
+
+**Why not the smaller fixes.** Freezing `_before` alone deadlocks: with the
+baseline frozen, `elements_changed(_before, after)` is true on every later
+tick, so the loop ping-pongs `OBSERVING`↔`AWAITING` and never reaches its idle
+re-hint. That was caught by an existing regression test, and it is why the two
+references are necessary rather than tidy. Letting the re-baseline stand and
+only relaxing the grace leaves the same race, narrower: it works when the
+re-baseline lands before the title changes and fails when it lands after.
+
+**Corollaries.** The idle re-hint is now guarded on `_grounded is not None` —
+after the action there is no rectangle, and re-showing the last one would ring
+empty screen in the confirmed-control colour (D006). `_is_newer` must compare
+against `_observed`, not `_before`: against a frozen baseline every later
+snapshot is trivially later, so the gate that exists to stop the loop judging
+one observation twice would answer yes forever.
+
+**Scope.** This is the shared `GuidedTour` loop, so it changes the certified v1
+workflows as well as the compiled ones, and their acceptance was measured on
+the racing behaviour. Re-run required.
+
+**Mutation audit.** 7/7, including both directions of each reference and the
+re-hint guard. Two survivors along the way were real gaps — nothing asserted
+the newness gate or the dwelling repeat-read — and one was a genuine
+non-difference, recorded in the code as such rather than papered over with a
+test asserting a distinction that does not exist (D031).
+
+**Cost.** One acceptance run reported a failure for a workflow that had
+succeeded, and a 3/3 that was partly luck.

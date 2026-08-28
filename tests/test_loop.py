@@ -428,3 +428,251 @@ def test_an_already_satisfied_selector_rule_completes_rather_than_faulting():
     )
     states = [tour.tick() for _ in range(5)]
     assert State.DONE in states, states
+# ---------------------------------------------------------------------------
+# A step whose action removes its own target
+# ---------------------------------------------------------------------------
+#
+# Reproduced live on VS Code 1.135.0.0: opening a folder replaces the Welcome
+# page, so `Open Folder...` stops existing at the moment the step succeeds.
+# Two runs differing only in a 0.25s gap gave opposite outcomes.
+# See `docs/evidence/open-folder-target-disappearance.md`.
+
+#: The world after the action: the old target is gone and the title has not
+#: caught up yet. This is the snapshot the loop used to re-baseline against.
+GONE = Snapshot("App", (Element("Editor", "Pane", "9002", (0, 0, 80, 80)),))
+#: The verified outcome, arriving a moment later.
+COMPLETED = Snapshot("demo - App", (Element("Editor", "Pane", "9002", (0, 0, 80, 80)),))
+
+
+def _vanishing_tour(snapshots, *, clock=None, step=None):
+    """A tour whose target disappears once the world stops matching STILL."""
+    seen = iter(snapshots)
+    latest = {"snap": STILL}
+
+    def _snapshotter():
+        latest["snap"] = next(seen, snapshots[-1])
+        return latest["snap"]
+
+    def _grounder(step_, index, elements=None):
+        # Grounds only while the original control is on screen, exactly as a
+        # selector does: the target is gone, so there is nothing to return.
+        return TARGET if latest["snap"] is STILL else None
+
+    def _verifier(rule, before, after):
+        # The recipe's real question for Open Folder: did the title change
+        # from the pre-action baseline?
+        return before.title != after.title
+
+    return _tour(
+        steps=[step or _step()],
+        grounder=_grounder,
+        verifier=_verifier,
+        clock=clock,
+        snapshotter=_snapshotter,
+    )
+
+
+def test_a_vanished_target_does_not_fail_a_step_that_succeeded() -> None:
+    """The goal was met; the run must say so.
+
+    Before this, the grounding grace -- meant for a window minimised or
+    alt-tabbed away BEFORE the action -- counted down against a step whose
+    action had already worked, and reported "cannot find X on screen" ten
+    seconds after the verified outcome had arrived.
+    """
+    now = {"t": 0.0}
+    tour = _vanishing_tour([STILL, STILL, GONE, COMPLETED], clock=lambda: now["t"])
+
+    for _ in range(20):
+        now["t"] += 1.0
+        tour.tick()
+        if tour.state in (State.DONE, State.FAILED):
+            break
+
+    assert tour.state is State.DONE, tour.failure_reason
+
+
+def test_the_grounding_grace_is_not_spent_after_the_action() -> None:
+    """Past the full grace and still not failed, because the clock armed.
+
+    The grace is 10s. This run pushes well past it with the target gone the
+    whole time, and the step must still be waiting on its verification rather
+    than declaring the window lost.
+    """
+    now = {"t": 0.0}
+    tour = _vanishing_tour([STILL, STILL, GONE], clock=lambda: now["t"])
+
+    for _ in range(30):
+        now["t"] += 2.0
+        tour.tick()
+
+    assert now["t"] > 10.0 * 2, "the run did not outlast the grounding grace"
+    assert tour.state is not State.FAILED, tour.failure_reason
+
+
+def test_the_grounding_grace_still_fails_a_step_before_any_action() -> None:
+    """The grace keeps its real job. Nothing was acted on here, so a target
+    that cannot be found is a lost window and the step must give up."""
+    now = {"t": 0.0}
+    tour = _tour(
+        steps=[_step()],
+        grounder=lambda step, index, elements=None: None,
+        verifier=lambda rule, before, after: False,
+        clock=lambda: now["t"],
+    )
+
+    for _ in range(30):
+        now["t"] += 2.0
+        tour.tick()
+
+    assert tour.state is State.FAILED
+    assert "cannot find" in tour.failure_reason
+
+
+def test_the_verification_baseline_stops_moving_once_an_action_is_detected() -> None:
+    """The mechanism, asserted directly.
+
+    Re-baselining after the action compares the post-action world against
+    itself, so the change the rule waits for can never be seen. Whether it
+    happened before or after the title caught up was a race, which is why two
+    identical live runs disagreed.
+    """
+    now = {"t": 0.0}
+    tour = _vanishing_tour([STILL, STILL, GONE, COMPLETED], clock=lambda: now["t"])
+
+    baselines = []
+    for _ in range(20):
+        now["t"] += 1.0
+        tour.tick()
+        if tour._verification_started_at is not None and tour._before is not None:
+            baselines.append(tour._before.title)
+        if tour.state in (State.DONE, State.FAILED):
+            break
+
+    assert baselines, "no action was ever detected"
+    assert set(baselines) == {"App"}, baselines
+
+
+def test_interrupt_detection_compares_consecutive_observations() -> None:
+    """Freezing the baseline must not freeze "did the world just change".
+
+    They were one field. Freezing it made `elements_changed` true on every
+    tick forever, so the loop ping-ponged between OBSERVING and AWAITING and
+    never reached its idle re-hint -- a fix that swapped one stall for another.
+    """
+    now = {"t": 0.0}
+    tour = _vanishing_tour([STILL, STILL, GONE], clock=lambda: now["t"])
+
+    for _ in range(6):
+        now["t"] += 1.0
+        tour.tick()
+
+    # Settled: the world changed once and then stopped, so the loop must stop
+    # treating every later tick as a fresh interrupt.
+    states = []
+    for _ in range(6):
+        now["t"] += 1.0
+        tour.tick()
+        states.append(tour.state)
+    assert State.AWAITING_USER_ACTION in states, states
+def test_a_republished_observation_is_not_a_new_one() -> None:
+    """The newness gate must ask "has anything been published since I last
+    looked", not "is this later than the baseline".
+
+    Once the baseline is frozen, every later snapshot is trivially later than
+    it, so gating on the baseline answers yes forever -- and AWAITING starts
+    evaluating verification against an observation it has already judged,
+    which is the compare-a-state-against-itself bug the gate exists to stop.
+    """
+    now = {"t": 0.0}
+    first = Snapshot("App", (), observed_at=1.0)
+    acted = Snapshot("App", GONE.elements, observed_at=2.0)
+    #: The SAME moment republished: the worker overwrites one slot, so the
+    #: loop reads the same observation many times between publications.
+    stale = Snapshot("App", GONE.elements, observed_at=2.0)
+
+    snaps = iter([first, first, acted, stale, stale, stale, stale, stale])
+    calls = []
+
+    def _verifier(rule, before, after):
+        calls.append(after.observed_at)
+        return False
+
+    tour = _tour(
+        steps=[_step()],
+        grounder=lambda step, i, elements=None: TARGET,
+        verifier=_verifier,
+        clock=lambda: now["t"],
+        snapshotter=lambda: next(snaps, stale),
+    )
+    for _ in range(10):
+        now["t"] += 1.0
+        tour.tick()
+
+    assert calls, "verification never ran"
+    assert calls.count(2.0) == 1, (
+        f"the same observation was judged {calls.count(2.0)} times: {calls}"
+    )
+
+
+def test_a_vanished_target_is_never_re_hinted_at_its_old_rectangle() -> None:
+    """The idle re-hint must not point at a control that is gone.
+
+    After the action removes the target, `_grounded` is None. Re-showing the
+    last rectangle would ring empty screen in the confirmed-control colour,
+    which is the one thing a ring must never do (D006) -- and the real
+    renderer reads `grounded.bbox`, so it would raise rather than mislead.
+    `FakeRenderer` accepts anything, so assert on WHAT was shown.
+    """
+    now = {"t": 0.0}
+    tour = _vanishing_tour([STILL, STILL, GONE], clock=lambda: now["t"])
+
+    for _ in range(40):
+        now["t"] += 2.0
+        tour.tick()
+
+    assert now["t"] > 30.0, "the run did not outlast the idle timeout"
+    assert tour.renderer.shown, "no hint was ever drawn"
+    assert all(grounded is not None for grounded, _text in tour.renderer.shown), (
+        tour.renderer.shown
+    )
+
+
+def test_a_repeat_read_while_dwelling_is_not_a_new_observation() -> None:
+    """AWAITING must advance its own notion of "last seen", not rely on
+    OBSERVING to do it.
+
+    OBSERVING refreshes it too, which hides the omission on any path that
+    leaves and re-enters. A step that DWELLS -- the title changed but no
+    element moved, so nothing sends the loop back to OBSERVING -- reads the
+    same published slot several times between publications, and each repeat
+    would be judged as if it were fresh.
+    """
+    now = {"t": 0.0}
+    shared = (Element("Pane", "Pane", "9003", (0, 0, 10, 10)),)
+    first = Snapshot("App", shared, observed_at=1.0)
+    # Same elements, new title: nothing to interrupt on, so the loop stays put.
+    titled = Snapshot("App2", shared, observed_at=2.0)
+
+    snaps = iter([first, first, titled, titled, titled, titled])
+    calls = []
+
+    def _verifier(rule, before, after):
+        calls.append(after.observed_at)
+        return False
+
+    tour = _tour(
+        steps=[_step()],
+        grounder=lambda step, i, elements=None: TARGET,
+        verifier=_verifier,
+        clock=lambda: now["t"],
+        snapshotter=lambda: next(snaps, titled),
+    )
+    for _ in range(8):
+        now["t"] += 1.0
+        tour.tick()
+
+    assert tour.state is State.AWAITING_USER_ACTION, tour.state
+    assert calls.count(2.0) == 1, (
+        f"the same observation was judged {calls.count(2.0)} times: {calls}"
+    )

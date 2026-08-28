@@ -110,6 +110,15 @@ class GuidedTour:
         self.failure_reason: str | None = None
 
         self._before: Snapshot | None = None
+        #: The most recent observation. `_before` answers "what did the world
+        #: look like before the user acted", which verification compares
+        #: against and which must therefore stop moving once an action is
+        #: detected. This answers "what does it look like now", which is what
+        #: grounding and interrupt detection need. They were one field, and
+        #: sharing it meant freezing the baseline also froze the comparison
+        #: that decides whether the world just changed -- so the loop saw a
+        #: change on every tick forever.
+        self._observed: Snapshot | None = None
         self._grounded: GroundedTarget | None = None
         self._waiting_since = 0.0
         self._confirmed = False
@@ -183,7 +192,16 @@ class GuidedTour:
                 self.renderer.clear()
                 self.state = State.DONE
             else:
-                self._before = self.snapshotter()
+                observed = self.snapshotter()
+                self._observed = observed
+                if self._verification_started_at is None:
+                    self._before = observed
+                # Otherwise the baseline stays put. An action has been detected
+                # and `_before` is what verification compares against; taking a
+                # fresh one now would compare the post-action world against
+                # itself, so the change the rule waits for could never be seen.
+                # The loop re-enters OBSERVING on every interrupt, so this is
+                # the common path, not a corner.
                 self.state = State.DECIDING
 
         elif self.state is State.DECIDING:
@@ -228,7 +246,11 @@ class GuidedTour:
             # AWAITING_USER_ACTION deliberately does NOT share this: its whole
             # job is to observe a LATER moment and see whether the user acted.
             # Sharing a snapshot there would compare a state against itself.
-            self._grounded = self.grounder(step, self.step_index, self._before.elements)
+            # The LATEST elements, not the baseline: a frozen baseline would
+            # keep grounding against controls the action has already replaced.
+            self._grounded = self.grounder(
+                step, self.step_index, (self._observed or self._before).elements
+            )
             if self._grounded is None:
                 # Never guess a coordinate. The target window may simply be
                 # minimized or the user alt-tabbed away (spec §11: "Target
@@ -237,6 +259,18 @@ class GuidedTour:
                 # failing immediately. Only give up once grounding has failed
                 # CONTINUOUSLY past the grace period.
                 self.renderer.clear()
+                if self._verification_started_at is not None:
+                    # The action already happened, so the target disappearing
+                    # is one of its ordinary consequences: Open Folder replaces
+                    # the Welcome page that carries `Open Folder...`. The
+                    # grounding grace exists for a window minimised or
+                    # alt-tabbed away BEFORE the action; counting it here fails
+                    # a step whose goal has already been met. From here the
+                    # verification rule decides, bounded by its own timeout
+                    # where the recipe sets one and by the run deadline
+                    # otherwise.
+                    self.state = State.AWAITING_USER_ACTION
+                    return self.state
                 now = self.clock()
                 if self._grounding_fail_since is None:
                     self._grounding_fail_since = now
@@ -291,8 +325,10 @@ class GuidedTour:
             # failed one. Verifying against the same observation OBSERVING
             # used would compare a state against itself, so the rule would
             # never fire and the tour would stall on this step forever.
-            if not _is_newer(after, self._before):
+            previous = self._observed or self._before
+            if not _is_newer(after, previous):
                 return self.state
+            self._observed = after
 
             if step.verification_rule.kind is VerificationKind.USER_CONFIRMS:
                 satisfied = self._confirmed
@@ -310,8 +346,15 @@ class GuidedTour:
             touched = self._wrong_action()
             action_detected = (
                 touched is not None
-                or elements_changed(self._before, after)
-                or self._before.title != after.title
+                # `previous`, for consistency with the interrupt branch
+                # below -- not because it changes an outcome. Arming happens
+                # once, and at that moment OBSERVING has just set `_before`
+                # and `_observed` to the same snapshot, so the two references
+                # coincide. Nothing distinguishes them here, and a test
+                # claiming otherwise would be asserting a difference that
+                # does not exist.
+                or elements_changed(previous, after)
+                or previous.title != after.title
             )
             if self._verification_started_at is None and action_detected:
                 # Start a recipe's bounded verification clock only after
@@ -358,7 +401,7 @@ class GuidedTour:
                 # moved the target.
                 self.wrong_action_rehints += 1
                 self.state = State.OBSERVING
-            elif elements_changed(self._before, after):
+            elif elements_changed(previous, after):
                 # The world changed, but not into what we predicted — the user
                 # did something else. Re-observe and re-ground: the target may
                 # have moved or be gone. AndroidWorld-style interrupt handling.
@@ -374,7 +417,11 @@ class GuidedTour:
                 self.state = State.OBSERVING
             elif self.clock() - self._waiting_since >= self.idle_timeout_s:
                 # Clippy lesson: re-hint once, then go quiet. Never nag.
-                if self.rehint_count == 0:
+                if self.rehint_count == 0 and self._grounded is not None:
+                    # `_grounded` is None once the action removed its own
+                    # target. Re-showing the last rectangle would point at
+                    # something that is not there any more, which is the one
+                    # thing a confirmed-control ring must never do (D006).
                     self.renderer.show(self._grounded, step.instruction_text)
                     self.rehint_count += 1
                 self._waiting_since = self.clock()
