@@ -496,7 +496,7 @@ guarantee is structural rather than test-enforced: a hung target can no
 longer block the tick loop, so ESC keeps being polled no matter how slow
 perception becomes. Proven historically by driving the real v1 tour against a real
 hung window; making perception synchronous again fails that test with
-`ESC was only polled 7 times before run_tour returned`, and the run takes
+`ESC was only polled 7 times before the v1 tour returned`, and the run takes
 95.6s instead of 16s.
 
 What that milestone added: a worker thread owning its COM apartment
@@ -548,7 +548,7 @@ and tier 3, the VLM (spec sections outside 9-10).
 
 ```
 run.main()
-  historical v1 `run.run_tour(recipe_path, title_re, seconds)`
+  historical v1 path-based tour
       schema.Recipe.load(recipe_path)
 
       --- perception moves OFF this thread, before the overlay exists ---
@@ -735,7 +735,7 @@ immediately, so a second, later process reading the same app reuses what the
 first one learned instead of re-discovering it from name matching.
 
 ```
-historical v1 `run.run_tour(recipe_path, title_re, seconds)`
+historical v1 path-based tour
     schema.Recipe.load(recipe_path)
     window.create_overlay_window()
     appinfo.app_info_for_window(title_re)       -> AppInfo(app_id, exe_path, version, kind)
@@ -852,7 +852,7 @@ versioned human-semantic dataset (30 cases, family_id grouped)
          -> real UIA observation
          -> exact identity + structural geometry fixture parity
          -> approved candidates == [EXPORT_ID]
-         -> direct hint inference (no run_tour / no input synthesis)
+         -> direct hint inference (no tour / no input synthesis)
          -> STATUS_ID remains "Ready to export"
     -> ignored JSON report; reviewed evidence is promoted separately
 ```

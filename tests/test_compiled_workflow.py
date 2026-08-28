@@ -1001,7 +1001,7 @@ def test_naming_an_intent_is_not_permission_to_run_it() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_classification_never_loads_a_recipe() -> None:
+def test_classification_never_loads_a_recipe(monkeypatch) -> None:
     """Naming an intent must not touch the filesystem.
 
     In v1 the two were one act, so the authority policy could not be reasoned
@@ -1014,6 +1014,11 @@ def test_classification_never_loads_a_recipe() -> None:
         classify_decision,
     )
 
+    def _explode(*args, **kwargs):
+        raise AssertionError("classification touched the filesystem")
+
+    monkeypatch.setattr(Path, "read_bytes", _explode)
+    monkeypatch.setattr(Path, "read_text", _explode)
     result = classify_decision(
         "Open a folder in VS Code",
         IntentDecision("OPEN_FOLDER", 0.9, "model agrees"),
