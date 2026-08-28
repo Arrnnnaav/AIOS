@@ -5,14 +5,14 @@ Three separate things are proved here, and they are deliberately not merged:
 1. The **path predicate** agrees with the contract-defining table in
    `docs/evidence/d072-compatibility-corpus.md`.  The table is parsed, not
    retyped, so the document and the code cannot drift apart.
-2. The **compiled matcher** reproduces `_fallback()` on every corpus row that
+2. The **compiled matcher** reproduces the frozen v1 reference on every corpus row that
    D072 does not allowlist, and reproduces D072's stated new outcome on every
    row it does.
 3. The **evidence document** is a faithful projection of the canonical corpus
    fixture, checked by running the renderer in `--check` mode.
 
-`_fallback()` stays the production matcher until the cutover.  These tests
-compare the two; nothing in production chooses between them.
+The v1 column is checked against the frozen pre-cutover semantics below. The
+production matcher is deliberately not used to manufacture that baseline.
 """
 
 from __future__ import annotations
@@ -43,7 +43,6 @@ from ghostcursor.packs.compile import (
     normalise_goal,
     path_tokens,
 )
-from ghostcursor.reasoning.planner import deterministic_intent
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CORPUS_PATH = REPO_ROOT / "tests" / "data" / "d072_compatibility_v1.json"
@@ -174,9 +173,43 @@ def _compiled(intent_value: dict, aliases: dict | None = None) -> CompiledIntent
     )
 
 
+def _v1_reference(goal: str) -> tuple[str | None, float, str]:
+    """Independent transcription of the pre-cutover planner semantics.
+
+    This is a frozen test oracle, not a production helper. Keeping it here is
+    intentional: comparing the v2 matcher with ``deterministic_intent`` after
+    cutover would compare the implementation with itself and make D072's
+    differential gate vacuous.
+    """
+    normalized = " ".join(goal.lower().split())
+    exact = {
+        phrase: "EXPORT_DATA"
+        for phrase in EXPORT_DATA["rules"][0]["phrases"]
+    }
+    exact.update({phrase: "OPEN_FOLDER" for phrase in OPEN_FOLDER["rules"][0]["phrases"]})
+    exact.update({phrase: "OPEN_TERMINAL" for phrase in OPEN_TERMINAL["rules"][0]["phrases"]})
+    if normalized in exact:
+        return exact[normalized], 0.95, "matched exact phrase"
+    if any(word in normalized for word in ("csv", "spreadsheet", "table")) and any(
+        word in normalized for word in ("export", "save", "download")
+    ):
+        return "EXPORT_DATA", 0.85, "matched a known export synonym"
+    if (
+        "open" in normalized
+        and any(alias in normalized for alias in VSCODE_ALIASES["vscode_names"])
+        and ("folder" in normalized or "\\" in normalized or "/" in normalized)
+    ):
+        return "OPEN_FOLDER", 0.85, "matched the VS Code open-folder intent"
+    if (
+        any(word in normalized for word in ("open", "show"))
+        and "terminal" in normalized
+        and any(alias in normalized for alias in VSCODE_ALIASES["vscode_names"])
+    ):
+        return "OPEN_TERMINAL", 0.85, "matched the VS Code integrated-terminal intent"
+    return None, 0.0, "no trusted intent matched"
 @pytest.fixture(scope="module")
 def matcher() -> CompiledMatcher:
-    """The reference matcher, in the source order `_fallback()` uses.
+    """The v2 matcher fixture, alongside the frozen v1 reference.
 
     Order is recorded rather than relied upon: a correct D072 matcher is
     order-independent, and `test_matcher_is_order_independent` proves this one
@@ -426,7 +459,7 @@ def test_every_corpus_row_matches_its_recorded_v2_outcome(
 
 
 def test_every_corpus_row_matches_its_recorded_v1_outcome(corpus: dict) -> None:
-    """The recorded v1 column is what `_fallback()` actually returns today.
+    """The recorded v1 column is checked against the frozen v1 oracle.
 
     Without this, a divergence row could be "explained" by a v1 column that was
     never true, and the gate below would be comparing the new matcher against
@@ -434,8 +467,8 @@ def test_every_corpus_row_matches_its_recorded_v1_outcome(corpus: dict) -> None:
     """
     failures = []
     for row in corpus["rows"]:
-        intent_id, confidence, _reason = deterministic_intent(row["goal"])
-        # `_fallback()` has no ambiguity concept -- it resolves collisions by
+        intent_id, confidence, _reason = _v1_reference(row["goal"])
+        # The pre-cutover planner had no ambiguity concept -- it resolved collisions by
         # source order -- so its kind is fully determined by whether it
         # grounded.  Deriving it here rather than trusting the column is what
         # makes the column checked instead of merely rendered.
@@ -464,7 +497,7 @@ def test_no_unlisted_divergence_from_the_production_matcher(
     unlisted = []
     stale = []
     for row in corpus["rows"]:
-        v1_intent, v1_confidence, _reason = deterministic_intent(row["goal"])
+        v1_intent, v1_confidence, _reason = _v1_reference(row["goal"])
         outcome = matcher.classify(row["goal"])
         diverges = (v1_intent, v1_confidence) != (outcome.intent_id, outcome.confidence)
         if diverges and not row["diverges"]:
