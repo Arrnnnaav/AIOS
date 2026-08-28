@@ -591,8 +591,13 @@ the recipe.
 
 ### Observation plan — grouping is strategy-specific
 
-- **`bounded_descendants`** — one traversal per unique `control_type` per tick;
-  every selector of that control type evaluates over the shared result.
+- **`bounded_descendants`** — one backend descendant enumeration per tick;
+  every selector first filters that shared result by its declared
+  `control_type`, then independently evaluates names and cardinality. The
+  shared enumeration does not broaden a selector's answer. This replaces the
+  original per-control-type grouping after live Synthetic measurement found
+  two type-scoped calls took over eight seconds while one enumeration took
+  about four, making every cursor hide before the next complete observation.
 - **`provider_exact`** — one provider call per unique query. It performs no
   traversal, so grouping it by control type is meaningless.
 

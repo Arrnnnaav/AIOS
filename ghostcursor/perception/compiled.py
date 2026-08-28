@@ -91,7 +91,7 @@ class PywinautoElementInfo:
 def compiled_plan_runner(
     workflow,
     *,
-    walk=uia.control_type_walk,
+    walk=uia.descendant_walk,
     query=uia.provider_query_for,
     read_title=None,
     make_info=RawElementInfo,
@@ -121,7 +121,7 @@ def compiled_plan_runner(
     def _run(_resolved_hwnd: int):
         observation = run_observation_plan(
             workflow.recipe.plan,
-            walk_for=lambda control_type: lambda: walk(hwnd, control_type),
+            walk_all=lambda: walk(hwnd),
             query_for=lambda control_type, name: (
                 lambda: query(hwnd, control_type, name)
             ),
@@ -293,6 +293,7 @@ class CompiledObservationSource:
             selectors=selectors,
             union=union + extra,
             focused_automation_id=snapshot.focused_automation_id,
+            focus_visited=observation.focus_visited,
         )
 
     def arm(self, now: float | None = None) -> None:

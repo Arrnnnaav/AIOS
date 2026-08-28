@@ -7,9 +7,10 @@ observes the whole union with no workflow-specific Python.
 
 Three rules carry the weight here, and each is mutation-checked:
 
-* grouping is strategy-specific -- a bounded walk is shared by control type
-  because the traversal is what it costs; a provider call performs no traversal
-  and collapses only on an identical full query;
+* grouping is strategy-specific -- bounded selectors share one backend
+  descendant enumeration and filter their declared types afterwards; a
+  provider call performs no traversal and collapses only on an identical full
+  query;
 * cardinality is evaluated per selector, over that selector's own results,
   after filtering rather than during it;
 * a non-absence fault invalidates the entire tick, because a partial
@@ -301,6 +302,35 @@ def test_a_shared_traversal_runs_once_and_each_selector_filters_it() -> None:
     )
     assert len(observed.selectors["open_folder"]) == 1
     assert len(observed.selectors["folder_title"]) == 1
+    assert len(observed.selectors["panel"]) == 1
+
+
+def test_different_control_types_share_one_backend_enumeration() -> None:
+    """The live defect: Button + Text used to pay for two full UIA walks.
+
+    Synthetic measured about 4.1 seconds for each type-scoped pywinauto call.
+    Two calls exceed the five-second cursor hide boundary. One enumeration
+    must still filter each selector by its trusted control type, or sharing it
+    would broaden the result instead of merely removing duplicate work.
+    """
+    calls = []
+    controls = [
+        _Ctl("Open Folder...", "Button"),
+        _Ctl("Terminal Section", "Pane"),
+        _Ctl("Open Folder...", "Text"),  # right name, wrong trusted type
+    ]
+    _walk_for, query_for, make_info = _runner({})
+
+    observed = run_observation_plan(
+        compile_observation_plan(_recipe()),
+        walk_all=lambda: calls.append("walk") or controls,
+        query_for=query_for,
+        make_info=make_info,
+    )
+
+    assert calls == ["walk"]
+    assert len(observed.selectors["open_folder"]) == 1
+    assert observed.selectors["open_folder"][0].control_type == "Button"
     assert len(observed.selectors["panel"]) == 1
 
 

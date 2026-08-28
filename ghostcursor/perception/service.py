@@ -816,21 +816,22 @@ class TickObservation:
 def run_observation_plan(
     plan,
     *,
-    walk_for,
+    walk_for=None,
+    walk_all=None,
     query_for,
     make_info,
 ) -> TickObservation:
     """Observe every selector in `plan` in one tick.
 
-    `walk_for(control_type)` returns a callable performing one bounded walk of
-    that control type; `query_for(control_type, name)` returns a callable
-    performing one provider `FindAll`; `make_info(raw)` wraps a provider result
-    for property reads. All three are injected so the grouping and failure
-    rules can be exercised with no live provider.
+    `walk_all()` performs one bounded descendant enumeration for every
+    bounded selector; each selector's declared control type is then applied
+    before names and cardinality. `walk_for(control_type)` remains as the
+    focused-test compatibility seam. `query_for(control_type, name)` performs
+    one provider `FindAll`; `make_info(raw)` wraps a provider result.
 
-    **Each compiled group is read exactly once.** A bounded traversal runs one
-    walk per control type; a provider query performs one `FindAll`. Every
-    selector in the group then judges its own cardinality and limit over that
+    **Each backend group is read exactly once.** Bounded selectors share one
+    descendant enumeration and provider queries perform one `FindAll`. Every
+    selector then judges its own type, names, cardinality and limit over that
     single shared read. Reading per selector instead would let two selectors
     on one compiled query observe two different screens within one tick and
     disagree about how many controls exist -- a disagreement no caller could
@@ -849,15 +850,32 @@ def run_observation_plan(
     results: dict[str, tuple[Element, ...]] = {}
     observed: list[uia.Candidate] = []
 
-    for traversal in plan.traversals:
-        # ONE walk per unique control type, shared by every selector over it.
-        walk = walk_for(traversal.control_type)
+    shared_by_type = None
+    if plan.traversals and walk_all is not None:
         try:
-            candidates = list(walk())
+            walked = list(walk_all())
+            shared_by_type = {}
+            for control in walked:
+                control_type = control.element_info.control_type or ""
+                shared_by_type.setdefault(control_type, []).append(control)
         except Exception as exc:  # noqa: BLE001 - re-raised as a typed fault
-            raise uia.ProviderQueryFault(
-                f"bounded walk of {traversal.control_type} failed: {exc}"
-            ) from exc
+            raise uia.ProviderQueryFault(f"bounded walk failed: {exc}") from exc
+
+    for traversal in plan.traversals:
+        # The production path supplies one shared backend enumeration. The
+        # fallback seam preserves focused tests of one logical type group.
+        if shared_by_type is not None:
+            candidates = shared_by_type.get(traversal.control_type, [])
+        else:
+            if walk_for is None:
+                raise uia.ProviderQueryFault("bounded plan has no walk source")
+            walk = walk_for(traversal.control_type)
+            try:
+                candidates = list(walk())
+            except Exception as exc:  # noqa: BLE001 - re-raised as a typed fault
+                raise uia.ProviderQueryFault(
+                    f"bounded walk of {traversal.control_type} failed: {exc}"
+                ) from exc
         for selector_id in traversal.selector_ids:
             selector = plan.selectors[selector_id]
             # Each selector filters the SHARED candidates independently and

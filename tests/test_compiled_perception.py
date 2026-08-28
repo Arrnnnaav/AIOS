@@ -182,7 +182,7 @@ def test_a_provider_query_flows_end_to_end_into_a_selector_result() -> None:
 
     runner = compiled_plan_runner(
         workflow,
-        walk=lambda hwnd, control_type: [],
+        walk=lambda hwnd: [],
         query=lambda hwnd, control_type, name: (
             [_RawElement(name)] if hwnd == TARGET_HWND else []
         ),
@@ -222,7 +222,7 @@ def test_the_plan_runner_queries_the_captured_handle_not_the_resolved_one() -> N
     seen = []
     runner = compiled_plan_runner(
         workflow,
-        walk=lambda hwnd, control_type: seen.append(hwnd) or [],
+        walk=lambda hwnd: seen.append(hwnd) or [],
         query=lambda hwnd, control_type, name: [],
         read_title=lambda hwnd: "t",
     )
@@ -239,7 +239,7 @@ def test_the_published_title_is_the_bound_windows_not_the_foreground() -> None:
     workflow, _catalog = _workflow()
     runner = compiled_plan_runner(
         workflow,
-        walk=lambda hwnd, control_type: [],
+        walk=lambda hwnd: [],
         query=lambda hwnd, control_type, name: [],
         read_title=lambda hwnd: f"title-of-{hwnd}",
     )
@@ -432,11 +432,19 @@ def test_a_step_boundary_cancels_the_previous_steps_request() -> None:
 
 
 class _Observation:
-    def __init__(self, snapshot, observed_at, ocr_elements=(), tier2_step=-1):
+    def __init__(
+        self,
+        snapshot,
+        observed_at,
+        ocr_elements=(),
+        tier2_step=-1,
+        focus_visited=(),
+    ):
         self.snapshot = snapshot
         self.observed_at = observed_at
         self.ocr_elements = ocr_elements
         self.tier2_step = tier2_step
+        self.focus_visited = focus_visited
 
 
 def _snapshot(title="t", selectors=(), elements=()):
@@ -787,6 +795,142 @@ def test_confirmation_input_is_never_polled_for_an_observed_rule() -> None:
     assert calls == []
 
 
+def test_compiled_focus_history_rehints_after_a_wrong_control() -> None:
+    """Context observation has to reach GuidedTour, not just the run record.
+
+    Without the focus-history wiring, clicking a control that leaves the
+    screen otherwise unchanged produces no wrong-action transition and the
+    Export cursor never reappears.
+    """
+    workflow, _catalog = _workflow()
+    export = Element("Open Folder...", "Button", "1005", (1, 2, 30, 20))
+    reads = []
+    now = [0.0]
+
+    class _Renderer:
+        def __init__(self):
+            self.shown = []
+
+        def show(self, grounded, instruction_text):
+            self.shown.append(grounded)
+
+        def clear(self):
+            pass
+
+        def settle(self):
+            pass
+
+    renderer = _Renderer()
+
+    def _observe():
+        reads.append(True)
+        # The third read is AWAITING_USER_ACTION's first later observation.
+        visited = ("1006",) if len(reads) >= 3 else ()
+        return TickInput(
+            title="Welcome - Visual Studio Code",
+            selectors={"open_folder": (export,)},
+            union=(export,),
+            focus_visited=visited,
+        )
+
+    result = execute_compiled_workflow(
+        workflow,
+        observe=_observe,
+        renderer=renderer,
+        clock=lambda: now[0],
+        sleeper=lambda seconds: now.__setitem__(0, now[0] + seconds),
+        seconds=2.0,
+    )
+
+    assert result.outcome is RunOutcome.TIMED_OUT
+    assert len(renderer.shown) >= 2, "the wrong click never re-hinted the target"
+
+
+def test_a_completed_step_moves_the_visible_hint_to_the_next_target() -> None:
+    """Synthetic must visibly move Export -> completion status before SPACE."""
+    workflow = _two_selector_workflow()
+    first = CompiledStep(
+        user_action="click",
+        target_selector="open_folder",
+        instruction_text="Click Export.",
+        verification=CompiledVerification(
+            kind="element_appears",
+            selector_id="folder_ready",
+            args={},
+            timeout_s=30.0,
+        ),
+        risk="normal",
+    )
+    second = CompiledStep(
+        user_action="observe",
+        target_selector="folder_ready",
+        instruction_text="Confirm the status.",
+        verification=CompiledVerification(
+            kind="user_confirms", selector_id=None, args={}, timeout_s=30.0
+        ),
+        risk="normal",
+    )
+    workflow = replace(
+        workflow,
+        recipe=CompiledRecipe(
+            intent_id=workflow.recipe.intent_id,
+            step_key_namespace=workflow.recipe.step_key_namespace,
+            steps=(first, second),
+            context_selectors=(),
+            plan=workflow.recipe.plan,
+        ),
+    )
+    action = Element("Open Folder...", "Button", "1005", (1, 2, 30, 20))
+    status = Element("Open Folder...", "Text", "1007", (1, 40, 80, 60))
+    phase = [0]
+    now = [0.0]
+
+    class _Renderer:
+        def __init__(self):
+            self.shown = []
+
+        def show(self, grounded, instruction_text):
+            self.shown.append(grounded.bbox)
+            phase[0] = max(phase[0], 2 if grounded.bbox == status.bbox else 1)
+
+        def clear(self):
+            pass
+
+        def settle(self):
+            pass
+
+    renderer = _Renderer()
+
+    def _observe():
+        ready = (status,) if phase[0] >= 1 else ()
+        return TickInput(
+            title="Synthetic Export",
+            selectors={"open_folder": (action,), "folder_ready": ready},
+            union=(action,) + ready,
+        )
+
+    result = execute_compiled_workflow(
+        workflow,
+        observe=_observe,
+        renderer=renderer,
+        confirmation_requested=lambda: phase[0] >= 2,
+        clock=lambda: now[0],
+        sleeper=lambda seconds: now.__setitem__(0, now[0] + seconds),
+        seconds=5.0,
+    )
+
+    assert result.outcome is RunOutcome.PASSED
+    assert renderer.shown[:2] == [action.bbox, status.bbox]
+
+
+def test_the_compiled_source_preserves_focus_visits_from_the_worker() -> None:
+    service = _FakeService(
+        [_Observation(_snapshot(), 1.0, focus_visited=("1006",))]
+    )
+    tick = CompiledObservationSource(service, _Ladder())()
+    assert tick.focus_visited == ("1006",)
+
+
 def test_a_real_worker_drives_a_real_tour_to_completion() -> None:
     """Service, plan runner, source, ladder and executor, all real.
 
@@ -799,7 +943,7 @@ def test_a_real_worker_drives_a_real_tour_to_completion() -> None:
     titles = ["Welcome - Visual Studio Code"]
     lock = threading.Lock()
 
-    def _walk(hwnd, control_type):
+    def _walk(hwnd):
         return [_PywinautoControl("Open Folder...")]
 
     def _read_title(hwnd):
@@ -870,7 +1014,7 @@ def test_the_composed_stack_never_walks_on_the_calling_thread() -> None:
     caller = threading.get_ident()
     walk_threads = set()
 
-    def _walk(hwnd, control_type):
+    def _walk(hwnd):
         walk_threads.add(threading.get_ident())
         return [_PywinautoControl("Open Folder...")]
 
@@ -1038,7 +1182,11 @@ def test_the_executor_reports_a_successful_grounding_too() -> None:
     assert (0, True, "open_folder") in reported
 
 
-def _two_selector_workflow():
+def _two_selector_workflow(
+    *,
+    folder_ready_control_type="Button",
+    folder_ready_names=("Open Folder...",),
+):
     """A recipe with an action target AND a separate verification selector."""
     import sys
     from pathlib import Path
@@ -1058,9 +1206,12 @@ def _two_selector_workflow():
     recipe["selectors"] = {
         "open_folder": _selector(names=("Open Folder...",)),
         "folder_ready": _selector(
-            names=("Open Folder...",), cardinality="at_least_one"
+            names=folder_ready_names, cardinality="at_least_one"
         ),
     }
+    recipe["selectors"]["folder_ready"]["control_type"] = (
+        folder_ready_control_type
+    )
     recipe["steps"][0]["target_selector"] = "open_folder"
     recipe["steps"][0]["verification_rule"] = {
         "kind": "element_appears",
@@ -1075,6 +1226,38 @@ def _two_selector_workflow():
         catalog, pack, intent, "Open a folder in VS Code",
         _target(_window(hwnd=TARGET_HWND)),
     )
+
+
+def test_the_production_runner_enumerates_mixed_control_types_once() -> None:
+    """The composition must select the shared walk path, not its test fallback."""
+    workflow = _two_selector_workflow(
+        folder_ready_control_type="Text",
+        folder_ready_names=("Export complete",),
+    )
+    calls = []
+
+    def _walk(hwnd):
+        calls.append(hwnd)
+        return [
+            _PywinautoControl("Open Folder...", "Button"),
+            _PywinautoControl("Export complete", "Text"),
+            _PywinautoControl("Open Folder...", "Text"),
+        ]
+
+    selectors, _union, _title = compiled_plan_runner(
+        workflow,
+        walk=_walk,
+        query=lambda hwnd, control_type, name: [],
+        read_title=lambda hwnd: "Synthetic Export",
+        make_info=PywinautoElementInfo,
+    )(TARGET_HWND)
+
+    observed = dict(selectors)
+    assert calls == [TARGET_HWND]
+    assert len(observed["open_folder"]) == 1
+    assert observed["open_folder"][0].control_type == "Button"
+    assert len(observed["folder_ready"]) == 1
+    assert observed["folder_ready"][0].control_type == "Text"
 
 
 def test_ocr_answers_only_the_selector_it_was_requested_for() -> None:
@@ -1337,7 +1520,7 @@ def test_the_composition_arms_the_grace_when_it_starts_the_worker() -> None:
         lambda: now[0],
         plan_runner=compiled_plan_runner(
             workflow,
-            walk=lambda hwnd, control_type: [],
+            walk=lambda hwnd: [],
             query=lambda hwnd, control_type, name: [],
             read_title=lambda hwnd: "t",
             make_info=PywinautoElementInfo,

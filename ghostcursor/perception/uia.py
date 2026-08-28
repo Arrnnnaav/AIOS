@@ -745,6 +745,20 @@ def iter_vscode_terminal_elements(title_re: str) -> list[Element]:
     return elements
 
 
+def descendant_walk(hwnd: int):
+    """Enumerate one window once; selectors apply trusted types afterwards.
+
+    A pywinauto ``descendants(control_type=...)`` call still pays for backend
+    enumeration. Running it once for Button and again for Text made Synthetic
+    Export's complete observation take over eight seconds, longer than the
+    five-second honest-hide boundary. One enumeration takes about four seconds
+    on that measured tree. Filtering by each selector's declared control type
+    before names and cardinality preserves every selector's answer.
+    """
+    window = Desktop(backend="uia").window(handle=hwnd)
+    return window.descendants()
+
+
 def control_type_walk(hwnd: int, control_type: str):
     """Bounded descendants of ONE window, filtered to one control type.
 

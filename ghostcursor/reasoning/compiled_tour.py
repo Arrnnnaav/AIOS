@@ -104,6 +104,7 @@ class TickInput:
     selectors: dict[str, tuple[Element, ...]]
     union: tuple[Element, ...]
     focused_automation_id: str = ""
+    focus_visited: tuple[str, ...] = ()
 
 
 def compiled_steps(workflow) -> list[Step]:
@@ -293,6 +294,9 @@ def execute_compiled_workflow(
         verifier=verifier,
         renderer=renderer,
         clock=clock,
+        focus_visited_source=lambda: (
+            _current.focus_visited if _current is not None else ()
+        ),
     )
 
     started = clock()
