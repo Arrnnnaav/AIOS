@@ -161,9 +161,9 @@ def persist_step(
 def make_grounder(
     title_re: str, app_info=None, store=None, recipe_intent: str = ""
 ) -> Callable[[object, int], object]:
-    """Build the grounder used by the live compiled tour: ground, promote, persist.
+    """Build the grounder used by a live run_tour: ground, promote, persist.
 
-    Factored out of the production tour so it is directly testable without a live UIA
+    Factored out of run_tour so it is directly testable without a live UIA
     window. Promotion is spec §5's headline mechanism — "the recipe becomes
     more robust every time it is used" — and previously ran only in tests
     because run.py's grounder never called it, leaving rung 1 unreachable

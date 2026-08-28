@@ -50,7 +50,7 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
 def no_real_control_bar_in_hermetic_tests(request: pytest.FixtureRequest, monkeypatch):
     """Keep the default lane genuinely desktop-independent.
 
-    Several state-machine tests drive the real compiled tour loop while faking
+    Several state-machine tests drive the real ``run_tour`` loop while faking
     only its full-screen overlay. Without this guard they can still create the
     Win32 control rail. Desktop, pixel, and hung-window lanes retain their
     explicit environment and are not changed here.

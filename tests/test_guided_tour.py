@@ -18,9 +18,7 @@ from tests.uia_app import BTN_EXPORT, SyntheticApp
 
 RECIPE_PATH = (
     Path(__file__).resolve().parents[1]
-    / "tests"
-    / "fixtures"
-    / "v1"
+    / "ghostcursor"
     / "reasoning"
     / "recipes"
     / "synthetic_export.json"
