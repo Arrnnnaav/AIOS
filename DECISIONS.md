@@ -3378,3 +3378,19 @@ test asserting a distinction that does not exist (D031).
 
 **Cost.** One acceptance run reported a failure for a workflow that had
 succeeded, and a 3/3 that was partly luck.
+
+## D077 — Schema-v2 is the sole production workflow authority
+
+Task 9 activates the verified declarative catalog as the only production
+planner and execution authority. Goal planning compiles the installed catalog,
+and execution receives a `CompiledWorkflow` carrying the exact activation,
+artifact digests, application identity, and bound window handle. Revalidation
+must pass before overlay creation. Path-based recipe loading, manifest
+scanning, hardcoded workflow walkers, and the legacy tour dispatcher are not
+production interfaces. Candidate artifacts remain confined to the acceptance
+harness; unreferenced installed files are inert.
+
+This decision preserves fail-closed behaviour: a planner-only or unadopted
+intent may be model-visible but cannot materialize, and ambiguous window or
+control selection refuses to launch. The migration is recorded by Task 9's
+authority inventory at `docs/evidence/schema-v2-cutover-authority-inventory.md`.

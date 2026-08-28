@@ -130,6 +130,9 @@ def run_local_model(
                 "expected_deterministic_intent": case.expected_deterministic_intent,
                 "actual_final_status": result.status.value,
                 "actual_final_intent": result.intent_id,
+                # v2 classification deliberately has no plan object: live
+                # workflow materialization requires a target window. This is
+                # classification eligibility, not proof that a launch occurred.
                 "launch_eligible": result.status in {
                     PlanStatus.SUPPORTED,
                     PlanStatus.MODEL_UNAVAILABLE_FALLBACK,
@@ -182,10 +185,20 @@ def run_local_model(
                 "launch_eligible": available.get("launch_eligible", False),
             }
         )
-        unavailable = resolve_model_decision(
-            goal,
-            IntentDecision(None, 0.0, "model unavailable"),
-        )
+        try:
+            infer_intent(
+                goal,
+                unavailable_endpoint,
+                model,
+                min(timeout, 0.5),
+            )
+        except (OSError, TimeoutError, ConnectionError):
+            unavailable = resolve_model_decision(
+                goal,
+                IntentDecision(None, 0.0, "model unavailable"),
+            )
+        else:
+            raise AssertionError("unavailable model lane unexpectedly responded")
         matrix.append(
             {
                 "goal": goal,

@@ -1,5 +1,17 @@
 # FLOW.md
 
+## Current execution authority — schema v2
+
+Production goal execution now flows through `run.main()` →
+`planner.plan_compiled_goal()` → `packs.activation.load_catalog()` →
+`packs.compile` → `packs.workflow.bind_workflow()` →
+`run.run_tour_for_workflow()`. The compiled workflow revalidates the exact
+activation generation, artifact digests, application identity, and bound HWND
+before creating an overlay; `execute_compiled_workflow()` then consumes the
+compiled observation plan. The old path-based tour and workflow-specific
+walker adapters were removed in Task 9. The historical call graphs below are
+retained only as migration history and must not be used to implement new work.
+
 How execution actually travels between files, functions, and modules — what calls
 what, in what order. Updated as the codebase grows. The "you are here" marker at
 the bottom shows exactly what's being built/modified right now.
@@ -169,7 +181,7 @@ run.main()
 | `tests/hung_window.py` | child process that creates a window and then stops pumping messages — reproduces the 41s UIA block deterministically |
 | `tests/test_hung_window.py` | `HungWindow` context manager + the block measurement; the fixture Tasks 5-7 are built on |
 | `tests/test_run_threaded.py` | ESC stays responsive while the target is hung — the property this whole design exists for |
-| `tests/test_freshness_timeline.py` | the staleness ladder as an ordered sequence inside a real `run_tour`, on an injected clock (D026); carries the two composition bugs as named regressions |
+| `tests/test_freshness_timeline.py` | historical v1 staleness regression; compiled equivalents now live in `tests/test_compiled_perception.py` |
 | `tests/test_tier2_controller.py` | the cadence itself: the 1.0s floor, the frame diff, the fruitless-run ceiling and its reset, all on an injected clock |
 | `tests/test_tier2_timeline.py` | tier 2 end to end as an ordered sequence — UIA-blind service, request slot, OCR elements arriving on a later observation, amber ring |
 | `tests/test_tier2_tick_ceiling.py` | D020's 0.5s tick ceiling measured WHILE tier 2 is engaged — the case `test_tick_latency.py` cannot reach, because there grounding never fails |
@@ -307,8 +319,8 @@ the `Code.exe`-bounded capture goes to Windows OCR; same-line word reassembly
 turns the measured `Open` and `Folder...` reads into one exact candidate while
 retaining the original words and the 95 grounding floor.
 
-The next completed slice adds `OPEN_TERMINAL` to the same trusted VS Code
-manifest and planner allowlist. `run.perception_walker_for(app_id, intent)`
+The historical v1 slice added `OPEN_TERMINAL` to the trusted VS Code manifest
+and planner allowlist. Its workflow walker was replaced by the compiled plan;
 keeps Open Folder on its own reviewed walker (since D069 a bounded,
 normalised-name Button walk rather than the provider-side exact query) and selects
 `uia.iter_vscode_terminal_elements` only for the terminal recipe. That walker
@@ -482,7 +494,7 @@ VLM tier would have walked straight into.
 Previously: perception moved **off the UI thread** (D021-D024). The escapability
 guarantee is structural rather than test-enforced: a hung target can no
 longer block the tick loop, so ESC keeps being polled no matter how slow
-perception becomes. Proven by driving the real `run_tour` against a real
+perception becomes. Proven historically by driving the real v1 tour against a real
 hung window; making perception synchronous again fails that test with
 `ESC was only polled 7 times before run_tour returned`, and the run takes
 95.6s instead of 16s.
@@ -536,7 +548,7 @@ and tier 3, the VLM (spec sections outside 9-10).
 
 ```
 run.main()
-  run.run_tour(recipe_path, title_re, seconds)
+  historical v1 `run.run_tour(recipe_path, title_re, seconds)`
       schema.Recipe.load(recipe_path)
 
       --- perception moves OFF this thread, before the overlay exists ---
@@ -723,7 +735,7 @@ immediately, so a second, later process reading the same app reuses what the
 first one learned instead of re-discovering it from name matching.
 
 ```
-run.run_tour(recipe_path, title_re, seconds)
+historical v1 `run.run_tour(recipe_path, title_re, seconds)`
     schema.Recipe.load(recipe_path)
     window.create_overlay_window()
     appinfo.app_info_for_window(title_re)       -> AppInfo(app_id, exe_path, version, kind)

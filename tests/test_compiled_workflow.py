@@ -1001,26 +1001,18 @@ def test_naming_an_intent_is_not_permission_to_run_it() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_classification_never_loads_a_recipe(monkeypatch) -> None:
+def test_classification_never_loads_a_recipe() -> None:
     """Naming an intent must not touch the filesystem.
 
     In v1 the two were one act, so the authority policy could not be reasoned
     about without a loadable recipe on disk.
     """
-    from ghostcursor.reasoning import planner
     from ghostcursor.reasoning.planner import (
         Classification,
         IntentDecision,
         PlanStatus,
         classify_decision,
     )
-
-    def _explode(*args, **kwargs):
-        raise AssertionError("classification loaded a recipe")
-
-    monkeypatch.setattr(planner, "_trusted_recipe", _explode)
-    monkeypatch.setattr(planner, "recipe_path_for", _explode)
-    monkeypatch.setattr(planner.Recipe, "load", staticmethod(_explode))
 
     result = classify_decision(
         "Open a folder in VS Code",

@@ -58,8 +58,8 @@ within 20 seconds of the first hint; timeout wins over a state first observed
 after the deadline. **A click recipe is forbidden for this goal** — Toggle Panel
 restores whichever panel was last active (D057).
 
-Keep the `Ask received` console acknowledgement before a nested `run_tour()`:
-the nested control-bar session may stay alive until its timeout.
+Keep the `Ask received` console acknowledgement before a nested compiled
+workflow: the nested control-bar session may stay alive until its timeout.
 
 The deterministic planner aliases `VS Code`, `VSCode`, and `Visual Studio Code`
 for both registered VS Code intents. The documented goals `Open a folder in VS
@@ -91,33 +91,22 @@ deferred; see `docs/superpowers/FOLLOWUPS.md`. The logging-only watcher runs as
 `py -3.12 -m ghostcursor.daemon`.
 
 Real VS Code perception is intentionally narrow for each validated workflow.
-`perception_walker_for("code.exe", recipe_intent)` selects the reviewed walker
-for that recipe. Open Folder uses `uia.iter_vscode_elements`: a `Code.exe`-bounded
-Button walk filtered by normalised name against the `Open Folder` variants,
-capped by `DEFAULT_DESCENDANT_LIMIT`, never the generic full Electron descendant
-walk. Match on the normalised name and never write an observed Codicon glyph
-into a recipe. Keep OCR same-line reassembly; it does not lower the 95 grounding
-floor. Keep this restriction aligned with the trusted VS Code pack; broaden it
-only when a new reviewed recipe needs another target. Write progress stages
-before potentially blocking calls, so health logs do not misidentify a blocked
-walk as a focus stall. See D069.
+The schema-v2 compiled observation plan selects the reviewed UIA strategy,
+normalization, cardinality, and limits from the trusted recipe. Keep those
+restrictions aligned with the trusted VS Code pack; broaden them only with a
+new reviewed recipe. Keep OCR same-line reassembly and the 95 grounding floor.
 
-Open Terminal uses `uia.iter_vscode_terminal_elements`, a `Code.exe`-bounded
-Button walk filtered to exact `Toggle Panel (Ctrl+J)` and `Terminal Section`
-names. Neither exposes a stable AutomationId. Never invent one, persist these
-name-only controls, or claim focus-based wrong-action naming for this workflow:
-promotion and wrong-action feedback intentionally fail closed without an ID.
+Open Terminal remains name-only with no invented AutomationId; promotion and
+wrong-action feedback fail closed without stable identity.
 Keep `accept_if_already_present` and `timeout_from_hint` on this recipe. The
 first prevents an already-satisfied goal from receiving a shortcut that closes
 it; the second bounds a no-op shortcut that provides no observable action
 event. Both options are schema-checked and covered by injected-clock tests.
 
-Executable recipe targets are identity-bounded. `app_info_for_window()` may
-accept `expected_app_id`; `perception_hwnd_source_for()` supplies the same
-executable filter to the worker and focus guard; and the VS Code walker accepts
-only `Code.exe`. Never weaken this to title-only matching: titles are free text
-and collide with browser tabs and terminals. Missing trusted identity must fail
-before overlay creation.
+Executable targets are identity-bounded by the compiled workflow and its live
+HWND revalidation. Never weaken this to title-only matching: titles are free
+text and collide with browser tabs and terminals. Missing trusted identity must
+fail before overlay creation.
 
 Keep whole-file concern commits, preserve raw hang dumps only under ignored
 `.artifacts/hang-audit/`, and record sanitized reachability findings in
