@@ -2,9 +2,10 @@
 
 Date: 2026-08-29 (Asia/Calcutta)
 
-Status: all technical gates below pass on `1ba371a`. Independent review under
-D032 is still required before this evidence can designate the compiler
-baseline or authorize Task 11.
+Status: closed as the compiler baseline by owner direction after every claim
+below was reproduced in a read-only review. The reviewer disclosed prior
+contributions to the branch; this is recorded as an owner closure, not
+misrepresented as review by someone with no prior involvement.
 
 ## Bound commits and tree
 
@@ -123,8 +124,10 @@ The ignored raw reports were
 only for local audit. This committed document is the durable summary and does
 not depend on those ignored files remaining present.
 
-## Remaining gate
+## Closure
 
-No technical gate is red. Task 9/10 remains provisional only because D032
-requires an independent reviewer to inspect this exact committed evidence and
-the `1ba371a` tree. The author does not self-certify that review.
+The read-only review reproduced the hermetic, interactive, pixel, standalone,
+hung, D072, wrong-action, named-test, model-gate, and protected-branch claims
+against `1ba371a` and `41682ee`. The owner then explicitly closed Task 10 and
+authorized Task 11. The disclosure above remains part of the record rather
+than being erased by that ruling.

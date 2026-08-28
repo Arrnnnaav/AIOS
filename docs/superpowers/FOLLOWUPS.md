@@ -308,7 +308,7 @@ normalised name on a selector, which restores exact-rung semantics without
 losing observation fidelity — a better fix than widening rung 2 globally.
 
 
-## Declarative workflow compiler (Tasks 1-10 implemented; D032 review pending)
+## Declarative workflow compiler (Tasks 1-11 implemented; candidate review pending)
 
 Moved out of `CLAUDE.md` under D071: unresolved work is owned here, not by the
 rules file.
@@ -319,19 +319,19 @@ rules file.
 - [Implementation plan](plans/2026-08-27-declarative-workflow-compiler.md)
 - [Task 9/10 recertification evidence](../evidence/schema-v2-task9-recertification.md)
 
-The design and plan passed independent D032 review through `af47bcf`.
-Implementation has reached the schema-v2 production cutover and all Task 10
-technical gates pass on `1ba371a`. The remaining gate before Open Extensions is
-independent D032 review of that exact tree and its committed recertification
-evidence; do not redesign or restart Tasks 1-10.
+The design and plan passed independent D032 review through `af47bcf`. Task 10
+was closed by owner direction after the full recertification reproduced on
+`1ba371a` and was recorded in `41682ee`. Task 11's quarantined, data-only Open
+Extensions candidate is committed at `d26d2d8`. Do not redesign or restart
+Tasks 1-11; independently review that candidate before its Task 12 acceptance.
 
 ### Recipe schema v2 and the declarative workflow compiler
 
 Built around the two measured selector strategies, `provider_exact` and
 `bounded_descendants`. Recipes declare strategy; the compiler never infers it.
 
-**State/trigger:** implemented and recertified technically through plan Task 10;
-await the independent evidence review named above.
+**State/trigger:** compiler baseline closed through plan Task 10; Task 11 is a
+quarantined candidate and grants no production authority.
 
 ### Declarative intent registration
 
@@ -348,8 +348,8 @@ workflow-specific change under `ghostcursor/**/*.py`. The proof is the whole
 diff from the independently approved compiler baseline through adopted Open
 Extensions containing no such Python.
 
-**State/trigger:** Tasks 7-10 are implemented; begin Tasks 11-12 only after the
-Task 10 evidence receives independent D032 approval.
+**State/trigger:** Tasks 7-11 are implemented. Begin Task 12 only after
+independent review of the exact `d26d2d8` candidate bytes.
 
 ### Acceptance budget
 
