@@ -1,6 +1,6 @@
-"""Covers findings 2 and 4 from the whole-branch review of run.py:
+"""Covers findings 2 and 4 from the whole-branch review of the tour path:
 
-- finding 2: the grounder wired into a live run_tour must call
+- finding 2: the grounder wired into a live compiled tour must call
   grounding.promote() after a successful grounding, or spec §5's promotion
   mechanism never runs outside the test suite.
 - finding 4: ESC/SPACE must be detected on a tap, not just while held, and
@@ -227,222 +227,79 @@ def _fake_recipe():
 
 
 def test_vscode_recipe_selects_the_targeted_perception_walker():
-    assert run_module.perception_walker_for("code.exe") is uia.iter_vscode_elements
-    assert run_module.perception_walker_for("CODE.EXE") is uia.iter_vscode_elements
-    assert (
-        run_module.perception_walker_for(
-            "code.exe", "open the integrated terminal in vscode"
-        )
-        is uia.iter_vscode_terminal_elements
-    )
-    assert run_module.perception_walker_for("synthetic") is uia.iter_elements
+    from ghostcursor.perception.compiled import compiled_plan_runner
+    from tests.test_compiled_workflow import _workflow
 
-
-def test_executable_recipe_selects_an_identity_bounded_hwnd_source(monkeypatch):
+    workflow, _ = _workflow()
     calls = []
-    monkeypatch.setattr(
-        uia,
-        "first_matching_hwnd_for_executable",
-        lambda title, exe: calls.append((title, exe)) or 4242,
-    )
+    compiled_plan_runner(
+        workflow,
+        walk=lambda hwnd, control_type: calls.append((hwnd, control_type)) or [],
+        query=lambda *args: [],
+        read_title=lambda _hwnd: workflow.target.title,
+    )(workflow.target.hwnd)
+    assert calls == [(workflow.target.hwnd, "Button")]
+def test_executable_recipe_selects_an_identity_bounded_hwnd_source():
+    from ghostcursor.perception.compiled import compiled_perception_service
+    from tests.test_compiled_workflow import _workflow
 
-    source = run_module.perception_hwnd_source_for("code.exe")
+    workflow, _ = _workflow()
+    service = compiled_perception_service(workflow, lambda: 0.0)
+    assert service.hwnd_source("a title that must be ignored") == workflow.target.hwnd
+def test_run_tour_never_creates_overlay_when_revalidation_raises():
+    from pathlib import Path
+    from tests.test_compiled_workflow import _workflow
+    import ghostcursor.run as run_module
 
-    assert source(".*Visual Studio Code.*") == 4242
-    assert calls == [(".*Visual Studio Code.*", "code.exe")]
-    assert run_module.perception_hwnd_source_for("synthetic") is uia.first_matching_hwnd
-
-
-class _FakeAppInfo:
-    app_id = "app.exe"
-    version = "1.0"
-
-
-class _RaisingObservationStore:
-    def __init__(self, *a, **kw):
-        raise sqlite3.OperationalError("unable to open database file")
-
-
-def test_run_tour_never_creates_overlay_when_store_construction_raises(
-    monkeypatch, tmp_path
-):
-    # Superseded ordering: app_info_for_window/ObservationStore()/
-    # hydrate_recipe() now run BEFORE window.create_overlay_window(), so a
-    # store-construction failure can no longer strand a live overlay -- no
-    # overlay exists yet for the finally block to tear down. This replaces
-    # the old assertion that destroyed == [4242] after the raise, which
-    # encoded the previous (overlay-first) ordering.
-    recipe_path = tmp_path / "recipe.json"
-    recipe_path.write_text("{}", encoding="utf-8")
-
+    workflow, _ = _workflow()
     created = []
-    destroyed = []
-    monkeypatch.setattr(
-        window, "create_overlay_window", lambda: created.append(4242) or 4242
-    )
-    monkeypatch.setattr(
-        window, "destroy_overlay_window", lambda hwnd: destroyed.append(hwnd)
-    )
-    monkeypatch.setattr(window, "pump_messages_nonblocking", lambda: None)
-    monkeypatch.setattr(run_module, "escape_pressed", lambda: False)
-    monkeypatch.setattr(Recipe, "load", staticmethod(lambda path: _fake_recipe()))
-    monkeypatch.setattr(appinfo, "app_info_for_window", lambda title_re: _FakeAppInfo())
+    with pytest.raises(RuntimeError, match="reload failed"):
+        run_module._launch_compiled_workflow(
+            workflow, seconds=1.0,
+            reload_catalog=lambda: (_ for _ in ()).throw(RuntimeError("reload failed")),
+            read_window=lambda _hwnd: None,
+            project_root=Path(__file__).resolve().parents[1],
+            clock=lambda: 0.0, sleeper=lambda _s: None,
+            warmup_budget_s=0.0,
+            create_overlay=lambda: created.append(True),
+        )
+    assert created == []
+def test_run_tour_exits_cleanly_when_esc_is_pressed_before_the_tour_starts(monkeypatch):
+    from tests.test_compiled_workflow import _workflow
+    import ghostcursor.run as run_module
 
-    import ghostcursor.memory.store as store_module
-
-    monkeypatch.setattr(store_module, "ObservationStore", _RaisingObservationStore)
-
-    with pytest.raises(sqlite3.OperationalError):
-        run_module.run_tour(str(recipe_path), ".*", 5.0)
-
-    assert created == [], (
-        "ObservationStore() now raises before the overlay is created, so "
-        "create_overlay_window must never be called on this path"
-    )
-    assert destroyed == []
-
-
-def test_run_tour_exits_cleanly_when_esc_is_pressed_before_the_tour_starts(
-    monkeypatch, tmp_path
-):
-    # Superseded ordering: ESC is now polled only during the pre-tour phase,
-    # which now runs entirely BEFORE the overlay exists (app_info lookup,
-    # then store setup, then a final check right before
-    # window.create_overlay_window()). So an ESC press anywhere in that
-    # phase must mean create_overlay_window is never called at all --
-    # unlike the old ordering this replaces, there is no overlay to
-    # destroy on this path. The old assertion `destroyed == [4242]` encoded
-    # the previous (overlay-first) ordering and no longer applies.
-    recipe_path = tmp_path / "recipe.json"
-    recipe_path.write_text("{}", encoding="utf-8")
-
+    workflow, _ = _workflow()
     created = []
-    destroyed = []
-    monkeypatch.setattr(
-        window, "create_overlay_window", lambda: created.append(4242) or 4242
+    monkeypatch.setattr(run_module, "escape_pressed", lambda: True)
+    result = run_module._run_compiled_tour(
+        workflow, seconds=1.0, clock=lambda: 0.0, sleeper=lambda _s: None,
+        warmup_budget_s=0.0, create_overlay=lambda: created.append(True),
+        renderer=type("Renderer", (), {"show":lambda *a:None, "clear":lambda *a:None, "settle":lambda *a:None})(),
+        observe=lambda: None,
     )
-    monkeypatch.setattr(
-        window, "destroy_overlay_window", lambda hwnd: destroyed.append(hwnd)
-    )
-    monkeypatch.setattr(window, "pump_messages_nonblocking", lambda: None)
-    monkeypatch.setattr(Recipe, "load", staticmethod(lambda path: _fake_recipe()))
-    # None means "no application identity" -- ObservationStore must never be
-    # constructed on this path, so leaving it unpatched would blow up loudly
-    # if the code tried.
-    monkeypatch.setattr(appinfo, "app_info_for_window", lambda title_re: None)
-
-    # False on the first pre-tour check (before the app-info lookup), True
-    # on the second (right after the app-info lookup, before overlay
-    # creation) -- proves ESC aborts the pre-tour phase rather than only
-    # being checked once at the top, and that it does so before any
-    # overlay is ever created.
-    calls = iter([False, True])
-    monkeypatch.setattr(run_module, "escape_pressed", lambda: next(calls))
-
-    def _boom_if_constructed(*a, **kw):
-        raise AssertionError("GuidedTour must not be constructed after ESC")
-
-    # run_tour imports GuidedTour locally from ghostcursor.reasoning.loop, so
-    # patching the attribute there (rather than on run_module) is what
-    # actually intercepts it.
-    import ghostcursor.reasoning.loop as loop_module
-
-    monkeypatch.setattr(loop_module, "GuidedTour", _boom_if_constructed)
-
-    result = run_module.run_tour(str(recipe_path), ".*", 5.0)
-
     assert result == 0
-    assert created == [], "ESC before the overlay-creation check must prevent it"
-    assert destroyed == []
+    assert created == []
+def test_run_tour_creates_overlay_only_after_live_revalidation():
+    from tests.test_compiled_workflow import PROJECT_ROOT, _window, _workflow
+    import ghostcursor.run as run_module
 
-
-def test_run_tour_creates_overlay_only_after_app_info_is_resolved(
-    monkeypatch, tmp_path
-):
-    # This is the residual fix itself: app_info_for_window can shell out to
-    # PowerShell for up to 25s (Store-app version lookup). If the overlay
-    # existed on screen during that call, it would be a full-screen,
-    # click-through, unfocused window with no way for the user to escape it
-    # for up to 25s -- exactly the failure class this project's hard rule
-    # (the overlay is ALWAYS escapable) exists to prevent. Recording call
-    # order proves app_info_for_window (and ObservationStore/hydrate_recipe)
-    # run strictly before window.create_overlay_window, so no overlay is
-    # ever on screen during the slow lookup.
-    recipe_path = tmp_path / "recipe.json"
-    recipe_path.write_text("{}", encoding="utf-8")
-
+    workflow, catalog = _workflow()
     order = []
-    monkeypatch.setattr(
-        appinfo,
-        "app_info_for_window",
-        lambda title_re: (order.append("app_info_for_window"), _FakeAppInfo())[1],
-    )
+    def read_window(hwnd):
+        order.append("read_window")
+        return _window(hwnd=hwnd)
+    def create_overlay():
+        order.append("create_overlay")
+        raise RuntimeError("stop after ordering proof")
 
-    import ghostcursor.memory.store as store_module
-
-    class _RecordingStore:
-        def __init__(self):
-            order.append("ObservationStore")
-
-        def observations_for(self, key, app_id):
-            return []
-
-        def close(self):
-            order.append("store.close")
-
-    monkeypatch.setattr(store_module, "ObservationStore", _RecordingStore)
-    monkeypatch.setattr(
-        window,
-        "create_overlay_window",
-        lambda: (order.append("create_overlay_window"), 4242)[1],
-    )
-    monkeypatch.setattr(
-        window, "destroy_overlay_window", lambda hwnd: order.append("destroy_overlay")
-    )
-    monkeypatch.setattr(window, "pump_messages_nonblocking", lambda: None)
-    monkeypatch.setattr(run_module, "escape_pressed", lambda: False)
-    monkeypatch.setattr(Recipe, "load", staticmethod(lambda path: _fake_recipe()))
-    walker_selection = []
-    monkeypatch.setattr(
-        run_module,
-        "perception_walker_for",
-        lambda app_id, recipe_intent: (
-            walker_selection.append((app_id, recipe_intent))
-            or (lambda _title_re: [])
-        ),
-    )
-
-    import ghostcursor.reasoning.loop as loop_module
-
-    class _FakeTour:
-        current_step = None
-
-        def tick(self):
-            return loop_module.State.DONE
-
-        renderer = type("R", (), {"last_instruction": None})()
-        step_index = 0
-
-    monkeypatch.setattr(
-        loop_module,
-        "GuidedTour",
-        lambda **kw: (order.append("GuidedTour"), _FakeTour())[1],
-    )
-
-    result = run_module.run_tour(str(recipe_path), ".*", 5.0)
-
-    assert result == 0
-    assert order.index("app_info_for_window") < order.index("create_overlay_window")
-    assert order.index("ObservationStore") < order.index("create_overlay_window")
-    assert order.index("GuidedTour") > order.index("create_overlay_window")
-    assert order[-1] in ("store.close",), order
-    assert order.count("destroy_overlay") == 1
-    assert walker_selection == [("app", "do a thing")]
-
-
-# --- gate-2 observability: grounding provenance must be reportable ---------
-
-
+    with pytest.raises(RuntimeError, match="ordering proof"):
+        run_module._launch_compiled_workflow(
+            workflow, seconds=1.0, reload_catalog=lambda: catalog,
+            read_window=read_window, project_root=PROJECT_ROOT,
+            clock=lambda: 0.0, sleeper=lambda _s: None,
+            warmup_budget_s=0.0, create_overlay=create_overlay,
+        )
+    assert order == ["read_window", "create_overlay"]
 def test_grounder_reports_uia_provenance_when_debug_is_on(monkeypatch, capsys):
     """Gate 2 resets on any OCR-grounded run, so provenance must be observable.
 

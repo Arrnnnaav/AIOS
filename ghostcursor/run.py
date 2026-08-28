@@ -161,12 +161,12 @@ def persist_step(
 def make_grounder(
     title_re: str, app_info=None, store=None, recipe_intent: str = ""
 ) -> Callable[[object, int], object]:
-    """Build the grounder used by a live run_tour: ground, promote, persist.
+    """Build the grounder used by a live compiled tour: ground, promote, persist.
 
-    Factored out of run_tour so it is directly testable without a live UIA
+    Factored out of the tour entry point so it is directly testable without a live UIA
     window. Promotion is spec §5's headline mechanism — "the recipe becomes
     more robust every time it is used" — and previously ran only in tests
-    because run.py's grounder never called it, leaving rung 1 unreachable
+    because the live grounder once omitted it, leaving rung 1 unreachable
     outside the test suite.
 
     When `store` and `app_info` are supplied, promoted observations are also
@@ -566,6 +566,12 @@ def _run_compiled_tour(
     # claiming every hint is confirmed-current is the single thing the
     # staleness ladder exists to deny, and a hint that never dims is one the
     # user cannot tell from a live one.
+    # An abort already waiting before launch must prevent the full-screen,
+    # topmost overlay from existing at all. The executor keeps polling after
+    # launch; this guard owns the pre-window interval.
+    if escape_pressed():
+        return 0
+
     renderer_ladder = [None]
     hwnd = create_overlay()
     controls = None
@@ -593,7 +599,10 @@ def _run_compiled_tour(
             from ghostcursor.perception.compiled import build_compiled_perception
 
             perception = build_compiled_perception(
-                workflow, clock, tier2=tier2_module.build_controller(clock)
+                workflow,
+                clock,
+                tier2=tier2_module.build_controller(clock),
+                warmup_budget_s=warmup_budget_s,
             )
             if renderer_ladder is not None:
                 renderer_ladder[0] = perception.source.ladder

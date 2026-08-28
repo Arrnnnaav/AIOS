@@ -1,0 +1,48 @@
+{
+  "app_id": "notepad.exe",
+  "intent": "open a new tab in notepad",
+  "steps": [
+    {
+      "user_action": "click",
+      "target_descriptor": {
+        "claimed": {
+          "name": "Add New Tab",
+          "name_synonyms": ["New tab", "New Tab"],
+          "ocr_text": "+",
+          "visual_description": "the plus button at the right of the tab strip"
+        },
+        "confirmed": []
+      },
+      "instruction_text": "Click the + button at the end of the tab strip to open a new tab.",
+      "verification_rule": {
+        "kind": "element_appears",
+        "args": { "target_descriptor": { "name": "Untitled" } },
+        "timeout_s": 30.0
+      },
+      "risk": "normal",
+      "preconditions": [],
+      "provenance": {
+        "source_urls": [],
+        "source_tier": "hand-authored",
+        "model": "none",
+        "prompt_version": "none",
+        "created_at": "2026-08-14"
+      }
+    },
+    {
+      "user_action": "observe",
+      "target_descriptor": { "claimed": {}, "confirmed": [] },
+      "instruction_text": "The new tab is now open and focused. Press SPACE when you have seen it.",
+      "verification_rule": { "kind": "user_confirms", "args": {}, "timeout_s": 30.0 },
+      "risk": "normal",
+      "preconditions": [],
+      "provenance": {
+        "source_urls": [],
+        "source_tier": "hand-authored",
+        "model": "none",
+        "prompt_version": "none",
+        "created_at": "2026-08-14"
+      }
+    }
+  ]
+}

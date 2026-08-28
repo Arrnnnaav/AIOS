@@ -7,8 +7,7 @@ commit that produced the fixes, per this project's rule that whoever wrote a
 fix is not the only one who validates it.
 
 Idioms reused rather than reinvented, per file:
-  - FakeClock, UiaBlindService, _fake_overlay, _recipe_file:
-    tests/test_tier2_timeline.py and tests/test_run_threaded.py.
+  - The compiled executor and immutable TickInput observation boundary.
   - The GuidedTour + RecordingOverlay drive: tests/test_loop.py and
     tests/test_first_paint.py.
   - GHOSTCURSOR_KB_PATH as the scratch-store override: tests/test_store.py
@@ -37,7 +36,6 @@ from ghostcursor.reasoning.schema import (
 )
 from ghostcursor.reasoning.staleness import Freshness
 from ghostcursor.reasoning.verification import Snapshot
-from tests.test_run_threaded import _fake_overlay, _recipe_file
 
 
 class FakeClock:
@@ -253,157 +251,71 @@ class ChurningButWorkingController:
         pass
 
 
-def test_a_churning_but_successfully_grounding_page_does_not_end_the_tour(
-    tmp_path, monkeypatch
-):
-    """The case: OCR keeps reading 'Export' correctly, tick after tick, on a
-    page whose UIA elements keep changing underneath it. Old behaviour ended
-    the tour with 'could not read Export on screen' the instant the run cap
-    was reported spent, even while the amber ring sat correctly on Export and
-    OCR was working perfectly. The fix removed that unconditional break; an
-    exhausted-but-grounding step is not a failure at all.
-    """
-    import ghostcursor.run as run_module
-    from ghostcursor.perception import appinfo, service as service_module, tier2
+def test_a_churning_but_successfully_grounding_page_does_not_end_the_tour():
+    from ghostcursor.perception.uia import Element
+    from ghostcursor.reasoning.compiled_tour import RunOutcome, TickInput, execute_compiled_workflow
+    from tests.test_compiled_workflow import _workflow
 
-    clock = FakeClock()
-    calls = _fake_overlay(monkeypatch)
-    monkeypatch.setattr(
-        service_module,
-        "PerceptionService",
-        lambda *a, **k: UiaBlindService(clock, k.get("tier2")),
+    workflow, _ = _workflow()
+    clock = [0.0]
+    reads = [0]
+    target = Element("Open Folder...", "Button", "", (10, 20, 110, 44), source="ocr")
+
+    class Renderer:
+        def show(self, *args): pass
+        def clear(self): pass
+        def settle(self): pass
+
+    def observe():
+        reads[0] += 1
+        return TickInput(
+            f"Welcome {reads[0]} - Visual Studio Code",
+            {"open_folder": (target,)},
+            (target,),
+        )
+
+    result = execute_compiled_workflow(
+        workflow, observe=observe, renderer=Renderer(),
+        clock=lambda: clock[0],
+        sleeper=lambda seconds: clock.__setitem__(0, clock[0] + seconds),
+        seconds=12.0,
     )
-    monkeypatch.setattr(appinfo, "app_info_for_window", lambda _t: None)
-    monkeypatch.setattr(run_module, "escape_pressed", lambda: False)
-    monkeypatch.setattr(run_module, "key_was_pressed", lambda vk: False)
-    monkeypatch.setattr(
-        tier2, "build_controller", lambda _clock: ChurningButWorkingController()
-    )
-
-    printed = []
-    monkeypatch.setattr(
-        "builtins.print", lambda *a, **k: printed.append(" ".join(map(str, a)))
-    )
-
-    # Well past both the old cap-triggered abort and DEFAULT_GROUNDING_GRACE_S
-    # -- if either the old break or a spurious grace expiry killed the tour,
-    # it would end well before this deadline is reached.
-    seconds = 3 * DEFAULT_GROUNDING_GRACE_S
-    run_module.run_tour(
-        _recipe_file(tmp_path),
-        ".*app.*",
-        seconds=seconds,
-        clock=clock,
-        sleeper=clock.sleeper,
-    )
-
-    elapsed = clock.t - FakeClock.START
-    assert elapsed >= seconds - 1e-6, (
-        f"the tour ended after {elapsed:.1f}s of {seconds:.0f}s while OCR was "
-        f"grounding the target on every tick: {printed}"
-    )
-    assert any("Time limit reached" in line for line in printed), (
-        f"the tour did not run to completion: {printed}"
-    )
-
-    stopped = [line for line in printed if line.startswith("Stopped:")]
-    assert not stopped, (
-        "a churning page whose target OCR kept grounding successfully ended "
-        f"the tour anyway: {stopped}"
-    )
-
-    inferred_writes = [
-        c for c in calls if c[0] == "set_hint" and c[3] is Freshness.INFERRED
-    ]
-    assert len(inferred_writes) > 1, (
-        f"the OCR-grounded hint was never actually painted repeatedly, so "
-        f"this test proves nothing: {calls}"
-    )
-
-
-# ---------------------------------------------------------------------------
-# TEST 3 — an OCR-grounded target can never be persisted
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.skipif(not ocr_available(), reason="no OCR language pack")
-def test_ocr_grounded_target_writes_nothing_to_the_knowledge_base(
-    tmp_path, monkeypatch
-):
-    """The knowledge base is UIA-only. An OCR element carries no
-    AutomationId, and a persisted pixel coordinate is a lie the moment the
-    window moves -- there is no representation for it that would be honest.
-
-    Asserted on the store's actual CONTENTS (every row in the table, not
-    filtered to one step/app key), because the property under test is
-    "nothing durable exists", not "we took the branch we expected" -- the
-    empty-string automation_id happening to match no stored row was exactly
-    the coincidence this guard replaced.
-    """
-    import ghostcursor.run as run_module
+    assert result.outcome is RunOutcome.TIMED_OUT
+    assert result.provenance[0].value == "ocr"
+    assert reads[0] > 3
+def test_ocr_grounded_target_writes_nothing_to_the_knowledge_base(monkeypatch):
     from ghostcursor.memory.store import ObservationStore
-    from ghostcursor.perception import appinfo, service as service_module, tier2
-    from ghostcursor.perception.appinfo import AppInfo
+    from ghostcursor.perception.uia import Element
+    from ghostcursor.reasoning.compiled_tour import TickInput, execute_compiled_workflow
+    from tests.test_compiled_workflow import _workflow
 
-    clock = FakeClock()
-    _fake_overlay(monkeypatch)
     monkeypatch.setattr(
-        service_module,
-        "PerceptionService",
-        lambda *a, **k: UiaBlindService(clock, k.get("tier2")),
+        ObservationStore, "record",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("compiled OCR grounding reached the UIA knowledge base")
+        ),
     )
-    app_info = AppInfo(
-        app_id="app.exe", exe_path=r"C:\app.exe", version="1.0.0", kind="win32"
+    workflow, _ = _workflow()
+    clock = [0.0]
+    target = Element("Open Folder...", "Button", "fabricated", (10, 20, 110, 44), source="ocr")
+
+    class Renderer:
+        def show(self, *args): pass
+        def clear(self): pass
+        def settle(self): pass
+
+    execute_compiled_workflow(
+        workflow,
+        observe=lambda: TickInput(
+            "Welcome - Visual Studio Code",
+            {"open_folder": (target,)},
+            (target,),
+        ),
+        renderer=Renderer(),
+        clock=lambda: clock[0],
+        sleeper=lambda seconds: clock.__setitem__(0, clock[0] + seconds),
+        seconds=2.0,
     )
-    monkeypatch.setattr(appinfo, "app_info_for_window", lambda _t: app_info)
-    monkeypatch.setattr(run_module, "escape_pressed", lambda: False)
-    monkeypatch.setattr(run_module, "key_was_pressed", lambda vk: False)
-
-    db_path = tmp_path / "kb.sqlite"
-    monkeypatch.setenv("GHOSTCURSOR_KB_PATH", str(db_path))
-
-    class FakeOcr:
-        def read(self, frame):
-            return [OcrRead(text="Export", bbox=(10, 20, 110, 44))]
-
-    monkeypatch.setattr(tier2, "_DEFAULT_OCR_FACTORY", lambda: FakeOcr())
-    monkeypatch.setattr(
-        tier2,
-        "_DEFAULT_CAPTURE",
-        lambda _t: (np.zeros((10, 10, 3), dtype=np.uint8), (0, 0, 10, 10)),
-    )
-
-    printed = []
-    monkeypatch.setattr(
-        "builtins.print", lambda *a, **k: printed.append(" ".join(map(str, a)))
-    )
-
-    run_module.run_tour(
-        _recipe_file(tmp_path),
-        ".*app.*",
-        seconds=8.0,
-        clock=clock,
-        sleeper=clock.sleeper,
-    )
-
-    assert db_path.exists(), (
-        "no database was ever created, so this test cannot tell an empty "
-        f"store from a guard that worked: {printed}"
-    )
-    with ObservationStore(db_path) as store:
-        rows = store._conn.execute("SELECT * FROM observations").fetchall()
-
-    assert rows == [], (
-        "an OCR-grounded target was written to the UIA-only knowledge base: "
-        f"{[dict(r) for r in rows]} (log: {printed})"
-    )
-
-
-# ---------------------------------------------------------------------------
-# TEST 4 — the source guard itself, isolated from the empty-id backstop
-# ---------------------------------------------------------------------------
-
-
 def test_promote_refuses_a_fabricated_non_empty_id_from_a_non_uia_source():
     """Test 3 above proves the end-to-end property, but not this mechanism:
     every real OCR `Element` is hard-coded with `automation_id=""`

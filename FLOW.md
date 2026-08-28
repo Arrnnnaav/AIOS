@@ -165,7 +165,9 @@ run.main()
 | `ghostcursor/reasoning/verification.py` | check world state to decide if user completed a step |
 | `ghostcursor/reasoning/loop.py` | observe-act-verify state machine (IDLE → OBSERVING → DECIDING → RENDERING_HINT → AWAITING_USER_ACTION → VERIFYING) |
 | `ghostcursor/reasoning/renderer.py` | adapt loop's Renderer protocol onto the Win32 overlay |
-| `ghostcursor/reasoning/recipes/synthetic_export.json` | hand-authored recipe for the synthetic test app |
+| `ghostcursor/packs/index.json` | sole installed pack index; roots every verified application and planner-only pack |
+| `ghostcursor/packs/compile.py` | compiles verified intents, recipes, and observation plans without scanning for files |
+| `ghostcursor/packs/workflow.py` | binds a compiled recipe to one live target and revalidates every authority input before launch |
 | `ghostcursor/perception/appinfo.py` | identifies the app owning a window (HWND -> PID -> exe path -> file/Appx version) for version-scoped observation lookup |
 | `ghostcursor/reasoning/identity.py` | `step_key()` — durable hash of intent + claimed descriptor, the key observations are stored/retrieved under |
 | `ghostcursor/memory/store.py` | `ObservationStore` — local SQLite knowledge base of learned observations, keyed by `(step_key, app_id, app_version, automation_id)` |
@@ -294,14 +296,15 @@ guided-tour state untouched. The old generation is prevented from publishing
 after retirement. A terminal tour stops the service before health checks can
 report stale worker failures.
 
-The perception-health slice is complete. The current completed slice adds
-`ghostcursor.packs.registry.PackRegistry`. It loads strict manifests from
-`ghostcursor/packs/manifests`, resolves recipes beneath
-`ghostcursor/packs/recipes`, rejects unknown manifest fields, invalid patterns,
-symlinks, outside paths, and schema-invalid recipes, then exposes primitive
-`match_values()` and HWND-based `match_window()` matching. The initial packs are
-Synthetic Export, Notepad, and VS Code. Matching is metadata-only; no model or
-pack can perform input.
+The perception-health slice is complete. Schema v2 replaced the earlier
+manifest scanner with `load_catalog()`, which follows only paths named by
+`ghostcursor/packs/index.json` and each pack's `activation.json`. Trusted
+artifacts are read once, digest-checked, strictly decoded, and schema-validated
+before `PackRegistry.from_verified()` receives their window identity. Recipe
+authority comes only from an active adoption record; filename inference,
+directory scans, and one-intent fallbacks no longer exist. The installed packs
+are Common, Synthetic Export, Notepad, and VS Code. Matching remains
+metadata-only; no model or pack can perform input.
 
 The current implementation slice adds the VS Code `OPEN_FOLDER` intent to the
 trusted planner and pack registry. `ghostcursor/reasoning/vscode.py` extracts

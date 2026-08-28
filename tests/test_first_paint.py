@@ -185,101 +185,49 @@ def test_a_source_that_cannot_answer_resolves_to_inferred_never_fresh():
     )
 
 
-def test_exactly_one_hint_write_per_tick_through_a_whole_tour(tmp_path, monkeypatch):
-    """The same property, end to end, against the real `run_tour`.
-
-    The renderer-level tests above cannot see a second write issued by the
-    TICK LOOP rather than by the renderer — which is exactly where the
-    original defect lived. This drives a real tour and buckets every overlay
-    write by tick, so any provisional-then-corrected pair is a bucket of two.
-
-    Deliberately grounded through UIA, not OCR: the property is about the
-    shape of the render, not about which tier produced the target, and this
-    way it also runs on a machine with no OCR language pack.
-    """
-    import ghostcursor.run as run_module
-    from ghostcursor.perception import appinfo, service as service_module
-    from ghostcursor.perception.service import Observation
+def test_exactly_one_hint_write_per_tick_through_a_whole_tour():
+    """The compiled executor and renderer emit at most one write per tick."""
     from ghostcursor.perception.uia import Element
-    from ghostcursor.reasoning.verification import Snapshot
-    from tests.test_run_threaded import _fake_overlay, _recipe_file
+    from ghostcursor.reasoning.compiled_tour import TickInput, execute_compiled_workflow
+    from tests.test_compiled_workflow import _workflow
 
-    class Clock:
-        def __init__(self):
-            self.t = 1000.0
+    workflow, _ = _workflow()
+    clock = [0.0]
+    writes = []
+    boundaries = []
 
-        def __call__(self):
-            return self.t
+    class Overlay:
+        def set_hint(self, hwnd, x, y, radius=None, freshness=None):
+            writes.append(("set", freshness))
+        def clear_hint(self, hwnd):
+            writes.append(("clear", None))
 
-    clock = Clock()
-
-    class SightedService:
-        heartbeat = 0
-
-        def start(self):
-            pass
-
-        def stop(self):
-            pass
-
-        def restart(self):
-            pass
-
-        def is_alive(self):
-            return True
-
-        # Tier 2 is asked for and called off through the service now, and a
-        # step that grounds through UIA calls it off. Accepted and ignored:
-        # this test is about the first paint, not about OCR.
-        def request_tier2(self, step_index):
-            pass
-
-        def cancel_tier2(self, step_index=None):
-            pass
-
-        def report_tier2_grounded(self, step_index):
-            pass
-
-        def latest(self):
-            now = clock()
-            elements = (Element("Export", "Button", "btn_export", (10, 20, 110, 44)),)
-            return Observation(
-                snapshot=Snapshot(title="app", elements=elements, observed_at=now),
-                elements=elements,
-                observed_at=now,
-                ok=True,
-            )
-
-    calls = _fake_overlay(monkeypatch)
-    monkeypatch.setattr(
-        service_module, "PerceptionService", lambda *a, **k: SightedService()
+    renderer = OverlayRenderer(
+        hwnd=42, overlay=Overlay(), freshness_source=lambda: Freshness.FRESH
     )
-    monkeypatch.setattr(appinfo, "app_info_for_window", lambda _t: None)
-    monkeypatch.setattr(run_module, "escape_pressed", lambda: False)
-    monkeypatch.setattr(run_module, "key_was_pressed", lambda vk: False)
-    monkeypatch.setattr("builtins.print", lambda *a, **k: None)
-
-    # `sleeper` is called exactly once per tick, so it is the tick boundary.
-    ticks = []
+    target = Element("Open Folder...", "Button", "open", (10, 20, 110, 44))
 
     def sleeper(seconds):
-        ticks.append(len(calls))
-        clock.t += seconds
+        boundaries.append(len(writes))
+        clock[0] += seconds
 
-    run_module.run_tour(
-        _recipe_file(tmp_path), ".*app.*", seconds=5.0, clock=clock, sleeper=sleeper
+    execute_compiled_workflow(
+        workflow,
+        observe=lambda: TickInput(
+            "Welcome - Visual Studio Code",
+            {"open_folder": (target,)},
+            (target,),
+        ),
+        renderer=renderer,
+        clock=lambda: clock[0],
+        sleeper=sleeper,
+        seconds=2.0,
     )
 
-    hint_writes = [i for i, c in enumerate(calls) if c[0] in ("set_hint", "clear_hint")]
     per_tick = []
-    start = 0
-    for boundary in ticks:
-        per_tick.append(len([i for i in hint_writes if start <= i < boundary]))
-        start = boundary
-
-    assert any(per_tick), f"no hint was ever drawn, so nothing was proved: {calls}"
-    assert max(per_tick) <= 1, (
-        "a tick wrote to the overlay more than once, which is the "
-        "provisional-then-corrected shape D027 forbids — set_hint paints "
-        f"synchronously, so the first frame really was displayed: {per_tick}"
-    )
+    beginning = 0
+    for boundary in boundaries:
+        per_tick.append(boundary - beginning)
+        beginning = boundary
+    assert writes
+    assert max(per_tick, default=0) <= 1

@@ -1,0 +1,9 @@
+{
+  "pack_id": "vscode",
+  "display_name": "Visual Studio Code",
+  "executable_names": ["code.exe"],
+  "title_patterns": [".*Visual Studio Code.*", ".* - Code$"],
+  "version_constraints": [],
+  "recipe_directory": "vscode",
+  "intent_ids": ["OPEN_FOLDER", "OPEN_TERMINAL"]
+}

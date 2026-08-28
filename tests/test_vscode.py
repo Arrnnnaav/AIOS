@@ -48,7 +48,7 @@ def test_vscode_title_verification_rejects_wrong_folder():
 def test_vscode_recipe_uses_title_verification_rule():
     from ghostcursor.reasoning.schema import Recipe
 
-    recipe = Recipe.load("ghostcursor/packs/recipes/vscode/open_folder.json")
+    recipe = Recipe.load("tests/fixtures/v1/packs/recipes/vscode/open_folder.json")
     assert recipe.steps[0].target_descriptor.claimed.name == "Open Folder..."
     rule = recipe.steps[0].verification_rule
     assert rule.kind is VerificationKind.WINDOW_TITLE_MATCHES
@@ -60,7 +60,7 @@ def test_vscode_recipe_uses_title_verification_rule():
 def test_vscode_terminal_recipe_uses_application_state_verification():
     from ghostcursor.reasoning.schema import Recipe, UserAction
 
-    recipe = Recipe.load("ghostcursor/packs/recipes/vscode/open_terminal.json")
+    recipe = Recipe.load("tests/fixtures/v1/packs/recipes/vscode/open_terminal.json")
     step = recipe.steps[0]
 
     assert step.target_descriptor.claimed.name == "Toggle Panel (Ctrl+J)"
@@ -78,7 +78,7 @@ def test_vscode_terminal_recipe_uses_application_state_verification():
 def test_vscode_terminal_completion_requires_terminal_section_to_appear():
     from ghostcursor.reasoning.schema import Recipe
 
-    recipe = Recipe.load("ghostcursor/packs/recipes/vscode/open_terminal.json")
+    recipe = Recipe.load("tests/fixtures/v1/packs/recipes/vscode/open_terminal.json")
     rule = recipe.steps[0].verification_rule
     toggle = Element("Toggle Panel (Ctrl+J)", "Button", "", (10, 10, 30, 30))
     terminal = Element("Terminal Section", "Button", "", (10, 40, 90, 70))

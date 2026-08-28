@@ -263,7 +263,15 @@ class CompiledObservationSource:
     """
 
     def __init__(
-        self, service, ladder, health=None, plan=None, clock=None, started_at=None
+        self,
+        service,
+        ladder,
+        health=None,
+        plan=None,
+        clock=None,
+        started_at=None,
+        warmup=None,
+        target_hwnd: int = 0,
     ) -> None:
         self.service = service
         self.ladder = ladder
@@ -289,6 +297,8 @@ class CompiledObservationSource:
         #: carries a step index across the worker boundary; which selector
         #: failed is known only here, and it is what scopes the answer.
         self._requested_selector: str | None = None
+        self.warmup = warmup
+        self.target_hwnd = target_hwnd
 
     def __call__(self):
         from ghostcursor.reasoning.compiled_tour import TickInput
@@ -389,12 +399,17 @@ class CompiledObservationSource:
             self._step = step_index
             self._requested_selector = None
         if grounded:
+            if self.warmup is not None:
+                self.warmup.note_grounded(self.target_hwnd)
             self.service.report_tier2_grounded(step_index)
             self.service.cancel_tier2()
             self._requested_selector = None
         else:
             self._requested_selector = selector_id
-            self.service.request_tier2(step_index)
+            if self.warmup is None or self.warmup.allows_tier2(self.target_hwnd):
+                self.service.request_tier2(step_index)
+            else:
+                self.service.cancel_tier2()
 
 
 @dataclass(frozen=True)
@@ -468,6 +483,7 @@ def build_compiled_perception(
     service=None,
     ladder=None,
     health=None,
+    warmup_budget_s=None,
 ) -> CompiledPerception:
     """Wire the whole stack for one workflow and start nothing.
 
@@ -479,12 +495,27 @@ def build_compiled_perception(
     here.
     """
     from ghostcursor.perception.health import WorkerHealth
+    from ghostcursor.perception.warmup import DEFAULT_WARMUP_BUDGET_S, WarmUp
     from ghostcursor.reasoning.staleness import StalenessLadder
 
     service = service or compiled_perception_service(workflow, clock, tier2=tier2)
     ladder = ladder or StalenessLadder(clock=clock)
     health = health or WorkerHealth(service=service, ladder=ladder)
+    warmup = WarmUp(
+        budget_s=(
+            DEFAULT_WARMUP_BUDGET_S
+            if warmup_budget_s is None
+            else warmup_budget_s
+        ),
+        clock=clock,
+    )
     source = CompiledObservationSource(
-        service, ladder, health=health, plan=workflow.recipe.plan, clock=clock
+        service,
+        ladder,
+        health=health,
+        plan=workflow.recipe.plan,
+        clock=clock,
+        warmup=warmup,
+        target_hwnd=workflow.target.hwnd,
     )
     return CompiledPerception(service=service, source=source)

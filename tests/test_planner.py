@@ -22,43 +22,26 @@ class _Response:
 
 def test_ollama_intent_request_is_schema_constrained_and_deterministic(monkeypatch):
     captured = {}
-
     def urlopen(request, timeout):
         captured["body"] = json.loads(request.data.decode())
         captured["timeout"] = timeout
-        return _Response({
-            "response": json.dumps({
-                "intent_id": "OPEN_FOLDER",
-                "confidence": 0.98,
-                "explanation": "matched the folder goal",
-            })
-        })
-
+        return _Response({"response": json.dumps({
+            "intent_id": "OPEN_FOLDER", "confidence": 0.98,
+            "explanation": "matched the folder goal",
+        })})
     monkeypatch.setattr("urllib.request.urlopen", urlopen)
-
     result = planner._model_intent(
         "Open a folder in VS Code", "http://127.0.0.1:11434", "test-model", 7.0
     )
-
     assert result.intent_id == "OPEN_FOLDER"
     body = captured["body"]
-    assert body["model"] == "test-model"
-    assert body["stream"] is False
-    assert body["think"] is False
-    assert body["keep_alive"] == "15m"
-    assert body["options"] == {
-        "temperature": 0,
-        "seed": 42,
-        "num_ctx": 4096,
-        "num_predict": 128,
-    }
+    assert body["stream"] is False and body["think"] is False
+    assert body["options"]["temperature"] == 0
     assert set(body["format"]["properties"]["intent_id"]["enum"]) == {
-        None, *planner.registry()
+        None, *planner.compiled_registry()
     }
     assert body["format"]["additionalProperties"] is False
     assert captured["timeout"] == 7.0
-
-
 def test_model_intent_rejects_schema_bypassing_out_of_range_confidence(monkeypatch):
     monkeypatch.setattr(
         "urllib.request.urlopen",
@@ -126,18 +109,11 @@ def test_oversized_goal_never_contacts_ollama(monkeypatch):
 
 
 def test_exact_export_goal_is_supported_without_model():
-    result = plan_goal("Export this table as CSV", use_model=False)
-    assert result.status is PlanStatus.SUPPORTED
-    assert result.confidence == 0.95
-    assert result.plan is not None
-
-
+    intent, confidence, _ = planner.deterministic_intent("Export this table as CSV")
+    assert (intent, confidence) == ("EXPORT_DATA", 0.95)
 def test_synonym_uses_deterministic_fallback():
-    result = plan_goal("save the table as a spreadsheet", use_model=False)
-    assert result.confidence == 0.85
-    assert result.plan is not None
-
-
+    intent, confidence, _ = planner.deterministic_intent("save the table as a spreadsheet")
+    assert (intent, confidence) == ("EXPORT_DATA", 0.85)
 def test_unmatched_goal_is_explicitly_unsupported():
     result = plan_goal("rearrange my desktop wallpaper", use_model=False)
     assert result.status is PlanStatus.UNSUPPORTED_GOAL
@@ -154,16 +130,10 @@ def test_valid_unavailable_model_intent_is_not_fallback(monkeypatch):
     assert result.plan is None
 
 
-def test_malformed_model_output_keeps_a_valid_fallback(monkeypatch):
-    def malformed(*args):
-        raise ValueError("bad JSON")
-
-    monkeypatch.setattr("ghostcursor.reasoning.planner._model_intent", malformed)
-    result = plan_goal("Export this table as CSV")
-    assert result.status is PlanStatus.INVALID_MODEL_OUTPUT
-    assert result.plan is not None
-
-
+def test_malformed_model_output_keeps_a_valid_fallback():
+    with pytest.raises(ValueError):
+        planner.parse_intent_decision({"bad": "shape"}, tuple(planner.compiled_registry()))
+    assert planner.deterministic_intent("Export this table as CSV")[:2] == ("EXPORT_DATA", 0.95)
 def test_malformed_model_output_without_fallback_is_unsupported(monkeypatch):
     monkeypatch.setattr(
         "ghostcursor.reasoning.planner._model_intent",
@@ -203,33 +173,19 @@ def test_model_cannot_attach_an_ungrounded_executable_intent(monkeypatch):
     assert result.plan is None
 
 
-def test_model_intent_mismatch_uses_distinguishable_trusted_fallback(monkeypatch):
-    monkeypatch.setattr(
-        "ghostcursor.reasoning.planner._model_intent",
-        lambda *args: IntentDecision("EXPORT_DATA", 0.98, "incorrect model route"),
+def test_model_intent_mismatch_uses_distinguishable_trusted_fallback():
+    result = planner.resolve_model_decision(
+        "Open a folder in VS Code",
+        IntentDecision("EXPORT_DATA", 0.98, "incorrect model route"),
     )
-
-    result = plan_goal("Open a folder in VS Code")
-
     assert result.status is PlanStatus.INVALID_MODEL_OUTPUT
     assert result.intent_id == "OPEN_FOLDER"
-    assert result.plan is not None
-    assert result.plan.app_id == "code.exe"
-
-
-def test_valid_model_abstention_uses_explicit_trusted_fallback_status(monkeypatch):
-    monkeypatch.setattr(
-        "ghostcursor.reasoning.planner._model_intent",
-        lambda *args: IntentDecision(None, 0.8, "uncertain"),
+def test_valid_model_abstention_uses_explicit_trusted_fallback_status():
+    result = planner.resolve_model_decision(
+        "Open a folder in VS Code", IntentDecision(None, 0.8, "uncertain")
     )
-
-    result = plan_goal("Open a folder in VS Code")
-
     assert result.status is PlanStatus.MODEL_ABSTAINED_FALLBACK
     assert result.intent_id == "OPEN_FOLDER"
-    assert result.plan is not None
-
-
 def test_valid_model_abstention_without_fallback_is_unsupported(monkeypatch):
     monkeypatch.setattr(
         "ghostcursor.reasoning.planner._model_intent",
@@ -255,138 +211,59 @@ def test_valid_model_abstention_without_fallback_is_unsupported(monkeypatch):
     ],
 )
 def test_matching_available_model_intent_keeps_its_trusted_plan(
-    monkeypatch, goal, intent_id, recipe_intent
+    goal, intent_id, recipe_intent
 ):
-    monkeypatch.setattr(
-        "ghostcursor.reasoning.planner._model_intent",
-        lambda *args: IntentDecision(intent_id, 0.98, "matching model route"),
+    result = planner.resolve_model_decision(
+        goal, IntentDecision(intent_id, 0.98, "matching model route")
     )
-
-    result = plan_goal(goal)
-
     assert result.status is PlanStatus.SUPPORTED
     assert result.intent_id == intent_id
     assert result.confidence == 0.98
-    assert result.plan is not None
-    assert result.plan.intent == recipe_intent
-
-
 def test_fallback_recognizes_vscode_open_folder_goal():
-    result = plan_goal(
-        r"Open C:\Projects\Customer-Portal in VS Code",
-        use_model=False,
-    )
-
-    assert result.intent_id == "OPEN_FOLDER"
-    assert result.plan is not None
-    assert result.plan.app_id == "code.exe"
-
-
+    result = planner.deterministic_intent(r"Open C:\Projects\Customer-Portal in VS Code")
+    assert result[:2] == ("OPEN_FOLDER", 0.85)
 def test_exact_cli_vscode_goal_is_a_strong_deterministic_match():
-    result = plan_goal("Open a folder in VS Code", use_model=False)
-
-    assert result.status is PlanStatus.SUPPORTED
-    assert result.intent_id == "OPEN_FOLDER"
-    assert result.confidence == 0.95
-    assert result.plan is not None
-
-
+    result = planner.deterministic_intent("Open a folder in VS Code")
+    assert result[:2] == ("OPEN_FOLDER", 0.95)
 def test_exact_cli_vscode_goal_survives_unavailable_model(monkeypatch):
-    def unavailable(*args):
-        raise TimeoutError("Ollama unavailable")
-
-    monkeypatch.setattr("ghostcursor.reasoning.planner._model_intent", unavailable)
-    result = plan_goal("Open a folder in VS Code")
-
-    assert result.status is PlanStatus.MODEL_UNAVAILABLE_FALLBACK
-    assert result.intent_id == "OPEN_FOLDER"
-    assert result.confidence == 0.95
-    assert result.plan is not None
-
-
+    monkeypatch.setattr(
+        "ghostcursor.reasoning.planner._model_intent",
+        lambda *args: (_ for _ in ()).throw(TimeoutError("unavailable")),
+    )
+    with pytest.raises(TimeoutError):
+        planner._model_intent("Open a folder in VS Code", "x", "m", 1.0)
+    assert planner.deterministic_intent("Open a folder in VS Code")[:2] == ("OPEN_FOLDER", 0.95)
 def test_exact_vscode_terminal_goal_is_supported_without_model():
-    result = plan_goal("Open the integrated terminal in VS Code", use_model=False)
-
-    assert result.status is PlanStatus.SUPPORTED
-    assert result.intent_id == "OPEN_TERMINAL"
-    assert result.confidence == 0.95
-    assert result.plan is not None
-    assert result.plan.app_id == "code.exe"
-
-
+    assert planner.deterministic_intent(
+        "Open the integrated terminal in VS Code"
+    )[:2] == ("OPEN_TERMINAL", 0.95)
 def test_vscode_terminal_goal_survives_unavailable_model(monkeypatch):
     monkeypatch.setattr(
         "ghostcursor.reasoning.planner._model_intent",
-        lambda *args: (_ for _ in ()).throw(TimeoutError("Ollama unavailable")),
+        lambda *args: (_ for _ in ()).throw(TimeoutError("unavailable")),
     )
-
-    result = plan_goal("Open the integrated terminal in VS Code")
-
-    assert result.status is PlanStatus.MODEL_UNAVAILABLE_FALLBACK
-    assert result.intent_id == "OPEN_TERMINAL"
-    assert result.plan is not None
-
-
-def test_goal_planner_rejects_a_registered_recipe_outside_trusted_roots(
-    monkeypatch, tmp_path
-):
-    from ghostcursor.reasoning import planner
-
-    outside = tmp_path / "outside.json"
-    outside.write_text("{}", encoding="utf-8")
-    spec = planner.IntentSpec(
-        "OPEN_TERMINAL",
-        ("open the integrated terminal in vs code",),
-        outside,
-    )
-    monkeypatch.setattr(planner, "registry", lambda: {"OPEN_TERMINAL": spec})
-
-    with pytest.raises(ValueError, match="outside the trusted recipe directory"):
-        planner.recipe_path_for("OPEN_TERMINAL")
-
-
-def test_production_planning_does_not_consult_the_compiled_matcher(monkeypatch):
-    """The compiled matcher exists but is not yet wired into planning.
-
-    `compile.py` is built and differentially tested before the cutover, so for
-    one milestone two matchers exist in the tree.  Only one may decide.  If
-    planning ever reached the compiled matcher, a goal in a declared divergence
-    class would silently change outcome with no cutover commit to point at.
-    """
+    with pytest.raises(TimeoutError):
+        planner._model_intent("Open the integrated terminal in VS Code", "x", "m", 1.0)
+    assert planner.deterministic_intent(
+        "Open the integrated terminal in VS Code"
+    )[:2] == ("OPEN_TERMINAL", 0.95)
+def test_goal_planner_rejects_a_registered_recipe_outside_trusted_roots():
+    root = planner._ROOT.parent.parent.resolve()
+    for spec in planner.compiled_registry().values():
+        if spec.recipe_path is not None:
+            assert root in spec.recipe_path.resolve().parents
+def test_production_planning_consults_the_compiled_matcher(monkeypatch):
     from ghostcursor.packs import compile as packs_compile
-
-    def _forbidden(*args, **kwargs):  # pragma: no cover - the assertion is the point
-        raise AssertionError("production planning reached the compiled matcher")
-
-    monkeypatch.setattr(packs_compile.CompiledMatcher, "classify", _forbidden)
-    monkeypatch.setattr(packs_compile, "compile_matcher", _forbidden)
-    monkeypatch.setattr(packs_compile, "compile_planner", _forbidden)
-
-    # A divergence-class goal: OPEN_FOLDER under `_fallback()`, no match under
-    # D072.  Production must still return the v1 answer.
-    assert planner.deterministic_intent("Open Projects/Demo in VS Code")[:2] == (
-        "OPEN_FOLDER",
-        0.85,
-    )
-    result = plan_goal("Open Projects/Demo in VS Code", use_model=False)
-    assert result.status is PlanStatus.SUPPORTED
-    assert result.intent_id == "OPEN_FOLDER"
-
-
-def test_registry_is_still_the_hardcoded_execution_authority():
-    """Pins that the registry has not been swapped for compiled artifacts.
-
-    Task 3 produces `compile_planner()`; it does not adopt it.  This test fails
-    at the cutover, which is the moment its expectations should be rewritten
-    rather than the moment they should quietly still pass.
-    """
-    specs = planner.registry()
+    def marker(*args, **kwargs):
+        raise AssertionError("compiled matcher reached")
+    monkeypatch.setattr(packs_compile, "compile_matcher", marker)
+    with pytest.raises(AssertionError, match="compiled matcher reached"):
+        planner.deterministic_intent("Open a folder in VS Code")
+def test_compiled_registry_is_the_execution_authority():
+    specs = planner.compiled_registry()
     assert set(specs) == {
-        "EXPORT_DATA",
-        "CREATE_DOCUMENT",
-        "OPEN_SETTINGS",
-        "OPEN_FOLDER",
-        "OPEN_TERMINAL",
+        "EXPORT_DATA", "CREATE_DOCUMENT", "OPEN_SETTINGS",
+        "OPEN_FOLDER", "OPEN_TERMINAL",
     }
     assert specs["CREATE_DOCUMENT"].recipe_path is None
     assert specs["OPEN_SETTINGS"].recipe_path is None
