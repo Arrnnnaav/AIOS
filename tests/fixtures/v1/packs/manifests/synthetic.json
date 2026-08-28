@@ -1,0 +1,9 @@
+{
+  "pack_id": "synthetic",
+  "display_name": "Synthetic Export",
+  "executable_names": ["python.exe"],
+  "title_patterns": ["^Synthetic Export$"],
+  "version_constraints": [],
+  "recipe_directory": "synthetic",
+  "intent_ids": ["EXPORT_DATA"]
+}

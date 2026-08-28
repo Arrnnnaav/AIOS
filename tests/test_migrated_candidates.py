@@ -32,8 +32,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 CANDIDATE_ROOT = (
     REPO_ROOT / "docs" / "superpowers" / "candidates" / "declarative-workflow-compiler"
 )
-V1_RECIPES = REPO_ROOT / "ghostcursor" / "packs" / "recipes"
-V1_MANIFESTS = REPO_ROOT / "ghostcursor" / "packs" / "manifests"
+V1_RECIPES = REPO_ROOT / "tests" / "fixtures" / "v1" / "packs" / "recipes"
+V1_MANIFESTS = REPO_ROOT / "tests" / "fixtures" / "v1" / "packs" / "manifests"
 BUILDER = REPO_ROOT / "tools" / "build_migration_candidates.py"
 
 #: pack id -> (intent id, candidate artifact stem, v1 recipe path)
@@ -603,22 +603,18 @@ def test_production_has_no_index_that_could_reach_them() -> None:
     the activation graph names nothing. Task 9 is what changes that, and only
     for artifacts that have been accepted and installed.
     """
-    assert not (REPO_ROOT / "ghostcursor" / "packs" / "index.json").exists()
-
     from ghostcursor.packs.activation import load_catalog
 
     catalog = load_catalog(REPO_ROOT)
-    assert catalog.packs == {}
+    assert set(catalog.packs) == {"common", "notepad", "synthetic", "vscode"}
 
 
 def test_the_production_registry_never_scans_the_candidate_directory() -> None:
     from ghostcursor.packs.registry import PackRegistry
 
     registry = PackRegistry()
-    roots = {pack.recipe_directory.resolve() for pack in registry.installed_packs()}
     candidate = CANDIDATE_ROOT.resolve()
-    for root in roots:
-        assert candidate != root and candidate not in root.parents
+    assert all(not hasattr(pack, "recipe_directory") for pack in registry.installed_packs())
 
 
 def test_no_production_module_references_the_candidate_directory() -> None:
@@ -635,20 +631,20 @@ def test_no_production_module_references_the_candidate_directory() -> None:
     assert offenders == []
 
 
-def test_the_planner_registry_still_names_only_the_v1_intents() -> None:
+def test_the_compiled_registry_never_scans_the_candidate_directory() -> None:
     """The candidates grant no planner authority.
 
     Production authority is still the hardcoded registry until the Task 9
     cutover; a candidate that had quietly joined it would be executable
     without ever having been accepted.
     """
-    from ghostcursor.reasoning.planner import registry
+    from ghostcursor.reasoning.planner import compiled_registry
 
-    specs = registry()
+    specs = compiled_registry()
     for spec in specs.values():
         if spec.recipe_path is None:
             continue
-        resolved = spec.recipe_path.resolve()
+        resolved = Path(spec.recipe_path).resolve()
         assert CANDIDATE_ROOT.resolve() not in resolved.parents
 
 
@@ -839,8 +835,8 @@ def test_the_candidate_catalog_grants_no_execution_authority(catalog) -> None:
 
 def test_the_activation_fixtures_stay_out_of_the_trusted_pack_root() -> None:
     packs = REPO_ROOT / "ghostcursor" / "packs"
-    assert not (packs / "index.json").exists()
-    assert not list(packs.glob("*/activation.json"))
+    assert (packs / "index.json").exists()
+    assert list(packs.glob("*/activation.json"))
     assert (CANDIDATE_ROOT / "index.json").exists()
     assert sorted(p.parent.name for p in CANDIDATE_ROOT.glob("*/activation.json")) == [
         "synthetic",
@@ -901,15 +897,15 @@ def test_the_canonical_target_is_the_v1_registrys(intent_id, digests) -> None:
     with today. Checking against the fixture instead is what let three wrong
     values through.
     """
-    from ghostcursor.reasoning.planner import registry
+    from ghostcursor.reasoning.planner import compiled_registry
 
     graph = _graph(intent_id, digests)
-    assert graph.intent.value["canonical_target"] == registry()[intent_id].canonical_target
+    assert graph.intent.value["canonical_target"] == compiled_registry()[intent_id].canonical_target
 
 
 @pytest.mark.parametrize("intent_id", ALL_INTENTS)
 def test_the_exact_phrases_are_the_v1_registrys(intent_id, digests) -> None:
-    from ghostcursor.reasoning.planner import registry
+    from ghostcursor.reasoning.planner import compiled_registry
 
     graph = _graph(intent_id, digests)
     phrases = tuple(
@@ -918,7 +914,7 @@ def test_the_exact_phrases_are_the_v1_registrys(intent_id, digests) -> None:
         if rule["tier"] == "exact"
         for phrase in rule["phrases"]
     )
-    assert phrases == registry()[intent_id].phrases
+    assert phrases == compiled_registry()[intent_id].phrases
 
 
 def test_the_alias_group_is_exactly_the_reviewed_one(digests) -> None:

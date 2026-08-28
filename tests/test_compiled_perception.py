@@ -1679,7 +1679,7 @@ UNPACKING = {
 def test_no_compiled_entry_point_drives_the_worker_directly(module, function) -> None:
     """One lifecycle owner means one start AND one stop.
 
-    `run_tour()` is deliberately out of scope: it is the v1 driver with its
+    The legacy v1 driver is deliberately out of scope: the compiled entry
     own inline grace and is not migrated until the cutover, so flagging it
     would assert something untrue about this milestone.
     """

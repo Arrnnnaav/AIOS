@@ -1,0 +1,9 @@
+{
+  "pack_id": "notepad",
+  "display_name": "Notepad",
+  "executable_names": ["notepad.exe"],
+  "title_patterns": [".*Notepad.*"],
+  "version_constraints": [],
+  "recipe_directory": "notepad",
+  "intent_ids": ["OPEN_NEW_TAB"]
+}
