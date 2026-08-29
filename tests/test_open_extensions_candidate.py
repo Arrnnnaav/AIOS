@@ -26,6 +26,7 @@ CANDIDATE_ROOT = (
     / "declarative-workflow-compiler"
 )
 BASELINE_COMMIT = "41682ee5b41a8742b0b0ec8d60ffeca4014d0b44"
+ACTIVATION_COMMIT = "2736d1b841696c07f20eb935cfb022d37bfae156"
 BASELINE_TREE = "fd6824109c6bf8b509bc3da4fd6b49a696e136a5"
 CUTOVER_COMMIT = "108b6fb3f0fee5c4fd564d093f4229accfa74ba2"
 ACTION_NAME = "Extensions (Ctrl+Shift+X)"
@@ -120,12 +121,14 @@ def test_the_proof_baseline_is_the_independently_recertified_tree() -> None:
 
 
 def test_the_proof_diff_contains_no_production_python_change() -> None:
+    """D078 fixes both proof endpoints; later shared fixes cannot move them."""
     tracked = subprocess.run(
         [
             "git",
             "diff",
             "--name-only",
             BASELINE_COMMIT,
+            ACTIVATION_COMMIT,
             "--",
             ":(glob)ghostcursor/**/*.py",
         ],

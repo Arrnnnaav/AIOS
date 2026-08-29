@@ -6,13 +6,13 @@ built code paths; dashed nodes are future product scope.
 ```mermaid
 flowchart LR
     User[Human user]
-    Args[CLI: --target / --recipe / --goal / --seconds]
+    Args[CLI: --target / --goal / --seconds]
     Bar[Control bar\nStop / Pause / Ask / goal input]
     Planner[Bounded goal planner\nregistered intent IDs only]
     HintAI[Screen-aware local inference\nobserved approved IDs only]
     Eval[Three-lane model gate\nraw quality + final authority + read-only UIA]
-    Packs[Strict application packs\nmanifest + trusted recipes]
-    Recipe[Hand-authored Recipe\nreasoning/recipes/*.json]
+    Packs[Indexed schema-v2 catalog\nactivation + digest-bound artifacts]
+    Recipe[CompiledWorkflow\nactive adoption + bound HWND]
 
     subgraph Perception[Perception]
         UIA[UIA tier 1\npywinauto + Win32 window filtering]
@@ -82,7 +82,7 @@ flowchart LR
     Ground --> Promote
     Promote --> Identity
     Identity --> Store
-    Store --> Recipe
+    Store --> Ground
     Ground -. last-resort visual tier .-> VLM
     Packs -. future distribution .-> Package
     Package -. later product .-> AIOS
@@ -100,8 +100,9 @@ flowchart LR
 
 - Windows-first entry point in `ghostcursor/run.py`.
 - Static mode can find a target window/control and draw a hint.
-- Recipe mode runs a multi-step `GuidedTour` through the explicit
-  observe/decide/render/wait/verify state machine.
+- Goal mode materializes an actively adopted `CompiledWorkflow` and runs its
+  `GuidedTour` through the explicit observe/decide/render/wait/verify state
+  machine. Recipe paths are not a production input.
 - Verification is based on resulting UI state, not whether the user followed
   the suggested route. Wrong-action feedback uses sampled focus AutomationIds
   and re-hints the current step.
@@ -138,8 +139,8 @@ flowchart LR
 - Later runs hydrate those observations; OCR data is explicitly excluded from
   persistence.
 - Natural-language planning and screen-aware target selection are bounded by
-  registered intent IDs, strict pack manifests, trusted recipe paths, and live
-  observed AutomationIds.
+  compiled intent IDs, the indexed digest-verified catalog, active adoption
+  records, and live observed AutomationIds.
 - Registration bounds the model's vocabulary but does not grant semantic
   authority. Any model-selected intent with a recipe must agree with the
   deterministic classifier's grounded candidate; otherwise only a trusted
@@ -150,12 +151,17 @@ flowchart LR
   directly, and has an explicit read-only interactive lane against a
   provenance-tagged Synthetic Export UIA fixture. Dataset 1.0.0 is
   owner-reviewed and frozen before the trusted baseline.
-- The VS Code pack has two validated recipes. Open Folder uses a provider-side
+- The VS Code pack has three validated recipes. Open Folder uses a provider-side
   exact-name query plus title verification. Open Terminal uses a separate
   executable-bounded Button surface, a human `Ctrl+\`` instruction, and exact
   `Terminal Section` appearance verification. Already-present state completes
   before rendering; otherwise a first-hint deadline bounds the transition.
-  Its empty Electron AutomationIds are never persisted.
+  Its empty Electron AutomationIds are never persisted. Open Extensions uses
+  one exact provider query for the `Extensions (Ctrl+Shift+X)` `TabItem` and
+  verifies `Installed Section` appears; its narrower pinned/no-restart-badge
+  support boundary is recorded in `FOLLOWUPS.md`.
+- Synthetic Export is the fourth active workflow and the controlled fixture
+  used by the no-action model and pixel gates.
 - The logging-only foreground watcher matches installed packs without starting
   tours or displaying UI.
 
@@ -163,7 +169,8 @@ flowchart LR
 
 ### Remaining implementation scope
 
-1. Add more reviewed recipes to the existing trusted application-pack system.
+1. Add more reviewed declarative workflows through quarantine, acceptance,
+   content-addressed installation, and atomic activation.
 2. Add a last-resort VLM pointing path only after
    UIA and OCR fail, preserving the existing provenance and inferred display
    safety rules.
@@ -198,14 +205,16 @@ control bar. The slow hung-window tests must run alone on Windows. Run the
 project's documented test commands sequentially; do not run two desktop/UIA
 test sessions at the same time.
 
-The real VS Code Open Folder and Open Terminal workflows each passed three
-consecutive interactive desktop runs. The expanded Ask panel and submitted-goal
-round trip also passed interactive validation. Repository-wide lane
-classification is complete; the fresh-clone release gate remains.
+Synthetic Export, Open Folder, Open Terminal, and Open Extensions each passed
+three successful human-driven acceptance runs against the exact bytes and
+application identity ultimately activated. The expanded Ask panel and
+submitted-goal round trip also passed interactive validation. Repository-wide
+lane classification is complete; release merge remains an explicit owner gate.
 
 The frozen model-durability baseline passed every hard gate in two consecutive
-post-freeze interactive runs and measured 26/30 raw semantic intent decisions
-both times. The same four raw over-commitments remained non-launchable, and the
+post-freeze interactive runs. Task 13 repeated the pair against the final active
+catalog: both passed at 27/30 raw semantic intent decisions and 30/30 exact
+supported decisions, with zero unsupported plans or tour dispatches. The
 interactive lane selected only Export while leaving application state intact.
 
 # Open-track goal planning

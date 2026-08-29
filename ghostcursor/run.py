@@ -122,15 +122,38 @@ def hydrate_recipe(recipe, app_id: str, store) -> int:
     an AutomationId, so there is nothing to merge, and replacing keeps the
     store the single source of truth for learned data.
     """
+    return hydrate_steps(recipe.intent, recipe.steps, app_id, store)
+
+
+def hydrate_steps(step_key_namespace: str, steps, app_id: str, store) -> int:
+    """Hydrate runtime steps without making a recipe path an authority input."""
     from ghostcursor.reasoning.identity import step_key
 
     loaded = 0
-    for step in recipe.steps:
-        observations = store.observations_for(step_key(recipe.intent, step), app_id)
+    for step in steps:
+        observations = store.observations_for(
+            step_key(step_key_namespace, step), app_id
+        )
         if observations:
             step.target_descriptor.confirmed = observations
             loaded += len(observations)
     return loaded
+
+
+def _compiled_learning_app_id(workflow) -> str:
+    """Preserve the app key used by pre-cutover learned observations.
+
+    Executable-version packs historically keyed by recipe ``app_id`` equal to
+    their executable name (`code.exe`, `notepad.exe`). A content-identity demo
+    is hosted by a generic interpreter, so its stable app key is the pack id
+    (`synthetic`), not `python.exe`. Both values derive from verified pack data;
+    callers cannot supply one.
+    """
+    if workflow.target.identity.kind == "content_sha256":
+        return workflow.pack_id
+    if not workflow.executable_names:
+        return workflow.pack_id
+    return workflow.executable_names[0].casefold()
 
 
 def persist_step(
@@ -556,6 +579,7 @@ def _run_compiled_tour(
     """
     from ghostcursor.reasoning.compiled_tour import (
         RunOutcome,
+        compiled_steps,
         execute_compiled_workflow,
     )
     from ghostcursor.reasoning.renderer import OverlayRenderer
@@ -572,8 +596,78 @@ def _run_compiled_tour(
     if escape_pressed():
         return 0
 
+    import sqlite3
+
+    from ghostcursor.memory.store import ObservationStore
+    from ghostcursor.reasoning import grounding
+
+    runtime_steps = compiled_steps(workflow)
+    learning_app_id = _compiled_learning_app_id(workflow)
+    learning_version = workflow.target.identity.value
+    ui_locale = get_ui_locale()
+    memory_store = None
+    memory_warning = [False]
+    try:
+        memory_store = ObservationStore()
+        hydrate_steps(
+            workflow.recipe.step_key_namespace,
+            runtime_steps,
+            learning_app_id,
+            memory_store,
+        )
+    except (OSError, sqlite3.Error) as exc:
+        print(f"Persistence unavailable for this run: {exc}")
+        if memory_store is not None:
+            try:
+                memory_store.close()
+            except sqlite3.Error:
+                pass
+        memory_store = None
+
+    def _promote_compiled(index, step, grounded):
+        del index  # identity comes from the preserved namespace + descriptor
+        changed = grounding.promote(
+            step,
+            grounded,
+            app_version=learning_version,
+            locale=ui_locale,
+        )
+        if not changed or memory_store is None or memory_warning[0]:
+            return
+        learned = next(
+            (
+                observation
+                for observation in step.target_descriptor.confirmed
+                if observation.automation_id == grounded.automation_id
+                and observation.app_version == learning_version
+            ),
+            None,
+        )
+        if learned is None:
+            return
+        try:
+            persist_step(
+                workflow.recipe.step_key_namespace,
+                step,
+                learning_app_id,
+                memory_store,
+                observation=learned,
+            )
+        except sqlite3.Error as exc:
+            if not memory_warning[0]:
+                print(f"Persistence disabled for the rest of this run: {exc}")
+                memory_warning[0] = True
+
     renderer_ladder = [None]
-    hwnd = create_overlay()
+    try:
+        hwnd = create_overlay()
+    except BaseException:
+        if memory_store is not None:
+            try:
+                memory_store.close()
+            except sqlite3.Error:
+                pass
+        raise
     controls = None
     try:
         if renderer is None:
@@ -647,7 +741,11 @@ def _run_compiled_tour(
                 ),
                 pump=_pump_compiled_ui,
                 on_grounding=on_grounding,
+                on_promoted=_promote_compiled,
                 on_step=(controls.report_step if controls is not None else None),
+                runtime_steps=runtime_steps,
+                app_version=learning_version,
+                ui_locale=ui_locale,
             )
         finally:
             if stop_perception is not None:  # pragma: no cover - real desktop
@@ -661,6 +759,11 @@ def _run_compiled_tour(
             # topmost, click-through and has no title bar: one left behind after
             # a failure, a timeout or an ESC is one the user cannot close.
             _destroy_overlay(hwnd)
+            if memory_store is not None:
+                try:
+                    memory_store.close()
+                except sqlite3.Error:
+                    pass
 
     print(
         f"{result.outcome.value}: {result.steps_completed}/{result.steps_total} "

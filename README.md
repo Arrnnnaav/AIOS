@@ -5,17 +5,18 @@ a goal, GhostCursor observes the live application, points at one trusted next
 control, waits for the human to act, and verifies the resulting application
 state. It never moves the mouse or sends keyboard input.
 
-The first real user is a new developer learning VS Code. Two validated real-app
-workflows guide `Open a folder in VS Code` and `Open the integrated terminal in
-VS Code`; each passed three consecutive interactive desktop runs. The same
-natural-language planner is used by the CLI and the middle-right Ask control
-rail.
+The first real user is a new developer learning VS Code. Three validated
+real-app workflows guide `Open a folder in VS Code`, `Open the integrated
+terminal in VS Code`, and `Open Extensions in VS Code`; each passed three
+successful human-driven desktop runs. Synthetic Export passed the same 3/3
+gate. The same natural-language planner is used by the CLI and the middle-right
+Ask control rail.
 
 ## What makes the AI bounded
 
 - Local Ollama/Qwen classifies a goal only into registered intent IDs.
-- Executable authority comes only from schema-valid recipes under trusted local
-  recipe directories.
+- Executable authority comes only from the indexed schema-v2 catalog: exact
+  digest-bound artifacts plus an active, reviewed adoption record.
 - The screen-aware hint model may select only an observed, recipe-approved UI
   AutomationId.
 - Model-generated paths, coordinates, code, and actions are rejected.
@@ -38,7 +39,10 @@ first complete draft measured 86.7% raw semantic accuracy and 100% on exact
 supported goals; four high-confidence over-commitments were denied authority by
 the deterministic D058 policy. Owner-reviewed dataset 1.0.0 is frozen, and the
 same 86.7% result plus every hard gate passed in two consecutive post-freeze
-interactive runs. This is the accepted Qwen incumbent baseline.
+interactive runs. This is the accepted Qwen incumbent baseline. Final compiler
+recertification against the four-workflow catalog again passed twice and
+measured 90% (27/30) raw intent accuracy, 100% on exact supported goals, and
+zero unauthorized plans.
 
 Raw semantic accuracy is **not** a capability claim. D068 measured the model's
 influence on the executable outcome directly: across 30 frozen cases x 2 passes,
@@ -92,6 +96,26 @@ already visible, the goal completes without showing a shortcut that could
 close it; otherwise the verified transition has a 20-second first-hint
 deadline.
 
+Open Extensions:
+
+```powershell
+py -3.12 -m ghostcursor.run `
+  --goal "Open Extensions in VS Code" `
+  --target "AIOS" `
+  --seconds 60
+```
+
+GhostCursor highlights the pinned `Extensions (Ctrl+Shift+X)` Activity Bar
+item and completes only after VS Code exposes `Installed Section`. The accepted
+configuration used VS Code `1.135.0.0`, Extensions pinned, no temporary restart
+badge, and Explorer selected. Hidden/unpinned or badge-altered controls fail
+closed rather than selecting a different action.
+
+`--target` narrows matching titles; it never authorizes choosing among several
+remaining windows. If more than one VS Code window matches, use a title fragment
+unique to the intended workspace or close the extra window. GhostCursor lists
+the ambiguous handles and refuses before creating an overlay.
+
 ## Implemented safety and reliability
 
 - UI Automation with executable-bounded HWND identity
@@ -100,7 +124,8 @@ deadline.
 - Focus-safe SPACE arbitration and always-available ESC/Stop
 - Pause without losing the current step or overlay
 - Wrong-action feedback and bounded re-hinting
-- Strict application-pack manifests and recipe-path containment
+- Strict indexed application packs, artifact digests, adoption history, and
+  path containment
 - Local SQLite observations scoped by application/version/step
 - Explicit unsupported and unavailable planner states
 - Tested never-fabricate behavior for unsupported and close-but-unavailable goals
@@ -153,6 +178,9 @@ cannot close the milestone.
   `0edcdef34593eac1aa2be9c7d06c432dcf81945adca5eca2f27662c18f168ba0`.
 - `docs/evidence/vscode-open-terminal.md` records the real-desktop terminal
   acceptance gate and its limitations.
+- `docs/evidence/schema-v2-candidate-acceptance.md` and
+  `docs/evidence/open-extensions-candidate-acceptance.md` record all twelve
+  successful schema-v2 acceptance runs against the activated bytes.
 - `docs/evidence/never-fabricate-matrix.md` records supported and unsupported
   planner behavior with Qwen available and unavailable.
 - `docs/evidence/novice-vscode-study.md` is the fixed participant protocol;
@@ -165,8 +193,10 @@ cannot close the milestone.
 
 ## Honest scope
 
-Open Folder and Open Terminal are the two proven real VS Code workflows. The
-terminal controls expose no stable AutomationIds, so GhostCursor deliberately
-does not persist them or claim ID-based wrong-action feedback for that flow.
+Open Folder, Open Terminal, and Open Extensions are the three proven real VS
+Code workflows. The terminal controls expose no stable AutomationIds, so
+GhostCursor deliberately does not persist them or claim ID-based wrong-action
+feedback for that flow. Open Extensions currently requires the measured pinned
+Activity Bar configuration described above.
 Installer, tray, startup automation, web retrieval, filesystem verification,
 VLM tier 3, and additional application packs are deliberately deferred.

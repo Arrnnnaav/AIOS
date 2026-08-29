@@ -27,6 +27,7 @@ from typing import Callable, Mapping, Sequence
 
 from ghostcursor.perception.health import PerceptionUnhealthy
 from ghostcursor.perception.uia import Element, ProviderQueryFault
+from ghostcursor.reasoning import grounding
 from ghostcursor.reasoning.grounding import GroundedTarget
 from ghostcursor.reasoning.loop import GuidedTour, State
 from ghostcursor.reasoning.schema import (
@@ -125,11 +126,18 @@ def compiled_steps(workflow) -> list[Step]:
     steps: list[Step] = []
     for index, step in enumerate(workflow.recipe.steps):
         rule = step.verification
+        claimed = step.claimed
+        claimed_name = claimed.get("name") or _claimed_name(workflow, index)
         steps.append(
             Step(
                 user_action=UserAction(step.user_action),
                 target_descriptor=TargetDescriptor(
-                    claimed=ClaimedDescriptor(name=_claimed_name(workflow, index))
+                    claimed=ClaimedDescriptor(
+                        name=claimed_name,
+                        name_synonyms=list(claimed.get("name_synonyms", ())),
+                        ocr_text=claimed.get("ocr_text"),
+                        visual_description=claimed.get("visual_description"),
+                    )
                 ),
                 instruction_text=step.instruction_text,
                 verification_rule=VerificationRule(
@@ -204,7 +212,11 @@ def execute_compiled_workflow(
     confirmation_requested: Callable[[], bool] | None = None,
     pump: Callable[[], None] | None = None,
     on_grounding: Callable[..., None] | None = None,
+    on_promoted: Callable[[int, Step, GroundedTarget], None] | None = None,
     on_step: Callable[[int, int], None] | None = None,
+    runtime_steps: Sequence[Step] | None = None,
+    app_version: str | None = None,
+    ui_locale: str = "unknown",
 ) -> TourResult:
     """Run one compiled workflow to a terminal state and report what happened.
 
@@ -217,17 +229,22 @@ def execute_compiled_workflow(
     loop waits, keeps pumping, and keeps the deadline live rather than
     blocking on the first read.
 
-    Grounding is the compiled plan's own answer. A step's target selector
-    already declared `exactly_one` and the observation already enforced it, so
-    there is nothing left to choose here -- and choosing would mean a second
-    matching rule beside the declared one.
+    The compiled selector owns the candidate set and cardinality. The existing
+    grounding ladder then evaluates only that one declared element so stable
+    learned identity and rung semantics survive the cutover. It may accept or
+    reject the element, but it cannot substitute a different control; a ladder
+    miss returns ``None`` and leaves the step safely ungrounded.
 
     Every seam is injected, so this runs identically against a live desktop and
     against a scripted screen. A harness that could only run the real thing
     could not be tested, and one that ran a simplified stand-in would certify
     the stand-in.
     """
-    steps = compiled_steps(workflow)
+    steps = (
+        list(runtime_steps)
+        if runtime_steps is not None
+        else compiled_steps(workflow)
+    )
     provenance = _ProvenanceLog()
 
     def grounder(step: Step, index: int, elements: Sequence[Element]):
@@ -248,21 +265,24 @@ def execute_compiled_workflow(
             if on_grounding is not None:
                 on_grounding(index, False, compiled.target_selector)
             return None
-        element = matched[0]
         if on_grounding is not None:
             # Cancel, not merely stop asking. Absence of a request means "not
             # wanted" -- there is no `wanted` flag -- so a success that did not
             # cancel would leave OCR running for a step that no longer needs it.
             on_grounding(index, True, compiled.target_selector)
-        provenance.record(index, element.source)
-        return GroundedTarget(
-            bbox=element.bbox,
-            rung=1,
-            automation_id=element.automation_id,
-            control_type=element.control_type,
-            name=element.name,
-            source=element.source,
+        grounded = grounding.ground(
+            step,
+            "",
+            locale=ui_locale,
+            app_version=app_version,
+            elements=list(matched),
         )
+        if grounded is None:
+            return None
+        provenance.record(index, grounded.source)
+        if on_promoted is not None:
+            on_promoted(index, step, grounded)
+        return grounded
 
     def verifier(rule, before, after):
         return verify(

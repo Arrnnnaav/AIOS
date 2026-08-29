@@ -1354,23 +1354,38 @@ def _driven_clock(on_sleep=None):
 
 
 def _launch(workflow, catalog, *, live=None, missing=False, create_overlay=lambda: 1,
-            observe=None, renderer=None, seconds=1.0, on_sleep=None):
+            observe=None, renderer=None, seconds=1.0, on_sleep=None,
+            store_path=":memory:"):
+    from unittest.mock import patch
+
+    from ghostcursor.memory.store import ObservationStore
     from ghostcursor.run import _launch_compiled_workflow
 
     clock, sleeper = _driven_clock(on_sleep)
-    return _launch_compiled_workflow(
-        workflow,
-        seconds=seconds,
-        reload_catalog=lambda: catalog,
-        read_window=_reader(live, missing=missing),
-        project_root=PROJECT_ROOT,
-        clock=clock,
-        sleeper=sleeper,
-        warmup_budget_s=2.0,
-        create_overlay=create_overlay,
-        observe=observe,
-        renderer=renderer,
-    )
+    # These are hermetic authority/lifecycle tests, not keyboard tests. Reading
+    # the real global ESC state made an unrelated physical key press return
+    # before overlay creation. Dedicated run/run_threaded tests own both the
+    # pre-launch and mid-run ESC paths.
+    with (
+        patch("ghostcursor.run.escape_pressed", return_value=False),
+        patch(
+            "ghostcursor.memory.store.ObservationStore",
+            side_effect=lambda: ObservationStore(store_path),
+        ),
+    ):
+        return _launch_compiled_workflow(
+            workflow,
+            seconds=seconds,
+            reload_catalog=lambda: catalog,
+            read_window=_reader(live, missing=missing),
+            project_root=PROJECT_ROOT,
+            clock=clock,
+            sleeper=sleeper,
+            warmup_budget_s=2.0,
+            create_overlay=create_overlay,
+            observe=observe,
+            renderer=renderer,
+        )
 
 
 def test_a_failed_revalidation_never_reaches_overlay_creation() -> None:
@@ -1515,6 +1530,277 @@ def test_a_revalidated_launch_reaches_the_execution_body() -> None:
     )
     assert exit_code == 0
     assert created == [True], "the overlay is created once, after revalidation"
+
+
+def test_compiled_steps_retain_the_full_learning_identity() -> None:
+    """The namespace cannot preserve D016 if compilation drops the descriptor."""
+    from dataclasses import replace
+
+    from ghostcursor.packs.compile import compile_recipe
+    from ghostcursor.reasoning.compiled_tour import compiled_steps
+
+    workflow, _catalog = _workflow()
+    value = _recipe_value()
+    value["steps"][0]["target_descriptor"]["claimed"] = {
+        "name": "Open Folder...",
+        "name_synonyms": ["Choose directory"],
+        "ocr_text": "Open Folder",
+        "visual_description": "folder icon beside the action",
+    }
+    workflow = replace(workflow, recipe=compile_recipe(value))
+
+    step = compiled_steps(workflow)[0]
+    assert workflow.recipe.step_key_namespace == "vscode.open_folder"
+    assert step.target_descriptor.claimed.name == "Open Folder..."
+    assert step.target_descriptor.claimed.name_synonyms == ["Choose directory"]
+    assert step.target_descriptor.claimed.ocr_text == "Open Folder"
+    assert (
+        step.target_descriptor.claimed.visual_description
+        == "folder icon beside the action"
+    )
+    with pytest.raises(TypeError):
+        workflow.recipe.steps[0].claimed["name"] = "rewritten"
+
+
+def test_compiled_open_folder_keeps_the_measured_codicon_rung() -> None:
+    """Selector normalisation does not rewrite the raw grounding observation."""
+    from ghostcursor.perception.uia import Element
+    from ghostcursor.reasoning import grounding
+    from ghostcursor.reasoning.compiled_tour import compiled_steps
+
+    workflow, _catalog = _workflow()
+    raw = Element(
+        "\ueaf7 Open Folder...", "Button", "", (10, 20, 110, 60), source="uia"
+    )
+    grounded = grounding.ground(
+        compiled_steps(workflow)[0],
+        "",
+        elements=[raw],
+        app_version=workflow.target.identity.value,
+    )
+
+    assert grounded is not None
+    assert grounded.rung == grounding.RUNG_FUZZY_NAME
+    assert grounded.source == grounding.CONFIRMED_SOURCE
+    assert grounded.name == raw.name
+
+
+def test_compiled_launch_persists_then_hydrates_rung_one(tmp_path) -> None:
+    """Task 9 must not turn the D013/D016/D017 learning loop into dead code."""
+    from ghostcursor.memory.store import ObservationStore
+    from ghostcursor.perception.uia import Element
+    from ghostcursor.reasoning.compiled_tour import TickInput, compiled_steps
+    from ghostcursor.reasoning.identity import step_key
+
+    workflow, catalog = _workflow()
+    db = tmp_path / "compiled-kb.sqlite"
+
+    def run_once():
+        titles = [
+            "Welcome - Visual Studio Code",
+            "Welcome - Visual Studio Code",
+            "demo - Visual Studio Code",
+        ]
+        target = Element(
+            "Open Folder...", "Button", "open-folder-id", (10, 20, 110, 60)
+        )
+        slot = {}
+        rungs = []
+
+        def publish():
+            title = titles.pop(0) if len(titles) > 1 else titles[0]
+            slot["value"] = TickInput(
+                title=title,
+                selectors={"open_folder": (target,)},
+                union=(target,),
+            )
+
+        class Renderer:
+            def show(self, grounded, instruction_text):
+                rungs.append(grounded.rung)
+
+            def clear(self):
+                pass
+
+            def settle(self):
+                pass
+
+        publish()
+        assert _launch(
+            workflow,
+            catalog,
+            seconds=60.0,
+            create_overlay=lambda: 1,
+            observe=lambda: slot["value"],
+            renderer=Renderer(),
+            on_sleep=publish,
+            store_path=db,
+        ) == 0
+        return rungs
+
+    first_rungs = run_once()
+    runtime_step = compiled_steps(workflow)[0]
+    key = step_key(workflow.recipe.step_key_namespace, runtime_step)
+    with ObservationStore(db) as store:
+        learned = store.observations_for(key, "code.exe")
+    assert [item.automation_id for item in learned] == ["open-folder-id"]
+    assert learned[0].app_version == "1.134.0"
+
+    second_rungs = run_once()
+    assert first_rungs and first_rungs[0] == 2
+    assert second_rungs and second_rungs[0] == 1
+
+
+def test_compiled_memory_preserves_the_content_identity_app_key(tmp_path) -> None:
+    """Production persists the checked-in app, never its generic Python host."""
+    from dataclasses import replace
+    from unittest.mock import patch
+
+    from ghostcursor import run
+    from ghostcursor.memory.store import ObservationStore
+    from ghostcursor.perception.uia import Element
+    from ghostcursor.reasoning.compiled_tour import TickInput, compiled_steps
+    from ghostcursor.reasoning.identity import step_key
+
+    workflow, _catalog = _workflow()
+    workflow = replace(
+        workflow,
+        pack_id="synthetic",
+        executable_names=("python.exe",),
+        target=replace(
+            workflow.target,
+            identity=ApplicationIdentity("content_sha256", "a" * 64),
+        ),
+    )
+    assert run._compiled_learning_app_id(workflow) == "synthetic"
+
+    db = tmp_path / "compiled-content-kb.sqlite"
+    target = Element(
+        "Open Folder...", "Button", "synthetic-control-id", (10, 20, 110, 60)
+    )
+    titles = [
+        "Welcome - Visual Studio Code",
+        "Welcome - Visual Studio Code",
+        "demo - Visual Studio Code",
+    ]
+    slot = {}
+
+    def publish():
+        title = titles.pop(0) if len(titles) > 1 else titles[0]
+        slot["value"] = TickInput(
+            title=title,
+            selectors={"open_folder": (target,)},
+            union=(target,),
+        )
+
+    class Renderer:
+        def show(self, grounded, instruction_text):
+            pass
+
+        def clear(self):
+            pass
+
+        def settle(self):
+            pass
+
+    clock, sleeper = _driven_clock(publish)
+    publish()
+    with (
+        patch("ghostcursor.run.escape_pressed", return_value=False),
+        patch(
+            "ghostcursor.memory.store.ObservationStore",
+            side_effect=lambda: ObservationStore(db),
+        ),
+    ):
+        assert run._run_compiled_tour(
+            workflow,
+            seconds=60.0,
+            clock=clock,
+            sleeper=sleeper,
+            warmup_budget_s=2.0,
+            create_overlay=lambda: 1,
+            observe=lambda: slot["value"],
+            renderer=Renderer(),
+        ) == 0
+
+    key = step_key(workflow.recipe.step_key_namespace, compiled_steps(workflow)[0])
+    with ObservationStore(db) as store:
+        assert [
+            item.automation_id for item in store.observations_for(key, "synthetic")
+        ] == ["synthetic-control-id"]
+        assert store.observations_for(key, "python.exe") == []
+
+
+def test_compiled_memory_closes_if_overlay_creation_raises(tmp_path) -> None:
+    """Opening the KB before the overlay must not trade ordering for a leak."""
+    workflow, catalog = _workflow()
+    db = tmp_path / "compiled-kb.sqlite"
+
+    def fail():
+        raise RuntimeError("renderer unavailable")
+
+    with pytest.raises(RuntimeError, match="renderer unavailable"):
+        _launch(workflow, catalog, create_overlay=fail, store_path=db)
+    db.unlink()  # Windows refuses this while the SQLite connection is open.
+
+
+def test_compiled_ocr_grounding_never_reaches_the_store(tmp_path) -> None:
+    """A future OCR adapter carrying an ID still cannot manufacture learning."""
+    from ghostcursor.memory.store import ObservationStore
+    from ghostcursor.perception.uia import Element
+    from ghostcursor.reasoning.compiled_tour import TickInput, compiled_steps
+    from ghostcursor.reasoning.identity import step_key
+
+    workflow, catalog = _workflow()
+    db = tmp_path / "compiled-kb.sqlite"
+    target = Element(
+        "Open Folder...",
+        "Button",
+        "pixel-derived-id",
+        (10, 20, 110, 60),
+        source="ocr",
+    )
+    slot = {"value": None}
+    titles = [
+        "Welcome - Visual Studio Code",
+        "Welcome - Visual Studio Code",
+        "demo - Visual Studio Code",
+    ]
+
+    def publish():
+        title = titles.pop(0) if len(titles) > 1 else titles[0]
+        slot["value"] = TickInput(
+            title=title,
+            selectors={"open_folder": (target,)},
+            union=(target,),
+        )
+
+    class Renderer:
+        def show(self, grounded, instruction_text):
+            pass
+
+        def clear(self):
+            pass
+
+        def settle(self):
+            pass
+
+    publish()
+    assert _launch(
+        workflow,
+        catalog,
+        seconds=60.0,
+        create_overlay=lambda: 1,
+        observe=lambda: slot["value"],
+        renderer=Renderer(),
+        on_sleep=publish,
+        store_path=db,
+    ) == 0
+
+    runtime_step = compiled_steps(workflow)[0]
+    key = step_key(workflow.recipe.step_key_namespace, runtime_step)
+    with ObservationStore(db) as store:
+        assert store.observations_for(key, "code.exe") == []
 
 
 def test_the_live_compiled_launch_owns_and_disposes_the_control_bar(

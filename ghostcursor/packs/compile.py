@@ -26,7 +26,7 @@ independent differential check, not a second runtime authority.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Iterable, Mapping
@@ -465,6 +465,12 @@ class CompiledStep:
     instruction_text: str
     verification: CompiledVerification
     risk: str
+    #: The identity-bearing human descriptor is distinct from the selector.
+    #: It feeds D016's step_key and the existing grounding ladder; dropping it
+    #: would make the preserved namespace decorative and orphan learned rows.
+    claimed: Mapping[str, Any] = field(
+        default_factory=lambda: MappingProxyType({})
+    )
 
 
 @dataclass(frozen=True)
@@ -577,6 +583,7 @@ def compile_recipe(recipe_value: Mapping[str, Any]) -> CompiledRecipe:
                     timeout_s=float(rule["timeout_s"]),
                 ),
                 risk=step["risk"],
+                claimed=freeze(dict(step["target_descriptor"]["claimed"])),
             )
         )
 

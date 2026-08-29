@@ -319,11 +319,12 @@ bug in a window the user cannot close is how this locks someone out of their mac
 
 Ghost Cursor keeps a local knowledge base of what grounding has learned: UI
 AutomationIds and their control types, keyed by step, app, and app version,
-plus the app identity (`app_id`, `app_version`) used to look them up. Only
-`python -m ghostcursor.run --recipe <path>` (the guided-tour path) populates
-it — grounding during a tour promotes what it learns and persists it via
-`ObservationStore`, and the next `--recipe` run against the same app
-hydrates the recipe's steps from what was learned before. It is
+plus the app identity (`app_id`, `app_version`) used to look them up. Only an
+actively adopted schema-v2 workflow launched through
+`python -m ghostcursor.run --goal <text>` populates it — grounding during a
+tour promotes what it learns and persists it via `ObservationStore`, and the
+next adopted workflow run against the same app hydrates its compiled steps
+from what was learned before. It is
 written by `ghostcursor/memory/store.py`'s `ObservationStore` to
 `%LOCALAPPDATA%\GhostCursor\kb.sqlite`, and only ever there — no telemetry,
 no network, no cloud sync (D017 in DECISIONS.md). `GHOSTCURSOR_KB_PATH`
@@ -508,10 +509,11 @@ deferred — a smaller model currently offers only latency and RAM gains.
 **Runtime memory, curated knowledge, and execution authority stay separate
 (D070).** Screen-derived observations remain in erasable `kb.sqlite`; future
 curated knowledge is local-only in a separate `knowledge.sqlite`; only a
-schema-valid JSON artifact explicitly named by a manifest can authorize a
-workflow. Drafts stay quarantined outside trusted roots. Adoption is always
+schema-valid JSON artifact explicitly named by the indexed catalog and an
+active adoption can authorize a workflow. Drafts stay quarantined outside
+trusted roots. Adoption is always
 human-gated and ordered quarantine -> isolated no-input-synthesis acceptance ->
-content-addressed install -> manifest swap. See D070 for withdrawal, version
+content-addressed install -> atomic activation swap. See D070 for withdrawal, version
 scope, evidence, digest, cache, and fail-closed requirements.
 
 **The frozen durability contract remains mandatory.** Implementation changes

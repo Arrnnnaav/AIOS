@@ -3394,3 +3394,64 @@ This decision preserves fail-closed behaviour: a planner-only or unadopted
 intent may be model-visible but cannot materialize, and ambiguous window or
 control selection refuses to launch. The migration is recorded by Task 9's
 authority inventory at `docs/evidence/schema-v2-cutover-authority-inventory.md`.
+
+## D078 — The compiler milestone closes on one authority path and a fixed data-only proof range
+
+**Decision.** The declarative workflow compiler milestone is complete only
+when the installed catalog has four active, evidence-bound workflows; the
+Task 13 non-desktop and model gates pass; current-state documentation names no
+v1 production command; and an independent reviewer approves the exact closing
+tree. The proof that Open Extensions required no workflow-specific Python is
+the immutable commit range from compiler baseline `41682ee` through activation
+`2736d1b`, not an inference from the final prose or from file types in one
+candidate commit.
+
+Open Extensions therefore establishes the product claim at its strongest
+boundary: reviewed candidate data became content-addressed installed data and
+an active adoption without a production-Python change. Its acceptance remains
+configuration-scoped as well as version-scoped — Extensions pinned, no
+temporary restart badge, Explorer selected — and `FOLLOWUPS.md` owns the
+trigger for broadening that support declaratively. Clean absence in excluded
+states is fail-closed evidence, not proof those states are supported.
+
+**Not authorized by closure.** This decision does not merge to `main` or a
+release branch and does not add the deferred knowledge schema, Canva, a
+watcher/tray, installer, VLM tier 3, or another workflow. Those remain separate
+milestones and gates. Final measurements and exact commands live in
+`docs/evidence/schema-v2-final-milestone.md` under D071 rather than being copied
+into every orientation document.
+
+## D079 — Compiled execution preserves the existing learned-observation identity
+
+**Decision.** Schema-v2 compilation may replace recipe-path authority, but it
+must not replace the identity under which trusted UIA observations are learned.
+Each compiled step therefore retains the complete authored `claimed`
+descriptor, and production hydration and persistence use the recipe's explicit
+`step_key_namespace`. A second run of the same compiled workflow must be able
+to reuse an AutomationId learned by the first run at grounding rung 1.
+
+The application key remains compatible with the pre-cutover store. An
+`executable_version` pack uses its verified executable name (for example,
+`code.exe`); a `content_sha256` pack uses its pack id because the generic
+Python host is not the accepted demo application's identity. The observation's
+version is the exact accepted identity value carried by the revalidated
+workflow. These values derive from verified catalog data and are not caller
+inputs.
+
+The store opens only after catalog, adoption, artifact, identity, and live-HWND
+revalidation, but before overlay creation and runtime-step hydration. It closes
+on overlay-construction failure and on every executor exit. Store failures
+degrade learning for that run rather than bypass authority or strand the
+full-screen overlay. Only confirmed UIA observations with non-positional
+AutomationIds may be promoted; OCR-derived and positional identities remain
+non-persistable under D030.
+
+**Reason.** The Task 13 documentation audit found that the Task 9 compiled
+cutover preserved `step_key_namespace` in data while dropping the full claimed
+descriptor and never calling `ObservationStore`, `hydrate_recipe`, or the
+grounding promotion path. The suite was green because the compiled executor
+tests covered selection and completion but not two-process learning. Treating
+the namespace as decorative would silently orphan D013/D016/D017's existing
+knowledge base and make every process rediscover controls by name. The closing
+tree adds a two-run production-launch regression: rung 2 persists on run 1 and
+the same compiled step hydrates at rung 1 on run 2.

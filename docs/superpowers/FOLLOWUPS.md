@@ -59,58 +59,15 @@ laundering, a number entering the record with no durable source — as distinct 
 ordinary documentation drift, which D032 already covers and which has occurred many
 times. Do not count drift incidents toward this trigger; they are the other failure.
 
-## Scoped, deliberately not started (2026-08-19)
+## Resolved scoped items from 2026-08-19
 
-Order fixed by the human partner. Each is a separate brainstorm, not a variation
-on something built.
-
-### 1. Wrong-action feedback — next after Chromium warm-up
-The system verifies that the WORLD reached the expected state, never that the
-USER did the expected thing. If the user clicks the wrong control and then the
-right one, verification passes silently; on a wrong click today the loop simply
-keeps dwelling and says nothing. Closing that needs no new perception tier —
-before/after snapshots are already taken every tick — it needs the loop to
-notice a change that is not the expected one and name it. Small, and it sharpens
-the one thing this product exists to do.
-
-Explicitly NOT the way to solve this: borrowing the perception half of a
-computer-use agent (screenshot, ask a VLM "did that work"). That replaces a
-structured UIA state-diff with a pixel guess, and D003 says reach for tier 3
-last, not first.
-
-### 2. Control bar and intent input — its own brainstorm
-The only entry point today is `--target/--recipe/--seconds`. A user cannot say
-what they want to learn. A visible bar with a stop button is also a SAFETY
-improvement: ESC is currently the only escape from a full-screen click-through
-overlay, and it is invisible.
-
-Architecturally new territory, not a variation: the overlay is
-`WS_EX_TRANSPARENT | WS_EX_NOACTIVATE` and must never take focus or receive
-clicks (D006, D009), while a bar with a text box must do both. It has to be a
-SECOND, focusable window coexisting with the click-through one. Nothing in this
-codebase does that yet.
-
-### 3. Recipe packs — last, and one decision comes before design
-Per-app packs of pre-distilled recipes, downloaded at install. Strongest product
-story: it solves cold-start latency and is a sellable unit.
-
-One correction to the objection raised against video sources: the critique was
-that transcripts give narration, not click coordinates. But `schema.py` forbids
-storing coordinates at all — `_FORBIDDEN_KEYS` rejects bbox/x/y/rect/point
-recursively, because a persisted pixel is a lie the moment a window moves. What
-a recipe stores is `claimed.name`, `name_synonyms`, `control_type` and step
-ORDER, which is close to what narration actually provides. Video is a poor
-source for the thing we never keep and a fair source for the thing we do.
-
-DECIDE BEFORE DESIGNING, not during: the licensing posture of deriving shipped
-pack content from scraped video transcripts. A tool that works around a
-platform's terms is one risk profile for personal research and another when
-bundled into a product. The safer shape is likely distilled text steps derived
-from a transcript, never redistributing the transcript or video — but that is a
-decision to make deliberately, not to inherit by default.
-
-Also unowned: pack staleness. `verified_on` version-scoping exists in the KB
-schema, but a shipped offline pack needs its own refresh story.
+The former wrong-action, control-bar/goal-input, and recipe-pack entries are
+implemented and no longer follow-ups. Wrong-action feedback is D037-backed;
+the separate focusable Stop/Pause/Ask rail and `--goal` entry point are active;
+and schema-v2 packs now use an explicit root index, digest-bound artifacts, and
+reviewed adoption history. Their remaining measured risks are tracked below or
+in the declarative compiler section, not preserved as stale "not started"
+work.
 
 ## Unmeasured risks with named triggers
 
@@ -285,13 +242,14 @@ any work touching the stalled-worker policy or the tier-2 fruitless-run ceiling.
 Decide then whether consecutive faults get their own ceiling.
 
 
-### Open Folder grounds at rung 3, not rung 2, because of the Codicon prefix
+### Compiled claimed-name grounding remains coupled to selector normalisation
 
 The walker publishes the raw accessible name `' Open Folder...'`, which is
 correct — a cleaned-up name would make the observation disagree with the screen.
 But rung 2 is byte-exact name equality, so the glyph makes it miss, and
 grounding lands on rung 3, the case-insensitive substring rung. Measured live:
-`rung 3 substring, source='uia'`, 5/5.
+`rung 3 substring, source='uia'`, 5/5, and pinned by the compiled grounding
+regression.
 
 Accepted for now rather than widening the global grounding ladder in that slice,
 because the risk is bounded on three independent counts: the element is
@@ -299,16 +257,22 @@ UIA-sourced, the walker has already reduced the candidate set to exactly one
 trusted target (`EXACTLY_ONE`), and the only difference between observed and
 claimed name is the measured leading Codicon.
 
-Normalising inside the ladder would change matching for every application and
-every rung, which deserves its own design rather than being folded into a
-walker fix.
+The Task 13 D079 repair makes the coupling explicit: the selector first reduces
+the live controls to exactly one, then the existing grounding ladder must still
+accept that same raw element against `claimed.name` or its synonyms. The ladder
+cannot substitute another element, so failure is safe, but schema validation
+does not currently prove that a selector-normalised match is also groundable.
+A future normalisation that transforms rather than strips a prefix could
+therefore produce a valid selector observation and an ungrounded step.
 
-**Trigger:** the declarative compiler. It can carry both the raw and the
-normalised name on a selector, which restores exact-rung semantics without
-losing observation fidelity — a better fix than widening rung 2 globally.
+**Trigger:** before accepting a recipe whose normalised selector name is not
+also exact, synonymous, or a measured substring of the raw accessible name, or
+before adding another `normalise` mode. Make the relationship declarative and
+load-time validated, or carry both raw and normalised names into grounding;
+do not widen rung 2 globally or add workflow-specific Python.
 
 
-## Declarative workflow compiler (Tasks 1-12 implemented; final regression pending)
+## Declarative workflow compiler (Tasks 1-13 implemented; release merge gated)
 
 Moved out of `CLAUDE.md` under D071: unresolved work is owned here, not by the
 rules file.
@@ -323,8 +287,11 @@ The design and plan passed independent D032 review through `af47bcf`. Task 10
 was closed by owner direction after the full recertification reproduced on
 `1ba371a` and was recorded in `41682ee`. Task 11's data-only Open Extensions
 candidate is committed at `d26d2d8`; its 3/3 evidence and D032 approval are at
-`9af7cb9`. Do not redesign or restart Tasks 1-12. Task 13 owns final regression,
-documentation, and handoff.
+`9af7cb9`. Do not redesign or restart Tasks 1-12. Task 13's final regression,
+documentation, and handoff are implemented; the durable result is
+[`schema-v2-final-milestone.md`](../evidence/schema-v2-final-milestone.md).
+The exact closing tree still requires D032 approval before its commit, and that
+commit does not authorize a release or `main` merge.
 
 ### Recipe schema v2 and the declarative workflow compiler
 
@@ -332,25 +299,27 @@ Built around the two measured selector strategies, `provider_exact` and
 `bounded_descendants`. Recipes declare strategy; the compiler never infers it.
 
 **State/trigger:** compiler and all four workflows are active under schema v2;
-Task 13 remains.
+the milestone implementation and final gates are complete. Release integration
+remains owner-gated.
 
 ### Declarative intent registration
 
-The hardcoded planner dictionary and `_fallback()` are gone. The installed v2
-catalog and compiled matcher are the production registration authority.
+The legacy hardcoded planner dictionary and Python matcher are gone. The
+installed v2 catalog and compiled matcher are the production registration
+authority.
 
 **State/trigger:** complete in plan Tasks 1-3 and activated by Task 9.
 
 ### Migrate the existing workflows, then add Open Extensions
 
-Synthetic Export, Open Folder, and Open Terminal are installed and active under
-schema v2. Add Open Extensions through pack and recipe data with no
-workflow-specific change under `ghostcursor/**/*.py`. The proof is the whole
-diff from the independently approved compiler baseline through adopted Open
-Extensions containing no such Python.
+Synthetic Export, Open Folder, Open Terminal, and Open Extensions are installed
+and active under schema v2. Open Extensions was added through pack, intent,
+recipe, evidence, and activation data with no workflow-specific change under
+`ghostcursor/**/*.py`. The proof is the fixed diff from independently approved
+compiler baseline `41682ee` through adopted Open Extensions `2736d1b`.
 
-**State/trigger:** Tasks 7-12 are implemented. Task 13 must verify the complete
-baseline-to-adoption proof before any release merge.
+**State/trigger:** complete. Task 13 verified the complete
+baseline-to-adoption proof. Any release merge remains a separate owner action.
 
 ### Acceptance budget
 
@@ -362,8 +331,8 @@ Extensions' 3/3 is recorded in
 the exact bytes and application identities ultimately adopted. Application
 identity drift resets affected campaigns and may increase the total.
 
-**State/trigger:** complete through Task 12; Task 13 re-runs the non-desktop
-gates and audits the committed twelve-run record.
+**State/trigger:** complete and audited by Task 13. Reopen only on artifact or
+application-identity drift that requires reacceptance.
 
 ### Open Extensions action-visibility support boundary
 

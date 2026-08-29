@@ -12,13 +12,32 @@ compiled observation plan. The old path-based tour and workflow-specific
 walker adapters were removed in Task 9. The historical call graphs below are
 retained only as migration history and must not be used to implement new work.
 
+```text
+CLI --goal / control-bar Ask
+    -> planner.plan_compiled_goal()
+        -> activation.load_catalog() follows packs/index.json only
+        -> compile_matcher() classifies without loading a recipe
+        -> model advice must agree with deterministic grounding
+        -> workflow.bind_workflow() requires one active adoption and one HWND
+    -> run.run_tour_for_workflow()
+        -> reload catalog and revalidate HWND/PID/executable/title/version
+        -> build_compiled_perception() starts one worker after both gates
+        -> compiled_tour.execute_compiled_workflow()
+        -> nested finally blocks tear down overlay and perception on every exit
+```
+
+The installed catalog currently exposes four active workflows: Synthetic
+Export, Open Folder, Open Terminal, and Open Extensions. Open Extensions was
+added and activated through intent, recipe, evidence, and activation data; the
+fixed proof range `41682ee..2736d1b` contains no production Python change.
+
 How execution actually travels between files, functions, and modules — what calls
 what, in what order. Updated as the codebase grows. The "you are here" marker at
 the bottom shows exactly what's being built/modified right now.
 
 ---
 
-## Current milestone: Open Track submission readiness — two VS Code workflows green
+## Historical milestone: Open Track submission readiness — two VS Code workflows green
 
 The certified baseline and accepted terminal slice are now merged on
 `submission/open-track`. The terminal work was developed on
@@ -55,13 +74,13 @@ runs. The
 controls have no stable AutomationIds, so the system correctly does not
 persist them or claim ID-based wrong-action feedback.
 
-The never-fabricate gate is also closed. A model-returned registered intent no
-longer receives executable authority by registration alone. For intents with
-recipes, `plan_goal()` requires the model ID to equal `_fallback(goal)`'s
-deterministically grounded candidate. A mismatch falls back only to an existing
-trusted candidate (`INVALID_MODEL_OUTPUT`) or returns `UNSUPPORTED_GOAL` with
-no plan. Registered unavailable intents remain honest non-launch results. The
-focused planner set passed 17 tests and the hermetic lane passed 361.
+The never-fabricate gate is also closed. A model-returned registered intent does
+not receive executable authority by registration alone. Today,
+`plan_compiled_goal()` requires model advice to agree with the compiled
+deterministic matcher, and materialization separately requires an active
+adoption. A mismatch can use only the already-grounded trusted intent or return
+`UNSUPPORTED_GOAL` with no plan. Registered unavailable intents remain honest
+non-launch results.
 
 The test-suite stall is classified and fixed. After the perception worker
 starts, the tour/control thread performs no HWND discovery; target identity
@@ -213,33 +232,35 @@ this repo were exactly this and nothing else.
 
 ### Verification status
 
-The repository now has four executable lanes: hermetic, interactive Win32/UIA,
+The repository has four executable lanes: hermetic, interactive Win32/UIA,
 pixel, and intentionally hung-window. Exact commands are in `CLAUDE.md` and
-`README.md`; lane ownership is centralized in `tests/conftest.py`. The bounded
-module audit completed with every collected non-hung module green and no
-timeouts. The standalone pixel scripts remain self-runner modules and are not
-collected by pytest. The three hung files each park a real non-pumping window
-and must run alone — see the note under Files. Also confirmed against a real Notepad window: 440 ring pixels, 49x49
+`README.md`; lane ownership is centralized in `tests/conftest.py`. Task 10 ran
+every lane after the authority cutover, and Task 13 repeated the non-desktop
+gates on the final active catalog. The standalone pixel scripts remain
+self-runner modules and are not collected by pytest. The three hung files each
+park a real non-pumping window and must run alone — see the note under Files.
+Also confirmed against a real Notepad window: 440 ring pixels, 49x49
 diameter, centroid within 1px of the requested coordinate. And confirmed
 against a real persistence run: a UI AutomationId learned by one process was
 reused by a completely separate later process (rung 2 -> rung 1 across
 process boundaries), and deleting the database file returned behaviour to
 rung 2 — see the persistence call graph above.
 
-### You are here
+### Current milestone state
 
-**Two feasibility spikes are closed (D068, D069); the declarative workflow
-compiler is next, and a shared presence helper lands before it.**
+**The declarative workflow compiler is implemented and all four accepted
+workflows are active.** Final regression and documentation close the milestone;
+release or `main` merge still requires explicit owner approval.
 
 **D070 fixes the future knowledge boundary before tables exist.** Runtime
 screen observations remain in erasable `kb.sqlite`; curated knowledge belongs
-in a separate local `knowledge.sqlite`; and only schema-valid JSON named by an
-explicit manifest mapping can authorize a workflow. Draft adoption is always
+in a separate local `knowledge.sqlite`; and only schema-valid JSON named by the
+indexed catalog and an active adoption can authorize a workflow. Draft adoption is always
 human-gated: quarantine -> isolated read-only acceptance -> content-addressed
-install -> manifest swap. No database row, draft, directory glob, or ambiguous
+install -> activation swap. No database row, draft, directory glob, or ambiguous
 filename fallback is execution authority; D070 carries the complete rule.
 
-Spike A measured whether the local model can change the executable outcome.
+Historical spike A measured whether the local model can change the executable outcome.
 Across the frozen 1.0.0 dataset, 30 cases x 2 passes, **zero of 60 case-runs
 changed the executable recipe**. Exactly one model request per case, asserted by
 a counting wrapper on the transport; deterministic and policy views are pure and
@@ -248,7 +269,7 @@ reuse that same sample. The model diverged from deterministic grounding on 11 of
 Model comparison is therefore a latency and cost benchmark, and model swapping
 is deferred.
 
-Spike B selected workflow #3. **Open Extensions passes** with existing
+Historical spike B selected workflow #3. **Open Extensions passes** with existing
 machinery: `strategy-1` reads `Extensions (Ctrl+Shift+X)` as a `TabItem` in
 11.2 ms, the view is persistent, and `element_appears` on `Installed Section`
 gives the same absent-to-present transition `Terminal Section` already provides.
@@ -273,14 +294,11 @@ tier-1 perception went dark unnoticed: it returns 0 elements against VS Code
 1.134.0 and the workflow completes on OCR alone, so an outcome-only acceptance
 gate cannot see it.
 
-Next, in order: the shared provider-query helper enforcing the three-branch
-presence rule, with regression tests; Open Folder migrated to bounded
-descendants with normalised names (strip private-use Codicon prefixes, never
-hardcode the glyph); positional `list_id_<n>_<n>` ids rejected from promotion;
-then the compiler itself, contracted as `provider_exact` and
-`bounded_descendants` with strategy declared by the recipe and never inferred.
-The proof is adding Open Extensions through manifest and recipe data alone, with
-no change to `ghostcursor/**/*.py`.
+That sequence is complete: the shared provider-query helper, bounded Open
+Folder walk, positional-ID refusal, compiler, atomic authority cutover, and
+data-only Open Extensions adoption are all implemented. The acceptance record
+contains 12 successful human runs, and the exact baseline-to-adoption range is
+the proof that Open Extensions required no workflow-specific Python.
 
 ## Earlier completed slices
 
@@ -535,24 +553,22 @@ both    440 ring pixels landed on the real button      observe -> hint 147-161 m
 The tour stopping at AWAITING_USER_ACTION is the design, not a failure: the
 system draws a hint and waits. Only the user can advance the step (D006).
 
-The
-`IDLE → OBSERVING → DECIDING → RENDERING_HINT → AWAITING_USER_ACTION →
-VERIFYING` state machine, the grounding ladder, live UIA verification, the
-Win32 renderer adapter, the `run.py --recipe` entry point, and now
-persistence — promotion survives process exit via `ObservationStore`, keyed
-by `(step_key, app_id, app_version, automation_id)`, hydrated before each
-tour and written on every promotion — are all built and wired together
-end-to-end, and so is perception tier 2 (OCR) and its Chromium warm-up
-(D035). What remains unbuilt is the doc-ingestion knowledge base — web
-search, doc ingestion, embeddings, intent matching, recipe distillation —
-and tier 3, the VLM (spec sections outside 9-10).
+The `IDLE → OBSERVING → DECIDING → RENDERING_HINT → AWAITING_USER_ACTION →
+VERIFYING` state machine, grounding ladder, live UIA verification, Win32
+renderer adapter, schema-v2 `--goal` entry point, and persistence are built and
+wired together end-to-end. Promotion survives process exit through
+`ObservationStore`, keyed by `(step_key, app_id, app_version, automation_id)`,
+and perception tier 2 plus Chromium warm-up remain active (D035). What remains
+unbuilt is the doc-ingestion knowledge base and tier 3, the VLM.
 
-### Runtime call graph — guided tour (as built)
+### Runtime call graph — guided tour (historical v1, removed)
+
+This graph is retained only to explain the decisions that shaped the compiled
+executor. It is not a callable path or implementation guide.
 
 ```
-run.main()
-  historical v1 path-based tour
-      schema.Recipe.load(recipe_path)
+removed path-based tour
+  removed recipe-path loader
 
       --- perception moves OFF this thread, before the overlay exists ---
       tier2.build_controller(clock)    -> Tier2Controller | None (None = no OCR here)
@@ -730,57 +746,60 @@ run.main()
       service.stop()                        before the store closes
 ```
 
-### Runtime call graph — persistence (as built)
+### Runtime call graph — persistence (current compiled path)
 
-Promotion now survives process exit. Before a tour is constructed, the recipe
-is hydrated from disk; while it runs, every promotion is written back to disk
-immediately, so a second, later process reading the same app reuses what the
-first one learned instead of re-discovering it from name matching.
+Promotion survives process exit without making a recipe path authoritative.
+After live revalidation and before any overlay exists, the compiled steps are
+hydrated from disk. Every eligible UIA promotion is written immediately, so a
+later process reuses what the first one learned instead of rediscovering it by
+name.
 
 ```
-historical v1 path-based tour
-    schema.Recipe.load(recipe_path)
-    window.create_overlay_window()
-    appinfo.app_info_for_window(title_re)       -> AppInfo(app_id, exe_path, version, kind)
-                                                    HWND -> PID -> exe path -> file/Appx version
+run.run_tour_for_workflow(compiled_workflow)
+    workflow.revalidate()                       exact catalog/adoption/artifacts/HWND
+    compiled_tour.compiled_steps(workflow)       restores the full claimed descriptor
+    learning app key                            code.exe for executable identity;
+                                                pack id for content identity
+    accepted identity value                     exact application/content version
     store.ObservationStore()                     opens/creates %LOCALAPPDATA%\GhostCursor\kb.sqlite
-
-    if app_info is not None:
-        run.hydrate_recipe(recipe, app_info.app_id, store)   <-- BEFORE the tour is built
-            for each step: identity.step_key(recipe.intent, step)
-                store.observations_for(step_key, app_id)
-                    -> replaces step.target_descriptor.confirmed (not merged; store is
-                       the single source of truth for learned data — controller ruling P2)
-
-    GuidedTour(recipe, grounder=run.make_grounder(title_re, app_info=app_info, store=store,
-               recipe_intent=recipe.intent), ...)
+    run.hydrate_steps(recipe.step_key_namespace, runtime_steps, app_key, store)
+        identity.step_key(step_key_namespace, step)
+        store.observations_for(step_key, app_key)
+            -> replaces confirmed observations when learned rows exist
+    window.create_overlay_window()               only after both authority gates and hydration
 
     loop every REFRESH_SECONDS, until ESC/--seconds/DONE/FAILED:
-        tour.tick()
-            [DECIDING]  grounder(step, i)
-                grounding.ground(step, title_re, locale=ui_locale, app_version=app_info.version)
+        compiled_tour.execute_compiled_workflow(runtime_steps=hydrated_steps,
+                                                on_promoted=persist_callback)
+            [DECIDING] selector-bounded observation for the current action selector
+                grounding.ground(step, elements=matched, locale=ui_locale,
+                                  app_version=accepted_identity_value)
                     rung 1: identity.step_key-scoped select_observations() picks exact
                             version, else nearest LOWER verified, else unknown/global,
                             then cross-checks live control_type before trusting a
                             non-exact match
                     rung 2/3/4: unchanged (control_type+name, UIA-only substring, OCR fuzzy)
-                grounding.promote(step, grounded, app_version=app_info.version, locale=ui_locale)
+                grounding.promote(step, grounded,
+                                  app_version=accepted_identity_value, locale=ui_locale)
                     writes/updates the in-memory Step's confirmed observation
-                run.persist_step(recipe.intent, step, app_id, store)
-                    identity.step_key(recipe.intent, step)
-                    store.record(step_key, app_id, observation)   upsert, PK (step_key,
-                        app_id, app_version, automation_id) -> idempotent, no unbounded growth
+                run.persist_step(step_key_namespace, step, app_key, store)
+                    identity.step_key(step_key_namespace, step)
+                    store.record(step_key, app_key, observation)  upsert, PK (step_key,
+                        app_key, app_version, automation_id) -> idempotent, no unbounded growth
+                OCR and positional AutomationIds never reach the store
 
   finally:
-      window.destroy_overlay_window(hwnd)   <-- store.close() runs in this same finally
+      perception.stop()
+      controls.dispose()
+      window.destroy_overlay_window(hwnd)
       store.close()
 ```
 
-Verified end to end by running the same recipe as two separate child
-processes against a scratch database: run 1 grounded at rung 2 (name match,
-`hydrated=0`); run 2 grounded at rung 1 using the id run 1 learned
-(`hydrated=1`); deleting the database file returned a third run to
-`hydrated=0, rung=2` — promotion is real, disk-backed, and erasable.
+Verified end to end against the production compiled launcher with a scratch
+database: run 1 grounds at rung 2 and persists the observed AutomationId; run
+2 hydrates the same stable namespace and grounds at rung 1. The existing
+process-boundary erase proof separately deletes `kb.sqlite` and observes an
+empty replacement database.
 
 ---
 
