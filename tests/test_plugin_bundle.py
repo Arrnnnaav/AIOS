@@ -46,7 +46,9 @@ def _manifest(files: dict[str, bytes], **changes):
 
 
 def _write_bundle(tmp_path: Path, *, manifest=None, files=None, sign=True, extras=None):
-    files = files or {"packs/index.json": b'{"packs":[]}\n'}
+    files = files or {
+        "ghostcursor/packs/index.json": b'{"packs":[],"schema_version":2}\n'
+    }
     manifest = manifest or _manifest(files)
     raw_manifest = json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode()
     private, trusted = _keys()
@@ -63,7 +65,7 @@ def _write_bundle(tmp_path: Path, *, manifest=None, files=None, sign=True, extra
 
 
 def test_compatibility_is_a_half_open_semantic_version_range():
-    manifest = _manifest({"packs/index.json": b"{}"})
+    manifest = _manifest({"ghostcursor/packs/index.json": b"{}"})
     assert check_core_compatibility(manifest, "0.1.0").compatible
     assert check_core_compatibility(manifest, "0.9.9").compatible
     assert not check_core_compatibility(manifest, "1.0.0").compatible
@@ -74,27 +76,31 @@ def test_a_signed_bundle_binds_the_exact_manifest_and_every_file(tmp_path):
     bundle = verify_bundle(path, trusted_keys=trusted, core_version=CORE_VERSION)
     assert bundle.plugin_id == "ghostcursor.test"
     assert bundle.signed is True
-    assert bundle.files["packs/index.json"] == b'{"packs":[]}\n'
+    assert bundle.files["ghostcursor/packs/index.json"] == (
+        b'{"packs":[],"schema_version":2}\n'
+    )
 
 
 def test_changing_a_file_without_the_signed_digest_is_rejected(tmp_path):
-    files = {"packs/index.json": b"before"}
+    files = {"ghostcursor/packs/index.json": b"before"}
     manifest = _manifest(files)
     path, trusted = _write_bundle(
-        tmp_path, manifest=manifest, files={"packs/index.json": b"after"}
+        tmp_path, manifest=manifest, files={"ghostcursor/packs/index.json": b"after"}
     )
     with pytest.raises(BundleVerificationError, match="digest mismatch"):
         verify_bundle(path, trusted_keys=trusted, core_version=CORE_VERSION)
 
 
 def test_changing_the_digest_list_after_signing_is_rejected(tmp_path):
-    files = {"packs/index.json": b"before"}
+    files = {"ghostcursor/packs/index.json": b"before"}
     manifest = _manifest(files)
     path, trusted = _write_bundle(tmp_path, manifest=manifest, files=files)
     with zipfile.ZipFile(path, "r") as source:
         entries = {info.filename: source.read(info) for info in source.infolist()}
     changed = dict(manifest)
-    changed["files"] = {"packs/index.json": hashlib.sha256(b"after").hexdigest()}
+    changed["files"] = {
+        "ghostcursor/packs/index.json": hashlib.sha256(b"after").hexdigest()
+    }
     entries["plugin.json"] = json.dumps(
         changed, sort_keys=True, separators=(",", ":")
     ).encode()
@@ -106,7 +112,7 @@ def test_changing_the_digest_list_after_signing_is_rejected(tmp_path):
 
 
 def test_unsigned_bundles_exist_only_in_explicit_developer_mode(tmp_path):
-    files = {"packs/index.json": b"{}"}
+    files = {"ghostcursor/packs/index.json": b"{}"}
     manifest = _manifest(files, signing_key_id=None)
     path, trusted = _write_bundle(tmp_path, manifest=manifest, files=files, sign=False)
     with pytest.raises(BundleVerificationError, match="forbidden in production"):
@@ -120,7 +126,7 @@ def test_unsigned_bundles_exist_only_in_explicit_developer_mode(tmp_path):
 
 
 def test_an_incompatible_bundle_is_rejected(tmp_path):
-    files = {"packs/index.json": b"{}"}
+    files = {"ghostcursor/packs/index.json": b"{}"}
     manifest = _manifest(
         files,
         core_compatibility={"minimum": "2.0.0", "maximum_exclusive": "3.0.0"},

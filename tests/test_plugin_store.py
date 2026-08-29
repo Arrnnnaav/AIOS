@@ -29,8 +29,11 @@ def _bundle(
     executable="One.exe",
     minimum="0.1.0",
     maximum="1.0.0",
+    files=None,
 ):
-    files = {"ghostcursor/packs/index.json": b'{"packs":[]}\n'}
+    files = files or {
+        "ghostcursor/packs/index.json": b'{"packs":[],"schema_version":2}\n'
+    }
     manifest = {
         "schema_version": 1,
         "plugin_id": plugin_id,
@@ -53,6 +56,23 @@ def _bundle(
         for name, value in files.items():
             archive.writestr(name, value)
     return path
+
+
+def _common_pack_files() -> dict[str, bytes]:
+    project_root = Path(__file__).resolve().parent.parent
+    files = {
+        "ghostcursor/packs/index.json": (
+            b'{"packs":[{"pack_id":"common","path":"common"}],'
+            b'"schema_version":2}\n'
+        )
+    }
+    source = project_root / "ghostcursor" / "packs" / "common"
+    for path in source.rglob("*"):
+        if path.is_file():
+            files[
+                "ghostcursor/packs/common/" + path.relative_to(source).as_posix()
+            ] = path.read_bytes()
+    return files
 
 
 def test_install_enable_disable_and_uninstall_are_distinct(tmp_path):
@@ -129,3 +149,76 @@ def test_developer_and_production_stores_are_physically_separate(tmp_path):
     assert development.developer_marker is True
     assert production.list_installed() == ()
     assert production.load_active_catalog().plugins == {}
+
+
+def test_runtime_catalog_carries_plugin_provenance_and_active_generation(tmp_path):
+    private, trusted = _key()
+    bundle = _bundle(tmp_path, private, files=_common_pack_files())
+    store = PluginStore(tmp_path / "store", trusted_keys=trusted, core_version="0.1.0")
+    installed = store.install(bundle)
+    store.enable(installed.plugin_id, installed.version)
+
+    catalog = store.load_verified_catalog()
+
+    assert catalog.root_valid
+    assert catalog.generation == 1
+    assert catalog.index_sha256 == store.load_active_catalog().active_index_sha256
+    pack = catalog.packs["common"]
+    assert (pack.plugin_id, pack.plugin_version, pack.plugin_manifest_sha256) == (
+        installed.plugin_id,
+        installed.version,
+        installed.manifest_sha256,
+    )
+
+
+def test_cross_plugin_pack_conflict_is_rejected_atomically(tmp_path):
+    private, trusted = _key()
+    files = _common_pack_files()
+    first = _bundle(
+        tmp_path,
+        private,
+        plugin_id="ghostcursor.one",
+        executable="One.exe",
+        files=files,
+    )
+    second = _bundle(
+        tmp_path,
+        private,
+        plugin_id="ghostcursor.two",
+        executable="Two.exe",
+        files=files,
+    )
+    store = PluginStore(tmp_path / "store", trusted_keys=trusted, core_version="0.1.0")
+    store.install(first)
+    store.install(second)
+    store.enable("ghostcursor.one", "1.0.0")
+    before = store.load_active_catalog()
+
+    with pytest.raises(PluginStoreError, match="more than one active plugin"):
+        store.enable("ghostcursor.two", "1.0.0")
+
+    after = store.load_active_catalog()
+    assert after.generation == before.generation
+    assert tuple(after.plugins) == ("ghostcursor.one",)
+
+
+def test_runtime_rejects_a_tampered_extracted_payload(tmp_path):
+    private, trusted = _key()
+    bundle = _bundle(tmp_path, private, files=_common_pack_files())
+    store = PluginStore(tmp_path / "store", trusted_keys=trusted, core_version="0.1.0")
+    installed = store.install(bundle)
+    store.enable(installed.plugin_id, installed.version)
+    payload = (
+        store.root
+        / "catalogs"
+        / installed.plugin_id
+        / installed.version
+        / installed.manifest_sha256
+        / "ghostcursor"
+        / "packs"
+        / "index.json"
+    )
+    payload.write_bytes(b"tampered")
+
+    with pytest.raises(PluginStoreError, match="payload changed"):
+        store.load_verified_catalog()

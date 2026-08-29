@@ -169,6 +169,82 @@ class PluginStore:
             raise PluginStoreError("installed bundle identity disagrees with installed index")
         return bundle
 
+    def _payload_root(self, bundle: VerifiedBundle) -> Path:
+        return (
+            self.root
+            / "catalogs"
+            / bundle.plugin_id
+            / bundle.version
+            / bundle.manifest_sha256
+        )
+
+    def _stage_payload(self, bundle: VerifiedBundle) -> None:
+        """Publish the signed file inventory as one immutable directory."""
+
+        target = self._payload_root(bundle)
+        if target.exists():
+            self._verify_payload(bundle)
+            return
+        staging = self.root / "staging" / f"payload-{uuid.uuid4().hex}"
+        staging.mkdir(parents=True)
+        try:
+            for name, raw in bundle.files.items():
+                destination = staging / Path(*PurePosixPath(name).parts)
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                with destination.open("xb") as stream:
+                    stream.write(raw)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+            target.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                os.replace(staging, target)
+            except OSError:
+                if not target.exists():
+                    raise
+        finally:
+            if staging.exists():
+                shutil.rmtree(staging, ignore_errors=True)
+        self._verify_payload(bundle)
+
+    def _verify_payload(self, bundle: VerifiedBundle) -> Path:
+        """Re-bind every extracted runtime byte to the signed inventory."""
+
+        root = self._payload_root(bundle)
+        if not root.is_dir() or root.is_symlink():
+            raise PluginStoreError("installed plugin payload is missing or unsafe")
+        actual: dict[str, Path] = {}
+        folded: set[str] = set()
+        for path in root.rglob("*"):
+            if path.is_symlink():
+                raise PluginStoreError("installed plugin payload contains a symlink")
+            if path.is_file():
+                name = path.relative_to(root).as_posix()
+                if name.casefold() in folded:
+                    raise PluginStoreError("installed plugin payload has case-colliding files")
+                folded.add(name.casefold())
+                actual[name] = path
+        if set(actual) != set(bundle.files):
+            raise PluginStoreError("installed plugin payload disagrees with signed inventory")
+        for name, expected in bundle.files.items():
+            if actual[name].read_bytes() != expected:
+                raise PluginStoreError(f"installed plugin payload changed: {name}")
+        index = root / "ghostcursor" / "packs" / "index.json"
+        if not index.is_file():
+            raise PluginStoreError("plugin payload is missing ghostcursor/packs/index.json")
+        return root
+
+    def _bundle_catalog(self, bundle: VerifiedBundle):
+        from ghostcursor.packs.activation import load_catalog
+
+        catalog = load_catalog(self._verify_payload(bundle))
+        if not catalog.root_valid or catalog.diagnostics:
+            detail = "; ".join(item.detail for item in catalog.diagnostics)
+            raise PluginStoreError(
+                f"plugin {bundle.plugin_id} pack catalog is invalid: "
+                f"{detail or 'invalid root'}"
+            )
+        return catalog
+
     def inspect(self, bundle_path: Path) -> VerifiedBundle:
         return verify_bundle(
             bundle_path,
@@ -213,6 +289,7 @@ class PluginStore:
         }
         plugin["versions"] = versions
         plugins[bundle.plugin_id] = plugin
+        self._stage_payload(bundle)
         self._write_index("installed.json", {"schema_version": 1, "plugins": plugins})
         return InstalledPlugin(
             plugin_id=bundle.plugin_id,
@@ -244,7 +321,36 @@ class PluginStore:
                     )
                 identities[identity] = plugin_id
             bundles[plugin_id] = bundle
+        self._merge_catalogs(bundles, generation=0, active_index_sha256="0" * 64)
         return bundles
+
+    def _merge_catalogs(
+        self,
+        bundles: Mapping[str, VerifiedBundle],
+        *,
+        generation: int,
+        active_index_sha256: str,
+    ):
+        from ghostcursor.packs.activation import merge_catalogs
+
+        catalogs = {
+            plugin_id: self._bundle_catalog(bundle)
+            for plugin_id, bundle in bundles.items()
+        }
+        metadata = {
+            plugin_id: (bundle.version, bundle.manifest_sha256)
+            for plugin_id, bundle in bundles.items()
+        }
+        merged = merge_catalogs(
+            catalogs,
+            index_sha256=active_index_sha256,
+            generation=generation,
+            plugin_metadata=metadata,
+        )
+        if not merged.root_valid:
+            detail = "; ".join(item.detail for item in merged.diagnostics)
+            raise PluginStoreError(f"active plugin catalog conflicts: {detail}")
+        return merged
 
     def enable(self, plugin_id: str, version: str) -> InstalledPlugin:
         bundle = self._installed_bundle(plugin_id, version)
@@ -305,6 +411,9 @@ class PluginStore:
         version_root = bundle_path.parent
         if version_root.exists():
             shutil.rmtree(version_root)
+        catalog_version = self.root / "catalogs" / plugin_id / version
+        if catalog_version.exists():
+            shutil.rmtree(catalog_version)
         installed, _ = self._read_index("installed.json")
         plugins = dict(installed["plugins"])
         plugin = dict(plugins[plugin_id])
@@ -362,4 +471,14 @@ class PluginStore:
             active_index_sha256=hashlib.sha256(raw).hexdigest(),
             plugins=MappingProxyType(compatible),
             blocked=MappingProxyType(blocked),
+        )
+
+    def load_verified_catalog(self):
+        """Return the one merged executable catalog for compatible plugins."""
+
+        active = self.load_active_catalog()
+        return self._merge_catalogs(
+            active.plugins,
+            generation=active.generation,
+            active_index_sha256=active.active_index_sha256,
         )

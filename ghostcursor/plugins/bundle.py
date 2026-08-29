@@ -228,6 +228,10 @@ def verify_bundle(
             if hashlib.sha256(raw).hexdigest() != digest:
                 raise BundleVerificationError(f"plugin file digest mismatch: {name}")
             file_bytes[name] = raw
+        if "ghostcursor/packs/index.json" not in file_bytes:
+            raise BundleVerificationError(
+                "plugin inventory is missing ghostcursor/packs/index.json"
+            )
     try:
         compatibility = check_core_compatibility(manifest, core_version)
     except ValueError as exc:

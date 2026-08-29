@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import os
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
@@ -162,6 +162,72 @@ class _PackRejected(Exception):
         super().__init__(detail)
         self.code = code
         self.detail = detail
+
+
+def merge_catalogs(
+    catalogs: Mapping[str, VerifiedCatalog],
+    *,
+    index_sha256: str,
+    generation: int,
+    plugin_metadata: Mapping[str, tuple[str, str]],
+) -> VerifiedCatalog:
+    """Merge independently verified plugin catalogs into one authority graph.
+
+    Each source catalog is loaded within its own trusted root first. This
+    function owns only the global namespace: duplicate pack IDs, intent IDs,
+    and exact phrases fail the whole merged root rather than allowing an
+    order-dependent winner.
+    """
+
+    diagnostics: list[Diagnostic] = []
+    packs: dict[str, VerifiedPack] = {}
+    for plugin_id in sorted(catalogs):
+        catalog = catalogs[plugin_id]
+        if not catalog.root_valid or catalog.diagnostics:
+            detail = "; ".join(item.detail for item in catalog.diagnostics)
+            message = (
+                f"plugin {plugin_id} catalog is invalid: "
+                f"{detail or 'invalid root'}"
+            )
+            return _root_failure(
+                DiagnosticCode.ROOT_INDEX_INVALID,
+                message,
+                diagnostics,
+                index_sha256=index_sha256,
+            )
+        version, manifest_sha256 = plugin_metadata[plugin_id]
+        for pack_id, pack in catalog.packs.items():
+            if pack_id.casefold() in {name.casefold() for name in packs}:
+                return _root_failure(
+                    DiagnosticCode.ROOT_INDEX_INVALID,
+                    f"pack {pack_id} is declared by more than one active plugin",
+                    diagnostics,
+                    index_sha256=index_sha256,
+                )
+            packs[pack_id] = replace(
+                pack,
+                plugin_id=plugin_id,
+                plugin_version=version,
+                plugin_manifest_sha256=manifest_sha256,
+            )
+
+    ambiguity = _global_ambiguity(packs)
+    if ambiguity is not None:
+        diagnostics.append(ambiguity)
+        return _root_failure(
+            ambiguity.code,
+            ambiguity.detail,
+            diagnostics,
+            added=True,
+            index_sha256=index_sha256,
+        )
+    return VerifiedCatalog(
+        root_valid=True,
+        packs=MappingProxyType(packs),
+        diagnostics=(),
+        index_sha256=index_sha256,
+        generation=generation,
+    )
 
 
 def load_catalog(
