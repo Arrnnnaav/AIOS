@@ -869,6 +869,81 @@ def test_the_public_binding_never_accepts_a_window_list() -> None:
         assert authority not in parameters, authority
 
 
+def _authorization_for(catalog, pack, intent):
+    from ghostcursor.packs.authority import AuthorizedIntent
+
+    adoption = intent.active_adoption
+    assert adoption is not None
+    return AuthorizedIntent(
+        plugin_id=pack.pack_id,
+        plugin_version="legacy",
+        plugin_manifest_sha256=pack.pack.sha256,
+        pack_id=pack.pack_id,
+        intent_id=intent.intent_id,
+        catalog_sha256=catalog.index_sha256,
+        catalog_generation=catalog.generation,
+        activation_generation=pack.activation_generation,
+        activation_sha256=pack.activation_sha256,
+        pack_sha256=pack.pack.sha256,
+        intent_sha256=intent.intent.sha256,
+        adoption_id=adoption.adoption_id,
+        recipe_sha256=adoption.recipe.sha256,
+        evidence_sha256=adoption.evidence.sha256,
+    )
+
+
+@pytest.mark.parametrize(
+    ("change", "message"),
+    [
+        ("catalog", "catalog changed"),
+        ("generation", "catalog generation changed"),
+        ("activation", "activation changed"),
+        ("adoption", "active adoption changed"),
+    ],
+)
+def test_public_binding_rechecks_authority_before_reading_windows(
+    monkeypatch, change, message
+) -> None:
+    """A disable or update in the authorize-to-bind gap cannot reach UIA."""
+    from dataclasses import replace
+
+    from ghostcursor.packs import activation as activation_module
+    from ghostcursor.packs import workflow as workflow_module
+
+    catalog, pack, intent = _catalog()
+    authorization = _authorization_for(catalog, pack, intent)
+    changed_catalog = catalog
+    if change == "catalog":
+        changed_catalog = replace(catalog, index_sha256="1" * 64)
+    elif change == "generation":
+        changed_catalog = replace(catalog, generation=1)
+    elif change == "activation":
+        changed_pack = replace(pack, activation_sha256="2" * 64)
+        changed_catalog = replace(catalog, packs={pack.pack_id: changed_pack})
+    else:
+        adoption = replace(intent.active_adoption, adoption_id="adopt-2")
+        changed_intent = replace(
+            intent,
+            active_adoption=adoption,
+            adoptions={adoption.adoption_id: adoption},
+        )
+        changed_pack = replace(pack, intents={intent.intent_id: changed_intent})
+        changed_catalog = replace(catalog, packs={pack.pack_id: changed_pack})
+
+    monkeypatch.setattr(activation_module, "load_catalog", lambda _root: changed_catalog)
+    monkeypatch.setattr(
+        workflow_module,
+        "live_windows_for",
+        lambda _pack: (_ for _ in ()).throw(AssertionError("window read before refusal")),
+    )
+    with pytest.raises(WorkflowUnavailable, match=message):
+        workflow_module.bind_workflow(
+            authorization,
+            "open this folder",
+            project_root=PROJECT_ROOT,
+        )
+
+
 def test_an_unknown_intent_refuses_before_any_window_is_read() -> None:
     """A refusal that named no pack would send the operator hunting."""
     from ghostcursor.packs.workflow import _catalog_entry

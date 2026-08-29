@@ -34,6 +34,7 @@ from ghostcursor.packs.activation import (
     VerifiedIntent,
     VerifiedPack,
 )
+from ghostcursor.packs.authority import AuthorizedIntent
 from ghostcursor.packs.compile import (
     CompiledRecipe,
     GoalReferenceSpec,
@@ -312,14 +313,19 @@ def live_windows_for(pack: VerifiedPack) -> list[WindowCandidate]:  # pragma: no
 
 
 def bind_workflow(
-    catalog: VerifiedCatalog,
-    intent_id: str,
+    authorization: AuthorizedIntent,
     goal: str,
     *,
     target_title_re: str | None = None,
     project_root: Path,
 ):
-    """Bind a classified intent to one live window, or refuse.
+    """Bind a freshly authorized intent to one live window, or refuse.
+
+    Authority is reloaded inside this public boundary.  The authorization
+    token records the exact catalog facts the policy gate saw; every one is
+    compared before a window is enumerated.  A disable, upgrade, conflict, or
+    artifact replacement in the authorize-to-bind gap therefore aborts here,
+    rather than waiting for the later pre-overlay revalidation loop.
 
     The production launch path's target step. `target_title_re` is the
     operator's narrowing and the ONLY way to disambiguate: with several
@@ -332,7 +338,15 @@ def bind_workflow(
     enumerates them itself; `_bind_workflow_with_windows` is the seam hermetic
     tests drive, and it is private for that reason.
     """
-    pack, intent = _catalog_entry(catalog, intent_id)
+    # Kept inside the public entry point deliberately. Allowing a caller to
+    # inject the loader would let that caller supply the authority this gate
+    # is meant to verify, the same self-verifying shape D073 removed from live
+    # target validation.
+    from ghostcursor.packs.activation import load_catalog
+
+    catalog = load_catalog(project_root)
+    pack, intent = _catalog_entry(catalog, authorization.intent_id)
+    _verify_authorization(authorization, catalog, pack, intent)
     return _bind_workflow_with_windows(
         catalog,
         pack,
@@ -342,6 +356,52 @@ def bind_workflow(
         target_title_re=target_title_re,
         project_root=project_root,
     )
+
+
+def _verify_authorization(
+    authorization: AuthorizedIntent,
+    catalog: VerifiedCatalog,
+    pack: VerifiedPack,
+    intent: VerifiedIntent,
+) -> None:
+    """Prove an authorization still names the exact active graph."""
+
+    if catalog.index_sha256 != authorization.catalog_sha256:
+        raise WorkflowUnavailable("active catalog changed after authorization")
+    if catalog.generation != authorization.catalog_generation:
+        raise WorkflowUnavailable("active catalog generation changed after authorization")
+
+    plugin_id = pack.plugin_id or pack.pack_id
+    plugin_version = pack.plugin_version or "legacy"
+    plugin_manifest_sha256 = pack.plugin_manifest_sha256 or pack.pack.sha256
+    if plugin_id != authorization.plugin_id:
+        raise WorkflowUnavailable("authorized plugin is no longer active")
+    if plugin_version != authorization.plugin_version:
+        raise WorkflowUnavailable("authorized plugin version changed")
+    if plugin_manifest_sha256 != authorization.plugin_manifest_sha256:
+        raise WorkflowUnavailable("authorized plugin manifest changed")
+    if pack.pack_id != authorization.pack_id:
+        raise WorkflowUnavailable("authorized pack changed")
+    if pack.activation_generation != authorization.activation_generation:
+        raise WorkflowUnavailable("activation generation changed after authorization")
+    if pack.activation_sha256 != authorization.activation_sha256:
+        raise WorkflowUnavailable("activation changed after authorization")
+    if pack.pack.sha256 != authorization.pack_sha256:
+        raise WorkflowUnavailable("pack artifact changed after authorization")
+    if intent.intent_id != authorization.intent_id:
+        raise WorkflowUnavailable("authorized intent changed")
+    if intent.intent.sha256 != authorization.intent_sha256:
+        raise WorkflowUnavailable("intent artifact changed after authorization")
+
+    adoption = intent.active_adoption
+    if adoption is None:
+        raise WorkflowUnavailable(f"intent {intent.intent_id} is no longer adopted")
+    if adoption.adoption_id != authorization.adoption_id:
+        raise WorkflowUnavailable("active adoption changed after authorization")
+    if adoption.recipe.sha256 != authorization.recipe_sha256:
+        raise WorkflowUnavailable("recipe changed after authorization")
+    if adoption.evidence.sha256 != authorization.evidence_sha256:
+        raise WorkflowUnavailable("acceptance evidence changed after authorization")
 
 
 def _catalog_entry(catalog: VerifiedCatalog, intent_id: str):

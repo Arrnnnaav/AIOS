@@ -135,6 +135,11 @@ class VerifiedPack:
     # artifact failed to verify. Root uniqueness is decided over what a pack
     # claims, not over what survived verification.
     declared_intents: tuple[str, ...] = ()
+    # Plugin provenance is populated by the plugin-store catalog merger. The
+    # legacy in-repository catalog uses its pack identity until extraction.
+    plugin_id: str | None = None
+    plugin_version: str | None = None
+    plugin_manifest_sha256: str | None = None
 
 
 @dataclass(frozen=True)
@@ -146,6 +151,8 @@ class VerifiedCatalog:
     # Pre-launch revalidation binds against it; `None` only when the index
     # itself could not be read.
     index_sha256: str | None = None
+    # The plugin active-index generation. Legacy repository catalogs use zero.
+    generation: int = 0
 
 
 class _PackRejected(Exception):

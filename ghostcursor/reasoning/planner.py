@@ -17,6 +17,7 @@ from ghostcursor.inference.ollama import (
     GenerateResponse,
     generate_structured,
 )
+from ghostcursor.packs.authority import AuthorizedIntent
 
 
 class PlanStatus(Enum):
@@ -52,6 +53,21 @@ class PlanResult:
 
 @dataclass(frozen=True)
 class IntentDecision:
+    intent_id: str | None
+    confidence: float
+    explanation: str
+
+
+class CandidateSource(str, Enum):
+    MODEL = "model"
+    DETERMINISTIC = "deterministic"
+    MODEL_UNAVAILABLE = "model_unavailable"
+    INVALID_MODEL = "invalid_model"
+
+
+@dataclass(frozen=True)
+class IntentCandidate:
+    source: CandidateSource
     intent_id: str | None
     confidence: float
     explanation: str
@@ -210,25 +226,27 @@ class Classification:
     explanation: str
 
 
-def classify_decision(
+@dataclass(frozen=True)
+class AuthorizationResult:
+    """The result of the one policy gate; only ``authorized`` may execute."""
+
+    status: PlanStatus
+    intent_id: str | None
+    confidence: float
+    explanation: str
+    authorized: AuthorizedIntent | None = None
+
+
+def _policy_classification(
     goal: str,
     decision: IntentDecision,
     *,
     deterministic: Callable[[str], tuple[str | None, float, str]],
+    registered: frozenset[str],
     available: frozenset[str],
 ) -> Classification:
-    """Apply the authority policy without touching a recipe.
+    """Classify an untrusted name without granting execution authority."""
 
-    `available` names the intents that currently have an active adoption. It is
-    consulted only to tell an ungrounded *available* intent from an ungrounded
-    unavailable one, which is the distinction D058 turns on -- a registered ID
-    is an allowlist boundary the model may name, never semantic evidence that
-    it named the right one.
-
-    The model can never widen this. Where its choice and the deterministic
-    classifier's grounded intent disagree, the deterministic one wins if it
-    exists and nothing runs if it does not.
-    """
     fallback_id, fallback_confidence, fallback_explanation = deterministic(goal)
 
     if decision.intent_id is None:
@@ -244,6 +262,23 @@ def classify_decision(
             fallback_id,
             fallback_confidence,
             f"model abstained; {fallback_explanation}",
+        )
+
+    # Unknown is not unavailable. The latter means a verified catalog knows
+    # the ID but has no active recipe; a fictional name has no such standing.
+    if decision.intent_id not in registered:
+        if fallback_id is None:
+            return Classification(
+                PlanStatus.INVALID_MODEL_OUTPUT,
+                None,
+                0.0,
+                f"model selected unknown intent {decision.intent_id}",
+            )
+        return Classification(
+            PlanStatus.INVALID_MODEL_OUTPUT,
+            fallback_id,
+            fallback_confidence,
+            f"model selected unknown intent {decision.intent_id}; {fallback_explanation}",
         )
 
     if decision.intent_id in available and fallback_id != decision.intent_id:
@@ -283,14 +318,43 @@ def classify_decision(
     )
 
 
-def resolve_model_decision(goal: str, decision: IntentDecision) -> Classification:
-    """Apply the v2 model policy without loading or returning a recipe."""
-    from ghostcursor.packs.activation import load_catalog
+def classify_decision(
+    goal: str,
+    decision: IntentDecision,
+    *,
+    deterministic: Callable[[str], tuple[str | None, float, str]],
+    available: frozenset[str],
+) -> Classification:
+    """Apply the authority policy without touching a recipe.
+
+    `available` names the intents that currently have an active adoption. It is
+    consulted only to tell an ungrounded *available* intent from an ungrounded
+    unavailable one, which is the distinction D058 turns on -- a registered ID
+    is an allowlist boundary the model may name, never semantic evidence that
+    it named the right one.
+
+    The model can never widen this. Where its choice and the deterministic
+    classifier's grounded intent disagree, the deterministic one wins if it
+    exists and nothing runs if it does not.
+    """
+    # Compatibility-only API for focused pure-policy tests. Production calls
+    # ``authorize_intent`` with the real registered set and exact catalog.
+    return _policy_classification(
+        goal,
+        decision,
+        deterministic=deterministic,
+        registered=available | ({decision.intent_id} if decision.intent_id else set()),
+        available=available,
+    )
+
+
+def authorize_intent(catalog, goal: str, candidate: IntentCandidate) -> AuthorizationResult:
+    """The only function that may mint execution authority from an intent name."""
+
     from ghostcursor.packs.compile import compile_matcher, compile_planner
 
-    project_root = Path(__file__).resolve().parent.parent.parent
-    catalog = load_catalog(project_root)
     specs = compile_planner(catalog)
+    registered = frozenset(spec.intent_id for spec in specs)
     available = frozenset(spec.intent_id for spec in specs if spec.recipe_path is not None)
     matcher = compile_matcher(catalog)
 
@@ -298,11 +362,105 @@ def resolve_model_decision(goal: str, decision: IntentDecision) -> Classificatio
         outcome = matcher.classify(text)
         return outcome.intent_id, outcome.confidence, outcome.reason
 
-    return classify_decision(
+    classification = _policy_classification(
         goal,
-        decision,
+        IntentDecision(candidate.intent_id, candidate.confidence, candidate.explanation),
         deterministic=deterministic,
+        registered=registered,
         available=available,
+    )
+    status = classification.status
+    if candidate.source is CandidateSource.MODEL_UNAVAILABLE and status is PlanStatus.SUPPORTED:
+        status = PlanStatus.MODEL_UNAVAILABLE_FALLBACK
+    elif candidate.source is CandidateSource.INVALID_MODEL and status in {
+        PlanStatus.SUPPORTED,
+        PlanStatus.INVALID_MODEL_OUTPUT,
+    }:
+        status = PlanStatus.INVALID_MODEL_OUTPUT
+
+    executable = status in {
+        PlanStatus.SUPPORTED,
+        PlanStatus.MODEL_UNAVAILABLE_FALLBACK,
+        PlanStatus.INVALID_MODEL_OUTPUT,
+    }
+    intent_id = classification.intent_id
+    if not executable or intent_id is None:
+        return AuthorizationResult(
+            status, intent_id, classification.confidence, classification.explanation
+        )
+
+    if catalog.index_sha256 is None:
+        return AuthorizationResult(
+            PlanStatus.KNOWN_INTENT_RECIPE_UNAVAILABLE,
+            intent_id,
+            classification.confidence,
+            "catalog carries no authority digest",
+        )
+    for pack in catalog.packs.values():
+        intent = pack.intents.get(intent_id)
+        if intent is None:
+            continue
+        adoption = intent.active_adoption
+        if adoption is None:
+            return AuthorizationResult(
+                PlanStatus.KNOWN_INTENT_RECIPE_UNAVAILABLE,
+                intent_id,
+                classification.confidence,
+                f"intent {intent_id} has no active adoption",
+            )
+        token = AuthorizedIntent(
+            plugin_id=pack.plugin_id or pack.pack_id,
+            plugin_version=pack.plugin_version or "legacy",
+            plugin_manifest_sha256=pack.plugin_manifest_sha256 or pack.pack.sha256,
+            pack_id=pack.pack_id,
+            intent_id=intent_id,
+            catalog_sha256=catalog.index_sha256,
+            catalog_generation=catalog.generation,
+            activation_generation=pack.activation_generation,
+            activation_sha256=pack.activation_sha256,
+            pack_sha256=pack.pack.sha256,
+            intent_sha256=intent.intent.sha256,
+            adoption_id=adoption.adoption_id,
+            recipe_sha256=adoption.recipe.sha256,
+            evidence_sha256=adoption.evidence.sha256,
+        )
+        return AuthorizationResult(
+            status,
+            intent_id,
+            classification.confidence,
+            classification.explanation,
+            token,
+        )
+    return AuthorizationResult(
+        PlanStatus.UNSUPPORTED_GOAL,
+        None,
+        0.0,
+        f"no verified pack provides intent {intent_id!r}",
+    )
+
+
+def resolve_model_decision(goal: str, decision: IntentDecision) -> Classification:
+    """Apply the v2 model policy without loading or returning a recipe."""
+    from ghostcursor.packs.activation import load_catalog
+    from ghostcursor.packs.compile import compile_matcher
+
+    project_root = Path(__file__).resolve().parent.parent.parent
+    catalog = load_catalog(project_root)
+    # Build once here only to retain this evaluation seam's assertion that the
+    # catalog is compilable; authorization owns the actual policy decision.
+    compile_matcher(catalog)
+    result = authorize_intent(
+        catalog,
+        goal,
+        IntentCandidate(
+            CandidateSource.MODEL,
+            decision.intent_id,
+            decision.confidence,
+            decision.explanation,
+        ),
+    )
+    return Classification(
+        result.status, result.intent_id, result.confidence, result.explanation
     )
 
 
@@ -329,21 +487,16 @@ def plan_compiled_goal(
 
     project_root = Path(__file__).resolve().parent.parent.parent
     catalog = load_catalog(project_root)
-    specs = compile_planner(catalog)
-    available = frozenset(spec.intent_id for spec in specs if spec.recipe_path is not None)
+    compile_planner(catalog)
     matcher = compile_matcher(catalog)
-
-    def deterministic(text: str) -> tuple[str | None, float, str]:
-        outcome = matcher.classify(text)
-        return outcome.intent_id, outcome.confidence, outcome.reason
 
     fallback = matcher.classify(goal)
     if not use_model:
-        classification = classify_decision(
-            goal,
-            IntentDecision(fallback.intent_id, fallback.confidence, fallback.reason),
-            deterministic=deterministic,
-            available=available,
+        candidate = IntentCandidate(
+            CandidateSource.DETERMINISTIC,
+            fallback.intent_id,
+            fallback.confidence,
+            fallback.reason,
         )
     else:
         try:
@@ -353,64 +506,39 @@ def plan_compiled_goal(
                 model=model,
                 timeout=timeout,
             ).decision
-            classification = classify_decision(
-                goal,
-                decision,
-                deterministic=deterministic,
-                available=available,
+            candidate = IntentCandidate(
+                CandidateSource.MODEL,
+                decision.intent_id,
+                decision.confidence,
+                decision.explanation,
             )
         except (OSError, TimeoutError, ConnectionError) as exc:
-            if fallback.intent_id is None:
-                return PlanResult(
-                    PlanStatus.UNSUPPORTED_GOAL,
-                    None,
-                    0.0,
-                    f"model unavailable ({type(exc).__name__}); no trusted intent matched",
-                )
-            classification = Classification(
-                PlanStatus.MODEL_UNAVAILABLE_FALLBACK,
+            candidate = IntentCandidate(
+                CandidateSource.MODEL_UNAVAILABLE,
                 fallback.intent_id,
                 fallback.confidence,
                 f"{fallback.reason} (Ollama request failed: {type(exc).__name__})",
             )
         except (ValueError, KeyError, json.JSONDecodeError) as exc:
-            if fallback.intent_id is None:
-                return PlanResult(
-                    PlanStatus.UNSUPPORTED_GOAL,
-                    None,
-                    0.0,
-                    "model output was invalid and no trusted intent matched",
-                )
-            classification = Classification(
-                PlanStatus.INVALID_MODEL_OUTPUT,
+            candidate = IntentCandidate(
+                CandidateSource.INVALID_MODEL,
                 fallback.intent_id,
                 fallback.confidence,
                 f"{fallback.reason} ({type(exc).__name__})",
             )
 
-    if classification.intent_id is None:
+    authorization = authorize_intent(catalog, goal, candidate)
+    if authorization.authorized is None:
         return PlanResult(
-            classification.status,
-            None,
-            classification.confidence,
-            classification.explanation,
-        )
-    if classification.status not in {
-        PlanStatus.SUPPORTED,
-        PlanStatus.MODEL_UNAVAILABLE_FALLBACK,
-        PlanStatus.INVALID_MODEL_OUTPUT,
-    }:
-        return PlanResult(
-            classification.status,
-            classification.intent_id,
-            classification.confidence,
-            classification.explanation,
+            authorization.status,
+            authorization.intent_id,
+            authorization.confidence,
+            authorization.explanation,
         )
 
     try:
         workflow = bind_workflow(
-            catalog,
-            classification.intent_id,
+            authorization.authorized,
             goal,
             target_title_re=target_title_re,
             project_root=project_root,
@@ -418,14 +546,14 @@ def plan_compiled_goal(
     except WorkflowUnavailable as exc:
         return PlanResult(
             PlanStatus.KNOWN_INTENT_RECIPE_UNAVAILABLE,
-            classification.intent_id,
-            classification.confidence,
+            authorization.intent_id,
+            authorization.confidence,
             str(exc),
         )
     return PlanResult(
-        classification.status,
-        classification.intent_id,
-        classification.confidence,
-        classification.explanation,
+        authorization.status,
+        authorization.intent_id,
+        authorization.confidence,
+        authorization.explanation,
         workflow,
     )

@@ -176,6 +176,53 @@ def test_model_cannot_attach_an_ungrounded_executable_intent(monkeypatch):
     assert result.plan is None
 
 
+def test_fictional_model_intent_never_receives_authority():
+    from ghostcursor.packs.activation import load_catalog
+    from ghostcursor.reasoning.planner import (
+        CandidateSource,
+        IntentCandidate,
+        authorize_intent,
+    )
+
+    catalog = load_catalog(planner._ROOT.parent.parent)
+    result = authorize_intent(
+        catalog,
+        "do the fictional moon export",
+        IntentCandidate(
+            CandidateSource.MODEL,
+            "MOON_EXPORT",
+            0.99,
+            "a plausible but invented command",
+        ),
+    )
+
+    assert result.status is PlanStatus.INVALID_MODEL_OUTPUT
+    assert result.authorized is None
+
+
+def test_every_production_classification_path_depends_on_the_authorizer(monkeypatch):
+    from ghostcursor.reasoning.planner import AuthorizationResult
+
+    monkeypatch.setattr(
+        planner,
+        "authorize_intent",
+        lambda *_args, **_kwargs: AuthorizationResult(
+            PlanStatus.UNSUPPORTED_GOAL, None, 0.0, "central gate refused"
+        ),
+    )
+    monkeypatch.setattr(
+        "ghostcursor.packs.workflow.bind_workflow",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("binding bypassed authorize_intent")
+        ),
+    )
+
+    result = planner.plan_compiled_goal("Export this table as CSV", use_model=False)
+
+    assert result.status is PlanStatus.UNSUPPORTED_GOAL
+    assert result.plan is None
+
+
 def test_model_intent_mismatch_uses_distinguishable_trusted_fallback():
     result = planner.resolve_model_decision(
         "Open a folder in VS Code",
