@@ -86,12 +86,14 @@ class PluginStore:
         trusted_keys: Mapping[str, bytes],
         core_version: str,
         developer_mode: bool = False,
+        observation_store_path: Path | None = None,
     ) -> None:
         self.base_root = Path(base_root).resolve()
         self.developer_mode = developer_mode
         self.root = self.base_root / ("developer" if developer_mode else "production")
         self.trusted_keys = MappingProxyType(dict(trusted_keys))
         self.core_version = core_version
+        self.observation_store_path = observation_store_path
 
     @property
     def developer_marker(self) -> bool:
@@ -425,6 +427,11 @@ class PluginStore:
         else:
             del plugins[plugin_id]
         self._write_index("installed.json", {"schema_version": 1, "plugins": plugins})
+        if self.observation_store_path is not None:
+            from ghostcursor.memory.store import ObservationStore
+
+            with ObservationStore(self.observation_store_path) as observations:
+                observations.purge_plugin(plugin_id, version)
 
     def list_installed(self) -> tuple[InstalledPlugin, ...]:
         installed, _ = self._read_index("installed.json")

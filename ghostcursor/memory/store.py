@@ -32,6 +32,8 @@ ENV_PATH = "GHOSTCURSOR_KB_PATH"
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS observations (
+    plugin_id        TEXT NOT NULL,
+    plugin_version   TEXT NOT NULL,
     step_key         TEXT NOT NULL,
     app_id           TEXT NOT NULL,
     app_version      TEXT NOT NULL,
@@ -40,7 +42,9 @@ CREATE TABLE IF NOT EXISTS observations (
     locales_observed TEXT NOT NULL DEFAULT '[]',
     last_seen_at     TEXT,
     ok_count         INTEGER NOT NULL DEFAULT 1,
-    PRIMARY KEY (step_key, app_id, app_version, automation_id)
+    PRIMARY KEY (
+        plugin_id, plugin_version, step_key, app_id, app_version, automation_id
+    )
 );
 """
 
@@ -68,8 +72,32 @@ class ObservationStore:
         # library default.
         self._conn.execute("PRAGMA busy_timeout = 2000")
         self._conn.row_factory = sqlite3.Row
-        self._conn.executescript(_SCHEMA)
+        self._ensure_schema()
         self._conn.commit()
+
+    def _ensure_schema(self) -> None:
+        """Create v2 storage or quarantine the unscoped legacy table once."""
+
+        table = self._conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='observations'"
+        ).fetchone()
+        if table is not None:
+            columns = {
+                row[1] for row in self._conn.execute("PRAGMA table_info(observations)")
+            }
+            if "plugin_id" not in columns:
+                legacy = self._conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' "
+                    "AND name='legacy_observations'"
+                ).fetchone()
+                if legacy is not None:
+                    raise sqlite3.DatabaseError(
+                        "both legacy and unscoped observation tables exist"
+                    )
+                self._conn.execute(
+                    "ALTER TABLE observations RENAME TO legacy_observations"
+                )
+        self._conn.executescript(_SCHEMA)
 
     def __enter__(self) -> "ObservationStore":
         return self
@@ -81,7 +109,13 @@ class ObservationStore:
         self._conn.close()
 
     def record(
-        self, step_key: str, app_id: str, observation: ConfirmedObservation
+        self,
+        step_key: str,
+        app_id: str,
+        observation: ConfirmedObservation,
+        *,
+        plugin_id: str = "legacy",
+        plugin_version: str = "legacy",
     ) -> None:
         """Upsert one observation, merging locales with anything already known."""
         if not observation.automation_id:
@@ -103,10 +137,12 @@ class ObservationStore:
         # other connection can observe a half-applied merge. `ok_count`
         # increments from the stored value for the same reason.
         self._conn.execute(
-            "INSERT INTO observations (step_key, app_id, app_version, automation_id,"
+            "INSERT INTO observations (plugin_id, plugin_version, step_key, app_id,"
+            " app_version, automation_id,"
             " control_type, locales_observed, last_seen_at, ok_count)"
-            " VALUES (?,?,?,?,?,?,?,1)"
-            " ON CONFLICT(step_key, app_id, app_version, automation_id) DO UPDATE SET"
+            " VALUES (?,?,?,?,?,?,?,?,?,1)"
+            " ON CONFLICT(plugin_id, plugin_version, step_key, app_id, app_version,"
+            " automation_id) DO UPDATE SET"
             "   control_type=excluded.control_type,"
             "   locales_observed=("
             "     SELECT json_group_array(locale) FROM ("
@@ -117,6 +153,8 @@ class ObservationStore:
             "   last_seen_at=excluded.last_seen_at,"
             "   ok_count=observations.ok_count + 1",
             (
+                plugin_id,
+                plugin_version,
                 step_key,
                 app_id,
                 observation.app_version,
@@ -129,12 +167,18 @@ class ObservationStore:
         self._conn.commit()
 
     def observations_for(
-        self, step_key: str, app_id: str
+        self,
+        step_key: str,
+        app_id: str,
+        *,
+        plugin_id: str = "legacy",
+        plugin_version: str = "legacy",
     ) -> list[ConfirmedObservation]:
         rows = self._conn.execute(
-            "SELECT * FROM observations WHERE step_key=? AND app_id=?"
+            "SELECT * FROM observations WHERE plugin_id=? AND plugin_version=?"
+            " AND step_key=? AND app_id=?"
             " ORDER BY app_version, automation_id",
-            (step_key, app_id),
+            (plugin_id, plugin_version, step_key, app_id),
         ).fetchall()
         return [
             ConfirmedObservation(
@@ -152,3 +196,31 @@ class ObservationStore:
         """Erase everything. The user-facing equivalent is deleting the file."""
         self._conn.execute("DELETE FROM observations")
         self._conn.commit()
+
+    def purge_plugin(self, plugin_id: str, plugin_version: str | None = None) -> int:
+        """Delete learned rows owned by one plugin or one installed version."""
+
+        if plugin_version is None:
+            cursor = self._conn.execute(
+                "DELETE FROM observations WHERE plugin_id=?", (plugin_id,)
+            )
+        else:
+            cursor = self._conn.execute(
+                "DELETE FROM observations WHERE plugin_id=? AND plugin_version=?",
+                (plugin_id, plugin_version),
+            )
+        self._conn.commit()
+        return cursor.rowcount
+
+    def quarantined_legacy_count(self) -> int:
+        """Return retained pre-plugin rows; they never participate in grounding."""
+
+        exists = self._conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' "
+            "AND name='legacy_observations'"
+        ).fetchone()
+        if exists is None:
+            return 0
+        return int(
+            self._conn.execute("SELECT COUNT(*) FROM legacy_observations").fetchone()[0]
+        )

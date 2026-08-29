@@ -450,6 +450,9 @@ class CompiledWorkflow:
     where identity-bounded grounding already lives (D046).
     """
 
+    plugin_id: str
+    plugin_version: str
+    plugin_manifest_sha256: str
     pack_id: str
     intent_id: str
     goal: str
@@ -530,6 +533,9 @@ def materialize(
     }
 
     return CompiledWorkflow(
+        plugin_id=pack.plugin_id or pack.pack_id,
+        plugin_version=pack.plugin_version or "legacy",
+        plugin_manifest_sha256=pack.plugin_manifest_sha256 or pack.pack.sha256,
         pack_id=pack.pack_id,
         intent_id=intent.intent_id,
         goal=goal,
@@ -704,13 +710,21 @@ def revalidate(
         # with a confusing perception error.
         raise WorkflowUnavailable(f"pack {workflow.pack_id} is no longer indexed")
 
+    if (pack.plugin_id or pack.pack_id) != workflow.plugin_id:
+        raise WorkflowUnavailable("plugin owner changed since planning")
+    if (pack.plugin_version or "legacy") != workflow.plugin_version:
+        raise WorkflowUnavailable("plugin version changed since planning")
+    if pack.pack.sha256 != workflow.pack_sha256:
+        raise WorkflowUnavailable("pack artifact changed since planning")
+    if (
+        pack.plugin_manifest_sha256 or pack.pack.sha256
+    ) != workflow.plugin_manifest_sha256:
+        raise WorkflowUnavailable("plugin manifest changed since planning")
+
     if pack.activation_sha256 != workflow.activation_sha256:
         raise WorkflowUnavailable("activation.json changed since planning")
     if pack.activation_generation != workflow.activation_generation:
         raise WorkflowUnavailable("activation generation changed since planning")
-    if pack.pack.sha256 != workflow.pack_sha256:
-        raise WorkflowUnavailable("pack artifact changed since planning")
-
     intent = pack.intents.get(workflow.intent_id)
     if intent is None:
         raise WorkflowUnavailable(f"intent {workflow.intent_id} is no longer indexed")

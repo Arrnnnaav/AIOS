@@ -125,14 +125,25 @@ def hydrate_recipe(recipe, app_id: str, store) -> int:
     return hydrate_steps(recipe.intent, recipe.steps, app_id, store)
 
 
-def hydrate_steps(step_key_namespace: str, steps, app_id: str, store) -> int:
+def hydrate_steps(
+    step_key_namespace: str,
+    steps,
+    app_id: str,
+    store,
+    *,
+    plugin_id: str = "legacy",
+    plugin_version: str = "legacy",
+) -> int:
     """Hydrate runtime steps without making a recipe path an authority input."""
     from ghostcursor.reasoning.identity import step_key
 
     loaded = 0
     for step in steps:
         observations = store.observations_for(
-            step_key(step_key_namespace, step), app_id
+            step_key(step_key_namespace, step),
+            app_id,
+            plugin_id=plugin_id,
+            plugin_version=plugin_version,
         )
         if observations:
             step.target_descriptor.confirmed = observations
@@ -157,7 +168,14 @@ def _compiled_learning_app_id(workflow) -> str:
 
 
 def persist_step(
-    recipe_intent: str, step, app_id: str, store, observation=None
+    recipe_intent: str,
+    step,
+    app_id: str,
+    store,
+    observation=None,
+    *,
+    plugin_id: str = "legacy",
+    plugin_version: str = "legacy",
 ) -> None:
     """Write what this step learned to disk, idempotently.
 
@@ -178,7 +196,13 @@ def persist_step(
         [observation] if observation is not None else step.target_descriptor.confirmed
     )
     for entry in to_write:
-        store.record(key, app_id, entry)
+        store.record(
+            key,
+            app_id,
+            entry,
+            plugin_id=plugin_id,
+            plugin_version=plugin_version,
+        )
 
 
 def make_grounder(
@@ -614,6 +638,8 @@ def _run_compiled_tour(
             runtime_steps,
             learning_app_id,
             memory_store,
+            plugin_id=workflow.plugin_id,
+            plugin_version=workflow.plugin_version,
         )
     except (OSError, sqlite3.Error) as exc:
         print(f"Persistence unavailable for this run: {exc}")
@@ -652,6 +678,8 @@ def _run_compiled_tour(
                 learning_app_id,
                 memory_store,
                 observation=learned,
+                plugin_id=workflow.plugin_id,
+                plugin_version=workflow.plugin_version,
             )
         except sqlite3.Error as exc:
             if not memory_warning[0]:

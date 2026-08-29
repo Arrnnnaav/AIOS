@@ -222,3 +222,56 @@ def test_runtime_rejects_a_tampered_extracted_payload(tmp_path):
 
     with pytest.raises(PluginStoreError, match="payload changed"):
         store.load_verified_catalog()
+
+
+def test_disable_retains_but_uninstall_clears_version_scoped_learning(tmp_path):
+    from ghostcursor.memory.store import ObservationStore
+    from ghostcursor.reasoning.schema import ConfirmedObservation
+
+    private, trusted = _key()
+    bundle = _bundle(tmp_path, private)
+    db = tmp_path / "observations.sqlite"
+    store = PluginStore(
+        tmp_path / "store",
+        trusted_keys=trusted,
+        core_version="0.1.0",
+        observation_store_path=db,
+    )
+    installed = store.install(bundle)
+    store.enable(installed.plugin_id, installed.version)
+    observation = ConfirmedObservation(
+        app_version="1.0",
+        locales_observed=["en-US"],
+        automation_id="stable-id",
+        control_type="Button",
+        accessibility_path_hint=[],
+        last_seen_at=None,
+    )
+    with ObservationStore(db) as memory:
+        memory.record(
+            "step",
+            "one.exe",
+            observation,
+            plugin_id=installed.plugin_id,
+            plugin_version=installed.version,
+        )
+    store.disable(installed.plugin_id)
+    with ObservationStore(db) as memory:
+        assert len(
+            memory.observations_for(
+                "step",
+                "one.exe",
+                plugin_id=installed.plugin_id,
+                plugin_version=installed.version,
+            )
+        ) == 1
+
+    store.uninstall(installed.plugin_id, installed.version)
+
+    with ObservationStore(db) as memory:
+        assert memory.observations_for(
+            "step",
+            "one.exe",
+            plugin_id=installed.plugin_id,
+            plugin_version=installed.version,
+        ) == []

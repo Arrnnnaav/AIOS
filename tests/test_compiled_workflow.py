@@ -1717,7 +1717,12 @@ def test_compiled_launch_persists_then_hydrates_rung_one(tmp_path) -> None:
     runtime_step = compiled_steps(workflow)[0]
     key = step_key(workflow.recipe.step_key_namespace, runtime_step)
     with ObservationStore(db) as store:
-        learned = store.observations_for(key, "code.exe")
+        learned = store.observations_for(
+            key,
+            "code.exe",
+            plugin_id=workflow.plugin_id,
+            plugin_version=workflow.plugin_version,
+        )
     assert [item.automation_id for item in learned] == ["open-folder-id"]
     assert learned[0].app_version == "1.134.0"
 
@@ -1801,7 +1806,13 @@ def test_compiled_memory_preserves_the_content_identity_app_key(tmp_path) -> Non
     key = step_key(workflow.recipe.step_key_namespace, compiled_steps(workflow)[0])
     with ObservationStore(db) as store:
         assert [
-            item.automation_id for item in store.observations_for(key, "synthetic")
+                item.automation_id
+                for item in store.observations_for(
+                    key,
+                    "synthetic",
+                    plugin_id=workflow.plugin_id,
+                    plugin_version=workflow.plugin_version,
+                )
         ] == ["synthetic-control-id"]
         assert store.observations_for(key, "python.exe") == []
 

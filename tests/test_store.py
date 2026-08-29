@@ -91,3 +91,55 @@ def test_store_creates_its_parent_directory(tmp_path):
     with ObservationStore(nested) as store:
         store.record("k", "app.exe", _obs())
     assert nested.exists()
+
+
+def test_plugin_versions_never_share_learned_observations(tmp_path):
+    path = tmp_path / "kb.sqlite"
+    with ObservationStore(path) as store:
+        store.record(
+            "k",
+            "app.exe",
+            _obs(),
+            plugin_id="ghostcursor.app",
+            plugin_version="1.0.0",
+        )
+        assert len(
+            store.observations_for(
+                "k",
+                "app.exe",
+                plugin_id="ghostcursor.app",
+                plugin_version="1.0.0",
+            )
+        ) == 1
+        assert store.observations_for(
+            "k",
+            "app.exe",
+            plugin_id="ghostcursor.app",
+            plugin_version="2.0.0",
+        ) == []
+
+
+def test_legacy_rows_are_quarantined_and_never_hydrated(tmp_path):
+    import sqlite3
+
+    path = tmp_path / "legacy.sqlite"
+    connection = sqlite3.connect(path)
+    connection.executescript(
+        """
+        CREATE TABLE observations (
+            step_key TEXT NOT NULL, app_id TEXT NOT NULL,
+            app_version TEXT NOT NULL, automation_id TEXT NOT NULL,
+            control_type TEXT, locales_observed TEXT NOT NULL DEFAULT '[]',
+            last_seen_at TEXT, ok_count INTEGER NOT NULL DEFAULT 1,
+            PRIMARY KEY (step_key, app_id, app_version, automation_id)
+        );
+        INSERT INTO observations VALUES
+            ('k','app.exe','1.0','legacy-id','Button','[]',NULL,1);
+        """
+    )
+    connection.commit()
+    connection.close()
+
+    with ObservationStore(path) as store:
+        assert store.quarantined_legacy_count() == 1
+        assert store.observations_for("k", "app.exe") == []
