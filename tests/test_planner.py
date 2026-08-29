@@ -268,8 +268,9 @@ def test_compiled_registry_is_the_execution_authority():
     specs = planner.compiled_registry()
     assert set(specs) == {
         "EXPORT_DATA", "CREATE_DOCUMENT", "OPEN_SETTINGS",
-        "OPEN_FOLDER", "OPEN_TERMINAL",
+        "OPEN_EXTENSIONS", "OPEN_FOLDER", "OPEN_TERMINAL",
     }
     assert specs["CREATE_DOCUMENT"].recipe_path is None
     assert specs["OPEN_SETTINGS"].recipe_path is None
+    assert specs["OPEN_EXTENSIONS"].recipe_path is not None
     assert specs["OPEN_FOLDER"].recipe_path is not None

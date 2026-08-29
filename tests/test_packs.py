@@ -12,7 +12,7 @@ def test_builtin_packs_load_and_validate_recipes():
 
     assert {pack.pack_id for pack in packs} == {"synthetic", "notepad", "vscode"}
     assert {intent for pack in packs for intent in pack.intent_ids} >= {
-        "EXPORT_DATA", "OPEN_FOLDER", "OPEN_TERMINAL"
+        "EXPORT_DATA", "OPEN_EXTENSIONS", "OPEN_FOLDER", "OPEN_TERMINAL"
     }
 
 

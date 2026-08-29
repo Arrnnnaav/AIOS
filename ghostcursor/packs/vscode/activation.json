@@ -1,6 +1,24 @@
 {
-  "activation_generation": 1,
+  "activation_generation": 2,
   "intents": {
+    "OPEN_EXTENSIONS": {
+      "active_adoption_id": "accept-open-extensions-1",
+      "adoptions": {
+        "accept-open-extensions-1": {
+          "accepted_application_identity": {"kind": "executable_version", "value": "1.135.0.0"},
+          "accepted_intent": {"path": "intents/open_extensions.f4c5f6a24ab49466.json", "sha256": "f4c5f6a24ab494660fa51cd9b1676ed437cc79c5877eb735b34607771446e025"},
+          "accepted_pack": {"path": "pack/vscode.185cd7431e4f7e5e.json", "sha256": "185cd7431e4f7e5ecd2d9e372a15690edd496a26667bafbb59f218762bb2f992"},
+          "adopted_at": "2026-08-29T10:50:36Z",
+          "evidence": {"path": "docs/evidence/open-extensions-candidate-acceptance.md", "sha256": "18710dc4500c8b372e2a28142b3daa5f6ca112e68f96140eb77a7ca504998a51"},
+          "recipe": {"path": "recipes/open_extensions.b749cca0ff2f1292.json", "sha256": "b749cca0ff2f12929321effc46383baba7816bfd5b043e1f94e4e38e3ea1cca7"},
+          "review_commit": "9af7cb9af0c3cb1c26acb898f741331547bd8a5c",
+          "reviewer_id": "independent-d032-reviewer",
+          "supersedes_adoption_id": null,
+          "supersedes_recipe_sha256": null
+        }
+      },
+      "intent": {"path": "intents/open_extensions.f4c5f6a24ab49466.json", "sha256": "f4c5f6a24ab494660fa51cd9b1676ed437cc79c5877eb735b34607771446e025"}
+    },
     "OPEN_FOLDER": {
       "active_adoption_id": "accept-open-folder-1",
       "adoptions": {

@@ -597,18 +597,25 @@ def test_the_candidates_live_outside_the_trusted_pack_root() -> None:
     assert resolved != trusted
 
 
-def test_production_index_does_not_reach_the_candidate_graph() -> None:
-    """Committing a candidate must not make it discoverable.
-
-    Production's installed index names its own pack directories. The candidate
-    has a separate index only so a temporary catalog can verify the complete
-    graph before acceptance; that index is never a production root.
-    """
-    from ghostcursor.packs.activation import load_catalog
+def test_production_installation_uses_the_accepted_bytes_not_the_candidate_root() -> None:
+    """Adoption copies exact bytes; production never executes quarantine paths."""
+    from ghostcursor.packs.activation import IntentAvailability, load_catalog
 
     catalog = load_catalog(REPO_ROOT)
     assert set(catalog.packs) == {"common", "notepad", "synthetic", "vscode"}
-    assert "OPEN_EXTENSIONS" not in catalog.packs["vscode"].intents
+    intent = catalog.packs["vscode"].intents["OPEN_EXTENSIONS"]
+    assert intent.availability is IntentAvailability.ACTIVE
+    assert intent.active_adoption is not None
+    assert intent.active_adoption.recipe.path == (
+        "recipes/open_extensions.b749cca0ff2f1292.json"
+    )
+    for kind, relative in {
+        "intent": "vscode/intents/open_extensions.f4c5f6a24ab49466.json",
+        "recipe": "vscode/recipes/open_extensions.b749cca0ff2f1292.json",
+    }.items():
+        installed = REPO_ROOT / "ghostcursor" / "packs" / relative
+        candidate = CANDIDATE_ROOT / relative
+        assert installed.read_bytes() == candidate.read_bytes(), kind
 
 
 def test_the_production_registry_never_scans_the_candidate_directory() -> None:

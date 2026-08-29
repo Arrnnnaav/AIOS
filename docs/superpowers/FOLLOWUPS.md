@@ -308,7 +308,7 @@ normalised name on a selector, which restores exact-rung semantics without
 losing observation fidelity — a better fix than widening rung 2 globally.
 
 
-## Declarative workflow compiler (Tasks 1-11 implemented; candidate review pending)
+## Declarative workflow compiler (Tasks 1-12 implemented; final regression pending)
 
 Moved out of `CLAUDE.md` under D071: unresolved work is owned here, not by the
 rules file.
@@ -321,17 +321,18 @@ rules file.
 
 The design and plan passed independent D032 review through `af47bcf`. Task 10
 was closed by owner direction after the full recertification reproduced on
-`1ba371a` and was recorded in `41682ee`. Task 11's quarantined, data-only Open
-Extensions candidate is committed at `d26d2d8`. Do not redesign or restart
-Tasks 1-11; independently review that candidate before its Task 12 acceptance.
+`1ba371a` and was recorded in `41682ee`. Task 11's data-only Open Extensions
+candidate is committed at `d26d2d8`; its 3/3 evidence and D032 approval are at
+`9af7cb9`. Do not redesign or restart Tasks 1-12. Task 13 owns final regression,
+documentation, and handoff.
 
 ### Recipe schema v2 and the declarative workflow compiler
 
 Built around the two measured selector strategies, `provider_exact` and
 `bounded_descendants`. Recipes declare strategy; the compiler never infers it.
 
-**State/trigger:** compiler baseline closed through plan Task 10; Task 11 is a
-quarantined candidate and grants no production authority.
+**State/trigger:** compiler and all four workflows are active under schema v2;
+Task 13 remains.
 
 ### Declarative intent registration
 
@@ -348,20 +349,40 @@ workflow-specific change under `ghostcursor/**/*.py`. The proof is the whole
 diff from the independently approved compiler baseline through adopted Open
 Extensions containing no such Python.
 
-**State/trigger:** Tasks 7-11 are implemented. Begin Task 12 only after
-independent review of the exact `d26d2d8` candidate bytes.
+**State/trigger:** Tasks 7-12 are implemented. Task 13 must verify the complete
+baseline-to-adoption proof before any release merge.
 
 ### Acceptance budget
 
 At least twelve successful human-driven real-desktop runs: 3/3 each for
 Synthetic Export, Open Folder, Open Terminal, and Open Extensions. The first
-nine are complete and recorded in
-`docs/evidence/schema-v2-candidate-acceptance.md`; Open Folder was UIA-only.
-Application identity drift resets affected campaigns and may increase the
-total. Open Extensions still requires its own 3/3 on its exact candidate bytes.
+nine are recorded in `docs/evidence/schema-v2-candidate-acceptance.md`; Open
+Extensions' 3/3 is recorded in
+`docs/evidence/open-extensions-candidate-acceptance.md`. All twelve ran against
+the exact bytes and application identities ultimately adopted. Application
+identity drift resets affected campaigns and may increase the total.
 
-**State/trigger:** Task 8 complete; Task 12 remains after the compiler baseline
-review and Task 11 candidate.
+**State/trigger:** complete through Task 12; Task 13 re-runs the non-desktop
+gates and audits the committed twelve-run record.
+
+### Open Extensions action-visibility support boundary
+
+Task 12 demonstrated Open Extensions on VS Code `1.135.0.0` with Extensions
+pinned in the Activity Bar, no temporary restart badge in its accessible name,
+and Explorer selected before each run. The schema has no declarative
+precondition that expresses those UI-configuration facts, so the adoption
+record binds the exact executable version and evidence digest while this entry
+owns the narrower measured support boundary.
+
+The two excluded configurations fail closed. When Extensions is unpinned, the
+bounded TabItem walk exposes `Additional Views` but no Extensions control. When
+a restart badge expands the accessible name, the exact provider query returns
+no match. Neither state grounds a different action.
+
+**Trigger:** reopen when a supported deployment needs hidden/unpinned Activity
+Bar items or badge-bearing dynamic accessible names. Add a reviewed,
+declarative way to express the prerequisite or stable selector property; do
+not add one observed badge string as a synonym or workflow-specific Python.
 
 ### Unresolved — the original OPEN_FOLDER acceptance timeout
 

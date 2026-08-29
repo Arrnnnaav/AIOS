@@ -874,8 +874,8 @@ def test_an_unknown_intent_refuses_before_any_window_is_read() -> None:
     from ghostcursor.packs.workflow import _catalog_entry
 
     catalog, _pack, _intent = _catalog()
-    with pytest.raises(WorkflowUnavailable, match="OPEN_EXTENSIONS"):
-        _catalog_entry(catalog, "OPEN_EXTENSIONS")
+    with pytest.raises(WorkflowUnavailable, match="NOT_A_REAL_INTENT"):
+        _catalog_entry(catalog, "NOT_A_REAL_INTENT")
 
 
 def test_target_narrowing_can_filter_but_never_replace_the_executable_check() -> None:
