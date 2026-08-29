@@ -1,0 +1,21 @@
+{
+  "bundles": [
+    {
+      "bundle_sha256": "381b025cf582672a48ebe490fe6ff8addb212270373fd51e828bf509c588c6a3",
+      "enable_on_first_run": true,
+      "manifest_sha256": "e8a300560f19637f1074ff06e60d80ef553d5c0c53e503c111703250a2d88d3a",
+      "path": "ghostcursor.vscode-1.0.0.ghostplugin",
+      "plugin_id": "ghostcursor.vscode",
+      "version": "1.0.0"
+    },
+    {
+      "bundle_sha256": "4d0065e56df6d5e0e0484684c009ff184f6db051f1f17430ce5711801739a99b",
+      "enable_on_first_run": true,
+      "manifest_sha256": "66f493da5ce642f33867d3e2847e0695e02f3f349b16bc99a974f47c0a621075",
+      "path": "ghostcursor.synthetic-1.0.0.ghostplugin",
+      "plugin_id": "ghostcursor.synthetic",
+      "version": "1.0.0"
+    }
+  ],
+  "schema_version": 1
+}

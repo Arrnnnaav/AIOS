@@ -300,7 +300,9 @@ def test_vscode_terminal_goal_survives_unavailable_model(monkeypatch):
         "Open the integrated terminal in VS Code"
     )[:2] == ("OPEN_TERMINAL", 0.95)
 def test_goal_planner_rejects_a_registered_recipe_outside_trusted_roots():
-    root = planner._ROOT.parent.parent.resolve()
+    from ghostcursor.plugins.platform import production_store
+
+    root = (production_store().root / "catalogs").resolve()
     for spec in planner.compiled_registry().values():
         if spec.recipe_path is not None:
             assert root in spec.recipe_path.resolve().parents

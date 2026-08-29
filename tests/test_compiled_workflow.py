@@ -907,8 +907,8 @@ def test_public_binding_rechecks_authority_before_reading_windows(
     """A disable or update in the authorize-to-bind gap cannot reach UIA."""
     from dataclasses import replace
 
-    from ghostcursor.packs import activation as activation_module
     from ghostcursor.packs import workflow as workflow_module
+    from ghostcursor.plugins import platform as platform_module
 
     catalog, pack, intent = _catalog()
     authorization = _authorization_for(catalog, pack, intent)
@@ -930,7 +930,7 @@ def test_public_binding_rechecks_authority_before_reading_windows(
         changed_pack = replace(pack, intents={intent.intent_id: changed_intent})
         changed_catalog = replace(catalog, packs={pack.pack_id: changed_pack})
 
-    monkeypatch.setattr(activation_module, "load_catalog", lambda _root: changed_catalog)
+    monkeypatch.setattr(platform_module, "load_runtime_catalog", lambda: changed_catalog)
     monkeypatch.setattr(
         workflow_module,
         "live_windows_for",
@@ -940,7 +940,6 @@ def test_public_binding_rechecks_authority_before_reading_windows(
         workflow_module.bind_workflow(
             authorization,
             "open this folder",
-            project_root=PROJECT_ROOT,
         )
 
 

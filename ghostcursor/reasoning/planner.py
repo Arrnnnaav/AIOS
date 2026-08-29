@@ -88,13 +88,12 @@ _ROOT = Path(__file__).resolve().parent
 
 def compiled_registry() -> dict[str, IntentSpec]:
     """Return registrations compiled from the installed v2 catalog."""
-    from ghostcursor.packs.activation import load_catalog
     from ghostcursor.packs.compile import compile_planner
+    from ghostcursor.plugins.platform import load_runtime_catalog
 
-    project_root = _ROOT.parent.parent
     return {
         spec.intent_id: spec
-        for spec in compile_planner(load_catalog(project_root))
+        for spec in compile_planner(load_runtime_catalog())
     }
 
 
@@ -104,22 +103,20 @@ def deterministic_intent(goal: str) -> tuple[str | None, float, str]:
     The evaluation gate calls this same function rather than maintaining a
     second, potentially drifting implementation of deterministic grounding.
     """
-    from ghostcursor.packs.activation import load_catalog
     from ghostcursor.packs.compile import compile_matcher
+    from ghostcursor.plugins.platform import load_runtime_catalog
 
-    project_root = Path(__file__).resolve().parent.parent.parent
-    catalog = load_catalog(project_root)
+    catalog = load_runtime_catalog()
     outcome = compile_matcher(catalog).classify(goal)
     return outcome.intent_id, outcome.confidence, outcome.reason
 
 
 def _production_intent_ids() -> tuple[str, ...]:
     """Return model-visible IDs from the verified v2 catalog only."""
-    from ghostcursor.packs.activation import load_catalog
     from ghostcursor.packs.compile import compile_planner
+    from ghostcursor.plugins.platform import load_runtime_catalog
 
-    project_root = Path(__file__).resolve().parent.parent.parent
-    return tuple(sorted(spec.intent_id for spec in compile_planner(load_catalog(project_root))))
+    return tuple(sorted(spec.intent_id for spec in compile_planner(load_runtime_catalog())))
 
 
 def planner_response_schema(intent_ids: tuple[str, ...]) -> dict:
@@ -441,11 +438,10 @@ def authorize_intent(catalog, goal: str, candidate: IntentCandidate) -> Authoriz
 
 def resolve_model_decision(goal: str, decision: IntentDecision) -> Classification:
     """Apply the v2 model policy without loading or returning a recipe."""
-    from ghostcursor.packs.activation import load_catalog
     from ghostcursor.packs.compile import compile_matcher
+    from ghostcursor.plugins.platform import load_runtime_catalog
 
-    project_root = Path(__file__).resolve().parent.parent.parent
-    catalog = load_catalog(project_root)
+    catalog = load_runtime_catalog()
     # Build once here only to retain this evaluation seam's assertion that the
     # catalog is compilable; authorization owns the actual policy decision.
     compile_matcher(catalog)
@@ -481,12 +477,11 @@ def plan_compiled_goal(
     live target window.  The legacy ``plan_goal`` remains available to the
     model-gate tests until the atomic cutover removes its authority path.
     """
-    from ghostcursor.packs.activation import load_catalog
     from ghostcursor.packs.compile import compile_matcher, compile_planner
     from ghostcursor.packs.workflow import WorkflowUnavailable, bind_workflow
+    from ghostcursor.plugins.platform import load_runtime_catalog
 
-    project_root = Path(__file__).resolve().parent.parent.parent
-    catalog = load_catalog(project_root)
+    catalog = load_runtime_catalog()
     compile_planner(catalog)
     matcher = compile_matcher(catalog)
 
@@ -541,7 +536,6 @@ def plan_compiled_goal(
             authorization.authorized,
             goal,
             target_title_re=target_title_re,
-            project_root=project_root,
         )
     except WorkflowUnavailable as exc:
         return PlanResult(

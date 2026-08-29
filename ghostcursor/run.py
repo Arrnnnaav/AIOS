@@ -139,12 +139,16 @@ def hydrate_steps(
 
     loaded = 0
     for step in steps:
-        observations = store.observations_for(
-            step_key(step_key_namespace, step),
-            app_id,
-            plugin_id=plugin_id,
-            plugin_version=plugin_version,
-        )
+        key = step_key(step_key_namespace, step)
+        if plugin_id == "legacy" and plugin_version == "legacy":
+            observations = store.observations_for(key, app_id)
+        else:
+            observations = store.observations_for(
+                key,
+                app_id,
+                plugin_id=plugin_id,
+                plugin_version=plugin_version,
+            )
         if observations:
             step.target_descriptor.confirmed = observations
             loaded += len(observations)
@@ -196,13 +200,16 @@ def persist_step(
         [observation] if observation is not None else step.target_descriptor.confirmed
     )
     for entry in to_write:
-        store.record(
-            key,
-            app_id,
-            entry,
-            plugin_id=plugin_id,
-            plugin_version=plugin_version,
-        )
+        if plugin_id == "legacy" and plugin_version == "legacy":
+            store.record(key, app_id, entry)
+        else:
+            store.record(
+                key,
+                app_id,
+                entry,
+                plugin_id=plugin_id,
+                plugin_version=plugin_version,
+            )
 
 
 def make_grounder(
@@ -515,8 +522,8 @@ def run_tour_for_workflow(
     exists only inside the developer acceptance harness and is unreachable
     from planning, Ask, and this entry point.
     """
-    from ghostcursor.packs.activation import load_catalog
     from ghostcursor.packs.workflow import live_window_reader
+    from ghostcursor.plugins.platform import load_runtime_catalog
 
     from ghostcursor.overlay import window as overlay_window
 
@@ -524,7 +531,7 @@ def run_tour_for_workflow(
     return _launch_compiled_workflow(
         workflow,
         seconds=seconds,
-        reload_catalog=lambda: load_catalog(project_root),
+        reload_catalog=load_runtime_catalog,
         read_window=live_window_reader(),
         project_root=project_root,
         clock=clock,

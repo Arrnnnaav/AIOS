@@ -317,7 +317,6 @@ def bind_workflow(
     goal: str,
     *,
     target_title_re: str | None = None,
-    project_root: Path,
 ):
     """Bind a freshly authorized intent to one live window, or refuse.
 
@@ -342,11 +341,12 @@ def bind_workflow(
     # inject the loader would let that caller supply the authority this gate
     # is meant to verify, the same self-verifying shape D073 removed from live
     # target validation.
-    from ghostcursor.packs.activation import load_catalog
+    from ghostcursor.plugins.platform import load_runtime_catalog
 
-    catalog = load_catalog(project_root)
+    catalog = load_runtime_catalog()
     pack, intent = _catalog_entry(catalog, authorization.intent_id)
     _verify_authorization(authorization, catalog, pack, intent)
+    project_root = pack.directory.parents[2]
     return _bind_workflow_with_windows(
         catalog,
         pack,

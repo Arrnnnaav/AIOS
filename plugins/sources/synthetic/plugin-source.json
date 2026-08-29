@@ -1,0 +1,33 @@
+{
+  "applications": [
+    {"kind": "content_sha256", "value": "demo_module"
+    }
+  ],
+  "core_compatibility": {
+    "maximum_exclusive": "2.0.0",
+    "minimum": "1.0.0"
+  },
+  "files": [
+    {
+      "destination": "ghostcursor/packs/index.json",
+      "source": "plugins/sources/synthetic/index.json"
+    },
+    {
+      "destination": "docs/evidence/schema-v2-candidate-acceptance.md",
+      "source": "docs/evidence/schema-v2-candidate-acceptance.md"
+    },
+    {
+      "destination": "ghostcursor/demo/synthetic_export_app.py",
+      "source": "ghostcursor/demo/synthetic_export_app.py"
+    }
+  ],
+  "plugin_id": "ghostcursor.synthetic",
+  "signing_key_id": "ghostcursor-release-2026-1",
+  "trees": [
+    {
+      "destination": "ghostcursor/packs/synthetic",
+      "source": "ghostcursor/packs/synthetic"
+    }
+  ],
+  "version": "1.0.0"
+}

@@ -7,6 +7,7 @@ unlisted tests stay in the fast hermetic lane.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -33,6 +34,23 @@ HUNG_MODULES = {
     "test_perception_service_hung.py",
     "test_run_threaded.py",
 }
+
+
+@pytest.fixture(scope="session", autouse=True)
+def isolated_plugin_runtime(tmp_path_factory: pytest.TempPathFactory, request):
+    """No test may bootstrap plugins into the user's real local store."""
+
+    name = "GHOSTCURSOR_PLUGIN_ROOT"
+    previous = os.environ.get(name)
+    os.environ[name] = str(tmp_path_factory.mktemp("plugin-runtime"))
+
+    def restore() -> None:
+        if previous is None:
+            os.environ.pop(name, None)
+        else:
+            os.environ[name] = previous
+
+    request.addfinalizer(restore)
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
