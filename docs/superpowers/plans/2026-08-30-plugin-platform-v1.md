@@ -29,10 +29,11 @@ Source design:
 - [x] Add generic `DataItem` and explicit `window_descendants` grammar under
   D080, without application-specific Python.
 - [x] Author inactive `SELECT_CELL_B2` and `ADD_WORKSHEET` candidate graphs.
-- [ ] Run three human desktop acceptances for `SELECT_CELL_B2`.
-- [ ] Run three human desktop acceptances for `ADD_WORKSHEET`.
-- [ ] Render records, obtain independent review, add adoptions, sign the Excel
-  bundle, and activate it.
+- [x] Run three human desktop acceptances for `SELECT_CELL_B2`.
+- [x] Run three human desktop acceptances for `ADD_WORKSHEET`.
+- [x] Render the six passing records and retain the two excluded attempts.
+- [ ] Obtain independent review, add adoptions, sign the Excel bundle, and
+  activate it.
 
 ## Phase D — closure
 
