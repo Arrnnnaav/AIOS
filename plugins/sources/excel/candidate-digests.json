@@ -1,0 +1,10 @@
+{
+  "artifacts": {
+    "intents/add_worksheet.json": "2bfa3e245bdfc93fc41c8c9c8318cd6d256f15b7017d26b886873d4f1cb9e4e7",
+    "intents/select_cell_b2.json": "4694ddcb3ad6c207edf12e45542bf80ea9705adf15e9c9c08779cbec1683c2f4",
+    "pack/excel.json": "6f98f07ede9c14ddc2c9abe96b018520145243cd7f09c875e422444b8d6f5101",
+    "recipes/add_worksheet.json": "daf27bbf867302cf5a0bc83637cb07df294f213b56c4f48903157183f34d976f",
+    "recipes/select_cell_b2.json": "164f8540c4c4af9439e209b3f3be37c977b5d66b38ebfb4b553586d0e74e5fb2"
+  },
+  "schema_version": 1
+}

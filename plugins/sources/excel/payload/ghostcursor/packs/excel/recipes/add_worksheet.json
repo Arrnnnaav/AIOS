@@ -1,0 +1,57 @@
+{
+  "context_selectors": [],
+  "intent_id": "ADD_WORKSHEET",
+  "schema_version": 2,
+  "selectors": {
+    "add_sheet": {
+      "cardinality": "exactly_one",
+      "control_type": "Button",
+      "names": ["Add Sheet"],
+      "normalise": "none",
+      "result_limit": 4,
+      "strategy": "window_descendants"
+    },
+    "sheet2": {
+      "cardinality": "exactly_one",
+      "control_type": "TabItem",
+      "names": ["Sheet2"],
+      "normalise": "none",
+      "result_limit": 4,
+      "strategy": "window_descendants"
+    }
+  },
+  "step_key_namespace": "add a worksheet in excel",
+  "steps": [
+    {
+      "instruction_text": "Click Add Sheet beside the worksheet tabs.",
+      "preconditions": [],
+      "provenance": {
+        "created_at": "2026-08-30",
+        "model": "none",
+        "prompt_version": "none",
+        "source_tier": "live-uia-measurement-hand-authored",
+        "source_urls": [
+          "https://support.microsoft.com/en-us/office/insert-or-delete-a-worksheet-19d3d21e-a3b3-4e13-a422-d1f43f1faaf2"
+        ]
+      },
+      "risk": "normal",
+      "target_descriptor": {
+        "claimed": {
+          "name": "Add Sheet",
+          "name_synonyms": [],
+          "ocr_text": null,
+          "visual_description": "the plus button beside the Excel worksheet tabs"
+        },
+        "confirmed": []
+      },
+      "target_selector": "add_sheet",
+      "user_action": "click",
+      "verification_rule": {
+        "args": {},
+        "kind": "element_appears",
+        "selector": "sheet2",
+        "timeout_s": 20.0
+      }
+    }
+  ]
+}

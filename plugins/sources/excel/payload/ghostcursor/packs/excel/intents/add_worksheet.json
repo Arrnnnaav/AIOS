@@ -1,0 +1,36 @@
+{
+  "canonical_target": null,
+  "intent_id": "ADD_WORKSHEET",
+  "rules": [
+    {
+      "phrases": [
+        "add a worksheet in excel",
+        "add a new sheet in excel"
+      ],
+      "tier": "exact"
+    },
+    {
+      "all_of": [
+        {
+          "any_of": [
+            {"token": "add"},
+            {"token": "create"}
+          ]
+        },
+        {
+          "any_of": [
+            {"token": "sheet"},
+            {"token": "worksheet"}
+          ]
+        },
+        {
+          "any_of": [
+            {"alias": "excel_names"}
+          ]
+        }
+      ],
+      "tier": "heuristic"
+    }
+  ],
+  "schema_version": 2
+}

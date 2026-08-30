@@ -1,0 +1,26 @@
+{
+  "activation_generation": 1,
+  "intents": {
+    "ADD_WORKSHEET": {
+      "active_adoption_id": null,
+      "adoptions": {},
+      "intent": {
+        "path": "intents/add_worksheet.json",
+        "sha256": "2bfa3e245bdfc93fc41c8c9c8318cd6d256f15b7017d26b886873d4f1cb9e4e7"
+      }
+    },
+    "SELECT_CELL_B2": {
+      "active_adoption_id": null,
+      "adoptions": {},
+      "intent": {
+        "path": "intents/select_cell_b2.json",
+        "sha256": "4694ddcb3ad6c207edf12e45542bf80ea9705adf15e9c9c08779cbec1683c2f4"
+      }
+    }
+  },
+  "pack": {
+    "path": "pack/excel.json",
+    "sha256": "6f98f07ede9c14ddc2c9abe96b018520145243cd7f09c875e422444b8d6f5101"
+  },
+  "schema_version": 2
+}

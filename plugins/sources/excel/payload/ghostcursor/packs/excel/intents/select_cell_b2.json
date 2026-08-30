@@ -1,0 +1,40 @@
+{
+  "canonical_target": null,
+  "intent_id": "SELECT_CELL_B2",
+  "rules": [
+    {
+      "phrases": [
+        "select cell b2 in excel",
+        "go to cell b2 in excel"
+      ],
+      "tier": "exact"
+    },
+    {
+      "all_of": [
+        {
+          "any_of": [
+            {"token": "select"},
+            {"token": "go"}
+          ]
+        },
+        {
+          "any_of": [
+            {"token": "cell"}
+          ]
+        },
+        {
+          "any_of": [
+            {"token": "b2"}
+          ]
+        },
+        {
+          "any_of": [
+            {"alias": "excel_names"}
+          ]
+        }
+      ],
+      "tier": "heuristic"
+    }
+  ],
+  "schema_version": 2
+}
