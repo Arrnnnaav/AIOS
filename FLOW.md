@@ -35,13 +35,14 @@ developer store. Learned observations are scoped by plugin id and version.
 With no enabled compatible plugin the merged catalog is empty, so neither a
 deterministic nor model-proposed intent can reach target resolution.
 
-The installed catalog currently exposes four active workflows: Synthetic
-Export, Open Folder, Open Terminal, and Open Extensions. Open Extensions was
-added and activated through intent, recipe, evidence, and activation data; the
-fixed proof range `41682ee..2736d1b` contains no production Python change.
-Those workflows now arrive from the signed Synthetic and VS Code bundles.
-The two-workflow Excel plugin is quarantined and inactive until its 3/3 + 3/3
-desktop campaign and independent activation review are complete.
+The installed catalog currently exposes six active workflows: Synthetic
+Export; Open Folder, Open Terminal, and Open Extensions in VS Code; and
+Select Cell B2 and Add Worksheet in Excel. They arrive from signed Synthetic,
+VS Code, and Excel bundles. The Excel workflows use the generic explicit
+`window_descendants` strategy, passed 3/3 + 3/3 human desktop acceptance on
+Excel `16.0.20326.20112`, and were activated only after independent review of
+the exact rendered evidence. No Excel-specific production Python participates
+in planning, perception, grounding, verification, or execution.
 
 How execution actually travels between files, functions, and modules — what calls
 what, in what order. Updated as the codebase grows. The "you are here" marker at

@@ -76,7 +76,7 @@ The signed built-ins are `ghostcursor.vscode` and `ghostcursor.synthetic`; they
 preserve the four independently accepted declarative workflows from the schema
 v2 milestone.
 
-`ghostcursor.excel` is a quarantined candidate for Excel
+`ghostcursor.excel` was quarantined and is now a signed active plugin for Excel
 `16.0.20326.20112` with two workflows:
 
 - `SELECT_CELL_B2`: one `DataItem` named and identified as `B2`, verified by
@@ -89,11 +89,12 @@ authorized workbook HWND, but not through provider-side exact or type-filtered
 queries. D080 therefore adds the generic, explicit `window_descendants`
 strategy. It is never an automatic fallback and adds no Excel branch to core.
 
-Excel remains inactive until each workflow passes three human desktop runs on
-the reviewed bytes, run records are rendered into durable evidence, application
-version and configuration limits are recorded, and an independent D032 review
-approves activation. A feasibility measurement or timed-out readiness attempt
-is not acceptance evidence.
+Excel remained inactive until each workflow passed three human desktop runs on
+the reviewed bytes, run records were rendered into durable evidence, the exact
+application version was recorded, and an independent D032 review approved the
+evidence. Two excluded attempts remain in the record without inferred causes.
+The signed activation binds that reviewed evidence; feasibility measurements
+and readiness attempts are not acceptance evidence.
 
 ## v1 gates
 

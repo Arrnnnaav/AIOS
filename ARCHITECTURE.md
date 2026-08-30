@@ -11,7 +11,10 @@ flowchart LR
     Planner[Bounded goal planner\nregistered intent IDs only]
     HintAI[Screen-aware local inference\nobserved approved IDs only]
     Eval[Three-lane model gate\nraw quality + final authority + read-only UIA]
-    Packs[Indexed schema-v2 catalog\nactivation + digest-bound artifacts]
+    Bundle[Signed .ghostplugin bundles\nmanifest + complete digest inventory]
+    PStore[PluginStore\natomic lifecycle + compatibility state]
+    Packs[Merged active catalog\nplugin provenance + digest-bound artifacts]
+    Auth[authorize_intent\none canonical authority checkpoint]
     Recipe[CompiledWorkflow\nactive adoption + bound HWND]
 
     subgraph Perception[Perception]
@@ -55,8 +58,11 @@ flowchart LR
     User --> Bar
     Args --> Planner
     Bar --> Planner
-    Planner --> Recipe
-    Packs --> Recipe
+    Bundle --> PStore
+    PStore --> Packs
+    Planner --> Auth
+    Packs --> Auth
+    Auth --> Recipe
     Recipe --> Loop
     Service --> UIA
     Service --> Focus
@@ -90,7 +96,7 @@ flowchart LR
     classDef done fill:#d9f2e6,stroke:#16734a,color:#123b2a;
     classDef partial fill:#fff0c2,stroke:#9a6b00,color:#4a3500;
     classDef missing fill:#f5dddd,stroke:#a33a3a,color:#521b1b,stroke-dasharray: 6 4;
-    class User,Args,Bar,Planner,HintAI,Eval,Packs,Recipe,UIA,Service,Focus,Warm,Capture,OCR,Tier2,Health,Ground,Loop,Verify,Fresh,Renderer,Overlay,Paint,Safety,Identity,Store,Promote done;
+    class User,Args,Bar,Planner,HintAI,Eval,Bundle,PStore,Packs,Auth,Recipe,UIA,Service,Focus,Warm,Capture,OCR,Tier2,Health,Ground,Loop,Verify,Fresh,Renderer,Overlay,Paint,Safety,Identity,Store,Promote done;
     class VLM,Package,AIOS missing;
 ```
 
@@ -139,8 +145,13 @@ flowchart LR
 - Later runs hydrate those observations; OCR data is explicitly excluded from
   persistence.
 - Natural-language planning and screen-aware target selection are bounded by
-  compiled intent IDs, the indexed digest-verified catalog, active adoption
-  records, and live observed AutomationIds.
+  compiled intent IDs, signed plugin bundles, the merged digest-verified
+  active catalog, active adoption records, and live observed AutomationIds.
+- `PluginStore` owns atomic install/enable/disable/uninstall, compatibility
+  state, and version-scoped observation cleanup. `authorize_intent()` is the
+  one checkpoint shared by deterministic and model-assisted candidates; bind
+  rechecks the catalog digest before it enumerates a target, and a running tour
+  aborts within one observation tick when lifecycle authority changes.
 - Registration bounds the model's vocabulary but does not grant semantic
   authority. Any model-selected intent with a recipe must agree with the
   deterministic classifier's grounded candidate; otherwise only a trusted
@@ -151,7 +162,7 @@ flowchart LR
   directly, and has an explicit read-only interactive lane against a
   provenance-tagged Synthetic Export UIA fixture. Dataset 1.0.0 is
   owner-reviewed and frozen before the trusted baseline.
-- The VS Code pack has three validated recipes. Open Folder uses a provider-side
+- The signed VS Code plugin has three validated recipes. Open Folder uses a provider-side
   exact-name query plus title verification. Open Terminal uses a separate
   executable-bounded Button surface, a human `Ctrl+\`` instruction, and exact
   `Terminal Section` appearance verification. Already-present state completes
@@ -160,7 +171,11 @@ flowchart LR
   one exact provider query for the `Extensions (Ctrl+Shift+X)` `TabItem` and
   verifies `Installed Section` appears; its narrower pinned/no-restart-badge
   support boundary is recorded in `FOLLOWUPS.md`.
-- Synthetic Export is the fourth active workflow and the controlled fixture
+- The signed Excel plugin adds Select Cell B2 and Add Worksheet through generic
+  declarative `window_descendants` selectors. Both passed 3/3 human desktop
+  acceptance on Excel `16.0.20326.20112`; no Excel-specific production Python
+  or executable adapter exists.
+- Synthetic Export is one of six active workflows and the controlled fixture
   used by the no-action model and pixel gates.
 - The logging-only foreground watcher matches installed packs without starting
   tours or displaying UI.

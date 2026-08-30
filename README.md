@@ -7,10 +7,11 @@ state. It never moves the mouse or sends keyboard input.
 
 The first real user is a new developer learning VS Code. Three validated
 real-app workflows guide `Open a folder in VS Code`, `Open the integrated
-terminal in VS Code`, and `Open Extensions in VS Code`; each passed three
-successful human-driven desktop runs. Synthetic Export passed the same 3/3
-gate. The same natural-language planner is used by the CLI and the middle-right
-Ask control rail.
+terminal in VS Code`, and `Open Extensions in VS Code`. A signed Excel plugin
+adds `Select cell B2` and `Add a worksheet`; both passed three successful
+human-driven desktop runs on Excel `16.0.20326.20112`. Synthetic Export passed
+the same 3/3 gate. The same natural-language planner is used by the CLI and the
+middle-right Ask control rail.
 
 ## What makes the AI bounded
 
@@ -39,8 +40,8 @@ first complete draft measured 86.7% raw semantic accuracy and 100% on exact
 supported goals; four high-confidence over-commitments were denied authority by
 the deterministic D058 policy. Owner-reviewed dataset 1.0.0 is frozen, and the
 same 86.7% result plus every hard gate passed in two consecutive post-freeze
-interactive runs. This is the accepted Qwen incumbent baseline. Final compiler
-recertification against the four-workflow catalog again passed twice and
+interactive runs. This is the accepted Qwen incumbent baseline. The pre-plugin
+compiler recertification against the four-workflow catalog passed twice and
 measured 90% (27/30) raw intent accuracy, 100% on exact supported goals, and
 zero unauthorized plans.
 
@@ -53,8 +54,8 @@ property here, not a measure of what GhostCursor can do.
 
 ## Run the validated workflows
 
-Requirements: Windows, Python 3.12, VS Code for the real-app workflow, and an
-optional local Ollama server.
+Requirements: Windows, Python 3.12, VS Code or Excel for the corresponding
+real-app workflow, and an optional local Ollama server.
 
 Synthetic Export:
 
@@ -110,6 +111,24 @@ item and completes only after VS Code exposes `Installed Section`. The accepted
 configuration used VS Code `1.135.0.0`, Extensions pinned, no temporary restart
 badge, and Explorer selected. Hidden/unpinned or badge-altered controls fail
 closed rather than selecting a different action.
+
+Excel on the accepted proof workbook:
+
+```powershell
+py -3.12 -m ghostcursor.run `
+  --goal "Select cell B2 in Excel" `
+  --target "plugin-excel-proof.xlsx - Excel" `
+  --seconds 60
+
+py -3.12 -m ghostcursor.run `
+  --goal "Add a worksheet in Excel" `
+  --target "plugin-excel-proof.xlsx - Excel" `
+  --seconds 60
+```
+
+The Excel plugin uses declarative `DataItem`, `Button`, and `TabItem`
+selectors over the already-authorized workbook window. It contains no
+executable adapter or Excel-specific production Python.
 
 `--target` narrows matching titles; it never authorizes choosing among several
 remaining windows. If more than one VS Code window matches, use a title fragment
@@ -181,6 +200,11 @@ cannot close the milestone.
 - `docs/evidence/schema-v2-candidate-acceptance.md` and
   `docs/evidence/open-extensions-candidate-acceptance.md` record all twelve
   successful schema-v2 acceptance runs against the activated bytes.
+- `plugins/sources/excel/payload/docs/evidence/excel-plugin-acceptance.md`
+  records the six successful Excel runs and two excluded attempts; the signed
+  activation binds that independently reviewed evidence.
+- `docs/evidence/plugin-platform-v1-closure.md` records signed-bundle digests,
+  the platform mutation audit, and the final serial regression lanes.
 - `docs/evidence/never-fabricate-matrix.md` records supported and unsupported
   planner behavior with Qwen available and unavailable.
 - `docs/evidence/novice-vscode-study.md` is the fixed participant protocol;
@@ -194,9 +218,10 @@ cannot close the milestone.
 ## Honest scope
 
 Open Folder, Open Terminal, and Open Extensions are the three proven real VS
-Code workflows. The terminal controls expose no stable AutomationIds, so
-GhostCursor deliberately does not persist them or claim ID-based wrong-action
-feedback for that flow. Open Extensions currently requires the measured pinned
-Activity Bar configuration described above.
+Code workflows. Select Cell B2 and Add Worksheet are the two proven Excel
+workflows, version-bound to `16.0.20326.20112`. The terminal controls expose no
+stable AutomationIds, so GhostCursor deliberately does not persist them or
+claim ID-based wrong-action feedback for that flow. Open Extensions currently
+requires the measured pinned Activity Bar configuration described above.
 Installer, tray, startup automation, web retrieval, filesystem verification,
 VLM tier 3, and additional application packs are deliberately deferred.

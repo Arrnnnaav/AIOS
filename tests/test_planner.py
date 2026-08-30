@@ -316,8 +316,14 @@ def test_production_planning_consults_the_compiled_matcher(monkeypatch):
 def test_compiled_registry_is_the_execution_authority():
     specs = planner.compiled_registry()
     assert set(specs) == {
-        "EXPORT_DATA", "CREATE_DOCUMENT", "OPEN_SETTINGS",
-        "OPEN_EXTENSIONS", "OPEN_FOLDER", "OPEN_TERMINAL",
+        "ADD_WORKSHEET",
+        "CREATE_DOCUMENT",
+        "EXPORT_DATA",
+        "OPEN_EXTENSIONS",
+        "OPEN_FOLDER",
+        "OPEN_SETTINGS",
+        "OPEN_TERMINAL",
+        "SELECT_CELL_B2",
     }
     assert specs["CREATE_DOCUMENT"].recipe_path is None
     assert specs["OPEN_SETTINGS"].recipe_path is None

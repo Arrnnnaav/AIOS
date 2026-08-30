@@ -3509,3 +3509,39 @@ active index, whose digest already binds the merged catalog used at planning.
 unrecognized application in the future, but it cannot synthesize executable
 intent, selectors, or actions. Both deterministic and model-assisted paths
 must end at the same empty authority when no compatible plugin is enabled.
+
+## D082 — Excel closes the signed, data-only second-application proof
+
+**Decision.** Activate `ghostcursor.excel` 1.0.0 only for executable identity
+`16.0.20326.20112`, with `SELECT_CELL_B2` and `ADD_WORKSHEET` bound to their
+independently reviewed acceptance evidence. Each workflow passed three human
+desktop runs on the exact candidate bytes, one step per run, with UIA-only
+grounding. Two earlier worksheet attempts remain excluded and preserved; the
+records prove operator aborts after verification began and do not prove why
+the operator aborted.
+
+The signed bundle is pinned by manifest digest
+`53122d6d37e99f1e18a5e236d8a2409bea9769c7e53d1e1be2a6eeefffacf3e2`
+and bundle digest
+`a5e4e9e9673696ffff459ba69d1dfaf435b56e60d3b55c415401a99f97dcf00e`.
+Its public signing key is named `ghostcursor-release-2026-2`; no private key is
+stored in the repository. Both adoption records bind evidence digest
+`fcedf7188df76e1e4d85b8ccc24134130baa62d1524df772599a3adaac707e7e`
+and independent review commit
+`381d97f5f376ee586260eb4430595fcff1e2668e`.
+
+**Why this closes the platform proof.** The application adds a new target,
+control vocabulary usage, and two executable workflows through signed data
+alone. It reuses the generic explicit `window_descendants` strategy approved
+by D080 and adds no Excel-specific production Python or executable adapter.
+The final activation tree at `a764c48e306f5587a7ae72d22bf96b6c82d862d9`
+received a separate D032 review recorded in
+`docs/evidence/plugin-platform-v1-activation-review.md`. The full mutation and
+serial regression records live in `docs/evidence/plugin-platform-v1-closure.md`
+rather than being duplicated here.
+
+**Boundary.** This is exact-version evidence, not a compatibility promise for
+other Office builds, arbitrary workbooks, or altered selectors. Widening any
+of those boundaries requires new measured evidence, adoption records, and
+independent review. Installer UI, manager UI, key revocation, marketplace
+distribution, and executable plugin adapters remain deferred.

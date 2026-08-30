@@ -31,20 +31,21 @@ content.
 
 ## Current build status
 
-Two real VS Code workflows are validated and their gates are closed:
-`OPEN_FOLDER` and `OPEN_TERMINAL` (evidence: D047-D057, D069, and
-`docs/evidence/`). The trusted planner, strict application packs, bounded
-screen-aware hint inference, synthetic demo, foreground watcher, perception
-health instrumentation, executable-bounded VS Code grounding, and the vertical
-Ask control rail are implemented.
+Production runs signed, data-only plugins for VS Code, Synthetic Export, and
+Excel. Their active workflows, evidence boundaries, and plugin-platform closure
+are recorded in D077-D082 and `docs/evidence/`. The trusted planner, canonical
+plugin authorization, bounded screen-aware hint inference, foreground watcher,
+perception health instrumentation, executable-bounded grounding, and the
+vertical Ask control rail are implemented.
 
 The submission release is anchored by `submission-pre-model-hardening` (D061).
 **Do not merge or cherry-pick `post-submission/model-durability` into
 `submission/open-track`.** `ghostcursor/inference/ollama.py` and its contract
 tests must remain absent from the release branch.
 
-`post-submission/model-durability` is frozen at the `durability-final` tag. All
-schema-v2 and compiler work belongs to `feature/declarative-workflow-compiler`.
+`post-submission/model-durability` is frozen at the `durability-final` tag.
+Plugin-platform work belongs to `feature/plugin-platform-v1`; do not move it
+onto either protected submission branch.
 
 `OPEN_FOLDER` points at the Welcome page's `Open Folder...` action. The user
 handles the native folder picker; title verification supports full-path goals,
@@ -86,7 +87,7 @@ changes behavior after recording, rerun the affected tests and rerecord that
 clip. Sending invitations and uploading video are external actions and must not
 be claimed from repository edits alone.
 
-Installer, tray, startup, web retrieval, and additional application packs remain
+Installer, tray, startup, web retrieval, and further application packs remain
 deferred; see `docs/superpowers/FOLLOWUPS.md`. The logging-only watcher runs as
 `py -3.12 -m ghostcursor.daemon`.
 
@@ -142,11 +143,13 @@ grammar through a reviewed decision rather than adding application-specific
 Python. Learned observations are scoped to `(plugin_id, plugin_version)`;
 disable retains them and uninstall purges that version.
 
-The Excel source under `plugins/sources/excel/` is an inactive candidate. Its
-feasibility measurement and readiness timeout are not adoption evidence. Do
-not sign or activate it until `SELECT_CELL_B2` and `ADD_WORKSHEET` each pass
-three human desktop runs on the reviewed bytes and the evidence receives an
-independent D032 review.
+The signed `ghostcursor.excel` plugin is active only for Excel
+`16.0.20326.20112`. `SELECT_CELL_B2` and `ADD_WORKSHEET` each passed three
+human desktop runs on the reviewed bytes with UIA-only grounding; their
+adoptions bind the rendered evidence and independent D032 review commit.
+Do not widen the accepted application identity, selectors, or postconditions
+without new acceptance evidence and review. Excel support remains data-only:
+application-specific production Python is prohibited.
 
 The control surface is a vertical middle-right rail, not a horizontal toolbar.
 Compact geometry is 148×192px with Stop/Pause/Ask stacked vertically and
@@ -161,7 +164,7 @@ parent rectangle: Win32 clips them even though their HWNDs exist. The prompt
 must not overlap the right safety rail; closing/submitting restores compact
 geometry.
 
-Both VS Code workflow gates and the Ask behavioral gate are closed. Their
+The VS Code workflow gates and the Ask behavioral gate are closed. Their
 acceptance evidence lives in `docs/evidence/` and D048-D057; do not restate run
 counts here.
 

@@ -32,15 +32,16 @@ Source design:
 - [x] Run three human desktop acceptances for `SELECT_CELL_B2`.
 - [x] Run three human desktop acceptances for `ADD_WORKSHEET`.
 - [x] Render the six passing records and retain the two excluded attempts.
-- [ ] Obtain independent review, add adoptions, sign the Excel bundle, and
+- [x] Obtain independent review, add adoptions, sign the Excel bundle, and
   activate it.
 
 ## Phase D — closure
 
-- [ ] Run every regression lane serially under D025.
-- [ ] Mutation-audit the new platform guards and restore sources by digest.
-- [ ] Independent D032 review of the activation tree.
-- [ ] Update final evidence, architecture, rules, decisions, and Graphify.
+- [x] Run every regression lane serially under D025.
+- [x] Mutation-audit the new platform guards and restore sources by digest.
+- [x] Independent D032 review of the activation tree.
+- [x] Update final evidence, architecture, rules, decisions, and Graphify.
 
-The candidate remains quarantined while any Phase C checkbox is open. Do not
-replace a missing desktop action or independent review with generated evidence.
+The Excel source remained quarantined until every Phase C checkbox closed.
+Generated evidence never replaced a missing desktop action or independent
+review.
