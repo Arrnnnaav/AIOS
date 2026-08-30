@@ -85,12 +85,10 @@ def test_cell_campaign_must_remain_on_one_captured_window() -> None:
         check(campaigns, excluded, CANDIDATE)
 
 
-def test_worksheet_campaign_preserves_three_clean_reopenings() -> None:
+def test_each_record_requires_a_positive_captured_hwnd() -> None:
     campaigns, excluded = _loaded()
-    campaigns["ADD_WORKSHEET"][2]["target"]["hwnd"] = campaigns[
-        "ADD_WORKSHEET"
-    ][1]["target"]["hwnd"]
-    with pytest.raises(EvidenceRefused, match="three clean reopenings"):
+    campaigns["ADD_WORKSHEET"][2]["target"]["hwnd"] = 0
+    with pytest.raises(EvidenceRefused, match="target differs"):
         check(campaigns, excluded, CANDIDATE)
 
 

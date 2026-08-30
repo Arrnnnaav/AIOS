@@ -41,9 +41,9 @@ Results:
   clicked declaratively selected `Button` `Add Sheet`; completion
   required a newly appearing `TabItem` named `Sheet2`.
 
-The operator reset the proof workbook to one `Sheet1` and reopened it
-before each counted `ADD_WORKSHEET` run. The three distinct captured
-HWNDs independently preserve the reopenings in the run records.
+The three counted worksheet records carry three distinct captured HWND
+values. The records do not establish why the handles differ, so this
+evidence makes no claim about reset or reopen operations.
 
 ## Excluded attempts
 
@@ -54,8 +54,8 @@ Two earlier worksheet attempts are retained but do not count toward 3/3:
 | `excluded/add-worksheet-attempt-1.json` | aborted by operator | 0/1 | 9.375s | 20.750s |
 | `excluded/add-worksheet-attempt-2.json` | aborted by operator | 0/1 | 22.172s | 39.594s |
 
-The operator observed accumulated worksheet numbering, so the clicks did
-not produce the reviewed `Sheet2` post-state. The operator stopped both
-runs; the harness records independently preserve those aborted outcomes.
-The candidate was not widened to accept an arbitrary sheet; the workbook
-was reset and the exact reviewed postcondition was then demonstrated 3/3.
+The harness records establish only that both attempts reached verification
+and were then aborted by the operator at `0/1`. They do not establish an
+abort cause, and none is claimed. The candidate was not widened to accept
+an arbitrary sheet; the exact reviewed `Sheet2` postcondition was later
+demonstrated 3/3.

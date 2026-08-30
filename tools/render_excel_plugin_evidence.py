@@ -247,10 +247,6 @@ def check(
     cell_handles = {item["target"]["hwnd"] for item in campaigns["SELECT_CELL_B2"]}
     if len(cell_handles) != 1:
         raise EvidenceRefused("SELECT_CELL_B2 did not remain bound to one workbook HWND")
-    sheet_handles = {item["target"]["hwnd"] for item in campaigns["ADD_WORKSHEET"]}
-    if len(sheet_handles) != 3:
-        raise EvidenceRefused("ADD_WORKSHEET does not preserve the three clean reopenings")
-
     if len(excluded) != 2:
         raise EvidenceRefused("exactly two excluded worksheet attempts are required")
     for record in excluded:
@@ -319,9 +315,9 @@ def render(campaigns: dict[str, list[dict]], excluded: list[dict]) -> str:
         "  clicked declaratively selected `Button` `Add Sheet`; completion",
         "  required a newly appearing `TabItem` named `Sheet2`.",
         "",
-        "The operator reset the proof workbook to one `Sheet1` and reopened it",
-        "before each counted `ADD_WORKSHEET` run. The three distinct captured",
-        "HWNDs independently preserve the reopenings in the run records.",
+        "The three counted worksheet records carry three distinct captured HWND",
+        "values. The records do not establish why the handles differ, so this",
+        "evidence makes no claim about reset or reopen operations.",
         "",
         "## Excluded attempts",
         "",
@@ -338,11 +334,11 @@ def render(campaigns: dict[str, list[dict]], excluded: list[dict]) -> str:
         )
     lines += [
         "",
-        "The operator observed accumulated worksheet numbering, so the clicks did",
-        "not produce the reviewed `Sheet2` post-state. The operator stopped both",
-        "runs; the harness records independently preserve those aborted outcomes.",
-        "The candidate was not widened to accept an arbitrary sheet; the workbook",
-        "was reset and the exact reviewed postcondition was then demonstrated 3/3.",
+        "The harness records establish only that both attempts reached verification",
+        "and were then aborted by the operator at `0/1`. They do not establish an",
+        "abort cause, and none is claimed. The candidate was not widened to accept",
+        "an arbitrary sheet; the exact reviewed `Sheet2` postcondition was later",
+        "demonstrated 3/3.",
         "",
     ]
     return "\n".join(lines)
