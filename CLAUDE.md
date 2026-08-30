@@ -120,6 +120,15 @@ Release policy is locked: feature development ends 30 August at 20:00 IST;
 freezes at 31 August end-of-day; 1 September is upload/paste/verify only; and
 2 September is an emergency link/upload/form buffer with no code changes.
 
+**User-authorized post-freeze exception (D083).** On 31 August 2026 the owner
+explicitly authorized the pilot-ready product shell and constrained task-graph
+program to proceed on `feature/product-shell-task-graphs`. This exception does
+not reopen `main`, `submission/open-track`, `post-submission/model-durability`,
+or `feature/plugin-platform-v1`; those lines retain the freeze above. Keep the
+new work and its commits on the dedicated branch until its own review and merge
+decision. The exception grants feature-development scope only; it does not
+waive D018, D025, D032, evidence, acceptance, or no-input-synthesis gates.
+
 After every finalized slice, update `DECISIONS.md`, `FLOW.md`, and this file,
 independently review the documentation against the implementation, run the
 relevant regression tests, refresh Graphify when available, and commit the

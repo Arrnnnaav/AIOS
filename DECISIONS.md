@@ -3545,3 +3545,24 @@ other Office builds, arbitrary workbooks, or altered selectors. Widening any
 of those boundaries requires new measured evidence, adoption records, and
 independent review. Installer UI, manager UI, key revocation, marketplace
 distribution, and executable plugin adapters remain deferred.
+
+## D083 — Product-shell and task-graph work proceeds on an isolated post-freeze branch
+
+**Decision.** The owner explicitly authorized the pilot-ready native product
+shell and constrained task-graph program to proceed after the 30 August feature
+freeze. All mutations belong on `feature/product-shell-task-graphs`, branched
+from plugin-platform closure `b567092`. The protected submission branches,
+`main`, and the closed `feature/plugin-platform-v1` line remain unchanged.
+
+This is a scoped release-policy exception, not a safety exception. The new
+branch remains bound by the existing authority, no-input-synthesis, evidence,
+mutation, isolated-desktop-lane, and independent-review rules. No unfinished
+product-shell or task-graph work may be described as part of the frozen
+submission or plugin-platform milestones.
+
+**Reason.** The requested program is intentionally larger than a release fix:
+it adds a user-facing shell, cross-process plugin-store coordination, local
+session diagnostics, and a reviewed single-plugin DAG composition layer before
+deep PowerPoint and Excel coverage. Isolating it preserves the exact reviewed
+trees while allowing the owner-authorized follow-on to start without rewriting
+the historical freeze as though it had never existed.
