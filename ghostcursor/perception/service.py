@@ -823,11 +823,13 @@ def run_observation_plan(
 ) -> TickObservation:
     """Observe every selector in `plan` in one tick.
 
-    `walk_all()` performs one bounded descendant enumeration for every
-    bounded selector; each selector's declared control type is then applied
-    before names and cardinality. `walk_for(control_type)` remains as the
-    focused-test compatibility seam. `query_for(control_type, name)` performs
-    one provider `FindAll`; `make_info(raw)` wraps a provider result.
+    `walk_all()` performs one complete enumeration of the already-bound target
+    window when the plan explicitly declares `window_descendants`, or one
+    shared enumeration when several bounded type groups would otherwise repeat
+    the same backend read. Each selector's declared control type is applied
+    before names and cardinality. `walk_for(control_type)` remains the narrower
+    one-type path. `query_for(control_type, name)` performs one provider
+    `FindAll`; `make_info(raw)` wraps a provider result.
 
     **Each backend group is read exactly once.** Bounded selectors share one
     descendant enumeration and provider queries perform one `FindAll`. Every
@@ -851,7 +853,7 @@ def run_observation_plan(
     observed: list[uia.Candidate] = []
 
     shared_by_type = None
-    if plan.traversals and walk_all is not None:
+    if (plan.traversals or plan.window_selector_ids) and walk_all is not None:
         try:
             walked = list(walk_all())
             shared_by_type = {}
@@ -860,6 +862,24 @@ def run_observation_plan(
                 shared_by_type.setdefault(control_type, []).append(control)
         except Exception as exc:  # noqa: BLE001 - re-raised as a typed fault
             raise uia.ProviderQueryFault(f"bounded walk failed: {exc}") from exc
+
+    if plan.window_selector_ids:
+        if shared_by_type is None:
+            raise uia.ProviderQueryFault(
+                "window-descendant plan has no complete window walk"
+            )
+        for selector_id in plan.window_selector_ids:
+            selector = plan.selectors[selector_id]
+            candidates = shared_by_type.get(selector.control_type, [])
+            chosen = uia.bounded_candidates(
+                lambda candidates=candidates: candidates,
+                selector.names,
+                limit=selector.result_limit,
+                cardinality=selector.cardinality,
+                normalise=selector.normalise,
+            )
+            results[selector_id] = tuple(c.element for c in chosen)
+            observed.extend(chosen)
 
     for traversal in plan.traversals:
         # The production path supplies one shared backend enumeration. The

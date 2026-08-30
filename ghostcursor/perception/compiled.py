@@ -120,12 +120,15 @@ def compiled_plan_runner(
     the two agree, and taking it from the workflow makes the pinning explicit
     at the place that would otherwise be free to drift.
 
-    **The traversal shape is chosen by traversal COUNT, from the plan.** One
-    backend enumeration is the unit of cost, so:
+    **The traversal shape is chosen from explicit strategy and traversal
+    count, from the plan.** One backend enumeration is the unit of cost, so:
 
-    - one traversal  -> one type-scoped walk. Strictly narrower than the full
+    - `window_descendants` -> one full read of the captured target HWND. The
+      recipe explicitly accepts that cost; no narrower selector falls back to
+      it when it returns nothing.
+    - one bounded traversal -> one type-scoped walk. Strictly narrower than the full
       tree for the same single enumeration, so there is nothing to trade.
-    - two or more    -> one shared full enumeration, which every traversal then
+    - two or more bounded traversals -> one shared full enumeration, which every traversal then
       filters by its declared control type. Live Synthetic measurement put two
       type-scoped calls over eight seconds against about four for one
       enumeration.
@@ -154,7 +157,7 @@ def compiled_plan_runner(
     plan = workflow.recipe.plan
     # Decided ONCE, from the plan, not per tick: the shape cannot drift between
     # ticks of a single run, and the reason it was chosen stays inspectable.
-    shared = len(plan.traversals) > 1
+    shared = bool(plan.window_selector_ids) or len(plan.traversals) > 1
 
     def _run(_resolved_hwnd: int):
         observation = run_observation_plan(

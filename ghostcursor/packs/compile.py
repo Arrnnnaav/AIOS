@@ -389,6 +389,7 @@ def compile_planner(catalog: VerifiedCatalog) -> tuple["IntentSpec", ...]:
 
 PROVIDER_EXACT = "provider_exact"
 BOUNDED_DESCENDANTS = "bounded_descendants"
+WINDOW_DESCENDANTS = "window_descendants"
 
 EXACTLY_ONE = "exactly_one"
 AT_LEAST_ONE = "at_least_one"
@@ -444,6 +445,12 @@ class ObservationPlan:
     selectors: Mapping[str, CompiledSelector]
     traversals: tuple[BoundedTraversal, ...]
     queries: tuple[ProviderQuery, ...]
+    # Selectors that explicitly license one complete traversal of the bound
+    # target window. Some native providers expose stable items in a full
+    # descendant read but return zero from both FindAll and a type-filtered
+    # walk. This remains window-bounded and data-selected; Electron recipes do
+    # not silently inherit the more expensive strategy.
+    window_selector_ids: tuple[str, ...]
 
     @property
     def selector_ids(self) -> tuple[str, ...]:
@@ -534,12 +541,15 @@ def compile_observation_plan(recipe_value: Mapping[str, Any]) -> ObservationPlan
 
     traversals: dict[str, list[str]] = {}
     queries: dict[tuple[str, ...], list[str]] = {}
+    window_selectors: list[str] = []
     for selector in selectors.values():
         if selector.strategy == BOUNDED_DESCENDANTS:
             traversals.setdefault(selector.control_type, []).append(selector.selector_id)
+        elif selector.strategy == WINDOW_DESCENDANTS:
+            window_selectors.append(selector.selector_id)
         elif selector.strategy == PROVIDER_EXACT:
             queries.setdefault(selector.query_key, []).append(selector.selector_id)
-        else:  # pragma: no cover - the schema admits no third strategy
+        else:  # pragma: no cover - trusted schema admits only these strategies
             raise RecipeCompileError(f"unknown strategy {selector.strategy!r}")
 
     return ObservationPlan(
@@ -554,6 +564,7 @@ def compile_observation_plan(recipe_value: Mapping[str, Any]) -> ObservationPlan
             ProviderQuery(selectors[ids[0]].control_type, selectors[ids[0]].names[0], tuple(ids))
             for ids in queries.values()
         ),
+        window_selector_ids=tuple(window_selectors),
     )
 
 

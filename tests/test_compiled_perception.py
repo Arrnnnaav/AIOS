@@ -1314,6 +1314,60 @@ def test_a_single_traversal_plan_takes_the_type_scoped_walk() -> None:
     assert len(dict(selectors)["open_folder"]) == 1
 
 
+def test_window_descendants_forces_one_full_read_for_one_selector() -> None:
+    """The broader read exists only when the recipe explicitly names it."""
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from test_compiled_workflow import (
+        _adoption,
+        _catalog,
+        _recipe_value,
+        _target,
+        _window,
+    )
+    from ghostcursor.packs.workflow import materialize
+
+    recipe = _recipe_value()
+    recipe["selectors"]["open_folder"]["strategy"] = "window_descendants"
+    recipe["selectors"]["open_folder"]["control_type"] = "DataItem"
+    recipe["selectors"]["open_folder"]["names"] = ["B2"]
+    recipe["selectors"]["open_folder"]["normalise"] = "none"
+    recipe["steps"][0]["verification_rule"] = {
+        "kind": "focus_moves_to",
+        "selector": None,
+        "args": {"automation_id": "B2"},
+        "timeout_s": 20.0,
+    }
+    adoption = _adoption()
+    object.__setattr__(adoption, "recipe_value", recipe)
+    catalog, pack, intent = _catalog(adoption=adoption)
+    workflow = materialize(
+        catalog,
+        pack,
+        intent,
+        "Select cell B2",
+        _target(_window(hwnd=TARGET_HWND)),
+    )
+    calls = []
+
+    def _walk(hwnd, control_type):
+        calls.append((hwnd, control_type))
+        return [_PywinautoControl("B2", "DataItem")]
+
+    selectors, _union, _title = compiled_plan_runner(
+        workflow,
+        walk=_walk,
+        query=lambda hwnd, control_type, name: [],
+        read_title=lambda hwnd: "Book1 - Excel",
+        make_info=PywinautoElementInfo,
+    )(TARGET_HWND)
+
+    assert calls == [(TARGET_HWND, None)]
+    assert len(dict(selectors)["open_folder"]) == 1
+
+
 def test_live_walk_narrows_to_the_declared_control_type() -> None:
     """The production default dispatches; nothing else chooses the shape."""
     from ghostcursor.perception import compiled as compiled_module

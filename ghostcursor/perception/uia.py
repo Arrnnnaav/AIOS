@@ -785,6 +785,11 @@ _UIA_CONTROL_TYPE_PROPERTY = 30003
 #: silently start accepting control types no recipe has been reviewed against.
 _CONTROL_TYPE_IDS = {
     "Button": 50000,
+    # Standard UI Automation DataItem, used by any grid exposing stable item
+    # identity (Microsoft UIA_DataItemControlTypeId). This is a generic grammar
+    # capability, not an Excel branch; recipes still have to name and bound the
+    # exact item they are allowed to target.
+    "DataItem": 50029,
     "Edit": 50004,
     "List": 50008,
     "ListItem": 50007,

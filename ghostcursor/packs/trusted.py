@@ -490,7 +490,11 @@ def _validate_selector(selector_id: str, value: Any) -> None:
         },
         label,
     )
-    if value["strategy"] not in {"provider_exact", "bounded_descendants"}:
+    if value["strategy"] not in {
+        "provider_exact",
+        "bounded_descendants",
+        "window_descendants",
+    }:
         raise ValueError(f"{label}.strategy is invalid")
     _string(value["control_type"], f"{label}.control_type")
     names = _string_list(value["names"], f"{label}.names", nonempty=True)

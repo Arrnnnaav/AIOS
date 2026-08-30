@@ -169,6 +169,80 @@ def test_provider_queries_group_only_on_an_identical_full_query() -> None:
     assert by_name["Settings"].selector_ids == ("settings",)
 
 
+def test_window_descendants_is_an_explicit_target_window_bounded_strategy() -> None:
+    selectors = {
+        "cell": _selector(
+            strategy="window_descendants",
+            control_type="DataItem",
+            names=("A1",),
+            normalise="none",
+        ),
+        "cell_again": _selector(
+            strategy="window_descendants",
+            control_type="DataItem",
+            names=("A1",),
+            normalise="none",
+            cardinality=AT_LEAST_ONE,
+        ),
+    }
+    plan = compile_observation_plan(
+        _recipe(
+            selectors=selectors,
+            steps=[_step(target="cell", kind="focus_moves_to", selector=None, args={"automation_id": "A1"})],
+            context=("cell_again",),
+        )
+    )
+    assert plan.window_selector_ids == ("cell", "cell_again")
+    assert plan.traversals == ()
+    assert plan.queries == ()
+
+    controls = [_Ctl("A1", "DataItem"), _Ctl("A1", "Button")]
+    _walk_for, query_for, make_info = _runner({})
+    calls = []
+    observed = run_observation_plan(
+        plan,
+        walk_all=lambda: calls.append("window") or controls,
+        query_for=query_for,
+        make_info=make_info,
+    )
+    assert calls == ["window"], "one target-window read must serve every selector"
+    assert len(observed.selectors["cell"]) == 1
+    assert observed.selectors["cell"][0].control_type == "DataItem"
+    assert observed.selectors["cell_again"] == observed.selectors["cell"]
+
+
+def test_window_descendants_never_falls_back_to_a_type_scoped_walk() -> None:
+    plan = compile_observation_plan(
+        _recipe(
+            selectors={
+                "cell": _selector(
+                    strategy="window_descendants",
+                    control_type="DataItem",
+                    names=("A1",),
+                    normalise="none",
+                )
+            },
+            steps=[
+                _step(
+                    target="cell",
+                    kind="focus_moves_to",
+                    selector=None,
+                    args={"automation_id": "A1"},
+                )
+            ],
+            context=(),
+        )
+    )
+    walk_for, query_for, make_info = _runner({"DataItem": [_Ctl("A1", "DataItem")]})
+    with pytest.raises(ProviderQueryFault, match="no complete window walk"):
+        run_observation_plan(
+            plan,
+            walk_for=walk_for,
+            query_for=query_for,
+            make_info=make_info,
+        )
+
+
 def test_the_plan_covers_action_verification_and_context_selectors() -> None:
     plan = compile_observation_plan(_recipe())
     covered = {sid for t in plan.traversals for sid in t.selector_ids}

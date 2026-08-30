@@ -3455,3 +3455,26 @@ the namespace as decorative would silently orphan D013/D016/D017's existing
 knowledge base and make every process rediscover controls by name. The closing
 tree adds a two-run production-launch regression: rung 2 persists on run 1 and
 the same compiled step hydrates at rung 1 on run 2.
+
+## D080 — Full descendant observation is an explicit, window-bounded recipe strategy
+
+**Decision.** Plugin schema v1 admits `window_descendants` as a third selector
+strategy. It performs at most one complete descendant enumeration of the
+already-authorized target HWND per observation tick, then applies every
+selector's declared control type, names, result limit, and cardinality exactly
+as the narrower bounded strategy does. It cannot enumerate the desktop,
+choose another window, introduce executable plugin code, or bypass ambiguity.
+
+The strategy is explicit data. Existing VS Code recipes remain on their
+certified type-scoped walk and can never acquire the broader traversal through
+an automatic fallback. `DataItem` is separately added to the reviewed UIA
+control-type vocabulary at Microsoft's standard identifier 50029.
+
+**Reason.** Live Excel measurement exposed `A1` stably as Name `A1`,
+AutomationId `A1`, ControlType `DataItem`, but Office returned zero for both a
+provider-side exact `FindAll` and pywinauto's type-filtered descendant call.
+One full traversal of the bound Excel window exposed exactly one item in about
+1.9 seconds. Adding an Excel branch or silently falling back from a failed
+narrow walk would violate the plugin platform's zero-application-knowledge
+boundary. A named generic strategy keeps the cost and authority reviewable in
+the recipe that needs it.
