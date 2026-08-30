@@ -2,14 +2,26 @@ from __future__ import annotations
 
 import hashlib
 import json
+import multiprocessing
 import zipfile
 from pathlib import Path
 
 import pytest
+import win32event
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from ghostcursor.plugins.store import PluginEffectiveState, PluginStore, PluginStoreError
+
+
+def _abandon_named_mutex(name, ready):
+    win32event.CreateMutex(None, True, name)
+    ready.set()
+    # Model a process dying in its critical section. Windows owns the mutex
+    # lifetime and marks it abandoned when this process disappears.
+    import os
+
+    os._exit(7)
 
 
 def _key():
@@ -296,3 +308,58 @@ def test_disable_retains_but_uninstall_clears_version_scoped_learning(tmp_path):
             plugin_id=installed.plugin_id,
             plugin_version=installed.version,
         ) == []
+
+
+def test_the_same_store_root_has_one_process_independent_mutex(tmp_path):
+    _, trusted = _key()
+    first = PluginStore(tmp_path / "store", trusted_keys=trusted, core_version="0.1.0")
+    second = PluginStore(tmp_path / "store" / ".", trusted_keys=trusted, core_version="0.1.0")
+    developer = PluginStore(
+        tmp_path / "store",
+        trusted_keys=trusted,
+        core_version="0.1.0",
+        developer_mode=True,
+    )
+
+    assert first.mutex_name == second.mutex_name
+    assert first.mutex_name != developer.mutex_name
+
+
+def test_a_contended_store_fails_closed_instead_of_reading_between_writes(tmp_path):
+    _, trusted = _key()
+    store = PluginStore(tmp_path / "store", trusted_keys=trusted, core_version="0.1.0")
+    handle = win32event.CreateMutex(None, True, store.mutex_name)
+    try:
+        # A different thread is what makes a Windows mutex genuinely
+        # contended; mutex acquisition is recursive for its owning thread.
+        from concurrent.futures import ThreadPoolExecutor
+
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(store.list_installed)
+            with pytest.raises(PluginStoreError, match="plugin store is busy"):
+                future.result(timeout=1.0)
+    finally:
+        win32event.ReleaseMutex(handle)
+        handle.Close()
+
+
+def test_a_crashed_process_cannot_strand_the_plugin_store(tmp_path):
+    _, trusted = _key()
+    store = PluginStore(tmp_path / "store", trusted_keys=trusted, core_version="0.1.0")
+    context = multiprocessing.get_context("spawn")
+    ready = context.Event()
+    child = context.Process(
+        target=_abandon_named_mutex,
+        args=(store.mutex_name, ready),
+    )
+    child.start()
+    try:
+        assert ready.wait(5.0)
+        child.join(5.0)
+        assert not child.is_alive()
+        assert child.exitcode == 7
+        assert store.list_installed() == ()
+    finally:
+        if child.is_alive():
+            child.terminate()
+        child.join(5.0)

@@ -31,7 +31,12 @@ Production bundles are Ed25519-signed `.ghostplugin` files whose signed
 manifest contains the complete payload digest inventory. `PluginStore` owns
 install/enable/disable/uninstall and reports `disabled`, `enabled_compatible`,
 or `blocked_incompatible`. Unsigned bundles can exist only in the separate
-developer store. Learned observations are scoped by plugin id and version.
+developer store. Every store operation is serialized across processes by one
+Windows named mutex derived from the resolved production/developer store root;
+indexes are reread only after acquiring it, so the manager and CLI cannot both
+publish different successors to the same generation. A contended read fails
+closed within 100ms, below the runtime authority monitor's 0.5-second ceiling.
+Learned observations are scoped by plugin id and version.
 With no enabled compatible plugin the merged catalog is empty, so neither a
 deterministic nor model-proposed intent can reach target resolution.
 

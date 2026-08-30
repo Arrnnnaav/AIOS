@@ -3566,3 +3566,22 @@ session diagnostics, and a reviewed single-plugin DAG composition layer before
 deep PowerPoint and Excel coverage. Isolating it preserves the exact reviewed
 trees while allowing the owner-authorized follow-on to start without rewriting
 the historical freeze as though it had never existed.
+
+## D084 — Plugin-store atomicity includes cross-process serialization
+
+**Decision.** Every lifecycle and catalog operation for one resolved plugin
+store is serialized by a Windows named mutex whose identity is derived from
+that store root. Production and developer stores therefore have different
+locks. Mutations reread their indexes after acquisition, and catalog reads
+hold the same transaction while they combine `installed.json`, `active.json`,
+verified bundles, and extracted catalogs. Contention fails closed after 100ms.
+
+**Reason.** `os.replace()` guarantees that a reader sees either complete old
+bytes or complete new bytes; it does not prevent two processes from both
+reading generation N and publishing incompatible generation N+1 values. The
+pilot manager and existing CLI are separate processes capable of exactly that
+lost update. A named mutex closes the read-modify-write window, is recursive
+for nested calls on one thread, and is abandoned automatically when an owner
+process dies. The short timeout is part of the safety contract: the running
+tour checks authority every 0.25 seconds and must abort inside D020's 0.5-second
+ceiling rather than block behind an installer.

@@ -7,11 +7,15 @@ import json
 import os
 import shutil
 import uuid
+from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
-from typing import Any, Mapping
+from typing import Any, Iterator, Mapping
+
+import win32api
+import win32event
 
 from ghostcursor.plugins.bundle import BundleVerificationError, VerifiedBundle, verify_bundle
 from ghostcursor.plugins.compatibility import CompatibilityResult, check_core_compatibility
@@ -19,6 +23,13 @@ from ghostcursor.plugins.compatibility import CompatibilityResult, check_core_co
 
 class PluginStoreError(ValueError):
     """A requested lifecycle transition failed without changing active state."""
+
+
+# The runtime authority monitor reads the active index every 0.25 seconds and
+# must abort within D020's 0.5-second ceiling. Waiting seconds for a lifecycle
+# writer would turn a coherent store into an unresponsive safety gate, so a
+# contended store is an immediate fail-closed answer instead.
+STORE_LOCK_TIMEOUT_MS = 100
 
 
 class PluginEffectiveState(str, Enum):
@@ -94,6 +105,41 @@ class PluginStore:
         self.trusted_keys = MappingProxyType(dict(trusted_keys))
         self.core_version = core_version
         self.observation_store_path = observation_store_path
+        root_identity = str(self.root).casefold().encode("utf-8")
+        self._mutex_name = (
+            "Local\\GhostCursor.PluginStore."
+            + hashlib.sha256(root_identity).hexdigest()[:24]
+        )
+
+    @property
+    def mutex_name(self) -> str:
+        """The process-independent transaction identity for this exact store."""
+
+        return self._mutex_name
+
+    @contextmanager
+    def _transaction(self) -> Iterator[None]:
+        """Serialize one coherent store operation across Windows processes.
+
+        Atomic index replacement prevents torn JSON, but it does not prevent
+        two processes from reading generation N and each publishing a different
+        generation N+1.  The named mutex closes that lost-update window.  A
+        Windows mutex is released when its owner process dies, so a crashed CLI
+        cannot strand the manager behind a stale lock file.
+        """
+
+        handle = win32event.CreateMutex(None, False, self._mutex_name)
+        acquired = False
+        try:
+            outcome = win32event.WaitForSingleObject(handle, STORE_LOCK_TIMEOUT_MS)
+            if outcome not in (win32event.WAIT_OBJECT_0, win32event.WAIT_ABANDONED):
+                raise PluginStoreError("plugin store is busy; try again")
+            acquired = True
+            yield
+        finally:
+            if acquired:
+                win32event.ReleaseMutex(handle)
+            win32api.CloseHandle(handle)
 
     @property
     def developer_marker(self) -> bool:
@@ -256,6 +302,10 @@ class PluginStore:
         )
 
     def install(self, bundle_path: Path) -> InstalledPlugin:
+        with self._transaction():
+            return self._install(bundle_path)
+
+    def _install(self, bundle_path: Path) -> InstalledPlugin:
         bundle = self.inspect(bundle_path)
         self._ensure_layout()
         relative = PurePosixPath(
@@ -355,6 +405,10 @@ class PluginStore:
         return merged
 
     def enable(self, plugin_id: str, version: str) -> InstalledPlugin:
+        with self._transaction():
+            return self._enable(plugin_id, version)
+
+    def _enable(self, plugin_id: str, version: str) -> InstalledPlugin:
         bundle = self._installed_bundle(plugin_id, version)
         compatibility = check_core_compatibility(bundle.manifest, self.core_version)
         if not compatibility.compatible:
@@ -384,6 +438,10 @@ class PluginStore:
         )
 
     def disable(self, plugin_id: str) -> None:
+        with self._transaction():
+            self._disable(plugin_id)
+
+    def _disable(self, plugin_id: str) -> None:
         active, _ = self._read_index("active.json")
         plugins = dict(active["plugins"])
         if plugin_id not in plugins:
@@ -399,6 +457,10 @@ class PluginStore:
         )
 
     def uninstall(self, plugin_id: str, version: str) -> None:
+        with self._transaction():
+            self._uninstall(plugin_id, version)
+
+    def _uninstall(self, plugin_id: str, version: str) -> None:
         active, _ = self._read_index("active.json")
         if plugin_id in active["plugins"]:
             raise PluginStoreError("disable a plugin before uninstalling it")
@@ -434,6 +496,10 @@ class PluginStore:
                 observations.purge_plugin(plugin_id, version)
 
     def list_installed(self) -> tuple[InstalledPlugin, ...]:
+        with self._transaction():
+            return self._list_installed()
+
+    def _list_installed(self) -> tuple[InstalledPlugin, ...]:
         installed, _ = self._read_index("installed.json")
         active, _ = self._read_index("active.json")
         result: list[InstalledPlugin] = []
@@ -462,6 +528,10 @@ class PluginStore:
         return tuple(result)
 
     def load_active_catalog(self) -> ActivePluginCatalog:
+        with self._transaction():
+            return self._load_active_catalog()
+
+    def _load_active_catalog(self) -> ActivePluginCatalog:
         active, raw = self._read_index("active.json")
         generation = active.get("generation")
         if not isinstance(generation, int) or generation < 0:
@@ -492,24 +562,26 @@ class PluginStore:
         deleted index into a fresh empty one merely by checking it.
         """
 
-        path = self.root / "active.json"
-        raw = path.read_bytes()
-        active = _strict_json(raw, "active.json")
-        if (
-            active.get("schema_version") != 1
-            or not isinstance(active.get("plugins"), dict)
-            or not isinstance(active.get("generation"), int)
-            or active["generation"] < 0
-        ):
-            raise PluginStoreError("active.json has an invalid schema")
-        return hashlib.sha256(raw).hexdigest()
+        with self._transaction():
+            path = self.root / "active.json"
+            raw = path.read_bytes()
+            active = _strict_json(raw, "active.json")
+            if (
+                active.get("schema_version") != 1
+                or not isinstance(active.get("plugins"), dict)
+                or not isinstance(active.get("generation"), int)
+                or active["generation"] < 0
+            ):
+                raise PluginStoreError("active.json has an invalid schema")
+            return hashlib.sha256(raw).hexdigest()
 
     def load_verified_catalog(self):
         """Return the one merged executable catalog for compatible plugins."""
 
-        active = self.load_active_catalog()
-        return self._merge_catalogs(
-            active.plugins,
-            generation=active.generation,
-            active_index_sha256=active.active_index_sha256,
-        )
+        with self._transaction():
+            active = self._load_active_catalog()
+            return self._merge_catalogs(
+                active.plugins,
+                generation=active.generation,
+                active_index_sha256=active.active_index_sha256,
+            )

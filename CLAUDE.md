@@ -143,6 +143,12 @@ the current catalog before it reads a window. A running production tour must
 check its active-index epoch every 0.25s and abort within D020's 0.5s ceiling
 when the plugin is disabled, upgraded, blocked, or otherwise withdrawn.
 
+Every public `PluginStore` lifecycle/catalog operation must hold the resolved
+store root's Windows named mutex and reread its indexes after acquisition.
+Atomic replacement prevents torn JSON but cannot prevent two processes from
+publishing different successors to one generation. Lock contention must fail
+closed within 100ms so the runtime authority monitor still meets D020.
+
 No enabled compatible plugin means no executable UI knowledge: no intent,
 plan, target, selector, action, or renderer may be proposed by either
 classifier. A vision tier may explain a screen, but cannot guide an action
