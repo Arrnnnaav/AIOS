@@ -1,17 +1,73 @@
 {
-  "activation_generation": 1,
+  "activation_generation": 2,
   "intents": {
     "ADD_WORKSHEET": {
-      "active_adoption_id": null,
-      "adoptions": {},
+      "active_adoption_id": "accept-add-worksheet-1",
+      "adoptions": {
+        "accept-add-worksheet-1": {
+          "accepted_application_identity": {
+            "kind": "executable_version",
+            "value": "16.0.20326.20112"
+          },
+          "accepted_intent": {
+            "path": "intents/add_worksheet.json",
+            "sha256": "2bfa3e245bdfc93fc41c8c9c8318cd6d256f15b7017d26b886873d4f1cb9e4e7"
+          },
+          "accepted_pack": {
+            "path": "pack/excel.json",
+            "sha256": "6f98f07ede9c14ddc2c9abe96b018520145243cd7f09c875e422444b8d6f5101"
+          },
+          "adopted_at": "2026-08-30T12:44:05Z",
+          "evidence": {
+            "path": "docs/evidence/excel-plugin-acceptance.md",
+            "sha256": "fcedf7188df76e1e4d85b8ccc24134130baa62d1524df772599a3adaac707e7e"
+          },
+          "recipe": {
+            "path": "recipes/add_worksheet.json",
+            "sha256": "daf27bbf867302cf5a0bc83637cb07df294f213b56c4f48903157183f34d976f"
+          },
+          "review_commit": "381d97f5f376ee586260eb4430595fcff1e2668e",
+          "reviewer_id": "codex-d032-heisenberg",
+          "supersedes_adoption_id": null,
+          "supersedes_recipe_sha256": null
+        }
+      },
       "intent": {
         "path": "intents/add_worksheet.json",
         "sha256": "2bfa3e245bdfc93fc41c8c9c8318cd6d256f15b7017d26b886873d4f1cb9e4e7"
       }
     },
     "SELECT_CELL_B2": {
-      "active_adoption_id": null,
-      "adoptions": {},
+      "active_adoption_id": "accept-select-cell-b2-1",
+      "adoptions": {
+        "accept-select-cell-b2-1": {
+          "accepted_application_identity": {
+            "kind": "executable_version",
+            "value": "16.0.20326.20112"
+          },
+          "accepted_intent": {
+            "path": "intents/select_cell_b2.json",
+            "sha256": "4694ddcb3ad6c207edf12e45542bf80ea9705adf15e9c9c08779cbec1683c2f4"
+          },
+          "accepted_pack": {
+            "path": "pack/excel.json",
+            "sha256": "6f98f07ede9c14ddc2c9abe96b018520145243cd7f09c875e422444b8d6f5101"
+          },
+          "adopted_at": "2026-08-30T12:44:05Z",
+          "evidence": {
+            "path": "docs/evidence/excel-plugin-acceptance.md",
+            "sha256": "fcedf7188df76e1e4d85b8ccc24134130baa62d1524df772599a3adaac707e7e"
+          },
+          "recipe": {
+            "path": "recipes/select_cell_b2.json",
+            "sha256": "164f8540c4c4af9439e209b3f3be37c977b5d66b38ebfb4b553586d0e74e5fb2"
+          },
+          "review_commit": "381d97f5f376ee586260eb4430595fcff1e2668e",
+          "reviewer_id": "codex-d032-heisenberg",
+          "supersedes_adoption_id": null,
+          "supersedes_recipe_sha256": null
+        }
+      },
       "intent": {
         "path": "intents/select_cell_b2.json",
         "sha256": "4694ddcb3ad6c207edf12e45542bf80ea9705adf15e9c9c08779cbec1683c2f4"

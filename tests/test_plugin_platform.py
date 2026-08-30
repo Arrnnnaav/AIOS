@@ -36,6 +36,7 @@ def test_bootstrap_happens_once_and_never_reenables_an_operator_choice(
     monkeypatch.setenv(platform.ENV_PLUGIN_ROOT, str(tmp_path / "plugins"))
     store = platform.production_store()
     assert set(store.load_active_catalog().plugins) == {
+        "ghostcursor.excel",
         "ghostcursor.synthetic",
         "ghostcursor.vscode",
     }
@@ -43,7 +44,10 @@ def test_bootstrap_happens_once_and_never_reenables_an_operator_choice(
 
     restarted = platform.production_store()
 
-    assert tuple(restarted.load_active_catalog().plugins) == ("ghostcursor.synthetic",)
+    assert tuple(restarted.load_active_catalog().plugins) == (
+        "ghostcursor.excel",
+        "ghostcursor.synthetic",
+    )
 
 
 def test_an_initialized_store_with_no_plugins_has_zero_executable_knowledge(tmp_path):

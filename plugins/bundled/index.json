@@ -15,6 +15,14 @@
       "path": "ghostcursor.synthetic-1.0.0.ghostplugin",
       "plugin_id": "ghostcursor.synthetic",
       "version": "1.0.0"
+    },
+    {
+      "bundle_sha256": "a5e4e9e9673696ffff459ba69d1dfaf435b56e60d3b55c415401a99f97dcf00e",
+      "enable_on_first_run": true,
+      "manifest_sha256": "53122d6d37e99f1e18a5e236d8a2409bea9769c7e53d1e1be2a6eeefffacf3e2",
+      "path": "ghostcursor.excel-1.0.0.ghostplugin",
+      "plugin_id": "ghostcursor.excel",
+      "version": "1.0.0"
     }
   ],
   "schema_version": 1

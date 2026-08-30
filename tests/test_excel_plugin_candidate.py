@@ -20,6 +20,7 @@ SOURCE_ROOT = REPO_ROOT / "plugins" / "sources" / "excel"
 CANDIDATE_ROOT = SOURCE_ROOT / "payload" / "ghostcursor" / "packs" / "excel"
 D080_BASELINE = "e7aab9c51af6cdb6d296df3080340f8f50f5df4f"
 CANDIDATE_COMMIT = "827071c3e92979b53556b1796629be36c80a9cda"
+D032_REVIEW_COMMIT = "381d97f5f376ee586260eb4430595fcff1e2668e"
 
 
 @pytest.fixture(scope="module")
@@ -49,6 +50,7 @@ def catalog(tmp_path_factory):
     packs.mkdir(parents=True)
     shutil.copy2(SOURCE_ROOT / "index.json", packs / "index.json")
     shutil.copytree(CANDIDATE_ROOT, packs / "excel")
+    shutil.copytree(SOURCE_ROOT / "payload" / "docs", project / "docs")
     loaded = load_catalog(project)
     assert loaded.root_valid
     assert loaded.diagnostics == ()
@@ -90,7 +92,7 @@ def test_each_excel_candidate_loads_and_compiles(
     } == control_types
 
 
-def test_inactive_graph_is_nameable_but_has_no_execution_authority(catalog) -> None:
+def test_reviewed_graph_is_nameable_and_has_exact_execution_authority(catalog) -> None:
     matcher = compile_matcher(catalog)
     for goal, intent_id in (
         ("select cell b2 in excel", "SELECT_CELL_B2"),
@@ -102,10 +104,39 @@ def test_inactive_graph_is_nameable_but_has_no_execution_authority(catalog) -> N
     pack = catalog.packs["excel"]
     assert set(pack.intents) == {"ADD_WORKSHEET", "SELECT_CELL_B2"}
     assert all(
-        intent.availability is IntentAvailability.KNOWN_INTENT_RECIPE_UNAVAILABLE
+        intent.availability is IntentAvailability.ACTIVE
         for intent in pack.intents.values()
     )
-    assert all(intent.active_adoption is None for intent in pack.intents.values())
+    assert all(intent.active_adoption is not None for intent in pack.intents.values())
+    assert {
+        intent.active_adoption.review_commit for intent in pack.intents.values()
+    } == {D032_REVIEW_COMMIT}
+    assert {
+        intent.active_adoption.reviewer_id for intent in pack.intents.values()
+    } == {"codex-d032-heisenberg"}
+    assert {
+        intent.active_adoption.accepted_application_identity.value
+        for intent in pack.intents.values()
+    } == {"16.0.20326.20112"}
+
+
+def test_reviewed_evidence_commit_precedes_every_activation() -> None:
+    reviewed = subprocess.run(
+        [
+            "git",
+            "show",
+            f"{D032_REVIEW_COMMIT}:plugins/sources/excel/payload/ghostcursor/packs/excel/activation.json",
+        ],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    activation = json.loads(reviewed)
+    assert all(
+        entry["active_adoption_id"] is None and entry["adoptions"] == {}
+        for entry in activation["intents"].values()
+    )
 
 
 def test_excel_candidate_contains_no_executable_plugin_code() -> None:
