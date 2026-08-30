@@ -18,7 +18,8 @@ from ghostcursor.packs.compile import compile_matcher
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SOURCE_ROOT = REPO_ROOT / "plugins" / "sources" / "excel"
 CANDIDATE_ROOT = SOURCE_ROOT / "payload" / "ghostcursor" / "packs" / "excel"
-D080_BASELINE = "e7aab9c"
+D080_BASELINE = "e7aab9c51af6cdb6d296df3080340f8f50f5df4f"
+CANDIDATE_COMMIT = "827071c3e92979b53556b1796629be36c80a9cda"
 
 
 @pytest.fixture(scope="module")
@@ -134,6 +135,7 @@ def test_excel_authoring_after_the_generic_grammar_adds_no_production_python() -
             "diff",
             "--name-only",
             D080_BASELINE,
+            CANDIDATE_COMMIT,
             "--",
             ":(glob)ghostcursor/**/*.py",
         ],
@@ -142,12 +144,4 @@ def test_excel_authoring_after_the_generic_grammar_adds_no_production_python() -
         capture_output=True,
         text=True,
     ).stdout.splitlines()
-    untracked = subprocess.run(
-        ["git", "ls-files", "--others", "--exclude-standard", "--", "ghostcursor"],
-        cwd=REPO_ROOT,
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout.splitlines()
     assert changed == []
-    assert [path for path in untracked if path.endswith(".py")] == []

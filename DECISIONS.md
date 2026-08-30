@@ -3478,3 +3478,34 @@ One full traversal of the bound Excel window exposed exactly one item in about
 narrow walk would violate the plugin platform's zero-application-knowledge
 boundary. A named generic strategy keeps the cost and authority reviewable in
 the recipe that needs it.
+
+## D081 — Signed plugins are lifecycle epochs, not executable extension code
+
+**Decision.** Plugin platform v1 distributes data-only application catalogs in
+Ed25519-signed `.ghostplugin` bundles. The signature covers canonical manifest
+bytes containing the complete payload path/digest inventory. Production and
+unsigned developer content use separate stores. `PluginStore` is the sole
+lifecycle owner, `check_core_compatibility()` is the sole range policy, and
+`authorize_intent()` is the sole function that can turn a classifier output
+into an opaque authority token.
+
+Authorization is temporal as well as structural. Bind reloads the catalog and
+compares the token before enumerating a target; pre-launch revalidation repeats
+the signed graph and live-window checks; execution compares the active-index
+digest every 0.25 seconds. A lifecycle change therefore aborts within D020's
+0.5-second ceiling with an authority-withdrawal reason, not the operator-abort
+message. The monitor reads only and refuses missing or malformed state rather
+than repairing it.
+
+**Reason.** Checking signatures only at install would let extracted bytes
+drift. Checking compatibility only at install would let a core upgrade run a
+plugin outside its declared range. Checking authorization only before launch
+would let an administrator disable a workflow while its full-screen guidance
+continued. Conversely, reloading and rehashing every payload four times a
+second is unnecessary: lifecycle changes are atomically published through the
+active index, whose digest already binds the merged catalog used at planning.
+
+**No-plugin corollary.** Generic perception may observe or explain an
+unrecognized application in the future, but it cannot synthesize executable
+intent, selectors, or actions. Both deterministic and model-assisted paths
+must end at the same empty authority when no compatible plugin is enabled.

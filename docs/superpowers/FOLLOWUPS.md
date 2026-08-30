@@ -458,3 +458,35 @@ prints the handles, so the data is there.
 **Not urgent for the milestone.** Every workflow in Task 8 was accepted with
 one window per application, and the refusal is safe. This blocks a usable
 product, not the compiler proof.
+
+### Plugin signing-key rotation and revocation are deferred
+
+Plugin v1 has one project-controlled signer and no third-party distribution.
+The trusted-key map can name more than one public key, but no policy yet says
+when an old key stops being trusted, how a compromised key is revoked, or how
+an installed bundle is reported after revocation.
+
+**Trigger:** before adding a second signer, marketplace, external plugin
+author, network update channel, or customer deployment that requires key
+rotation. Define signed revocation metadata and startup behavior through one
+reviewed decision; do not scatter date/key checks across installer and runtime.
+
+### Legacy observation quarantine has no retention policy
+
+The plugin-store migration moves pre-plugin observation rows into
+`legacy_observations` and never reads them as current authority. This is safe,
+but the rows are retained indefinitely and have no inspection/export surface.
+
+**Trigger:** before a storage-retention promise, privacy policy, support export,
+or cleanup UI. Decide whether to export, age out, or explicitly retain these
+rows; never infer a plugin id/version and silently promote them.
+
+### Plugin installer, manager UI, and pilot packaging remain follow-on work
+
+The v1 CLI and `PluginStore` own lifecycle semantics, but there is no polished
+installer, tray/manager surface, or enterprise deployment package.
+
+**Trigger:** after the signed Excel plugin is independently accepted and
+activated. Every surface must call `PluginStore` and
+`check_core_compatibility()` rather than implementing validation, conflict, or
+state transitions itself.

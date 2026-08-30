@@ -110,3 +110,22 @@ def load_runtime_catalog():
     """Load current enabled authority; no enabled plugins means no intents."""
 
     return production_store().load_verified_catalog()
+
+
+def runtime_authority_status(workflow) -> str | None:
+    """Return why a running workflow lost authority, or ``None``.
+
+    This is deliberately read-only and narrower than catalog loading. The
+    workflow already passed signed-payload, compatibility, adoption, identity,
+    and live-HWND revalidation before an overlay existed. During execution the
+    active-index digest is the lifecycle epoch: enable, disable, and upgrade
+    all publish a different index before they affect a subsequent launch.
+    """
+
+    try:
+        current = production_store(bootstrap=False).current_active_index_sha256()
+    except (OSError, PluginStoreError, ValueError) as exc:
+        return f"active plugin authority is unavailable: {type(exc).__name__}"
+    if current != workflow.index_sha256:
+        return "active plugin authority changed during the tour"
+    return None

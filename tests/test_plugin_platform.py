@@ -106,3 +106,20 @@ def test_no_plugin_means_no_plan_target_or_renderer_from_either_classifier(
 
     assert deterministic.plan is None
     assert modeled.plan is None
+
+
+def test_disabling_a_plugin_invalidates_the_running_authority_epoch(
+    monkeypatch, tmp_path
+):
+    from types import SimpleNamespace
+
+    monkeypatch.setenv(platform.ENV_PLUGIN_ROOT, str(tmp_path / "plugins"))
+    store = platform.production_store()
+    workflow = SimpleNamespace(index_sha256=store.current_active_index_sha256())
+
+    assert platform.runtime_authority_status(workflow) is None
+    store.disable("ghostcursor.vscode")
+    assert (
+        platform.runtime_authority_status(workflow)
+        == "active plugin authority changed during the tour"
+    )

@@ -480,6 +480,30 @@ class PluginStore:
             blocked=MappingProxyType(blocked),
         )
 
+    def current_active_index_sha256(self) -> str:
+        """Read the lifecycle stamp without creating or repairing store state.
+
+        The running-tour monitor calls this four times a second. It is not a
+        second catalog loader: planning and bind-time revalidation already
+        verify every signed payload byte. This stamp answers only whether a
+        lifecycle operation changed the active authority after launch.
+
+        Missing or malformed state raises. A security check must never turn a
+        deleted index into a fresh empty one merely by checking it.
+        """
+
+        path = self.root / "active.json"
+        raw = path.read_bytes()
+        active = _strict_json(raw, "active.json")
+        if (
+            active.get("schema_version") != 1
+            or not isinstance(active.get("plugins"), dict)
+            or not isinstance(active.get("generation"), int)
+            or active["generation"] < 0
+        ):
+            raise PluginStoreError("active.json has an invalid schema")
+        return hashlib.sha256(raw).hexdigest()
+
     def load_verified_catalog(self):
         """Return the one merged executable catalog for compatible plugins."""
 

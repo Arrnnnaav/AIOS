@@ -3,7 +3,7 @@
 ## Current execution authority — schema v2
 
 Production goal execution now flows through `run.main()` →
-`planner.plan_compiled_goal()` → `packs.activation.load_catalog()` →
+`planner.plan_compiled_goal()` → `plugins.platform.load_runtime_catalog()` →
 `packs.compile` → `packs.workflow.bind_workflow()` →
 `run.run_tour_for_workflow()`. The compiled workflow revalidates the exact
 activation generation, artifact digests, application identity, and bound HWND
@@ -15,21 +15,33 @@ retained only as migration history and must not be used to implement new work.
 ```text
 CLI --goal / control-bar Ask
     -> planner.plan_compiled_goal()
-        -> activation.load_catalog() follows packs/index.json only
+        -> PluginStore verifies enabled signed bundles and merges their catalogs
         -> compile_matcher() classifies without loading a recipe
-        -> model advice must agree with deterministic grounding
-        -> workflow.bind_workflow() requires one active adoption and one HWND
+        -> authorize_intent() is the only deterministic/model authority gate
+        -> workflow.bind_workflow() reloads the catalog, then requires one HWND
     -> run.run_tour_for_workflow()
         -> reload catalog and revalidate HWND/PID/executable/title/version
         -> build_compiled_perception() starts one worker after both gates
         -> compiled_tour.execute_compiled_workflow()
+             -> compare active-index digest every 0.25s; abort if withdrawn
         -> nested finally blocks tear down overlay and perception on every exit
 ```
+
+Production bundles are Ed25519-signed `.ghostplugin` files whose signed
+manifest contains the complete payload digest inventory. `PluginStore` owns
+install/enable/disable/uninstall and reports `disabled`, `enabled_compatible`,
+or `blocked_incompatible`. Unsigned bundles can exist only in the separate
+developer store. Learned observations are scoped by plugin id and version.
+With no enabled compatible plugin the merged catalog is empty, so neither a
+deterministic nor model-proposed intent can reach target resolution.
 
 The installed catalog currently exposes four active workflows: Synthetic
 Export, Open Folder, Open Terminal, and Open Extensions. Open Extensions was
 added and activated through intent, recipe, evidence, and activation data; the
 fixed proof range `41682ee..2736d1b` contains no production Python change.
+Those workflows now arrive from the signed Synthetic and VS Code bundles.
+The two-workflow Excel plugin is quarantined and inactive until its 3/3 + 3/3
+desktop campaign and independent activation review are complete.
 
 How execution actually travels between files, functions, and modules — what calls
 what, in what order. Updated as the codebase grows. The "you are here" marker at

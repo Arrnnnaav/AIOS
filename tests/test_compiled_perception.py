@@ -2426,3 +2426,28 @@ def test_an_aborted_run_before_any_observation_still_reports_its_end() -> None:
     assert "ended_s" in result.timing
     # Nothing was ever observed, so there is no observation mark to give.
     assert "first_observation_s" not in result.timing
+
+
+def test_withdrawn_plugin_authority_aborts_within_one_tick() -> None:
+    workflow = _two_step_workflow()
+    target = Element("Open Folder...", "Button", "", (10, 20, 110, 60))
+    now = [0.0]
+    checks = iter((None, "active plugin authority changed during the tour"))
+
+    result = execute_compiled_workflow(
+        workflow,
+        observe=lambda: TickInput(
+            title="Welcome - Visual Studio Code",
+            selectors={"open_folder": (target,)},
+            union=(target,),
+        ),
+        renderer=_NullRenderer(),
+        clock=lambda: now[0],
+        sleeper=lambda seconds: now.__setitem__(0, now[0] + seconds),
+        authority_status=lambda: next(checks),
+        seconds=5.0,
+    )
+
+    assert result.outcome is RunOutcome.ABORTED
+    assert result.detail == "active plugin authority changed during the tour"
+    assert result.timing["ended_s"] <= 0.5

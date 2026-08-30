@@ -124,6 +124,30 @@ independently review the documentation against the implementation, run the
 relevant regression tests, refresh Graphify when available, and commit the
 slice before starting the next mutation.
 
+Plugin platform v1 has one authority path. Production may load only signed
+`.ghostplugin` bundles through `PluginStore`; unsigned content belongs only to
+the physically separate developer store. Keep `check_core_compatibility()` as
+the single compatibility policy and `authorize_intent()` as the only function
+that can mint an `AuthorizedIntent`. `bind_workflow()` must reload and compare
+the current catalog before it reads a window. A running production tour must
+check its active-index epoch every 0.25s and abort within D020's 0.5s ceiling
+when the plugin is disabled, upgraded, blocked, or otherwise withdrawn.
+
+No enabled compatible plugin means no executable UI knowledge: no intent,
+plan, target, selector, action, or renderer may be proposed by either
+classifier. A vision tier may explain a screen, but cannot guide an action
+without plugin authority. Plugin v1 is data-only (`adapter_api: null`); if an
+application needs a new primitive, stop and amend the generic declarative
+grammar through a reviewed decision rather than adding application-specific
+Python. Learned observations are scoped to `(plugin_id, plugin_version)`;
+disable retains them and uninstall purges that version.
+
+The Excel source under `plugins/sources/excel/` is an inactive candidate. Its
+feasibility measurement and readiness timeout are not adoption evidence. Do
+not sign or activate it until `SELECT_CELL_B2` and `ADD_WORKSHEET` each pass
+three human desktop runs on the reviewed bytes and the evidence receives an
+independent D032 review.
+
 The control surface is a vertical middle-right rail, not a horizontal toolbar.
 Compact geometry is 148×192px with Stop/Pause/Ask stacked vertically and
 status below. The status line shows `Step N of M`, and the executor REPORTS

@@ -208,6 +208,7 @@ def execute_compiled_workflow(
     seconds: float = 120.0,
     tick_interval_s: float = 0.25,
     should_abort: Callable[[], bool] | None = None,
+    authority_status: Callable[[], str | None] | None = None,
     should_pause: Callable[[], bool] | None = None,
     confirmation_requested: Callable[[], bool] | None = None,
     pump: Callable[[], None] | None = None,
@@ -358,6 +359,14 @@ def execute_compiled_workflow(
 
     started = clock()
 
+    def _authority_failure() -> str | None:
+        if authority_status is None:
+            return None
+        try:
+            return authority_status()
+        except Exception as exc:  # noqa: BLE001 - authority checks fail closed
+            return f"active plugin authority check failed: {type(exc).__name__}"
+
     def _tend() -> None:
         """Keep the UI thread's obligations current between ticks."""
         if pump is not None:
@@ -369,6 +378,16 @@ def execute_compiled_workflow(
     # which is a fault, not an empty screen.
     while _current is None:
         _tend()
+        authority_failure = _authority_failure()
+        if authority_failure is not None:
+            return TourResult(
+                outcome=RunOutcome.ABORTED,
+                provenance=(),
+                steps_completed=0,
+                steps_total=len(steps),
+                detail=authority_failure,
+                timing=_timing(),
+            )
         if should_abort is not None and should_abort():
             return TourResult(
                 outcome=RunOutcome.ABORTED,
@@ -406,6 +425,16 @@ def execute_compiled_workflow(
 
     while True:
         _tend()
+        authority_failure = _authority_failure()
+        if authority_failure is not None:
+            return TourResult(
+                outcome=RunOutcome.ABORTED,
+                provenance=provenance.as_tuple(),
+                steps_completed=tour.step_index,
+                steps_total=len(steps),
+                detail=authority_failure,
+                timing=_timing(),
+            )
         if should_abort is not None and should_abort():
             return TourResult(
                 outcome=RunOutcome.ABORTED,

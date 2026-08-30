@@ -171,6 +171,27 @@ def test_runtime_catalog_carries_plugin_provenance_and_active_generation(tmp_pat
     )
 
 
+def test_active_index_stamp_changes_on_lifecycle_change_and_never_repairs_state(
+    tmp_path,
+):
+    private, trusted = _key()
+    store = PluginStore(
+        tmp_path / "store", trusted_keys=trusted, core_version="0.1.0"
+    )
+    with pytest.raises(FileNotFoundError):
+        store.current_active_index_sha256()
+    assert not (store.root / "active.json").exists()
+
+    installed = store.install(_bundle(tmp_path, private))
+    disabled = store.current_active_index_sha256()
+    store.enable(installed.plugin_id, installed.version)
+    enabled = store.current_active_index_sha256()
+    store.disable(installed.plugin_id)
+    disabled_again = store.current_active_index_sha256()
+
+    assert len({disabled, enabled, disabled_again}) == 3
+
+
 def test_cross_plugin_pack_conflict_is_rejected_atomically(tmp_path):
     private, trusted = _key()
     files = _common_pack_files()

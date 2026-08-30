@@ -1533,6 +1533,38 @@ def test_the_public_launch_path_accepts_no_authority_inputs() -> None:
     assert parameters == {"workflow", "seconds", "clock", "sleeper", "warmup_budget_s"}
 
 
+def test_the_public_launch_installs_the_runtime_authority_monitor(monkeypatch) -> None:
+    """The monitor is selected inside production, never supplied by a caller."""
+    from ghostcursor import run
+    from ghostcursor.overlay import window as overlay_window
+    from ghostcursor.packs import workflow as workflow_module
+    from ghostcursor.plugins import platform
+
+    workflow, catalog = _workflow()
+    captured = {}
+    monkeypatch.setattr(platform, "load_runtime_catalog", lambda: catalog)
+    monkeypatch.setattr(
+        platform,
+        "runtime_authority_status",
+        lambda candidate: (
+            "withdrawn" if candidate is workflow else "wrong workflow"
+        ),
+    )
+    monkeypatch.setattr(workflow_module, "live_window_reader", lambda: object())
+    monkeypatch.setattr(overlay_window, "create_overlay_window", lambda: 17)
+
+    def _capture(candidate, **kwargs):
+        captured["workflow"] = candidate
+        captured.update(kwargs)
+        return 23
+
+    monkeypatch.setattr(run, "_launch_compiled_workflow", _capture)
+
+    assert run.run_tour_for_workflow(workflow, seconds=1.0) == 23
+    assert captured["workflow"] is workflow
+    assert captured["authority_status"]() == "withdrawn"
+
+
 def test_the_injection_seam_is_private() -> None:
     """Hermetic tests reach it; nothing importable as public API does."""
     from ghostcursor import run

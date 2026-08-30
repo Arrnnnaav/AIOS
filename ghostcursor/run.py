@@ -523,7 +523,10 @@ def run_tour_for_workflow(
     from planning, Ask, and this entry point.
     """
     from ghostcursor.packs.workflow import live_window_reader
-    from ghostcursor.plugins.platform import load_runtime_catalog
+    from ghostcursor.plugins.platform import (
+        load_runtime_catalog,
+        runtime_authority_status,
+    )
 
     from ghostcursor.overlay import window as overlay_window
 
@@ -538,6 +541,7 @@ def run_tour_for_workflow(
         sleeper=sleeper,
         warmup_budget_s=warmup_budget_s,
         create_overlay=overlay_window.create_overlay_window,
+        authority_status=lambda: runtime_authority_status(workflow),
     )
 
 
@@ -554,6 +558,7 @@ def _launch_compiled_workflow(
     create_overlay,
     observe=None,
     renderer=None,
+    authority_status=None,
 ) -> int:
     """The revalidation seam. Private, and hermetic tests are its only callers.
 
@@ -583,6 +588,7 @@ def _launch_compiled_workflow(
         create_overlay=create_overlay,
         observe=observe,
         renderer=renderer,
+        authority_status=authority_status,
     )
 
 
@@ -597,6 +603,7 @@ def _run_compiled_tour(
     observe=None,
     renderer=None,
     on_grounding=None,
+    authority_status=None,
 ) -> int:
     """Run the compiled workflow through the shared executor.
 
@@ -770,6 +777,7 @@ def _run_compiled_tour(
                 should_pause=(
                     controls.should_pause if controls is not None else None
                 ),
+                authority_status=authority_status,
                 confirmation_requested=lambda: space_confirmation_requested(
                     workflow.target.hwnd,
                     controls.hwnd if controls is not None else None,
