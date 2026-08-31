@@ -1,0 +1,40 @@
+{
+  "canonical_target": null,
+  "intent_id": "INSERT_BAR_CHART",
+  "rules": [
+    {
+      "phrases": [
+        "insert a bar chart in powerpoint",
+        "add a bar chart in powerpoint"
+      ],
+      "tier": "exact"
+    },
+    {
+      "all_of": [
+        {
+          "any_of": [
+            {"token": "add"},
+            {"token": "insert"}
+          ]
+        },
+        {
+          "any_of": [
+            {"token": "bar"}
+          ]
+        },
+        {
+          "any_of": [
+            {"token": "chart"}
+          ]
+        },
+        {
+          "any_of": [
+            {"alias": "powerpoint_names"}
+          ]
+        }
+      ],
+      "tier": "heuristic"
+    }
+  ],
+  "schema_version": 2
+}

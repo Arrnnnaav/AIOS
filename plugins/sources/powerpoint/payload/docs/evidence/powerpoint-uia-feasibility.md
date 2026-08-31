@@ -39,6 +39,32 @@ The same live tree exposed one `TabItem` each named `Home`, `Insert`, and
 These are measurements only; they are not workflow claims until their own
 post-action states are measured.
 
+## Insert clustered bar chart
+
+The user manually selected **Insert**, **Chart...**, **Bar**, and **OK**. The
+bound presentation exposed each intermediate state as descendants of HWND
+`657022`, including the modal `Insert Chart` surface.
+
+| State | Control type | Exact name | Provider count | AutomationId |
+|---|---|---|---:|---|
+| Insert ribbon open | Button | Chart... | 1 | ChartInsert |
+| Insert Chart open | ListItem | Bar | 1 | empty |
+| Bar selected | ListItem | Bar | 1 | empty |
+| Bar selected | Text | Clustered Bar | 1 | empty |
+| Dialog awaiting confirmation | Button | OK | 1 | empty |
+| Chart inserted | TabItem | Chart Design | 1 | empty |
+
+`Pie` was measured and rejected: after selection, three `ListItem/Pie`
+elements existed because the subtype gallery repeated the category name. That
+would fault an exactly-one action selector on the verification tick. `Bar`
+remained exactly one while `Text/Clustered Bar` appeared as a separate
+postcondition.
+
+After confirmation, PowerPoint opened `Chart in Microsoft PowerPoint - Excel`
+as a separate visible window. The recipe does not bind, target, or authorize
+that Excel window. Completion is the `Chart Design` tab exposed through the
+original PowerPoint HWND.
+
 ## Limits
 
 - The accepted precondition for this candidate is exactly one slide, expressed

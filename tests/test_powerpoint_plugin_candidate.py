@@ -7,6 +7,8 @@ import json
 import shutil
 from pathlib import Path
 
+import pytest
+
 from ghostcursor.devtools.candidate_acceptance import load_candidate
 from ghostcursor.packs.activation import IntentAvailability, load_catalog
 from ghostcursor.packs.compile import compile_matcher, compile_planner
@@ -28,26 +30,58 @@ def test_candidate_digest_inventory_binds_every_declared_artifact():
         assert hashlib.sha256((CANDIDATE_ROOT / relative).read_bytes()).hexdigest() == expected
 
 
-def test_add_slide_candidate_loads_and_compiles_without_application_python():
+@pytest.mark.parametrize(
+    ("stem", "intent_id", "selector_ids", "step_count"),
+    (
+        (
+            "add_slide",
+            "ADD_SLIDE",
+            {"new_slide", "slide1_before", "slide2_after"},
+            1,
+        ),
+        (
+            "insert_bar_chart",
+            "INSERT_BAR_CHART",
+            {
+                "bar_category",
+                "bar_selected",
+                "chart_button",
+                "chart_design",
+                "confirm_chart",
+                "insert_tab",
+                "slide2_before",
+            },
+            4,
+        ),
+    ),
+)
+def test_each_candidate_loads_and_compiles_without_application_python(
+    stem, intent_id, selector_ids, step_count
+):
     digests = _digests()
     graph = load_candidate(
         CANDIDATE_ROOT,
         pack_path=CANDIDATE_ROOT / "pack" / "powerpoint.json",
         pack_sha256=digests["pack/powerpoint.json"],
-        intent_path=CANDIDATE_ROOT / "intents" / "add_slide.json",
-        intent_sha256=digests["intents/add_slide.json"],
-        recipe_path=CANDIDATE_ROOT / "recipes" / "add_slide.json",
-        recipe_sha256=digests["recipes/add_slide.json"],
+        intent_path=CANDIDATE_ROOT / "intents" / f"{stem}.json",
+        intent_sha256=digests[f"intents/{stem}.json"],
+        recipe_path=CANDIDATE_ROOT / "recipes" / f"{stem}.json",
+        recipe_sha256=digests[f"recipes/{stem}.json"],
         project_root=REPO_ROOT,
     )
-    assert graph.intent.value["intent_id"] == "ADD_SLIDE"
-    assert graph.recipe.value["steps"][0]["preconditions"] == ("slide1_before",)
+    assert graph.intent.value["intent_id"] == intent_id
+    assert len(graph.recipe.value["steps"]) == step_count
     assert {
         selector.strategy for selector in graph.compiled.plan.selectors.values()
     } == {"provider_exact"}
-    assert set(graph.compiled.plan.selectors) == {
-        "new_slide", "slide1_before", "slide2_after"
-    }
+    assert set(graph.compiled.plan.selectors) == selector_ids
+    assert all(
+        selector.cardinality == "exactly_one"
+        for selector_id, selector in graph.compiled.plan.selectors.items()
+        if selector_id in {
+            step.target_selector for step in graph.compiled.steps
+        }
+    )
     assert not list(SOURCE_ROOT.rglob("*.py"))
 
 
@@ -60,15 +94,20 @@ def test_candidate_is_nameable_but_carries_no_execution_authority(tmp_path):
     shutil.copytree(SOURCE_ROOT / "payload" / "docs", project / "docs")
 
     catalog = load_catalog(project)
-    intent = catalog.packs["powerpoint"].intents["ADD_SLIDE"]
-    decision = compile_matcher(catalog).classify("add a slide in powerpoint")
+    pack = catalog.packs["powerpoint"]
+    matcher = compile_matcher(catalog)
     planner = {spec.intent_id: spec for spec in compile_planner(catalog)}
 
     assert catalog.root_valid and catalog.diagnostics == ()
-    assert decision.intent_id == "ADD_SLIDE"
-    assert intent.availability is IntentAvailability.KNOWN_INTENT_RECIPE_UNAVAILABLE
-    assert intent.active_adoption is None
-    assert planner["ADD_SLIDE"].recipe_path is None
+    assert matcher.classify("add a slide in powerpoint").intent_id == "ADD_SLIDE"
+    assert matcher.classify("insert a bar chart in powerpoint").intent_id == "INSERT_BAR_CHART"
+    assert set(pack.intents) == {"ADD_SLIDE", "INSERT_BAR_CHART"}
+    assert all(
+        intent.availability is IntentAvailability.KNOWN_INTENT_RECIPE_UNAVAILABLE
+        and intent.active_adoption is None
+        for intent in pack.intents.values()
+    )
+    assert all(spec.recipe_path is None for spec in planner.values())
 
 
 def test_candidate_source_declares_only_the_powerpoint_executable():

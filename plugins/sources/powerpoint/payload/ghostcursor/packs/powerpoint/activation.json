@@ -8,6 +8,14 @@
         "path": "intents/add_slide.json",
         "sha256": "b977a9e62a2e9810e479bf137c92edffdec9578984399780543642856be3caa3"
       }
+    },
+    "INSERT_BAR_CHART": {
+      "active_adoption_id": null,
+      "adoptions": {},
+      "intent": {
+        "path": "intents/insert_bar_chart.json",
+        "sha256": "431b61c9ceec3575369bd9316fa6a4d1646a7c5eef936d17596f91c7bc364068"
+      }
     }
   },
   "pack": {

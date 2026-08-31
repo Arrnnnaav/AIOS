@@ -3780,3 +3780,24 @@ action name alone does not prove a stable postcondition. Starting with one
 measured transition preserves the zero-application-knowledge core and keeps a
 showcase deadline from turning observed UI labels into unreviewed executable
 claims. Additional major tasks must earn their own pre/post-state evidence.
+
+## D093 — A PowerPoint chart workflow may observe, but never authorize, Excel data UI
+
+**Decision.** The quarantined `INSERT_BAR_CHART` candidate is a four-step
+PowerPoint-only workflow measured on a two-slide presentation: select the
+Insert tab, open Chart, select the unique Bar category, and confirm with the
+unique OK button. Each transition has an independent selector-backed state;
+completion is the unique `Chart Design` tab exposed through the originally
+bound PowerPoint HWND. The `Pie` category is rejected because its action name
+becomes ambiguous after selection.
+
+PowerPoint opens a separate `Chart in Microsoft PowerPoint - Excel` window
+after confirmation. That window contributes no plugin identity, target
+narrowing, action selector, or verification authority. The workflow completes
+only from state visible through the already-authorized PowerPoint window.
+
+**Reason.** A useful showcase workflow should cross real dialogs, but a child
+editor from another executable must not become an implicit cross-plugin graph.
+Keeping the observed Excel surface outside authority preserves D087's single-
+plugin rule while still allowing PowerPoint's own postcondition to prove chart
+insertion.

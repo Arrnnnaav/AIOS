@@ -1045,6 +1045,13 @@ exactly one `Button/New Slide`; after one manual click the same HWND exposes
 `Text/View Indicator Slide 2 of 2`, while another PowerPoint HWND remains at
 1/1. The trusted precondition forbids treating this as a general N→N+1 action.
 
+The second candidate is a four-step measured chain on a two-slide
+presentation: `Insert` -> `Chart...` -> `Bar` -> `OK`. Intermediate
+postconditions are the unique Bar category and `Text/Clustered Bar`; completion
+is `TabItem/Chart Design` on the original PowerPoint HWND. `Pie` is explicitly
+rejected because selecting it creates three same-name `ListItem/Pie` elements.
+The Excel chart-data window is observed but never targeted or authorized.
+
 Dataset 1.0.0 is now owner-reviewed and frozen at D066. The next gate command
 must omit `--draft`. D067 closed the gate with two consecutive post-freeze
 passes; future inference changes rerun this same command against the frozen
