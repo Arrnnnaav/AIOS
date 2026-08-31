@@ -60,6 +60,12 @@ def test_candidate_digest_inventory_binds_every_declared_artifact():
             2,
         ),
         (
+            "open_normal_view",
+            "OPEN_NORMAL_VIEW",
+            {"normal_button", "normal_slide_pane", "slide2_before", "slide_sorter_before"},
+            1,
+        ),
+        (
             "open_slide_sorter",
             "OPEN_SLIDE_SORTER",
             {"slide2_before", "slide_sorter_button", "slide_sorter_pane"},
@@ -114,9 +120,14 @@ def test_candidate_is_nameable_but_carries_no_execution_authority(tmp_path):
     assert matcher.classify("add a slide in powerpoint").intent_id == "ADD_SLIDE"
     assert matcher.classify("insert a bar chart in powerpoint").intent_id == "INSERT_BAR_CHART"
     assert matcher.classify("add a comment in powerpoint").intent_id == "OPEN_COMMENT_EDITOR"
+    assert matcher.classify("open normal view in powerpoint").intent_id == "OPEN_NORMAL_VIEW"
     assert matcher.classify("open slide sorter in powerpoint").intent_id == "OPEN_SLIDE_SORTER"
     assert set(pack.intents) == {
-        "ADD_SLIDE", "INSERT_BAR_CHART", "OPEN_COMMENT_EDITOR", "OPEN_SLIDE_SORTER"
+        "ADD_SLIDE",
+        "INSERT_BAR_CHART",
+        "OPEN_COMMENT_EDITOR",
+        "OPEN_NORMAL_VIEW",
+        "OPEN_SLIDE_SORTER",
     }
     assert all(
         intent.availability is IntentAvailability.KNOWN_INTENT_RECIPE_UNAVAILABLE

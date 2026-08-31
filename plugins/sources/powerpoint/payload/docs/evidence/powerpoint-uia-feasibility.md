@@ -97,6 +97,24 @@ exposed:
 The two same-name slide thumbnails are not selectors. Completion is the unique
 semantic pane; the status-bar button is the unique action.
 
+## Open Normal View
+
+From the clean Slide Sorter state, the user manually clicked **Normal**. Exact
+provider-side queries on the same HWND returned:
+
+| Phase | Control type | Exact name | Count | AutomationId |
+|---|---|---|---:|---|
+| before/action | Button | Normal | 1 | empty |
+| before | Pane | Slide Sorter | 1 | SlideSorterPane |
+| after | Pane | Slide | 1 | SlidePane |
+| after | Pane | Slide Sorter | 0 | n/a |
+| both | Text | View Indicator Slide 2 of 2 | 1 | empty |
+
+Completion is the semantic slide-editing pane, not button state, geometry, or
+the disappearance of the old pane. The candidate requires Slide Sorter as a
+precondition and uses `accept_if_already_present` for an already-open Normal
+view.
+
 ## Limits
 
 - The accepted precondition for this candidate is exactly one slide, expressed

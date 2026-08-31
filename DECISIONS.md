@@ -3836,3 +3836,18 @@ Sorter is completion, not authority to click the view button again.
 while the duplicated thumbnail name cannot identify either slide. Excluding
 the modal-covered attempt prevents a different foreground state from being
 folded into the candidate's claimed precondition.
+
+## D096 — Returning to PowerPoint Normal view requires the prior view
+
+**Decision.** The quarantined `OPEN_NORMAL_VIEW` workflow is valid only from
+the measured two-slide Slide Sorter state. It targets the unique status-bar
+`Button/Normal` and completes on the unique semantic `Pane/Slide`
+(`SlidePane`) exposed by the same HWND. The old `Pane/Slide Sorter` is measured
+as absent after the action, but disappearance is evidence rather than the
+positive completion rule.
+
+**Reason.** A positive semantic pane proves that the editing surface exists;
+button state and absence alone do not. Requiring the sorter pane as a
+precondition makes this the measured inverse transition rather than an
+unbounded claim that Normal can be entered correctly from every PowerPoint
+state.
