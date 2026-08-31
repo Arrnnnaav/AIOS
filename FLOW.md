@@ -1007,6 +1007,26 @@ begun has phase `execution` and records the failed node plus the completed
 prefix. A changed authority epoch is never treated as permission to reinterpret
 the remaining graph.
 
+## Complex-goal proposal flow
+
+```
+user goal + one operator-selected active plugin
+    -> atomic CompositionContext
+    -> signed CapabilityRegistry only
+    -> bounded model schema:
+         summary + node_id + registered capability_id
+         + scalar parameters + dependency edges
+    -> strict parser (plugin identity injected, never model-supplied)
+    -> full validate_task_graph()
+    -> flattened read-only plan shown to user
+    -> explicit Start confirmation
+    -> execute_task_graph() revalidates and reauthorizes every node
+```
+
+An absent registry stops before inference. The model never sees selectors or
+recipes and cannot return them. A valid proposal remains inert until a separate
+explicit execution call.
+
 Dataset 1.0.0 is now owner-reviewed and frozen at D066. The next gate command
 must omit `--draft`. D067 closed the gate with two consecutive post-freeze
 passes; future inference changes rerun this same command against the frozen

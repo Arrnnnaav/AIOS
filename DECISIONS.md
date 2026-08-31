@@ -3739,3 +3739,27 @@ remains the accepted target. Per-node authorization closes that time-of-check
 gap. Holding the original validation epoch at the same time prevents an
 upgrade from silently changing capability meaning halfway through one user-
 approved plan.
+
+## D091 — Complex-goal decomposition returns inert capability graph data
+
+**Decision.** The advisory decomposition model receives one already-selected,
+active plugin's signed capability vocabulary and trusted initial facts. Its
+closed response schema permits only a bounded summary, node IDs, registered
+capability IDs, bounded scalar parameters, and dependency edges. Trusted code
+injects plugin ID/version into every parsed node; the model cannot name or
+switch plugins. The parser rejects duplicate keys, aliases/extra fields,
+fictional capabilities, nested action-like parameters, oversized values, and
+invalid initial facts before the full D087 validator checks ordering,
+preconditions, repeatability, and cycles.
+
+Inference returns an inert `TaskGraphProposal`. Proposal and execution are
+separate public operations: the manager must show the deterministic flattened
+plan and receive explicit user confirmation before calling
+`execute_task_graph()`. No active capability registry means no inference call
+and no plan, selector, target grounding, or renderer.
+
+**Reason.** A model can make a deep plugin easier to use by decomposing a broad
+goal, but it must not become a second workflow-authoring language. Restricting
+it to signed capability names preserves the zero-application-knowledge core;
+separating propose from execute preserves human control and ensures schema
+conformance is never mistaken for authority.

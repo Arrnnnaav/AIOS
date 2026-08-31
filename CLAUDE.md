@@ -617,6 +617,18 @@ failures are separate results. The public entry point may accept only proposal
 data, initial facts, timeout, and operator target narrowing—never injected
 catalogs, authorizers, binders, window readers, or runners.
 
+**Task decomposition is advisory capability selection, and must be reviewed
+before launch (D091).** The model response schema contains only a bounded
+summary, node IDs, capability IDs from one already-selected active plugin,
+scalar parameters, and dependency edges. Plugin ID/version are injected from
+the signed registry, never returned by the model. Reject duplicate JSON keys,
+extra fields, fictional capabilities, non-scalar parameters, invalid initial
+facts, and any graph the complete D087 validator refuses. Proposal and
+execution are separate APIs: showing the flattened plan and receiving explicit
+user confirmation must happen before `execute_task_graph()`. With no enabled
+capability registry, do not contact the model and produce no executable plan,
+selector, target, or overlay.
+
 **The frozen durability contract remains mandatory.** Implementation changes
 happen on the active product branch and must rerun the gate. Every model, digest,
 prompt, schema, parser, adapter, or inference-policy change requires the

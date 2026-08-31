@@ -22,6 +22,7 @@ from typing import Mapping, TypeAlias
 MAX_GRAPH_NODES = 32
 MAX_GRAPH_EDGES = 128
 MAX_NODE_PARAMETERS = 16
+MAX_NODE_ID_LENGTH = 64
 MAX_PARAMETER_STRING_LENGTH = 512
 MAX_REGISTRY_CAPABILITIES = 256
 MAX_CAPABILITY_FACTS = 32
@@ -402,6 +403,17 @@ def capability_registry_sha256(registry: CapabilityRegistry) -> str:
     return hashlib.sha256(_registry_bytes(registry)).hexdigest()
 
 
+def validate_initial_facts(initial_facts: tuple[str, ...]) -> tuple[str, ...]:
+    """Validate trusted starting state before it reaches planning or execution."""
+
+    if len(set(initial_facts)) != len(initial_facts) or any(
+        not isinstance(fact, str) or _FACT_RE.fullmatch(fact) is None
+        for fact in initial_facts
+    ):
+        _reject(GraphValidationCode.INVALID_GRAPH, "initial facts are invalid")
+    return tuple(sorted(initial_facts))
+
+
 def _strict_capability_json(raw: bytes) -> dict[str, object]:
     if len(raw) > MAX_CAPABILITY_ARTIFACT_BYTES:
         _reject(GraphValidationCode.INVALID_REGISTRY, "capability artifact is too large")
@@ -603,17 +615,18 @@ def validate_task_graph(
         _reject(GraphValidationCode.INVALID_GRAPH, "task graph has no nodes")
     if len(graph.nodes) > MAX_GRAPH_NODES or len(graph.edges) > MAX_GRAPH_EDGES:
         _reject(GraphValidationCode.LIMIT_EXCEEDED, "task graph exceeds its size limit")
-    if len(set(initial_facts)) != len(initial_facts) or any(
-        _FACT_RE.fullmatch(fact) is None for fact in initial_facts
-    ):
-        _reject(GraphValidationCode.INVALID_GRAPH, "initial facts are invalid")
+    sorted_initial_facts = validate_initial_facts(initial_facts)
 
     nodes: dict[str, TaskNode] = {}
     used_non_repeatable: set[str] = set()
     for node in graph.nodes:
         if not isinstance(node, TaskNode):
             _reject(GraphValidationCode.INVALID_GRAPH, "task graph has an invalid node")
-        if _NODE_ID_RE.fullmatch(node.node_id) is None:
+        if (
+            not isinstance(node.node_id, str)
+            or len(node.node_id) > MAX_NODE_ID_LENGTH
+            or _NODE_ID_RE.fullmatch(node.node_id) is None
+        ):
             _reject(
                 GraphValidationCode.INVALID_GRAPH,
                 f"node id {node.node_id!r} is invalid",
@@ -710,7 +723,6 @@ def validate_task_graph(
     )
     registry_sha256 = capability_registry_sha256(registry)
     graph_sha256 = hashlib.sha256(_graph_bytes(graph)).hexdigest()
-    sorted_initial_facts = tuple(sorted(initial_facts))
     validation_sha256 = hashlib.sha256(
         json.dumps(
             {
