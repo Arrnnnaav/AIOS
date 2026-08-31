@@ -1,0 +1,40 @@
+{
+  "canonical_target": null,
+  "intent_id": "OPEN_SLIDE_SORTER",
+  "rules": [
+    {
+      "phrases": [
+        "open slide sorter in powerpoint",
+        "show slide sorter in powerpoint"
+      ],
+      "tier": "exact"
+    },
+    {
+      "all_of": [
+        {
+          "any_of": [
+            {"token": "open"},
+            {"token": "show"}
+          ]
+        },
+        {
+          "any_of": [
+            {"token": "slide"}
+          ]
+        },
+        {
+          "any_of": [
+            {"token": "sorter"}
+          ]
+        },
+        {
+          "any_of": [
+            {"alias": "powerpoint_names"}
+          ]
+        }
+      ],
+      "tier": "heuristic"
+    }
+  ],
+  "schema_version": 2
+}

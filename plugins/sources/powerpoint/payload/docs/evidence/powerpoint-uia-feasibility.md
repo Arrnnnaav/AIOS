@@ -81,6 +81,22 @@ The recipe binds names and types, not the dynamic GUID-bearing IDs. Completion
 is the exact editor name. It uses `accept_if_already_present`, so an already-
 open editor completes without creating a second draft.
 
+## Open Slide Sorter
+
+After discarding the empty comment draft, the user manually clicked **Slide
+Sorter**. The first attempt was excluded because a comment-discard confirmation
+modal still covered the presentation. In the clean state, HWND `657022`
+exposed:
+
+| Control type | Exact name | Count | AutomationId |
+|---|---|---:|---|
+| Button | Slide Sorter | 1 | empty |
+| Pane | Slide Sorter | 1 | SlideSorterPane |
+| ListItem | Slide | 2 | Slide256Image / Slide257Image |
+
+The two same-name slide thumbnails are not selectors. Completion is the unique
+semantic pane; the status-bar button is the unique action.
+
 ## Limits
 
 - The accepted precondition for this candidate is exactly one slide, expressed

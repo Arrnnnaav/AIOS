@@ -3818,3 +3818,21 @@ precise by binding it to values guaranteed to change. Reusing the existing
 already-present rule also makes the workflow idempotent at the user-visible
 goal boundary without claiming that posting or deleting comments is safe to
 repeat.
+
+## D095 — PowerPoint view changes bind the semantic pane, not slide thumbnails
+
+**Decision.** The quarantined `OPEN_SLIDE_SORTER` workflow targets the unique
+status-bar `Button/Slide Sorter` and verifies the unique semantic
+`Pane/Slide Sorter` on the same bound PowerPoint HWND. The first measurement
+attempt is excluded because an unposted-comment confirmation modal covered the
+presentation; only the clean retry is evidence. The two slide thumbnails both
+expose `ListItem/Slide`, so neither same-name element is an action or
+verification selector.
+
+The verification uses `accept_if_already_present`: an already-open Slide
+Sorter is completion, not authority to click the view button again.
+
+**Reason.** The pane provides stable proof that the requested view exists,
+while the duplicated thumbnail name cannot identify either slide. Excluding
+the modal-covered attempt prevents a different foreground state from being
+folded into the candidate's claimed precondition.

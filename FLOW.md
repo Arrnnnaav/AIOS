@@ -1058,6 +1058,12 @@ AutomationIds are evidence only and never enter the recipe. If the editor is
 already open, `accept_if_already_present` completes without creating another
 draft.
 
+The fourth candidate changes presentation view through the unique status-bar
+`Button/Slide Sorter` and completes on the unique semantic
+`Pane/Slide Sorter`. A modal-covered first attempt is excluded. The two
+same-name `ListItem/Slide` thumbnails are recorded only as evidence and never
+become selectors.
+
 Dataset 1.0.0 is now owner-reviewed and frozen at D066. The next gate command
 must omit `--draft`. D067 closed the gate with two consecutive post-freeze
 passes; future inference changes rerun this same command against the frozen
