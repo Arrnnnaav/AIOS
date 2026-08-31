@@ -50,6 +50,7 @@ ID_STOP = 2109
 ID_PLUGINS = 2110
 ID_DETAILS = 2111
 ID_PRIVACY = 2112
+ID_COMPLEX = 2113
 ID_HEADER = 2190
 DEFAULT_GUI_FONT = 17
 
@@ -104,12 +105,73 @@ class PluginPresentation:
     version: str
     state: str
     compatibility: str
+    has_capabilities: bool = False
 
 
 @dataclass(frozen=True)
 class LaunchRequest:
     goal: str
     target_hwnd: int | None = None
+
+
+@dataclass(frozen=True)
+class TaskProposalRequest:
+    goal: str
+    plugin_id: str
+
+
+@dataclass(frozen=True)
+class TaskExecutionRequest:
+    goal: str
+    graph: object
+    target_hwnd: int | None = None
+
+
+@dataclass(frozen=True)
+class PlanningResult:
+    request: LaunchRequest | TaskProposalRequest
+    result: object | None
+    error: BaseException | None
+
+
+def task_preview_rows(proposal: object) -> tuple[str, ...]:
+    """Flatten one already-validated proposal for review, never execution."""
+
+    rows = []
+    for number, step in enumerate(getattr(proposal, "steps"), start=1):
+        guidance = ", ".join(
+            f"{value.name.replace('_', ' ')}={value.value}"
+            for value in step.guidance_values
+        )
+        suffix = f" · {guidance}" if guidance else ""
+        rows.append(f"○  {number}. {step.instruction}{suffix}")
+    return tuple(rows)
+
+
+def task_result_action(result: object) -> str:
+    """Choose UI recovery without ever replaying an already-started graph."""
+
+    from ghostcursor.task_runtime import TaskRunCode
+
+    if getattr(result, "completed_node_ids", ()):
+        return "terminal"
+    if getattr(result, "code", None) is TaskRunCode.TARGET_NOT_RUNNING:
+        return "target_not_running"
+    if getattr(result, "code", None) is TaskRunCode.TARGET_CHOICE_REQUIRED:
+        return "target_choice_required"
+    return "terminal"
+
+
+def execute_manager_task(request: TaskExecutionRequest) -> object:
+    """Run reviewed graph data through the production-selected task authority."""
+
+    from ghostcursor.task_runtime import execute_task_graph
+
+    return execute_task_graph(
+        request.graph,
+        target_hwnd=request.target_hwnd,
+        seconds_per_node=120.0,
+    )
 
 
 def project_snapshot(snapshot: SessionSnapshot) -> ManagerProjection:
@@ -266,9 +328,14 @@ class NativeManagerWindow:
         )
         self.closed = False
         self.plugin_refresh_requested = True
-        self._pending_launch: LaunchRequest | None = None
+        self._pending_request: (
+            LaunchRequest | TaskProposalRequest | TaskExecutionRequest | None
+        ) = None
         self._snapshot: SessionSnapshot | None = None
         self._target_candidates: tuple[object, ...] = ()
+        self._target_choice_for = ""
+        self._task_proposal: object | None = None
+        self._plugins: tuple[PluginPresentation, ...] = ()
         self._plugin_rows: tuple[str, ...] = ()
         self._controls: dict[int, int] = {}
         _windows[self.hwnd] = self
@@ -314,6 +381,7 @@ class NativeManagerWindow:
         )
         win32gui.SendMessage(goal, 0x1501, True, "What do you want to accomplish?")
         self._child("BUTTON", "Start", win32con.BS_PUSHBUTTON, ID_START)
+        self._child("BUTTON", "Plan complex", win32con.BS_PUSHBUTTON, ID_COMPLEX)
         self._child("STATIC", "Plan", win32con.SS_LEFT, 2191)
         self._child(
             "LISTBOX",
@@ -368,8 +436,10 @@ class NativeManagerWindow:
 
         self._move(ID_HEADER, margin, 18, 360, header_h)
         self._move(ID_STATUS, width - margin - 280, 18, 280, header_h)
-        self._move(ID_GOAL, margin, 70, width - 2 * margin - 132, goal_h)
-        self._move(ID_START, width - margin - 116, 70, 116, goal_h)
+        action_w = 116
+        self._move(ID_GOAL, margin, 70, width - 2 * margin - 2 * action_w - 16, goal_h)
+        self._move(ID_START, width - margin - 2 * action_w - 8, 70, action_w, goal_h)
+        self._move(ID_COMPLEX, width - margin - action_w, 70, action_w, goal_h)
         self._move(2191, margin, 122, left_w, 24)
         self._move(ID_TIMELINE, margin, body_y, left_w, body_h - 34)
         self._move(ID_PROGRESS, margin, body_y + body_h - 28, left_w, 24)
@@ -398,7 +468,7 @@ class NativeManagerWindow:
                 self._set(ID_STATUS, "Enter a goal first")
                 return
             target_hwnd = None
-            if self._target_candidates:
+            if self._target_candidates and self._target_choice_for == "simple":
                 selected = win32gui.SendMessage(
                     self._controls[ID_TIMELINE], win32con.LB_GETCURSEL, 0, 0
                 )
@@ -406,8 +476,44 @@ class NativeManagerWindow:
                     self._set(ID_STATUS, "Choose one window")
                     return
                 target_hwnd = int(getattr(self._target_candidates[selected], "hwnd"))
-            self._pending_launch = LaunchRequest(goal, target_hwnd)
+            self._task_proposal = None
+            self._pending_request = LaunchRequest(goal, target_hwnd)
             win32gui.EnableWindow(self._controls[ID_START], False)
+            win32gui.EnableWindow(self._controls[ID_COMPLEX], False)
+        elif control_id == ID_COMPLEX:
+            goal = win32gui.GetWindowText(self._controls[ID_GOAL]).strip()
+            if not goal:
+                self._set(ID_STATUS, "Enter a goal first")
+                return
+            if self._task_proposal is not None:
+                target_hwnd = None
+                if self._target_candidates and self._target_choice_for == "complex":
+                    selected = win32gui.SendMessage(
+                        self._controls[ID_TIMELINE], win32con.LB_GETCURSEL, 0, 0
+                    )
+                    if selected == win32con.LB_ERR:
+                        self._set(ID_STATUS, "Choose one window")
+                        return
+                    target_hwnd = int(getattr(self._target_candidates[selected], "hwnd"))
+                self._pending_request = TaskExecutionRequest(
+                    goal,
+                    getattr(self._task_proposal, "graph"),
+                    target_hwnd,
+                )
+            else:
+                selected = win32gui.SendMessage(
+                    self._controls[ID_PLUGINS], win32con.LB_GETCURSEL, 0, 0
+                )
+                if selected == win32con.LB_ERR or selected >= len(self._plugins):
+                    self._set(ID_STATUS, "Choose one enabled plugin")
+                    return
+                plugin = self._plugins[selected]
+                if plugin.state != "enabled_compatible" or not plugin.has_capabilities:
+                    self._set(ID_STATUS, "Selected plugin has no active capabilities")
+                    return
+                self._pending_request = TaskProposalRequest(goal, plugin.plugin_id)
+            win32gui.EnableWindow(self._controls[ID_START], False)
+            win32gui.EnableWindow(self._controls[ID_COMPLEX], False)
         elif control_id == ID_PAUSE and self._snapshot is not None:
             if self._snapshot.capabilities.can_pause:
                 session_commands.request(
@@ -436,6 +542,8 @@ class NativeManagerWindow:
             return
         self._snapshot = snapshot
         self._target_candidates = ()
+        self._target_choice_for = ""
+        self._task_proposal = None
         projection = project_snapshot(snapshot)
         self._set(
             ID_HEADER,
@@ -451,6 +559,7 @@ class NativeManagerWindow:
         self._set(ID_DETAILS, projection.details)
         self._set(ID_PAUSE, "Resume" if projection.paused else "Pause")
         self._set(ID_START, "Start")
+        self._set(ID_COMPLEX, "Plan complex")
         self._replace_list(
             ID_TIMELINE,
             tuple(
@@ -468,55 +577,71 @@ class NativeManagerWindow:
             SessionStatus.FAILED,
         }
         win32gui.EnableWindow(self._controls[ID_START], terminal)
+        win32gui.EnableWindow(self._controls[ID_COMPLEX], terminal)
         win32gui.EnableWindow(self._controls[ID_GOAL], terminal)
 
     def show_idle(self) -> None:
         self._snapshot = None
         self._target_candidates = ()
+        self._target_choice_for = ""
+        self._task_proposal = None
         self._set(ID_HEADER, "GhostCursor")
         self._set(ID_STATUS, "Ready")
         self._set(ID_PROGRESS, "No active plan")
         self._set(ID_INSTRUCTION, "Describe a task to begin guided, verified work.")
         self._set(ID_VERIFICATION, "Verification will remain visible while you work.")
         self._set(ID_START, "Start")
+        self._set(ID_COMPLEX, "Plan complex")
         self._replace_list(ID_TIMELINE, ())
         win32gui.EnableWindow(self._controls[ID_START], True)
+        win32gui.EnableWindow(self._controls[ID_COMPLEX], True)
         win32gui.EnableWindow(self._controls[ID_GOAL], True)
         win32gui.EnableWindow(self._controls[ID_PAUSE], False)
         win32gui.EnableWindow(self._controls[ID_STOP], False)
 
     def show_understanding(self, goal: str) -> None:
         self._target_candidates = ()
+        self._target_choice_for = ""
         self._set(ID_STATUS, _STATUS_LABELS[SessionStatus.UNDERSTANDING])
         self._set(ID_PROGRESS, "Checking enabled plugin capabilities")
         self._set(ID_INSTRUCTION, goal)
         self._set(ID_VERIFICATION, "Nothing will execute before authorization.")
         self._set(ID_START, "Start")
+        self._set(ID_COMPLEX, "Plan complex")
         self._replace_list(ID_TIMELINE, ("…  Understanding the goal",))
         win32gui.EnableWindow(self._controls[ID_GOAL], False)
 
     def show_unavailable(self, goal: str, explanation: str) -> None:
         self._target_candidates = ()
+        self._target_choice_for = ""
+        self._task_proposal = None
         self._set(ID_STATUS, "Unsupported or unavailable")
         self._set(ID_PROGRESS, "No executable plan")
         self._set(ID_INSTRUCTION, explanation)
         self._set(ID_VERIFICATION, "No target, selector, or overlay was created.")
         self._set(ID_START, "Start")
+        self._set(ID_COMPLEX, "Plan complex")
         self._replace_list(ID_TIMELINE, ())
         win32gui.EnableWindow(self._controls[ID_START], True)
+        win32gui.EnableWindow(self._controls[ID_COMPLEX], True)
         win32gui.EnableWindow(self._controls[ID_GOAL], True)
 
     def show_target_not_running(self, goal: str, explanation: str) -> None:
         self._target_candidates = ()
+        self._target_choice_for = ""
+        complex_retry = self._task_proposal is not None
         self._set(ID_STATUS, _STATUS_LABELS[SessionStatus.TARGET_NOT_RUNNING])
         self._set(ID_PROGRESS, "Start the application, then retry")
         self._set(ID_INSTRUCTION, explanation)
-        self._set(ID_START, "Retry")
-        win32gui.EnableWindow(self._controls[ID_START], True)
-        win32gui.EnableWindow(self._controls[ID_GOAL], True)
+        self._set(ID_START, "Start" if complex_retry else "Retry")
+        self._set(ID_COMPLEX, "Retry plan" if complex_retry else "Plan complex")
+        win32gui.EnableWindow(self._controls[ID_START], not complex_retry)
+        win32gui.EnableWindow(self._controls[ID_COMPLEX], complex_retry)
+        win32gui.EnableWindow(self._controls[ID_GOAL], not complex_retry)
 
     def show_target_choices(self, goal: str, candidates: tuple[object, ...]) -> None:
         self._target_candidates = candidates
+        self._target_choice_for = "simple"
         self._set(ID_STATUS, _STATUS_LABELS[SessionStatus.TARGET_CHOICE_REQUIRED])
         self._set(ID_PROGRESS, f"{len(candidates)} trusted windows match")
         self._set(ID_INSTRUCTION, "Choose the exact window. GhostCursor will revalidate it before launch.")
@@ -530,7 +655,71 @@ class NativeManagerWindow:
         )
         self._set(ID_START, "Use window")
         win32gui.EnableWindow(self._controls[ID_START], True)
+        win32gui.EnableWindow(self._controls[ID_COMPLEX], False)
         win32gui.EnableWindow(self._controls[ID_GOAL], False)
+
+    def show_task_proposal(self, goal: str, proposal: object) -> None:
+        """Present the entire validated graph; a second action must start it."""
+
+        self._snapshot = None
+        self._target_candidates = ()
+        self._target_choice_for = ""
+        self._task_proposal = proposal
+        rows = task_preview_rows(proposal)
+        self._set(ID_STATUS, _STATUS_LABELS[SessionStatus.READY_TO_START])
+        self._set(ID_PROGRESS, f"{len(rows)} validated steps")
+        self._set(ID_INSTRUCTION, getattr(proposal, "summary"))
+        self._set(ID_VERIFICATION, "Review every step. Nothing has executed yet.")
+        self._replace_list(ID_TIMELINE, rows)
+        self._set(ID_START, "Start")
+        self._set(ID_COMPLEX, "Start plan")
+        win32gui.EnableWindow(self._controls[ID_START], False)
+        win32gui.EnableWindow(self._controls[ID_COMPLEX], True)
+        win32gui.EnableWindow(self._controls[ID_GOAL], False)
+
+    def show_task_target_choices(self, candidates: tuple[object, ...]) -> None:
+        """Keep the reviewed graph while the operator selects its exact HWND."""
+
+        if self._task_proposal is None:
+            raise RuntimeError("task target choice requires a reviewed proposal")
+        self._target_candidates = candidates
+        self._target_choice_for = "complex"
+        self._set(ID_STATUS, _STATUS_LABELS[SessionStatus.TARGET_CHOICE_REQUIRED])
+        self._set(ID_PROGRESS, f"{len(candidates)} trusted windows match")
+        self._set(ID_INSTRUCTION, "Choose the exact window for this reviewed plan.")
+        self._replace_list(
+            ID_TIMELINE,
+            tuple(
+                f"[{candidate.hwnd}] {candidate.title} — "
+                f"{candidate.app.executable_name} {candidate.app.version}"
+                for candidate in candidates
+            ),
+        )
+        self._set(ID_COMPLEX, "Use window")
+        win32gui.EnableWindow(self._controls[ID_START], False)
+        win32gui.EnableWindow(self._controls[ID_COMPLEX], True)
+
+    def show_task_result(self, result: object) -> None:
+        """Render one graph-level outcome without inventing node progress."""
+
+        self._target_candidates = ()
+        self._target_choice_for = ""
+        completed = bool(getattr(result, "completed", False))
+        code = getattr(getattr(result, "code", None), "value", "task_failed")
+        self._set(ID_STATUS, "Goal completed" if completed else "Plan stopped safely")
+        self._set(ID_PROGRESS, code)
+        self._set(ID_INSTRUCTION, getattr(result, "detail", "Task plan ended"))
+        self._set(
+            ID_VERIFICATION,
+            "Every step reached its declared outcome." if completed
+            else "No completion is claimed for the failed step.",
+        )
+        self._set(ID_START, "Start")
+        self._set(ID_COMPLEX, "Plan complex")
+        self._task_proposal = None
+        win32gui.EnableWindow(self._controls[ID_START], True)
+        win32gui.EnableWindow(self._controls[ID_COMPLEX], True)
+        win32gui.EnableWindow(self._controls[ID_GOAL], True)
 
     def set_plugins(self, plugins: tuple[PluginPresentation, ...]) -> None:
         rows = tuple(
@@ -538,14 +727,23 @@ class NativeManagerWindow:
             f"{plugin.compatibility}"
             for plugin in plugins
         ) or ("No plugins installed",)
+        self._plugins = plugins
         self._plugin_rows = rows
         self._replace_list(ID_PLUGINS, rows)
         self.plugin_refresh_requested = False
 
-    def take_launch_request(self) -> LaunchRequest | None:
-        request = self._pending_launch
-        self._pending_launch = None
+    def take_request(
+        self,
+    ) -> LaunchRequest | TaskProposalRequest | TaskExecutionRequest | None:
+        request = self._pending_request
+        self._pending_request = None
         return request
+
+    def take_launch_request(self) -> LaunchRequest | None:
+        """Compatibility accessor for the simple-goal native test boundary."""
+
+        request = self.take_request()
+        return request if isinstance(request, LaunchRequest) else None
 
     def dispose(self) -> None:
         if win32gui.IsWindow(self.hwnd):
@@ -558,46 +756,58 @@ def plugin_presentations() -> tuple[PluginPresentation, ...]:
 
     from ghostcursor.plugins.platform import production_store
 
+    store = production_store()
+    installed = store.list_installed()
+    try:
+        capability_plugins = frozenset(store.load_composition_context().registries)
+    except Exception:
+        capability_plugins = frozenset()
     return tuple(
         PluginPresentation(
             plugin_id=plugin.plugin_id,
             version=plugin.version,
             state=plugin.state.value,
             compatibility=plugin.compatibility.reason,
+            has_capabilities=plugin.plugin_id in capability_plugins,
         )
-        for plugin in production_store().list_installed()
+        for plugin in installed
     )
 
 
 class _PlanningWorker:
     def __init__(self) -> None:
-        self._result: queue.Queue[tuple[object | None, BaseException | None]] = queue.Queue(maxsize=1)
+        self._result: queue.Queue[PlanningResult] = queue.Queue(maxsize=1)
         self._thread: threading.Thread | None = None
 
     @property
     def running(self) -> bool:
         return self._thread is not None and self._thread.is_alive()
 
-    def start(self, request: LaunchRequest) -> None:
+    def start(self, request: LaunchRequest | TaskProposalRequest) -> None:
         if self.running:
             raise RuntimeError("planning is already running")
 
         def plan() -> None:
             try:
-                from ghostcursor.reasoning.planner import plan_compiled_goal
+                if isinstance(request, TaskProposalRequest):
+                    from ghostcursor.task_planner import propose_task_graph
 
-                result = plan_compiled_goal(
-                    request.goal,
-                    target_hwnd=request.target_hwnd,
-                )
-                self._result.put((result, None))
+                    result = propose_task_graph(request.goal, request.plugin_id)
+                else:
+                    from ghostcursor.reasoning.planner import plan_compiled_goal
+
+                    result = plan_compiled_goal(
+                        request.goal,
+                        target_hwnd=request.target_hwnd,
+                    )
+                self._result.put(PlanningResult(request, result, None))
             except Exception as exc:
-                self._result.put((None, exc))
+                self._result.put(PlanningResult(request, None, exc))
 
         self._thread = threading.Thread(target=plan, name="GhostCursorPlanner", daemon=True)
         self._thread.start()
 
-    def take(self) -> tuple[object | None, BaseException | None] | None:
+    def take(self) -> PlanningResult | None:
         try:
             result = self._result.get_nowait()
         except queue.Empty:
@@ -624,16 +834,33 @@ def launch_manager() -> int:
                     manager.set_plugins(())
                     manager._set(ID_STATUS, f"Plugin status unavailable: {type(exc).__name__}")
 
-            request = manager.take_launch_request()
-            if request is not None and not planning.running:
+            request = manager.take_request()
+            if isinstance(request, TaskExecutionRequest):
+                manager._set(ID_STATUS, _STATUS_LABELS[SessionStatus.PLAN_VALIDATING])
+                manager._set(ID_VERIFICATION, "Revalidating the whole graph before step 1.")
+                result = execute_manager_task(request)
+                action = task_result_action(result)
+                if action == "target_not_running":
+                    manager.show_target_not_running(request.goal, result.detail)
+                elif action == "target_choice_required":
+                    manager.show_task_target_choices(result.target_candidates)
+                else:
+                    manager.show_task_result(result)
+                manager.plugin_refresh_requested = True
+            elif request is not None and not planning.running:
                 manager.show_understanding(request.goal)
                 planning.start(request)
 
             planned = planning.take()
             if planned is not None:
-                result, error = planned
+                result, error = planned.result, planned.error
                 if error is not None:
-                    manager.show_unavailable("", f"Planning failed: {type(error).__name__}")
+                    manager.show_unavailable(
+                        planned.request.goal,
+                        f"Planning failed: {type(error).__name__}: {error}",
+                    )
+                elif isinstance(planned.request, TaskProposalRequest):
+                    manager.show_task_proposal(planned.request.goal, result)
                 elif getattr(result, "plan", None) is not None:
                     run_tour_for_workflow(result.plan, seconds=120.0)
                     manager.plugin_refresh_requested = True

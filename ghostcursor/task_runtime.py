@@ -29,7 +29,8 @@ class TaskRunCode(str, Enum):
     AUTHORITY_UNAVAILABLE = "authority_unavailable"
     AUTHORITY_CHANGED = "authority_changed"
     AUTHORIZATION_REFUSED = "authorization_refused"
-    TARGET_UNAVAILABLE = "target_unavailable"
+    TARGET_NOT_RUNNING = "target_not_running"
+    TARGET_CHOICE_REQUIRED = "target_choice_required"
     NODE_FAILED = "node_failed"
 
 
@@ -43,6 +44,7 @@ class TaskGraphRunResult:
     validated: ValidatedTaskGraph | None = None
     completed_node_ids: tuple[str, ...] = ()
     failed_node_id: str | None = None
+    target_candidates: tuple[object, ...] = ()
 
     @property
     def completed(self) -> bool:
@@ -137,6 +139,7 @@ def _execute_task_graph(
         )
 
     completed: list[str] = []
+    bound_target_hwnd = target_hwnd
     for node in validated.ordered_nodes:
         try:
             # A disable, upgrade, registry replacement, or any active-catalog
@@ -170,8 +173,17 @@ def _execute_task_graph(
                 token,
                 capability.authorization_goal,
                 target_title_re=target_title_re,
-                target_hwnd=target_hwnd,
+                target_hwnd=bound_target_hwnd,
             )
+            workflow_hwnd = getattr(getattr(workflow, "target", None), "hwnd", None)
+            if bound_target_hwnd is None and workflow_hwnd is not None:
+                bound_target_hwnd = int(workflow_hwnd)
+            elif (
+                bound_target_hwnd is not None
+                and workflow_hwnd is not None
+                and int(workflow_hwnd) != bound_target_hwnd
+            ):
+                raise RuntimeError("bound workflow changed the graph target HWND")
             exit_code = run(
                 workflow,
                 seconds=seconds_per_node,
@@ -179,15 +191,11 @@ def _execute_task_graph(
             )
         except Exception as exc:  # fail closed at the node boundary
             name = type(exc).__name__
-            code = (
-                TaskRunCode.TARGET_UNAVAILABLE
-                if name in {"TargetNotRunning", "TargetChoiceRequired"}
-                else (
-                    TaskRunCode.AUTHORITY_CHANGED
-                    if name == "WorkflowUnavailable"
-                    else TaskRunCode.NODE_FAILED
-                )
-            )
+            code = {
+                "TargetNotRunning": TaskRunCode.TARGET_NOT_RUNNING,
+                "TargetChoiceRequired": TaskRunCode.TARGET_CHOICE_REQUIRED,
+                "WorkflowUnavailable": TaskRunCode.AUTHORITY_CHANGED,
+            }.get(name, TaskRunCode.NODE_FAILED)
             return TaskGraphRunResult(
                 TaskRunPhase.EXECUTION,
                 code,
@@ -195,6 +203,7 @@ def _execute_task_graph(
                 validated,
                 tuple(completed),
                 node.node_id,
+                tuple(getattr(exc, "candidates", ())),
             )
         if exit_code != 0:
             return TaskGraphRunResult(

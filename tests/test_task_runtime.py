@@ -157,6 +157,51 @@ def test_every_node_reloads_authorizes_binds_and_runs_in_validated_order():
     assert events[5][2] == {"seconds": 5.0, "guidance_values": ()}
 
 
+def test_first_node_captures_one_hwnd_for_every_remaining_node():
+    bound = []
+
+    def bind(_token, _goal, **kwargs):
+        bound.append(kwargs["target_hwnd"])
+        return SimpleNamespace(
+            target=SimpleNamespace(hwnd=kwargs["target_hwnd"] or 404)
+        )
+
+    result = _run(bind=bind)
+
+    assert result.completed
+    # The operator-provided handle is already fixed in _run.
+    assert bound == [42, 42]
+
+    bound.clear()
+    result = _execute_task_graph(
+        _graph(),
+        initial_facts=(),
+        target_title_re=None,
+        target_hwnd=None,
+        seconds_per_node=5.0,
+        load_context=lambda: SimpleNamespace(
+            catalog=object(), registries={PLUGIN: _registry()}
+        ),
+        authorize=lambda _catalog, capability: _Authorization(capability.intent_id),
+        bind=bind,
+        run=lambda *_args, **_kwargs: 0,
+    )
+
+    assert result.completed
+    assert bound == [None, 404]
+
+
+def test_a_binder_cannot_return_a_different_hwnd_from_graph_narrowing():
+    result = _run(
+        bind=lambda *_args, **_kwargs: SimpleNamespace(
+            target=SimpleNamespace(hwnd=999)
+        )
+    )
+
+    assert result.code is TaskRunCode.NODE_FAILED
+    assert "changed the graph target HWND" in result.detail
+
+
 def test_catalog_or_registry_change_refuses_the_remaining_suffix_before_authorization():
     registry = _registry()
     changed = replace(registry, catalog_generation=5)
@@ -231,6 +276,31 @@ def test_public_graph_executor_exposes_no_authority_injection_parameter():
         "target_hwnd",
         "seconds_per_node",
     }
+
+
+def test_zero_and_ambiguous_targets_remain_distinct_graph_outcomes():
+    class TargetNotRunning(Exception):
+        pass
+
+    class TargetChoiceRequired(Exception):
+        def __init__(self):
+            self.candidates = (SimpleNamespace(hwnd=10), SimpleNamespace(hwnd=20))
+
+    missing = _run(
+        bind=lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            TargetNotRunning("PowerPoint is not running")
+        )
+    )
+    ambiguous = _run(
+        bind=lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            TargetChoiceRequired()
+        )
+    )
+
+    assert missing.code is TaskRunCode.TARGET_NOT_RUNNING
+    assert missing.target_candidates == ()
+    assert ambiguous.code is TaskRunCode.TARGET_CHOICE_REQUIRED
+    assert [candidate.hwnd for candidate in ambiguous.target_candidates] == [10, 20]
 
 
 def test_capability_authorization_uses_its_signed_exact_goal(monkeypatch):

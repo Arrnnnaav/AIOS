@@ -60,6 +60,14 @@ title, executable, and version. Choosing one feeds only its HWND into a new
 plan/bind. Plugin rows are reread from `PluginStore` whenever the manager gains
 focus, so a separate developer CLI process cannot leave lifecycle display stale.
 
+Complex goals use a separate two-action manager path. The operator selects one
+enabled compatible plugin with an active signed capability registry, then
+`Plan complex` asks only for inert capability graph data. The manager displays
+every deterministically flattened step and bounded guidance value. Nothing
+executes until the operator presses `Start plan`; execution then revalidates the
+whole graph before node 1. A target chooser can resume only when no node has
+completed, so recovery cannot replay a side-effecting prefix.
+
 Production bundles are Ed25519-signed `.ghostplugin` files whose signed
 manifest contains the complete payload digest inventory. `PluginStore` owns
 install/enable/disable/uninstall and reports `disabled`, `enabled_compatible`,
@@ -96,6 +104,7 @@ model/user proposal: capability ids + scalar parameters + dependency edges
          -> classify the capability's existing intent
          -> authorize_intent() against the current active catalog
          -> bind_workflow() reloads authority and the selected live target
+         -> first successful bind captures one HWND for every later node
          -> publish guidance through SessionSnapshot only
 ```
 
@@ -1013,7 +1022,9 @@ TaskGraph + trusted initial facts
 Graph rejection has phase `validation`. A refusal after node execution has
 begun has phase `execution` and records the failed node plus the completed
 prefix. A changed authority epoch is never treated as permission to reinterpret
-the remaining graph.
+the remaining graph. The first node captures one target HWND; every later node
+binds that same handle, and a later target loss terminates rather than replaying
+the completed prefix.
 
 ## Complex-goal proposal flow
 

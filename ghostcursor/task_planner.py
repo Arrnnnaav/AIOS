@@ -6,6 +6,7 @@ import json
 from dataclasses import dataclass
 
 from ghostcursor.inference.ollama import DEFAULT_MODEL, GenerateResponse, generate_structured
+from ghostcursor.session import GuidanceValue
 from ghostcursor.task_graph import (
     MAX_GRAPH_EDGES,
     MAX_GRAPH_NODES,
@@ -33,11 +34,48 @@ class TaskProposalRejected(ValueError):
 
 
 @dataclass(frozen=True)
+class TaskPlanStep:
+    """Inert, signed-authority-derived presentation for one validated node."""
+
+    node_id: str
+    capability_id: str
+    instruction: str
+    guidance_values: tuple[GuidanceValue, ...] = ()
+
+
+@dataclass(frozen=True)
 class TaskGraphProposal:
     graph: TaskGraph
     validated: ValidatedTaskGraph
     summary: str
     generation: GenerateResponse
+    steps: tuple[TaskPlanStep, ...]
+
+
+def task_plan_steps(
+    validated: ValidatedTaskGraph,
+    registry: CapabilityRegistry,
+) -> tuple[TaskPlanStep, ...]:
+    """Project the trusted flattened graph without creating new authority."""
+
+    if (
+        validated.plugin_id != registry.plugin_id
+        or validated.plugin_version != registry.plugin_version
+        or validated.registry_sha256 != capability_registry_sha256(registry)
+    ):
+        raise TaskProposalRejected("validated graph no longer matches its capability registry")
+    return tuple(
+        TaskPlanStep(
+            node_id=node.node_id,
+            capability_id=node.capability_id,
+            instruction=registry.capabilities[node.capability_id].authorization_goal,
+            guidance_values=tuple(
+                GuidanceValue(name, value)
+                for name, value in sorted(node.parameters.items())
+            ),
+        )
+        for node in validated.ordered_nodes
+    )
 
 
 def task_graph_response_schema(registry: CapabilityRegistry) -> dict:
@@ -249,7 +287,13 @@ def infer_task_graph(
     )
     graph, summary = parse_task_graph_proposal(generation.payload, registry)
     validated = validate_task_graph(graph, registry, initial_facts=initial_facts)
-    return TaskGraphProposal(graph, validated, summary, generation)
+    return TaskGraphProposal(
+        graph,
+        validated,
+        summary,
+        generation,
+        task_plan_steps(validated, registry),
+    )
 
 
 def propose_task_graph(

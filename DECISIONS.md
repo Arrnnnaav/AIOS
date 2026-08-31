@@ -3872,3 +3872,26 @@ dimension, or duration to enter, but letting model-proposed strings rewrite a
 selector or action would create a second executable recipe language. Keeping
 the values on the presentation side allows useful personalization without
 granting new authority or turning session history into a content archive.
+
+## D098 — Complex plans require review, confirmation, and one graph HWND
+
+**Decision.** The native manager exposes complex composition separately from a
+single known workflow. The operator must select one enabled compatible plugin
+whose signed capability registry is active. `Plan complex` may only request and
+display an inert `TaskGraphProposal`: every flattened step comes from the
+validated node order, every instruction comes from the signed capability's
+authorization goal, and every parameter is presentation-only guidance. A
+second explicit `Start plan` action is required before `execute_task_graph()`.
+
+The first successful node bind captures one HWND for the whole graph. Every
+later node reauthorizes and rebinds through the existing production boundary,
+but narrows to that exact handle. Missing and ambiguous targets remain distinct
+results. The manager may offer target recovery only before any node has
+completed; after a side-effecting prefix, any target loss is terminal rather
+than permission to replay earlier nodes.
+
+**Reason.** A model-generated graph must be reviewable as a complete proposed
+procedure, not smuggled into execution through the ordinary Start button.
+Pinning one operator-approved window prevents later nodes from drifting to a
+different presentation if another PowerPoint window appears. Refusing replay
+after progress preserves non-idempotent capability semantics.

@@ -2,7 +2,16 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from ghostcursor.manager import project_snapshot
+from ghostcursor.manager import (
+    TaskExecutionRequest,
+    execute_manager_task,
+    project_snapshot,
+    task_preview_rows,
+    task_result_action,
+)
+from ghostcursor.session import GuidanceValue
+from ghostcursor.task_planner import TaskPlanStep
+from ghostcursor.task_runtime import TaskGraphRunResult, TaskRunCode, TaskRunPhase
 from ghostcursor.session import (
     SessionSnapshot,
     SessionStatus,
@@ -97,3 +106,56 @@ def test_target_candidate_rows_need_both_handle_and_live_identity():
     # The native view consumes these exact fields; title alone is deliberately
     # insufficient because two windows may have identical titles.
     assert (candidate.hwnd, candidate.app.executable_name) == (42, "POWERPNT.EXE")
+
+
+def test_complex_preview_flattens_every_step_and_its_display_only_parameters():
+    proposal = SimpleNamespace(
+        steps=(
+            TaskPlanStep("theme", "APPLY_THEME", "apply the approved theme"),
+            TaskPlanStep(
+                "title",
+                "ADD_TITLE_SLIDE",
+                "add the title slide",
+                (GuidanceValue("slide_title", "GhostCursor"),),
+            ),
+        )
+    )
+
+    assert task_preview_rows(proposal) == (
+        "○  1. apply the approved theme",
+        "○  2. add the title slide · slide title=GhostCursor",
+    )
+
+
+def test_target_recovery_never_replays_a_graph_after_any_node_completed():
+    before_start = TaskGraphRunResult(
+        TaskRunPhase.EXECUTION,
+        TaskRunCode.TARGET_CHOICE_REQUIRED,
+        "choose a window",
+    )
+    after_side_effect = TaskGraphRunResult(
+        TaskRunPhase.EXECUTION,
+        TaskRunCode.TARGET_NOT_RUNNING,
+        "window closed",
+        completed_node_ids=("create-deck",),
+    )
+
+    assert task_result_action(before_start) == "target_choice_required"
+    assert task_result_action(after_side_effect) == "terminal"
+
+
+def test_manager_task_execution_has_no_second_runner_or_authority_path(monkeypatch):
+    graph = object()
+    captured = []
+    expected = object()
+    monkeypatch.setattr(
+        "ghostcursor.task_runtime.execute_task_graph",
+        lambda *args, **kwargs: captured.append((args, kwargs)) or expected,
+    )
+
+    result = execute_manager_task(TaskExecutionRequest("Build a deck", graph, 404))
+
+    assert result is expected
+    assert captured == [
+        ((graph,), {"target_hwnd": 404, "seconds_per_node": 120.0})
+    ]

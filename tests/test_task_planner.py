@@ -12,6 +12,7 @@ from ghostcursor.task_planner import (
     infer_task_graph,
     parse_task_graph_proposal,
     propose_task_graph,
+    task_plan_steps,
     task_graph_response_schema,
 )
 
@@ -101,6 +102,71 @@ def test_inference_uses_bounded_schema_then_validates_the_whole_graph(monkeypatc
     assert captured["num_predict"] == 768
     assert "CREATE_DECK" in captured["prompt"]
     assert captured["schema"]["additionalProperties"] is False
+
+
+def test_preview_steps_are_flattened_from_validated_nodes_and_signed_capabilities(monkeypatch):
+    value = _payload()
+    value["nodes"][1]["parameters"] = {}
+    monkeypatch.setattr(
+        "ghostcursor.task_planner.generate_structured",
+        lambda **_kwargs: GenerateResponse(value),
+    )
+
+    proposal = infer_task_graph("Build a simple presentation", _registry())
+
+    assert [(step.node_id, step.instruction) for step in proposal.steps] == [
+        ("create", "create a presentation"),
+        ("slide", "add a slide"),
+    ]
+    assert proposal.steps == task_plan_steps(proposal.validated, _registry())
+
+
+def test_preview_parameters_are_display_only_sorted_scalars(monkeypatch):
+    from ghostcursor.task_graph import ParameterKind, ParameterSpec
+
+    registry = _registry()
+    slide = registry.capabilities["ADD_SLIDE"]
+    registry = CapabilityRegistry(
+        registry.plugin_id,
+        registry.plugin_version,
+        registry.catalog_sha256,
+        registry.catalog_generation,
+        MappingProxyType(
+            {
+                **registry.capabilities,
+                "ADD_SLIDE": CapabilitySpec(
+                    slide.capability_id,
+                    slide.intent_id,
+                    slide.authorization_goal,
+                    preconditions=slide.preconditions,
+                    postconditions=slide.postconditions,
+                    parameters=MappingProxyType(
+                        {
+                            "slide_title": ParameterSpec(ParameterKind.STRING),
+                            "template": ParameterSpec(ParameterKind.STRING),
+                        }
+                    ),
+                    safe_to_repeat=True,
+                ),
+            }
+        ),
+    )
+    value = _payload()
+    value["nodes"][1]["parameters"] = {
+        "template": "Investor",
+        "slide_title": "GhostCursor",
+    }
+    monkeypatch.setattr(
+        "ghostcursor.task_planner.generate_structured",
+        lambda **_kwargs: GenerateResponse(value),
+    )
+
+    proposal = infer_task_graph("Build a deck", registry)
+
+    assert [(item.name, item.value) for item in proposal.steps[1].guidance_values] == [
+        ("slide_title", "GhostCursor"),
+        ("template", "Investor"),
+    ]
 
 
 def test_a_cyclic_model_graph_is_rejected_before_it_can_be_proposed(monkeypatch):

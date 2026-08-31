@@ -167,7 +167,9 @@ missing dependency edges, unsatisfied preconditions, and duplicate capabilities
 not explicitly declared safe to repeat all fail closed. The validated graph is
 flattened deterministically for the session UI. Validation is not execution
 authority: every node must pass the canonical intent authorization and fresh
-bind checks again immediately before it runs.
+bind checks again immediately before it runs. The first successful node bind
+captures one HWND for the graph; every later node must bind that same handle.
+Never rediscover a different same-application window between graph nodes.
 
 Validated node parameters may be published as immutable `GuidanceValue`
 scalars for the manager and other session surfaces. They are presentation-only:
@@ -216,6 +218,11 @@ safety surface during a tour. Both receive the same `SessionSnapshot` through
 must never affect the live tour. The manager may display plugin lifecycle state
 only by calling `PluginStore.list_installed()` and must refresh after focus so
 CLI changes do not leave a stale in-memory status view.
+Complex planning requires an explicitly selected enabled plugin with an active
+capability registry. The first action may only produce and display the complete
+flattened plan; a distinct second `Start plan` action is required before
+`execute_task_graph()`. Target ambiguity may be recovered only before any node
+has completed—never replay a side-effecting completed prefix.
 
 The VS Code workflow gates and the Ask behavioral gate are closed. Their
 acceptance evidence lives in `docs/evidence/` and D048-D057; do not restate run
@@ -625,6 +632,9 @@ that suffix against new authority. `validation_rejected` and execution-phase
 failures are separate results. The public entry point may accept only proposal
 data, initial facts, timeout, and operator target narrowing—never injected
 catalogs, authorizers, binders, window readers, or runners.
+When no HWND was supplied, the first successful bind captures its handle and
+all later nodes are narrowed to that exact HWND. A later target loss is a
+terminal graph failure, not permission to replay the completed prefix.
 
 **Task decomposition is advisory capability selection, and must be reviewed
 before launch (D091).** The model response schema contains only a bounded
