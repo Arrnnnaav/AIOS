@@ -1,9 +1,12 @@
 # PowerPoint UIA feasibility — measured candidate controls
 
-Date: 2026-08-31  
-Application: Microsoft PowerPoint  
-Executable: `powerpnt.exe`  
-Executable version: `16.0.20326.20112`  
+Date: 2026-08-31
+
+Application: Microsoft PowerPoint
+
+Executable: `powerpnt.exe`
+
+Executable version: `16.0.20326.20112`
 Window measured: `Presentation2 - PowerPoint`, HWND `657022`
 
 This is feasibility evidence, not adoption evidence. All interaction was
