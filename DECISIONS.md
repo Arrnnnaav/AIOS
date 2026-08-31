@@ -3763,3 +3763,20 @@ goal, but it must not become a second workflow-authoring language. Restricting
 it to signed capability names preserves the zero-application-knowledge core;
 separating propose from execute preserves human control and ensures schema
 conformance is never mistaken for authority.
+
+## D092 — Deep PowerPoint coverage starts from measured, state-bounded candidates
+
+**Decision.** PowerPoint plugin authoring uses the same data-only acceptance
+path as Excel: one exact executable/version and HWND, provider-side or bounded
+UIA measurements before and after a manual user action, quarantined candidate
+bytes, digest binding, independent review, and 3/3 UIA-only acceptance before
+activation. The first candidate, `ADD_SLIDE`, is valid only when the selected
+presentation exposes `View Indicator Slide 1 of 1`; it targets the unique
+`Button/New Slide` and verifies `View Indicator Slide 2 of 2` on that same
+HWND. It does not claim a general slide-count transition.
+
+**Reason.** PowerPoint exposes many attractive ribbon controls, but a visible
+action name alone does not prove a stable postcondition. Starting with one
+measured transition preserves the zero-application-knowledge core and keeps a
+showcase deadline from turning observed UI labels into unreviewed executable
+claims. Additional major tasks must earn their own pre/post-state evidence.

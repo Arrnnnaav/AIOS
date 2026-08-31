@@ -1027,6 +1027,24 @@ An absent registry stops before inference. The model never sees selectors or
 recipes and cannot return them. A valid proposal remains inert until a separate
 explicit execution call.
 
+## PowerPoint showcase authoring flow
+
+```
+live PowerPoint 16.0.20326.20112 + one operator-selected HWND
+    -> measure exact pre-action UIA cardinality
+    -> user performs the action manually
+    -> measure exact post-action state on the same HWND
+    -> hand-author data-only candidate
+    -> quarantine with active_adoption_id: null
+    -> schema/compiler tests + digest binding
+    -> independent review -> isolated 3/3 acceptance -> activation
+```
+
+The first candidate is deliberately narrow: a one-slide presentation exposes
+exactly one `Button/New Slide`; after one manual click the same HWND exposes
+`Text/View Indicator Slide 2 of 2`, while another PowerPoint HWND remains at
+1/1. The trusted precondition forbids treating this as a general N→N+1 action.
+
 Dataset 1.0.0 is now owner-reviewed and frozen at D066. The next gate command
 must omit `--draft`. D067 closed the gate with two consecutive post-freeze
 passes; future inference changes rerun this same command against the frozen

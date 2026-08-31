@@ -1,0 +1,18 @@
+{
+  "activation_generation": 1,
+  "intents": {
+    "ADD_SLIDE": {
+      "active_adoption_id": null,
+      "adoptions": {},
+      "intent": {
+        "path": "intents/add_slide.json",
+        "sha256": "b977a9e62a2e9810e479bf137c92edffdec9578984399780543642856be3caa3"
+      }
+    }
+  },
+  "pack": {
+    "path": "pack/powerpoint.json",
+    "sha256": "0b099d868a13477ce1ae281062d303f441120a13a427ce1f6bda1bf589d1b5fc"
+  },
+  "schema_version": 2
+}

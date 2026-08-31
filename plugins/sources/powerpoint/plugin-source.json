@@ -1,0 +1,28 @@
+{
+  "applications": [
+    {"kind": "executable", "value": "powerpnt.exe"}
+  ],
+  "core_compatibility": {
+    "maximum_exclusive": "2.0.0",
+    "minimum": "1.0.0"
+  },
+  "files": [
+    {
+      "destination": "ghostcursor/packs/index.json",
+      "source": "plugins/sources/powerpoint/index.json"
+    }
+  ],
+  "plugin_id": "ghostcursor.powerpoint",
+  "signing_key_id": "ghostcursor-release-2026-2",
+  "trees": [
+    {
+      "destination": "ghostcursor/packs/powerpoint",
+      "source": "plugins/sources/powerpoint/payload/ghostcursor/packs/powerpoint"
+    },
+    {
+      "destination": "docs/evidence",
+      "source": "plugins/sources/powerpoint/payload/docs/evidence"
+    }
+  ],
+  "version": "1.0.0"
+}

@@ -1,0 +1,8 @@
+{
+  "artifacts": {
+    "intents/add_slide.json": "b977a9e62a2e9810e479bf137c92edffdec9578984399780543642856be3caa3",
+    "pack/powerpoint.json": "0b099d868a13477ce1ae281062d303f441120a13a427ce1f6bda1bf589d1b5fc",
+    "recipes/add_slide.json": "96ad179d9e4349b1846014c2592c113cf7f0ddd6f33c195fecef589cf23dcad1"
+  },
+  "schema_version": 1
+}
