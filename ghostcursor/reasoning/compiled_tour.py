@@ -40,6 +40,13 @@ from ghostcursor.reasoning.schema import (
     VerificationRule,
 )
 from ghostcursor.reasoning.verification import Snapshot, verify
+from ghostcursor.session import (
+    SessionSnapshot,
+    SessionStatus,
+    SessionSink,
+    active_capabilities,
+    terminal_capabilities,
+)
 
 
 class RunOutcome(str, Enum):
@@ -215,6 +222,8 @@ def execute_compiled_workflow(
     on_grounding: Callable[..., None] | None = None,
     on_promoted: Callable[[int, Step, GroundedTarget], None] | None = None,
     on_step: Callable[[int, int], None] | None = None,
+    on_session: SessionSink | None = None,
+    session_id: str | None = None,
     runtime_steps: Sequence[Step] | None = None,
     app_version: str | None = None,
     ui_locale: str = "unknown",
@@ -247,6 +256,88 @@ def execute_compiled_workflow(
         else compiled_steps(workflow)
     )
     provenance = _ProvenanceLog()
+    started = clock()
+    plan_steps = tuple(step.instruction_text for step in steps)
+    _last_session_key: list[tuple[object, ...] | None] = [None]
+
+    def _publish_session(
+        status: SessionStatus,
+        *,
+        current_step: int,
+        verification_state: str = "",
+        detail: str = "",
+        error_code: str | None = None,
+        terminal: bool = False,
+    ) -> None:
+        if on_session is None:
+            return
+        semantic_key = (
+            status,
+            current_step,
+            verification_state,
+            detail,
+            error_code,
+            terminal,
+        )
+        if semantic_key == _last_session_key[0]:
+            return
+        target = getattr(workflow, "target", None)
+        app = getattr(target, "app", None)
+        snapshot = SessionSnapshot(
+            session_id=session_id
+            or getattr(workflow, "session_id", "")
+            or f"workflow-{getattr(workflow, 'intent_id', 'unknown')}",
+            status=status,
+            goal=getattr(workflow, "goal", ""),
+            intent_id=getattr(workflow, "intent_id", None),
+            plugin_id=getattr(workflow, "plugin_id", None),
+            plugin_version=getattr(workflow, "plugin_version", None),
+            application=getattr(app, "executable_name", None),
+            target_hwnd=getattr(target, "hwnd", None),
+            current_step=current_step,
+            total_steps=len(steps),
+            plan_steps=plan_steps,
+            instruction=(
+                steps[current_step - 1].instruction_text
+                if 0 < current_step <= len(steps) and not terminal
+                else ""
+            ),
+            verification_state=verification_state,
+            elapsed_s=max(0.0, clock() - started),
+            error_code=error_code,
+            detail=detail,
+            provenance=tuple(item.value for item in provenance.as_tuple()),
+            capabilities=(terminal_capabilities() if terminal else active_capabilities(
+                paused=status is SessionStatus.PAUSED
+            )),
+        )
+        _last_session_key[0] = semantic_key
+        on_session(snapshot)
+
+    def _finish(result: TourResult) -> TourResult:
+        if result.outcome is RunOutcome.PASSED:
+            status = SessionStatus.COMPLETED
+            code = None
+        elif result.outcome is RunOutcome.ABORTED and "operator" in result.detail:
+            status = SessionStatus.STOPPED
+            code = "OPERATOR_STOPPED"
+        elif result.outcome is RunOutcome.ABORTED:
+            status = SessionStatus.BLOCKED
+            code = "AUTHORITY_INVALIDATED"
+        elif result.outcome is RunOutcome.TIMED_OUT:
+            status = SessionStatus.FAILED
+            code = "TOUR_TIMED_OUT"
+        else:
+            status = SessionStatus.FAILED
+            code = "TOUR_FAILED"
+        _publish_session(
+            status,
+            current_step=result.steps_completed,
+            detail=result.detail,
+            error_code=code,
+            terminal=True,
+        )
+        return result
 
     def grounder(step: Step, index: int, elements: Sequence[Element]):
         compiled = workflow.recipe.steps[index]
@@ -357,7 +448,11 @@ def execute_compiled_workflow(
     #: leave the first looking like no step at all.
     _reported = [-1]
 
-    started = clock()
+    _publish_session(
+        SessionStatus.GUIDING,
+        current_step=1 if steps else 0,
+        verification_state="waiting_for_observation",
+    )
 
     def _authority_failure() -> str | None:
         if authority_status is None:
@@ -380,43 +475,43 @@ def execute_compiled_workflow(
         _tend()
         authority_failure = _authority_failure()
         if authority_failure is not None:
-            return TourResult(
+            return _finish(TourResult(
                 outcome=RunOutcome.ABORTED,
                 provenance=(),
                 steps_completed=0,
                 steps_total=len(steps),
                 detail=authority_failure,
                 timing=_timing(),
-            )
+            ))
         if should_abort is not None and should_abort():
-            return TourResult(
+            return _finish(TourResult(
                 outcome=RunOutcome.ABORTED,
                 provenance=(),
                 steps_completed=0,
                 steps_total=len(steps),
                 detail="aborted before the first observation",
                 timing=_timing(),
-            )
+            ))
         if clock() - started >= seconds:
-            return TourResult(
+            return _finish(TourResult(
                 outcome=RunOutcome.TIMED_OUT,
                 provenance=(),
                 steps_completed=0,
                 steps_total=len(steps),
                 detail=f"no observation published within {seconds:g}s",
                 timing=_timing(),
-            )
+            ))
         try:
             _current = observe()
         except (ProviderQueryFault, PerceptionUnhealthy) as fault:
-            return TourResult(
+            return _finish(TourResult(
                 outcome=RunOutcome.FAILED,
                 provenance=(),
                 steps_completed=0,
                 steps_total=len(steps),
                 detail=str(fault),
                 timing=_timing(),
-            )
+            ))
         if _current is None:
             sleeper(tick_interval_s)
         else:
@@ -427,23 +522,23 @@ def execute_compiled_workflow(
         _tend()
         authority_failure = _authority_failure()
         if authority_failure is not None:
-            return TourResult(
+            return _finish(TourResult(
                 outcome=RunOutcome.ABORTED,
                 provenance=provenance.as_tuple(),
                 steps_completed=tour.step_index,
                 steps_total=len(steps),
                 detail=authority_failure,
                 timing=_timing(),
-            )
+            ))
         if should_abort is not None and should_abort():
-            return TourResult(
+            return _finish(TourResult(
                 outcome=RunOutcome.ABORTED,
                 provenance=provenance.as_tuple(),
                 steps_completed=tour.step_index,
                 steps_total=len(steps),
                 detail="aborted by the operator",
                 timing=_timing(),
-            )
+            ))
 
         # Pause is an operator instruction, not an empty observation and not a
         # verification result. Keep pumping the focusable control bar and keep
@@ -451,15 +546,20 @@ def execute_compiled_workflow(
         # paused. Perception may continue publishing in the background; the
         # next unpaused tick takes one coherent latest snapshot as usual.
         if should_pause is not None and should_pause():
+            _publish_session(
+                SessionStatus.PAUSED,
+                current_step=min(tour.step_index + 1, len(steps)),
+                verification_state="paused",
+            )
             if clock() - started >= seconds:
-                return TourResult(
+                return _finish(TourResult(
                     outcome=RunOutcome.TIMED_OUT,
                     provenance=provenance.as_tuple(),
                     steps_completed=tour.step_index,
                     steps_total=len(steps),
                     detail=f"no terminal state within {seconds:g}s",
                     timing=_timing(),
-                )
+                ))
             sleeper(tick_interval_s)
             continue
 
@@ -475,6 +575,12 @@ def execute_compiled_workflow(
             # nothing re-announces the last step either.
             if on_step is not None and tour.step_index < len(steps):
                 on_step(tour.step_index, len(steps))
+            if tour.step_index < len(steps):
+                _publish_session(
+                    SessionStatus.GUIDING,
+                    current_step=tour.step_index + 1,
+                    verification_state="grounding",
+                )
 
         if _current is not None and _current.title != first_title[0]:
             # The Open Folder signal specifically: the title is the verified
@@ -504,49 +610,60 @@ def execute_compiled_workflow(
             # reason, never as "the control is not there" -- flattening a
             # fault into absence is the collapse D069 exists to prevent, and a
             # run that ended because of one has to say so.
-            return TourResult(
+            return _finish(TourResult(
                 outcome=RunOutcome.FAILED,
                 provenance=provenance.as_tuple(),
                 steps_completed=tour.step_index,
                 steps_total=len(steps),
                 detail=str(fault),
                 timing=_timing(),
-            )
+            ))
 
         if state is State.AWAITING_USER_ACTION:
             # The hint is on screen from here, which is where a
             # `timeout_from_hint` recipe starts counting.
             _mark("first_hint_s")
+            _publish_session(
+                SessionStatus.WAITING_FOR_USER,
+                current_step=tour.step_index + 1,
+                verification_state="waiting_for_user",
+            )
+        elif state is State.VERIFYING:
+            _publish_session(
+                SessionStatus.VERIFYING,
+                current_step=tour.step_index + 1,
+                verification_state="verifying",
+            )
 
         if state is State.DONE:
-            return TourResult(
+            return _finish(TourResult(
                 outcome=RunOutcome.PASSED,
                 provenance=provenance.as_tuple(),
                 steps_completed=len(steps),
                 steps_total=len(steps),
                 timing=_timing(),
-            )
+            ))
         if state is State.FAILED:
-            return TourResult(
+            return _finish(TourResult(
                 outcome=RunOutcome.FAILED,
                 provenance=provenance.as_tuple(),
                 steps_completed=tour.step_index,
                 steps_total=len(steps),
                 detail=getattr(tour, "failure_reason", "") or "",
                 timing=_timing(),
-            )
+            ))
 
         if clock() - started >= seconds:
             # A timeout is its own outcome, never a failure. "The user did not
             # finish in two minutes" and "the workflow cannot work" are
             # different findings, and an acceptance record that conflated them
             # would report a working workflow as broken.
-            return TourResult(
+            return _finish(TourResult(
                 outcome=RunOutcome.TIMED_OUT,
                 provenance=provenance.as_tuple(),
                 steps_completed=tour.step_index,
                 steps_total=len(steps),
                 detail=f"no terminal state within {seconds:g}s",
                 timing=_timing(),
-            )
+            ))
         sleeper(tick_interval_s)

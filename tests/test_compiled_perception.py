@@ -39,6 +39,7 @@ from ghostcursor.reasoning.compiled_tour import (
     TickInput,
     execute_compiled_workflow,
 )
+from ghostcursor.session import SessionStatus
 
 pytest_plugins = ()
 
@@ -2273,6 +2274,60 @@ def test_the_executor_runs_without_a_progress_listener() -> None:
     """`on_step` is optional: the ESC-only path wires no control rail at all."""
     result = _run_two_step()
     assert result.outcome is RunOutcome.TIMED_OUT
+
+
+def test_session_snapshots_report_the_executor_sequence_and_terminal_result() -> None:
+    snapshots = []
+
+    result = _run_two_step(on_session=snapshots.append)
+
+    assert result.outcome is RunOutcome.TIMED_OUT
+    assert snapshots[0].status is SessionStatus.GUIDING
+    assert snapshots[0].current_step == 1
+    assert snapshots[0].plan_steps == (
+        "Click Open Folder.",
+        "Check the result.",
+    )
+    assert any(
+        snapshot.status is SessionStatus.WAITING_FOR_USER
+        for snapshot in snapshots
+    )
+    assert snapshots[-1].status is SessionStatus.FAILED
+    assert snapshots[-1].error_code == "TOUR_TIMED_OUT"
+    assert snapshots[-1].current_step == result.steps_completed
+    assert snapshots[-1].detail == result.detail
+    keys = [
+        (item.status, item.current_step, item.verification_state, item.error_code)
+        for item in snapshots
+    ]
+    assert all(left != right for left, right in zip(keys, keys[1:]))
+
+
+def test_a_surface_cannot_receive_a_step_beyond_the_executor_terminal_count() -> None:
+    snapshots = []
+    workflow = _two_step_workflow()
+    target = Element("Open Folder...", "Button", "", (10, 20, 110, 60))
+    now = [0.0]
+
+    result = execute_compiled_workflow(
+        workflow,
+        observe=lambda: TickInput(
+            title=f"Welcome {now[0]:.2f} - Visual Studio Code",
+            selectors={"open_folder": (target,)},
+            union=(target,),
+        ),
+        renderer=_NullRenderer(),
+        clock=lambda: now[0],
+        sleeper=lambda seconds: now.__setitem__(0, now[0] + seconds),
+        seconds=6.0,
+        confirmation_requested=lambda: True,
+        on_session=snapshots.append,
+    )
+
+    assert result.outcome is RunOutcome.PASSED
+    assert snapshots[-1].status is SessionStatus.COMPLETED
+    assert snapshots[-1].current_step == snapshots[-1].total_steps == 2
+    assert all(item.current_step <= item.total_steps for item in snapshots)
 # ---------------------------------------------------------------------------
 # What a record can say about WHEN
 # ---------------------------------------------------------------------------

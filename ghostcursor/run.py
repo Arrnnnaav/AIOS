@@ -29,6 +29,7 @@ import argparse
 import os
 import re
 import time
+import uuid
 from pathlib import Path
 from typing import Callable
 
@@ -43,6 +44,7 @@ from ghostcursor.overlay import bar
 from ghostcursor.perception import uia
 from ghostcursor.perception.warmup import DEFAULT_WARMUP_BUDGET_S, WarmUp
 from ghostcursor.reasoning.schema import Step, VerificationKind
+from ghostcursor.session import SessionSnapshot, SessionStatus
 
 REFRESH_SECONDS = 0.25
 DEFAULT_TARGET = ".*Notepad.*"
@@ -392,6 +394,27 @@ class CompiledTourControls:
         if not self._paused and not self._stop_requested:
             self._bar.set_status(self.hwnd, self._step_text)
 
+    def report_session(self, snapshot: SessionSnapshot) -> None:
+        """Render executor-owned truth; never derive a state in the rail."""
+
+        labels = {
+            SessionStatus.GUIDING: self._step_text,
+            SessionStatus.WAITING_FOR_USER: "Your turn",
+            SessionStatus.VERIFYING: "Verifying…",
+            SessionStatus.PAUSED: "Paused",
+            SessionStatus.BLOCKED: "Blocked",
+            SessionStatus.COMPLETED: "Completed",
+            SessionStatus.STOPPED: "Stopped",
+            SessionStatus.FAILED: "Failed",
+        }
+        if snapshot.status is SessionStatus.GUIDING and snapshot.total_steps:
+            self._step_text = f"Step {snapshot.current_step} of {snapshot.total_steps}"
+            labels[SessionStatus.GUIDING] = self._step_text
+        if not self._stop_requested:
+            self._bar.set_status(
+                self.hwnd, labels.get(snapshot.status, snapshot.status.value.replace("_", " ").title())
+            )
+
     def should_abort(self) -> bool:
         return self._stop_requested or self._escape_source()
 
@@ -638,6 +661,7 @@ def _run_compiled_tour(
 
     from ghostcursor.memory.store import ObservationStore
     from ghostcursor.reasoning import grounding
+    from ghostcursor.session_store import SessionStore
 
     runtime_steps = compiled_steps(workflow)
     learning_app_id = _compiled_learning_app_id(workflow)
@@ -645,6 +669,9 @@ def _run_compiled_tour(
     ui_locale = get_ui_locale()
     memory_store = None
     memory_warning = [False]
+    session_store = None
+    session_warning = [False]
+    session_id = uuid.uuid4().hex
     try:
         memory_store = ObservationStore()
         hydrate_steps(
@@ -663,6 +690,17 @@ def _run_compiled_tour(
             except sqlite3.Error:
                 pass
         memory_store = None
+    try:
+        session_store = SessionStore()
+        session_store.purge_expired()
+    except (OSError, sqlite3.Error) as exc:
+        print(f"Session history unavailable for this run: {exc}")
+        if session_store is not None:
+            try:
+                session_store.close()
+            except sqlite3.Error:
+                pass
+        session_store = None
 
     def _promote_compiled(index, step, grounded):
         del index  # identity comes from the preserved namespace + descriptor
@@ -707,6 +745,11 @@ def _run_compiled_tour(
         if memory_store is not None:
             try:
                 memory_store.close()
+            except sqlite3.Error:
+                pass
+        if session_store is not None:
+            try:
+                session_store.close()
             except sqlite3.Error:
                 pass
         raise
@@ -756,6 +799,17 @@ def _run_compiled_tour(
             observe, on_grounding, stop_perception = perception.start()
 
         try:
+            def _publish_session(snapshot):
+                if controls is not None:
+                    controls.report_session(snapshot)
+                if session_store is None or session_warning[0]:
+                    return
+                try:
+                    session_store.record(snapshot)
+                except sqlite3.Error as exc:
+                    print(f"Session history disabled for the rest of this run: {exc}")
+                    session_warning[0] = True
+
             def _pump_compiled_ui():
                 if controls is not None:
                     controls.poll()
@@ -786,6 +840,8 @@ def _run_compiled_tour(
                 on_grounding=on_grounding,
                 on_promoted=_promote_compiled,
                 on_step=(controls.report_step if controls is not None else None),
+                on_session=_publish_session,
+                session_id=session_id,
                 runtime_steps=runtime_steps,
                 app_version=learning_version,
                 ui_locale=ui_locale,
@@ -805,6 +861,11 @@ def _run_compiled_tour(
             if memory_store is not None:
                 try:
                     memory_store.close()
+                except sqlite3.Error:
+                    pass
+            if session_store is not None:
+                try:
+                    session_store.close()
                 except sqlite3.Error:
                     pass
 

@@ -1969,6 +1969,7 @@ def test_the_live_compiled_launch_owns_and_disposes_the_control_bar(
             self.polls = 0
             self.disposed = False
             self.steps_reported = []
+            self.sessions = []
 
         def poll(self):
             self.polls += 1
@@ -1981,6 +1982,9 @@ def test_the_live_compiled_launch_owns_and_disposes_the_control_bar(
 
         def report_step(self, index, total):
             self.steps_reported.append((index, total))
+
+        def report_session(self, snapshot):
+            self.sessions.append(snapshot)
 
         def dispose(self):
             self.disposed = True
@@ -2008,6 +2012,8 @@ def test_the_live_compiled_launch_owns_and_disposes_the_control_bar(
     # The production launch reports progress to its own rail, not just the
     # harness one -- the two wire the executor separately.
     assert controls.steps_reported == [(0, 1)]
+    assert controls.sessions[-1].status.value == "completed"
+    assert controls.sessions[-1].current_step == controls.sessions[-1].total_steps == 1
 
 
 def test_the_production_launch_always_prints_its_timing(capsys) -> None:

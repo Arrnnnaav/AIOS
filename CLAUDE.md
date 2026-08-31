@@ -179,6 +179,14 @@ parent rectangle: Win32 clips them even though their HWNDs exist. The prompt
 must not overlap the right safety rail; closing/submitting restores compact
 geometry.
 
+Session-facing UI must consume executor-published immutable
+`SessionSnapshot` values. It may not count steps, infer completion, translate a
+failure into success, or reconstruct verification state from overlay events.
+Local session history belongs in `sessions.sqlite`, separate from learned
+observations, and must not persist goals, instructions, HWNDs, screen text, or
+raw failure details by default. Diagnostic inclusion of a goal or note requires
+separate explicit user choices.
+
 The VS Code workflow gates and the Ask behavioral gate are closed. Their
 acceptance evidence lives in `docs/evidence/` and D048-D057; do not restate run
 counts here.

@@ -24,8 +24,21 @@ CLI --goal / control-bar Ask
         -> build_compiled_perception() starts one worker after both gates
         -> compiled_tour.execute_compiled_workflow()
              -> compare active-index digest every 0.25s; abort if withdrawn
+             -> publish immutable SessionSnapshot transitions from executor truth
+             -> SessionStore records content-minimized local events only
         -> nested finally blocks tear down overlay and perception on every exit
 ```
+
+The native rail and future manager consume the same `SessionSnapshot` callback.
+It carries the complete ordered instruction list, executor-owned current/total
+step counts, verification state, terminal outcome, and explicit control
+capabilities. The rail renders those values; it never counts or infers them.
+`SessionStore` writes a separate `%LOCALAPPDATA%\GhostCursor\sessions.sqlite`
+with identifiers, state transitions, timing, provenance, and stable error
+codes. Goals, instructions, HWNDs, screen text, and raw error details are not
+persisted. Records older than 30 days are purged when a production tour opens
+the store, and diagnostic archives include goals or notes only through
+separate explicit options.
 
 Production bundles are Ed25519-signed `.ghostplugin` files whose signed
 manifest contains the complete payload digest inventory. `PluginStore` owns

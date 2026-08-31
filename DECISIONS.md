@@ -3585,3 +3585,25 @@ for nested calls on one thread, and is abandoned automatically when an owner
 process dies. The short timeout is part of the safety contract: the running
 tour checks authority every 0.25 seconds and must abort inside D020's 0.5-second
 ceiling rather than block behind an installer.
+
+## D085 — The executor publishes one presentation-neutral session truth
+
+**Decision.** `execute_compiled_workflow()` publishes immutable
+`SessionSnapshot` transitions to an optional in-process sink. The snapshot
+carries the complete ordered instruction list, executor-owned progress,
+verification phase, explicit available controls, plugin/target identity, and
+terminal status. A successful `TourResult` is the only route to `COMPLETED`;
+abort, timeout, and failure map to distinct terminal states and stable error
+codes. The native rail consumes this callback instead of reconstructing state.
+
+Content-minimized session history is stored separately from learned grounding
+observations. It records identifiers, state transitions, timings, provenance,
+and error classifications, but not goals, instructions, HWNDs, screen content,
+or raw details. Records expire after 30 days. A user-created diagnostic ZIP is
+local and includes a goal or note only when each field is separately enabled.
+
+**Reason.** The product-shell mockup has several views of one run. Without a
+shared state contract, each surface would count steps and interpret errors
+independently—the same invented-progress failure the rail already forbids.
+Keeping telemetry content-minimized also makes the pilot useful without
+quietly turning a screen-aware guide into a screen-content archive.
