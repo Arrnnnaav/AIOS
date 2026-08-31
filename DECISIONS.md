@@ -3657,3 +3657,34 @@ an invalid fourth node is discovered. Single-plugin scope avoids introducing
 cross-window focus and authority semantics while the composition mechanism
 itself is still being proven. Explicit pre/postconditions make ordering
 machine-checkable instead of relying on plausible prose.
+
+## D088 — The pilot shell is two native windows in one process with one session truth
+
+**Decision.** The pilot-facing manager is a normal, non-topmost Win32 window
+for goal entry, executor-owned plan timeline, visible verification, structured
+target recovery, plugin state, and local-privacy context. It does not replace
+the compact topmost control rail: after the authority gates pass, the rail
+remains the small always-visible Stop/Pause safety surface beside the
+click-through overlay.
+
+Both windows live in the production process. `session_events` fans each
+immutable executor snapshot to optional presentation subscribers; subscriber
+failure cannot change the tour outcome. `session_commands` carries edge-
+triggered Stop/Pause requests back to `CompiledTourControls`, keyed by the exact
+active session ID. Closing the manager requests Stop for that session but does
+not post `WM_QUIT`, because the shared UI thread must still tear down its rail
+and full-screen overlay. Planning occurs on one background thread while live
+execution returns to the UI thread and its existing nonblocking message pump.
+
+The manager reads plugin status from `PluginStore.list_installed()` and refreshes
+when focused. It has no compatibility, lifecycle, authorization, progress, or
+verification policy of its own. Missing targets and ambiguous targets render as
+different states; an ambiguity lists handles as well as titles, and selection
+starts a fresh plan whose bind re-enumerates and revalidates the chosen handle.
+
+**Reason.** Keeping the rail compact preserves escapability and leaves the
+guided control visible, while forcing the full product experience into that
+148×192 surface would make goals, plans, verification, plugins, and recovery
+unreadable. A second process would require IPC and create another stale-state
+boundary. One process, one executor stream, and session-scoped commands provide
+the richer shell without creating a second source of authority or progress.

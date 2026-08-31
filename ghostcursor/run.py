@@ -44,7 +44,13 @@ from ghostcursor.overlay import bar
 from ghostcursor.perception import uia
 from ghostcursor.perception.warmup import DEFAULT_WARMUP_BUDGET_S, WarmUp
 from ghostcursor.reasoning.schema import Step, VerificationKind
-from ghostcursor.session import SessionSnapshot, SessionStatus
+from ghostcursor.session import (
+    SessionCommand,
+    SessionSnapshot,
+    SessionStatus,
+    session_commands,
+    session_events,
+)
 
 REFRESH_SECONDS = 0.25
 DEFAULT_TARGET = ".*Notepad.*"
@@ -352,6 +358,7 @@ class CompiledTourControls:
         self._escape_source = escape_source or escape_pressed
         self._stop_requested = False
         self._paused = False
+        self._session_id: str | None = None
         #: What the bar should say while the tour is simply running. The
         #: executor replaces it as steps advance; until it does, a rail that
         #: named no step at all was the state this text is here to end.
@@ -362,11 +369,17 @@ class CompiledTourControls:
         self._pump_messages()
         requests = self._bar.bar_state(self.hwnd)
         self._bar.clear_requests(self.hwnd)
-        if requests.stop_requested:
+        commands = session_commands.take(self._session_id)
+        stop_requested = requests.stop_requested or SessionCommand.STOP in commands
+        pause_toggles = int(requests.pause_requested) + commands.count(
+            SessionCommand.TOGGLE_PAUSE
+        )
+        if stop_requested:
             self._stop_requested = True
             self._bar.set_status(self.hwnd, "Stopping…")
-        if requests.pause_requested:
-            self._paused = not self._paused
+        if pause_toggles:
+            if pause_toggles % 2:
+                self._paused = not self._paused
             # Resuming restores the STEP, not the word "Running": the executor
             # reports only on change, so a resume that wrote "Running" would
             # leave the rail lying about progress until the next step began --
@@ -397,6 +410,10 @@ class CompiledTourControls:
     def report_session(self, snapshot: SessionSnapshot) -> None:
         """Render executor-owned truth; never derive a state in the rail."""
 
+        if self._session_id is not None and self._session_id != snapshot.session_id:
+            session_commands.discard(self._session_id)
+        self._session_id = snapshot.session_id
+
         labels = {
             SessionStatus.GUIDING: self._step_text,
             SessionStatus.WAITING_FOR_USER: "Your turn",
@@ -422,6 +439,7 @@ class CompiledTourControls:
         return self._paused
 
     def dispose(self) -> None:
+        session_commands.discard(self._session_id)
         self._bar.destroy_bar_window(self.hwnd)
 
 
@@ -457,7 +475,17 @@ def main() -> int:
     )
     source = parser.add_mutually_exclusive_group()
     source.add_argument("--goal", help="natural-language goal to classify and guide")
+    source.add_argument(
+        "--manager",
+        action="store_true",
+        help="open the native goal, session, plugin, and recovery manager",
+    )
     args = parser.parse_args()
+
+    if args.manager:
+        from ghostcursor.manager import launch_manager
+
+        return launch_manager()
 
     if args.goal:
         from ghostcursor.reasoning.planner import PlanStatus, plan_compiled_goal
@@ -812,6 +840,7 @@ def _run_compiled_tour(
             def _publish_session(snapshot):
                 if controls is not None:
                     controls.report_session(snapshot)
+                session_events.publish(snapshot)
                 if session_store is None or session_warning[0]:
                     return
                 try:

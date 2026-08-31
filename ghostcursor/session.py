@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
+from threading import Lock
 from typing import Callable
 
 
@@ -71,6 +72,88 @@ class SessionSnapshot:
 
 
 SessionSink = Callable[[SessionSnapshot], None]
+
+
+class SessionEventHub:
+    """In-process fan-out for presentation surfaces.
+
+    The native rail and manager intentionally share one process.  A hub keeps
+    the executor's public launch signature free of policy-bearing injection
+    seams while still letting several views consume the same snapshot.  A
+    broken optional view cannot turn a valid tour into a failure.
+    """
+
+    def __init__(self) -> None:
+        self._lock = Lock()
+        self._next_token = 1
+        self._subscribers: dict[int, SessionSink] = {}
+
+    def subscribe(self, sink: SessionSink) -> Callable[[], None]:
+        if not callable(sink):
+            raise TypeError("session sink must be callable")
+        with self._lock:
+            token = self._next_token
+            self._next_token += 1
+            self._subscribers[token] = sink
+
+        def unsubscribe() -> None:
+            with self._lock:
+                self._subscribers.pop(token, None)
+
+        return unsubscribe
+
+    def publish(self, snapshot: SessionSnapshot) -> tuple[Exception, ...]:
+        with self._lock:
+            subscribers = tuple(self._subscribers.values())
+        failures: list[Exception] = []
+        for sink in subscribers:
+            try:
+                sink(snapshot)
+            except Exception as exc:  # optional presentation must not abort work
+                failures.append(exc)
+        return tuple(failures)
+
+
+class SessionCommand(str, Enum):
+    STOP = "stop"
+    TOGGLE_PAUSE = "toggle_pause"
+
+
+class SessionCommandMailbox:
+    """Edge-triggered commands from same-process presentation surfaces."""
+
+    def __init__(self) -> None:
+        self._lock = Lock()
+        self._commands: dict[str, list[SessionCommand]] = {}
+
+    def request(self, session_id: str, command: SessionCommand) -> None:
+        if not session_id:
+            raise ValueError("session command requires a session id")
+        if not isinstance(command, SessionCommand):
+            raise TypeError("session command is invalid")
+        with self._lock:
+            queue = self._commands.setdefault(session_id, [])
+            if command is SessionCommand.STOP:
+                if command not in queue:
+                    queue.append(command)
+            else:
+                queue.append(command)
+
+    def take(self, session_id: str | None) -> tuple[SessionCommand, ...]:
+        if not session_id:
+            return ()
+        with self._lock:
+            return tuple(self._commands.pop(session_id, ()))
+
+    def discard(self, session_id: str | None) -> None:
+        if not session_id:
+            return
+        with self._lock:
+            self._commands.pop(session_id, None)
+
+
+session_events = SessionEventHub()
+session_commands = SessionCommandMailbox()
 
 
 def active_capabilities(*, paused: bool = False) -> SessionCapabilities:

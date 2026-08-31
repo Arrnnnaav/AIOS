@@ -1974,6 +1974,7 @@ def test_the_live_compiled_launch_owns_and_disposes_the_control_bar(
     from ghostcursor.perception.uia import Element
     from ghostcursor.reasoning import renderer as renderer_module
     from ghostcursor.reasoning.compiled_tour import TickInput
+    from ghostcursor.session import session_events
 
     workflow, catalog = _workflow()
     titles = [
@@ -2042,15 +2043,20 @@ def test_the_live_compiled_launch_owns_and_disposes_the_control_bar(
     )
     _publish()
 
-    exit_code = _launch(
-        workflow,
-        catalog,
-        seconds=60.0,
-        create_overlay=lambda: 1,
-        observe=lambda: slot["value"],
-        renderer=None,
-        on_sleep=_publish,
-    )
+    manager_snapshots = []
+    unsubscribe = session_events.subscribe(manager_snapshots.append)
+    try:
+        exit_code = _launch(
+            workflow,
+            catalog,
+            seconds=60.0,
+            create_overlay=lambda: 1,
+            observe=lambda: slot["value"],
+            renderer=None,
+            on_sleep=_publish,
+        )
+    finally:
+        unsubscribe()
 
     assert exit_code == 0
     assert controls.polls >= 2
@@ -2060,6 +2066,7 @@ def test_the_live_compiled_launch_owns_and_disposes_the_control_bar(
     assert controls.steps_reported == [(0, 1)]
     assert controls.sessions[-1].status.value == "completed"
     assert controls.sessions[-1].current_step == controls.sessions[-1].total_steps == 1
+    assert manager_snapshots == controls.sessions
 
 
 def test_the_production_launch_always_prints_its_timing(capsys) -> None:

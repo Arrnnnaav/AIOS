@@ -385,3 +385,16 @@ def test_goal_cli_forwards_an_explicit_target_handle_to_fresh_planning(monkeypat
             {"target_title_re": None, "target_hwnd": 4242},
         )
     ]
+
+
+def test_manager_cli_opens_the_native_product_shell_without_starting_a_tour(
+    monkeypatch,
+):
+    import sys
+
+    launched = []
+    monkeypatch.setattr("ghostcursor.manager.launch_manager", lambda: launched.append(True) or 0)
+    monkeypatch.setattr(sys, "argv", ["ghostcursor.run", "--manager"])
+
+    assert run_module.main() == 0
+    assert launched == [True]

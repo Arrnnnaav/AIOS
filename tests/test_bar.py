@@ -14,6 +14,7 @@ import win32gui
 from ghostcursor.overlay import dpi  # noqa: F401  -- DPI before any window (D010)
 from ghostcursor.overlay import bar, window as ov
 from ghostcursor.run import CompiledTourControls
+from ghostcursor.session import SessionCommand, SessionStatus, session_commands
 
 
 class _BarApi:
@@ -67,6 +68,33 @@ def test_compiled_controls_make_stop_pause_and_ask_real_actions():
 
     controls.dispose()
     assert api.destroyed == [42]
+
+
+def test_manager_commands_reach_only_the_matching_live_session():
+    api = _BarApi()
+    controls = CompiledTourControls(
+        42,
+        bar_api=api,
+        pump_messages=lambda: None,
+        escape_source=lambda: False,
+    )
+    from ghostcursor.session import SessionSnapshot
+
+    controls.report_session(
+        SessionSnapshot(session_id="live", status=SessionStatus.GUIDING)
+    )
+    session_commands.request("other", SessionCommand.STOP)
+    session_commands.request("live", SessionCommand.TOGGLE_PAUSE)
+    controls.poll()
+
+    assert controls.should_pause() is True
+    assert controls.should_abort() is False
+
+    session_commands.request("live", SessionCommand.STOP)
+    controls.poll()
+    assert controls.should_abort() is True
+    controls.dispose()
+    session_commands.discard("other")
 
 
 def test_the_bar_can_be_clicked_and_focused_and_the_overlay_cannot():

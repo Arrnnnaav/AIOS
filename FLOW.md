@@ -32,7 +32,7 @@ CLI --goal / control-bar Ask
         -> nested finally blocks tear down overlay and perception on every exit
 ```
 
-The native rail and future manager consume the same `SessionSnapshot` callback.
+The native rail and manager consume the same `SessionSnapshot` callback.
 It carries the complete ordered instruction list, executor-owned current/total
 step counts, verification state, terminal outcome, and explicit control
 capabilities. The rail renders those values; it never counts or infers them.
@@ -42,6 +42,23 @@ codes. Goals, instructions, HWNDs, screen text, and raw error details are not
 persisted. Records older than 30 days are purged when a production tour opens
 the store, and diagnostic archives include goals or notes only through
 separate explicit options.
+
+The manager is now a second **window**, not a second process or event model.
+`python -m ghostcursor.run --manager` creates the normal non-topmost manager;
+the compact topmost rail is still created only after workflow revalidation.
+The executor publishes once to `session_events`, which fans the immutable
+snapshot to both surfaces. Stop/Pause commands travel back through an
+edge-triggered mailbox keyed by the active session id and are consumed by the
+same `CompiledTourControls` that handles physical rail clicks. Optional manager
+rendering failures are isolated from execution.
+
+Manager planning runs on a background thread so model/transport latency cannot
+hang the native message pump. A supported workflow returns to the UI thread and
+uses the unchanged production launcher. Zero target candidates show an
+application-not-running recovery; several show every freshly verified HWND,
+title, executable, and version. Choosing one feeds only its HWND into a new
+plan/bind. Plugin rows are reread from `PluginStore` whenever the manager gains
+focus, so a separate developer CLI process cannot leave lifecycle display stale.
 
 Production bundles are Ed25519-signed `.ghostplugin` files whose signed
 manifest contains the complete payload digest inventory. `PluginStore` owns

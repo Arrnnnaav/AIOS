@@ -8,6 +8,9 @@ import pytest
 
 from ghostcursor.session import (
     SessionCapabilities,
+    SessionCommand,
+    SessionCommandMailbox,
+    SessionEventHub,
     SessionSnapshot,
     SessionStatus,
     active_capabilities,
@@ -102,3 +105,52 @@ def test_thirty_day_retention_is_an_exact_boundary(tmp_path):
         store.record(_snapshot(session_id="new"), occurred_at=now - timedelta(days=1))
         assert store.purge_expired(now=now) == 1
         assert [event["session_id"] for event in store.events()] == ["boundary", "new"]
+
+
+def test_in_process_surfaces_receive_one_authoritative_snapshot_and_can_unsubscribe():
+    hub = SessionEventHub()
+    first = []
+    second = []
+    unsubscribe = hub.subscribe(first.append)
+    hub.subscribe(second.append)
+
+    snapshot = _snapshot()
+    assert hub.publish(snapshot) == ()
+    unsubscribe()
+    hub.publish(_snapshot(status=SessionStatus.VERIFYING))
+
+    assert first == [snapshot]
+    assert [item.status for item in second] == [
+        SessionStatus.GUIDING,
+        SessionStatus.VERIFYING,
+    ]
+
+
+def test_a_broken_optional_surface_cannot_abort_other_session_consumers():
+    hub = SessionEventHub()
+    observed = []
+    hub.subscribe(lambda _snapshot: (_ for _ in ()).throw(RuntimeError("broken view")))
+    hub.subscribe(observed.append)
+
+    failures = hub.publish(_snapshot())
+
+    assert len(failures) == 1
+    assert str(failures[0]) == "broken view"
+    assert len(observed) == 1
+
+
+def test_session_commands_are_scoped_edge_triggered_and_stop_is_idempotent():
+    mailbox = SessionCommandMailbox()
+    mailbox.request("one", SessionCommand.STOP)
+    mailbox.request("one", SessionCommand.STOP)
+    mailbox.request("one", SessionCommand.TOGGLE_PAUSE)
+    mailbox.request("one", SessionCommand.TOGGLE_PAUSE)
+    mailbox.request("two", SessionCommand.STOP)
+
+    assert mailbox.take("one") == (
+        SessionCommand.STOP,
+        SessionCommand.TOGGLE_PAUSE,
+        SessionCommand.TOGGLE_PAUSE,
+    )
+    assert mailbox.take("one") == ()
+    assert mailbox.take("two") == (SessionCommand.STOP,)

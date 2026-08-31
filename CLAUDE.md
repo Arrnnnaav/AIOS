@@ -198,6 +198,16 @@ observations, and must not persist goals, instructions, HWNDs, screen text, or
 raw failure details by default. Diagnostic inclusion of a goal or note requires
 separate explicit user choices.
 
+The pilot manager and safety rail are two native windows in one process
+(D088), not two runtimes connected by IPC. The manager is a normal non-topmost
+window; the compact topmost rail remains the always-available Stop/Pause
+safety surface during a tour. Both receive the same `SessionSnapshot` through
+`session_events`. Manager Stop/Pause requests must carry the current
+`session_id` through `session_commands`; an old or different session's command
+must never affect the live tour. The manager may display plugin lifecycle state
+only by calling `PluginStore.list_installed()` and must refresh after focus so
+CLI changes do not leave a stale in-memory status view.
+
 The VS Code workflow gates and the Ask behavioral gate are closed. Their
 acceptance evidence lives in `docs/evidence/` and D048-D057; do not restate run
 counts here.
