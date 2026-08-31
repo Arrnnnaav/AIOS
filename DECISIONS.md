@@ -3715,3 +3715,27 @@ an exact trusted phrase gives the runtime a deterministic input to the existing
 canonical authorization gate; it does not let the registry mint an
 `AuthorizedIntent`, and therefore preserves D058's rule that names and model
 output are never execution authority.
+
+## D090 — A task graph reauthorizes every node without changing validation epoch
+
+**Decision.** `execute_task_graph()` loads one `CompositionContext`, validates
+the complete graph before any side effect, and freezes its deterministic order
+plus graph, registry, and validation digests. Immediately before every ordered
+node, it reloads the composition context and requires the same plugin/version,
+catalog digest/generation, and canonical capability-registry digest. It then
+calls the existing canonical `authorize_intent()` with the capability's signed
+exact phrase, calls fresh `bind_workflow()` with operator narrowing only, and
+launches the already-adopted workflow. Every node repeats all three operations.
+
+If authority changes after validation, the completed prefix remains recorded
+but the suffix is refused; it is never revalidated against the new epoch.
+Whole-graph rejection is phase `validation`, while authorization, target, and
+workflow failures after start are phase `execution` with the exact failed node.
+The public executor exposes no authority-dependency injection parameters.
+
+**Reason.** Static validation prevents a safe first node from masking an
+invalid later proposal, but cannot prove a plugin remains enabled or a window
+remains the accepted target. Per-node authorization closes that time-of-check
+gap. Holding the original validation epoch at the same time prevents an
+upgrade from silently changing capability meaning halfway through one user-
+approved plan.

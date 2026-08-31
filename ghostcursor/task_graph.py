@@ -395,6 +395,13 @@ def _registry_bytes(registry: CapabilityRegistry) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
 
 
+def capability_registry_sha256(registry: CapabilityRegistry) -> str:
+    """Return the canonical digest of one validated capability vocabulary."""
+
+    _validate_registry(registry)
+    return hashlib.sha256(_registry_bytes(registry)).hexdigest()
+
+
 def _strict_capability_json(raw: bytes) -> dict[str, object]:
     if len(raw) > MAX_CAPABILITY_ARTIFACT_BYTES:
         _reject(GraphValidationCode.INVALID_REGISTRY, "capability artifact is too large")
@@ -701,7 +708,7 @@ def validate_task_graph(
         )
         for node_id in order
     )
-    registry_sha256 = hashlib.sha256(_registry_bytes(registry)).hexdigest()
+    registry_sha256 = capability_registry_sha256(registry)
     graph_sha256 = hashlib.sha256(_graph_bytes(graph)).hexdigest()
     sorted_initial_facts = tuple(sorted(initial_facts))
     validation_sha256 = hashlib.sha256(

@@ -988,6 +988,25 @@ runs; validation success is only a structural result. Execution still reloads
 one current composition epoch and crosses `authorize_intent()` plus
 `bind_workflow()` for each node as it fires.
 
+```
+TaskGraph + trusted initial facts
+    -> load one CompositionContext
+    -> validate full bounded DAG
+    -> freeze ordered nodes + graph/registry/validation digests
+    -> for each node, in order:
+         -> reload CompositionContext
+         -> require the original validation epoch and registry digest
+         -> authorize signed capability.authorization_goal
+         -> bind the freshly enumerated trusted HWND
+         -> run the already-adopted workflow
+    -> complete, or stop the remaining suffix at the first refusal/failure
+```
+
+Graph rejection has phase `validation`. A refusal after node execution has
+begun has phase `execution` and records the failed node plus the completed
+prefix. A changed authority epoch is never treated as permission to reinterpret
+the remaining graph.
+
 Dataset 1.0.0 is now owner-reviewed and frozen at D066. The next gate command
 must omit `--draft`. D067 closed the gate with two consecutive post-freeze
 passes; future inference changes rerun this same command against the frozen

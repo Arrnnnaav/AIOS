@@ -605,6 +605,18 @@ canonical `authorize_intent()` and fresh `bind_workflow()` boundary immediately
 before it runs. Never add application names or capability-specific branches to
 the core validator or executor.
 
+**A validated task graph is one frozen proposal epoch, not a renewable lease
+(D090).** `execute_task_graph()` validates every node and edge before the first
+workflow starts. Before each node it reloads `CompositionContext`, requires the
+same plugin/version, active-index digest/generation, and canonical registry
+digest used at validation, then authorizes the capability's signed exact phrase
+and binds the live HWND again. Any disable, upgrade, catalog publication, or
+registry replacement refuses the remaining suffix; never silently revalidate
+that suffix against new authority. `validation_rejected` and execution-phase
+failures are separate results. The public entry point may accept only proposal
+data, initial facts, timeout, and operator target narrowing—never injected
+catalogs, authorizers, binders, window readers, or runners.
+
 **The frozen durability contract remains mandatory.** Implementation changes
 happen on the active product branch and must rerun the gate. Every model, digest,
 prompt, schema, parser, adapter, or inference-policy change requires the
