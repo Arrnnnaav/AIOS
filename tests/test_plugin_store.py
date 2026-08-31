@@ -12,6 +12,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from ghostcursor.plugins.store import PluginEffectiveState, PluginStore, PluginStoreError
+from ghostcursor.task_graph import CAPABILITY_ARTIFACT_PATH
 
 
 def _abandon_named_mutex(name, ready):
@@ -85,6 +86,39 @@ def _common_pack_files() -> dict[str, bytes]:
                 "ghostcursor/packs/common/" + path.relative_to(source).as_posix()
             ] = path.read_bytes()
     return files
+
+
+def _excel_pack_files() -> dict[str, bytes]:
+    project_root = Path(__file__).resolve().parent.parent
+    files = {
+        "ghostcursor/packs/index.json": (
+            project_root / "plugins" / "sources" / "excel" / "index.json"
+        ).read_bytes()
+    }
+    source = project_root / "plugins" / "sources" / "excel" / "payload"
+    for path in source.rglob("*"):
+        if path.is_file():
+            files[path.relative_to(source).as_posix()] = path.read_bytes()
+    return files
+
+
+def _capabilities(*, intent_id="ADD_WORKSHEET", goal="add a worksheet in excel"):
+    value = {
+        "schema_version": 1,
+        "plugin_id": "ghostcursor.excel",
+        "plugin_version": "1.0.0",
+        "capabilities": {
+            "ADD_WORKSHEET": {
+                "authorization_goal": goal,
+                "intent_id": intent_id,
+                "parameters": {},
+                "postconditions": ["workbook.sheet_added"],
+                "preconditions": ["workbook.open"],
+                "safe_to_repeat": True,
+            }
+        },
+    }
+    return json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
 
 
 def test_install_enable_disable_and_uninstall_are_distinct(tmp_path):
@@ -181,6 +215,66 @@ def test_runtime_catalog_carries_plugin_provenance_and_active_generation(tmp_pat
         installed.version,
         installed.manifest_sha256,
     )
+
+
+def test_composition_context_binds_signed_capabilities_to_one_catalog_epoch(tmp_path):
+    private, trusted = _key()
+    files = _excel_pack_files()
+    files[CAPABILITY_ARTIFACT_PATH] = _capabilities()
+    bundle = _bundle(
+        tmp_path,
+        private,
+        plugin_id="ghostcursor.excel",
+        executable="excel.exe",
+        files=files,
+    )
+    store = PluginStore(tmp_path / "store", trusted_keys=trusted, core_version="0.1.0")
+    installed = store.install(bundle)
+    store.enable(installed.plugin_id, installed.version)
+
+    context = store.load_composition_context()
+
+    registry = context.registries["ghostcursor.excel"]
+    assert registry.catalog_sha256 == context.catalog.index_sha256
+    assert registry.catalog_generation == context.catalog.generation == 1
+    assert registry.capabilities["ADD_WORKSHEET"].intent_id == "ADD_WORKSHEET"
+
+
+def test_capability_must_name_its_own_active_intent_before_enable_is_published(tmp_path):
+    private, trusted = _key()
+    files = _excel_pack_files()
+    files[CAPABILITY_ARTIFACT_PATH] = _capabilities(intent_id="FICTIONAL_INTENT")
+    bundle = _bundle(
+        tmp_path,
+        private,
+        plugin_id="ghostcursor.excel",
+        executable="excel.exe",
+        files=files,
+    )
+    store = PluginStore(tmp_path / "store", trusted_keys=trusted, core_version="0.1.0")
+    installed = store.install(bundle)
+
+    with pytest.raises(PluginStoreError, match="own active intent"):
+        store.enable(installed.plugin_id, installed.version)
+    assert store.list_installed()[0].state is PluginEffectiveState.DISABLED
+
+
+def test_capability_authorization_goal_must_be_an_exact_trusted_phrase(tmp_path):
+    private, trusted = _key()
+    files = _excel_pack_files()
+    files[CAPABILITY_ARTIFACT_PATH] = _capabilities(goal="please create another sheet in excel")
+    bundle = _bundle(
+        tmp_path,
+        private,
+        plugin_id="ghostcursor.excel",
+        executable="excel.exe",
+        files=files,
+    )
+    store = PluginStore(tmp_path / "store", trusted_keys=trusted, core_version="0.1.0")
+    installed = store.install(bundle)
+
+    with pytest.raises(PluginStoreError, match="not an exact match"):
+        store.enable(installed.plugin_id, installed.version)
 
 
 def test_active_index_stamp_changes_on_lifecycle_change_and_never_repairs_state(

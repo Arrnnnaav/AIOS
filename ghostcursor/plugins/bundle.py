@@ -232,6 +232,26 @@ def verify_bundle(
             raise BundleVerificationError(
                 "plugin inventory is missing ghostcursor/packs/index.json"
             )
+        from ghostcursor.task_graph import (
+            CAPABILITY_ARTIFACT_PATH,
+            TaskGraphValidationError,
+            load_capability_registry,
+        )
+
+        capability_bytes = file_bytes.get(CAPABILITY_ARTIFACT_PATH)
+        if capability_bytes is not None:
+            try:
+                load_capability_registry(
+                    capability_bytes,
+                    plugin_id=manifest["plugin_id"],
+                    plugin_version=manifest["version"],
+                    catalog_sha256="0" * 64,
+                    catalog_generation=1,
+                )
+            except TaskGraphValidationError as exc:
+                raise BundleVerificationError(
+                    f"plugin capability artifact is invalid: {exc}"
+                ) from exc
     try:
         compatibility = check_core_compatibility(manifest, core_version)
     except ValueError as exc:

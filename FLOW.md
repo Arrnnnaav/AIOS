@@ -966,6 +966,28 @@ Raw timestamped reports remain ignored. Only a reviewed summary with model
 digest, dataset review state, hard gates, failures, latency, and no-action
 scope is committed under `docs/evidence/`.
 
+## Signed capability composition flow
+
+```
+signed .ghostplugin inventory
+    -> canonical ghostcursor/capabilities.json (optional)
+    -> bundle schema verification
+    -> PluginStore prospective active-set transaction
+         -> load exact verified plugin catalogs
+         -> merge one active catalog epoch
+         -> bind each capability to its own active intent
+         -> require authorization_goal to exact-match that intent
+    -> CompositionContext(catalog, registries)
+```
+
+The capability artifact carries only names, bounded scalar parameter schemas,
+pre/postcondition facts, and repeatability. It cannot carry selectors,
+instructions, actions, verification, target facts, or authority tokens. A
+future task proposal is validated in full against the registry before any node
+runs; validation success is only a structural result. Execution still reloads
+one current composition epoch and crosses `authorize_intent()` plus
+`bind_workflow()` for each node as it fires.
+
 Dataset 1.0.0 is now owner-reviewed and frozen at D066. The next gate command
 must omit `--draft`. D067 closed the gate with two consecutive post-freeze
 passes; future inference changes rerun this same command against the frozen

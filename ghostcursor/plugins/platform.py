@@ -112,6 +112,12 @@ def load_runtime_catalog():
     return production_store().load_verified_catalog()
 
 
+def load_composition_context():
+    """Load executable catalog and signed capabilities from one store epoch."""
+
+    return production_store().load_composition_context()
+
+
 def runtime_authority_status(workflow) -> str | None:
     """Return why a running workflow lost authority, or ``None``.
 

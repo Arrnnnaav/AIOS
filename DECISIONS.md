@@ -3688,3 +3688,30 @@ guided control visible, while forcing the full product experience into that
 unreadable. A second process would require IPC and create another stale-state
 boundary. One process, one executor stream, and session-scoped commands provide
 the richer shell without creating a second source of authority or progress.
+
+## D089 — Capability registries are signed and activated with their catalog epoch
+
+**Decision.** A plugin's optional capability vocabulary lives at canonical
+path `ghostcursor/capabilities.json` inside the bundle's signed SHA-256 file
+inventory. Its canonical JSON schema binds the plugin ID/version and maps each
+capability ID to one distinct intent ID, one exact trusted authorization goal,
+bounded scalar parameters, pre/postcondition facts, and repeatability. No two
+capabilities may alias the same intent under different names.
+
+Bundle verification validates the artifact's syntax and closed schema after
+checking every signed file digest. Before an enable is published,
+`PluginStore` validates the registry against the prospective merged catalog:
+each intent must be active and owned by the declaring plugin, and the trusted
+authorization goal must classify in the exact tier to that intent. Catalog and
+registries are subsequently returned only as one `CompositionContext` loaded
+under the same cross-process store transaction, carrying one active-index
+digest and generation.
+
+**Reason.** Graph validation needs machine-readable capability semantics, but
+an unsigned sidecar could be swapped and a separately loaded registry could
+describe a different active set than the executor sees. Binding the vocabulary
+to signed bundle bytes and the exact catalog epoch closes both gaps. Requiring
+an exact trusted phrase gives the runtime a deterministic input to the existing
+canonical authorization gate; it does not let the registry mint an
+`AuthorizedIntent`, and therefore preserves D058's rule that names and model
+output are never execution authority.

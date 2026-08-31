@@ -12,6 +12,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from ghostcursor.plugins.bundle import BundleVerificationError, verify_bundle
 from ghostcursor.plugins.compatibility import check_core_compatibility
+from ghostcursor.task_graph import CAPABILITY_ARTIFACT_PATH
 
 
 CORE_VERSION = "0.1.0"
@@ -133,6 +134,18 @@ def test_an_incompatible_bundle_is_rejected(tmp_path):
     )
     path, trusted = _write_bundle(tmp_path, manifest=manifest, files=files)
     with pytest.raises(BundleVerificationError, match="outside"):
+        verify_bundle(path, trusted_keys=trusted, core_version=CORE_VERSION)
+
+
+def test_a_signed_but_malformed_capability_artifact_is_rejected_at_bundle_verification(
+    tmp_path,
+):
+    files = {
+        "ghostcursor/packs/index.json": b'{"packs":[],"schema_version":2}',
+        CAPABILITY_ARTIFACT_PATH: b'{"schema_version":1}\n',
+    }
+    path, trusted = _write_bundle(tmp_path, files=files)
+    with pytest.raises(BundleVerificationError, match="capability artifact is invalid"):
         verify_bundle(path, trusted_keys=trusted, core_version=CORE_VERSION)
 
 

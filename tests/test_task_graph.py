@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from types import MappingProxyType
+import json
 
 import pytest
 
@@ -16,6 +17,7 @@ from ghostcursor.task_graph import (
     TaskGraph,
     TaskGraphValidationError,
     TaskNode,
+    load_capability_registry,
     validate_task_graph,
 )
 
@@ -35,6 +37,7 @@ def _registry() -> CapabilityRegistry:
                 "CREATE_DECK": CapabilitySpec(
                     capability_id="CREATE_DECK",
                     intent_id="CREATE_DECK",
+                    authorization_goal="Create a presentation",
                     postconditions=("deck.exists",),
                     parameters=MappingProxyType(
                         {
@@ -48,6 +51,7 @@ def _registry() -> CapabilityRegistry:
                 "ADD_SLIDE": CapabilitySpec(
                     capability_id="ADD_SLIDE",
                     intent_id="ADD_SLIDE",
+                    authorization_goal="Add a slide",
                     preconditions=("deck.exists",),
                     postconditions=("slide.exists",),
                     parameters=MappingProxyType(
@@ -63,6 +67,7 @@ def _registry() -> CapabilityRegistry:
                 "SET_SLIDE_TITLE": CapabilitySpec(
                     capability_id="SET_SLIDE_TITLE",
                     intent_id="SET_SLIDE_TITLE",
+                    authorization_goal="Set the slide title",
                     preconditions=("slide.exists",),
                     postconditions=("slide.title_set",),
                     parameters=MappingProxyType(
@@ -73,6 +78,7 @@ def _registry() -> CapabilityRegistry:
                 "SAVE_DECK": CapabilitySpec(
                     capability_id="SAVE_DECK",
                     intent_id="SAVE_DECK",
+                    authorization_goal="Save the presentation",
                     preconditions=("slide.title_set",),
                     postconditions=("deck.saved",),
                 ),
@@ -204,6 +210,7 @@ def test_boolean_is_not_silently_accepted_as_an_integer():
     capabilities["SET_COUNT"] = CapabilitySpec(
         capability_id="SET_COUNT",
         intent_id="SET_COUNT",
+        authorization_goal="Set the count",
         parameters=MappingProxyType(
             {"count": ParameterSpec(ParameterKind.INTEGER)}
         ),
@@ -224,6 +231,7 @@ def test_non_finite_numbers_are_rejected():
     capabilities["SET_SCALE"] = CapabilitySpec(
         capability_id="SET_SCALE",
         intent_id="SET_SCALE",
+        authorization_goal="Set the scale",
         parameters=MappingProxyType(
             {"scale": ParameterSpec(ParameterKind.NUMBER)}
         ),
@@ -413,6 +421,75 @@ def test_non_mapping_node_parameters_fail_closed_with_a_stable_code():
         (),
     )
     _rejected(graph, GraphValidationCode.INVALID_PARAMETER)
+
+
+def _artifact(**changes) -> bytes:
+    value = {
+        "schema_version": 1,
+        "plugin_id": PLUGIN,
+        "plugin_version": "1.0.0",
+        "capabilities": {
+            "ADD_SLIDE": {
+                "authorization_goal": "Add a slide",
+                "intent_id": "ADD_SLIDE",
+                "preconditions": ["deck.exists"],
+                "postconditions": ["slide.exists"],
+                "safe_to_repeat": True,
+                "parameters": {
+                    "layout": {
+                        "kind": "string",
+                        "required": True,
+                        "allowed_values": ["title", "content"],
+                    }
+                },
+            }
+        },
+    }
+    value.update(changes)
+    return json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+
+
+def test_signed_capability_artifact_parses_into_the_same_bounded_registry():
+    registry = load_capability_registry(
+        _artifact(),
+        plugin_id=PLUGIN,
+        plugin_version="1.0.0",
+        catalog_sha256=SHA,
+        catalog_generation=7,
+    )
+    capability = registry.capabilities["ADD_SLIDE"]
+    assert capability.intent_id == "ADD_SLIDE"
+    assert capability.authorization_goal == "Add a slide"
+    assert capability.parameters["layout"].allowed_values == ("title", "content")
+
+
+def test_capability_artifact_identity_extra_fields_and_noncanonical_bytes_fail_closed():
+    cases = (
+        (_artifact(plugin_id="ghostcursor.other"), "identity"),
+        (_artifact(extra=True), "fields"),
+        (_artifact() + b"\n", "canonical"),
+    )
+    for raw, message in cases:
+        with pytest.raises(TaskGraphValidationError, match=message):
+            load_capability_registry(
+                raw,
+                plugin_id=PLUGIN,
+                plugin_version="1.0.0",
+                catalog_sha256=SHA,
+                catalog_generation=7,
+            )
+
+
+def test_capability_artifact_duplicate_keys_are_rejected_before_interpretation():
+    raw = _artifact().replace(b'"schema_version":1', b'"schema_version":1,"schema_version":1')
+    with pytest.raises(TaskGraphValidationError, match="repeats key"):
+        load_capability_registry(
+            raw,
+            plugin_id=PLUGIN,
+            plugin_version="1.0.0",
+            catalog_sha256=SHA,
+            catalog_generation=7,
+        )
 
 
 def test_the_core_graph_vocabulary_contains_no_application_specific_branches():

@@ -58,6 +58,14 @@ class ActivePluginCatalog:
     blocked: Mapping[str, CompatibilityResult]
 
 
+@dataclass(frozen=True)
+class CompositionContext:
+    """One atomic view of executable intents and their capability vocabulary."""
+
+    catalog: Any
+    registries: Mapping[str, Any]
+
+
 def _strict_json(raw: bytes, label: str) -> dict[str, Any]:
     if raw.startswith(b"\xef\xbb\xbf"):
         raise PluginStoreError(f"{label} must not contain a UTF-8 BOM")
@@ -402,7 +410,73 @@ class PluginStore:
         if not merged.root_valid:
             detail = "; ".join(item.detail for item in merged.diagnostics)
             raise PluginStoreError(f"active plugin catalog conflicts: {detail}")
+        self._capability_registries(
+            bundles,
+            merged,
+            generation=generation,
+            active_index_sha256=active_index_sha256,
+        )
         return merged
+
+    def _capability_registries(
+        self,
+        bundles: Mapping[str, VerifiedBundle],
+        catalog,
+        *,
+        generation: int,
+        active_index_sha256: str,
+    ) -> Mapping[str, Any]:
+        """Validate optional signed registries against the merged active catalog."""
+
+        from ghostcursor.packs.activation import IntentAvailability
+        from ghostcursor.packs.compile import EXACT_CONFIDENCE, compile_matcher
+        from ghostcursor.task_graph import (
+            CAPABILITY_ARTIFACT_PATH,
+            TaskGraphValidationError,
+            load_capability_registry,
+        )
+
+        active_intents = {
+            (pack.plugin_id, intent_id)
+            for pack in catalog.packs.values()
+            for intent_id, intent in pack.intents.items()
+            if intent.availability is IntentAvailability.ACTIVE
+        }
+        matcher = compile_matcher(catalog)
+        registries = {}
+        for plugin_id, bundle in bundles.items():
+            raw = bundle.files.get(CAPABILITY_ARTIFACT_PATH)
+            if raw is None:
+                continue
+            try:
+                registry = load_capability_registry(
+                    raw,
+                    plugin_id=plugin_id,
+                    plugin_version=bundle.version,
+                    catalog_sha256=active_index_sha256,
+                    catalog_generation=generation,
+                )
+            except TaskGraphValidationError as exc:
+                raise PluginStoreError(
+                    f"plugin {plugin_id} capability registry is invalid: {exc}"
+                ) from exc
+            for capability in registry.capabilities.values():
+                if (plugin_id, capability.intent_id) not in active_intents:
+                    raise PluginStoreError(
+                        f"plugin {plugin_id} capability {capability.capability_id} "
+                        f"does not map to its own active intent {capability.intent_id}"
+                    )
+                outcome = matcher.classify(capability.authorization_goal)
+                if (
+                    outcome.intent_id != capability.intent_id
+                    or outcome.confidence != EXACT_CONFIDENCE
+                ):
+                    raise PluginStoreError(
+                        f"plugin {plugin_id} capability {capability.capability_id} "
+                        "authorization_goal is not an exact match for its intent"
+                    )
+            registries[plugin_id] = registry
+        return MappingProxyType(registries)
 
     def enable(self, plugin_id: str, version: str) -> InstalledPlugin:
         with self._transaction():
@@ -585,3 +659,21 @@ class PluginStore:
                 generation=active.generation,
                 active_index_sha256=active.active_index_sha256,
             )
+
+    def load_composition_context(self) -> CompositionContext:
+        """Load catalog and capability registries under one store transaction."""
+
+        with self._transaction():
+            active = self._load_active_catalog()
+            catalog = self._merge_catalogs(
+                active.plugins,
+                generation=active.generation,
+                active_index_sha256=active.active_index_sha256,
+            )
+            registries = self._capability_registries(
+                active.plugins,
+                catalog,
+                generation=active.generation,
+                active_index_sha256=active.active_index_sha256,
+            )
+            return CompositionContext(catalog=catalog, registries=registries)

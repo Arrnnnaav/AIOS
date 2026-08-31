@@ -589,6 +589,22 @@ human-gated and ordered quarantine -> isolated no-input-synthesis acceptance ->
 content-addressed install -> atomic activation swap. See D070 for withdrawal, version
 scope, evidence, digest, cache, and fail-closed requirements.
 
+**Capability data is signed vocabulary, never execution authority (D087,
+D089).** A plugin may optionally carry canonical
+`ghostcursor/capabilities.json` inside its signed file inventory. Each
+capability maps exactly one capability ID to exactly one active intent owned by
+that same plugin, an exact trusted authorization phrase, bounded scalar
+parameters, preconditions, postconditions, and `safe_to_repeat`. Bundle
+verification rejects malformed capability bytes; activation rejects a mapping
+to another plugin, an inactive/unknown intent, or a phrase that does not exact-
+match that intent. Load the executable catalog and capability registries only
+through one `PluginStore.load_composition_context()` transaction so their
+catalog digest and generation cannot drift. A parsed registry and a validated
+task graph still grant no permission to execute: every node must pass the
+canonical `authorize_intent()` and fresh `bind_workflow()` boundary immediately
+before it runs. Never add application names or capability-specific branches to
+the core validator or executor.
+
 **The frozen durability contract remains mandatory.** Implementation changes
 happen on the active product branch and must rerun the gate. Every model, digest,
 prompt, schema, parser, adapter, or inference-policy change requires the

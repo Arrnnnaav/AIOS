@@ -26,6 +26,9 @@ MAX_PARAMETER_STRING_LENGTH = 512
 MAX_REGISTRY_CAPABILITIES = 256
 MAX_CAPABILITY_FACTS = 32
 MAX_ALLOWED_VALUES = 64
+MAX_CAPABILITY_ARTIFACT_BYTES = 256 * 1024
+MAX_AUTHORIZATION_GOAL_LENGTH = 1024
+CAPABILITY_ARTIFACT_PATH = "ghostcursor/capabilities.json"
 
 _PLUGIN_ID_RE = re.compile(r"[a-z][a-z0-9]*(?:[._-][a-z0-9]+)+")
 _VERSION_RE = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?")
@@ -89,6 +92,7 @@ class CapabilitySpec:
 
     capability_id: str
     intent_id: str
+    authorization_goal: str
     preconditions: tuple[str, ...] = ()
     postconditions: tuple[str, ...] = ()
     parameters: Mapping[str, ParameterSpec] = field(
@@ -188,10 +192,10 @@ def _validate_registry(registry: CapabilityRegistry) -> None:
         _reject(GraphValidationCode.INVALID_REGISTRY, "registry version is invalid")
     if not _is_sha256(registry.catalog_sha256):
         _reject(GraphValidationCode.INVALID_REGISTRY, "registry catalog digest is invalid")
-    if type(registry.catalog_generation) is not int or registry.catalog_generation < 1:
+    if type(registry.catalog_generation) is not int or registry.catalog_generation < 0:
         _reject(
             GraphValidationCode.INVALID_REGISTRY,
-            "registry catalog generation must be a positive integer",
+            "registry catalog generation must be a non-negative integer",
         )
     if not isinstance(registry.capabilities, Mapping) or not registry.capabilities:
         _reject(GraphValidationCode.INVALID_REGISTRY, "registry has no capabilities")
@@ -201,6 +205,7 @@ def _validate_registry(registry: CapabilityRegistry) -> None:
             "registry declares too many capabilities",
         )
 
+    claimed_intents: set[str] = set()
     for key, capability in registry.capabilities.items():
         if key != capability.capability_id:
             _reject(
@@ -216,6 +221,21 @@ def _validate_registry(registry: CapabilityRegistry) -> None:
             _reject(
                 GraphValidationCode.INVALID_REGISTRY,
                 f"intent id {capability.intent_id!r} is invalid",
+            )
+        if capability.intent_id in claimed_intents:
+            _reject(
+                GraphValidationCode.INVALID_REGISTRY,
+                f"more than one capability maps to intent {capability.intent_id!r}",
+            )
+        claimed_intents.add(capability.intent_id)
+        if (
+            not isinstance(capability.authorization_goal, str)
+            or not capability.authorization_goal.strip()
+            or len(capability.authorization_goal) > MAX_AUTHORIZATION_GOAL_LENGTH
+        ):
+            _reject(
+                GraphValidationCode.INVALID_REGISTRY,
+                f"capability {key} authorization_goal is invalid",
             )
         if type(capability.safe_to_repeat) is not bool:
             _reject(
@@ -351,6 +371,7 @@ def _registry_bytes(registry: CapabilityRegistry) -> bytes:
             {
                 "capability_id": capability.capability_id,
                 "intent_id": capability.intent_id,
+                "authorization_goal": capability.authorization_goal,
                 "parameters": [
                     {
                         "allowed_values": [
@@ -372,6 +393,160 @@ def _registry_bytes(registry: CapabilityRegistry) -> bytes:
         "plugin_version": registry.plugin_version,
     }
     return json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
+
+
+def _strict_capability_json(raw: bytes) -> dict[str, object]:
+    if len(raw) > MAX_CAPABILITY_ARTIFACT_BYTES:
+        _reject(GraphValidationCode.INVALID_REGISTRY, "capability artifact is too large")
+    if raw.startswith(b"\xef\xbb\xbf"):
+        _reject(GraphValidationCode.INVALID_REGISTRY, "capability artifact has a BOM")
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        _reject(GraphValidationCode.INVALID_REGISTRY, "capability artifact is not UTF-8")
+
+    def pairs(items):
+        value = {}
+        for key, item in items:
+            if key in value:
+                _reject(
+                    GraphValidationCode.INVALID_REGISTRY,
+                    f"capability artifact repeats key {key!r}",
+                )
+            value[key] = item
+        return value
+
+    def constant(value: str) -> None:
+        _reject(
+            GraphValidationCode.INVALID_REGISTRY,
+            f"capability artifact has non-finite number {value}",
+        )
+
+    try:
+        value = json.loads(text, object_pairs_hook=pairs, parse_constant=constant)
+    except json.JSONDecodeError:
+        _reject(GraphValidationCode.INVALID_REGISTRY, "capability artifact is not JSON")
+    if not isinstance(value, dict):
+        _reject(GraphValidationCode.INVALID_REGISTRY, "capability artifact must be an object")
+    canonical = json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    if canonical != raw:
+        _reject(
+            GraphValidationCode.INVALID_REGISTRY,
+            "capability artifact is not canonical JSON",
+        )
+    return value
+
+
+def load_capability_registry(
+    raw: bytes,
+    *,
+    plugin_id: str,
+    plugin_version: str,
+    catalog_sha256: str,
+    catalog_generation: int,
+) -> CapabilityRegistry:
+    """Parse one signed plugin capability artifact and bind its catalog epoch."""
+
+    value = _strict_capability_json(raw)
+    required = {"schema_version", "plugin_id", "plugin_version", "capabilities"}
+    if set(value) != required or value["schema_version"] != 1:
+        _reject(GraphValidationCode.INVALID_REGISTRY, "capability artifact fields are invalid")
+    if value["plugin_id"] != plugin_id or value["plugin_version"] != plugin_version:
+        _reject(
+            GraphValidationCode.INVALID_REGISTRY,
+            "capability artifact plugin identity disagrees with its signed bundle",
+        )
+    declared = value["capabilities"]
+    if not isinstance(declared, dict):
+        _reject(GraphValidationCode.INVALID_REGISTRY, "capabilities must be an object")
+
+    capabilities: dict[str, CapabilitySpec] = {}
+    for capability_id, item in declared.items():
+        if not isinstance(capability_id, str) or not isinstance(item, dict):
+            _reject(GraphValidationCode.INVALID_REGISTRY, "capability declaration is invalid")
+        fields = {
+            "authorization_goal",
+            "intent_id",
+            "parameters",
+            "postconditions",
+            "preconditions",
+            "safe_to_repeat",
+        }
+        if set(item) != fields:
+            _reject(
+                GraphValidationCode.INVALID_REGISTRY,
+                f"capability {capability_id!r} fields are invalid",
+            )
+        parameters_value = item["parameters"]
+        if not isinstance(parameters_value, dict):
+            _reject(
+                GraphValidationCode.INVALID_REGISTRY,
+                f"capability {capability_id!r} parameters must be an object",
+            )
+        parameters: dict[str, ParameterSpec] = {}
+        for name, parameter in parameters_value.items():
+            if not isinstance(name, str) or not isinstance(parameter, dict):
+                _reject(
+                    GraphValidationCode.INVALID_REGISTRY,
+                    f"capability {capability_id!r} parameter is invalid",
+                )
+            if set(parameter) != {"allowed_values", "kind", "required"}:
+                _reject(
+                    GraphValidationCode.INVALID_REGISTRY,
+                    f"capability {capability_id!r} parameter {name!r} fields are invalid",
+                )
+            try:
+                kind = ParameterKind(parameter["kind"])
+            except (TypeError, ValueError):
+                _reject(
+                    GraphValidationCode.INVALID_REGISTRY,
+                    f"capability {capability_id!r} parameter {name!r} kind is invalid",
+                )
+            allowed = parameter["allowed_values"]
+            if not isinstance(allowed, list):
+                _reject(
+                    GraphValidationCode.INVALID_REGISTRY,
+                    f"capability {capability_id!r} parameter {name!r} allowed_values is invalid",
+                )
+            parameters[name] = ParameterSpec(
+                kind=kind,
+                required=parameter["required"],
+                allowed_values=tuple(allowed),
+            )
+        preconditions = item["preconditions"]
+        postconditions = item["postconditions"]
+        if not isinstance(preconditions, list) or not all(
+            isinstance(fact, str) for fact in preconditions
+        ):
+            _reject(
+                GraphValidationCode.INVALID_REGISTRY,
+                f"capability {capability_id!r} preconditions are invalid",
+            )
+        if not isinstance(postconditions, list) or not all(
+            isinstance(fact, str) for fact in postconditions
+        ):
+            _reject(
+                GraphValidationCode.INVALID_REGISTRY,
+                f"capability {capability_id!r} postconditions are invalid",
+            )
+        capabilities[capability_id] = CapabilitySpec(
+            capability_id=capability_id,
+            intent_id=item["intent_id"],
+            authorization_goal=item["authorization_goal"],
+            preconditions=tuple(preconditions),
+            postconditions=tuple(postconditions),
+            parameters=MappingProxyType(parameters),
+            safe_to_repeat=item["safe_to_repeat"],
+        )
+    registry = CapabilityRegistry(
+        plugin_id=plugin_id,
+        plugin_version=plugin_version,
+        catalog_sha256=catalog_sha256,
+        catalog_generation=catalog_generation,
+        capabilities=MappingProxyType(capabilities),
+    )
+    _validate_registry(registry)
+    return registry
 
 
 def _graph_bytes(graph: TaskGraph) -> bytes:
