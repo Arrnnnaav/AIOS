@@ -158,6 +158,17 @@ grammar through a reviewed decision rather than adding application-specific
 Python. Learned observations are scoped to `(plugin_id, plugin_version)`;
 disable retains them and uninstall purges that version.
 
+Task graphs compose only capabilities declared by one enabled plugin/version.
+A graph node may name a capability and bounded scalar parameters; it may never
+carry selectors, actions, instructions, verification rules, or cross-plugin
+authority. `validate_task_graph()` must reject the whole proposal before any
+node runs: unknown capabilities/parameters, size-limit violations, cycles,
+missing dependency edges, unsatisfied preconditions, and duplicate capabilities
+not explicitly declared safe to repeat all fail closed. The validated graph is
+flattened deterministically for the session UI. Validation is not execution
+authority: every node must pass the canonical intent authorization and fresh
+bind checks again immediately before it runs.
+
 The signed `ghostcursor.excel` plugin is active only for Excel
 `16.0.20326.20112`. `SELECT_CELL_B2` and `ADD_WORKSHEET` each passed three
 human desktop runs on the reviewed bytes with UIA-only grounding; their

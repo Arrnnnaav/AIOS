@@ -63,6 +63,28 @@ native chooser feed only a handle back into a fresh authorization/bind. Bind
 still enumerates the live desktop itself and rejects a closed, recycled, or
 identity-mismatched handle before any overlay exists.
 
+Complex-task composition has a separate static gate and no application logic:
+
+```text
+model/user proposal: capability ids + scalar parameters + dependency edges
+    -> validate_task_graph(graph, current plugin capability registry)
+         -> require one exact plugin id/version
+         -> reject unknown nodes, parameters, duplicates, and size overflow
+         -> Kahn topological walk rejects every cycle before execution
+         -> preconditions must come from trusted initial facts or an ancestor
+         -> bind graph + registry + initial facts into validation_sha256
+         -> deterministically flatten to an ordered step list for presentation
+    -> for each node at runtime (not implemented by the static validator)
+         -> classify the capability's existing intent
+         -> authorize_intent() against the current active catalog
+         -> bind_workflow() reloads authority and the selected live target
+```
+
+`ValidatedTaskGraph` is evidence that the complete proposal was structurally
+safe to start; it is deliberately not an authority token. A validation error
+has phase `validation` and a stable code, distinct from a workflow that starts
+and later fails during execution.
+
 The installed catalog currently exposes six active workflows: Synthetic
 Export; Open Folder, Open Terminal, and Open Extensions in VS Code; and
 Select Cell B2 and Add Worksheet in Excel. They arrive from signed Synthetic,

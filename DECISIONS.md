@@ -3625,3 +3625,35 @@ errors forced a UI to parse prose and still offered no safe recovery for
 identical titles. A structured handle choice closes the usability gap without
 restoring D075's rejected foreground tie-break or accepting caller-provided
 window facts.
+
+## D087 — Complex tasks are bounded single-plugin DAGs over existing intents
+
+**Decision.** A capability registry maps one plugin/version's declarative
+capability IDs to existing intent IDs, closed scalar parameter schemas,
+preconditions, postconditions, and an explicit `safe_to_repeat` bit. A task
+proposal may contain only those capability IDs, parameter values, and dependency
+edges. It cannot contain selectors, instructions, actions, verification rules,
+or another plugin's nodes.
+
+`validate_task_graph()` gates the whole graph before execution. It bounds nodes,
+edges, parameters, and string lengths; rejects unknown or cross-plugin nodes,
+duplicate IDs/edges, repeated non-repeatable capabilities, and unsatisfied
+preconditions; and runs an explicit deterministic topological walk whose
+incomplete result is a cycle refusal. A precondition is statically satisfied
+only by trusted initial facts or a predecessor path—topological coincidence is
+not a dependency. Registry bytes, proposal bytes, and the initial facts used by
+validation are digest-bound. The accepted graph is flattened into one ordered
+list for the existing step UI; v1 has no parallel execution or graph canvas.
+
+Validation grants no execution authority. Every node must still resolve its
+registered intent through `authorize_intent()` and a fresh `bind_workflow()` at
+the moment it is about to run. Validation refusals carry stable codes and phase
+`validation`, distinct from failures after execution begins.
+
+**Reason.** A model is useful for decomposing a goal, but letting it author UI
+operations would recreate executable application knowledge outside signed
+plugins. Whole-graph validation prevents a safe first node from starting before
+an invalid fourth node is discovered. Single-plugin scope avoids introducing
+cross-window focus and authority semantics while the composition mechanism
+itself is still being proven. Explicit pre/postconditions make ordering
+machine-checkable instead of relying on plausible prose.
