@@ -1052,6 +1052,12 @@ is `TabItem/Chart Design` on the original PowerPoint HWND. `Pie` is explicitly
 rejected because selecting it creates three same-name `ListItem/Pie` elements.
 The Excel chart-data window is observed but never targeted or authorized.
 
+The third candidate opens a collaboration surface: `Insert` -> `Comment`,
+verified by the unique `Edit/Start a conversation`. Dynamic GUID-bearing editor
+AutomationIds are evidence only and never enter the recipe. If the editor is
+already open, `accept_if_already_present` completes without creating another
+draft.
+
 Dataset 1.0.0 is now owner-reviewed and frozen at D066. The next gate command
 must omit `--draft`. D067 closed the gate with two consecutive post-freeze
 passes; future inference changes rerun this same command against the frozen

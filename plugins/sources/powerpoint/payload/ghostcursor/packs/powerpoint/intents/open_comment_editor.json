@@ -1,0 +1,35 @@
+{
+  "canonical_target": null,
+  "intent_id": "OPEN_COMMENT_EDITOR",
+  "rules": [
+    {
+      "phrases": [
+        "open a comment editor in powerpoint",
+        "add a comment in powerpoint"
+      ],
+      "tier": "exact"
+    },
+    {
+      "all_of": [
+        {
+          "any_of": [
+            {"token": "add"},
+            {"token": "open"}
+          ]
+        },
+        {
+          "any_of": [
+            {"token": "comment"}
+          ]
+        },
+        {
+          "any_of": [
+            {"alias": "powerpoint_names"}
+          ]
+        }
+      ],
+      "tier": "heuristic"
+    }
+  ],
+  "schema_version": 2
+}

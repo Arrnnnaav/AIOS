@@ -65,6 +65,22 @@ as a separate visible window. The recipe does not bind, target, or authorize
 that Excel window. Completion is the `Chart Design` tab exposed through the
 original PowerPoint HWND.
 
+## Open a comment editor
+
+After the user closed the chart-data window, selected **Insert**, and clicked
+**Comment**, HWND `657022` exposed:
+
+| Control type | Exact name | Count | AutomationId |
+|---|---|---:|---|
+| Button | Comment | 1 | InsertNewComment |
+| Edit | Start a conversation | 1 | dynamic `cardEditor_...` value |
+| Button | Post comment (Ctrl + Enter) | 1 | dynamic `sendReplyButton_...` value |
+| Button | Cancel | 1 | dynamic `draftCancelButton_...` value |
+
+The recipe binds names and types, not the dynamic GUID-bearing IDs. Completion
+is the exact editor name. It uses `accept_if_already_present`, so an already-
+open editor completes without creating a second draft.
+
 ## Limits
 
 - The accepted precondition for this candidate is exactly one slide, expressed

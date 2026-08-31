@@ -53,6 +53,12 @@ def test_candidate_digest_inventory_binds_every_declared_artifact():
             },
             4,
         ),
+        (
+            "open_comment_editor",
+            "OPEN_COMMENT_EDITOR",
+            {"comment_button", "comment_editor", "insert_tab", "slide2_before"},
+            2,
+        ),
     ),
 )
 def test_each_candidate_loads_and_compiles_without_application_python(
@@ -101,7 +107,10 @@ def test_candidate_is_nameable_but_carries_no_execution_authority(tmp_path):
     assert catalog.root_valid and catalog.diagnostics == ()
     assert matcher.classify("add a slide in powerpoint").intent_id == "ADD_SLIDE"
     assert matcher.classify("insert a bar chart in powerpoint").intent_id == "INSERT_BAR_CHART"
-    assert set(pack.intents) == {"ADD_SLIDE", "INSERT_BAR_CHART"}
+    assert matcher.classify("add a comment in powerpoint").intent_id == "OPEN_COMMENT_EDITOR"
+    assert set(pack.intents) == {
+        "ADD_SLIDE", "INSERT_BAR_CHART", "OPEN_COMMENT_EDITOR"
+    }
     assert all(
         intent.availability is IntentAvailability.KNOWN_INTENT_RECIPE_UNAVAILABLE
         and intent.active_adoption is None

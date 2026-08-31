@@ -3801,3 +3801,20 @@ editor from another executable must not become an implicit cross-plugin graph.
 Keeping the observed Excel surface outside authority preserves D087's single-
 plugin rule while still allowing PowerPoint's own postcondition to prove chart
 insertion.
+
+## D094 — Dynamic Office comment IDs are observed but never trusted
+
+**Decision.** The quarantined `OPEN_COMMENT_EDITOR` workflow selects Insert
+and the unique Comment button, then verifies the exact `Edit/Start a
+conversation` state on the bound PowerPoint HWND. Office exposes GUID-bearing
+AutomationIds for the editor, Post button, and Cancel button; those identifiers
+are recorded as evidence but excluded from every selector and descriptor. If
+the editor already exists, `accept_if_already_present` treats the goal as
+complete instead of clicking Comment again and creating another draft.
+
+**Reason.** The editor's stable semantic name is sufficient to prove the
+requested state, while session-generated IDs would make the plugin appear more
+precise by binding it to values guaranteed to change. Reusing the existing
+already-present rule also makes the workflow idempotent at the user-visible
+goal boundary without claiming that posting or deleting comments is safe to
+repeat.
