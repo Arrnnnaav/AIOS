@@ -19,6 +19,9 @@ CLI --goal / control-bar Ask
         -> compile_matcher() classifies without loading a recipe
         -> authorize_intent() is the only deterministic/model authority gate
         -> workflow.bind_workflow() reloads the catalog, then requires one HWND
+             -> zero candidates returns structured TARGET_NOT_RUNNING
+             -> several candidates returns structured TARGET_CHOICE_REQUIRED
+             -> an operator-selected HWND narrows only the freshly enumerated set
     -> run.run_tour_for_workflow()
         -> reload catalog and revalidate HWND/PID/executable/title/version
         -> build_compiled_perception() starts one worker after both gates
@@ -52,6 +55,13 @@ closed within 100ms, below the runtime authority monitor's 0.5-second ceiling.
 Learned observations are scoped by plugin id and version.
 With no enabled compatible plugin the merged catalog is empty, so neither a
 deterministic nor model-proposed intent can reach target resolution.
+
+Target recovery is structured rather than parsed from an error string.
+`TargetNotRunning` carries the required pack; `TargetChoiceRequired` carries
+the complete verified candidate snapshots. `--target-hwnd` and the future
+native chooser feed only a handle back into a fresh authorization/bind. Bind
+still enumerates the live desktop itself and rejects a closed, recycled, or
+identity-mismatched handle before any overlay exists.
 
 The installed catalog currently exposes six active workflows: Synthetic
 Export; Open Folder, Open Terminal, and Open Extensions in VS Code; and

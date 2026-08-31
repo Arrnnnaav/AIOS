@@ -49,6 +49,8 @@ class PlanResult:
     confidence: float
     explanation: str
     plan: object | None = None
+    target_state: str | None = None
+    target_candidates: tuple[object, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -464,6 +466,7 @@ def plan_compiled_goal(
     goal: str,
     *,
     target_title_re: str | None = None,
+    target_hwnd: int | None = None,
     endpoint: str = "http://127.0.0.1:11434",
     model: str = DEFAULT_MODEL,
     timeout: float = 15.0,
@@ -478,7 +481,12 @@ def plan_compiled_goal(
     model-gate tests until the atomic cutover removes its authority path.
     """
     from ghostcursor.packs.compile import compile_matcher, compile_planner
-    from ghostcursor.packs.workflow import WorkflowUnavailable, bind_workflow
+    from ghostcursor.packs.workflow import (
+        TargetChoiceRequired,
+        TargetNotRunning,
+        WorkflowUnavailable,
+        bind_workflow,
+    )
     from ghostcursor.plugins.platform import load_runtime_catalog
 
     catalog = load_runtime_catalog()
@@ -536,6 +544,24 @@ def plan_compiled_goal(
             authorization.authorized,
             goal,
             target_title_re=target_title_re,
+            target_hwnd=target_hwnd,
+        )
+    except TargetChoiceRequired as exc:
+        return PlanResult(
+            PlanStatus.KNOWN_INTENT_RECIPE_UNAVAILABLE,
+            authorization.intent_id,
+            authorization.confidence,
+            str(exc),
+            target_state="target_choice_required",
+            target_candidates=exc.candidates,
+        )
+    except TargetNotRunning as exc:
+        return PlanResult(
+            PlanStatus.KNOWN_INTENT_RECIPE_UNAVAILABLE,
+            authorization.intent_id,
+            authorization.confidence,
+            str(exc),
+            target_state="target_not_running",
         )
     except WorkflowUnavailable as exc:
         return PlanResult(

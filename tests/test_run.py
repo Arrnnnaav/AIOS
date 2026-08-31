@@ -342,3 +342,46 @@ def test_grounder_stays_quiet_without_the_debug_switch(monkeypatch, capsys):
     grounder(_step(), 0)
 
     assert "provenance" not in capsys.readouterr().out.lower()
+
+
+def test_goal_cli_forwards_an_explicit_target_handle_to_fresh_planning(monkeypatch):
+    import sys
+    from types import SimpleNamespace
+
+    from ghostcursor.reasoning.planner import PlanStatus
+
+    seen = []
+    workflow = object()
+    monkeypatch.setattr(
+        "ghostcursor.reasoning.planner.plan_compiled_goal",
+        lambda goal, **kwargs: (
+            seen.append((goal, kwargs))
+            or SimpleNamespace(
+                status=PlanStatus.SUPPORTED,
+                confidence=0.95,
+                explanation="authorized",
+                plan=workflow,
+                intent_id="OPEN_FOLDER",
+            )
+        ),
+    )
+    monkeypatch.setattr(run_module, "run_tour_for_workflow", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "ghostcursor.run",
+            "--goal",
+            "Open a folder in VS Code",
+            "--target-hwnd",
+            "4242",
+        ],
+    )
+
+    assert run_module.main() == 0
+    assert seen == [
+        (
+            "Open a folder in VS Code",
+            {"target_title_re": None, "target_hwnd": 4242},
+        )
+    ]

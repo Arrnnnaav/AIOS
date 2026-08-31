@@ -44,7 +44,9 @@ from ghostcursor.packs.compile import (
 from ghostcursor.packs.trusted import ArtifactRef
 from ghostcursor.packs.workflow import (
     AppSnapshot,
+    TargetChoiceRequired,
     TargetContext,
+    TargetNotRunning,
     WindowCandidate,
     WorkflowUnavailable,
     materialize,
@@ -594,8 +596,9 @@ def test_a_symlinked_content_path_fails_closed(tmp_path) -> None:
 
 def test_no_matching_window_is_unavailable() -> None:
     _catalog_, pack, _intent = _catalog()
-    with pytest.raises(WorkflowUnavailable):
+    with pytest.raises(TargetNotRunning) as missing:
         resolve_target(pack, [], project_root=PROJECT_ROOT)
+    assert missing.value.pack_id == pack.pack_id
     with pytest.raises(WorkflowUnavailable):
         resolve_target(pack, [_window(exe="chrome.exe")], project_root=PROJECT_ROOT)
 
@@ -624,7 +627,7 @@ def test_two_matching_windows_refuse_rather_than_pick_one() -> None:
         _window(hwnd=1, title="a - Visual Studio Code"),
         _window(hwnd=2, title="b - Visual Studio Code"),
     ]
-    with pytest.raises(WorkflowUnavailable) as caught:
+    with pytest.raises(TargetChoiceRequired) as caught:
         resolve_target(pack, windows, project_root=PROJECT_ROOT)
 
     message = str(caught.value)
@@ -633,6 +636,7 @@ def test_two_matching_windows_refuse_rather_than_pick_one() -> None:
     # the operator is told to narrow and given nothing to narrow against.
     assert "1 'a - Visual Studio Code'" in message
     assert "2 'b - Visual Studio Code'" in message
+    assert [item.hwnd for item in caught.value.candidates] == [1, 2]
 
 
 def test_the_focused_window_gets_no_say_in_which_one_is_chosen() -> None:
@@ -740,6 +744,36 @@ def test_a_narrowing_that_reaches_exactly_one_window_is_accepted() -> None:
     assert target.hwnd == 1
 
 
+def test_an_explicit_window_handle_resolves_identical_titles_without_foreground() -> None:
+    _catalog_, pack, _intent = _catalog()
+    windows = [
+        _window(hwnd=101, title="same - Visual Studio Code"),
+        _window(hwnd=202, title="same - Visual Studio Code"),
+    ]
+
+    target = resolve_target(
+        pack,
+        windows,
+        target_hwnd=202,
+        project_root=PROJECT_ROOT,
+    )
+
+    assert target.hwnd == 202
+
+
+def test_a_selected_window_is_revalidated_against_the_pack_not_trusted_by_handle() -> None:
+    _catalog_, pack, _intent = _catalog()
+    windows = [_window(hwnd=202, exe="chrome.exe", title="Visual Studio Code")]
+
+    with pytest.raises(TargetNotRunning, match="no longer an acceptable target"):
+        resolve_target(
+            pack,
+            windows,
+            target_hwnd=202,
+            project_root=PROJECT_ROOT,
+        )
+
+
 def test_one_matching_window_needs_no_narrowing_at_all() -> None:
     """The ordinary case is untouched: a single window still just works."""
     _catalog_, pack, _intent = _catalog()
@@ -759,7 +793,7 @@ def test_one_matching_window_needs_no_narrowing_at_all() -> None:
 # picks the wrong pack, is still a wrong target.
 
 
-def _bind(windows, narrowing=None, goal="Open a folder in VS Code"):
+def _bind(windows, narrowing=None, goal="Open a folder in VS Code", target_hwnd=None):
     from ghostcursor.packs.workflow import _bind_workflow_with_windows
 
     catalog, pack, intent = _catalog()
@@ -771,6 +805,7 @@ def _bind(windows, narrowing=None, goal="Open a folder in VS Code"):
         windows=windows,
         target_title_re=narrowing,
         project_root=PROJECT_ROOT,
+        target_hwnd=target_hwnd,
     )
 
 
@@ -778,6 +813,17 @@ def test_the_launch_path_binds_a_single_window_without_narrowing() -> None:
     """The ordinary case: one window, no flag, and it just runs."""
     workflow = _bind([_window(hwnd=7, title="only - Visual Studio Code")])
     assert workflow.target.hwnd == 7
+
+
+def test_the_launch_path_passes_the_operator_selected_handle_to_the_resolver() -> None:
+    workflow = _bind(
+        [
+            _window(hwnd=7, title="same - Visual Studio Code"),
+            _window(hwnd=8, title="same - Visual Studio Code"),
+        ],
+        target_hwnd=8,
+    )
+    assert workflow.target.hwnd == 8
 
 
 def test_the_launch_path_refuses_two_windows_without_narrowing() -> None:

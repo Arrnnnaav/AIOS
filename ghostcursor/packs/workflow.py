@@ -65,6 +65,35 @@ class WorkflowUnavailable(Exception):
         self.reason = reason
 
 
+class TargetNotRunning(WorkflowUnavailable):
+    """No live window currently satisfies the authorized application pack."""
+
+    def __init__(self, pack_id: str, reason: str | None = None) -> None:
+        self.pack_id = pack_id
+        super().__init__(reason or f"no window matches pack {pack_id}")
+
+
+class TargetChoiceRequired(WorkflowUnavailable):
+    """Several trusted candidates remain and only the operator may choose."""
+
+    def __init__(
+        self,
+        pack_id: str,
+        candidates: list["WindowCandidate"],
+        *,
+        narrowed: bool,
+    ) -> None:
+        self.pack_id = pack_id
+        self.candidates = tuple(candidates)
+        self.narrowed = narrowed
+        listed = ", ".join(f"{w.hwnd} {w.title!r}" for w in candidates)
+        qualifier = " even after narrowing" if narrowed else ""
+        super().__init__(
+            f"{len(candidates)} windows match pack {pack_id}{qualifier}; "
+            f"choose one window handle explicitly: {listed}"
+        )
+
+
 # ---------------------------------------------------------------------------
 # D073 -- the one application-identity resolver
 # ---------------------------------------------------------------------------
@@ -192,6 +221,7 @@ def resolve_target(
     candidates: Mapping[int, WindowCandidate] | list[WindowCandidate],
     *,
     target_title_re: str | None = None,
+    target_hwnd: int | None = None,
     project_root: Path,
 ) -> TargetContext:
     """Choose exactly one window, deterministically, or refuse.
@@ -239,18 +269,25 @@ def resolve_target(
     if target_title_re is not None:
         narrowing = re.compile(target_title_re)
         matching = [w for w in matching if narrowing.search(w.title)]
+    if target_hwnd is not None:
+        matching = [w for w in matching if w.hwnd == target_hwnd]
 
     if not matching:
-        raise WorkflowUnavailable(f"no window matches pack {pack.pack_id}")
+        reason = (
+            f"selected window {target_hwnd} is no longer an acceptable target "
+            f"for pack {pack.pack_id}"
+            if target_hwnd is not None
+            else None
+        )
+        raise TargetNotRunning(pack.pack_id, reason)
 
     if len(matching) > 1:
         # Handles as well as titles: two windows can share a title, and the
         # handle is the only thing that always tells them apart.
-        listed = ", ".join(f"{w.hwnd} {w.title!r}" for w in matching)
-        narrowed = " even after narrowing" if target_title_re is not None else ""
-        raise WorkflowUnavailable(
-            f"{len(matching)} windows match pack {pack.pack_id}{narrowed}; "
-            f"narrow to exactly one with a more specific title pattern: {listed}"
+        raise TargetChoiceRequired(
+            pack.pack_id,
+            matching,
+            narrowed=target_title_re is not None,
         )
     chosen = matching[0]
 
@@ -317,6 +354,7 @@ def bind_workflow(
     goal: str,
     *,
     target_title_re: str | None = None,
+    target_hwnd: int | None = None,
 ):
     """Bind a freshly authorized intent to one live window, or refuse.
 
@@ -354,6 +392,7 @@ def bind_workflow(
         goal,
         windows=live_windows_for(pack),
         target_title_re=target_title_re,
+        target_hwnd=target_hwnd,
         project_root=project_root,
     )
 
@@ -422,9 +461,14 @@ def _bind_workflow_with_windows(
     windows: list[WindowCandidate],
     target_title_re: str | None,
     project_root: Path,
+    target_hwnd: int | None = None,
 ):
     target = resolve_target(
-        pack, windows, target_title_re=target_title_re, project_root=project_root
+        pack,
+        windows,
+        target_title_re=target_title_re,
+        target_hwnd=target_hwnd,
+        project_root=project_root,
     )
     return materialize(catalog, pack, intent, goal, target)
 

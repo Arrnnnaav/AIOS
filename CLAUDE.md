@@ -518,8 +518,10 @@ narrowing that still leaves several is the same refusal. There is no foreground
 tie-break and `resolve_target` may not read the foreground by any route: a real
 foreground handle never matches a synthetic candidate, so a reintroduced
 tie-break would pass every hermetic test while silently binding the wrong
-workspace live. Prompting the operator to choose may be added later; choosing
-for them may not.
+workspace live. Target recovery may pass an operator-selected `target_hwnd`,
+but the resolver must apply it only to a freshly enumerated executable/title
+candidate set. A handle is narrowing, never supplied identity; choosing for
+the operator remains forbidden.
 
 **Every compiled run record carries its timing (D075).** `TourResult.timing`
 holds seconds from the run's start to each landmark that occurred — first

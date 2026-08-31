@@ -3607,3 +3607,21 @@ shared state contract, each surface would count steps and interpret errors
 independently—the same invented-progress failure the rail already forbids.
 Keeping telemetry content-minimized also makes the pilot useful without
 quietly turning a screen-aware guide into a screen-content archive.
+
+## D086 — Missing and ambiguous targets are different structured recovery states
+
+**Decision.** Target resolution raises `TargetNotRunning` when no trusted
+candidate exists and `TargetChoiceRequired` when several remain. The latter
+carries immutable `WindowCandidate` values including HWND, title, executable,
+version, and PID. An operator may return one HWND through planning and bind,
+but bind always reloads catalog authority and enumerates the live candidate set
+itself before applying that handle as a narrowing filter. A stale, recycled,
+retitled, or wrong-executable handle becomes `TargetNotRunning`; it never
+supplies identity.
+
+**Reason.** An empty chooser and a real ambiguity ask the user to do opposite
+things—start the application versus choose among running windows. String-only
+errors forced a UI to parse prose and still offered no safe recovery for
+identical titles. A structured handle choice closes the usability gap without
+restoring D075's rejected foreground tie-break or accepting caller-provided
+window facts.

@@ -439,6 +439,12 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Ghost Cursor guided UI assistant")
     parser.add_argument("--target", default=None, help="window title regex")
     parser.add_argument(
+        "--target-hwnd",
+        type=int,
+        default=None,
+        help="explicit window handle from a target-choice refusal",
+    )
+    parser.add_argument(
         "--control",
         default=DEFAULT_CONTROL,
         help="control name to point at; falls back to the window centre",
@@ -456,7 +462,11 @@ def main() -> int:
     if args.goal:
         from ghostcursor.reasoning.planner import PlanStatus, plan_compiled_goal
 
-        result = plan_compiled_goal(args.goal, target_title_re=args.target)
+        result = plan_compiled_goal(
+            args.goal,
+            target_title_re=args.target,
+            target_hwnd=args.target_hwnd,
+        )
         print(f"Planner: {result.status.value} ({result.confidence:.2f}) — {result.explanation}")
         if result.plan is None or result.intent_id is None:
             return 2
