@@ -31,7 +31,12 @@ from ghostcursor.devtools.candidate_acceptance import (
     load_candidate,
     record_for,
 )
-from ghostcursor.packs.workflow import AppSnapshot, WindowCandidate, WorkflowUnavailable
+from ghostcursor.packs.workflow import (
+    AppSnapshot,
+    TargetChoiceRequired,
+    WindowCandidate,
+    WorkflowUnavailable,
+)
 from ghostcursor.reasoning.compiled_tour import GroundingProvenance, RunOutcome
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -351,7 +356,7 @@ def test_target_resolution_reuses_the_production_rules(candidate) -> None:
         bind_candidate_target(
             graph, windows=[_window(exe="chrome.exe")], project_root=PROJECT_ROOT
         )
-    with pytest.raises(WorkflowUnavailable, match="narrow to exactly one"):
+    with pytest.raises(TargetChoiceRequired) as caught:
         bind_candidate_target(
             graph,
             windows=[
@@ -360,6 +365,8 @@ def test_target_resolution_reuses_the_production_rules(candidate) -> None:
             ],
             project_root=PROJECT_ROOT,
         )
+    assert [item.hwnd for item in caught.value.candidates] == [1, 2]
+    assert "choose one window handle explicitly" in str(caught.value)
 
 
 # ---------------------------------------------------------------------------
