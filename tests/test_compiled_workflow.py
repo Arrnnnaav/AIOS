@@ -1475,7 +1475,7 @@ def _driven_clock(on_sleep=None):
 
 def _launch(workflow, catalog, *, live=None, missing=False, create_overlay=lambda: 1,
             observe=None, renderer=None, seconds=1.0, on_sleep=None,
-            store_path=":memory:"):
+            store_path=":memory:", guidance_values=()):
     from unittest.mock import patch
 
     from ghostcursor.memory.store import ObservationStore
@@ -1503,6 +1503,7 @@ def _launch(workflow, catalog, *, live=None, missing=False, create_overlay=lambd
             sleeper=sleeper,
             warmup_budget_s=2.0,
             create_overlay=create_overlay,
+            guidance_values=guidance_values,
             observe=observe,
             renderer=renderer,
         )
@@ -1576,7 +1577,14 @@ def test_the_public_launch_path_accepts_no_authority_inputs() -> None:
         "the public launch path accepts authority inputs: "
         f"{sorted(parameters & authority)}"
     )
-    assert parameters == {"workflow", "seconds", "clock", "sleeper", "warmup_budget_s"}
+    assert parameters == {
+        "workflow",
+        "seconds",
+        "clock",
+        "sleeper",
+        "warmup_budget_s",
+        "guidance_values",
+    }
 
 
 def test_the_public_launch_installs_the_runtime_authority_monitor(monkeypatch) -> None:
@@ -1975,6 +1983,7 @@ def test_the_live_compiled_launch_owns_and_disposes_the_control_bar(
     from ghostcursor.reasoning import renderer as renderer_module
     from ghostcursor.reasoning.compiled_tour import TickInput
     from ghostcursor.session import session_events
+    from ghostcursor.session import GuidanceValue
 
     workflow, catalog = _workflow()
     titles = [
@@ -2054,6 +2063,7 @@ def test_the_live_compiled_launch_owns_and_disposes_the_control_bar(
             observe=lambda: slot["value"],
             renderer=None,
             on_sleep=_publish,
+            guidance_values=(GuidanceValue("slide_title", "GhostCursor"),),
         )
     finally:
         unsubscribe()
@@ -2066,6 +2076,11 @@ def test_the_live_compiled_launch_owns_and_disposes_the_control_bar(
     assert controls.steps_reported == [(0, 1)]
     assert controls.sessions[-1].status.value == "completed"
     assert controls.sessions[-1].current_step == controls.sessions[-1].total_steps == 1
+    assert all(
+        snapshot.guidance_values
+        == (GuidanceValue("slide_title", "GhostCursor"),)
+        for snapshot in controls.sessions
+    )
     assert manager_snapshots == controls.sessions
 
 

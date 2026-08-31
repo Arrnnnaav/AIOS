@@ -4,6 +4,7 @@ import win32con
 import win32gui
 
 from ghostcursor.manager import (
+    ID_DETAILS,
     ID_GOAL,
     ID_INSTRUCTION,
     ID_PAUSE,
@@ -16,10 +17,15 @@ from ghostcursor.manager import (
     NativeManagerWindow,
     PluginPresentation,
 )
-from ghostcursor.session import SessionSnapshot, SessionStatus, active_capabilities
+from ghostcursor.session import (
+    GuidanceValue,
+    SessionSnapshot,
+    SessionStatus,
+    active_capabilities,
+)
 
 
-def _snapshot(status=SessionStatus.GUIDING):
+def _snapshot(status=SessionStatus.GUIDING, guidance_values=()):
     return SessionSnapshot(
         session_id="native-session",
         status=status,
@@ -31,6 +37,7 @@ def _snapshot(status=SessionStatus.GUIDING):
         total_steps=2,
         plan_steps=("Open Folder", "Choose a folder"),
         instruction="Click Open Folder.",
+        guidance_values=guidance_values,
         capabilities=active_capabilities(paused=status is SessionStatus.PAUSED),
     )
 
@@ -43,12 +50,17 @@ def test_manager_is_a_normal_non_topmost_window_and_renders_snapshot_truth():
         assert not (ex_style & win32con.WS_EX_TOPMOST)
         assert style & win32con.WS_OVERLAPPEDWINDOW
 
-        manager.render_snapshot(_snapshot())
+        manager.render_snapshot(
+            _snapshot(guidance_values=(GuidanceValue("slide_title", "GhostCursor"),))
+        )
         assert win32gui.GetWindowText(manager._controls[ID_STATUS]) == "Guiding"
         assert win32gui.GetWindowText(manager._controls[ID_GOAL]) == "Open a folder"
         assert not win32gui.IsWindowEnabled(manager._controls[ID_GOAL])
         assert win32gui.GetWindowText(manager._controls[ID_PROGRESS]) == "Step 1 of 2"
         assert win32gui.GetWindowText(manager._controls[ID_INSTRUCTION]) == "Click Open Folder."
+        assert "Slide Title  GhostCursor" in win32gui.GetWindowText(
+            manager._controls[ID_DETAILS]
+        )
         assert win32gui.IsWindowEnabled(manager._controls[ID_PAUSE])
         assert win32gui.IsWindowEnabled(manager._controls[ID_STOP])
         assert win32gui.SendMessage(

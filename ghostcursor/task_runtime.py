@@ -14,6 +14,7 @@ from ghostcursor.task_graph import (
     capability_registry_sha256,
     validate_task_graph,
 )
+from ghostcursor.session import GuidanceValue
 
 
 class TaskRunPhase(str, Enum):
@@ -90,6 +91,15 @@ def _authorize_capability(catalog, capability):
     )
 
 
+def _guidance_values(node) -> tuple[GuidanceValue, ...]:
+    """Canonical presentation-only view of already-validated node parameters."""
+
+    return tuple(
+        GuidanceValue(name, value)
+        for name, value in sorted(node.parameters.items())
+    )
+
+
 def _execute_task_graph(
     graph: TaskGraph,
     *,
@@ -162,7 +172,11 @@ def _execute_task_graph(
                 target_title_re=target_title_re,
                 target_hwnd=target_hwnd,
             )
-            exit_code = run(workflow, seconds=seconds_per_node)
+            exit_code = run(
+                workflow,
+                seconds=seconds_per_node,
+                guidance_values=_guidance_values(node),
+            )
         except Exception as exc:  # fail closed at the node boundary
             name = type(exc).__name__
             code = (

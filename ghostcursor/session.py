@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
+import math
+import re
 from threading import Lock
 from typing import Callable
 
@@ -39,6 +41,42 @@ class SessionCapabilities:
     can_choose_target: bool = False
 
 
+_GUIDANCE_NAME_RE = re.compile(r"[a-z][a-z0-9_]*")
+MAX_GUIDANCE_VALUES = 16
+
+
+@dataclass(frozen=True)
+class GuidanceValue:
+    """One bounded scalar shown to the user, never consumed as authority."""
+
+    name: str
+    value: str | int | float | bool
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.name, str) or _GUIDANCE_NAME_RE.fullmatch(self.name) is None:
+            raise ValueError("guidance value name is invalid")
+        if type(self.value) not in {str, int, float, bool}:
+            raise TypeError("guidance value must be a scalar")
+        if isinstance(self.value, str) and len(self.value) > 512:
+            raise ValueError("guidance string is too long")
+        if isinstance(self.value, float) and not math.isfinite(self.value):
+            raise ValueError("guidance number must be finite")
+
+
+def validate_guidance_values(values) -> tuple[GuidanceValue, ...]:
+    """Freeze a display-only payload and reject ambiguous duplicate names."""
+
+    frozen = tuple(values)
+    if len(frozen) > MAX_GUIDANCE_VALUES:
+        raise ValueError("too many guidance values")
+    if not all(isinstance(value, GuidanceValue) for value in frozen):
+        raise TypeError("guidance values must be GuidanceValue instances")
+    names = [value.name for value in frozen]
+    if len(names) != len(set(names)):
+        raise ValueError("guidance value names must be unique")
+    return frozen
+
+
 @dataclass(frozen=True)
 class SessionSnapshot:
     session_id: str
@@ -58,6 +96,7 @@ class SessionSnapshot:
     error_code: str | None = None
     detail: str = ""
     provenance: tuple[str, ...] = ()
+    guidance_values: tuple[GuidanceValue, ...] = ()
     capabilities: SessionCapabilities = field(default_factory=SessionCapabilities)
 
     def __post_init__(self) -> None:
@@ -69,6 +108,7 @@ class SessionSnapshot:
             raise ValueError("session plan length must equal total steps")
         if self.elapsed_s < 0:
             raise ValueError("session elapsed time cannot be negative")
+        object.__setattr__(self, "guidance_values", validate_guidance_values(self.guidance_values))
 
 
 SessionSink = Callable[[SessionSnapshot], None]

@@ -7,6 +7,7 @@ import zipfile
 import pytest
 
 from ghostcursor.session import (
+    GuidanceValue,
     SessionCapabilities,
     SessionCommand,
     SessionCommandMailbox,
@@ -46,6 +47,28 @@ def test_a_snapshot_refuses_progress_the_executor_could_not_have_made():
         _snapshot(plan_steps=("only one",))
 
 
+def test_guidance_values_are_bounded_unique_scalars():
+    snapshot = _snapshot(
+        guidance_values=(GuidanceValue("slide_title", "A safer way to learn"),)
+    )
+    assert snapshot.guidance_values[0].value == "A safer way to learn"
+    with pytest.raises(ValueError, match="unique"):
+        _snapshot(
+            guidance_values=(
+                GuidanceValue("slide_title", "one"),
+                GuidanceValue("slide_title", "two"),
+            )
+        )
+    with pytest.raises(ValueError, match="finite"):
+        GuidanceValue("duration", float("inf"))
+    with pytest.raises(ValueError, match="too many"):
+        _snapshot(
+            guidance_values=tuple(
+                GuidanceValue(f"value_{index}", index) for index in range(17)
+            )
+        )
+
+
 def test_active_capabilities_are_explicit_not_inferred_by_the_surface():
     assert active_capabilities() == SessionCapabilities(
         can_pause=True,
@@ -59,13 +82,16 @@ def test_active_capabilities_are_explicit_not_inferred_by_the_surface():
 
 def test_session_history_never_persists_goal_instruction_hwnd_or_detail(tmp_path):
     with SessionStore(tmp_path / "sessions.sqlite") as store:
-        store.record(_snapshot())
+        store.record(
+            _snapshot(guidance_values=(GuidanceValue("customer_name", "Secret Co"),))
+        )
         event = store.events()[0]
 
     serialized = json.dumps(event)
     assert "secret workbook goal" not in serialized
     assert "private instruction" not in serialized
     assert "Customers" not in serialized
+    assert "Secret Co" not in serialized
     assert "target_hwnd" not in event
     assert event["detail_code"] == "present"
 

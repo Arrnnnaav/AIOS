@@ -41,11 +41,13 @@ from ghostcursor.reasoning.schema import (
 )
 from ghostcursor.reasoning.verification import Snapshot, verify
 from ghostcursor.session import (
+    GuidanceValue,
     SessionSnapshot,
     SessionStatus,
     SessionSink,
     active_capabilities,
     terminal_capabilities,
+    validate_guidance_values,
 )
 
 
@@ -225,6 +227,7 @@ def execute_compiled_workflow(
     on_session: SessionSink | None = None,
     session_id: str | None = None,
     runtime_steps: Sequence[Step] | None = None,
+    guidance_values: tuple[GuidanceValue, ...] = (),
     app_version: str | None = None,
     ui_locale: str = "unknown",
 ) -> TourResult:
@@ -255,6 +258,7 @@ def execute_compiled_workflow(
         if runtime_steps is not None
         else compiled_steps(workflow)
     )
+    guidance_values = validate_guidance_values(guidance_values)
     provenance = _ProvenanceLog()
     started = clock()
     plan_steps = tuple(step.instruction_text for step in steps)
@@ -307,6 +311,7 @@ def execute_compiled_workflow(
             error_code=error_code,
             detail=detail,
             provenance=tuple(item.value for item in provenance.as_tuple()),
+            guidance_values=guidance_values,
             capabilities=(terminal_capabilities() if terminal else active_capabilities(
                 paused=status is SessionStatus.PAUSED
             )),

@@ -91,16 +91,24 @@ model/user proposal: capability ids + scalar parameters + dependency edges
          -> preconditions must come from trusted initial facts or an ancestor
          -> bind graph + registry + initial facts into validation_sha256
          -> deterministically flatten to an ordered step list for presentation
+         -> freeze sorted node parameters as display-only GuidanceValue scalars
     -> for each node at runtime (not implemented by the static validator)
          -> classify the capability's existing intent
          -> authorize_intent() against the current active catalog
          -> bind_workflow() reloads authority and the selected live target
+         -> publish guidance through SessionSnapshot only
 ```
 
 `ValidatedTaskGraph` is evidence that the complete proposal was structurally
 safe to start; it is deliberately not an authority token. A validation error
 has phase `validation` and a stable code, distinct from a workflow that starts
 and later fails during execution.
+
+Guidance values travel beside the compiled workflow, never into it. The
+authorizer still receives only the signed exact phrase; bind still receives
+only the authorization token, goal, and operator narrowing; selectors and
+verification remain the signed recipe. Session history deliberately omits the
+guidance payload because slide copy and customer content are private text.
 
 The installed catalog currently exposes six active workflows: Synthetic
 Export; Open Folder, Open Terminal, and Open Extensions in VS Code; and

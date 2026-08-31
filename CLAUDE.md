@@ -169,6 +169,13 @@ flattened deterministically for the session UI. Validation is not execution
 authority: every node must pass the canonical intent authorization and fresh
 bind checks again immediately before it runs.
 
+Validated node parameters may be published as immutable `GuidanceValue`
+scalars for the manager and other session surfaces. They are presentation-only:
+they must never alter an authorization goal, selector, action, verification
+rule, target identity, or bind input. They are also content and must not enter
+`sessions.sqlite` or default diagnostics. Unknown, duplicate, non-scalar,
+oversized, or non-finite guidance values fail before an overlay exists.
+
 The signed `ghostcursor.excel` plugin is active only for Excel
 `16.0.20326.20112`. `SELECT_CELL_B2` and `ADD_WORKSHEET` each passed three
 human desktop runs on the reviewed bytes with UIA-only grounding; their
@@ -193,6 +200,8 @@ geometry.
 Session-facing UI must consume executor-published immutable
 `SessionSnapshot` values. It may not count steps, infer completion, translate a
 failure into success, or reconstruct verification state from overlay events.
+It may display the snapshot's bounded guidance values verbatim, but must not
+reinterpret them as progress or authority.
 Local session history belongs in `sessions.sqlite`, separate from learned
 observations, and must not persist goals, instructions, HWNDs, screen text, or
 raw failure details by default. Diagnostic inclusion of a goal or note requires

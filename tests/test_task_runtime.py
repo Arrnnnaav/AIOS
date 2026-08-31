@@ -10,7 +10,10 @@ from ghostcursor.task_graph import (
     TaskEdge,
     TaskGraph,
     TaskNode,
+    ParameterKind,
+    ParameterSpec,
 )
+from ghostcursor.session import GuidanceValue
 from ghostcursor.task_runtime import (
     TaskRunCode,
     TaskRunPhase,
@@ -37,6 +40,14 @@ def _registry() -> CapabilityRegistry:
                     "CREATE_DECK",
                     "create a presentation",
                     postconditions=("deck.exists",),
+                    parameters=MappingProxyType(
+                        {
+                            "deck_title": ParameterSpec(
+                                ParameterKind.STRING,
+                                required=False,
+                            )
+                        }
+                    ),
                 ),
                 "ADD_SLIDE": CapabilitySpec(
                     "ADD_SLIDE",
@@ -56,7 +67,12 @@ def _graph() -> TaskGraph:
         PLUGIN,
         "1.0.0",
         (
-            TaskNode("create", PLUGIN, "CREATE_DECK"),
+            TaskNode(
+                "create",
+                PLUGIN,
+                "CREATE_DECK",
+                MappingProxyType({"deck_title": "GhostCursor"}),
+            ),
             TaskNode("slide", PLUGIN, "ADD_SLIDE"),
         ),
         (TaskEdge("create", "slide"),),
@@ -134,6 +150,11 @@ def test_every_node_reloads_authorizes_binds_and_runs_in_validated_order():
     assert events[0][2] == "create a presentation"
     assert events[3][2] == "add a slide"
     assert events[1][3] == {"target_title_re": "PowerPoint", "target_hwnd": 42}
+    assert events[2][2] == {
+        "seconds": 5.0,
+        "guidance_values": (GuidanceValue("deck_title", "GhostCursor"),),
+    }
+    assert events[5][2] == {"seconds": 5.0, "guidance_values": ()}
 
 
 def test_catalog_or_registry_change_refuses_the_remaining_suffix_before_authorization():

@@ -141,6 +141,15 @@ def project_snapshot(snapshot: SessionSnapshot) -> ManagerProjection:
             f"Application  {snapshot.application}" if snapshot.application else "",
             f"Error  {snapshot.error_code}" if snapshot.error_code else "",
             "Processing  Local",
+            (
+                "Guidance\n"
+                + "\n".join(
+                    f"{value.name.replace('_', ' ').title()}  {value.value}"
+                    for value in snapshot.guidance_values
+                )
+            )
+            if snapshot.guidance_values
+            else "",
         )
         if line
     )

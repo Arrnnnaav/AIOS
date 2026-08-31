@@ -3851,3 +3851,24 @@ button state and absence alone do not. Requiring the sorter pane as a
 precondition makes this the measured inverse transition rather than an
 unbounded claim that Normal can be entered correctly from every PowerPoint
 state.
+
+## D097 — Task parameters are presentation data, never workflow authority
+
+**Decision.** After whole-graph validation, each node's bounded scalar
+parameters are frozen in sorted order as immutable `GuidanceValue` values.
+The task runtime passes them beside the already-bound workflow, and the shared
+executor republishes them unchanged in every `SessionSnapshot`. The native
+manager may display them. Authorization still receives only the capability's
+signed exact phrase; bind still receives only the resulting authorization,
+goal, and operator narrowing; recipes, selectors, actions, and verification
+never interpolate parameter content.
+
+Guidance values are validated before overlay creation and are excluded from
+`sessions.sqlite` and default diagnostic exports. Duplicate names,
+non-scalars, oversized strings, and non-finite numbers are refused.
+
+**Reason.** A deep authoring workflow must tell the user which title, color,
+dimension, or duration to enter, but letting model-proposed strings rewrite a
+selector or action would create a second executable recipe language. Keeping
+the values on the presentation side allows useful personalization without
+granting new authority or turning session history into a content archive.

@@ -554,6 +554,7 @@ def run_tour_for_workflow(
     clock=time.monotonic,
     sleeper=time.sleep,
     warmup_budget_s: float = DEFAULT_WARMUP_BUDGET_S,
+    guidance_values=(),
 ) -> int:
     """Launch a guided tour from a `CompiledWorkflow`, never from a path.
 
@@ -584,6 +585,7 @@ def run_tour_for_workflow(
     from planning, Ask, and this entry point.
     """
     from ghostcursor.packs.workflow import live_window_reader
+    from ghostcursor.session import validate_guidance_values
     from ghostcursor.plugins.platform import (
         load_runtime_catalog,
         runtime_authority_status,
@@ -591,6 +593,7 @@ def run_tour_for_workflow(
 
     from ghostcursor.overlay import window as overlay_window
 
+    guidance_values = validate_guidance_values(guidance_values)
     project_root = Path(__file__).resolve().parent.parent
     return _launch_compiled_workflow(
         workflow,
@@ -601,6 +604,7 @@ def run_tour_for_workflow(
         clock=clock,
         sleeper=sleeper,
         warmup_budget_s=warmup_budget_s,
+        guidance_values=guidance_values,
         create_overlay=overlay_window.create_overlay_window,
         authority_status=lambda: runtime_authority_status(workflow),
     )
@@ -617,6 +621,7 @@ def _launch_compiled_workflow(
     sleeper,
     warmup_budget_s: float,
     create_overlay,
+    guidance_values=(),
     observe=None,
     renderer=None,
     authority_status=None,
@@ -646,6 +651,7 @@ def _launch_compiled_workflow(
         clock=clock,
         sleeper=sleeper,
         warmup_budget_s=warmup_budget_s,
+        guidance_values=guidance_values,
         create_overlay=create_overlay,
         observe=observe,
         renderer=renderer,
@@ -661,6 +667,7 @@ def _run_compiled_tour(
     sleeper,
     warmup_budget_s: float,
     create_overlay,
+    guidance_values=(),
     observe=None,
     renderer=None,
     on_grounding=None,
@@ -882,6 +889,7 @@ def _run_compiled_tour(
                 on_session=_publish_session,
                 session_id=session_id,
                 runtime_steps=runtime_steps,
+                guidance_values=guidance_values,
                 app_version=learning_version,
                 ui_locale=ui_locale,
             )
