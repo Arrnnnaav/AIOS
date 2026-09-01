@@ -3895,3 +3895,25 @@ procedure, not smuggled into execution through the ordinary Start button.
 Pinning one operator-approved window prevents later nodes from drifting to a
 different presentation if another PowerPoint window appears. Refusing replay
 after progress preserves non-idempotent capability semantics.
+
+## D099 — Interaction modes describe collaboration, never authority
+
+**Decision.** The native manager reads one canonical interaction-mode contract
+from `ghostcursor.interaction`. `Teach` is the existing human-operated guided
+workflow. `Plan` is the existing inert, plugin-scoped DAG proposal followed by
+a distinct `Start plan` confirmation. `Ideate`, `Assist`, and `Act` are shown as
+Preview and are unable to create a plan, resolve a target, create an overlay,
+or request execution.
+
+The panel keeps the earlier goal, timeline, current guidance, visible
+verification, Pause/Stop, plugin state, session details, and local-privacy
+surfaces. It does not fabricate quick goals, confidence, logs, feedback,
+settings, or summaries that the runtime does not publish.
+
+**Reason.** The long-term architecture correctly calls for different human/AI
+relationships, but a mode selector must not become a permission switch or a
+false claim that ideation and autonomous execution already exist. Shipping the
+vocabulary now makes the interaction architecture explicit while preserving
+the signed capability, authorization, fresh binding, and verification
+boundaries. Act requires its own reviewed authority and input-synthesis design
+before it can be enabled.

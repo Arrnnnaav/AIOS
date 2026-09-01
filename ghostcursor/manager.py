@@ -17,6 +17,14 @@ import win32api
 import win32con
 import win32gui
 
+from ghostcursor.interaction import (
+    MODE_ORDER,
+    InteractionMode,
+    mode_can_propose_plan,
+    mode_can_start_guidance,
+    mode_contract,
+    mode_label,
+)
 from ghostcursor.overlay.window import ensure_class, pump_messages_nonblocking
 from ghostcursor.session import (
     SessionCommand,
@@ -51,7 +59,16 @@ ID_PLUGINS = 2110
 ID_DETAILS = 2111
 ID_PRIVACY = 2112
 ID_COMPLEX = 2113
+ID_MODE = 2114
+ID_MODE_NOTE = 2115
 ID_HEADER = 2190
+ID_PLAN_LABEL = 2191
+ID_GUIDANCE_LABEL = 2192
+ID_VERIFICATION_LABEL = 2193
+ID_PLUGINS_LABEL = 2194
+ID_DETAILS_LABEL = 2195
+ID_MODE_LABEL = 2196
+ID_GOAL_LABEL = 2197
 DEFAULT_GUI_FONT = 17
 
 _background_brush = None
@@ -260,7 +277,7 @@ def _set_font(hwnd: int) -> None:
 def _manager_wnd_proc(hwnd, msg, wparam, lparam):
     manager = _windows.get(hwnd)
     if msg == win32con.WM_COMMAND and manager is not None:
-        manager._on_command(win32api.LOWORD(wparam))
+        manager._on_command(win32api.LOWORD(wparam), win32api.HIWORD(wparam))
         return 0
     if msg == win32con.WM_SIZE and manager is not None:
         manager._layout()
@@ -335,6 +352,7 @@ class NativeManagerWindow:
         self._target_candidates: tuple[object, ...] = ()
         self._target_choice_for = ""
         self._task_proposal: object | None = None
+        self._mode = InteractionMode.TEACH
         self._plugins: tuple[PluginPresentation, ...] = ()
         self._plugin_rows: tuple[str, ...] = ()
         self._controls: dict[int, int] = {}
@@ -373,6 +391,21 @@ class NativeManagerWindow:
     def _create_children(self) -> None:
         self._child("STATIC", "GhostCursor", win32con.SS_LEFT, ID_HEADER)
         self._child("STATIC", "Ready", win32con.SS_RIGHT, ID_STATUS)
+        self._child("STATIC", "Mode", win32con.SS_LEFT, ID_MODE_LABEL)
+        mode = self._child(
+            "COMBOBOX",
+            "",
+            win32con.CBS_DROPDOWNLIST | win32con.WS_VSCROLL | win32con.WS_TABSTOP,
+            ID_MODE,
+        )
+        for interaction_mode in MODE_ORDER:
+            win32gui.SendMessage(
+                mode, win32con.CB_ADDSTRING, 0, mode_label(interaction_mode)
+            )
+        win32gui.SendMessage(
+            mode, win32con.CB_SETCURSEL, MODE_ORDER.index(self._mode), 0
+        )
+        self._child("STATIC", "Goal", win32con.SS_LEFT, ID_GOAL_LABEL)
         goal = self._child(
             "EDIT",
             "",
@@ -382,7 +415,8 @@ class NativeManagerWindow:
         win32gui.SendMessage(goal, 0x1501, True, "What do you want to accomplish?")
         self._child("BUTTON", "Start", win32con.BS_PUSHBUTTON, ID_START)
         self._child("BUTTON", "Plan complex", win32con.BS_PUSHBUTTON, ID_COMPLEX)
-        self._child("STATIC", "Plan", win32con.SS_LEFT, 2191)
+        self._child("STATIC", mode_contract(self._mode).purpose, win32con.SS_LEFT, ID_MODE_NOTE)
+        self._child("STATIC", "Plan", win32con.SS_LEFT, ID_PLAN_LABEL)
         self._child(
             "LISTBOX",
             "",
@@ -390,20 +424,20 @@ class NativeManagerWindow:
             ID_TIMELINE,
         )
         self._child("STATIC", "No active plan", win32con.SS_LEFT, ID_PROGRESS)
-        self._child("STATIC", "Current guidance", win32con.SS_LEFT, 2192)
+        self._child("STATIC", "Current guidance", win32con.SS_LEFT, ID_GUIDANCE_LABEL)
         self._child("STATIC", "Start with a goal above.", win32con.SS_LEFT, ID_INSTRUCTION)
-        self._child("STATIC", "Verification", win32con.SS_LEFT, 2193)
+        self._child("STATIC", "Verification", win32con.SS_LEFT, ID_VERIFICATION_LABEL)
         self._child("STATIC", "No verification in progress.", win32con.SS_LEFT, ID_VERIFICATION)
         self._child("BUTTON", "Pause", win32con.BS_PUSHBUTTON, ID_PAUSE)
         self._child("BUTTON", "Stop", win32con.BS_PUSHBUTTON, ID_STOP)
-        self._child("STATIC", "Installed plugins", win32con.SS_LEFT, 2194)
+        self._child("STATIC", "Installed plugins", win32con.SS_LEFT, ID_PLUGINS_LABEL)
         self._child(
             "LISTBOX",
             "",
             win32con.WS_BORDER | win32con.WS_VSCROLL,
             ID_PLUGINS,
         )
-        self._child("STATIC", "Session details", win32con.SS_LEFT, 2195)
+        self._child("STATIC", "Session details", win32con.SS_LEFT, ID_DETAILS_LABEL)
         self._child("STATIC", "Processing  Local", win32con.SS_LEFT, ID_DETAILS)
         self._child(
             "STATIC",
@@ -428,7 +462,7 @@ class NativeManagerWindow:
         right_w = max(220, width // 4)
         left_w = max(280, (width - 2 * margin - 2 * gap - right_w) // 2)
         middle_w = width - 2 * margin - 2 * gap - right_w - left_w
-        body_y = 142
+        body_y = 180
         footer_h = 34
         body_h = max(240, height - body_y - footer_h - margin)
         middle_x = margin + left_w + gap
@@ -437,15 +471,28 @@ class NativeManagerWindow:
         self._move(ID_HEADER, margin, 18, 360, header_h)
         self._move(ID_STATUS, width - margin - 280, 18, 280, header_h)
         action_w = 116
-        self._move(ID_GOAL, margin, 70, width - 2 * margin - 2 * action_w - 16, goal_h)
-        self._move(ID_START, width - margin - 2 * action_w - 8, 70, action_w, goal_h)
-        self._move(ID_COMPLEX, width - margin - action_w, 70, action_w, goal_h)
-        self._move(2191, margin, 122, left_w, 24)
+        mode_w = 150
+        field_y = 78
+        self._move(ID_MODE_LABEL, margin, 54, mode_w, 20)
+        self._move(ID_MODE, margin, field_y, mode_w, 240)
+        goal_x = margin + mode_w + 12
+        self._move(ID_GOAL_LABEL, goal_x, 54, 160, 20)
+        self._move(
+            ID_GOAL,
+            goal_x,
+            field_y,
+            width - goal_x - margin - 2 * action_w - 16,
+            goal_h,
+        )
+        self._move(ID_START, width - margin - 2 * action_w - 8, field_y, action_w, goal_h)
+        self._move(ID_COMPLEX, width - margin - action_w, field_y, action_w, goal_h)
+        self._move(ID_MODE_NOTE, margin, 132, width - 2 * margin, 24)
+        self._move(ID_PLAN_LABEL, margin, 160, left_w, 24)
         self._move(ID_TIMELINE, margin, body_y, left_w, body_h - 34)
         self._move(ID_PROGRESS, margin, body_y + body_h - 28, left_w, 24)
-        self._move(2192, middle_x, 122, middle_w, 24)
+        self._move(ID_GUIDANCE_LABEL, middle_x, 160, middle_w, 24)
         self._move(ID_INSTRUCTION, middle_x, body_y, middle_w, 100)
-        self._move(2193, middle_x, body_y + 118, middle_w, 24)
+        self._move(ID_VERIFICATION_LABEL, middle_x, body_y + 118, middle_w, 24)
         self._move(ID_VERIFICATION, middle_x, body_y + 150, middle_w, 84)
         self._move(ID_PAUSE, middle_x, body_y + body_h - 52, (middle_w - 8) // 2, 44)
         self._move(
@@ -455,14 +502,77 @@ class NativeManagerWindow:
             (middle_w - 8) // 2,
             44,
         )
-        self._move(2194, right_x, 122, right_w, 24)
+        self._move(ID_PLUGINS_LABEL, right_x, 160, right_w, 24)
         self._move(ID_PLUGINS, right_x, body_y, right_w, 180)
-        self._move(2195, right_x, body_y + 198, right_w, 24)
+        self._move(ID_DETAILS_LABEL, right_x, body_y + 198, right_w, 24)
         self._move(ID_DETAILS, right_x, body_y + 230, right_w, body_h - 230)
         self._move(ID_PRIVACY, margin, height - footer_h, width - 2 * margin, 24)
 
-    def _on_command(self, control_id: int) -> None:
+    def _select_mode(self, mode: InteractionMode) -> None:
+        self._mode = mode
+        win32gui.SendMessage(
+            self._controls[ID_MODE], win32con.CB_SETCURSEL, MODE_ORDER.index(mode), 0
+        )
+        self._set(ID_MODE_NOTE, mode_contract(mode).purpose)
+
+    def _render_mode_idle(self, *, update_content: bool = True) -> None:
+        """Expose shipped modes and fail closed for roadmap-only modes."""
+
+        contract = mode_contract(self._mode)
+        self._set(ID_MODE_NOTE, contract.purpose)
+        self._set(
+            ID_START,
+            "Start guidance" if self._mode is InteractionMode.TEACH else contract.label,
+        )
+        self._set(ID_COMPLEX, "Create plan")
+        win32gui.EnableWindow(
+            self._controls[ID_START], mode_can_start_guidance(self._mode)
+        )
+        win32gui.EnableWindow(
+            self._controls[ID_COMPLEX], mode_can_propose_plan(self._mode)
+        )
+        if update_content and not contract.available:
+            self._set(ID_STATUS, f"{contract.label} is a preview")
+            self._set(ID_PROGRESS, "Not enabled in this trusted build")
+            self._set(
+                ID_INSTRUCTION,
+                "This mode cannot create a plan, target, overlay, or action yet.",
+            )
+            self._set(
+                ID_VERIFICATION,
+                "A reviewed runtime capability is required before this mode can start.",
+            )
+        elif update_content and self._mode is InteractionMode.PLAN:
+            self._set(
+                ID_INSTRUCTION,
+                "Choose one enabled plugin, then create a complete plan for review.",
+            )
+            self._set(
+                ID_VERIFICATION,
+                "Planning is inert. A separate Start plan action is required.",
+            )
+
+    def _on_command(self, control_id: int, _notification: int = 0) -> None:
+        if control_id == ID_MODE:
+            if self._snapshot is not None or self._task_proposal is not None:
+                win32gui.SendMessage(
+                    self._controls[ID_MODE],
+                    win32con.CB_SETCURSEL,
+                    MODE_ORDER.index(self._mode),
+                    0,
+                )
+                return
+            selected = win32gui.SendMessage(
+                self._controls[ID_MODE], win32con.CB_GETCURSEL, 0, 0
+            )
+            if selected != win32con.CB_ERR and selected < len(MODE_ORDER):
+                self._select_mode(MODE_ORDER[selected])
+                self.show_idle()
+            return
         if control_id == ID_START:
+            if not mode_can_start_guidance(self._mode):
+                self._set(ID_STATUS, "Select Teach to start guidance")
+                return
             goal = win32gui.GetWindowText(self._controls[ID_GOAL]).strip()
             if not goal:
                 self._set(ID_STATUS, "Enter a goal first")
@@ -480,7 +590,11 @@ class NativeManagerWindow:
             self._pending_request = LaunchRequest(goal, target_hwnd)
             win32gui.EnableWindow(self._controls[ID_START], False)
             win32gui.EnableWindow(self._controls[ID_COMPLEX], False)
+            win32gui.EnableWindow(self._controls[ID_MODE], False)
         elif control_id == ID_COMPLEX:
+            if not mode_can_propose_plan(self._mode):
+                self._set(ID_STATUS, "Select Plan to create a task plan")
+                return
             goal = win32gui.GetWindowText(self._controls[ID_GOAL]).strip()
             if not goal:
                 self._set(ID_STATUS, "Enter a goal first")
@@ -514,6 +628,7 @@ class NativeManagerWindow:
                 self._pending_request = TaskProposalRequest(goal, plugin.plugin_id)
             win32gui.EnableWindow(self._controls[ID_START], False)
             win32gui.EnableWindow(self._controls[ID_COMPLEX], False)
+            win32gui.EnableWindow(self._controls[ID_MODE], False)
         elif control_id == ID_PAUSE and self._snapshot is not None:
             if self._snapshot.capabilities.can_pause:
                 session_commands.request(
@@ -579,6 +694,9 @@ class NativeManagerWindow:
         win32gui.EnableWindow(self._controls[ID_START], terminal)
         win32gui.EnableWindow(self._controls[ID_COMPLEX], terminal)
         win32gui.EnableWindow(self._controls[ID_GOAL], terminal)
+        win32gui.EnableWindow(self._controls[ID_MODE], terminal)
+        if terminal:
+            self._render_mode_idle(update_content=False)
 
     def show_idle(self) -> None:
         self._snapshot = None
@@ -590,14 +708,12 @@ class NativeManagerWindow:
         self._set(ID_PROGRESS, "No active plan")
         self._set(ID_INSTRUCTION, "Describe a task to begin guided, verified work.")
         self._set(ID_VERIFICATION, "Verification will remain visible while you work.")
-        self._set(ID_START, "Start")
-        self._set(ID_COMPLEX, "Plan complex")
         self._replace_list(ID_TIMELINE, ())
-        win32gui.EnableWindow(self._controls[ID_START], True)
-        win32gui.EnableWindow(self._controls[ID_COMPLEX], True)
         win32gui.EnableWindow(self._controls[ID_GOAL], True)
+        win32gui.EnableWindow(self._controls[ID_MODE], True)
         win32gui.EnableWindow(self._controls[ID_PAUSE], False)
         win32gui.EnableWindow(self._controls[ID_STOP], False)
+        self._render_mode_idle()
 
     def show_understanding(self, goal: str) -> None:
         self._target_candidates = ()
@@ -610,6 +726,7 @@ class NativeManagerWindow:
         self._set(ID_COMPLEX, "Plan complex")
         self._replace_list(ID_TIMELINE, ("…  Understanding the goal",))
         win32gui.EnableWindow(self._controls[ID_GOAL], False)
+        win32gui.EnableWindow(self._controls[ID_MODE], False)
 
     def show_unavailable(self, goal: str, explanation: str) -> None:
         self._target_candidates = ()
@@ -625,6 +742,8 @@ class NativeManagerWindow:
         win32gui.EnableWindow(self._controls[ID_START], True)
         win32gui.EnableWindow(self._controls[ID_COMPLEX], True)
         win32gui.EnableWindow(self._controls[ID_GOAL], True)
+        win32gui.EnableWindow(self._controls[ID_MODE], True)
+        self._render_mode_idle(update_content=False)
 
     def show_target_not_running(self, goal: str, explanation: str) -> None:
         self._target_candidates = ()
@@ -638,8 +757,10 @@ class NativeManagerWindow:
         win32gui.EnableWindow(self._controls[ID_START], not complex_retry)
         win32gui.EnableWindow(self._controls[ID_COMPLEX], complex_retry)
         win32gui.EnableWindow(self._controls[ID_GOAL], not complex_retry)
+        win32gui.EnableWindow(self._controls[ID_MODE], False)
 
     def show_target_choices(self, goal: str, candidates: tuple[object, ...]) -> None:
+        self._select_mode(InteractionMode.TEACH)
         self._target_candidates = candidates
         self._target_choice_for = "simple"
         self._set(ID_STATUS, _STATUS_LABELS[SessionStatus.TARGET_CHOICE_REQUIRED])
@@ -657,11 +778,13 @@ class NativeManagerWindow:
         win32gui.EnableWindow(self._controls[ID_START], True)
         win32gui.EnableWindow(self._controls[ID_COMPLEX], False)
         win32gui.EnableWindow(self._controls[ID_GOAL], False)
+        win32gui.EnableWindow(self._controls[ID_MODE], False)
 
     def show_task_proposal(self, goal: str, proposal: object) -> None:
         """Present the entire validated graph; a second action must start it."""
 
         self._snapshot = None
+        self._select_mode(InteractionMode.PLAN)
         self._target_candidates = ()
         self._target_choice_for = ""
         self._task_proposal = proposal
@@ -676,6 +799,7 @@ class NativeManagerWindow:
         win32gui.EnableWindow(self._controls[ID_START], False)
         win32gui.EnableWindow(self._controls[ID_COMPLEX], True)
         win32gui.EnableWindow(self._controls[ID_GOAL], False)
+        win32gui.EnableWindow(self._controls[ID_MODE], False)
 
     def show_task_target_choices(self, candidates: tuple[object, ...]) -> None:
         """Keep the reviewed graph while the operator selects its exact HWND."""
@@ -698,6 +822,7 @@ class NativeManagerWindow:
         self._set(ID_COMPLEX, "Use window")
         win32gui.EnableWindow(self._controls[ID_START], False)
         win32gui.EnableWindow(self._controls[ID_COMPLEX], True)
+        win32gui.EnableWindow(self._controls[ID_MODE], False)
 
     def show_task_result(self, result: object) -> None:
         """Render one graph-level outcome without inventing node progress."""
@@ -720,6 +845,8 @@ class NativeManagerWindow:
         win32gui.EnableWindow(self._controls[ID_START], True)
         win32gui.EnableWindow(self._controls[ID_COMPLEX], True)
         win32gui.EnableWindow(self._controls[ID_GOAL], True)
+        win32gui.EnableWindow(self._controls[ID_MODE], True)
+        self._render_mode_idle(update_content=False)
 
     def set_plugins(self, plugins: tuple[PluginPresentation, ...]) -> None:
         rows = tuple(

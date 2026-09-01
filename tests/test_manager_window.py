@@ -8,6 +8,8 @@ from ghostcursor.manager import (
     ID_COMPLEX,
     ID_GOAL,
     ID_INSTRUCTION,
+    ID_MODE,
+    ID_MODE_NOTE,
     ID_PAUSE,
     ID_PLUGINS,
     ID_PROGRESS,
@@ -20,6 +22,7 @@ from ghostcursor.manager import (
     TaskExecutionRequest,
     TaskProposalRequest,
 )
+from ghostcursor.interaction import MODE_ORDER, InteractionMode
 from ghostcursor.session import (
     GuidanceValue,
     SessionSnapshot,
@@ -44,6 +47,16 @@ def _snapshot(status=SessionStatus.GUIDING, guidance_values=()):
         guidance_values=guidance_values,
         capabilities=active_capabilities(paused=status is SessionStatus.PAUSED),
     )
+
+
+def _choose_mode(manager, mode):
+    win32gui.SendMessage(
+        manager._controls[ID_MODE],
+        win32con.CB_SETCURSEL,
+        MODE_ORDER.index(mode),
+        0,
+    )
+    manager._on_command(ID_MODE)
 
 
 def test_manager_is_a_normal_non_topmost_window_and_renders_snapshot_truth():
@@ -93,6 +106,48 @@ def test_manager_plugin_rows_render_the_store_reported_state_verbatim():
         assert count == 1
         assert "blocked_incompatible" in manager._plugin_rows[0]
         assert "core outside range" in manager._plugin_rows[0]
+    finally:
+        manager.dispose()
+
+
+def test_manager_mode_selector_is_truthful_about_shipped_and_preview_modes():
+    manager = NativeManagerWindow()
+    try:
+        assert win32gui.SendMessage(
+            manager._controls[ID_MODE], win32con.CB_GETCOUNT, 0, 0
+        ) == len(MODE_ORDER)
+        assert win32gui.GetWindowText(manager._controls[ID_MODE]) == "Teach"
+        assert win32gui.IsWindowEnabled(manager._controls[ID_START])
+        assert not win32gui.IsWindowEnabled(manager._controls[ID_COMPLEX])
+
+        manager.set_plugins(
+            (
+                PluginPresentation(
+                    "ghostcursor.powerpoint",
+                    "1.0.0",
+                    "enabled_compatible",
+                    "compatible",
+                    True,
+                ),
+            )
+        )
+        win32gui.SendMessage(
+            manager._controls[ID_PLUGINS], win32con.LB_SETCURSEL, 0, 0
+        )
+        _choose_mode(manager, InteractionMode.ACT)
+
+        assert "Act is a preview" == win32gui.GetWindowText(
+            manager._controls[ID_STATUS]
+        )
+        assert "Execute approved capabilities" in win32gui.GetWindowText(
+            manager._controls[ID_MODE_NOTE]
+        )
+        assert not win32gui.IsWindowEnabled(manager._controls[ID_START])
+        assert not win32gui.IsWindowEnabled(manager._controls[ID_COMPLEX])
+        win32gui.SetWindowText(manager._controls[ID_GOAL], "Do this on your own")
+        manager._on_command(ID_START)
+        manager._on_command(ID_COMPLEX)
+        assert manager.take_request() is None
     finally:
         manager.dispose()
 
@@ -151,6 +206,7 @@ def test_complex_goal_requires_plugin_selection_then_a_second_explicit_start():
         )
         win32gui.SetWindowText(manager._controls[ID_GOAL], "Build an investor deck")
         win32gui.SendMessage(manager._controls[ID_PLUGINS], win32con.LB_SETCURSEL, 0, 0)
+        _choose_mode(manager, InteractionMode.PLAN)
 
         manager._on_command(ID_COMPLEX)
         request = manager.take_request()

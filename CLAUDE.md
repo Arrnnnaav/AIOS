@@ -224,6 +224,14 @@ flattened plan; a distinct second `Start plan` action is required before
 `execute_task_graph()`. Target ambiguity may be recovered only before any node
 has completed—never replay a side-effecting completed prefix.
 
+Interaction modes are canonical product contracts in `ghostcursor.interaction`,
+not permissions. The manager currently ships Teach and Plan. Ideate, Assist,
+and Act are visibly marked Preview and must not produce a plan, target, overlay,
+or action. Plan remains inert until its separate `Start plan` confirmation.
+Adding executable behavior to Act requires a separately reviewed authority and
+input-synthesis decision; selecting a mode can never bypass plugin capability,
+`authorize_intent()`, fresh binding, or verification.
+
 The VS Code workflow gates and the Ask behavioral gate are closed. Their
 acceptance evidence lives in `docs/evidence/` and D048-D057; do not restate run
 counts here.

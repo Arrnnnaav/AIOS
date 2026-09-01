@@ -68,6 +68,13 @@ executes until the operator presses `Start plan`; execution then revalidates the
 whole graph before node 1. A target chooser can resume only when no node has
 completed, so recovery cannot replay a side-effecting prefix.
 
+The manager's mode selector reads the single contract in
+`ghostcursor.interaction`. `Teach` routes only to the existing compiled-goal
+launcher. `Plan` routes only to inert graph proposal and the existing explicit
+confirmation path. `Ideate`, `Assist`, and `Act` are preview modes in this
+build: selecting them disables both launch paths and creates no target,
+overlay, or execution request. Mode selection never carries authority.
+
 Production bundles are Ed25519-signed `.ghostplugin` files whose signed
 manifest contains the complete payload digest inventory. `PluginStore` owns
 install/enable/disable/uninstall and reports `disabled`, `enabled_compatible`,
