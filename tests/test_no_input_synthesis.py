@@ -83,8 +83,15 @@ def banned_calls_in(tree: ast.AST) -> list[str]:
     return found
 
 
-def banned_imports_in(tree: ast.AST) -> list[str]:
-    """Every banned import in one parsed module, with line numbers."""
+def banned_imports_in(tree: ast.AST, banned: set[str] | None = None) -> list[str]:
+    """Every banned import in one parsed module, with line numbers.
+
+    `banned` defaults to the core list. A signed adapter needs a different
+    one -- `win32com` is its sanctioned object-model path, not a violation --
+    so the scan takes the set rather than each root growing its own copy of
+    this walker.
+    """
+    banned = _BANNED_IMPORTS if banned is None else banned
     found = []
     for node in ast.walk(tree):
         names: list[str] = []
@@ -95,7 +102,7 @@ def banned_imports_in(tree: ast.AST) -> list[str]:
                 f"{node.module}.{alias.name}" for alias in node.names
             ]
         for name in names:
-            if name in _BANNED_IMPORTS or name.split(".")[0] in _BANNED_IMPORTS:
+            if name in banned or name.split(".")[0] in banned:
                 found.append(f"{node.lineno}:{name}")
     return found
 
@@ -177,3 +184,93 @@ def test_a_clean_module_trips_neither_scan():
     tree = ast.parse('import json\nfrom pathlib import Path\nPath(x).read_text()\n', filename="clean.py")
     assert banned_calls_in(tree) == []
     assert banned_imports_in(tree) == []
+
+
+# ---------------------------------------------------------------------------
+# Signed plugin adapters (D100)
+# ---------------------------------------------------------------------------
+#
+# The scans above are scoped to `ghostcursor/`. A signed adapter deliberately
+# lives OUTSIDE it -- out of process is the point -- so those scans have never
+# looked at the one component that can actually change a user's document.
+#
+# CLAUDE.md states the rule: an adapter "may call only the application object
+# model declared by its signed operation registry; it may not call SendInput,
+# cursor APIs, or generic mouse/keyboard automation." Until this file existed
+# that rule held because the first adapter was written carefully, not because
+# anything would notice if the next one was not. The first adapter is the
+# template every later one gets copied from.
+
+ADAPTER_ROOTS = sorted(
+    (Path(__file__).resolve().parents[1] / "plugins" / "sources").glob("*/payload")
+)
+
+#: The core list minus `win32com.client.Dispatch`. Core may not drive an Office
+#: object model; an adapter exists to do exactly that. Everything whose sole
+#: purpose is synthesizing input stays banned.
+_ADAPTER_BANNED_IMPORTS = _BANNED_IMPORTS - {"win32com.client.Dispatch"}
+
+
+def _adapter_trees():
+    for root in ADAPTER_ROOTS:
+        for path in sorted(root.rglob("*.py")):
+            yield path, ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+
+
+def test_signed_adapters_synthesize_no_input():
+    """An adapter drives the object model, never the mouse or keyboard."""
+    violations = [
+        f"{path}:{hit}"
+        for path, tree in _adapter_trees()
+        for hit in banned_calls_in(tree)
+    ]
+    assert violations == [], "adapter input synthesis is forbidden: " + ", ".join(
+        violations
+    )
+
+
+def test_signed_adapters_import_no_input_synthesis_library():
+    """Refusing the import closes what refusing the call cannot, here too."""
+    violations = [
+        f"{path}:{hit}"
+        for path, tree in _adapter_trees()
+        for hit in banned_imports_in(tree, _ADAPTER_BANNED_IMPORTS)
+    ]
+    assert violations == [], "adapter imported an input library: " + ", ".join(
+        violations
+    )
+
+
+def test_the_adapter_scan_actually_reaches_a_shipped_adapter():
+    """Non-vacuity. A glob that matches nothing passes both scans forever.
+
+    This is the failure this repo has caught repeatedly: a guard that cannot
+    fire reads exactly like a guard that never had to.
+    """
+    scanned = [path for path, _tree in _adapter_trees()]
+    assert scanned, f"the adapter scan found no files under {ADAPTER_ROOTS}"
+    assert any(
+        "adapter" in path.name for path in scanned
+    ), f"no adapter module among {[p.name for p in scanned]}"
+
+
+def test_the_adapter_scan_still_permits_the_sanctioned_object_model():
+    """`win32com` is the adapter's whole purpose, so it must NOT be a hit.
+
+    Without this, tightening the adapter list to the core one would look like
+    a safety improvement while actually banning the only sanctioned mechanism.
+    """
+    # `Dispatch` is the symbol the core list names, so that import form is what
+    # separates the two roots. Worth knowing: plain `import win32com.client` is
+    # banned in neither, so the core rule is narrower than "core cannot reach
+    # an Office object model".
+    dispatch = ast.parse("from win32com.client import Dispatch\n")
+    assert banned_imports_in(dispatch, _ADAPTER_BANNED_IMPORTS) == []
+    assert banned_imports_in(dispatch) != [], "core must still refuse Dispatch"
+
+    # The form the shipped adapter actually uses stays clean under its own list.
+    used = ast.parse(
+        "import win32com.client\n"
+        "app = win32com.client.gencache.EnsureDispatch('PowerPoint.Application')\n"
+    )
+    assert banned_imports_in(used, _ADAPTER_BANNED_IMPORTS) == []
