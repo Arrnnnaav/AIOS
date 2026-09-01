@@ -123,15 +123,8 @@ def run(args) -> int:
             adapter.adapter_sha256,
         )
 
-    result = execute_approved_graph(
-        validated,
-        descriptor.registry,
-        approval,
-        descriptor=descriptor,
-        current_authority=current_authority,
-        revalidate_target=_live_target,
-        controls=ActControls(),
-        event_sink=lambda event: _emit(
+    def emit_event(event) -> None:
+        _emit(
             "event",
             event=event.type,
             node_id=event.node_id,
@@ -140,8 +133,55 @@ def run(args) -> int:
             total=event.total,
             detail=event.detail,
             at_s=round(event.at_s, 3),
-        ),
-    )
+        )
+
+    # Phase A instrumentation.  Absent --diagnostics, nothing is wrapped and
+    # this run is byte-identical in behaviour to an uninstrumented one.
+    probe = None
+    diagnostics = None
+    event_sink = emit_event
+    instrument_verify = None
+    if args.diagnostics is not None:
+        path = args.diagnostics.resolve()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        diagnostics = path.open("w", encoding="utf-8")
+
+        def write_record(record) -> None:
+            diagnostics.write(
+                json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n"
+            )
+            diagnostics.flush()
+
+        probe = ActBoundaryProbe(output, write_record)
+        event_sink = probe.event_sink(emit_event)
+        instrument_verify = probe.wrap_verify
+        write_record(
+            {
+                "approval_sha256": approval.approval_sha256,
+                "graph_sha256": validated.graph_sha256,
+                "nodes": len(validated.ordered_nodes),
+                "output_path": str(output),
+                "type": "diagnostic_run_started",
+            }
+        )
+
+    try:
+        result = execute_approved_graph(
+            validated,
+            descriptor.registry,
+            approval,
+            descriptor=descriptor,
+            current_authority=current_authority,
+            revalidate_target=_live_target,
+            controls=ActControls(),
+            event_sink=event_sink,
+            instrument_verify=instrument_verify,
+        )
+    finally:
+        if diagnostics is not None:
+            if probe is not None and probe.probe_faults:
+                _emit("probe_faults", count=probe.probe_faults)
+            diagnostics.close()
     _emit(
         "result",
         code=result.code.value,
@@ -171,6 +211,16 @@ def main() -> int:
     parser.add_argument("--target-hwnd", type=int, required=True)
     parser.add_argument("--core-version", default="1.0.0")
     parser.add_argument("--approval-lifetime", type=float, default=1800.0)
+    parser.add_argument(
+        "--diagnostics",
+        type=Path,
+        default=None,
+        help=(
+            "Write Phase A node-boundary records as JSONL. Diagnostic only: it "
+            "adds package digests and verifier timing around each node and "
+            "changes nothing about authorization or verification."
+        ),
+    )
     return run(parser.parse_args())
 
 

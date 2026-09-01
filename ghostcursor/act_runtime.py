@@ -615,8 +615,16 @@ def execute_approved_graph(
     revalidate_target: Callable[[ActTarget], None],
     controls: ActControls,
     event_sink: Callable[[ActEvent], None] | None = None,
+    instrument_verify: Callable[[Callable], Callable] | None = None,
 ) -> ActRunResult:
-    """Production execution path with the plugin's separate signed verifier."""
+    """Production execution path with the plugin's separate signed verifier.
+
+    ``instrument_verify`` wraps the verification call for diagnostics only.  It
+    receives the verifier callable and must return one with the same contract:
+    the wrapper may observe and time, but the answer it returns is the
+    verifier's own.  It is never consulted about authority, and production runs
+    leave it unset.
+    """
 
     verifier = VerifierHost(descriptor)
 
@@ -635,6 +643,9 @@ def execute_approved_graph(
             cancel_event=controls.stop_event,
         )
         return result.verified
+
+    if instrument_verify is not None:
+        verify = instrument_verify(verify)
 
     return _execute_approved_graph(
         validated,
