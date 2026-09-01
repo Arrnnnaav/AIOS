@@ -271,6 +271,23 @@ exact application build, because that is the only build it is valid for. A signe
 the application object model declared by its signed operation registry; it may
 not call `SendInput`, cursor APIs, or generic mouse/keyboard automation.
 
+The autonomous Act v1 completion program runs in the mandatory phase order
+recorded in D105. The PowerPoint diagnose-fix-rerun loop and the read-only UIA
+feasibility probes both complete before any contract is frozen, any runtime is
+implemented, or any timing budget is measured. Three independent D032 reviews
+gate it -- derived budgets, pre-sign candidate bytes, activation -- and none
+may be performed by the author of what it reviews. Do not wire
+`ghostcursor/stages.py` into the action-plan schema before that loop finishes:
+adding stages changes plan bytes and invalidates the digests the diagnostic
+run needs.
+
+Phase A and B tooling measures without acting. `ActBoundaryProbe` may never
+change a run's outcome, and `uia_feasibility` may never call `Invoke`,
+`DoDefaultAction`, `Toggle`, `SetValue`, or any other effect -- that
+prohibition is scanned from the module's AST and must stay scanned. Run the
+instrumented campaign with `act_acceptance --diagnostics <path>` and read it
+with `python -m ghostcursor.devtools.act_diagnosis`.
+
 The VS Code workflow gates and the Ask behavioral gate are closed. Their
 acceptance evidence lives in `docs/evidence/` and D048-D057; do not restate run
 counts here.
