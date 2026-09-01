@@ -71,9 +71,11 @@ completed, so recovery cannot replay a side-effecting prefix.
 The manager's mode selector reads the single contract in
 `ghostcursor.interaction`. `Teach` routes only to the existing compiled-goal
 launcher. `Plan` routes only to inert graph proposal and the existing explicit
-confirmation path. `Ideate`, `Assist`, and `Act` are preview modes in this
-build: selecting them disables both launch paths and creates no target,
-overlay, or execution request. Mode selection never carries authority.
+confirmation path. `Act` routes only to the signed action-plan
+path below: one inert complete proposal, then a separate approval of that exact
+graph. `Ideate` and `Assist` remain preview modes in this build: selecting them
+disables every launch path and creates no target, overlay, or execution
+request. Mode selection never carries authority.
 
 Production bundles are Ed25519-signed `.ghostplugin` files whose signed
 manifest contains the complete payload digest inventory. `PluginStore` owns
@@ -1131,6 +1133,8 @@ natural-language goal
          dependencies + acyclicity + pre/postcondition facts
          repeated non-idempotent effects refused
     -> resolve one exact HWND/PID/executable/version
+         (the adapter re-establishes this by PROCESS identity, not
+          `Application.HWND`, which build 16.0.20326 does not expose)
     -> display the complete deterministic flattened plan
     -> explicit one-shot approval
          validation + manifest + adapter + active catalog epoch
@@ -1164,3 +1168,13 @@ the graph single-plugin. Its catalog includes all four animation categories
 and both Fade/Morph transitions, but the investor deck uses restrained motion.
 The candidate remains quarantined until external release signing and live
 acceptance bind the exact reviewed bytes.
+
+The first live campaign established what a real desktop costs. `Application.HWND`
+and every sibling window handle raise `DISP_E_MEMBERNOTFOUND` on Office build
+16.0.20326 under both binding modes, so the adapter proves it holds the approved
+target by process identity instead: resolve the approved window's owning PID,
+require PowerPoint to be that single process, and check before `EnsureDispatch`
+so a dispatch cannot launch the process being verified. That is narrower than
+window identity and is recorded as such rather than presented as equivalent.
+Three animation constants and `msoTrue` likewise do not exist at runtime; the
+operation catalog now names the constants the application actually exposes.

@@ -250,7 +250,24 @@ executable plan, target, overlay, or action. Selecting a mode never grants
 authority or bypasses plugin state, `authorize_intent()`, fresh target binding,
 whole-graph validation, per-action authorization, or independent verification.
 Teach and its acceptance tools remain forbidden from moving the pointer,
-typing, or importing input-synthesis APIs. A signed Act adapter may call only
+typing, or importing input-synthesis APIs. That prohibition is scanned, and the
+scan covers the signed adapter roots under `plugins/sources/*/payload` as well
+as `ghostcursor/`, with `win32com` permitted there because it is the sanctioned
+object-model path.
+
+An adapter establishes that it holds the approved target by PROCESS identity:
+resolve the approved window's owning PID, require the application to be that
+single process, and check before dispatching, so a dispatch cannot launch the
+process being verified. Do not use `Application.HWND` -- it and every sibling
+window handle raise `DISP_E_MEMBERNOTFOUND` at runtime on Office build
+16.0.20326 -- and do not substitute caption matching, which D075 already
+refused as identity. This is narrower than window identity; say so rather than
+implying equivalence.
+
+A constants stub in an adapter test must not contain a name the application
+does not expose. Stubbing `msoTrue` is what allowed every exit animation to
+refuse in production while the contract test passed. Adapter evidence names the
+exact application build, because that is the only build it is valid for. A signed Act adapter may call only
 the application object model declared by its signed operation registry; it may
 not call `SendInput`, cursor APIs, or generic mouse/keyboard automation.
 

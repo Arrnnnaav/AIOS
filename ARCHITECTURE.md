@@ -214,6 +214,16 @@ flowchart LR
 
 ### Known follow-ups and risks
 
+- Act's acceptance is valid for one Office build at a time. The first live
+  campaign found six defects that only exist against a running application:
+  `Application.HWND` and every sibling window handle are absent at runtime on
+  build 16.0.20326, a document-property write succeeded without raising and
+  without persisting (defeating its own except-based fallback), three animation
+  constants do not exist under the names the catalog used, and `msoTrue` lives
+  in the Office type library rather than PowerPoint's. None is reachable by
+  hermetic testing, and one was actively hidden by a contract test that stubbed
+  a constant the application does not expose. Adapter evidence must therefore
+  name the exact application build, and constants stubs must not invent names.
 - Native UIA focus-change events are not built; focus feedback currently polls
   between worker walks, leaving a measured blind interval.
 - The `ANY_MEANINGFUL_CHANGE` schema requires a `scope` value that verification
