@@ -313,10 +313,14 @@ def test_exit_category_sets_the_powerpoint_effect_exit_flag():
         TimeLine=SimpleNamespace(MainSequence=sequence)
     )
     session.shapes[("slide", "object")] = object()
+    # No "msoTrue" here, deliberately. It lives in the Office type library,
+    # not PowerPoint's, so `win32com.client.constants` never exposes it on a
+    # real desktop -- measured on build 16.0.20326. Stubbing it is what let
+    # this test pass while every exit animation refused in production. A
+    # constants stub must not contain a name the application does not.
     constants = {
         "msoAnimEffectFly": 1,
         "msoAnimTriggerOnPageClick": 2,
-        "msoTrue": -1,
     }
     session._const = lambda *names: next(
         constants[name] for name in names if name in constants
@@ -336,7 +340,9 @@ def test_exit_category_sets_the_powerpoint_effect_exit_flag():
         }
     )
 
-    assert effect.Exit == -1
+    # A plain bool: COM marshals it to VARIANT_BOOL, and it needs no constant
+    # the application might not expose.
+    assert effect.Exit is True
 
 
 def _minimal_pptx(path: Path):

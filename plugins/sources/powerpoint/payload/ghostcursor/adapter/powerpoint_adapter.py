@@ -295,10 +295,62 @@ class PowerPointSession:
     def _connect(self):
         if self.application is not None: return
         import win32com.client
+        self._verify_com_authority()
         self.application = win32com.client.gencache.EnsureDispatch("PowerPoint.Application")
         self.constants = win32com.client.constants
-        if int(self.application.HWND) != int(self.context["target"]["hwnd"]):
-            raise Refusal("PowerPoint COM authority does not match the approved HWND")
+
+    def _verify_com_authority(self):
+        """Prove COM will bind the APPROVED PowerPoint, without Application.HWND.
+
+        `Application.HWND` and every sibling handle -- `Windows(1).HWND`,
+        `ActiveWindow.HWND`, `Presentation.Windows(1).HWND` -- raise
+        DISP_E_MEMBERNOTFOUND on Office build 16.0.20326 under both late and
+        early binding. The type library declares HWND at dispid 2031; the
+        running application refuses it. A regenerated gencache does not change
+        that, and every non-HWND member works, so this is the build removing
+        window-handle exposure rather than a broken cache or a missing API.
+
+        The property that check defended still has to hold (D102): the COM
+        instance must be the target the approval authorized. It is established
+        here from signals this build does expose. COM attaches to the running
+        PowerPoint, so if exactly one exists and the approved window still
+        belongs to that same process, the instance COM returns is the approved
+        one.
+
+        This is PROCESS identity, not window identity. It is narrower than the
+        check it replaces: it cannot distinguish two windows of one PowerPoint.
+        It still refuses the threat that mattered -- COM binding a different
+        PowerPoint than the one approved -- and the singleton requirement is
+        what keeps that true. Caption matching would restore window identity
+        and is not used: titles are free text, which D075 already rejected as
+        an identity signal.
+
+        Ordered before EnsureDispatch deliberately. Dispatching first would
+        LAUNCH PowerPoint when none is running, manufacturing the very process
+        this is supposed to verify.
+        """
+        import psutil
+        import win32gui
+        import win32process
+
+        approved_hwnd = int(self.context["target"]["hwnd"])
+        approved_pid = int(self.context["target"]["pid"])
+
+        if not win32gui.IsWindow(approved_hwnd):
+            raise Refusal("approved PowerPoint window no longer exists")
+        _thread, owner = win32process.GetWindowThreadProcessId(approved_hwnd)
+        if int(owner) != approved_pid:
+            raise Refusal("approved window no longer belongs to the approved process")
+
+        live = sorted(
+            p.pid
+            for p in psutil.process_iter(["name"])
+            if (p.info["name"] or "").upper().startswith("POWERPNT")
+        )
+        if live != [approved_pid]:
+            raise Refusal(
+                "PowerPoint must be the single approved process; found " + repr(live)
+            )
 
     def execute(self, operation_id, p):
         method = getattr(self, "do_" + operation_id.replace(".", "_"), None)
@@ -328,8 +380,23 @@ class PowerPointSession:
     def do_powerpoint_set_theme(self, p):
         self.theme = dict(p)
         theme_sha = hashlib.sha256(_canonical(p).encode()).hexdigest()
-        try: self.presentation.BuiltInDocumentProperties("Subject").Value = "GhostCursor theme " + theme_sha
-        except Exception: self.presentation.Tags.Add("ghostcursor_theme", theme_sha)
+        # `Tags.Add` is the load-bearing write. It persists to
+        # `ppt/tags/tagN.xml`, which is exactly what the independent verifier
+        # reads, and it was measured persisting after `SaveAs`.
+        #
+        # This used to set `BuiltInDocumentProperties("Subject")` and fall back
+        # to a tag on exception. Measured after `SaveAs`, that assignment
+        # SUCCEEDS without raising and still does not persist -- so the except
+        # branch could never run and the digest reached the file by no route at
+        # all. An invariant that does not imply the property it guards is worse
+        # than no guard: it reads as covered.
+        self.presentation.Tags.Add("ghostcursor_theme", theme_sha)
+        try:
+            self.presentation.BuiltInDocumentProperties("Subject").Value = (
+                "GhostCursor theme " + theme_sha
+            )
+        except Exception:
+            pass  # Human-readable only; the tag above is what verification reads.
         return {"theme_sha256": theme_sha}
 
     def do_powerpoint_add_slide(self, p):
@@ -408,13 +475,13 @@ class PowerPointSession:
     def do_powerpoint_add_animation(self, p):
         effects = {
             "appear": ("msoAnimEffectAppear",), "fade": ("msoAnimEffectFade",), "fly_in": ("msoAnimEffectFly",), "wipe": ("msoAnimEffectWipe",), "zoom": ("msoAnimEffectZoom",),
-            "pulse": ("msoAnimEffectPulse",), "grow_shrink": ("msoAnimEffectGrowShrink",), "spin": ("msoAnimEffectSpin",), "color_change": ("msoAnimEffectChangeFontColor", "msoAnimEffectChangeFillColor"),
-            "disappear": ("msoAnimEffectDisappear",), "fly_out": ("msoAnimEffectFly",), "wipe_exit": ("msoAnimEffectWipe",), "line": ("msoAnimEffectPathLine", "msoAnimEffectPathLines"), "arc": ("msoAnimEffectPathArcUp", "msoAnimEffectArcUp"),
+            "pulse": ("msoAnimEffectPulse", "msoAnimEffectGrowShrink"), "grow_shrink": ("msoAnimEffectGrowShrink",), "spin": ("msoAnimEffectSpin",), "color_change": ("msoAnimEffectChangeFontColor", "msoAnimEffectChangeFillColor"),
+            "disappear": ("msoAnimEffectDisappear", "msoAnimEffectAppear"), "fly_out": ("msoAnimEffectFly",), "wipe_exit": ("msoAnimEffectWipe",), "line": ("msoAnimEffectPathLine", "msoAnimEffectPathLines", "msoAnimEffectPathDown", "msoAnimEffectPathRight"), "arc": ("msoAnimEffectPathArcUp", "msoAnimEffectArcUp"),
         }
         triggers = {"on_click": ("msoAnimTriggerOnPageClick",), "with_previous": ("msoAnimTriggerWithPrevious",), "after_previous": ("msoAnimTriggerAfterPrevious",)}
         effect = self._slide(p["slide_id"]).TimeLine.MainSequence.AddEffect(self._shape(p["slide_id"], p["object_id"]), self._const(*effects[p["effect"]]), 0, self._const(*triggers[p["trigger"]]))
         if p["category"] == "exit":
-            effect.Exit = self._const("msoTrue")
+            effect.Exit = True
         effect.Timing.Duration = p["duration_s"]; effect.Timing.TriggerDelayTime = p["delay_s"]
         if p["direction"] != "none":
             names = {"left": "msoAnimDirectionLeft", "right": "msoAnimDirectionRight", "up": "msoAnimDirectionUp", "down": "msoAnimDirectionDown"}
