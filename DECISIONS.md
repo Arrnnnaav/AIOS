@@ -4018,3 +4018,58 @@ movement, and generic mouse/keyboard automation remain forbidden everywhere.
 **Reason.** Autonomy is a new authority boundary, not a stronger mode toggle.
 Sharing production proposal/execution functions across manager, CLI, and the
 isolated acceptance harness prevents one surface from acquiring a weaker path.
+
+## D105 — Act v1 completion runs A-before-C, and its Phase A/B tools measure without acting
+
+**Decision.** The autonomous Act v1 completion program executes in a mandatory
+phase order: the PowerPoint diagnose-fix-rerun loop (A) and the read-only UIA
+feasibility probes (B) both complete before any contract is frozen (C), before
+any runtime is implemented (D), and before any budget is measured (E) or
+reviewed (F). Three independent D032 reviews gate the program -- derived
+budgets, pre-sign candidate bytes, and activation -- and none may be performed
+by the author of what it reviews.
+
+Phase A instrumentation is `ghostcursor/devtools/act_probe.py` and
+`act_diagnosis.py`. The probe records the package before a node, after the
+adapter's mandatory save, and after the verifier returned, with per-part
+digests, a two-read stability check, and verifier wall time. It cannot change
+the run: it returns the verifier's own answer, re-raises its exceptions,
+always forwards downstream events, and turns its own failures into
+`probe_fault` records. `execute_approved_graph` gained one optional
+`instrument_verify` seam that defaults to `None`.
+
+Phase B instrumentation is `ghostcursor/devtools/uia_feasibility.py`. It reads
+pattern availability and identity properties and never calls `Invoke`,
+`DoDefaultAction`, `Toggle`, `SetValue`, or any other effect; the prohibition
+is scanned from the module's AST with a non-vacuity case, not left to review.
+A single failed cycle disqualifies RuntimeId stability, an unreadable
+RuntimeId is not a stable one, and an unstable RuntimeId demotes identity to a
+signed `exactly_one` semantic selector rather than refusing outright.
+
+Phase C's stage and cue validator is `ghostcursor/stages.py` and is
+deliberately not wired into the action-plan schema yet.
+
+**Reason.** A: 230 of the investor plan's 255 actions have never executed
+live, and the first 25 produced six defects that were only visible against a
+real application. Freezing schemas against that state is what the ordering
+prevents. B: the identity policy the contracts must encode is decided by
+measurement, and D037 already measured VS Code's element set churning roughly
+10% in steady state with no user action, so a RuntimeId compared across a
+650 ms cue has to earn that role.
+
+The schema is unwired because adding stages changes plan bytes and therefore
+every plan digest, and Phase A's diagnostic run has to happen against the
+bytes that are signed today.
+
+**Measured.** Grouping the real 255-node plan by slide and by motion
+operations yields exactly 22 stages, sizes
+`[2,19,4,20,4,20,4,32,4,19,4,17,4,21,4,23,4,16,4,24,4,2]`. The largest stage
+holds 32 nodes, which is what sets the 40-node ceiling; an earlier review
+claim that 177 of 255 nodes were deck-level was a bad count and is withdrawn --
+4 nodes are deck-level.
+
+**Alternative rejected.** Building Phase C's contracts first, in parallel with
+the live loop. It would have been faster while the loop was blocked on desktop
+access, and it is exactly the reordering the six live-only PowerPoint defects
+argue against.
+
