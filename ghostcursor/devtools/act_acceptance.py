@@ -208,7 +208,17 @@ def main() -> int:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--plan-id", default="build-investor-deck-v1")
     parser.add_argument("--plan-sha256", required=True)
-    parser.add_argument("--target-hwnd", type=int, required=True)
+    parser.add_argument(
+        "--target-hwnd",
+        type=int,
+        default=None,
+        help=(
+            "Optional narrowing when several PowerPoint windows are open. "
+            "Omit it and resolve_target binds the single matching window or "
+            "refuses and names every candidate (D075) -- a handle narrows, it "
+            "never supplies identity."
+        ),
+    )
     parser.add_argument("--core-version", default="1.0.0")
     parser.add_argument("--approval-lifetime", type=float, default=1800.0)
     parser.add_argument(
