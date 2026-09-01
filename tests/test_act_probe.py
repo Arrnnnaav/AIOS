@@ -50,7 +50,7 @@ def test_a_readable_package_reports_its_digest_size_and_every_part(tmp_path):
 
     assert state.exists is True
     assert state.readable_zip is True
-    assert state.stable is True
+    assert state.reads_agreed is True
     assert state.size == output.stat().st_size
     assert state.sha256 == hashlib.sha256(output.read_bytes()).hexdigest()
     assert set(state.parts) == {"ppt/slides/slide1.xml", "[Content_Types].xml"}
@@ -76,14 +76,14 @@ def test_an_unreadable_package_still_reports_bytes_because_that_is_the_finding(
     assert state.parts == {}
 
 
-def test_a_package_whose_bytes_move_between_reads_is_reported_unstable(
+def test_a_package_whose_bytes_move_between_reads_is_reported_as_disagreeing(
     tmp_path, monkeypatch
 ):
-    """``stable`` must come from two independent reads.
+    """``reads_agreed`` must come from two independent reads.
 
     Comparing one read with itself is always True, which would report a file
-    still being flushed as settled -- the exact state this field exists to
-    catch.
+    whose bytes were moving as settled -- the exact state this field exists
+    to catch. Agreement is still not proof that a write completed.
     """
 
     output = tmp_path / "deck.pptx"
@@ -91,7 +91,7 @@ def test_a_package_whose_bytes_move_between_reads_is_reported_unstable(
     answers = iter([("aa" * 32, 10), ("bb" * 32, 11)])
     monkeypatch.setattr(act_probe, "_digest", lambda _path: next(answers))
 
-    assert observe_package(output).stable is False
+    assert observe_package(output).reads_agreed is False
 
 
 def test_part_diff_names_what_changed_between_two_observations(tmp_path):
@@ -114,30 +114,61 @@ def test_part_diff_names_what_changed_between_two_observations(tmp_path):
     assert diff.empty is False
 
 
+def _observe(
+    probe,
+    node_id="n001",
+    operation_id="powerpoint.set_transition",
+    verified=True,
+    error=None,
+    seconds=1.0,
+):
+    """Drive the probe the way execute_approved_graph drives it."""
+
+    observer = probe.verify_observer()
+    observer("verify_started", {"node_id": node_id})
+    observer(
+        "verify_finished",
+        {
+            "error": error,
+            "node_id": node_id,
+            "operation_id": operation_id,
+            "seconds": seconds,
+            "verified": verified,
+        },
+    )
+
+
 @pytest.mark.parametrize("answer", [True, False])
-def test_the_probe_returns_the_verifiers_own_answer_unchanged(tmp_path, answer):
+def test_the_probe_records_the_answer_core_reported(tmp_path, answer):
     output = tmp_path / "deck.pptx"
     _package(output, {"a.xml": b"<a/>"})
     records: list[dict] = []
     probe = ActBoundaryProbe(output, records.append)
 
-    wrapped = probe.wrap_verify(lambda *_args: answer)
+    _observe(probe, verified=answer)
 
-    assert wrapped(_node(), None, None, None) is answer
     assert records[0]["verified"] is answer
 
 
-def test_a_failing_verifier_still_raises_and_is_still_recorded(tmp_path):
+def test_the_probe_has_no_way_to_wrap_or_replace_the_verifier(tmp_path):
+    """An earlier design handed the verifier callable to the probe and asked
+    it to return the same answer. Nothing enforced that, so the seam could
+    return True in place of a verification. The capability is gone, not merely
+    discouraged."""
+
+    probe = ActBoundaryProbe(tmp_path / "deck.pptx", lambda _r: None)
+
+    assert not hasattr(probe, "wrap_verify")
+    assert probe.verify_observer()("verify_started", {"node_id": "n001"}) is None
+
+
+def test_a_failing_verification_is_recorded_with_its_error(tmp_path):
     output = tmp_path / "deck.pptx"
     _package(output, {"a.xml": b"<a/>"})
     records: list[dict] = []
     probe = ActBoundaryProbe(output, records.append)
 
-    def boom(*_args):
-        raise RuntimeError("verifier could not open the package")
-
-    with pytest.raises(RuntimeError, match="could not open"):
-        probe.wrap_verify(boom)(_node(), None, None, None)
+    _observe(probe, verified=None, error="RuntimeError: could not open package")
 
     assert records[0]["verified"] is None
     assert "could not open" in records[0]["verifier_error"]
@@ -157,31 +188,46 @@ def test_the_record_names_the_part_the_adapter_wrote_for_this_node(tmp_path):
         output,
         {"ppt/slides/slide1.xml": b"<sld transition=/>", "static.xml": b"<s/>"},
     )
-    probe.wrap_verify(lambda *_args: True)(_node("n025"), None, None, None)
+    _observe(probe, node_id="n025")
 
     record = records[0]
     assert record["node_id"] == "n025"
     assert record["adapter_wrote_parts"] == ["ppt/slides/slide1.xml"]
     assert record["before_node"]["sha256"] != record["after_adapter"]["sha256"]
-    assert record["verifier_mutated_package"] is False
+    assert record["package_changed_during_verification"] is False
 
 
-def test_a_verifier_that_writes_to_the_package_is_reported_as_not_read_only(tmp_path):
-    """Non-vacuity guard for ``verifier_mutated_package``: it must be capable
-    of being True, or the read-only claim it checks is decorative."""
+def test_a_package_written_during_verification_is_reported_without_naming_a_writer(
+    tmp_path,
+):
+    """Non-vacuity guard: the field must be capable of being True.
+
+    It says the package changed during the verification window. It does not
+    say the verifier changed it -- an external writer is indistinguishable
+    from here, and proving authorship needs the verifier to report the digest
+    it actually opened.
+    """
 
     output = tmp_path / "deck.pptx"
     _package(output, {"a.xml": b"<a/>"})
     records: list[dict] = []
     probe = ActBoundaryProbe(output, records.append)
 
-    def writes_while_verifying(*_args):
-        _package(output, {"a.xml": b"<a modified=/>"})
-        return True
+    observer = probe.verify_observer()
+    observer("verify_started", {"node_id": "n001"})
+    _package(output, {"a.xml": b"<a modified=/>"})
+    observer(
+        "verify_finished",
+        {
+            "error": None,
+            "node_id": "n001",
+            "operation_id": "x",
+            "seconds": 1.0,
+            "verified": True,
+        },
+    )
 
-    probe.wrap_verify(writes_while_verifying)(_node(), None, None, None)
-
-    assert records[0]["verifier_mutated_package"] is True
+    assert records[0]["package_changed_during_verification"] is True
 
 
 def test_the_probe_cannot_swallow_a_runs_own_events(tmp_path):
@@ -219,7 +265,7 @@ def test_every_record_is_json_serialisable_because_it_is_written_as_jsonl(tmp_pa
     probe = ActBoundaryProbe(output, records.append)
 
     probe.event_sink()(_started())
-    probe.wrap_verify(lambda *_args: True)(_node(), None, None, None)
+    _observe(probe)
 
     for record in records:
         json.loads(json.dumps(record, sort_keys=True))

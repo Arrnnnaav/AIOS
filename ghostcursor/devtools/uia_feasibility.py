@@ -20,6 +20,13 @@ all, so a RuntimeId that will be compared across a 650 ms cue has to earn that
 role by measurement. The stability probe re-resolves the selector across the
 same dwell the real cue will impose, and a single failed cycle is enough to
 disqualify: 100/100 means 100 of 100.
+
+A cycle is a genuine PAIR -- observe, dwell, re-resolve -- not one observation
+with a gap before the next. An earlier version resolved once per iteration and
+slept between iterations, producing 100 samples across 99 intervals. That
+measures whether the control drifts over a long run; it does not measure what
+a single cue's dwell does to it, which is the claim the identity policy
+actually rests on.
 """
 
 from __future__ import annotations
@@ -87,19 +94,32 @@ class ObservedTarget:
 
 @dataclass(frozen=True)
 class StabilityResult:
-    """What 100 observe -> dwell -> re-resolve cycles measured."""
+    """What N observe -> dwell -> re-resolve PAIRS measured.
+
+    ``cycles`` counts pairs. ``observations`` counts individual reads, which
+    is ``2 * cycles`` when nothing failed. ``dwell_intervals`` counts the gaps
+    actually slept -- one per cycle, inside it. Reporting these separately is
+    the point: "100 cycles" and "100 samples" are different measurements and
+    only one of them covers a cue's dwell.
+    """
 
     cycles: int
-    resolved: int
+    resolved_cycles: int
+    observations: int
+    dwell_intervals: int
     faults: tuple[str, ...]
     distinct_runtime_ids: tuple[tuple[int, ...] | None, ...]
     distinct_automation_ids: tuple[str, ...]
     distinct_names: tuple[str, ...]
     distinct_match_counts: tuple[int, ...]
+    #: Cycles whose two halves disagreed about RuntimeId. This is the direct
+    #: measurement of what one cue's dwell does, rather than an inference from
+    #: how many distinct ids appeared across the whole run.
+    cycles_with_identity_change: int = 0
 
     @property
     def fully_resolved(self) -> bool:
-        return self.cycles > 0 and self.resolved == self.cycles
+        return self.cycles > 0 and self.resolved_cycles == self.cycles
 
     @property
     def runtime_id_stable(self) -> bool:
@@ -113,6 +133,7 @@ class StabilityResult:
 
         return (
             self.fully_resolved
+            and self.cycles_with_identity_change == 0
             and len(self.distinct_runtime_ids) == 1
             and self.distinct_runtime_ids[0] is not None
         )
@@ -139,33 +160,52 @@ def probe_stability(
     dwell_s: float = 0.65,
     sleep: Callable[[float], None] = time.sleep,
 ) -> StabilityResult:
-    """Re-resolve a selector across the dwell the real cue will impose.
+    """Run ``cycles`` complete observe -> dwell -> re-resolve pairs.
 
     ``resolve`` and ``sleep`` are injected so the sequence can be driven by an
     ordered fake rather than by wall time (D026). The dwell defaults to the
     650 ms cue budget because a stability claim measured over a shorter gap
     would not cover the window it is used to justify.
+
+    Both halves of a cycle must resolve for the cycle to count. A half that
+    faulted is the control being absent at a moment the real action could have
+    fired, which is instability rather than a missing sample.
     """
 
-    resolved = 0
+    resolved_cycles = 0
+    observations = 0
+    dwell_intervals = 0
+    identity_changes = 0
     faults: list[str] = []
     runtime_ids: list[tuple[int, ...] | None] = []
     automation_ids: list[str] = []
     names: list[str] = []
     match_counts: list[int] = []
-    for index in range(cycles):
-        if index:
-            sleep(dwell_s)
+
+    def observe(cycle: int, half: str) -> ObservedTarget | None:
+        nonlocal observations
         try:
-            observed = resolve()
+            value = resolve()
         except Exception as exc:  # noqa: BLE001 - every failure is a datum
-            faults.append(f"cycle {index}: {type(exc).__name__}: {exc}")
+            faults.append(f"cycle {cycle} {half}: {type(exc).__name__}: {exc}")
+            return None
+        observations += 1
+        runtime_ids.append(value.runtime_id)
+        automation_ids.append(value.automation_id)
+        names.append(value.normalised_name)
+        match_counts.append(value.match_count)
+        return value
+
+    for index in range(cycles):
+        before = observe(index, "before")
+        sleep(dwell_s)
+        dwell_intervals += 1
+        after = observe(index, "after")
+        if before is None or after is None:
             continue
-        resolved += 1
-        runtime_ids.append(observed.runtime_id)
-        automation_ids.append(observed.automation_id)
-        names.append(observed.normalised_name)
-        match_counts.append(observed.match_count)
+        resolved_cycles += 1
+        if before.runtime_id != after.runtime_id:
+            identity_changes += 1
 
     def unique(values: Sequence[Any]) -> tuple:
         seen: list[Any] = []
@@ -176,12 +216,15 @@ def probe_stability(
 
     return StabilityResult(
         cycles,
-        resolved,
+        resolved_cycles,
+        observations,
+        dwell_intervals,
         tuple(faults),
         unique(runtime_ids),
         unique(automation_ids),
         unique(names),
         unique(match_counts),
+        identity_changes,
     )
 
 
@@ -263,6 +306,9 @@ def verdict_record(
         "backend": verdict.backend,
         "control_type": observed.control_type,
         "cycles": stability.cycles,
+        "cycles_with_identity_change": stability.cycles_with_identity_change,
+        "dwell_intervals": stability.dwell_intervals,
+        "observations": stability.observations,
         "distinct_automation_ids": len(stability.distinct_automation_ids),
         "distinct_match_counts": list(stability.distinct_match_counts),
         "distinct_names": len(stability.distinct_names),
@@ -275,7 +321,7 @@ def verdict_record(
         "normalised_name": observed.normalised_name,
         "patterns": dict(sorted(observed.patterns.items())),
         "reasons": list(verdict.reasons),
-        "resolved": stability.resolved,
+        "resolved_cycles": stability.resolved_cycles,
         "runtime_id_stable": stability.runtime_id_stable,
         "semantic_identity_stable": stability.semantic_identity_stable,
         "type": "uia_feasibility",

@@ -40,17 +40,19 @@ class PackagePart:
 class PackageState:
     """Everything observable about the staging artifact at one instant.
 
-    ``stable`` answers a question a single digest cannot: the whole file was
-    read twice in succession and both reads agreed.  A disagreement means the
-    bytes were still moving while we looked at them, which is the signature of
-    a save that has not finished flushing.
+    ``reads_agreed`` answers a question a single digest cannot: the whole file
+    was read twice in succession and both reads matched.  A disagreement proves
+    the bytes were moving while we looked at them.  Agreement proves only that
+    they did not move between those two reads -- it is not evidence that the
+    write completed, and the field is named for what it observed rather than
+    for the conclusion someone might want to draw from it.
     """
 
     exists: bool
     sha256: str | None = None
     size: int | None = None
     mtime_ns: int | None = None
-    stable: bool | None = None
+    reads_agreed: bool | None = None
     parts: Mapping[str, PackagePart] = field(default_factory=dict)
     readable_zip: bool | None = None
     fault: str | None = None
@@ -112,7 +114,7 @@ def observe_package(path: Path, *, with_parts: bool = True) -> PackageState:
             sha256=first,
             size=size,
             mtime_ns=stat.st_mtime_ns,
-            stable=first == second,
+            reads_agreed=first == second,
             parts=parts,
             readable_zip=readable,
         )
@@ -155,7 +157,7 @@ def _state_record(state: PackageState) -> dict[str, Any]:
         "readable_zip": state.readable_zip,
         "sha256": state.sha256,
         "size": state.size,
-        "stable": state.stable,
+        "reads_agreed": state.reads_agreed,
     }
 
 
@@ -182,6 +184,7 @@ class ActBoundaryProbe:
         self._clock = clock
         self._with_parts = with_parts
         self._pending: dict[str, PackageState] = {}
+        self._after_adapter: dict[str, PackageState] = {}
         self._faults = 0
 
     @property
@@ -216,46 +219,47 @@ class ActBoundaryProbe:
 
         return sink
 
-    def wrap_verify(self, verify: Callable[..., bool]) -> Callable[..., bool]:
-        """Bracket the verifier call without being able to change its answer.
+    def verify_observer(self):
+        """An observer for ``execute_approved_graph(verify_observer=...)``.
 
-        The verifier's result is returned untouched and its exceptions
-        propagate unchanged; only timing and package state are added.
+        It is told that verification started and what it answered. It cannot
+        wrap, replace, skip, or alter the verifier: core calls the signed
+        verifier itself and keeps the answer, and whatever this returns is
+        discarded. That is deliberate -- a diagnostic seam that COULD return
+        ``True`` in place of a verification is a bypass regardless of what its
+        docstring promises.
         """
 
-        def instrumented(node, operation, response, approval):
-            node_id = getattr(node, "node_id", None)
-            before = self._pending.pop(node_id, None)
-            after_adapter = self._observe()
-            started = self._clock()
-            verified: bool | None = None
-            error: str | None = None
+        def observer(phase: str, facts) -> None:
             try:
-                verified = verify(node, operation, response, approval)
-                return verified
-            except Exception as exc:
-                error = f"{type(exc).__name__}: {exc}"
-                raise
-            finally:
-                elapsed = self._clock() - started
-                after_verify = self._observe()
-                self._record(
-                    node,
-                    before,
-                    after_adapter,
-                    after_verify,
-                    verified=verified,
-                    error=error,
-                    verifier_seconds=elapsed,
+                if phase == "verify_started":
+                    self._after_adapter[facts.get("node_id")] = self._observe()
+                elif phase == "verify_finished":
+                    node_id = facts.get("node_id")
+                    self._record(
+                        node_id,
+                        facts.get("operation_id"),
+                        self._pending.pop(node_id, None),
+                        self._after_adapter.pop(node_id, None),
+                        self._observe(),
+                        verified=facts.get("verified"),
+                        error=facts.get("error"),
+                        verifier_seconds=float(facts.get("seconds") or 0.0),
+                    )
+            except Exception as exc:  # pragma: no cover - defensive
+                self._faults += 1
+                self._emit(
+                    {"fault": f"{type(exc).__name__}: {exc}", "type": "probe_fault"}
                 )
 
-        return instrumented
+        return observer
 
     def _record(
         self,
-        node,
+        node_id: str | None,
+        operation_id: str | None,
         before: PackageState | None,
-        after_adapter: PackageState,
+        after_adapter: PackageState | None,
         after_verify: PackageState,
         *,
         verified: bool | None,
@@ -264,9 +268,15 @@ class ActBoundaryProbe:
     ) -> None:
         try:
             adapter_diff = (
-                diff_parts(before, after_adapter) if before is not None else None
+                diff_parts(before, after_adapter)
+                if before is not None and after_adapter is not None
+                else None
             )
-            verifier_diff = diff_parts(after_adapter, after_verify)
+            verifier_diff = (
+                diff_parts(after_adapter, after_verify)
+                if after_adapter is not None
+                else None
+            )
             record: dict[str, Any] = {
                 "adapter_added_parts": (
                     None if adapter_diff is None else list(adapter_diff.added)
@@ -277,19 +287,25 @@ class ActBoundaryProbe:
                 "adapter_wrote_parts": (
                     None if adapter_diff is None else list(adapter_diff.modified)
                 ),
-                "after_adapter": _state_record(after_adapter),
+                "after_adapter": (
+                    None if after_adapter is None else _state_record(after_adapter)
+                ),
                 "after_verify": _state_record(after_verify),
                 "before_node": None if before is None else _state_record(before),
-                "node_id": getattr(node, "node_id", None),
-                "operation_id": getattr(node, "operation_id", None),
+                "node_id": node_id,
+                "operation_id": operation_id,
                 "type": "node_boundary",
                 "verified": verified,
                 "verifier_error": error,
                 "verifier_seconds": round(verifier_seconds, 6),
-                # A read-only verifier must not change the package.  If it
-                # does, the verifier is not read-only and every digest it
-                # reported is suspect.
-                "verifier_mutated_package": not verifier_diff.empty,
+                # The package changed between the adapter's save and the end
+                # of verification.  This does NOT prove the verifier changed
+                # it -- an external writer would look identical from here --
+                # so the field says what was observed and the classifier is
+                # careful not to name a culprit.
+                "package_changed_during_verification": (
+                    None if verifier_diff is None else not verifier_diff.empty
+                ),
             }
             self._emit(record)
         except Exception as exc:  # pragma: no cover - defensive

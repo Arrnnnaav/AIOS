@@ -4072,4 +4072,3 @@ claim that 177 of 255 nodes were deck-level was a bad count and is withdrawn --
 the live loop. It would have been faster while the loop was blocked on desktop
 access, and it is exactly the reordering the six live-only PowerPoint defects
 argue against.
-

@@ -26,7 +26,7 @@ def _state(**overrides):
         "readable_zip": True,
         "sha256": "a" * 64,
         "size": 100,
-        "stable": True,
+        "reads_agreed": True,
     }
     state.update(overrides)
     return state
@@ -46,7 +46,7 @@ def _record(**overrides):
         "verified": False,
         "verifier_error": None,
         "verifier_seconds": 1.5,
-        "verifier_mutated_package": False,
+        "package_changed_during_verification": False,
     }
     record.update(overrides)
     return record
@@ -92,10 +92,10 @@ def test_wrong_part_is_never_claimed_without_a_declared_expectation():
     assert finding.classification == "written_and_verified_false"
 
 
-def test_a_package_still_flushing_is_unflushed_not_never_written():
-    finding = classify_boundary(_record(after_adapter=_state(stable=False)))
+def test_a_package_whose_reads_disagree_is_not_reported_as_never_written():
+    finding = classify_boundary(_record(after_adapter=_state(reads_agreed=False)))
 
-    assert finding.classification == "unflushed"
+    assert finding.classification == "bytes_moved_during_read"
 
 
 def test_a_package_that_will_not_open_is_unreadable():
@@ -110,15 +110,16 @@ def test_a_missing_package_after_the_save_is_never_written():
     assert finding.classification == "never_written"
 
 
-def test_a_mutating_verifier_outranks_every_other_explanation():
-    """It invalidates the evidence rather than explaining the failure, so it
-    must win even when another signal is also present."""
+def test_a_package_change_during_verification_outranks_every_explanation():
+    """It invalidates the digests rather than explaining the failure, so it
+    must win even when another signal is also present. It still names no
+    culprit: an external writer is indistinguishable from here."""
 
     finding = classify_boundary(
-        _record(verifier_mutated_package=True, adapter_wrote_parts=[])
+        _record(package_changed_during_verification=True, adapter_wrote_parts=[])
     )
 
-    assert finding.classification == "verifier_not_read_only"
+    assert finding.classification == "package_changed_during_verification"
 
 
 def test_a_verifier_exception_is_reported_as_itself():
@@ -146,7 +147,7 @@ def test_the_summary_reports_the_first_failure_not_an_arbitrary_one():
     records = [
         _record(node_id="n001", verified=True),
         _record(node_id="n025", adapter_wrote_parts=[]),
-        _record(node_id="n099", after_adapter=_state(stable=False)),
+        _record(node_id="n099", after_adapter=_state(reads_agreed=False)),
     ]
 
     summary = summarise(records)
@@ -155,7 +156,7 @@ def test_the_summary_reports_the_first_failure_not_an_arbitrary_one():
     assert summary["first_failure"].node_id == "n025"
     assert summary["classifications"] == {
         "never_written": 1,
-        "unflushed": 1,
+        "bytes_moved_during_read": 1,
         "verified": 1,
     }
     assert summary["verifier_seconds_max"] == 1.5
@@ -210,7 +211,18 @@ def test_the_classifier_reads_the_record_the_probe_actually_writes(tmp_path):
     node = SimpleNamespace(node_id="n025", operation_id="powerpoint.set_transition")
     probe.event_sink()(SimpleNamespace(type="action_started", node_id="n025"))
     package(b"<sld transition=/>")
-    probe.wrap_verify(lambda *_args: False)(node, None, None, None)
+    observer = probe.verify_observer()
+    observer("verify_started", {"node_id": "n025"})
+    observer(
+        "verify_finished",
+        {
+            "error": None,
+            "node_id": node.node_id,
+            "operation_id": node.operation_id,
+            "seconds": 1.0,
+            "verified": False,
+        },
+    )
 
     finding = classify_boundary(records[0], expected_parts=("ppt/slides/slide5.xml",))
 
@@ -240,11 +252,17 @@ def test_a_probe_record_whose_save_changed_nothing_classifies_as_never_written(
     probe.event_sink()(SimpleNamespace(type="action_started", node_id="n025"))
     # No write between the node starting and verification: the effect never
     # reached the package.
-    probe.wrap_verify(lambda *_args: False)(
-        SimpleNamespace(node_id="n025", operation_id="powerpoint.set_transition"),
-        None,
-        None,
-        None,
+    observer = probe.verify_observer()
+    observer("verify_started", {"node_id": "n025"})
+    observer(
+        "verify_finished",
+        {
+            "error": None,
+            "node_id": "n025",
+            "operation_id": "powerpoint.set_transition",
+            "seconds": 1.0,
+            "verified": False,
+        },
     )
 
     assert classify_boundary(records[0]).classification == "never_written"
@@ -254,9 +272,9 @@ def test_a_probe_record_whose_save_changed_nothing_classifies_as_never_written(
     "overrides,expected",
     [
         ({"adapter_wrote_parts": []}, "never_written"),
-        ({"after_adapter": _state(stable=False)}, "unflushed"),
+        ({"after_adapter": _state(reads_agreed=False)}, "bytes_moved_during_read"),
         ({"after_adapter": _state(readable_zip=False)}, "unreadable"),
-        ({"verifier_mutated_package": True}, "verifier_not_read_only"),
+        ({"package_changed_during_verification": True}, "package_changed_during_verification"),
     ],
 )
 def test_every_failure_class_is_reachable(overrides, expected):

@@ -22,7 +22,8 @@ different operation took effect.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from types import MappingProxyType
 from typing import Any, Mapping, Sequence
 
 
@@ -49,8 +50,11 @@ CUE_BACKENDS = frozenset(
 
 #: Risk classes come from the signed operation registry, never from a stage
 #: author's opinion; a stage records which class its nodes carry so the
-#: approval preview can show planned pauses.
-STAGE_RISKS = frozenset({"low", "medium", "high"})
+#: approval preview can show planned pauses.  Ordered, because a stage's risk
+#: is the strongest risk it contains: labelling a stage that holds one HIGH
+#: node as "low" is exactly the mislabel the approval preview must not show.
+STAGE_RISK_ORDER = ("low", "medium", "high")
+STAGE_RISKS = frozenset(STAGE_RISK_ORDER)
 
 
 @dataclass(frozen=True)
@@ -112,8 +116,27 @@ def _text(value: object, label: str, *, limit: int = 200) -> str:
     return value
 
 
+def _freeze_cue(cue: Cue) -> Cue:
+    """A frozen dataclass is shallow; a dict inside one is still mutable."""
+
+    if cue.target is None:
+        return cue
+    return replace(cue, target=MappingProxyType(dict(cue.target)))
+
+
+def _freeze_stage(stage: Stage) -> Stage:
+    return replace(
+        stage,
+        node_ids=tuple(stage.node_ids),
+        cues=tuple(_freeze_cue(cue) for cue in stage.cues),
+    )
+
+
 def validate_stage_plan(
-    stages: Sequence[Stage], ordered_node_ids: Sequence[str]
+    stages: Sequence[Stage],
+    ordered_node_ids: Sequence[str],
+    *,
+    node_risks: Mapping[str, str] | None = None,
 ) -> ValidatedStagePlan:
     """Refuse the whole declaration, or return its deterministic flattening.
 
@@ -121,6 +144,13 @@ def validate_stage_plan(
     checked against it rather than against each other, so "contiguous" and
     "in order" mean what the executor will actually do, not what the stage
     list happens to say about itself.
+
+    ``node_risks`` maps node id to the risk its signed operation carries. When
+    supplied, a stage's declared risk must equal the strongest risk among its
+    nodes: without this check a stage holding a HIGH node could be labelled
+    "low" and the approval preview would show no planned pause where one is
+    coming. It is optional only because the registry is not always in hand;
+    a caller that has it must pass it, and a wired schema always will.
     """
 
     if not isinstance(stages, Sequence) or isinstance(stages, (str, bytes)):
@@ -189,6 +219,29 @@ def validate_stage_plan(
             )
         expected_start = indexes[-1] + 1
 
+        if node_risks is not None:
+            missing = [n for n in node_ids if n not in node_risks]
+            if missing:
+                raise StagePlanError(
+                    f"stage {stage_id!r} names node {missing[0]!r}, which the "
+                    "signed registry declares no risk for"
+                )
+            unknown = [r for r in (node_risks[n] for n in node_ids)
+                       if r not in STAGE_RISKS]
+            if unknown:
+                raise StagePlanError(
+                    f"stage {stage_id!r} node risk {unknown[0]!r} is unknown"
+                )
+            strongest = max(
+                (node_risks[n] for n in node_ids),
+                key=STAGE_RISK_ORDER.index,
+            )
+            if stage.risk != strongest:
+                raise StagePlanError(
+                    f"stage {stage_id!r} declares risk {stage.risk!r} but its "
+                    f"strongest node risk is {strongest!r}"
+                )
+
         groups.extend(_validate_cues(stage, node_ids, seen_cue_ids))
         if not stage.cues:
             rail_only.extend(node_ids)
@@ -203,7 +256,11 @@ def validate_stage_plan(
         raise StagePlanError(
             f"a plan declares at most {MAX_CUES_PER_PLAN} cues, not {len(groups)}"
         )
-    return ValidatedStagePlan(tuple(stages), tuple(groups), tuple(rail_only))
+    frozen = tuple(_freeze_stage(stage) for stage in stages)
+    frozen_groups = tuple(
+        CueGroup(_freeze_cue(group.cue), tuple(group.node_ids)) for group in groups
+    )
+    return ValidatedStagePlan(frozen, frozen_groups, tuple(rail_only))
 
 
 def _validate_cues(
@@ -275,6 +332,7 @@ __all__ = [
     "MAX_NODES_PER_STAGE",
     "MAX_STAGES_PER_PLAN",
     "STAGE_RISKS",
+    "STAGE_RISK_ORDER",
     "Stage",
     "StagePlanError",
     "ValidatedStagePlan",

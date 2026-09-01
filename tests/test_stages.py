@@ -340,3 +340,82 @@ def test_the_real_investor_plan_can_be_staged_the_way_the_plan_describes():
     assert len(order) == 255
     assert plan.stage_count <= MAX_STAGES_PER_PLAN
     assert max(len(stage.node_ids) for stage in plan.stages) <= MAX_NODES_PER_STAGE
+
+
+# --- risk must be derived, and the result must actually be frozen ----------
+
+
+def test_a_stage_may_not_understate_the_risk_its_nodes_carry():
+    """A stage holding one HIGH node labelled 'low' would show the approver no
+    planned pause where one is coming."""
+
+    risks = {node: "low" for node in NODES}
+    risks[NODES[7]] = "high"
+
+    with pytest.raises(StagePlanError, match="strongest node risk is 'high'"):
+        validate_stage_plan([_stage("a", NODES, risk="low")], NODES, node_risks=risks)
+
+
+def test_a_stage_may_not_overstate_its_risk_either():
+    """Overstating trains the approver to dismiss the warning."""
+
+    risks = {node: "low" for node in NODES}
+
+    with pytest.raises(StagePlanError, match="strongest node risk is 'low'"):
+        validate_stage_plan([_stage("a", NODES, risk="high")], NODES, node_risks=risks)
+
+
+def test_a_correctly_declared_risk_validates():
+    risks = {node: "low" for node in NODES}
+    risks[NODES[3]] = "medium"
+
+    plan = validate_stage_plan(
+        [_stage("a", NODES, risk="medium")], NODES, node_risks=risks
+    )
+
+    assert plan.stages[0].risk == "medium"
+
+
+def test_a_node_the_registry_declares_no_risk_for_refuses():
+    risks = {node: "low" for node in NODES[:5]}
+
+    with pytest.raises(StagePlanError, match="declares no risk for"):
+        validate_stage_plan([_stage("a", NODES)], NODES, node_risks=risks)
+
+
+def test_without_a_registry_the_check_is_skipped_rather_than_faked():
+    """Optional means unavailable, not satisfied."""
+
+    assert validate_stage_plan([_stage("a", NODES, risk="low")], NODES).stage_count == 1
+
+
+def test_the_validated_plan_cannot_be_mutated_through_a_cue_target():
+    """A frozen dataclass is shallow: the dict inside it is not."""
+
+    target = {"selector": "new-sheet"}
+    plan = validate_stage_plan(
+        [
+            _stage(
+                "a",
+                NODES,
+                cues=[Cue("c1", "text", "uia_pattern", NODES[0], target=target)],
+            )
+        ],
+        NODES,
+    )
+
+    target["selector"] = "something-else"
+
+    assert plan.stages[0].cues[0].target["selector"] == "new-sheet"
+    with pytest.raises(TypeError):
+        plan.stages[0].cues[0].target["selector"] = "tampered"
+
+
+def test_the_validated_plan_holds_tuples_even_when_given_lists():
+    plan = validate_stage_plan(
+        [Stage("a", "label", list(NODES), "low", [_cue("c1", NODES[0])])], NODES
+    )
+
+    assert isinstance(plan.stages[0].node_ids, tuple)
+    assert isinstance(plan.stages[0].cues, tuple)
+    assert isinstance(plan.groups[0].node_ids, tuple)

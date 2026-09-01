@@ -11,23 +11,30 @@ set of things happened, and the boundary records distinguish them:
     The save changed the package, but not the part the verifier reads for this
     node. The effect landed somewhere else.
 
-``unflushed``
-    The package was still being written when it was observed -- two full reads
-    of the same file disagreed. The verifier read a partial package.
+``bytes_moved_during_read``
+    Two full reads of the same file disagreed, so the package was being
+    written while it was observed. The converse does not hold: reads that
+    agree are not evidence that a write completed.
 
 ``unreadable``
     The package could not be opened as an archive at the moment the verifier
     would have opened it.
 
-``verifier_not_read_only``
-    The package changed across the verification itself. Every digest the
-    verifier reported about that package is suspect, and this outranks the
-    others because it invalidates the evidence rather than explaining it.
+``package_changed_during_verification``
+    The package changed between the adapter's save and the end of
+    verification. This does not name a culprit: the signed verifier is
+    supposed to be read-only, but an external writer is indistinguishable
+    from here. It outranks the other classes because it invalidates the
+    digests rather than explaining the failure. Attributing it requires the
+    verifier to report the digest it actually opened, which it does not yet
+    do.
 
 ``written_and_verified_false``
-    The adapter wrote the expected part, the package was stable and readable,
-    and the verifier still said no. The defect is in the verifier's lookup or
-    in what the adapter actually wrote -- not in the save/read boundary.
+    The adapter wrote the expected part, two reads of the package agreed, it
+    opened cleanly, and verification still said no. This NARROWS the search to
+    the verifier's lookup or to what the adapter actually wrote; it does not
+    conclusively assign the defect, because the records do not yet contain the
+    bytes the verifier opened.
 
 The classifier never guesses. ``unclassified`` is a real answer and means the
 records do not contain enough to choose, which is itself a finding about the
@@ -88,10 +95,11 @@ def classify_boundary(
             seconds if isinstance(seconds, (int, float)) else None,
         )
 
-    if record.get("verifier_mutated_package"):
+    if record.get("package_changed_during_verification"):
         return finding(
-            "verifier_not_read_only",
-            "the package changed across verification, so its digests are not evidence",
+            "package_changed_during_verification",
+            "the package changed between the save and the end of verification, "
+            "so its digests are not evidence; this does not identify the writer",
         )
     if record.get("verifier_error"):
         return finding("verifier_error", str(record["verifier_error"]))
@@ -103,9 +111,10 @@ def classify_boundary(
         return finding(
             "unreadable", "the package could not be opened as an archive after the save"
         )
-    if after_adapter.get("stable") is False:
+    if after_adapter.get("reads_agreed") is False:
         return finding(
-            "unflushed", "two full reads of the package disagreed after the save"
+            "bytes_moved_during_read",
+            "two full reads of the package disagreed after the save",
         )
     if record.get("before_node") is None:
         return finding(
@@ -124,8 +133,8 @@ def classify_boundary(
         )
     return finding(
         "written_and_verified_false",
-        "the expected part was written to a stable readable package and "
-        "verification still failed",
+        "the expected part was written, two reads of the package agreed, it "
+        "opened cleanly, and verification still failed",
     )
 
 

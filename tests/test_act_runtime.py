@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import pathlib
 from pathlib import Path
 from types import MappingProxyType, SimpleNamespace
 
@@ -11,6 +12,7 @@ from ghostcursor.act_runtime import (
     ActRunCode,
     ActTarget,
     _execute_approved_graph,
+    execute_approved_graph,
     approve_action_graph,
 )
 from ghostcursor.action import (
@@ -287,3 +289,125 @@ def test_target_drift_between_actions_stops_before_the_next_effect(tmp_path):
     assert result.code is ActRunCode.TARGET_CHANGED
     assert result.completed_node_ids == ("create",)
     assert result.failed_node_id == "slide-one"
+
+
+# --- the diagnostic seam must be incapable of replacing verification -------
+
+
+def _refusing_verifier(path: pathlib.Path) -> None:
+    """A signed verifier that always refuses, so any pass is a bypass."""
+
+    path.write_text(
+        "import json, sys\n"
+        "request = json.loads(sys.stdin.readline())\n"
+        "print(json.dumps({\n"
+        "    'detail': 'declared postcondition was not observed',\n"
+        "    'node_id': request['node']['node_id'],\n"
+        "    'observed': {},\n"
+        "    'outcome': 'refused',\n"
+        "    'session_nonce': request['session_nonce'],\n"
+        "    'type': 'verification_result',\n"
+        "    'validation_sha256': request['validation_sha256'],\n"
+        "}, sort_keys=True))\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+
+def _verifying_descriptor(tmp_path: Path):
+    import hashlib
+
+    descriptor = _descriptor(tmp_path)
+    verifier = tmp_path / "verifier.py"
+    _refusing_verifier(verifier)
+    return SimpleNamespace(
+        **{
+            **descriptor.__dict__,
+            "verifier": verifier,
+            "verifier_sha256": hashlib.sha256(verifier.read_bytes()).hexdigest(),
+        }
+    )
+
+
+def _run_with_observer(tmp_path, observer):
+    registry = _registry()
+    validated = _validated(registry)
+    import time as _time
+
+    # A real clock: execute_approved_graph is the production entry point and
+    # takes no injected one, so a fixture timestamp reads as a stale approval.
+    approval = _approval(tmp_path, validated, registry, now=_time.time())
+    (tmp_path / "owned").mkdir(exist_ok=True)
+    return execute_approved_graph(
+        validated,
+        registry,
+        approval,
+        descriptor=_verifying_descriptor(tmp_path),
+        current_authority=_authority,
+        revalidate_target=lambda _target: None,
+        controls=ActControls(),
+        verify_observer=observer,
+    )
+
+
+def test_a_verify_observer_returning_true_cannot_pass_a_refused_verification(
+    tmp_path,
+):
+    """The seam was once a wrapper handed the verifier callable and asked to
+    return the same answer. Nothing enforced that, so returning True in its
+    place would have passed every node without the signed verifier's consent.
+    Core now owns the call and the answer, and the observer's return value is
+    discarded."""
+
+    result = _run_with_observer(tmp_path, lambda _phase, _facts: True)
+
+    assert result.completed is False
+    assert result.code is ActRunCode.VERIFICATION_FAILED
+
+
+def test_a_verify_observer_that_raises_cannot_fail_a_run_either(tmp_path):
+    """Instrumentation must not be able to break a run in the other direction."""
+
+    def explode(_phase, _facts):
+        raise RuntimeError("diagnostics blew up")
+
+    result = _run_with_observer(tmp_path, explode)
+
+    # Still the verifier's refusal, not the observer's exception.
+    assert result.code is ActRunCode.VERIFICATION_FAILED
+    assert "diagnostics blew up" not in result.detail
+
+
+def test_the_observer_is_told_the_answer_the_signed_verifier_actually_gave(
+    tmp_path,
+):
+    seen: list[tuple[str, object]] = []
+
+    _run_with_observer(
+        tmp_path, lambda phase, facts: seen.append((phase, facts.get("verified")))
+    )
+
+    assert ("verify_started", None) in seen
+    assert ("verify_finished", False) in seen
+
+
+def test_execute_approved_graph_exposes_no_verifier_replacing_parameter():
+    """Exact-signature guard. A future parameter that accepts a callable
+    returning the verification answer would reopen the bypass."""
+
+    import inspect
+
+    parameters = set(inspect.signature(execute_approved_graph).parameters)
+
+    assert "instrument_verify" not in parameters
+    assert parameters == {
+        "validated",
+        "registry",
+        "approval",
+        "descriptor",
+        "current_authority",
+        "revalidate_target",
+        "controls",
+        "event_sink",
+        "verify_observer",
+    }

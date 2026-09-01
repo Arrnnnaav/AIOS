@@ -24,6 +24,7 @@ from ghostcursor.packs.workflow import (
     live_windows_for,
     resolve_target,
 )
+from ghostcursor.devtools.act_probe import ActBoundaryProbe
 from ghostcursor.plugins.store import PluginStore
 
 
@@ -140,7 +141,7 @@ def run(args) -> int:
     probe = None
     diagnostics = None
     event_sink = emit_event
-    instrument_verify = None
+    verify_observer = None
     if args.diagnostics is not None:
         path = args.diagnostics.resolve()
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -154,7 +155,7 @@ def run(args) -> int:
 
         probe = ActBoundaryProbe(output, write_record)
         event_sink = probe.event_sink(emit_event)
-        instrument_verify = probe.wrap_verify
+        verify_observer = probe.verify_observer()
         write_record(
             {
                 "approval_sha256": approval.approval_sha256,
@@ -175,7 +176,7 @@ def run(args) -> int:
             revalidate_target=_live_target,
             controls=ActControls(),
             event_sink=event_sink,
-            instrument_verify=instrument_verify,
+            verify_observer=verify_observer,
         )
     finally:
         if diagnostics is not None:

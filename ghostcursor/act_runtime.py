@@ -615,37 +615,75 @@ def execute_approved_graph(
     revalidate_target: Callable[[ActTarget], None],
     controls: ActControls,
     event_sink: Callable[[ActEvent], None] | None = None,
-    instrument_verify: Callable[[Callable], Callable] | None = None,
+    verify_observer: Callable[[str, Mapping[str, object]], None] | None = None,
 ) -> ActRunResult:
     """Production execution path with the plugin's separate signed verifier.
 
-    ``instrument_verify`` wraps the verification call for diagnostics only.  It
-    receives the verifier callable and must return one with the same contract:
-    the wrapper may observe and time, but the answer it returns is the
-    verifier's own.  It is never consulted about authority, and production runs
-    leave it unset.
+    ``verify_observer`` is told when verification starts and what it answered.
+    It is an OBSERVER, not a wrapper: core calls the signed verifier itself,
+    core keeps the answer, and the observer's return value is discarded. An
+    earlier design handed the verifier callable to a diagnostic wrapper and
+    asked it to return the same answer; nothing enforced that, so
+    ``lambda verify: lambda *_a: True`` would have turned every verification
+    into a success without the signed verifier running at all. A diagnostic
+    seam on the production path must be incapable of that, not merely
+    documented against it.
+
+    The observer's exceptions are swallowed for the same reason in reverse:
+    instrumentation must not be able to fail a run either.
     """
 
     verifier = VerifierHost(descriptor)
 
+    def observe(phase: str, facts: Mapping[str, object]) -> None:
+        if verify_observer is None:
+            return
+        try:
+            verify_observer(phase, facts)
+        except Exception:  # noqa: BLE001 - diagnostics never affect a run
+            pass
+
     def verify(node, operation, _response, current_approval) -> bool:
-        result = verifier.verify(
-            node=node,
-            validation_sha256=validated.validation_sha256,
-            output_path=current_approval.output_path,
-            target={
-                "executable": current_approval.target.executable.casefold(),
-                "executable_version": current_approval.target.executable_version,
-                "hwnd": current_approval.target.hwnd,
-                "pid": current_approval.target.pid,
+        node_id = getattr(node, "node_id", None)
+        observe("verify_started", {"node_id": node_id})
+        started = time.monotonic()
+        try:
+            result = verifier.verify(
+                node=node,
+                validation_sha256=validated.validation_sha256,
+                output_path=current_approval.output_path,
+                target={
+                    "executable": current_approval.target.executable.casefold(),
+                    "executable_version": current_approval.target.executable_version,
+                    "hwnd": current_approval.target.hwnd,
+                    "pid": current_approval.target.pid,
+                },
+                timeout_s=min(30.0, max(2.0, operation.timeout_s)),
+                cancel_event=controls.stop_event,
+            )
+        except Exception as exc:
+            observe(
+                "verify_finished",
+                {
+                    "error": f"{type(exc).__name__}: {exc}",
+                    "node_id": node_id,
+                    "operation_id": getattr(node, "operation_id", None),
+                    "seconds": time.monotonic() - started,
+                    "verified": None,
+                },
+            )
+            raise
+        observe(
+            "verify_finished",
+            {
+                "error": None,
+                "node_id": node_id,
+                "operation_id": getattr(node, "operation_id", None),
+                "seconds": time.monotonic() - started,
+                "verified": result.verified,
             },
-            timeout_s=min(30.0, max(2.0, operation.timeout_s)),
-            cancel_event=controls.stop_event,
         )
         return result.verified
-
-    if instrument_verify is not None:
-        verify = instrument_verify(verify)
 
     return _execute_approved_graph(
         validated,
