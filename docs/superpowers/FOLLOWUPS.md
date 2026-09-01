@@ -490,3 +490,30 @@ installer, tray/manager surface, or enterprise deployment package.
 activated. Every surface must call `PluginStore` and
 `check_core_compatibility()` rather than implementing validation, conflict, or
 state transitions itself.
+
+### The Act campaign harness cannot restore a minimized approved window
+
+PowerPoint minimized itself between window resolution and the Phase A launch,
+putting its rect at `(-25600, -25600, -25441, -25573)`. `is_on_screen` returned
+False and `resolve_target` refused with `no window matches pack powerpoint`
+while the process was alive and the title correct. Restoring it manually with
+`ShowWindow(SW_RESTORE)` let the run proceed and produced 255/255.
+
+**Trigger:** when the acceptance runner is built (Act v1 completion plan, the
+runner section). It already specifies "restores a minimized approved window
+without input synthesis"; nothing implements it, so every counted run
+currently depends on a human noticing. `ShowWindow` is a window-manager call,
+not input synthesis, and is not on the `test_no_input_synthesis` banned list.
+Measured in `docs/evidence/act-phase-a-diagnostic.md`.
+
+### The transition postcondition proves presence, not the approved effect
+
+The verifier accepts any slide-level `p:transition`. The saved XML carries the
+effect name (`<p:fade/>`) and duration (`p14:dur="550"`), so the check could
+assert that the approved transition was applied instead — the D031 difference
+between an invariant that implies a property and one that correlates with it.
+
+**Trigger:** after the animation-catalog campaign produces a `morph` sample.
+Morph is a later extension whose element shape has not been measured on build
+16.0.20326, and asserting an unmeasured shape is what let `msoTrue` pass a
+contract test while failing in production. Measure first, then tighten.
