@@ -383,3 +383,167 @@ def test_separate_signed_verifier_reads_the_saved_package_not_adapter_claims(tmp
 
     assert result.verified
     assert result.observed["object_id"] == "headline"
+
+
+# --- the transition the verifier could not see (Phase A finding) -----------
+
+_MC = "http://schemas.openxmlformats.org/markup-compatibility/2006"
+
+
+def _slide_with_wrapped_transition(effect: str = "fade") -> bytes:
+    """The shape PowerPoint 16.0.20326 actually saved, not an invented one.
+
+    Copied from the transition written by the first instrumented Phase A run:
+    a duration makes PowerPoint emit p14:dur, which forces the whole element
+    into mc:AlternateContent with an mc:Fallback carrying the plain form. The
+    transition is then a GRANDCHILD of p:sld.
+    """
+
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"'
+        ' xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"'
+        ' xmlns:p14="http://schemas.microsoft.com/office/powerpoint/2010/main">'
+        '<p:cSld name="slide-one"><p:spTree/></p:cSld>'
+        '<mc:AlternateContent><mc:Choice Requires="p14">'
+        f'<p:transition spd="med" p14:dur="550"><p:{effect}/></p:transition>'
+        '</mc:Choice><mc:Fallback>'
+        f'<p:transition spd="med"><p:{effect}/></p:transition>'
+        "</mc:Fallback></mc:AlternateContent></p:sld>"
+    ).encode("utf-8")
+
+
+def _slide_without_transition() -> bytes:
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">'
+        '<p:cSld name="slide-one"><p:spTree/></p:cSld></p:sld>'
+    ).encode("utf-8")
+
+
+def _package_with_slide(path: Path, slide_xml: bytes) -> None:
+    with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr(
+            "[Content_Types].xml",
+            b'<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"></Types>',
+        )
+        archive.writestr(
+            "ppt/presentation.xml",
+            b'<?xml version="1.0" encoding="UTF-8"?><p:presentation xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"/>',
+        )
+        archive.writestr("ppt/slides/slide1.xml", slide_xml)
+        # The verifier refuses an implausibly small package before it parses
+        # anything; the same padding the other fixture uses gets past that
+        # floor without changing what is being tested.
+        archive.writestr(
+            "padding.bin",
+            b"".join(
+                hashlib.sha256(str(index).encode()).digest() for index in range(64)
+            ),
+        )
+
+
+def _transition_node():
+    return ActionNode(
+        "transition",
+        "powerpoint.set_transition",
+        {
+            "advance_on_click": True,
+            "duration_s": 0.55,
+            "effect": "fade",
+            "slide_id": "slide-one",
+        },
+    )
+
+
+def test_the_verifier_sees_a_transition_wrapped_in_alternate_content(tmp_path):
+    """Phase A's measured defect.
+
+    `root.find()` matches direct children only, so a transition PowerPoint
+    wrapped in mc:AlternateContent was invisible to it. The adapter had
+    written the transition correctly; every run refused at node 25 anyway.
+    """
+
+    output = tmp_path / "deck.pptx"
+    _package_with_slide(output, _slide_with_wrapped_transition())
+
+    result = VerifierHost(_descriptor()).verify(
+        node=_transition_node(),
+        validation_sha256="e" * 64,
+        output_path=str(output),
+        target=_context(output)["target"],
+    )
+
+    assert result.verified
+    assert result.observed["transition_elements"] == 2
+
+
+def test_a_slide_with_a_transition_as_a_direct_child_still_verifies(tmp_path):
+    """The unwrapped form must keep working: a transition with no duration is
+    emitted directly under p:sld."""
+
+    output = tmp_path / "deck.pptx"
+    _package_with_slide(
+        output,
+        (
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">'
+            '<p:cSld name="slide-one"><p:spTree/></p:cSld>'
+            '<p:transition spd="med"><p:fade/></p:transition></p:sld>'
+        ).encode("utf-8"),
+    )
+
+    result = VerifierHost(_descriptor()).verify(
+        node=_transition_node(),
+        validation_sha256="e" * 64,
+        output_path=str(output),
+        target=_context(output)["target"],
+    )
+
+    assert result.verified
+    assert result.observed["transition_elements"] == 1
+
+
+def test_a_slide_with_no_transition_at_all_is_still_refused(tmp_path):
+    """Non-vacuity. Widening the search must not make the check unfailable --
+    the point of the fix is to see a real transition, not to stop looking."""
+
+    output = tmp_path / "deck.pptx"
+    _package_with_slide(output, _slide_without_transition())
+
+    result = VerifierHost(_descriptor()).verify(
+        node=_transition_node(),
+        validation_sha256="e" * 64,
+        output_path=str(output),
+        target=_context(output)["target"],
+    )
+
+    assert not result.verified
+    assert "no approved transition" in result.detail
+
+
+def test_a_transition_buried_deeper_than_slide_level_is_not_accepted(tmp_path):
+    """The fix is scoped to slide level and one AlternateContent below it, not
+    a whole-subtree search. This project has already paid for matching looser
+    than the thing it identifies (rung 3)."""
+
+    output = tmp_path / "deck.pptx"
+    _package_with_slide(
+        output,
+        (
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">'
+            '<p:cSld name="slide-one"><p:spTree>'
+            '<p:transition spd="med"><p:fade/></p:transition>'
+            "</p:spTree></p:cSld></p:sld>"
+        ).encode("utf-8"),
+    )
+
+    result = VerifierHost(_descriptor()).verify(
+        node=_transition_node(),
+        validation_sha256="e" * 64,
+        output_path=str(output),
+        target=_context(output)["target"],
+    )
+
+    assert not result.verified

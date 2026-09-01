@@ -16,6 +16,10 @@ PLUGIN_VERSION = "1.0.0"
 _SHA_RE = re.compile(r"[0-9a-f]{64}")
 _P = "http://schemas.openxmlformats.org/presentationml/2006/main"
 _A = "http://schemas.openxmlformats.org/drawingml/2006/main"
+#: Markup Compatibility.  PowerPoint wraps any transition carrying a newer
+#: extension attribute in mc:AlternateContent, so the element is a GRANDCHILD
+#: of p:sld, not a child.
+_MC = "http://schemas.openxmlformats.org/markup-compatibility/2006"
 
 
 class Refusal(ValueError):
@@ -111,7 +115,9 @@ def _verify(package, operation_id, p):
             raise Refusal("animation timeline does not target the approved object")
     elif operation_id == "powerpoint.set_transition":
         root = package.slide(p["slide_id"])
-        if root.find(f"{{{_P}}}transition") is None and p["effect"] != "none":
+        found = _slide_transitions(root)
+        observed["transition_elements"] = len(found)
+        if not found and p["effect"] != "none":
             raise Refusal("saved slide has no approved transition")
     elif operation_id == "powerpoint.save_presentation":
         if package.path != Path(p["output_path"]).resolve(): raise Refusal("saved path disagrees")
@@ -121,6 +127,36 @@ def _verify(package, operation_id, p):
     else:
         raise Refusal("verifier does not own this operation")
     return observed
+
+
+
+def _slide_transitions(root):
+    """Every p:transition declared at slide level, including wrapped ones.
+
+    A transition that carries a newer extension attribute -- p14:dur, which
+    PowerPoint writes for any transition with a duration -- is emitted inside
+    mc:AlternateContent, with an mc:Choice holding the extended form and an
+    mc:Fallback holding the plain one. The element is then a grandchild of
+    p:sld and `root.find()` cannot see it, because find() matches direct
+    children only. That is measured, not assumed: every transition this plan
+    sets has a duration, so every one of them lands there.
+
+    Scoped deliberately to slide level and one AlternateContent below it,
+    rather than a whole-subtree search. A transition is only meaningful in
+    those positions, and this project has already paid for matching that was
+    looser than the thing it was trying to identify.
+    """
+
+    found = []
+    for child in root:
+        if child.tag == f"{{{_P}}}transition":
+            found.append(child)
+        elif child.tag == f"{{{_MC}}}AlternateContent":
+            for branch in child:
+                found.extend(
+                    item for item in branch if item.tag == f"{{{_P}}}transition"
+                )
+    return found
 
 
 def main():
