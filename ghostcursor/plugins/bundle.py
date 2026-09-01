@@ -1,4 +1,9 @@
-"""Strict verification for signed, data-only ``.ghostplugin`` bundles."""
+"""Strict verification for signed ``.ghostplugin`` bundles.
+
+API v1 remains data-only. API v2 may carry one first-party executable adapter,
+but its entrypoint and closed operation registry are themselves signed file
+inventory entries and are validated before extraction.
+"""
 
 from __future__ import annotations
 
@@ -16,7 +21,10 @@ from typing import Any, Mapping
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
-from ghostcursor.plugins.compatibility import CompatibilityResult, check_core_compatibility
+from ghostcursor.plugins.compatibility import (
+    CompatibilityResult,
+    check_core_compatibility,
+)
 
 
 _PLUGIN_ID_RE = re.compile(r"[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*\Z")
@@ -65,7 +73,9 @@ def _strict_json(raw: bytes) -> dict[str, Any]:
         return value
 
     def constant(value: str) -> None:
-        raise BundleVerificationError(f"non-finite manifest number is forbidden: {value}")
+        raise BundleVerificationError(
+            f"non-finite manifest number is forbidden: {value}"
+        )
 
     def number(value: str) -> float:
         result = float(value)
@@ -121,44 +131,126 @@ def _validate_manifest(value: dict[str, Any]) -> None:
         raise BundleVerificationError(
             f"plugin manifest fields disagree; missing={missing}, extra={extra}"
         )
-    if value["schema_version"] != 1 or value["plugin_api_version"] != 1:
-        raise BundleVerificationError("only plugin schema/API version 1 is supported")
-    if not isinstance(value["plugin_id"], str) or _PLUGIN_ID_RE.fullmatch(value["plugin_id"]) is None:
+    if value["schema_version"] != 1 or value["plugin_api_version"] not in {1, 2}:
+        raise BundleVerificationError("plugin schema/API version is unsupported")
+    if (
+        not isinstance(value["plugin_id"], str)
+        or _PLUGIN_ID_RE.fullmatch(value["plugin_id"]) is None
+    ):
         raise BundleVerificationError("plugin_id is not canonical")
-    if not isinstance(value["version"], str) or _SEMVER_RE.fullmatch(value["version"]) is None:
-        raise BundleVerificationError("plugin version must be canonical MAJOR.MINOR.PATCH")
-    if value["adapter_api"] is not None:
-        raise BundleVerificationError("plugin API v1 forbids executable adapters")
-    if value["signing_key_id"] is not None and not isinstance(value["signing_key_id"], str):
+    if (
+        not isinstance(value["version"], str)
+        or _SEMVER_RE.fullmatch(value["version"]) is None
+    ):
+        raise BundleVerificationError(
+            "plugin version must be canonical MAJOR.MINOR.PATCH"
+        )
+    adapter = value["adapter_api"]
+    if value["plugin_api_version"] == 1:
+        if adapter is not None:
+            raise BundleVerificationError("plugin API v1 forbids executable adapters")
+    else:
+        if not isinstance(adapter, dict) or set(adapter) != {
+            "entrypoint",
+            "operations",
+            "plans",
+            "protocol_version",
+            "verifier",
+        }:
+            raise BundleVerificationError(
+                "plugin API v2 requires one closed adapter declaration"
+            )
+        if adapter["protocol_version"] != 1:
+            raise BundleVerificationError("adapter protocol version is unsupported")
+        entrypoint = adapter["entrypoint"]
+        operations = adapter["operations"]
+        plans = adapter["plans"]
+        verifier = adapter["verifier"]
+        if not all(
+            isinstance(path, str) for path in (entrypoint, operations, plans, verifier)
+        ):
+            raise BundleVerificationError("adapter paths must be strings")
+        if _entry_name(entrypoint) != entrypoint or not entrypoint.startswith(
+            "ghostcursor/adapter/"
+        ):
+            raise BundleVerificationError(
+                "adapter entrypoint must live under ghostcursor/adapter/"
+            )
+        if not entrypoint.endswith(".py"):
+            raise BundleVerificationError(
+                "adapter entrypoint must be a Python source file"
+            )
+        if _entry_name(verifier) != verifier or not verifier.startswith(
+            "ghostcursor/adapter/"
+        ):
+            raise BundleVerificationError(
+                "adapter verifier must live under ghostcursor/adapter/"
+            )
+        if not verifier.endswith(".py") or verifier == entrypoint:
+            raise BundleVerificationError(
+                "adapter verifier must be a distinct Python source file"
+            )
+        if operations != "ghostcursor/operations.json":
+            raise BundleVerificationError(
+                "adapter operation registry path is not canonical"
+            )
+        if plans != "ghostcursor/action-plans.json":
+            raise BundleVerificationError(
+                "adapter action plan index path is not canonical"
+            )
+    if value["signing_key_id"] is not None and not isinstance(
+        value["signing_key_id"], str
+    ):
         raise BundleVerificationError("signing_key_id must be a string or null")
     applications = value["applications"]
     if not isinstance(applications, list) or not applications:
-        raise BundleVerificationError("plugin must own at least one application identity")
+        raise BundleVerificationError(
+            "plugin must own at least one application identity"
+        )
     seen_apps: set[tuple[str, str]] = set()
     for app in applications:
         if not isinstance(app, dict) or set(app) != {"kind", "value"}:
-            raise BundleVerificationError("each application requires exactly kind and value")
+            raise BundleVerificationError(
+                "each application requires exactly kind and value"
+            )
         if not all(isinstance(app[key], str) and app[key] for key in ("kind", "value")):
-            raise BundleVerificationError("application identity values must be non-empty strings")
+            raise BundleVerificationError(
+                "application identity values must be non-empty strings"
+            )
         identity = (app["kind"].casefold(), app["value"].casefold())
         if identity in seen_apps:
             raise BundleVerificationError("duplicate application identity in plugin")
         seen_apps.add(identity)
     files = value["files"]
     if not isinstance(files, dict) or not files:
-        raise BundleVerificationError("plugin file inventory must be a non-empty object")
+        raise BundleVerificationError(
+            "plugin file inventory must be a non-empty object"
+        )
     folded: set[str] = set()
     for raw_name, digest in files.items():
         if not isinstance(raw_name, str):
             raise BundleVerificationError("plugin file names must be strings")
         name = _entry_name(raw_name)
         if name in _RESERVED:
-            raise BundleVerificationError(f"reserved file cannot appear in inventory: {name}")
+            raise BundleVerificationError(
+                f"reserved file cannot appear in inventory: {name}"
+            )
         if name.casefold() in folded:
             raise BundleVerificationError("case-colliding file names in inventory")
         folded.add(name.casefold())
         if not isinstance(digest, str) or _SHA256_RE.fullmatch(digest) is None:
             raise BundleVerificationError(f"invalid SHA-256 for {name}")
+    if value["plugin_api_version"] == 2:
+        for required_path in (
+            value["adapter_api"]["entrypoint"],
+            value["adapter_api"]["operations"],
+            value["adapter_api"]["plans"],
+            value["adapter_api"]["verifier"],
+        ):
+            if required_path not in files:
+                raise BundleVerificationError(
+                    f"adapter inventory is missing required file: {required_path}"
+                )
 
 
 def verify_bundle(
@@ -185,9 +277,13 @@ def verify_bundle(
         for info in infos:
             name = _entry_name(info.filename)
             if _is_symlink(info):
-                raise BundleVerificationError(f"symlink bundle entry is forbidden: {name}")
+                raise BundleVerificationError(
+                    f"symlink bundle entry is forbidden: {name}"
+                )
             if name in names or name.casefold() in folded:
-                raise BundleVerificationError(f"duplicate or case-colliding bundle entry: {name}")
+                raise BundleVerificationError(
+                    f"duplicate or case-colliding bundle entry: {name}"
+                )
             names[name] = info
             folded.add(name.casefold())
         if "plugin.json" not in names:
@@ -199,9 +295,13 @@ def verify_bundle(
         key_id = manifest["signing_key_id"]
         if not signed:
             if not developer_mode:
-                raise BundleVerificationError("unsigned plugins are forbidden in production")
+                raise BundleVerificationError(
+                    "unsigned plugins are forbidden in production"
+                )
             if key_id is not None:
-                raise BundleVerificationError("unsigned developer plugin must use null signing_key_id")
+                raise BundleVerificationError(
+                    "unsigned developer plugin must use null signing_key_id"
+                )
         else:
             if key_id is None or key_id not in trusted_keys:
                 raise BundleVerificationError("plugin signing key is not trusted")
@@ -219,8 +319,8 @@ def verify_bundle(
         actual = set(names)
         if actual != expected:
             raise BundleVerificationError(
-                f"bundle entries disagree with signed inventory; missing={sorted(expected-actual)}, "
-                f"extra={sorted(actual-expected)}"
+                f"bundle entries disagree with signed inventory; missing={sorted(expected - actual)}, "
+                f"extra={sorted(actual - expected)}"
             )
         file_bytes: dict[str, bytes] = {}
         for name, digest in inventory.items():
@@ -251,6 +351,48 @@ def verify_bundle(
             except TaskGraphValidationError as exc:
                 raise BundleVerificationError(
                     f"plugin capability artifact is invalid: {exc}"
+                ) from exc
+        adapter = manifest["adapter_api"]
+        if adapter is not None:
+            # Executable adapters are never admitted unsigned, including the
+            # physically separate developer store. Developer mode is for
+            # inert data authoring, not arbitrary local code execution.
+            if not signed:
+                raise BundleVerificationError("executable adapters must be signed")
+            from ghostcursor.action import (
+                ActionValidationError,
+                load_operation_registry,
+            )
+
+            entrypoint = adapter["entrypoint"]
+            operations_path = adapter["operations"]
+            try:
+                registry = load_operation_registry(
+                    file_bytes[operations_path],
+                    plugin_id=manifest["plugin_id"],
+                    plugin_version=manifest["version"],
+                    adapter_sha256=hashlib.sha256(file_bytes[entrypoint]).hexdigest(),
+                )
+            except ActionValidationError as exc:
+                raise BundleVerificationError(
+                    f"plugin operation registry is invalid: {exc}"
+                ) from exc
+            from ghostcursor.action_plans import (
+                ActionPlanError,
+                load_action_plan_templates,
+            )
+
+            try:
+                load_action_plan_templates(
+                    file_bytes[adapter["plans"]],
+                    file_bytes,
+                    plugin_id=manifest["plugin_id"],
+                    plugin_version=manifest["version"],
+                    adapter_sha256=registry.adapter_sha256,
+                )
+            except ActionPlanError as exc:
+                raise BundleVerificationError(
+                    f"plugin action plans are invalid: {exc}"
                 ) from exc
     try:
         compatibility = check_core_compatibility(manifest, core_version)

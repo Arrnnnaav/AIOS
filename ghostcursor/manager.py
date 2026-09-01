@@ -11,7 +11,9 @@ from __future__ import annotations
 import queue
 import threading
 import time
+import uuid
 from dataclasses import dataclass
+from pathlib import Path
 
 import win32api
 import win32con
@@ -21,6 +23,7 @@ from ghostcursor.interaction import (
     MODE_ORDER,
     InteractionMode,
     mode_can_propose_plan,
+    mode_can_start_act,
     mode_can_start_guidance,
     mode_contract,
     mode_label,
@@ -145,8 +148,21 @@ class TaskExecutionRequest:
 
 
 @dataclass(frozen=True)
+class ActProposalRequest:
+    goal: str
+    output_path: Path
+    target_hwnd: int | None = None
+
+
+@dataclass(frozen=True)
+class ActExecutionRequest:
+    goal: str
+    proposal: object
+
+
+@dataclass(frozen=True)
 class PlanningResult:
-    request: LaunchRequest | TaskProposalRequest
+    request: LaunchRequest | TaskProposalRequest | ActProposalRequest
     result: object | None
     error: BaseException | None
 
@@ -163,6 +179,21 @@ def task_preview_rows(proposal: object) -> tuple[str, ...]:
         suffix = f" · {guidance}" if guidance else ""
         rows.append(f"○  {number}. {step.instruction}{suffix}")
     return tuple(rows)
+
+
+def act_preview_rows(proposal: object) -> tuple[str, ...]:
+    return tuple(
+        f"○  {number}. {step}"
+        for number, step in enumerate(getattr(proposal, "steps"), start=1)
+    )
+
+
+def default_act_output_path() -> Path:
+    root = Path.home() / "Documents" / "GhostCursor" / "Outputs"
+    return (
+        root
+        / f"ghostcursor-{time.strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}.pptx"
+    )
 
 
 def task_result_action(result: object) -> str:
@@ -208,7 +239,9 @@ def project_snapshot(snapshot: SessionSnapshot) -> ManagerProjection:
     progress = (
         f"Step {snapshot.current_step} of {snapshot.total_steps}"
         if snapshot.total_steps and snapshot.current_step
-        else f"{snapshot.total_steps} steps" if snapshot.total_steps else "No active plan"
+        else f"{snapshot.total_steps} steps"
+        if snapshot.total_steps
+        else "No active plan"
     )
     details = "\n".join(
         line
@@ -238,7 +271,8 @@ def project_snapshot(snapshot: SessionSnapshot) -> ManagerProjection:
         application=snapshot.application or "No application selected",
         progress=progress,
         instruction=snapshot.instruction or _terminal_instruction(snapshot.status),
-        verification=snapshot.verification_state or _verification_label(snapshot.status),
+        verification=snapshot.verification_state
+        or _verification_label(snapshot.status),
         steps=tuple(steps),
         details=details,
         can_pause=snapshot.capabilities.can_pause,
@@ -326,7 +360,9 @@ class NativeManagerWindow:
         ensure_class(MANAGER_CLASS_NAME, _manager_wnd_proc, _background_brush)
 
         width = min(MANAGER_WIDTH, win32api.GetSystemMetrics(win32con.SM_CXSCREEN) - 80)
-        height = min(MANAGER_HEIGHT, win32api.GetSystemMetrics(win32con.SM_CYSCREEN) - 80)
+        height = min(
+            MANAGER_HEIGHT, win32api.GetSystemMetrics(win32con.SM_CYSCREEN) - 80
+        )
         x = max(24, (win32api.GetSystemMetrics(win32con.SM_CXSCREEN) - width) // 2)
         y = max(24, (win32api.GetSystemMetrics(win32con.SM_CYSCREEN) - height) // 2)
         self.hwnd = win32gui.CreateWindowEx(
@@ -346,12 +382,20 @@ class NativeManagerWindow:
         self.closed = False
         self.plugin_refresh_requested = True
         self._pending_request: (
-            LaunchRequest | TaskProposalRequest | TaskExecutionRequest | None
+            LaunchRequest
+            | TaskProposalRequest
+            | TaskExecutionRequest
+            | ActProposalRequest
+            | ActExecutionRequest
+            | None
         ) = None
         self._snapshot: SessionSnapshot | None = None
         self._target_candidates: tuple[object, ...] = ()
         self._target_choice_for = ""
         self._task_proposal: object | None = None
+        self._act_proposal: object | None = None
+        self._act_controls: object | None = None
+        self._pending_act_output: Path | None = None
         self._mode = InteractionMode.TEACH
         self._plugins: tuple[PluginPresentation, ...] = ()
         self._plugin_rows: tuple[str, ...] = ()
@@ -415,7 +459,9 @@ class NativeManagerWindow:
         win32gui.SendMessage(goal, 0x1501, True, "What do you want to accomplish?")
         self._child("BUTTON", "Start", win32con.BS_PUSHBUTTON, ID_START)
         self._child("BUTTON", "Plan complex", win32con.BS_PUSHBUTTON, ID_COMPLEX)
-        self._child("STATIC", mode_contract(self._mode).purpose, win32con.SS_LEFT, ID_MODE_NOTE)
+        self._child(
+            "STATIC", mode_contract(self._mode).purpose, win32con.SS_LEFT, ID_MODE_NOTE
+        )
         self._child("STATIC", "Plan", win32con.SS_LEFT, ID_PLAN_LABEL)
         self._child(
             "LISTBOX",
@@ -425,9 +471,13 @@ class NativeManagerWindow:
         )
         self._child("STATIC", "No active plan", win32con.SS_LEFT, ID_PROGRESS)
         self._child("STATIC", "Current guidance", win32con.SS_LEFT, ID_GUIDANCE_LABEL)
-        self._child("STATIC", "Start with a goal above.", win32con.SS_LEFT, ID_INSTRUCTION)
+        self._child(
+            "STATIC", "Start with a goal above.", win32con.SS_LEFT, ID_INSTRUCTION
+        )
         self._child("STATIC", "Verification", win32con.SS_LEFT, ID_VERIFICATION_LABEL)
-        self._child("STATIC", "No verification in progress.", win32con.SS_LEFT, ID_VERIFICATION)
+        self._child(
+            "STATIC", "No verification in progress.", win32con.SS_LEFT, ID_VERIFICATION
+        )
         self._child("BUTTON", "Pause", win32con.BS_PUSHBUTTON, ID_PAUSE)
         self._child("BUTTON", "Stop", win32con.BS_PUSHBUTTON, ID_STOP)
         self._child("STATIC", "Installed plugins", win32con.SS_LEFT, ID_PLUGINS_LABEL)
@@ -484,7 +534,9 @@ class NativeManagerWindow:
             width - goal_x - margin - 2 * action_w - 16,
             goal_h,
         )
-        self._move(ID_START, width - margin - 2 * action_w - 8, field_y, action_w, goal_h)
+        self._move(
+            ID_START, width - margin - 2 * action_w - 8, field_y, action_w, goal_h
+        )
         self._move(ID_COMPLEX, width - margin - action_w, field_y, action_w, goal_h)
         self._move(ID_MODE_NOTE, margin, 132, width - 2 * margin, 24)
         self._move(ID_PLAN_LABEL, margin, 160, left_w, 24)
@@ -522,11 +574,18 @@ class NativeManagerWindow:
         self._set(ID_MODE_NOTE, contract.purpose)
         self._set(
             ID_START,
-            "Start guidance" if self._mode is InteractionMode.TEACH else contract.label,
+            (
+                "Start guidance"
+                if self._mode is InteractionMode.TEACH
+                else "Review Act plan"
+                if self._mode is InteractionMode.ACT
+                else contract.label
+            ),
         )
         self._set(ID_COMPLEX, "Create plan")
         win32gui.EnableWindow(
-            self._controls[ID_START], mode_can_start_guidance(self._mode)
+            self._controls[ID_START],
+            mode_can_start_guidance(self._mode) or mode_can_start_act(self._mode),
         )
         win32gui.EnableWindow(
             self._controls[ID_COMPLEX], mode_can_propose_plan(self._mode)
@@ -551,10 +610,24 @@ class NativeManagerWindow:
                 ID_VERIFICATION,
                 "Planning is inert. A separate Start plan action is required.",
             )
+        elif update_content and self._mode is InteractionMode.ACT:
+            self._set(
+                ID_INSTRUCTION,
+                "Describe an outcome backed by one enabled signed Act plugin.",
+            )
+            self._set(
+                ID_VERIFICATION,
+                "GhostCursor will show the complete plan before one explicit approval.",
+            )
 
     def _on_command(self, control_id: int, _notification: int = 0) -> None:
         if control_id == ID_MODE:
-            if self._snapshot is not None or self._task_proposal is not None:
+            if (
+                self._snapshot is not None
+                or self._task_proposal is not None
+                or self._act_proposal is not None
+                or self._act_controls is not None
+            ):
                 win32gui.SendMessage(
                     self._controls[ID_MODE],
                     win32con.CB_SETCURSEL,
@@ -570,12 +643,46 @@ class NativeManagerWindow:
                 self.show_idle()
             return
         if control_id == ID_START:
-            if not mode_can_start_guidance(self._mode):
-                self._set(ID_STATUS, "Select Teach to start guidance")
-                return
             goal = win32gui.GetWindowText(self._controls[ID_GOAL]).strip()
             if not goal:
                 self._set(ID_STATUS, "Enter a goal first")
+                return
+            if mode_can_start_act(self._mode):
+                if self._act_proposal is not None:
+                    self._pending_request = ActExecutionRequest(
+                        goal, self._act_proposal
+                    )
+                else:
+                    target_hwnd = None
+                    if self._target_candidates and self._target_choice_for == "act":
+                        selected = win32gui.SendMessage(
+                            self._controls[ID_TIMELINE],
+                            win32con.LB_GETCURSEL,
+                            0,
+                            0,
+                        )
+                        if selected == win32con.LB_ERR:
+                            self._set(ID_STATUS, "Choose one window")
+                            return
+                        target_hwnd = int(
+                            getattr(self._target_candidates[selected], "hwnd")
+                        )
+                    if target_hwnd is None:
+                        self._set(
+                            ID_STATUS,
+                            "Act needs an exact application window; choose it after planning.",
+                        )
+                    output = self._pending_act_output or default_act_output_path()
+                    self._pending_act_output = None
+                    self._pending_request = ActProposalRequest(
+                        goal, output, target_hwnd
+                    )
+                win32gui.EnableWindow(self._controls[ID_START], False)
+                win32gui.EnableWindow(self._controls[ID_COMPLEX], False)
+                win32gui.EnableWindow(self._controls[ID_MODE], False)
+                return
+            if not mode_can_start_guidance(self._mode):
+                self._set(ID_STATUS, "Select Teach or Act to start")
                 return
             target_hwnd = None
             if self._target_candidates and self._target_choice_for == "simple":
@@ -608,7 +715,9 @@ class NativeManagerWindow:
                     if selected == win32con.LB_ERR:
                         self._set(ID_STATUS, "Choose one window")
                         return
-                    target_hwnd = int(getattr(self._target_candidates[selected], "hwnd"))
+                    target_hwnd = int(
+                        getattr(self._target_candidates[selected], "hwnd")
+                    )
                 self._pending_request = TaskExecutionRequest(
                     goal,
                     getattr(self._task_proposal, "graph"),
@@ -629,8 +738,17 @@ class NativeManagerWindow:
             win32gui.EnableWindow(self._controls[ID_START], False)
             win32gui.EnableWindow(self._controls[ID_COMPLEX], False)
             win32gui.EnableWindow(self._controls[ID_MODE], False)
-        elif control_id == ID_PAUSE and self._snapshot is not None:
-            if self._snapshot.capabilities.can_pause:
+        elif control_id == ID_PAUSE:
+            if self._act_controls is not None:
+                if self._act_controls.paused:
+                    self._act_controls.resume()
+                    self._set(ID_PAUSE, "Pause")
+                    self._set(ID_STATUS, "Act running")
+                else:
+                    self._act_controls.pause()
+                    self._set(ID_PAUSE, "Resume")
+                    self._set(ID_STATUS, "Act paused")
+            elif self._snapshot is not None and self._snapshot.capabilities.can_pause:
                 session_commands.request(
                     self._snapshot.session_id, SessionCommand.TOGGLE_PAUSE
                 )
@@ -638,7 +756,10 @@ class NativeManagerWindow:
             self.request_stop_if_active()
 
     def request_stop_if_active(self) -> None:
-        if self._snapshot is not None and self._snapshot.capabilities.can_stop:
+        if self._act_controls is not None:
+            self._act_controls.stop()
+            self._set(ID_STATUS, "Stopping Act…")
+        elif self._snapshot is not None and self._snapshot.capabilities.can_stop:
             session_commands.request(self._snapshot.session_id, SessionCommand.STOP)
 
     def _set(self, control_id: int, text: str) -> None:
@@ -659,6 +780,7 @@ class NativeManagerWindow:
         self._target_candidates = ()
         self._target_choice_for = ""
         self._task_proposal = None
+        self._act_proposal = None
         projection = project_snapshot(snapshot)
         self._set(
             ID_HEADER,
@@ -703,6 +825,9 @@ class NativeManagerWindow:
         self._target_candidates = ()
         self._target_choice_for = ""
         self._task_proposal = None
+        self._act_proposal = None
+        self._act_controls = None
+        self._pending_act_output = None
         self._set(ID_HEADER, "GhostCursor")
         self._set(ID_STATUS, "Ready")
         self._set(ID_PROGRESS, "No active plan")
@@ -765,7 +890,10 @@ class NativeManagerWindow:
         self._target_choice_for = "simple"
         self._set(ID_STATUS, _STATUS_LABELS[SessionStatus.TARGET_CHOICE_REQUIRED])
         self._set(ID_PROGRESS, f"{len(candidates)} trusted windows match")
-        self._set(ID_INSTRUCTION, "Choose the exact window. GhostCursor will revalidate it before launch.")
+        self._set(
+            ID_INSTRUCTION,
+            "Choose the exact window. GhostCursor will revalidate it before launch.",
+        )
         self._replace_list(
             ID_TIMELINE,
             tuple(
@@ -800,6 +928,89 @@ class NativeManagerWindow:
         win32gui.EnableWindow(self._controls[ID_COMPLEX], True)
         win32gui.EnableWindow(self._controls[ID_GOAL], False)
         win32gui.EnableWindow(self._controls[ID_MODE], False)
+
+    def show_act_proposal(self, goal: str, proposal: object) -> None:
+        """Render the complete inert action graph before one approval click."""
+
+        self._snapshot = None
+        self._select_mode(InteractionMode.ACT)
+        self._target_candidates = ()
+        self._target_choice_for = ""
+        self._act_proposal = proposal
+        rows = act_preview_rows(proposal)
+        self._set(ID_STATUS, _STATUS_LABELS[SessionStatus.READY_TO_START])
+        self._set(ID_PROGRESS, f"{len(rows)} validated actions")
+        self._set(ID_INSTRUCTION, proposal.summary)
+        self._set(
+            ID_VERIFICATION,
+            "Review the full plan. Approve & run grants this exact graph once.",
+        )
+        self._replace_list(ID_TIMELINE, rows)
+        self._set(ID_START, "Approve & run")
+        self._set(ID_COMPLEX, "Unavailable in Act")
+        win32gui.EnableWindow(self._controls[ID_START], True)
+        win32gui.EnableWindow(self._controls[ID_COMPLEX], False)
+        win32gui.EnableWindow(self._controls[ID_GOAL], False)
+        win32gui.EnableWindow(self._controls[ID_MODE], False)
+
+    def show_act_target_choices(
+        self, goal: str, output_path: Path, candidates: tuple[object, ...]
+    ) -> None:
+        self._select_mode(InteractionMode.ACT)
+        self._target_candidates = candidates
+        self._target_choice_for = "act"
+        self._act_proposal = None
+        self._set(ID_STATUS, _STATUS_LABELS[SessionStatus.TARGET_CHOICE_REQUIRED])
+        self._set(ID_PROGRESS, f"{len(candidates)} trusted windows match")
+        self._set(
+            ID_INSTRUCTION, "Choose the exact window before the Act plan is bound."
+        )
+        self._replace_list(
+            ID_TIMELINE,
+            tuple(
+                f"[{candidate.hwnd}] {candidate.title} — {candidate.app.executable_name} {candidate.app.version}"
+                for candidate in candidates
+            ),
+        )
+        self._set(ID_START, "Use window")
+        self._pending_act_output = output_path
+        win32gui.EnableWindow(self._controls[ID_START], True)
+        win32gui.EnableWindow(self._controls[ID_COMPLEX], False)
+        win32gui.EnableWindow(self._controls[ID_MODE], False)
+
+    def show_act_event(self, event: object) -> None:
+        self._set(ID_STATUS, "Act running")
+        self._set(ID_PROGRESS, f"Action {event.ordinal} of {event.total}")
+        self._set(ID_INSTRUCTION, event.operation_id or event.detail)
+        self._set(ID_VERIFICATION, event.detail)
+        win32gui.EnableWindow(self._controls[ID_PAUSE], True)
+        win32gui.EnableWindow(self._controls[ID_STOP], True)
+
+    def show_act_result(self, result: object) -> None:
+        # A proposal is a one-shot approval surface.  Retaining it after a
+        # terminal result would make "Start another" replay the old graph
+        # instead of preparing a fresh, newly authorized proposal.
+        self._act_proposal = None
+        self._act_controls = None
+        self._target_candidates = ()
+        self._target_choice_for = ""
+        self._pending_act_output = None
+        self._set(
+            ID_STATUS, "Goal completed" if result.completed else "Act stopped safely"
+        )
+        self._set(ID_PROGRESS, f"{len(result.completed_node_ids)} actions completed")
+        self._set(ID_INSTRUCTION, result.detail)
+        self._set(
+            ID_VERIFICATION,
+            "Verified output" if result.completed else result.code.value,
+        )
+        self._set(ID_DETAILS, f"Output  {result.output_path}\nProcessing  Local")
+        self._set(ID_START, "Start another")
+        win32gui.EnableWindow(self._controls[ID_START], True)
+        win32gui.EnableWindow(self._controls[ID_GOAL], True)
+        win32gui.EnableWindow(self._controls[ID_MODE], True)
+        win32gui.EnableWindow(self._controls[ID_PAUSE], False)
+        win32gui.EnableWindow(self._controls[ID_STOP], False)
 
     def show_task_target_choices(self, candidates: tuple[object, ...]) -> None:
         """Keep the reviewed graph while the operator selects its exact HWND."""
@@ -836,7 +1047,8 @@ class NativeManagerWindow:
         self._set(ID_INSTRUCTION, getattr(result, "detail", "Task plan ended"))
         self._set(
             ID_VERIFICATION,
-            "Every step reached its declared outcome." if completed
+            "Every step reached its declared outcome."
+            if completed
             else "No completion is claimed for the failed step.",
         )
         self._set(ID_START, "Start")
@@ -861,7 +1073,14 @@ class NativeManagerWindow:
 
     def take_request(
         self,
-    ) -> LaunchRequest | TaskProposalRequest | TaskExecutionRequest | None:
+    ) -> (
+        LaunchRequest
+        | TaskProposalRequest
+        | TaskExecutionRequest
+        | ActProposalRequest
+        | ActExecutionRequest
+        | None
+    ):
         request = self._pending_request
         self._pending_request = None
         return request
@@ -910,7 +1129,9 @@ class _PlanningWorker:
     def running(self) -> bool:
         return self._thread is not None and self._thread.is_alive()
 
-    def start(self, request: LaunchRequest | TaskProposalRequest) -> None:
+    def start(
+        self, request: LaunchRequest | TaskProposalRequest | ActProposalRequest
+    ) -> None:
         if self.running:
             raise RuntimeError("planning is already running")
 
@@ -920,6 +1141,14 @@ class _PlanningWorker:
                     from ghostcursor.task_planner import propose_task_graph
 
                     result = propose_task_graph(request.goal, request.plugin_id)
+                elif isinstance(request, ActProposalRequest):
+                    from ghostcursor.act_cli import prepare_act_goal
+
+                    result = prepare_act_goal(
+                        request.goal,
+                        output_path=request.output_path,
+                        target_hwnd=request.target_hwnd,
+                    )
                 else:
                     from ghostcursor.reasoning.planner import plan_compiled_goal
 
@@ -931,7 +1160,9 @@ class _PlanningWorker:
             except Exception as exc:
                 self._result.put(PlanningResult(request, None, exc))
 
-        self._thread = threading.Thread(target=plan, name="GhostCursorPlanner", daemon=True)
+        self._thread = threading.Thread(
+            target=plan, name="GhostCursorPlanner", daemon=True
+        )
         self._thread.start()
 
     def take(self) -> PlanningResult | None:
@@ -943,6 +1174,67 @@ class _PlanningWorker:
         return result
 
 
+class _ActWorker:
+    """Keep adapter waits and Office effects off the native manager UI thread."""
+
+    def __init__(self) -> None:
+        self.controls = None
+        self._events: queue.Queue[object] = queue.Queue()
+        self._results: queue.Queue[object] = queue.Queue(maxsize=1)
+        self._thread: threading.Thread | None = None
+
+    @property
+    def running(self) -> bool:
+        return self._thread is not None and self._thread.is_alive()
+
+    def start(self, proposal: object) -> None:
+        if self.running:
+            raise RuntimeError("Act is already running")
+        from ghostcursor.act_runtime import ActControls
+
+        self.controls = ActControls()
+
+        def execute() -> None:
+            try:
+                from ghostcursor.act_cli import execute_act_proposal
+
+                result = execute_act_proposal(
+                    proposal,
+                    controls=self.controls,
+                    event_sink=self._events.put,
+                )
+            except Exception as exc:
+                result = exc
+            self._results.put(result)
+
+        self._thread = threading.Thread(
+            target=execute, name="GhostCursorAct", daemon=True
+        )
+        self._thread.start()
+
+    def take_events(self) -> tuple[object, ...]:
+        values = []
+        while True:
+            try:
+                values.append(self._events.get_nowait())
+            except queue.Empty:
+                return tuple(values)
+
+    def take_result(self):
+        try:
+            result = self._results.get_nowait()
+        except queue.Empty:
+            return None
+        self._thread = None
+        return result
+
+    def stop_and_wait(self) -> None:
+        if self.controls is not None:
+            self.controls.stop()
+        if self._thread is not None:
+            self._thread.join(timeout=5.0)
+
+
 def launch_manager() -> int:
     """Run the pilot-facing manager and tours in one native UI process."""
 
@@ -950,6 +1242,7 @@ def launch_manager() -> int:
 
     manager = NativeManagerWindow()
     planning = _PlanningWorker()
+    act = _ActWorker()
     unsubscribe = session_events.subscribe(manager.render_snapshot)
     try:
         while win32gui.IsWindow(manager.hwnd):
@@ -959,12 +1252,16 @@ def launch_manager() -> int:
                     manager.set_plugins(plugin_presentations())
                 except Exception as exc:
                     manager.set_plugins(())
-                    manager._set(ID_STATUS, f"Plugin status unavailable: {type(exc).__name__}")
+                    manager._set(
+                        ID_STATUS, f"Plugin status unavailable: {type(exc).__name__}"
+                    )
 
             request = manager.take_request()
             if isinstance(request, TaskExecutionRequest):
                 manager._set(ID_STATUS, _STATUS_LABELS[SessionStatus.PLAN_VALIDATING])
-                manager._set(ID_VERIFICATION, "Revalidating the whole graph before step 1.")
+                manager._set(
+                    ID_VERIFICATION, "Revalidating the whole graph before step 1."
+                )
                 result = execute_manager_task(request)
                 action = task_result_action(result)
                 if action == "target_not_running":
@@ -974,6 +1271,13 @@ def launch_manager() -> int:
                 else:
                     manager.show_task_result(result)
                 manager.plugin_refresh_requested = True
+            elif isinstance(request, ActExecutionRequest):
+                act.start(request.proposal)
+                manager._act_controls = act.controls
+                manager._set(ID_STATUS, "Act starting")
+                manager._set(ID_VERIFICATION, "Revalidating authority before action 1.")
+                win32gui.EnableWindow(manager._controls[ID_PAUSE], True)
+                win32gui.EnableWindow(manager._controls[ID_STOP], True)
             elif request is not None and not planning.running:
                 manager.show_understanding(request.goal)
                 planning.start(request)
@@ -982,12 +1286,25 @@ def launch_manager() -> int:
             if planned is not None:
                 result, error = planned.result, planned.error
                 if error is not None:
-                    manager.show_unavailable(
-                        planned.request.goal,
-                        f"Planning failed: {type(error).__name__}: {error}",
-                    )
+                    from ghostcursor.packs.workflow import TargetChoiceRequired
+
+                    if isinstance(planned.request, ActProposalRequest) and isinstance(
+                        error, TargetChoiceRequired
+                    ):
+                        manager.show_act_target_choices(
+                            planned.request.goal,
+                            planned.request.output_path,
+                            error.candidates,
+                        )
+                    else:
+                        manager.show_unavailable(
+                            planned.request.goal,
+                            f"Planning failed: {type(error).__name__}: {error}",
+                        )
                 elif isinstance(planned.request, TaskProposalRequest):
                     manager.show_task_proposal(planned.request.goal, result)
+                elif isinstance(planned.request, ActProposalRequest):
+                    manager.show_act_proposal(planned.request.goal, result)
                 elif getattr(result, "plan", None) is not None:
                     run_tour_for_workflow(result.plan, seconds=120.0)
                     manager.plugin_refresh_requested = True
@@ -997,8 +1314,22 @@ def launch_manager() -> int:
                     manager.show_target_choices("", result.target_candidates)
                 else:
                     manager.show_unavailable("", result.explanation)
+            for event in act.take_events():
+                manager.show_act_event(event)
+            act_result = act.take_result()
+            if act_result is not None:
+                if isinstance(act_result, BaseException):
+                    manager.show_unavailable(
+                        "",
+                        f"Act failed safely: {type(act_result).__name__}: {act_result}",
+                    )
+                    manager._act_controls = None
+                else:
+                    manager.show_act_result(act_result)
+                manager.plugin_refresh_requested = True
             time.sleep(0.02)
     finally:
+        act.stop_and_wait()
         unsubscribe()
         manager.dispose()
     return 0

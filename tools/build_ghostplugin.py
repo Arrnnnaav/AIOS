@@ -1,4 +1,4 @@
-"""Build one deterministic, signed data-only GhostCursor plugin bundle.
+"""Build one deterministic, signed GhostCursor plugin bundle.
 
 The private Ed25519 key is supplied from outside the repository. Only the
 public key and resulting bundle are distributable artifacts.
@@ -42,7 +42,9 @@ def _collect(repo_root: Path, specification: dict) -> dict[str, bytes]:
         destination_root = PurePosixPath(item["destination"])
         for source in sorted(source_root.rglob("*")):
             if source.is_file():
-                destination = (destination_root / source.relative_to(source_root).as_posix()).as_posix()
+                destination = (
+                    destination_root / source.relative_to(source_root).as_posix()
+                ).as_posix()
                 files[destination] = source.read_bytes()
     folded: set[str] = set()
     for name in files:
@@ -60,14 +62,13 @@ def build(spec_path: Path, key_path: Path, output: Path) -> tuple[str, str]:
         "schema_version": 1,
         "plugin_id": specification["plugin_id"],
         "version": specification["version"],
-        "plugin_api_version": 1,
+        "plugin_api_version": 2 if specification.get("adapter_api") else 1,
         "core_compatibility": specification["core_compatibility"],
         "applications": specification["applications"],
         "signing_key_id": specification["signing_key_id"],
-        "adapter_api": None,
+        "adapter_api": specification.get("adapter_api"),
         "files": {
-            name: hashlib.sha256(raw).hexdigest()
-            for name, raw in sorted(files.items())
+            name: hashlib.sha256(raw).hexdigest() for name, raw in sorted(files.items())
         },
     }
     manifest_bytes = _canonical(manifest)
@@ -86,7 +87,9 @@ def build(spec_path: Path, key_path: Path, output: Path) -> tuple[str, str]:
             info, value = _entry(name, raw)
             archive.writestr(info, value)
     temporary.replace(output)
-    return hashlib.sha256(manifest_bytes).hexdigest(), hashlib.sha256(output.read_bytes()).hexdigest()
+    return hashlib.sha256(manifest_bytes).hexdigest(), hashlib.sha256(
+        output.read_bytes()
+    ).hexdigest()
 
 
 def main() -> int:

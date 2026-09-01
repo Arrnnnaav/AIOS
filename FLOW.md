@@ -1115,3 +1115,52 @@ py -3.12 -m ghostcursor.evaluation.model_gate `
   --unavailable-endpoint http://127.0.0.1:1 `
   --interactive
 ```
+
+## Signed autonomous Act flow
+
+Act is a separate execution architecture; it is not Teach with hidden clicks.
+
+```
+natural-language goal
+    -> active compiled matcher
+    -> canonical authorize_intent()
+    -> exactly one signed action-plan template for that intent
+    -> substitute only declared bounded parameters
+    -> validate the complete single-plugin DAG
+         operation registry + parameter types + limits
+         dependencies + acyclicity + pre/postcondition facts
+         repeated non-idempotent effects refused
+    -> resolve one exact HWND/PID/executable/version
+    -> display the complete deterministic flattened plan
+    -> explicit one-shot approval
+         validation + manifest + adapter + active catalog epoch
+         + exact target + output path + expiry + unattended scope
+    -> recheck catalog authority and target
+    -> start one nonce-bound adapter subprocess
+    -> adapter independently preflights the complete plan before effects
+    -> for each ordered node:
+         pause/stop gate
+         reload the original authority epoch
+         revalidate the exact target
+         mint one node-bound authorization digest
+         execute only the registered operation
+         launch one separately signed read-only verifier
+         continue only when the saved artifact proves the effect
+    -> final verified artifact or an explicit terminal refusal
+```
+
+Plugin API v2 binds the adapter, verifier, operation registry, action-plan
+index, and every template inside the signed manifest inventory. The core never
+imports application-specific adapter code. Unsigned executable adapters are
+rejected even in developer mode. An adapter process is per Act session, and a
+verifier process is one-shot per effect; nonce, node, validation, and digest
+checks reject cross-session replies and replay.
+
+The first deep Act candidate is PowerPoint. Its signed plan creates a 10-slide
+16:9 investor deck through the PowerPoint COM object model, saves after every
+effect, and verifies the resulting PPTX package independently. Charts are
+bounded PowerPoint shapes rather than embedded Excel editing sessions, keeping
+the graph single-plugin. Its catalog includes all four animation categories
+and both Fade/Morph transitions, but the investor deck uses restrained motion.
+The candidate remains quarantined until external release signing and live
+acceptance bind the exact reviewed bytes.

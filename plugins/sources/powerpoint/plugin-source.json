@@ -2,6 +2,13 @@
   "applications": [
     {"kind": "executable", "value": "powerpnt.exe"}
   ],
+  "adapter_api": {
+    "entrypoint": "ghostcursor/adapter/powerpoint_adapter.py",
+    "operations": "ghostcursor/operations.json",
+    "plans": "ghostcursor/action-plans.json",
+    "protocol_version": 1,
+    "verifier": "ghostcursor/adapter/powerpoint_verifier.py"
+  },
   "core_compatibility": {
     "maximum_exclusive": "2.0.0",
     "minimum": "1.0.0"
@@ -10,11 +17,27 @@
     {
       "destination": "ghostcursor/packs/index.json",
       "source": "plugins/sources/powerpoint/index.json"
+    },
+    {
+      "destination": "ghostcursor/action-plans.json",
+      "source": "plugins/sources/powerpoint/payload/ghostcursor/action-plans.json"
+    },
+    {
+      "destination": "ghostcursor/operations.json",
+      "source": "plugins/sources/powerpoint/payload/ghostcursor/operations.json"
     }
   ],
   "plugin_id": "ghostcursor.powerpoint",
   "signing_key_id": "ghostcursor-release-2026-2",
   "trees": [
+    {
+      "destination": "ghostcursor/action-plans",
+      "source": "plugins/sources/powerpoint/payload/ghostcursor/action-plans"
+    },
+    {
+      "destination": "ghostcursor/adapter",
+      "source": "plugins/sources/powerpoint/payload/ghostcursor/adapter"
+    },
     {
       "destination": "ghostcursor/packs/powerpoint",
       "source": "plugins/sources/powerpoint/payload/ghostcursor/packs/powerpoint"

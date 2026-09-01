@@ -9,19 +9,19 @@ placeholder in every generated deck until the founder supplies a verified fact.
 
 ## Narrative in one sentence
 
-GhostCursor turns approved procedures into local, verified, in-app guidance for
-native Windows software—helping a person complete work while keeping every
-action human-controlled.
+GhostCursor turns approved procedures into local, verified work inside native
+Windows software—guiding a person in Teach mode or executing one reviewed,
+signed action plan in Act mode.
 
 ## Slide 1 — The interface should understand the outcome
 
 **Headline:** Software should understand what the human is trying to accomplish.
 
-**Subhead:** GhostCursor is a local workflow guidance layer for native Windows
+**Subhead:** GhostCursor is a local, verified workflow layer for native Windows
 applications.
 
-**Proof line:** State a goal. See one trusted next step. Act yourself. Verify the
-result.
+**Proof line:** State a goal. Review trusted authority. Learn step by step—or
+approve one bounded Act plan. Verify the result.
 
 **Footer:** GhostCursor · pre-seed product narrative · September 2026
 
@@ -56,7 +56,7 @@ handoff, not a bullet-heavy problem slide.
 | Usually depends on application or webpage integration | Reads the live Windows accessibility surface |
 | Replays authored walkthroughs | Selects only an active, signed workflow |
 | Measures clicks and completion events | Verifies the declared post-action state |
-| Guidance and automation can blur | The user remains the only actor |
+| Guidance and automation can blur | Teach and Act have separate, visible authority |
 
 **Examples to validate with customers:** SAP GUI, engineering tools, internal
 GCC applications, core-banking terminals, hospital administration software.
@@ -67,19 +67,20 @@ absence without a current cited market comparison.
 
 ## Slide 4 — A trusted loop, not a cursor trick
 
-**Headline:** Observe → authorize → guide → verify → learn.
+**Headline:** Observe → authorize → guide or act → verify → learn.
 
 **Loop:**
 
 1. The user states a goal.
 2. An enabled signed plugin authorizes a bounded workflow.
-3. GhostCursor highlights one reviewed control without clicking or typing.
-4. The user performs the action.
-5. The application’s next state proves success or fails closed.
-6. Non-positional UI identity may be learned locally for the next run.
+3. Teach highlights one reviewed control without clicking or typing.
+4. Or Act shows one complete signed plan and waits for explicit approval.
+5. A person or the bounded adapter performs the authorized operation.
+6. Independent application state proves success or fails closed.
+7. Non-positional UI identity may be learned locally for the next Teach run.
 
-**Trust strip:** Local by default · no screenshots in normal operation · no
-input synthesis · stop/pause always available.
+**Trust strip:** Local by default · Teach never synthesizes input · Act uses no
+generic mouse/keyboard control · explicit approval · stop/pause always available.
 
 Visual intent: one continuous loop around a live application frame. Use the
 safety rail as a small product signature, not a full UI screenshot.
@@ -95,9 +96,10 @@ safety rail as a small product signature, not a full UI screenshot.
 - Two Excel workflows each completed 3/3 human desktop acceptance with UIA-only
   grounding on the accepted executable version.
 - A data-only VS Code workflow was added and accepted without production Python.
-- Five PowerPoint workflows are measured and quarantined pending independent
-  review and acceptance; they are not presented as active.
-- Current hermetic gate: 1,208 passed, 71 deselected on commit `ef7a555`.
+- Five guided PowerPoint workflows are measured and quarantined; one signed
+  API-v2 PowerPoint Act candidate is pending live acceptance and is not active.
+- Current candidate hermetic gate: 1,246 passed, 71 deselected. The acceptance
+  evidence records the exact committed baseline used for live runs.
 
 **Takeaway:** Adding app coverage no longer requires adding app-specific logic
 to the core executor.
@@ -193,7 +195,7 @@ outside the moat to make the point that it is only an interface.
 
 **Next 90 days:**
 
-1. Complete PowerPoint showcase and two full 10-slide guided builds.
+1. Complete PowerPoint showcase and two full 10-slide autonomous builds.
 2. Interview 10–15 Windows-heavy engineering/GCC teams.
 3. Recruit three pain-matched pilot participants from that interview pool.
 4. Run one paid or strongly committed design-partner pilot.

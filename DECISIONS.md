@@ -3917,3 +3917,104 @@ vocabulary now makes the interaction architecture explicit while preserving
 the signed capability, authorization, fresh binding, and verification
 boundaries. Act requires its own reviewed authority and input-synthesis design
 before it can be enabled.
+
+## D100 — Executable plugins are signed, closed, and out of process
+
+**Decision.** Plugin API v2 may declare exactly one Python adapter entrypoint,
+one distinct verifier entrypoint, one operation registry, one action-plan
+index, and protocol version 1. All five paths and every referenced plan are
+inside the signed manifest digest inventory. Executable adapters are forbidden
+in unsigned developer mode. Core verifies and extracts exact bytes but never
+imports either module. The adapter runs in a per-Act-session subprocess; the
+verifier runs as a fresh read-only subprocess after each effect.
+
+The protocol binds plugin/version, executable-file digest, fresh session nonce,
+complete validation digest, node identity, ordinal, and per-action
+authorization digest. Responses with missing/extra fields, stale nonces,
+different nodes, multiple lines, malformed JSON, timeouts, or process failure
+fail closed and tear the child down.
+
+**Reason.** Autonomous application work requires a real integration surface,
+but placing application object-model knowledge in core or allowing unsigned
+code would erase the plugin boundary. Separate effect and verification
+processes prevent an adapter from certifying its own claims and make replay a
+protocol violation rather than implicit trust.
+
+## D101 — Act validates and approves one complete action DAG
+
+**Decision.** A signed operation registry is a closed vocabulary of typed,
+bounded, risk-labelled operations with explicit preconditions, postconditions,
+idempotency, and effect keys. A signed action-plan template may substitute only
+declared parameters. Trusted code rejects the complete graph before any effect
+for unknown operations, plugin/version/adapter mismatch, malformed values,
+size limits, cycles, missing dependencies, unsatisfied facts, or repeated
+non-idempotent effects. Valid output is a deterministic topological order plus
+graph, registry, and validation digests.
+
+The manager displays that full order before a second explicit `Approve & run`
+action. The approval is one-shot and binds validation, plugin/version, manifest,
+adapter, active-index digest and generation, exact HWND/PID/executable/version,
+output path, unattended scope, and expiry. A terminal result discards the
+proposal; `Start another` must prepare new authority rather than replay it.
+
+**Reason.** Node-by-node discovery can execute a safe prefix before learning a
+later node is invalid. Whole-graph validation closes that gap, while exact
+approval prevents a reviewed plan, window, or output from being silently
+substituted after review.
+
+## D102 — Every Act effect is freshly authorized and independently verified
+
+**Decision.** Immediately before adapter startup and before every ordered
+effect, Act reloads the composition context and requires the original active
+catalog digest/generation, plugin version, manifest digest, and adapter digest.
+It rereads the exact approved HWND and refuses recycled handles, process,
+executable, or version drift. Each node receives a new digest binding its
+parameters, ordinal, validation, and approval. The next node cannot start until
+the separately signed verifier observes the declared effect in the approved
+artifact.
+
+Pause and Stop are thread-safe runtime controls. Act never overwrites an
+existing output. Unattended approval is limited to LOW-risk operations and an
+output beneath an explicit owned root.
+
+**Reason.** Static validation says what a proposal meant; it cannot prove the
+plugin or target still means the same thing milliseconds later. Per-effect
+freshness and independent evidence close the authorize-to-bind and
+adapter-self-certification races.
+
+## D103 — PowerPoint Act uses its object model without importing Excel authority
+
+**Decision.** The quarantined PowerPoint adapter owns a closed set of
+presentation operations: create, theme, slide, text, shape, line, bounded chart,
+notes, animation, transition, save, and inspect. It connects only to the exact
+approved PowerPoint HWND and saves after every effect. Bar, column, and line
+charts are rendered from PowerPoint shapes; no embedded Excel editor is opened
+or authorized. Animation permits a bounded catalog across entrance, emphasis,
+exit, and motion-path categories, while the investor deck uses restrained Fade
+and two Morph transitions.
+
+The separate verifier reads the saved PPTX ZIP/XML package and checks slide and
+object IDs, text, notes, animation targets, transitions, theme binding, and final
+slide inventory. It never trusts the adapter's success message.
+
+**Reason.** COM provides precise native application control without simulated
+mouse or keyboard input. Keeping object-model code inside one signed plugin and
+verifying package state independently preserves zero application knowledge in
+core and the v1 single-plugin graph rule.
+
+## D104 — Act ships as review-then-approve; Ideate and Assist remain inert
+
+**Decision.** D099 remains authoritative for mode selection not granting
+permission, but its Preview-only statement is superseded for Act. Act first
+classifies through the active matcher and canonical `authorize_intent()`, then
+materializes exactly one signed action plan. The manager shows every action and
+requires `Approve & run`; CLI uses the same proposal and execution functions.
+Ideate and Assist remain Preview-only.
+
+Teach retains the global ban on pointer/keyboard synthesis. A signed API-v2 Act
+adapter may call only its declared application object model; `SendInput`, cursor
+movement, and generic mouse/keyboard automation remain forbidden everywhere.
+
+**Reason.** Autonomy is a new authority boundary, not a stronger mode toggle.
+Sharing production proposal/execution functions across manager, CLI, and the
+isolated acceptance harness prevents one surface from acquiring a weaker path.

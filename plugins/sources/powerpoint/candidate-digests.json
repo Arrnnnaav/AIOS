@@ -1,6 +1,7 @@
 {
   "artifacts": {
     "intents/add_slide.json": "b977a9e62a2e9810e479bf137c92edffdec9578984399780543642856be3caa3",
+    "intents/build_investor_deck.json": "b6d82dd7a8978ca99605f1c785744f2c431810f5e73f2a8f286055f2f6cdab07",
     "intents/insert_bar_chart.json": "431b61c9ceec3575369bd9316fa6a4d1646a7c5eef936d17596f91c7bc364068",
     "intents/open_comment_editor.json": "cec291243647e9e953dc1662e8a35f43924bfc6270f8fb1e04aba65d95b0af32",
     "intents/open_normal_view.json": "785c408b1ebc481c1db3a3f8a49b4dd35cd4e8f24a6db353c834db3bb81365b6",

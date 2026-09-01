@@ -1,5 +1,5 @@
 {
-  "activation_generation": 1,
+  "activation_generation": 2,
   "intents": {
     "ADD_SLIDE": {
       "active_adoption_id": null,
@@ -7,6 +7,14 @@
       "intent": {
         "path": "intents/add_slide.json",
         "sha256": "b977a9e62a2e9810e479bf137c92edffdec9578984399780543642856be3caa3"
+      }
+    },
+    "BUILD_INVESTOR_DECK": {
+      "active_adoption_id": null,
+      "adoptions": {},
+      "intent": {
+        "path": "intents/build_investor_deck.json",
+        "sha256": "b6d82dd7a8978ca99605f1c785744f2c431810f5e73f2a8f286055f2f6cdab07"
       }
     },
     "INSERT_BAR_CHART": {

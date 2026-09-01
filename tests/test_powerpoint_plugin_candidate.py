@@ -1,4 +1,4 @@
-"""PowerPoint begins as a measured, data-only, inactive plugin candidate."""
+"""PowerPoint guided and autonomous candidates stay inactive until acceptance."""
 
 from __future__ import annotations
 
@@ -100,7 +100,13 @@ def test_each_candidate_loads_and_compiles_without_application_python(
             step.target_selector for step in graph.compiled.steps
         }
     )
-    assert not list(SOURCE_ROOT.rglob("*.py"))
+    assert {
+        path.relative_to(SOURCE_ROOT).as_posix()
+        for path in SOURCE_ROOT.rglob("*.py")
+    } == {
+        "payload/ghostcursor/adapter/powerpoint_adapter.py",
+        "payload/ghostcursor/adapter/powerpoint_verifier.py",
+    }
 
 
 def test_candidate_is_nameable_but_carries_no_execution_authority(tmp_path):
@@ -122,8 +128,10 @@ def test_candidate_is_nameable_but_carries_no_execution_authority(tmp_path):
     assert matcher.classify("add a comment in powerpoint").intent_id == "OPEN_COMMENT_EDITOR"
     assert matcher.classify("open normal view in powerpoint").intent_id == "OPEN_NORMAL_VIEW"
     assert matcher.classify("open slide sorter in powerpoint").intent_id == "OPEN_SLIDE_SORTER"
+    assert matcher.classify("build the ghostcursor investor deck in powerpoint").intent_id == "BUILD_INVESTOR_DECK"
     assert set(pack.intents) == {
         "ADD_SLIDE",
+        "BUILD_INVESTOR_DECK",
         "INSERT_BAR_CHART",
         "OPEN_COMMENT_EDITOR",
         "OPEN_NORMAL_VIEW",
@@ -144,6 +152,15 @@ def test_candidate_source_declares_only_the_powerpoint_executable():
     assert specification["applications"] == [
         {"kind": "executable", "value": "powerpnt.exe"}
     ]
-    assert "capabilities.json" not in {
+    destinations = {
         item["destination"] for item in specification["files"]
+    }
+    assert "capabilities.json" not in destinations
+    assert {"ghostcursor/action-plans.json", "ghostcursor/operations.json"} <= destinations
+    assert specification["adapter_api"] == {
+        "entrypoint": "ghostcursor/adapter/powerpoint_adapter.py",
+        "operations": "ghostcursor/operations.json",
+        "plans": "ghostcursor/action-plans.json",
+        "protocol_version": 1,
+        "verifier": "ghostcursor/adapter/powerpoint_verifier.py",
     }

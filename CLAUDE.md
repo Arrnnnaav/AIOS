@@ -152,11 +152,28 @@ closed within 100ms so the runtime authority monitor still meets D020.
 No enabled compatible plugin means no executable UI knowledge: no intent,
 plan, target, selector, action, or renderer may be proposed by either
 classifier. A vision tier may explain a screen, but cannot guide an action
-without plugin authority. Plugin v1 is data-only (`adapter_api: null`); if an
-application needs a new primitive, stop and amend the generic declarative
-grammar through a reviewed decision rather than adding application-specific
-Python. Learned observations are scoped to `(plugin_id, plugin_version)`;
-disable retains them and uninstall purges that version.
+without plugin authority. Plugin API v1 is data-only (`adapter_api: null`).
+Plugin API v2 may carry one separately signed executable adapter, one separately
+signed read-only verifier, one closed operation registry, and signed action-plan
+templates. Executable adapters are forbidden in unsigned developer mode. Core
+must never import an adapter module or learn an application's object model;
+the adapter runs out of process and receives only the already-approved graph.
+If Teach needs a new primitive, stop and amend the generic declarative grammar
+through a reviewed decision rather than adding application-specific Python.
+Learned observations are scoped to `(plugin_id, plugin_version)`; disable
+retains them and uninstall purges that version.
+
+Act authority is distinct from Teach guidance. Validate the entire bounded
+single-plugin action DAG before any effect; reject cycles, unknown operations,
+unmet preconditions, schema violations, and repeated non-idempotent effects.
+The manager must show the complete flattened plan before one explicit approval.
+Approval binds the validation digest, plugin/version, signed manifest, adapter,
+active catalog generation/digest, exact HWND/PID/executable/version, output
+path, expiry, and unattended scope. Reload authority and revalidate the exact
+target before starting the adapter and before every action. Every effect must
+receive a fresh node authorization and pass the separately signed verifier
+before the next effect. Act never overwrites an output. Unattended execution is
+LOW-risk only and its output must remain under an explicitly owned root.
 
 Task graphs compose only capabilities declared by one enabled plugin/version.
 A graph node may name a capability and bounded scalar parameters; it may never
@@ -225,12 +242,17 @@ flattened plan; a distinct second `Start plan` action is required before
 has completed—never replay a side-effecting completed prefix.
 
 Interaction modes are canonical product contracts in `ghostcursor.interaction`,
-not permissions. The manager currently ships Teach and Plan. Ideate, Assist,
-and Act are visibly marked Preview and must not produce a plan, target, overlay,
-or action. Plan remains inert until its separate `Start plan` confirmation.
-Adding executable behavior to Act requires a separately reviewed authority and
-input-synthesis decision; selecting a mode can never bypass plugin capability,
-`authorize_intent()`, fresh binding, or verification.
+not permissions. Teach and Plan retain their existing contracts. Act may run
+only signed API-v2 action plans through the D100-D104 authority boundary; its
+first action shows an inert complete proposal and its second action approves
+that exact graph once. Ideate and Assist remain Preview and must not produce an
+executable plan, target, overlay, or action. Selecting a mode never grants
+authority or bypasses plugin state, `authorize_intent()`, fresh target binding,
+whole-graph validation, per-action authorization, or independent verification.
+Teach and its acceptance tools remain forbidden from moving the pointer,
+typing, or importing input-synthesis APIs. A signed Act adapter may call only
+the application object model declared by its signed operation registry; it may
+not call `SendInput`, cursor APIs, or generic mouse/keyboard automation.
 
 The VS Code workflow gates and the Ask behavioral gate are closed. Their
 acceptance evidence lives in `docs/evidence/` and D048-D057; do not restate run

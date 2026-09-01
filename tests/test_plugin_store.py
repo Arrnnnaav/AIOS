@@ -12,6 +12,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from ghostcursor.plugins.store import PluginEffectiveState, PluginStore, PluginStoreError
+from ghostcursor.action import OPERATION_ARTIFACT_PATH
 from ghostcursor.task_graph import CAPABILITY_ARTIFACT_PATH
 
 
@@ -43,6 +44,7 @@ def _bundle(
     minimum="0.1.0",
     maximum="1.0.0",
     files=None,
+    adapter_api=None,
 ):
     files = files or {
         "ghostcursor/packs/index.json": b'{"packs":[],"schema_version":2}\n'
@@ -51,14 +53,14 @@ def _bundle(
         "schema_version": 1,
         "plugin_id": plugin_id,
         "version": version,
-        "plugin_api_version": 1,
+        "plugin_api_version": 2 if adapter_api else 1,
         "core_compatibility": {
             "minimum": minimum,
             "maximum_exclusive": maximum,
         },
         "applications": [{"kind": "executable", "value": executable}],
         "signing_key_id": "release",
-        "adapter_api": None,
+        "adapter_api": adapter_api,
         "files": {name: hashlib.sha256(raw).hexdigest() for name, raw in files.items()},
     }
     raw = json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode()
@@ -121,6 +123,31 @@ def _capabilities(*, intent_id="ADD_WORKSHEET", goal="add a worksheet in excel")
     return json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
 
 
+def _powerpoint_adapter_files():
+    root = (
+        Path(__file__).resolve().parent.parent
+        / "plugins"
+        / "sources"
+        / "powerpoint"
+        / "payload"
+        / "ghostcursor"
+    )
+    return {
+        "ghostcursor/packs/index.json": b'{"packs":[],"schema_version":2}',
+        "ghostcursor/adapter/powerpoint_adapter.py": (
+            root / "adapter" / "powerpoint_adapter.py"
+        ).read_bytes(),
+        "ghostcursor/adapter/powerpoint_verifier.py": (
+            root / "adapter" / "powerpoint_verifier.py"
+        ).read_bytes(),
+        "ghostcursor/action-plans.json": (root / "action-plans.json").read_bytes(),
+        "ghostcursor/action-plans/build-investor-deck-v1.json": (
+            root / "action-plans" / "build-investor-deck-v1.json"
+        ).read_bytes(),
+        OPERATION_ARTIFACT_PATH: (root / "operations.json").read_bytes(),
+    }
+
+
 def test_install_enable_disable_and_uninstall_are_distinct(tmp_path):
     private, trusted = _key()
     bundle = _bundle(tmp_path, private)
@@ -133,6 +160,36 @@ def test_install_enable_disable_and_uninstall_are_distinct(tmp_path):
     assert store.list_installed()[0].state is PluginEffectiveState.DISABLED
     store.uninstall("ghostcursor.one", "1.0.0")
     assert store.list_installed() == ()
+
+
+def test_composition_reverifies_and_exposes_both_signed_adapter_processes(tmp_path):
+    private, trusted = _key()
+    files = _powerpoint_adapter_files()
+    adapter_api = {
+        "entrypoint": "ghostcursor/adapter/powerpoint_adapter.py",
+        "operations": OPERATION_ARTIFACT_PATH,
+        "plans": "ghostcursor/action-plans.json",
+        "protocol_version": 1,
+        "verifier": "ghostcursor/adapter/powerpoint_verifier.py",
+    }
+    bundle = _bundle(
+        tmp_path,
+        private,
+        plugin_id="ghostcursor.powerpoint",
+        executable="powerpnt.exe",
+        files=files,
+        adapter_api=adapter_api,
+    )
+    store = PluginStore(tmp_path / "store", trusted_keys=trusted, core_version="0.1.0")
+    store.install(bundle)
+    store.enable("ghostcursor.powerpoint", "1.0.0")
+
+    descriptor = store.load_composition_context().adapters["ghostcursor.powerpoint"]
+
+    assert descriptor.entrypoint.name == "powerpoint_adapter.py"
+    assert descriptor.verifier.name == "powerpoint_verifier.py"
+    assert descriptor.adapter_sha256 == hashlib.sha256(files[adapter_api["entrypoint"]]).hexdigest()
+    assert descriptor.verifier_sha256 == hashlib.sha256(files[adapter_api["verifier"]]).hexdigest()
 
 
 def test_core_upgrade_preserves_desired_enablement_as_blocked(tmp_path):

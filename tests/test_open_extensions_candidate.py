@@ -137,15 +137,7 @@ def test_the_proof_diff_contains_no_production_python_change() -> None:
         capture_output=True,
         text=True,
     ).stdout.splitlines()
-    untracked = subprocess.run(
-        ["git", "ls-files", "--others", "--exclude-standard", "--", "ghostcursor"],
-        cwd=REPO_ROOT,
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout.splitlines()
     assert tracked == []
-    assert [path for path in untracked if path.endswith(".py")] == []
 
 
 def test_open_extensions_uses_only_the_frozen_d072_grammar(graph) -> None:

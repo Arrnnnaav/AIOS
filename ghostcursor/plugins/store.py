@@ -8,7 +8,7 @@ import os
 import shutil
 import uuid
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
@@ -17,8 +17,15 @@ from typing import Any, Iterator, Mapping
 import win32api
 import win32event
 
-from ghostcursor.plugins.bundle import BundleVerificationError, VerifiedBundle, verify_bundle
-from ghostcursor.plugins.compatibility import CompatibilityResult, check_core_compatibility
+from ghostcursor.plugins.bundle import (
+    BundleVerificationError,
+    VerifiedBundle,
+    verify_bundle,
+)
+from ghostcursor.plugins.compatibility import (
+    CompatibilityResult,
+    check_core_compatibility,
+)
 
 
 class PluginStoreError(ValueError):
@@ -64,6 +71,23 @@ class CompositionContext:
 
     catalog: Any
     registries: Mapping[str, Any]
+    adapters: Mapping[str, Any] = field(default_factory=lambda: MappingProxyType({}))
+
+
+@dataclass(frozen=True)
+class AdapterDescriptor:
+    """One re-verified first-party adapter bound to signed payload bytes."""
+
+    plugin_id: str
+    plugin_version: str
+    manifest_sha256: str
+    payload_root: Path
+    entrypoint: Path
+    adapter_sha256: str
+    verifier: Path
+    verifier_sha256: str
+    registry: Any
+    plans: Mapping[str, Any]
 
 
 def _strict_json(raw: bytes, label: str) -> dict[str, Any]:
@@ -171,7 +195,9 @@ class PluginStore:
         path = self.root / name
         raw = path.read_bytes()
         value = _strict_json(raw, name)
-        if value.get("schema_version") != 1 or not isinstance(value.get("plugins"), dict):
+        if value.get("schema_version") != 1 or not isinstance(
+            value.get("plugins"), dict
+        ):
             raise PluginStoreError(f"{name} has an invalid schema")
         return value, raw
 
@@ -191,7 +217,9 @@ class PluginStore:
         try:
             entry = installed["plugins"][plugin_id]["versions"][version]
         except (KeyError, TypeError) as exc:
-            raise PluginStoreError(f"plugin {plugin_id} {version} is not installed") from exc
+            raise PluginStoreError(
+                f"plugin {plugin_id} {version} is not installed"
+            ) from exc
         if not isinstance(entry, dict) or set(entry) != {"manifest_sha256", "path"}:
             raise PluginStoreError("installed plugin entry is malformed")
         return entry
@@ -218,11 +246,17 @@ class PluginStore:
                 require_compatible=False,
             )
         except (BundleVerificationError, OSError) as exc:
-            raise PluginStoreError(f"installed plugin failed verification: {exc}") from exc
+            raise PluginStoreError(
+                f"installed plugin failed verification: {exc}"
+            ) from exc
         if bundle.manifest_sha256 != entry["manifest_sha256"]:
-            raise PluginStoreError("installed bundle digest disagrees with installed index")
+            raise PluginStoreError(
+                "installed bundle digest disagrees with installed index"
+            )
         if bundle.plugin_id != plugin_id or bundle.version != version:
-            raise PluginStoreError("installed bundle identity disagrees with installed index")
+            raise PluginStoreError(
+                "installed bundle identity disagrees with installed index"
+            )
         return bundle
 
     def _payload_root(self, bundle: VerifiedBundle) -> Path:
@@ -276,17 +310,23 @@ class PluginStore:
             if path.is_file():
                 name = path.relative_to(root).as_posix()
                 if name.casefold() in folded:
-                    raise PluginStoreError("installed plugin payload has case-colliding files")
+                    raise PluginStoreError(
+                        "installed plugin payload has case-colliding files"
+                    )
                 folded.add(name.casefold())
                 actual[name] = path
         if set(actual) != set(bundle.files):
-            raise PluginStoreError("installed plugin payload disagrees with signed inventory")
+            raise PluginStoreError(
+                "installed plugin payload disagrees with signed inventory"
+            )
         for name, expected in bundle.files.items():
             if actual[name].read_bytes() != expected:
                 raise PluginStoreError(f"installed plugin payload changed: {name}")
         index = root / "ghostcursor" / "packs" / "index.json"
         if not index.is_file():
-            raise PluginStoreError("plugin payload is missing ghostcursor/packs/index.json")
+            raise PluginStoreError(
+                "plugin payload is missing ghostcursor/packs/index.json"
+            )
         return root
 
     def _bundle_catalog(self, bundle: VerifiedBundle):
@@ -360,7 +400,9 @@ class PluginStore:
             signed=bundle.signed,
         )
 
-    def _prospective_plugins(self, active: Mapping[str, Any]) -> dict[str, VerifiedBundle]:
+    def _prospective_plugins(
+        self, active: Mapping[str, Any]
+    ) -> dict[str, VerifiedBundle]:
         bundles: dict[str, VerifiedBundle] = {}
         identities: dict[tuple[str, str], str] = {}
         for plugin_id, ref in active.items():
@@ -368,7 +410,9 @@ class PluginStore:
                 raise PluginStoreError("active plugin entry is malformed")
             bundle = self._installed_bundle(plugin_id, ref["version"])
             if bundle.manifest_sha256 != ref["manifest_sha256"]:
-                raise PluginStoreError("active plugin digest disagrees with installed bundle")
+                raise PluginStoreError(
+                    "active plugin digest disagrees with installed bundle"
+                )
             compatibility = check_core_compatibility(bundle.manifest, self.core_version)
             if not compatibility.compatible:
                 continue
@@ -478,6 +522,58 @@ class PluginStore:
             registries[plugin_id] = registry
         return MappingProxyType(registries)
 
+    def _adapter_descriptors(
+        self, bundles: Mapping[str, VerifiedBundle]
+    ) -> Mapping[str, AdapterDescriptor]:
+        """Load signed executable adapters from the same store transaction.
+
+        The payload is byte-reverified on every composition load. Returning a
+        path without that recheck would let an extracted adapter drift while
+        its signed bundle continued to look healthy.
+        """
+
+        from ghostcursor.action import load_operation_registry
+        from ghostcursor.action_plans import load_action_plan_templates
+
+        adapters: dict[str, AdapterDescriptor] = {}
+        for plugin_id, bundle in bundles.items():
+            adapter = bundle.manifest["adapter_api"]
+            if adapter is None:
+                continue
+            root = self._verify_payload(bundle)
+            entrypoint = root / Path(*PurePosixPath(adapter["entrypoint"]).parts)
+            operations = root / Path(*PurePosixPath(adapter["operations"]).parts)
+            verifier = root / Path(*PurePosixPath(adapter["verifier"]).parts)
+            entrypoint_bytes = entrypoint.read_bytes()
+            verifier_bytes = verifier.read_bytes()
+            adapter_sha256 = hashlib.sha256(entrypoint_bytes).hexdigest()
+            registry = load_operation_registry(
+                operations.read_bytes(),
+                plugin_id=plugin_id,
+                plugin_version=bundle.version,
+                adapter_sha256=adapter_sha256,
+            )
+            plans = load_action_plan_templates(
+                (root / Path(*PurePosixPath(adapter["plans"]).parts)).read_bytes(),
+                bundle.files,
+                plugin_id=plugin_id,
+                plugin_version=bundle.version,
+                adapter_sha256=adapter_sha256,
+            )
+            adapters[plugin_id] = AdapterDescriptor(
+                plugin_id=plugin_id,
+                plugin_version=bundle.version,
+                manifest_sha256=bundle.manifest_sha256,
+                payload_root=root,
+                entrypoint=entrypoint,
+                adapter_sha256=adapter_sha256,
+                verifier=verifier,
+                verifier_sha256=hashlib.sha256(verifier_bytes).hexdigest(),
+                registry=registry,
+                plans=plans,
+            )
+        return MappingProxyType(adapters)
+
     def enable(self, plugin_id: str, version: str) -> InstalledPlugin:
         with self._transaction():
             return self._enable(plugin_id, version)
@@ -545,7 +641,9 @@ class PluginStore:
         try:
             bundle_path.relative_to(install_root)
         except ValueError as exc:
-            raise PluginStoreError("refusing to remove a path outside installed root") from exc
+            raise PluginStoreError(
+                "refusing to remove a path outside installed root"
+            ) from exc
         version_root = bundle_path.parent
         if version_root.exists():
             shutil.rmtree(version_root)
@@ -581,7 +679,9 @@ class PluginStore:
             versions = installed["plugins"][plugin_id]["versions"]
             for version in sorted(versions):
                 bundle = self._installed_bundle(plugin_id, version)
-                compatibility = check_core_compatibility(bundle.manifest, self.core_version)
+                compatibility = check_core_compatibility(
+                    bundle.manifest, self.core_version
+                )
                 desired = active["plugins"].get(plugin_id)
                 if desired is None or desired.get("version") != version:
                     state = PluginEffectiveState.DISABLED
@@ -676,4 +776,9 @@ class PluginStore:
                 generation=active.generation,
                 active_index_sha256=active.active_index_sha256,
             )
-            return CompositionContext(catalog=catalog, registries=registries)
+            adapters = self._adapter_descriptors(active.plugins)
+            return CompositionContext(
+                catalog=catalog,
+                registries=registries,
+                adapters=adapters,
+            )

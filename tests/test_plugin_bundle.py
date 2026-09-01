@@ -12,6 +12,8 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from ghostcursor.plugins.bundle import BundleVerificationError, verify_bundle
 from ghostcursor.plugins.compatibility import check_core_compatibility
+from ghostcursor.action import OPERATION_ARTIFACT_PATH
+from ghostcursor.action_plans import ACTION_PLAN_INDEX_PATH
 from ghostcursor.task_graph import CAPABILITY_ARTIFACT_PATH
 
 
@@ -63,6 +65,92 @@ def _write_bundle(tmp_path: Path, *, manifest=None, files=None, sign=True, extra
         for name, raw in extras or []:
             archive.writestr(name, raw)
     return path, trusted
+
+
+def _v2_files(*, adapter: bytes | None = None, operations: bytes | None = None):
+    adapter = adapter or b"print('signed adapter')\n"
+    adapter_sha = hashlib.sha256(adapter).hexdigest()
+    operation_value = {
+        "operations": {
+            "test.create": {
+                "effect_key_fields": ["name"],
+                "parameters": {
+                    "name": {
+                        "allowed_values": [],
+                        "kind": "string",
+                        "required": True,
+                    }
+                },
+                "postconditions": ["document.created"],
+                "preconditions": [],
+                "risk": "low",
+                "safe_to_repeat": False,
+                "timeout_s": 5,
+            }
+        },
+        "plugin_id": "ghostcursor.test",
+        "plugin_version": "1.0.0",
+        "schema_version": 1,
+    }
+    operations = operations or json.dumps(
+        operation_value, sort_keys=True, separators=(",", ":")
+    ).encode()
+    plan_path = "ghostcursor/action-plans/create-test.json"
+    plan = json.dumps(
+        {
+            "edges": [],
+            "nodes": [
+                {
+                    "node_id": "create",
+                    "operation_id": "test.create",
+                    "parameters": {"name": {"$parameter": "name"}},
+                }
+            ],
+            "plan_id": "create-test",
+            "schema_version": 1,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode()
+    plans = json.dumps(
+        {
+            "plans": {
+                "create-test": {
+                    "intent_id": "CREATE_TEST",
+                    "parameters": {"name": {"kind": "string", "required": True}},
+                    "path": plan_path,
+                    "sha256": hashlib.sha256(plan).hexdigest(),
+                }
+            },
+            "plugin_id": "ghostcursor.test",
+            "plugin_version": "1.0.0",
+            "schema_version": 1,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode()
+    return {
+        "ghostcursor/packs/index.json": b'{"packs":[],"schema_version":2}',
+        "ghostcursor/adapter/test_adapter.py": adapter,
+        "ghostcursor/adapter/test_verifier.py": b"print('signed verifier')\n",
+        ACTION_PLAN_INDEX_PATH: plans,
+        plan_path: plan,
+        OPERATION_ARTIFACT_PATH: operations,
+    }, adapter_sha
+
+
+def _v2_manifest(files):
+    return _manifest(
+        files,
+        plugin_api_version=2,
+        adapter_api={
+            "entrypoint": "ghostcursor/adapter/test_adapter.py",
+            "operations": OPERATION_ARTIFACT_PATH,
+            "plans": ACTION_PLAN_INDEX_PATH,
+            "protocol_version": 1,
+            "verifier": "ghostcursor/adapter/test_verifier.py",
+        },
+    )
 
 
 def test_compatibility_is_a_half_open_semantic_version_range():
@@ -124,6 +212,67 @@ def test_unsigned_bundles_exist_only_in_explicit_developer_mode(tmp_path):
         core_version=CORE_VERSION,
         developer_mode=True,
     ).signed is False
+
+
+def test_a_signed_v2_bundle_binds_adapter_and_closed_operation_registry(tmp_path):
+    files, adapter_sha = _v2_files()
+    path, trusted = _write_bundle(
+        tmp_path, files=files, manifest=_v2_manifest(files)
+    )
+
+    bundle = verify_bundle(path, trusted_keys=trusted, core_version=CORE_VERSION)
+
+    assert bundle.manifest["plugin_api_version"] == 2
+    assert hashlib.sha256(bundle.files["ghostcursor/adapter/test_adapter.py"]).hexdigest() == adapter_sha
+
+
+def test_an_executable_adapter_is_forbidden_even_in_unsigned_developer_mode(tmp_path):
+    files, _ = _v2_files()
+    manifest = _v2_manifest(files)
+    manifest["signing_key_id"] = None
+    path, trusted = _write_bundle(
+        tmp_path, files=files, manifest=manifest, sign=False
+    )
+
+    with pytest.raises(BundleVerificationError, match="adapters must be signed"):
+        verify_bundle(
+            path,
+            trusted_keys=trusted,
+            core_version=CORE_VERSION,
+            developer_mode=True,
+        )
+
+
+@pytest.mark.parametrize(
+    "missing",
+    [
+        "ghostcursor/adapter/test_adapter.py",
+        "ghostcursor/adapter/test_verifier.py",
+        ACTION_PLAN_INDEX_PATH,
+        OPERATION_ARTIFACT_PATH,
+    ],
+)
+def test_v2_manifest_requires_both_signed_adapter_artifacts(tmp_path, missing):
+    files, _ = _v2_files()
+    manifest = _v2_manifest(files)
+    del manifest["files"][missing]
+    path, trusted = _write_bundle(tmp_path, files=files, manifest=manifest)
+
+    with pytest.raises(BundleVerificationError, match="missing required file"):
+        verify_bundle(path, trusted_keys=trusted, core_version=CORE_VERSION)
+
+
+def test_adapter_registry_identity_and_adapter_bytes_are_independently_bound(tmp_path):
+    files, _ = _v2_files(adapter=b"print('before')\n")
+    manifest = _v2_manifest(files)
+    changed = dict(files)
+    changed["ghostcursor/adapter/test_adapter.py"] = b"print('after')\n"
+    path, trusted = _write_bundle(
+        tmp_path, files=changed, manifest=manifest
+    )
+
+    with pytest.raises(BundleVerificationError, match="digest mismatch"):
+        verify_bundle(path, trusted_keys=trusted, core_version=CORE_VERSION)
 
 
 def test_an_incompatible_bundle_is_rejected(tmp_path):

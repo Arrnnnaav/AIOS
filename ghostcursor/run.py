@@ -27,7 +27,6 @@ machine.
 
 import argparse
 import os
-import re
 import time
 import uuid
 from pathlib import Path
@@ -42,7 +41,7 @@ import win32gui
 from ghostcursor.overlay import window
 from ghostcursor.overlay import bar
 from ghostcursor.perception import uia
-from ghostcursor.perception.warmup import DEFAULT_WARMUP_BUDGET_S, WarmUp
+from ghostcursor.perception.warmup import DEFAULT_WARMUP_BUDGET_S
 from ghostcursor.reasoning.schema import Step, VerificationKind
 from ghostcursor.session import (
     SessionCommand,
@@ -325,9 +324,7 @@ def confirmation_focus_is_safe(target_hwnd: int, bar_hwnd: int | None = None) ->
     return bool(target_hwnd) and foreground == target_hwnd and foreground != bar_hwnd
 
 
-def space_confirmation_requested(
-    target_hwnd: int, bar_hwnd: int | None = None
-) -> bool:
+def space_confirmation_requested(target_hwnd: int, bar_hwnd: int | None = None) -> bool:
     """Read one safe, explicit confirmation from the live desktop."""
     return confirmation_focus_is_safe(target_hwnd, bar_hwnd) and key_was_pressed(
         win32con.VK_SPACE, key_state=win32api.GetAsyncKeyState
@@ -429,7 +426,10 @@ class CompiledTourControls:
             labels[SessionStatus.GUIDING] = self._step_text
         if not self._stop_requested:
             self._bar.set_status(
-                self.hwnd, labels.get(snapshot.status, snapshot.status.value.replace("_", " ").title())
+                self.hwnd,
+                labels.get(
+                    snapshot.status, snapshot.status.value.replace("_", " ").title()
+                ),
             )
 
     def should_abort(self) -> bool:
@@ -452,6 +452,7 @@ def create_compiled_tour_controls() -> CompiledTourControls:
     except Exception:
         bar.destroy_bar_window(hwnd)
         raise
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Ghost Cursor guided UI assistant")
@@ -480,6 +481,26 @@ def main() -> int:
         action="store_true",
         help="open the native goal, session, plugin, and recovery manager",
     )
+    parser.add_argument(
+        "--mode",
+        choices=("teach", "act"),
+        default="teach",
+        help="teach guides the user; act executes one approved signed action plan",
+    )
+    parser.add_argument("--output", type=Path, help="new output artifact for Act mode")
+    parser.add_argument(
+        "--approve", action="store_true", help="approve the complete Act plan once"
+    )
+    parser.add_argument(
+        "--unattended",
+        action="store_true",
+        help="run low-risk Act actions under an owned output root",
+    )
+    parser.add_argument(
+        "--owned-output-root",
+        type=Path,
+        help="required containment root for unattended Act",
+    )
     args = parser.parse_args()
 
     if args.manager:
@@ -488,6 +509,21 @@ def main() -> int:
         return launch_manager()
 
     if args.goal:
+        if args.mode == "act":
+            if args.output is None or args.target_hwnd is None:
+                parser.error("Act mode requires --output and --target-hwnd")
+            if args.unattended and args.owned_output_root is None:
+                parser.error("unattended Act requires --owned-output-root")
+            from ghostcursor.act_cli import run_act_goal
+
+            return run_act_goal(
+                args.goal,
+                output_path=args.output,
+                target_hwnd=args.target_hwnd,
+                approved=args.approve,
+                unattended=args.unattended,
+                owned_output_root=args.owned_output_root,
+            )
         from ghostcursor.reasoning.planner import PlanStatus, plan_compiled_goal
 
         result = plan_compiled_goal(
@@ -495,10 +531,16 @@ def main() -> int:
             target_title_re=args.target,
             target_hwnd=args.target_hwnd,
         )
-        print(f"Planner: {result.status.value} ({result.confidence:.2f}) — {result.explanation}")
+        print(
+            f"Planner: {result.status.value} ({result.confidence:.2f}) — {result.explanation}"
+        )
         if result.plan is None or result.intent_id is None:
             return 2
-        if result.status not in (PlanStatus.SUPPORTED, PlanStatus.MODEL_UNAVAILABLE_FALLBACK, PlanStatus.INVALID_MODEL_OUTPUT):
+        if result.status not in (
+            PlanStatus.SUPPORTED,
+            PlanStatus.MODEL_UNAVAILABLE_FALLBACK,
+            PlanStatus.INVALID_MODEL_OUTPUT,
+        ):
             return 2
         return run_tour_for_workflow(
             result.plan,
@@ -844,6 +886,7 @@ def _run_compiled_tour(
             observe, on_grounding, stop_perception = perception.start()
 
         try:
+
             def _publish_session(snapshot):
                 if controls is not None:
                     controls.report_session(snapshot)
@@ -870,13 +913,9 @@ def _run_compiled_tour(
                 sleeper=sleeper,
                 seconds=seconds,
                 should_abort=(
-                    controls.should_abort
-                    if controls is not None
-                    else escape_pressed
+                    controls.should_abort if controls is not None else escape_pressed
                 ),
-                should_pause=(
-                    controls.should_pause if controls is not None else None
-                ),
+                should_pause=(controls.should_pause if controls is not None else None),
                 authority_status=authority_status,
                 confirmation_requested=lambda: space_confirmation_requested(
                     workflow.target.hwnd,

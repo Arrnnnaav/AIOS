@@ -1,0 +1,37 @@
+{
+  "canonical_target": null,
+  "intent_id": "BUILD_INVESTOR_DECK",
+  "rules": [
+    {
+      "phrases": [
+        "build the ghostcursor investor deck in powerpoint",
+        "create the ghostcursor investor presentation in powerpoint"
+      ],
+      "tier": "exact"
+    },
+    {
+      "all_of": [
+        {
+          "any_of": [
+            {"token": "build"},
+            {"token": "create"},
+            {"token": "make"}
+          ]
+        },
+        {
+          "any_of": [
+            {"token": "deck"},
+            {"token": "presentation"}
+          ]
+        },
+        {
+          "any_of": [
+            {"alias": "powerpoint_names"}
+          ]
+        }
+      ],
+      "tier": "heuristic"
+    }
+  ],
+  "schema_version": 2
+}

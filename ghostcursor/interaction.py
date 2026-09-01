@@ -54,8 +54,8 @@ MODE_CONTRACTS = {
     ),
     InteractionMode.ACT: ModeContract(
         "Act",
-        "Execute approved capabilities with permission checks and verification.",
-        False,
+        "Review one complete signed plan, approve it once, then let GhostCursor execute and verify it.",
+        True,
         True,
     ),
 }
@@ -83,3 +83,7 @@ def mode_can_start_guidance(mode: InteractionMode) -> bool:
 
 def mode_can_propose_plan(mode: InteractionMode) -> bool:
     return mode is InteractionMode.PLAN and mode_contract(mode).available
+
+
+def mode_can_start_act(mode: InteractionMode) -> bool:
+    return mode is InteractionMode.ACT and mode_contract(mode).available

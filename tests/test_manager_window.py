@@ -1,9 +1,12 @@
 """Native manager window checks. Run alone under D025."""
 
+from pathlib import Path
+
 import win32con
 import win32gui
 
 from ghostcursor.manager import (
+    ActProposalRequest,
     ID_DETAILS,
     ID_COMPLEX,
     ID_GOAL,
@@ -74,15 +77,21 @@ def test_manager_is_a_normal_non_topmost_window_and_renders_snapshot_truth():
         assert win32gui.GetWindowText(manager._controls[ID_GOAL]) == "Open a folder"
         assert not win32gui.IsWindowEnabled(manager._controls[ID_GOAL])
         assert win32gui.GetWindowText(manager._controls[ID_PROGRESS]) == "Step 1 of 2"
-        assert win32gui.GetWindowText(manager._controls[ID_INSTRUCTION]) == "Click Open Folder."
+        assert (
+            win32gui.GetWindowText(manager._controls[ID_INSTRUCTION])
+            == "Click Open Folder."
+        )
         assert "Slide Title  GhostCursor" in win32gui.GetWindowText(
             manager._controls[ID_DETAILS]
         )
         assert win32gui.IsWindowEnabled(manager._controls[ID_PAUSE])
         assert win32gui.IsWindowEnabled(manager._controls[ID_STOP])
-        assert win32gui.SendMessage(
-            manager._controls[ID_TIMELINE], win32con.LB_GETCOUNT, 0, 0
-        ) == 2
+        assert (
+            win32gui.SendMessage(
+                manager._controls[ID_TIMELINE], win32con.LB_GETCOUNT, 0, 0
+            )
+            == 2
+        )
     finally:
         manager.dispose()
 
@@ -110,7 +119,7 @@ def test_manager_plugin_rows_render_the_store_reported_state_verbatim():
         manager.dispose()
 
 
-def test_manager_mode_selector_is_truthful_about_shipped_and_preview_modes():
+def test_manager_mode_selector_exposes_act_as_review_then_approve():
     manager = NativeManagerWindow()
     try:
         assert win32gui.SendMessage(
@@ -131,23 +140,54 @@ def test_manager_mode_selector_is_truthful_about_shipped_and_preview_modes():
                 ),
             )
         )
-        win32gui.SendMessage(
-            manager._controls[ID_PLUGINS], win32con.LB_SETCURSEL, 0, 0
-        )
+        win32gui.SendMessage(manager._controls[ID_PLUGINS], win32con.LB_SETCURSEL, 0, 0)
         _choose_mode(manager, InteractionMode.ACT)
 
-        assert "Act is a preview" == win32gui.GetWindowText(
-            manager._controls[ID_STATUS]
-        )
-        assert "Execute approved capabilities" in win32gui.GetWindowText(
+        assert "Ready" == win32gui.GetWindowText(manager._controls[ID_STATUS])
+        assert "Review one complete signed plan" in win32gui.GetWindowText(
             manager._controls[ID_MODE_NOTE]
         )
-        assert not win32gui.IsWindowEnabled(manager._controls[ID_START])
+        assert win32gui.IsWindowEnabled(manager._controls[ID_START])
         assert not win32gui.IsWindowEnabled(manager._controls[ID_COMPLEX])
         win32gui.SetWindowText(manager._controls[ID_GOAL], "Do this on your own")
         manager._on_command(ID_START)
-        manager._on_command(ID_COMPLEX)
-        assert manager.take_request() is None
+        request = manager.take_request()
+        assert request.goal == "Do this on your own"
+        assert request.output_path.suffix == ".pptx"
+    finally:
+        manager.dispose()
+
+
+def test_terminal_act_result_cannot_replay_the_previous_approval():
+    from types import SimpleNamespace
+
+    manager = NativeManagerWindow()
+    try:
+        _choose_mode(manager, InteractionMode.ACT)
+        win32gui.SetWindowText(manager._controls[ID_GOAL], "Build an investor deck")
+        manager.show_act_proposal(
+            "Build an investor deck",
+            SimpleNamespace(
+                summary="Build the reviewed deck",
+                graph=SimpleNamespace(nodes=()),
+                steps=("Create the presentation", "Save and verify it"),
+            ),
+        )
+        manager.show_act_result(
+            SimpleNamespace(
+                completed=True,
+                completed_node_ids=("save",),
+                detail="saved and verified",
+                code=SimpleNamespace(value="completed"),
+                output_path=Path("deck.pptx"),
+            )
+        )
+
+        manager._on_command(ID_START)
+        request = manager.take_request()
+        assert isinstance(request, ActProposalRequest)
+        assert request.goal == "Build an investor deck"
+        assert request.output_path.suffix == ".pptx"
     finally:
         manager.dispose()
 
@@ -217,9 +257,12 @@ def test_complex_goal_requires_plugin_selection_then_a_second_explicit_start():
 
         manager.show_task_proposal("Build an investor deck", proposal)
         assert win32gui.GetWindowText(manager._controls[ID_COMPLEX]) == "Start plan"
-        assert win32gui.SendMessage(
-            manager._controls[ID_TIMELINE], win32con.LB_GETCOUNT, 0, 0
-        ) == 2
+        assert (
+            win32gui.SendMessage(
+                manager._controls[ID_TIMELINE], win32con.LB_GETCOUNT, 0, 0
+            )
+            == 2
+        )
         assert manager.take_request() is None
 
         manager._on_command(ID_COMPLEX)

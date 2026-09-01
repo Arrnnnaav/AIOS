@@ -175,6 +175,17 @@ flowchart LR
   declarative `window_descendants` selectors. Both passed 3/3 human desktop
   acceptance on Excel `16.0.20326.20112`; no Excel-specific production Python
   or executable adapter exists.
+- Act mode now has a distinct signed execution boundary. Plugin API v2 binds a
+  closed operation registry, signed action-plan templates, one out-of-process
+  executable adapter, and one separately signed read-only verifier. The core
+  validates the whole DAG, shows the flattened proposal, binds one approval to
+  the exact catalog/adapter/target/output, then reauthorizes and independently
+  verifies every effect. Teach still never synthesizes input.
+- A quarantined PowerPoint API-v2 candidate declaratively defines a complete
+  10-slide investor-deck plan plus bounded shape, text, chart, notes, animation,
+  transition, save, and inspection operations. Application-specific COM code
+  exists only inside the signed adapter payload; no PowerPoint object-model
+  knowledge was added to core.
 - Synthetic Export is one of six active workflows and the controlled fixture
   used by the no-action model and pixel gates.
 - The logging-only foreground watcher matches installed packs without starting
@@ -184,9 +195,11 @@ flowchart LR
 
 ### Remaining implementation scope
 
-1. Add more reviewed declarative workflows through quarantine, acceptance,
+1. Complete external signing and isolated live acceptance for the PowerPoint
+   Act candidate, then activate only the exact accepted bytes.
+2. Add more reviewed declarative workflows through quarantine, acceptance,
    content-addressed installation, and atomic activation.
-2. Add a last-resort VLM pointing path only after
+3. Add a last-resort VLM pointing path only after
    UIA and OCR fail, preserving the existing provenance and inferred display
    safety rules.
 
@@ -196,8 +209,8 @@ flowchart LR
 - Pack versioning, refresh, licensing, and offline distribution decisions.
 - Installer/packaging, likely the deferred Tauri or equivalent distribution
   layer.
-- Broader AIOS phases: onboarding, support, collaboration, and operation. These
-  are not part of the current Ghost Cursor implementation.
+- Broader AIOS phases: onboarding, support, collaboration, and richer operation.
+  The first bounded local Act slice is implemented; general computer use is not.
 
 ### Known follow-ups and risks
 
