@@ -469,22 +469,25 @@ def _read_target(element, module, control_type, requested_name, match_count):
 def list_candidates(hwnd: int, control_type: str) -> list[dict[str, Any]]:
     """Enumerate one window's controls of one type, with their patterns.
 
-    Discovery, not acceptance. The accessible name of Excel's sheet-insert
-    control has not been measured on this build, and putting a guessed name in
-    a signed selector is how a recipe ends up pointed at nothing. Run this
-    first and read the real name off the desktop.
+    Discovery, not acceptance. Excel's accessible name for its sheet-insert
+    control was measured here rather than guessed, and the guesses would have
+    been wrong: it is `Add Sheet`, not "New sheet" or "Insert Worksheet".
+    Putting an invented name in a signed selector points a recipe at nothing.
+
+    Uses the same provider-side FindAll the action path uses. An earlier
+    version walked the tree with pywinauto and reported 3 Buttons where the
+    provider reports 28 -- `Add Sheet` among the missing ones.
     """
 
-    from ghostcursor.perception.uia import control_type_walk
+    from ghostcursor.perception.uia import provider_type_query_for
 
     _automation, module = _automation_and_module()
     found: list[dict[str, Any]] = []
-    for control in control_type_walk(hwnd, control_type):
-        info = getattr(control, "element_info", None)
-        raw = getattr(info, "element", None)
-        if raw is None:
+    for raw in provider_type_query_for(hwnd, control_type):
+        try:
+            target = _read_target(raw, module, control_type, "", 1)
+        except Exception:  # noqa: BLE001 - an unreadable control is not a finding
             continue
-        target = _read_target(raw, module, control_type, "", 1)
         found.append(
             {
                 "automation_id": target.automation_id,

@@ -805,6 +805,40 @@ _CONTROL_TYPE_IDS = {
 }
 
 
+def provider_type_query_for(hwnd: int, control_type: str):
+    """Provider-side **FindAll** for every control of one type in one window.
+
+    Discovery only -- a selector still names its control. It exists because a
+    pywinauto ``descendants(control_type=...)`` walk and a provider FindAll do
+    not agree about what a window contains: measured on Excel
+    16.0 (`docs/evidence/act-phase-b-uia-feasibility.md`), the walk reported 3
+    Buttons and this reported 28, and the one the proof needed -- `Add Sheet`
+    -- was only in the second. A discovery tool that cannot see a control the
+    action path can act on will send an author looking for a name that is
+    right there.
+
+    Shares the scope, the reviewed control-type ids, and the FindAll strategy
+    with `provider_query_for` deliberately: two implementations of "what is in
+    this window" is how they drift into disagreeing, which is the defect this
+    function was added to fix.
+    """
+    import comtypes.client
+
+    module = comtypes.client.GetModule("UIAutomationCore.dll")
+    automation = comtypes.client.CreateObject(
+        "{ff48dba4-60ef-4201-aa87-54103eef594e}", interface=module.IUIAutomation
+    )
+    type_id = _CONTROL_TYPE_IDS.get(control_type)
+    if type_id is None:
+        raise ProviderQueryFault(
+            f"control type {control_type!r} has no reviewed UIA id"
+        )
+    root = automation.ElementFromHandle(hwnd)
+    condition = automation.CreatePropertyCondition(_UIA_CONTROL_TYPE_PROPERTY, type_id)
+    # TreeScope_Descendants = 4, matching provider_query_for.
+    return element_array_items(root.FindAll(4, condition))
+
+
 def provider_query_for(hwnd: int, control_type: str, name: str):
     """One provider-side **FindAll** against one window, by type and exact name.
 
