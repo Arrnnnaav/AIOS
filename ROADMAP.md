@@ -189,11 +189,11 @@ built but not yet exercised by a caller or a live run.
 
 **1. Deterministic execution path**
 - [x] Operation schema: backend, selector, identity policy in `operations.json`
-- [ ] `act_runtime` calls `act_protocol` (receipt gating before each effect)
-- [ ] `act_runtime` calls `uia_identity` (identity check before each pattern call)
+- [~] Receipt gating before each effect — `act_node.execute_node`, not yet wired into `act_runtime`
+- [~] Identity check before each pattern call — `act_node.execute_node`
 - [ ] `act_runtime` calls `coordinate_space` (reject unusable geometry)
-- [ ] Three verifier modes: `observe_before`, `confirm_before`, `verify_after`
-- [ ] Per-node re-authorization wired to the three-observation flow
+- [~] Three verifier modes sequenced — `act_node.execute_node`; verifier protocol still to carry them
+- [x] Per-node authorization minted only after the identity check passes
 
 **2. Shared signed generic UIA adapter (D108)**
 - [ ] `plugins/shared/uia_adapter.py` — Invoke, Select, Toggle, Value
