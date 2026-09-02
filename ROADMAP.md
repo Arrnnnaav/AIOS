@@ -163,11 +163,114 @@ supersedes any narrower reading of the completion plan.
 covering Problem, Value Proposition, Founders, Business Model, Traction,
 Revenue Model and Fund Utilization, built live while the user watches.
 
-**The next milestone is the thin Excel vertical slice**: one approval →
-observe → cue and receipt → confirm → `InvokePattern` → verify exactly one new
-worksheet. It is the first caller of all four Phase C contracts at once, and
-until it exists those contracts have only ever been judged against their own
-docstrings (D107).
+### Why the UIA proof moved from Excel to PowerPoint
+
+Excel entered because PowerPoint's Act path is COM object-model and never
+exercises UIA, so the plan needed a second application to prove the generic
+UIA backend. Phase B measured Excel's `Add Sheet` passing outright.
+
+That reasoning was sound and no longer points at Excel. Under D109 a COM
+operation draws no pointer, so a PowerPoint-only COM build never shows the
+cursor -- which is the central thing this phase is for. PowerPoint has its own
+UIA surface (ribbon, New Slide, Design tab, Animation Pane), so proving UIA
+there keeps one application and puts the visible pointer inside the real deck
+build.
+
+Cost: re-run the read-only feasibility probe against PowerPoint's ribbon. The
+probe exists and Phase B proved it works. Excel's measurement is not wasted --
+it validated the probe and the identity-policy shape against real measured
+data, and Excel remains a fallback if PowerPoint's ribbon does not expose a
+usable pattern.
+
+### Live checklist
+
+Marked as work completes. `[x]` means done AND its tests pass; `[~]` means
+built but not yet exercised by a caller or a live run.
+
+**1. Deterministic execution path**
+- [ ] Operation schema: backend, selector, identity policy in `operations.json`
+- [ ] `act_runtime` calls `act_protocol` (receipt gating before each effect)
+- [ ] `act_runtime` calls `uia_identity` (identity check before each pattern call)
+- [ ] `act_runtime` calls `coordinate_space` (reject unusable geometry)
+- [ ] Three verifier modes: `observe_before`, `confirm_before`, `verify_after`
+- [ ] Per-node re-authorization wired to the three-observation flow
+
+**2. Shared signed generic UIA adapter (D108)**
+- [ ] `plugins/shared/uia_adapter.py` — Invoke, Select, Toggle, Value
+- [ ] Copied byte-identically into the PowerPoint payload and signed there
+- [ ] Input-synthesis scan covers it
+
+**3. PowerPoint UIA feasibility and first pointer-visible action**
+- [ ] Read-only probe against PowerPoint's ribbon (live desktop)
+- [ ] Record evidence; choose the operation with a genuine UI target
+- [ ] Signed selector + identity policy for that control
+- [ ] One end-to-end action: pointer travels, label appears, dwell, invoke,
+      independent verification
+
+**4. Visual layer, receipts and interruption**
+- [ ] Rail mode selector: Ideate / Plan / Teach / Act
+- [ ] `Step N of M` wired to Act (executor-reported, never counted by the rail)
+- [ ] Ghost pointer, ring, callout, arrow, interpolation — all WM_PAINT-owned
+- [ ] Trust presentation: cyan object-model, violet UIA, neutral in flight
+- [ ] Presentation receipts wired to the worker
+- [ ] Pause / Stop during a run
+- [ ] Resume-with-edit: re-plan, re-validate, re-approve remainder (D110)
+
+**5. Unattended campaign runner**
+- [ ] Resolves exactly one approved window; restores it if minimized
+- [ ] Fresh stores, staging and output paths per run
+- [ ] Records every digest, receipt and timing
+- [ ] Stops on drift, refusal, DPI mismatch or worker failure
+- [ ] Runs desktop lanes serially
+
+**6. Transactional output**
+- [ ] Same-volume staging; final path absent until fully verified
+- [ ] Atomic publish; failed runs never publish a partial file
+
+**7. Measured budgets (Phase E)**
+- [ ] Paint cost; derive frame count
+- [ ] Verifier spawn-to-response per mode
+- [ ] Confirmation-to-invoke deadline
+- [ ] Interruption latency matrix
+- [ ] Independent D032 review of the derived budgets
+
+**8. `idea.txt` and the local planning loop**
+- [x] `idea.txt` written as the stand-in Ideate conversation
+- [ ] Hash `idea.txt` and bind its digest to each proposal
+- [ ] `ClarificationRequired` vs `PlanProposal` as mutually exclusive outputs
+- [ ] Keep asking until required fields resolve
+- [ ] Pass only the active plugin's capability catalog to the model
+- [ ] Store proposal separately from approved plan
+
+**9. Semantic PowerPoint capabilities (D111)**
+- [ ] `create_deck`, `apply_theme`, `create_title_slide`, `create_problem_slide`,
+      `create_comparison_slide`, `create_timeline_slide`, `create_metric_cards`,
+      `create_chart_slide`, `add_speaker_notes`, `apply_restrained_motion`,
+      `inspect_deck`, `publish_deck`
+- [ ] Each expands deterministically into reviewed low-level operations
+- [ ] Local model composes a 10-slide deck from `idea.txt`
+
+**10. Acceptance and release**
+- [ ] Three consecutive PowerPoint campaigns
+- [ ] Animation-catalog campaign
+- [ ] All lanes green independently
+- [ ] D032 pre-sign review — *needs a non-author reviewer*
+- [ ] External non-ephemeral signing key — *needs the owner*
+- [ ] D032 activation review — *needs a non-author reviewer*
+
+**Already built, awaiting a caller**
+- [~] `ghostcursor/stages.py` — stage and cue validation
+- [~] `ghostcursor/coordinate_space.py` — cross-process DPI/geometry contract
+- [~] `ghostcursor/act_protocol.py` — receipts, refusal codes, trust classes
+- [~] `ghostcursor/uia_identity.py` — signed per-operation identity policy
+- [x] Phase A: 255/255 diagnostic run — `docs/evidence/act-phase-a-diagnostic.md`
+- [x] Phase B: UIA feasibility probe — `docs/evidence/act-phase-b-uia-feasibility.md`
+
+**The next milestone is the thin vertical slice**: one approval → observe →
+cue and receipt → confirm → `InvokePattern` → independent verification, against
+a PowerPoint ribbon control. It is the first caller of all four Phase C
+contracts at once, and until it exists those contracts have only ever been
+judged against their own docstrings (D107).
 
 **Act v1 is deliberately not general computer use.** No mouse or keyboard
 synthesis (D006), no VLM-driven clicking, no cross-application graphs, no
