@@ -150,46 +150,9 @@ def _validate_manifest(value: dict[str, Any]) -> None:
         if adapter is not None:
             raise BundleVerificationError("plugin API v1 forbids executable adapters")
     else:
-        if not isinstance(adapter, dict) or set(adapter) != {
-            "entrypoint",
-            "operations",
-            "plans",
-            "protocol_version",
-            "verifier",
-        }:
-            raise BundleVerificationError(
-                "plugin API v2 requires one closed adapter declaration"
-            )
-        if adapter["protocol_version"] != 1:
-            raise BundleVerificationError("adapter protocol version is unsupported")
-        entrypoint = adapter["entrypoint"]
-        operations = adapter["operations"]
-        plans = adapter["plans"]
-        verifier = adapter["verifier"]
-        if not all(
-            isinstance(path, str) for path in (entrypoint, operations, plans, verifier)
-        ):
-            raise BundleVerificationError("adapter paths must be strings")
-        if _entry_name(entrypoint) != entrypoint or not entrypoint.startswith(
-            "ghostcursor/adapter/"
-        ):
-            raise BundleVerificationError(
-                "adapter entrypoint must live under ghostcursor/adapter/"
-            )
-        if not entrypoint.endswith(".py"):
-            raise BundleVerificationError(
-                "adapter entrypoint must be a Python source file"
-            )
-        if _entry_name(verifier) != verifier or not verifier.startswith(
-            "ghostcursor/adapter/"
-        ):
-            raise BundleVerificationError(
-                "adapter verifier must live under ghostcursor/adapter/"
-            )
-        if not verifier.endswith(".py") or verifier == entrypoint:
-            raise BundleVerificationError(
-                "adapter verifier must be a distinct Python source file"
-            )
+        entrypoint, operations, plans, verifier, uia_entrypoint = (
+            verify_adapter_shape(adapter)
+        )
         if operations != "ghostcursor/operations.json":
             raise BundleVerificationError(
                 "adapter operation registry path is not canonical"
@@ -252,6 +215,137 @@ def _validate_manifest(value: dict[str, Any]) -> None:
                     f"adapter inventory is missing required file: {required_path}"
                 )
 
+
+
+#: sha256 of the canonical reviewed generic UIA adapter source
+#: (`plugins/shared/uia_adapter.py`). A plugin carries a byte-identical copy,
+#: so one review covers every copy -- and a copy that has drifted from the
+#: reviewed bytes is refused rather than executed (D108).
+CANONICAL_UIA_ADAPTER_SHA256 = "7ec26f6923d7d29365eaf8dbd45ffe3bff928a3c528d94d24f69acbd3ed5c3b2"
+
+
+def verify_adapter_shape(adapter):
+    """Validate one API-v2 adapter declaration and return its paths.
+
+    Extracted so the rules can be exercised directly. They were inline in
+    a much larger verification routine, which meant the only way to reach
+    them was to build a whole bundle -- and rules nothing can reach
+    cheaply are rules nothing tests.
+    """
+
+    required = {
+        "entrypoint",
+        "operations",
+        "plans",
+        "protocol_version",
+        "verifier",
+    }
+    # `uia_entrypoint` is OPTIONAL so every bundle signed before generic
+    # UIA support keeps verifying byte-for-byte. It carries the canonical
+    # shared adapter (D108) alongside the plugin's own object-model
+    # adapter, inside the same signed payload, so both execution paths are
+    # digest-bound together and disabling the plugin removes both.
+    if (
+        not isinstance(adapter, dict)
+        or not required <= set(adapter)
+        or not set(adapter) <= required | {"uia_entrypoint"}
+    ):
+        raise BundleVerificationError(
+            "plugin API v2 requires one closed adapter declaration"
+        )
+    if adapter["protocol_version"] != 1:
+        raise BundleVerificationError("adapter protocol version is unsupported")
+    entrypoint = adapter["entrypoint"]
+    operations = adapter["operations"]
+    plans = adapter["plans"]
+    verifier = adapter["verifier"]
+    if not all(
+        isinstance(path, str) for path in (entrypoint, operations, plans, verifier)
+    ):
+        raise BundleVerificationError("adapter paths must be strings")
+    if _entry_name(entrypoint) != entrypoint or not entrypoint.startswith(
+        "ghostcursor/adapter/"
+    ):
+        raise BundleVerificationError(
+            "adapter entrypoint must live under ghostcursor/adapter/"
+        )
+    if not entrypoint.endswith(".py"):
+        raise BundleVerificationError(
+            "adapter entrypoint must be a Python source file"
+        )
+    if _entry_name(verifier) != verifier or not verifier.startswith(
+        "ghostcursor/adapter/"
+    ):
+        raise BundleVerificationError(
+            "adapter verifier must live under ghostcursor/adapter/"
+        )
+    if not verifier.endswith(".py") or verifier == entrypoint:
+        raise BundleVerificationError(
+            "adapter verifier must be a distinct Python source file"
+        )
+    uia_entrypoint = adapter.get("uia_entrypoint")
+    if uia_entrypoint is not None:
+        if not isinstance(uia_entrypoint, str):
+            raise BundleVerificationError("adapter uia_entrypoint must be a string")
+        if _entry_name(uia_entrypoint) != uia_entrypoint or not (
+            uia_entrypoint.startswith("ghostcursor/adapter/")
+            and uia_entrypoint.endswith(".py")
+        ):
+            raise BundleVerificationError(
+                "adapter uia_entrypoint must be a Python source file under "
+                "ghostcursor/adapter/"
+            )
+        # Distinct from BOTH other executables. Sharing a path with the
+        # object-model adapter would let one file answer for two backends,
+        # and sharing with the verifier would let the thing that checks an
+        # effect also cause one.
+        if uia_entrypoint in {entrypoint, verifier}:
+            raise BundleVerificationError(
+                "adapter uia_entrypoint must be distinct from the entrypoint "
+                "and the verifier"
+            )
+
+    return entrypoint, operations, plans, verifier, uia_entrypoint
+
+
+def _check_backend_declarations(adapter, registry, file_bytes):
+    """Every operation maps to exactly one declared, present backend.
+
+    The failure this prevents is an operation whose backend nothing can
+    dispatch: declared UIA with no UIA adapter shipped, or a UIA adapter
+    shipped that no operation uses and that therefore nobody reviewed against
+    a real operation.
+    """
+
+    uia_entrypoint = adapter.get("uia_entrypoint")
+    needs_uia = sorted(
+        operation_id
+        for operation_id, spec in registry.operations.items()
+        if spec.backend != "object_model"
+    )
+    if needs_uia and uia_entrypoint is None:
+        raise BundleVerificationError(
+            "operations declare a UIA backend but no uia_entrypoint is shipped: "
+            + ", ".join(needs_uia)
+        )
+    if uia_entrypoint is not None and not needs_uia:
+        # An unused executable is an unreviewed one: nothing exercises it and
+        # nothing in the registry says what it is allowed to do.
+        raise BundleVerificationError(
+            "a uia_entrypoint is shipped but no operation declares a UIA backend"
+        )
+    if uia_entrypoint is None:
+        return
+    if uia_entrypoint not in file_bytes:
+        raise BundleVerificationError(
+            "adapter uia_entrypoint is not present in the signed payload"
+        )
+    actual = hashlib.sha256(file_bytes[uia_entrypoint]).hexdigest()
+    if actual != CANONICAL_UIA_ADAPTER_SHA256:
+        raise BundleVerificationError(
+            "shipped UIA adapter bytes do not match the canonical reviewed "
+            f"adapter ({actual} != {CANONICAL_UIA_ADAPTER_SHA256})"
+        )
 
 def verify_bundle(
     path: Path,
@@ -377,6 +471,8 @@ def verify_bundle(
                 raise BundleVerificationError(
                     f"plugin operation registry is invalid: {exc}"
                 ) from exc
+
+            _check_backend_declarations(adapter, registry, file_bytes)
             from ghostcursor.action_plans import (
                 ActionPlanError,
                 load_action_plan_templates,

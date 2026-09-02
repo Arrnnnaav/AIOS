@@ -4273,6 +4273,43 @@ reads as the thing CLAUDE.md forbids even though the code would be generic.
 may load only signed bundles and that core must never hold executable UI
 knowledge. A pattern call driven by a selector is executable UI knowledge.
 
+**Amended: `uia_entrypoint`.** The original wording assumed a plugin whose
+operations were all UIA, and said the copied bytes become "its own adapter".
+PowerPoint has both kinds and can declare only one `entrypoint`, so
+`adapter_api` gains an OPTIONAL second executable path, `uia_entrypoint`,
+carrying the canonical shared adapter beside the plugin's own.
+
+This keeps every boundary the one-adapter rule was protecting. One PowerPoint
+plugin still owns its application, capabilities, selectors, plans and
+verification. Both files sit inside the same signed payload and are
+digest-bound together, so disabling or uninstalling the plugin removes both
+execution paths at once. Core selects between them from the OPERATION's signed
+`backend` declaration and never from model output. Single-plugin graph
+validation is untouched.
+
+Validated at bundle verification, before anything can execute:
+
+- `uia_entrypoint` is optional, and allowed only when at least one operation
+  declares a UIA backend. A shipped-but-unused executable is refused, because
+  nothing exercises it and nothing in the registry says what it may do.
+- An operation declaring a UIA backend with no `uia_entrypoint` shipped is
+  refused -- a backend nothing can dispatch.
+- Both entrypoints must resolve inside the signed payload under
+  `ghostcursor/adapter/`, be Python sources, and be distinct from each other
+  and from the verifier. Sharing the entrypoint would let one file answer for
+  two backends; sharing the verifier would let the thing that checks an effect
+  cause one.
+- The shipped UIA adapter bytes must equal the canonical reviewed digest.
+  One review covers every copy only while every copy is identical.
+- The optional key widens the accepted field set without opening it: unknown
+  fields and missing required ones are still refused.
+
+**Alternative rejected: a separate `ghostcursor.powerpoint-uia` plugin.** It
+would split one application across two plugins, create cross-plugin authority
+where none is needed, break the single-plugin task-graph rule (D087/D090), and
+let the two halves be enabled, upgraded or uninstalled independently -- so a
+deck build could lose half its execution paths mid-run.
+
 **Scope.** This decision authorizes the shape only. The adapter itself is not
 written yet, and it changes nothing until a plugin declares `adapter_api` with
 it. The D006 prohibition is untouched: the adapter calls UIA patterns, never

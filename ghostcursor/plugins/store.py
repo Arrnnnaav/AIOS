@@ -88,6 +88,11 @@ class AdapterDescriptor:
     verifier_sha256: str
     registry: Any
     plans: Mapping[str, Any]
+    #: The canonical shared UIA adapter, when this plugin ships one. Core
+    #: selects between the two by the OPERATION's signed backend declaration
+    #: and never by anything a model produced (D108).
+    uia_entrypoint: Path | None = None
+    uia_adapter_sha256: str | None = None
 
 
 def _strict_json(raw: bytes, label: str) -> dict[str, Any]:
