@@ -544,3 +544,29 @@ by every window rect, UIA rect, hint and screen capture (D010), so it must not
 ride along with unrelated work. `AWARENESS` is read nowhere outside
 `ghostcursor/overlay/dpi.py`, so the blast radius is the coordinate space
 itself, not the call sites.
+
+### The accepted Excel ADD_WORKSHEET recipe assumes the new sheet is named Sheet2
+
+`plugins/sources/excel/payload/ghostcursor/packs/excel/recipes/add_worksheet.json`
+verifies with `element_appears` on a `TabItem` named exactly `Sheet2`. That
+holds only for a workbook whose sheets are `Sheet1` alone. Add a worksheet to a
+workbook that already has a `Sheet2`, or run a localized Excel, and the new tab
+is named something else: the step is reported unsatisfied although the user did
+exactly what was asked.
+
+The Act v1 plan names this explicitly -- "record the actual generated name;
+never assume Sheet2" -- and `docs/evidence/act-phase-b-uia-feasibility.md`
+measured the separation needed to do it properly: worksheet tabs carry
+AutomationId `SheetTab` while ribbon tabs carry `TabHome`/`TabInsert`, so the
+postcondition can be "the SheetTab set grew by exactly one" instead of a
+literal name.
+
+This is Teach data, so the consequence is a false negative in guidance rather
+than an unsafe action, and the three acceptance runs are still valid for the
+workbook state they were measured on.
+
+**Trigger:** when the Act UIA operation for Add Worksheet is authored. Its
+postcondition must use the set difference, and the Teach recipe should be
+migrated to the same rule in the same slice so the two do not disagree about
+what "a worksheet was added" means. Changing the recipe changes signed plugin
+bytes and needs fresh acceptance runs (D032, D070).

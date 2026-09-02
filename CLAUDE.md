@@ -11,6 +11,14 @@ Each tracking document has one job. Put a sentence where it belongs:
 | `DECISIONS.md` | history, rationale, measurements |
 | `docs/superpowers/FOLLOWUPS.md` | unresolved work and its triggers |
 | `docs/evidence/` | durable measured results |
+| `ROADMAP.md` | what we build next and in what order, at phase scale |
+
+`ROADMAP.md` is the phase index, reconciled against the repository rather
+than asserted: a phase marked built cites the evidence or decision that backs
+it. When the owner says what a phase should contain, record it there before
+building it — a phase that exists only in conversation is not a phase. It
+states order and intent only, and links to the files above rather than
+restating them.
 
 **The test.** Does this change what an agent must do now? It belongs here. Does
 it explain what happened or why? It belongs in `DECISIONS.md` or
