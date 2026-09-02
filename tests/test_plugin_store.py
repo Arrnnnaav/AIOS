@@ -11,6 +11,7 @@ import win32event
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
+from ghostcursor.plugins.bundle import CANONICAL_UIA_ADAPTER_SHA256
 from ghostcursor.plugins.store import PluginEffectiveState, PluginStore, PluginStoreError
 from ghostcursor.action import OPERATION_ARTIFACT_PATH
 from ghostcursor.task_graph import CAPABILITY_ARTIFACT_PATH
@@ -165,11 +166,18 @@ def test_install_enable_disable_and_uninstall_are_distinct(tmp_path):
 def test_composition_reverifies_and_exposes_both_signed_adapter_processes(tmp_path):
     private, trusted = _key()
     files = _powerpoint_adapter_files()
+    # The real registry declares a UIA operation, so the bundle must also ship
+    # the canonical shared adapter -- bundle verification refuses either half
+    # of that pairing on its own (D108).
+    files["ghostcursor/adapter/uia_adapter.py"] = (
+        Path(__file__).resolve().parents[1] / "plugins/shared/uia_adapter.py"
+    ).read_bytes()
     adapter_api = {
         "entrypoint": "ghostcursor/adapter/powerpoint_adapter.py",
         "operations": OPERATION_ARTIFACT_PATH,
         "plans": "ghostcursor/action-plans.json",
         "protocol_version": 1,
+        "uia_entrypoint": "ghostcursor/adapter/uia_adapter.py",
         "verifier": "ghostcursor/adapter/powerpoint_verifier.py",
     }
     bundle = _bundle(
@@ -190,6 +198,8 @@ def test_composition_reverifies_and_exposes_both_signed_adapter_processes(tmp_pa
     assert descriptor.verifier.name == "powerpoint_verifier.py"
     assert descriptor.adapter_sha256 == hashlib.sha256(files[adapter_api["entrypoint"]]).hexdigest()
     assert descriptor.verifier_sha256 == hashlib.sha256(files[adapter_api["verifier"]]).hexdigest()
+    assert descriptor.uia_entrypoint.name == "uia_adapter.py"
+    assert descriptor.uia_adapter_sha256 == CANONICAL_UIA_ADAPTER_SHA256
 
 
 def test_core_upgrade_preserves_desired_enablement_as_blocked(tmp_path):

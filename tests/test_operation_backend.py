@@ -102,7 +102,21 @@ def test_the_real_powerpoint_registry_still_loads_unchanged():
     )
 
     assert registry.operations
-    assert all(spec.backend == "object_model" for spec in registry.operations.values())
+    # The compatibility claim is that operations carrying NO `backend` key
+    # still parse and default to object_model. One operation now declares a
+    # UIA backend deliberately, so "all of them" is no longer the property --
+    # "every one that omits the key" is.
+    backends = [spec.backend for spec in registry.operations.values()]
+    assert backends.count("object_model") == 12
+    assert backends.count("uia_pattern") == 1
+
+    import json
+
+    declared = json.loads(raw)["operations"]
+    for operation_id, item in declared.items():
+        if "backend" not in item:
+            assert registry.operations[operation_id].backend == "object_model"
+            assert registry.operations[operation_id].identity is None
 
 
 # --- the pointer rule, at the schema level --------------------------------
