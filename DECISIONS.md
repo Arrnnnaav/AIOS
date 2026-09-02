@@ -4082,3 +4082,45 @@ claim that 177 of 255 nodes were deck-level was a bad count and is withdrawn --
 the live loop. It would have been faster while the loop was blocked on desktop
 access, and it is exactly the reordering the six live-only PowerPoint defects
 argue against.
+
+## D106 — Coordinate units are measured from awareness, not asserted
+
+**Decision.** `CoordinateSpace.units` is derived from the DPI awareness
+actually in force in the producing process, through
+`dpi.coordinate_units()`. A per-monitor-aware process reports
+`physical_pixels`; a system-aware one reports `system_dpi_pixels`; unaware
+reports `logical_pixels`. Only canonical values parse, and two processes must
+agree on units as well as on awareness.
+
+`ghostcursor/overlay/dpi.py` declares full ctypes signatures for every DPI
+QUERY -- `GetThreadDpiAwarenessContext`, `GetWindowDpiAwarenessContext`,
+`GetDpiAwarenessContextForProcess`, `AreDpiAwarenessContextsEqual`,
+`GetProcessDpiAwareness`, `IsProcessDPIAware`. It deliberately does NOT
+declare `SetProcessDpiAwarenessContext`.
+
+**Reason.** The contract first hardcoded `physical_pixels`, which was untrue
+of the process that wrote it: only a per-monitor-aware process is handed
+physical pixels on every monitor, and this one is system-aware because the
+setter is malformed (see FOLLOWUPS.md). A contract that overstates its own
+precision is worse than one that admits a weaker unit, because the overstated
+version compares equal to a genuinely per-monitor peer.
+
+The query signatures matter for the same ABI reason the setter fails: ctypes
+defaults an undeclared return to a 32-bit C int while `DPI_AWARENESS_CONTEXT`
+is a pointer-sized handle. Measured here the handle is `0x6010`, small enough
+to survive truncation, so the omission was latent rather than visible -- on a
+build where it is a pointer above 4 GB every comparison would fail and all
+geometry would be refused. Found by independent review, not by this desktop.
+
+**Why the setter stays undeclared.** Declaring it is exactly what makes the
+call succeed, switching the process to per-monitor-v2 and silently changing
+the coordinate space shared by every window rect, UIA rect, hint and capture.
+D010 exists because changing that silently is how a working overlay starts
+reporting confidently wrong numbers. It needs a scaled or mixed-DPI display to
+validate, which this desktop is not, so it is deferred to its own decision
+rather than riding along with a signature cleanup.
+
+**Alternative rejected.** Fixing the setter inside this change and keeping
+`physical_pixels` true by construction. It would have made the claim honest
+and the coordinate space untested in the same commit.
+

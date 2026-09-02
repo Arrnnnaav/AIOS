@@ -69,6 +69,9 @@ def _ensure_dpi_awareness() -> str:
     """Declare DPI awareness. Idempotent, and safe to call late — but calling
     it late defeats the point, so this runs at import."""
     try:
+        # Deliberately called with an undeclared signature and a plain int.
+        # Declaring it is the fix, and the fix changes this project's
+        # coordinate space -- see the module docstring and FOLLOWUPS.md.
         if ctypes.windll.user32.SetProcessDpiAwarenessContext(_PER_MONITOR_AWARE_V2):
             return "per-monitor-v2"
     except AttributeError:
@@ -96,9 +99,36 @@ def scale_factor() -> float:
     return physical / logical if logical else 1.0
 
 
+#: What a Win32 desktop coordinate MEANS under each awareness mode. Only a
+#: per-monitor-aware process is handed true physical pixels on every monitor;
+#: a system-aware one is handed the system-DPI space, which coincides with
+#: physical pixels only while every display runs at the system DPI.
+_UNITS_FOR_AWARENESS = {
+    "per-monitor-v2": "physical_pixels",
+    "per-monitor": "physical_pixels",
+    "system": "system_dpi_pixels",
+    "unaware": "logical_pixels",
+    "unaware-gdi-scaled": "gdi_scaled_pixels",
+}
+
+
+def coordinate_units() -> str:
+    """The unit this process's Win32 coordinates are actually in."""
+
+    awareness, _api = queried_thread_awareness()
+    return _UNITS_FOR_AWARENESS.get(awareness, UNKNOWN_AWARENESS)
+
+
 def virtual_screen_rect() -> tuple[int, int, int, int]:
     """(left, top, width, height) of the whole virtual desktop, spanning every
-    monitor. Physical pixels, because awareness is declared at import."""
+    monitor.
+
+    In whatever unit this process's awareness makes Win32 report -- see
+    `coordinate_units()`. On a per-monitor-aware process that is physical
+    pixels; this process is system-aware (the setter above does not take
+    effect), so it is the system-DPI space, which equals physical pixels only
+    while every display runs at the system DPI. It does on the desktop this
+    was measured on, which is why the distinction went unnoticed."""
     return (
         win32api.GetSystemMetrics(win32con.SM_XVIRTUALSCREEN),
         win32api.GetSystemMetrics(win32con.SM_YVIRTUALSCREEN),
@@ -128,6 +158,60 @@ def capture_region() -> dict[str, int]:
 # Everything below QUERIES the live state instead, and reports which API
 # answered so a fallback is visible rather than silent.
 
+def _declare_signatures() -> None:
+    """Give every DPI query its real Win32 signature before it is called.
+
+    ctypes defaults an undeclared function's return type to C `int` -- four
+    bytes -- while `DPI_AWARENESS_CONTEXT` is an opaque pointer-sized handle,
+    and undeclared integer arguments are marshalled 32-bit wide. That is the
+    same ABI mistake this module already documents in the SETTER, where it
+    makes `SetProcessDpiAwarenessContext` fail outright.
+
+    It is latent rather than visible here: measured on this machine the thread
+    context handle is 0x6010, small enough to survive truncation, so the
+    comparisons happen to be right. On a build where the handle is a genuine
+    pointer above 4 GB it would truncate, `AreDpiAwarenessContextsEqual` would
+    match nothing, and every query would report `unknown` -- refusing all
+    geometry rather than misplacing it, but for a reason that has nothing to
+    do with the desktop.
+
+    `SetProcessDpiAwarenessContext` is deliberately NOT declared here.
+    Declaring it is precisely what makes the call succeed, which would switch
+    this process to per-monitor-v2 and silently change the coordinate space
+    every window rect, UIA rect, hint and capture shares. That change belongs
+    to its own reviewed decision with a scaled display to validate it, not to
+    a signature cleanup. See FOLLOWUPS.md.
+    """
+
+    user32 = ctypes.windll.user32
+    for name, argtypes, restype in (
+        ("GetThreadDpiAwarenessContext", [], ctypes.c_void_p),
+        ("GetWindowDpiAwarenessContext", [ctypes.c_void_p], ctypes.c_void_p),
+        ("GetDpiAwarenessContextForProcess", [ctypes.c_void_p], ctypes.c_void_p),
+        (
+            "AreDpiAwarenessContextsEqual",
+            [ctypes.c_void_p, ctypes.c_void_p],
+            ctypes.c_bool,
+        ),
+        ("IsProcessDPIAware", [], ctypes.c_bool),
+    ):
+        function = getattr(user32, name, None)
+        if function is not None:
+            function.argtypes = argtypes
+            function.restype = restype
+    try:
+        shcore = ctypes.windll.shcore
+    except (AttributeError, OSError):
+        return
+    function = getattr(shcore, "GetProcessDpiAwareness", None)
+    if function is not None:
+        function.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_int)]
+        function.restype = ctypes.c_long
+
+
+_declare_signatures()
+
+
 #: DPI_AWARENESS_CONTEXT sentinel values, as documented for the high-DPI API.
 _CONTEXTS = {
     -1: "unaware",
@@ -141,6 +225,13 @@ _CONTEXTS = {
 #: can match another process: an unknown coordinate space is refused, never
 #: assumed compatible.
 UNKNOWN_AWARENESS = "unknown"
+
+#: Every value an awareness field may canonically hold. A contract that
+#: accepted an arbitrary string would let a peer name a coordinate space that
+#: does not exist and have it compare equal to itself.
+AWARENESS_VALUES = frozenset(
+    {"unaware", "system", "per-monitor", "per-monitor-v2", "unaware-gdi-scaled"}
+) | {UNKNOWN_AWARENESS}
 
 
 def _canonical_context(handle) -> str | None:

@@ -11,12 +11,14 @@ import pytest
 
 from ghostcursor.coordinate_space import (
     CONTRACT_VERSION,
-    PHYSICAL_PIXELS,
+    BracketedGeometry,
     CoordinateSpace,
+    bracket_disagreements,
     capture,
     disagreements,
     from_record,
     geometry_is_usable,
+    observe_bracketed,
 )
 from ghostcursor.overlay import dpi
 
@@ -28,7 +30,7 @@ def _space(**overrides) -> CoordinateSpace:
         "monitors": ((0, 0, 1920, 1080),),
         "process_awareness": "per-monitor-v2",
         "thread_awareness": "per-monitor-v2",
-        "units": PHYSICAL_PIXELS,
+        "units": "physical_pixels",
         "virtual_bounds": (0, 0, 1920, 1080),
     }
     values.update(overrides)
@@ -198,7 +200,7 @@ def test_this_process_can_measure_its_own_space():
     space = capture()
 
     assert space.contract_version == CONTRACT_VERSION
-    assert space.units == PHYSICAL_PIXELS
+    assert space.units == dpi.coordinate_units()
     assert space.monitor_count >= 1
     assert len(space.virtual_bounds) == 4
     assert space.established is True
@@ -225,3 +227,134 @@ def test_queried_awareness_is_not_the_declared_label():
         "per-monitor-v2",
         "unaware-gdi-scaled",
     }
+
+
+# --- units are measured, not asserted --------------------------------------
+
+
+def test_units_come_from_the_awareness_actually_in_force():
+    """An earlier version hardcoded physical_pixels, which was not true of the
+    process writing it: only a per-monitor-aware process is handed physical
+    pixels on every monitor, and this one is system-aware."""
+
+    space = capture()
+    awareness, _api = dpi.queried_thread_awareness()
+
+    assert space.units == dpi._UNITS_FOR_AWARENESS[awareness]
+    if awareness == "system":
+        assert space.units == "system_dpi_pixels"
+
+
+def test_a_system_aware_peer_and_a_per_monitor_peer_do_not_agree_on_units():
+    system = _space(thread_awareness="system", process_awareness="system",
+                    units="system_dpi_pixels")
+    per_monitor = _space(units="physical_pixels")
+
+    assert geometry_is_usable(per_monitor, system) is False
+
+
+def test_an_uncanonical_unit_is_refused():
+    record = _space().as_record()
+    record["units"] = "furlongs"
+
+    with pytest.raises(ValueError, match="not canonical"):
+        from_record(record)
+
+
+def test_an_uncanonical_awareness_is_refused():
+    record = _space().as_record()
+    record["thread_awareness"] = "extremely-aware"
+
+    with pytest.raises(ValueError, match="not canonical"):
+        from_record(record)
+
+
+# --- the parser is strict --------------------------------------------------
+
+
+def test_an_unknown_field_is_refused_rather_than_ignored():
+    """A field this version does not understand may be the one carrying the
+    meaning that changed."""
+
+    record = _space().as_record()
+    record["scaling_hint"] = 2
+
+    with pytest.raises(ValueError, match="unknown"):
+        from_record(record)
+
+
+def test_a_lying_monitor_count_is_refused():
+    record = _space().as_record()
+    record["monitor_count"] = 999
+
+    with pytest.raises(ValueError, match="declares 999 monitors"):
+        from_record(record)
+
+
+@pytest.mark.parametrize("value", ["0", True, 1920.9, None])
+def test_a_coordinate_that_is_not_an_integer_is_refused_not_converted(value):
+    """int("0"), int(True) and int(1920.9) all succeed and all silently accept
+    a coordinate the peer never sent."""
+
+    record = _space().as_record()
+    record["virtual_bounds"] = [value, 0, 1920, 1080]
+
+    with pytest.raises(ValueError, match="must be an integer"):
+        from_record(record)
+
+
+@pytest.mark.parametrize("value", ["1", True, 1.5])
+def test_a_non_integer_monitor_coordinate_is_refused(value):
+    record = _space().as_record()
+    record["monitors"] = [[value, 0, 1920, 1080]]
+    record["monitor_count"] = 1
+
+    with pytest.raises(ValueError, match="must be an integer"):
+        from_record(record)
+
+
+def test_a_non_mapping_record_is_refused():
+    with pytest.raises(ValueError, match="must be a mapping"):
+        from_record([1, 2, 3])
+
+
+# --- the read is bracketed -------------------------------------------------
+
+
+def test_a_stable_bracket_carries_its_rectangles():
+    geometry = observe_bracketed(lambda: [(10, 20, 30, 40)])
+
+    assert geometry.held is True
+    assert geometry.rectangles == ((10, 20, 30, 40),)
+    assert bracket_disagreements(capture(), geometry) == ()
+
+
+def test_a_context_change_during_the_read_refuses_every_rectangle():
+    """Neither sample alone would show it: the pair is the evidence."""
+
+    before = _space()
+    after = _space(thread_awareness="unaware", process_awareness="unaware")
+    geometry = BracketedGeometry(before, after, ((10, 20, 30, 40),))
+
+    assert geometry.held is False
+    reasons = bracket_disagreements(_space(), geometry)
+    assert any("changed during the read" in reason for reason in reasons)
+
+
+def test_a_held_bracket_is_still_compared_against_the_observer():
+    """Holding steady in the wrong space is still the wrong space."""
+
+    peer = _space(thread_awareness="unaware", process_awareness="unaware")
+    geometry = BracketedGeometry(peer, peer, ((1, 2, 3, 4),))
+
+    assert geometry.held is True
+    assert bracket_disagreements(_space(), geometry) != ()
+
+
+def test_a_bracket_round_trips_through_its_record():
+    geometry = observe_bracketed(lambda: [(1, 2, 3, 4)])
+    record = geometry.as_record()
+
+    assert from_record(record["before"]) == geometry.before
+    assert from_record(record["after"]) == geometry.after
+    assert record["rectangles"] == [[1, 2, 3, 4]]

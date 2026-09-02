@@ -11,9 +11,15 @@ rather than an error.
 which setter path ran, and awareness cannot be changed once set, so a process
 where something already declared it reports the fallback label whatever it
 actually is. Two processes can print the same label from different coordinate
-spaces. Every value in this contract is therefore QUERIED
-(`dpi.queried_thread_awareness()` and friends), and each carries the API that
-answered so a fallback is visible instead of silent.
+spaces. Every value here is QUERIED, and each carries the API that answered so
+a fallback is visible instead of silent.
+
+**Units are measured, not asserted.** An earlier version of this module
+hardcoded `physical_pixels`, which was not true of the process writing it:
+only a per-monitor-aware process is handed physical pixels on every monitor,
+and this one is system-aware. `dpi.coordinate_units()` derives the unit from
+the awareness actually in force, so a system-aware process says
+`system_dpi_pixels` and cannot claim a precision it does not have.
 
 **Bounds and topology are drift checks, not substitutes.** Two processes on
 one desktop that disagree about the virtual-desktop rectangle are certainly in
@@ -25,12 +31,17 @@ comparison is the cheap corroboration, never the other way round.
 **Unknown is refused, never assumed compatible.** A machine where no API could
 answer produces `UNKNOWN_AWARENESS`, and two unknowns do not match. Geometry
 whose provenance cannot be established is rail-only text, not a guess.
+
+**A read is bracketed.** Thread awareness is sampled before and after every
+rectangle observation, because a context that changes mid-read leaves
+rectangles from two different spaces in one response, and neither sample alone
+would show it.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping, Sequence
 
 from ghostcursor.overlay import dpi
 
@@ -38,12 +49,36 @@ from ghostcursor.overlay import dpi
 #: running different contract versions are not comparable, and the mismatch is
 #: reported rather than resolved -- a newer reader guessing at an older
 #: producer's meaning is how a silent coordinate error gets reintroduced.
-CONTRACT_VERSION = 1
+CONTRACT_VERSION = 2
 
-#: The only unit this contract carries. Named rather than assumed so a future
-#: producer that starts reporting logical pixels fails the comparison instead
-#: of being drawn.
-PHYSICAL_PIXELS = "physical_pixels"
+#: Every unit an honest producer may name, derived from the awareness modes
+#: that produce them. An arbitrary string is refused: a peer naming a unit
+#: that does not exist would compare equal to itself.
+CANONICAL_UNITS = frozenset(dpi._UNITS_FOR_AWARENESS.values()) | {dpi.UNKNOWN_AWARENESS}
+
+_FIELDS = (
+    "awareness_api",
+    "contract_version",
+    "monitor_count",
+    "monitors",
+    "process_awareness",
+    "thread_awareness",
+    "units",
+    "virtual_bounds",
+)
+
+
+def _exact_int(value: object, label: str) -> int:
+    """An int, and not a bool, a float, or a string that looks like one.
+
+    `int("0")`, `int(True)` and `int(1920.9)` all succeed and all silently
+    accept a coordinate the peer did not send. A wire value that is not
+    already the right type is a malformed record, not an input to convert.
+    """
+
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"coordinate space {label} must be an integer")
+    return value
 
 
 @dataclass(frozen=True)
@@ -69,6 +104,7 @@ class CoordinateSpace:
         return (
             self.thread_awareness != dpi.UNKNOWN_AWARENESS
             and self.process_awareness != dpi.UNKNOWN_AWARENESS
+            and self.units != dpi.UNKNOWN_AWARENESS
         )
 
     @property
@@ -105,35 +141,49 @@ def capture() -> CoordinateSpace:
         process_awareness,
         thread_awareness,
         f"thread={thread_api};process={process_api}",
-        PHYSICAL_PIXELS,
+        dpi.coordinate_units(),
         dpi.virtual_screen_rect(),
         dpi.monitor_topology(),
     )
 
 
 def from_record(value: Mapping[str, Any]) -> CoordinateSpace:
-    """Rebuild a peer's contract from its serialized form.
+    """Rebuild a peer's contract from its serialized form, strictly.
 
-    Deliberately strict. A malformed or partial contract is not repaired with
-    defaults: a default would be this process's own space, which is exactly
-    the assumption the contract exists to prevent.
+    Nothing here is repaired, coerced, or defaulted. A default would be this
+    process's own space, which is exactly the assumption the contract exists
+    to prevent, and a coercion would accept a value the peer never sent.
+    Unknown fields are refused too: a field this version does not understand
+    may be the one carrying the meaning that changed.
     """
 
-    required = {
-        "awareness_api",
-        "contract_version",
-        "monitors",
-        "process_awareness",
-        "thread_awareness",
-        "units",
-        "virtual_bounds",
-    }
-    missing = required - set(value)
+    if not isinstance(value, Mapping):
+        raise ValueError("coordinate space must be a mapping")
+    present = set(value)
+    missing = set(_FIELDS) - present
     if missing:
         raise ValueError("coordinate space is missing " + ", ".join(sorted(missing)))
+    extra = present - set(_FIELDS)
+    if extra:
+        raise ValueError("coordinate space has unknown " + ", ".join(sorted(extra)))
+
+    version = _exact_int(value["contract_version"], "contract_version")
+
+    for label in ("thread_awareness", "process_awareness"):
+        if value[label] not in dpi.AWARENESS_VALUES:
+            raise ValueError(
+                f"coordinate space {label} {value[label]!r} is not canonical"
+            )
+    if value["units"] not in CANONICAL_UNITS:
+        raise ValueError(f"coordinate space units {value['units']!r} is not canonical")
+    if not isinstance(value["awareness_api"], str):
+        raise ValueError("coordinate space awareness_api must be a string")
+
     bounds = value["virtual_bounds"]
     if not isinstance(bounds, (list, tuple)) or len(bounds) != 4:
         raise ValueError("coordinate space virtual_bounds is invalid")
+    parsed_bounds = tuple(_exact_int(part, "virtual_bounds") for part in bounds)
+
     monitors = value["monitors"]
     if not isinstance(monitors, (list, tuple)):
         raise ValueError("coordinate space monitors is invalid")
@@ -141,20 +191,60 @@ def from_record(value: Mapping[str, Any]) -> CoordinateSpace:
     for rect in monitors:
         if not isinstance(rect, (list, tuple)) or len(rect) != 4:
             raise ValueError("coordinate space monitor rectangle is invalid")
-        parsed.append(tuple(int(part) for part in rect))
-    if not isinstance(value["contract_version"], int) or isinstance(
-        value["contract_version"], bool
-    ):
-        raise ValueError("coordinate space contract_version is invalid")
+        parsed.append(tuple(_exact_int(part, "monitor rectangle") for part in rect))
+
+    declared = _exact_int(value["monitor_count"], "monitor_count")
+    if declared != len(parsed):
+        raise ValueError(
+            f"coordinate space declares {declared} monitors but carries {len(parsed)}"
+        )
+
     return CoordinateSpace(
-        value["contract_version"],
-        str(value["process_awareness"]),
-        str(value["thread_awareness"]),
-        str(value["awareness_api"]),
-        str(value["units"]),
-        tuple(int(part) for part in bounds),
+        version,
+        value["process_awareness"],
+        value["thread_awareness"],
+        value["awareness_api"],
+        value["units"],
+        parsed_bounds,
         tuple(parsed),
     )
+
+
+@dataclass(frozen=True)
+class BracketedGeometry:
+    """Rectangles read between two awareness samples.
+
+    A thread context that changes mid-read leaves rectangles from two
+    different spaces in one response, and neither sample on its own would show
+    it. The pair is the evidence; the rectangles are only usable if it holds.
+    """
+
+    before: CoordinateSpace
+    after: CoordinateSpace
+    rectangles: tuple[tuple[int, int, int, int], ...] = ()
+
+    @property
+    def held(self) -> bool:
+        """True when the space did not move across the read."""
+
+        return self.before == self.after
+
+    def as_record(self) -> dict[str, Any]:
+        return {
+            "after": self.after.as_record(),
+            "before": self.before.as_record(),
+            "rectangles": [list(rect) for rect in self.rectangles],
+        }
+
+
+def observe_bracketed(read: Callable[[], Sequence[Sequence[int]]]) -> BracketedGeometry:
+    """Sample the space, run one rectangle read, sample it again."""
+
+    before = capture()
+    rectangles = tuple(
+        tuple(_exact_int(part, "rectangle") for part in rect) for rect in read()
+    )
+    return BracketedGeometry(before, capture(), rectangles)
 
 
 def disagreements(observer: CoordinateSpace, peer: CoordinateSpace) -> tuple[str, ...]:
@@ -204,6 +294,24 @@ def disagreements(observer: CoordinateSpace, peer: CoordinateSpace) -> tuple[str
     return tuple(reasons)
 
 
+def bracket_disagreements(
+    observer: CoordinateSpace, geometry: BracketedGeometry
+) -> tuple[str, ...]:
+    """Whether a bracketed read may be drawn in ``observer``'s space.
+
+    Checks the bracket itself first: rectangles read across a context change
+    are not merely suspect, they may individually belong to different spaces,
+    so no comparison against the observer can rescue them.
+    """
+
+    if not geometry.held:
+        return (
+            "the producing thread's DPI awareness changed during the read, so "
+            "these rectangles may not share one coordinate space",
+        )
+    return disagreements(observer, geometry.before)
+
+
 def geometry_is_usable(observer: CoordinateSpace, peer: CoordinateSpace) -> bool:
     """Whether a rectangle from ``peer`` may be drawn by ``observer``."""
 
@@ -231,12 +339,15 @@ def window_agrees(space: CoordinateSpace, hwnd: int) -> tuple[str, ...]:
 
 
 __all__ = [
+    "CANONICAL_UNITS",
     "CONTRACT_VERSION",
+    "BracketedGeometry",
     "CoordinateSpace",
-    "PHYSICAL_PIXELS",
+    "bracket_disagreements",
     "capture",
     "disagreements",
     "from_record",
     "geometry_is_usable",
+    "observe_bracketed",
     "window_agrees",
 ]
