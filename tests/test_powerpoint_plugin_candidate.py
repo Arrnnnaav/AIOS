@@ -106,7 +106,21 @@ def test_each_candidate_loads_and_compiles_without_application_python(
     } == {
         "payload/ghostcursor/adapter/powerpoint_adapter.py",
         "payload/ghostcursor/adapter/powerpoint_verifier.py",
+        "payload/ghostcursor/adapter/uia_adapter.py",
     }
+    # The third file is not application Python and must not become any: it is
+    # the canonical shared adapter, byte-for-byte (D108). Widening the set
+    # above without this would let anything at all be added under that name.
+    import hashlib
+
+    shipped = (SOURCE_ROOT / "payload/ghostcursor/adapter/uia_adapter.py").read_bytes()
+    canonical = (
+        Path(__file__).resolve().parents[1] / "plugins/shared/uia_adapter.py"
+    ).read_bytes()
+    assert shipped == canonical
+    from ghostcursor.plugins.bundle import CANONICAL_UIA_ADAPTER_SHA256
+
+    assert hashlib.sha256(shipped).hexdigest() == CANONICAL_UIA_ADAPTER_SHA256
 
 
 def test_candidate_is_nameable_but_carries_no_execution_authority(tmp_path):
@@ -162,5 +176,9 @@ def test_candidate_source_declares_only_the_powerpoint_executable():
         "operations": "ghostcursor/operations.json",
         "plans": "ghostcursor/action-plans.json",
         "protocol_version": 1,
+        # The generic UIA adapter, shipped because at least one operation
+        # declares a UIA backend. Bundle verification refuses either half of
+        # that pairing on its own (D108).
+        "uia_entrypoint": "ghostcursor/adapter/uia_adapter.py",
         "verifier": "ghostcursor/adapter/powerpoint_verifier.py",
     }
