@@ -412,7 +412,6 @@ def test_the_awareness_setter_is_deliberately_left_undeclared():
     setter = ctypes.windll.user32.SetProcessDpiAwarenessContext
 
     assert setter.argtypes is None
-    assert dpi.queried_thread_awareness()[0] != "per-monitor-v2" or True
 
 
 # --- awareness and units may not contradict each other ---------------------
@@ -512,3 +511,296 @@ def test_a_capture_stays_self_consistent_when_awareness_reads_disagree(monkeypat
     # The proof it is not merely equal by luck: the record must survive the
     # cross-field check that a second query would have broken.
     from_record(space.as_record())
+
+
+def _awareness_in(preamble: str) -> tuple[str, str, str]:
+    """Measure awareness in a FRESH process. It can only be set once, so an
+    in-process assertion measures whatever the test lane imported first."""
+
+    import json
+    import subprocess
+    import sys
+
+    code = (
+        preamble
+        + "\n"
+        "from ghostcursor.overlay import dpi\n"
+        "import json\n"
+        "print(json.dumps([dpi.queried_thread_awareness()[0], "
+        "dpi.AWARENESS, dpi.coordinate_units()]))\n"
+    )
+    out = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert out.returncode == 0, out.stderr
+    return tuple(json.loads(out.stdout.strip().splitlines()[-1]))
+
+
+def test_the_production_entry_point_still_runs_in_its_measured_space():
+    """The flip is the worst outcome in this module and was guarded by
+    `assert ... or True`, which is a tautology.
+
+    Measured in a fresh process, because awareness can only be set once and an
+    in-process check measures whatever the test lane happened to import first.
+
+    D106 defers correcting the malformed setter to its own reviewed decision
+    on a scaled display. Until then `ghostcursor.run` must remain SYSTEM
+    aware: if it silently became per-monitor-v2, every window rect, UIA rect,
+    hint and capture would move at once, and on one monitor at 100% nothing
+    else in the suite could tell.
+    """
+
+    awareness, declared, units = _awareness_in("import ghostcursor.run")
+
+    assert awareness == "system"
+    assert declared == "system"
+    assert units == "system_dpi_pixels"
+
+
+def test_importing_pywinauto_first_changes_the_coordinate_space():
+    """Measured, and the reason `dpi.AWARENESS` cannot be trusted.
+
+    pywinauto declares per-monitor awareness at import. Whichever of it and
+    `ghostcursor.overlay.dpi` is imported first wins, because awareness is
+    once-only -- and `dpi.AWARENESS` reports "system" in BOTH cases, since it
+    records which setter path ran rather than what the process became.
+
+    Production is safe only because `ghostcursor/run.py` imports
+    `overlay.window` before `perception.uia`. Nothing enforces that ordering;
+    this test is what makes a reordering visible.
+    """
+
+    awareness, declared, _units = _awareness_in("import pywinauto")
+
+    assert awareness == "per-monitor"
+    assert declared == "system"
+
+
+def test_the_declared_label_and_the_measured_awareness_can_disagree():
+    """The single fact the whole queried-awareness design rests on."""
+
+    measured, declared, _units = _awareness_in("import pywinauto")
+
+    assert measured != declared
+
+
+def test_the_thread_accessor_never_answers_with_process_state():
+    """D069's rule applied to this module: a gate must assert provenance, not
+    mere completion.
+
+    The older DPI APIs report the PROCESS default. Returning that labelled as
+    thread awareness would make `thread_matches_process` trivially true
+    exactly when a third-party library has set an exotic thread context --
+    which is the one case that check exists to catch. A platform that cannot
+    answer the thread question answers `unknown`, and unknown refuses.
+    """
+
+    import ctypes
+
+    class _NoThreadApi:
+        def __getattr__(self, name):
+            if name == "GetThreadDpiAwarenessContext":
+                raise AttributeError(name)
+            return getattr(ctypes.windll.user32, name)
+
+    original = ctypes.windll.user32
+    try:
+        ctypes.windll.user32 = _NoThreadApi()
+        awareness, api = dpi.queried_thread_awareness()
+    finally:
+        ctypes.windll.user32 = original
+
+    assert awareness == dpi.UNKNOWN_AWARENESS
+    assert api == "none"
+
+
+def test_a_dark_primary_query_is_visible_rather_than_masked():
+    """If the context comparison stops working, the answer must become
+    `unknown` -- not a plausible value from a weaker source."""
+
+    import ctypes
+
+    original = dpi._canonical_context
+    try:
+        dpi._canonical_context = lambda _handle: None
+        awareness, api = dpi.queried_thread_awareness()
+    finally:
+        dpi._canonical_context = original
+
+    assert awareness == dpi.UNKNOWN_AWARENESS
+    assert api == "none"
+    # And unknown must refuse, not agree with itself.
+    unknown = _space(
+        thread_awareness=dpi.UNKNOWN_AWARENESS,
+        process_awareness=dpi.UNKNOWN_AWARENESS,
+        units=dpi.UNKNOWN_AWARENESS,
+    )
+    assert geometry_is_usable(unknown, unknown) is False
+
+
+# --- D2: the producer actually brackets ------------------------------------
+
+
+def test_observe_bracketed_samples_the_space_twice_around_the_read():
+    """`after = before` would always hold and never detect anything."""
+
+    first = _space()
+    second = _space(thread_awareness="unaware", process_awareness="unaware",
+                    units="logical_pixels")
+    samples = iter([first, second])
+    order: list[str] = []
+
+    def sample():
+        order.append("sample")
+        return next(samples)
+
+    def read():
+        order.append("read")
+        return [(1, 2, 3, 4)]
+
+    geometry = observe_bracketed(read, sample=sample)
+
+    assert order == ["sample", "read", "sample"]
+    assert geometry.before == first
+    assert geometry.after == second
+    assert geometry.held is False
+
+
+def test_a_bracket_whose_samples_differ_refuses_every_rectangle():
+    samples = iter(
+        [
+            _space(),
+            _space(thread_awareness="unaware", process_awareness="unaware",
+                   units="logical_pixels"),
+        ]
+    )
+    geometry = observe_bracketed(lambda: [(1, 2, 3, 4)], sample=lambda: next(samples))
+
+    assert bracket_disagreements(_space(), geometry) != ()
+
+
+def test_the_bracket_notices_a_topology_change_not_only_an_awareness_one():
+    """A monitor arriving mid-read moves the coordinate space too."""
+
+    samples = iter(
+        [_space(), _space(monitors=((0, 0, 960, 1080), (960, 0, 1920, 1080)))]
+    )
+    geometry = observe_bracketed(lambda: [(1, 2, 3, 4)], sample=lambda: next(samples))
+
+    assert geometry.held is False
+
+
+# --- D5: the version is pinned ---------------------------------------------
+
+
+def test_the_contract_version_is_pinned_to_a_literal():
+    """Every other test refers to the symbol, so reverting the bump passed
+    them all. The bump exists so a peer still sending version 1
+    `physical_pixels` cannot silently compare equal."""
+
+    assert CONTRACT_VERSION == 2
+
+
+def test_a_literal_version_one_record_is_refused():
+    record = _space().as_record()
+    record["contract_version"] = 1
+
+    assert any("contract version" in r for r in disagreements(_space(), from_record(record)))
+
+
+# --- D4: the window check is exercised -------------------------------------
+
+
+def test_window_agrees_reports_a_window_built_in_another_space():
+    from ghostcursor.coordinate_space import window_agrees
+
+    original = dpi.queried_window_awareness
+    try:
+        dpi.queried_window_awareness = lambda _hwnd: ("unaware", "stub")
+        reasons = window_agrees(_space(), 1234)
+    finally:
+        dpi.queried_window_awareness = original
+
+    assert any("was created under" in reason for reason in reasons)
+
+
+def test_window_agrees_accepts_a_window_in_the_same_space():
+    from ghostcursor.coordinate_space import window_agrees
+
+    original = dpi.queried_window_awareness
+    try:
+        dpi.queried_window_awareness = lambda _hwnd: ("per-monitor-v2", "stub")
+        assert window_agrees(_space(), 1234) == ()
+    finally:
+        dpi.queried_window_awareness = original
+
+
+def test_an_unreadable_window_awareness_is_refused_not_assumed_to_match():
+    """Turning `unknown` into `matches` is exactly what the module forbids."""
+
+    from ghostcursor.coordinate_space import window_agrees
+
+    original = dpi.queried_window_awareness
+    try:
+        dpi.queried_window_awareness = lambda _hwnd: (dpi.UNKNOWN_AWARENESS, "none")
+        reasons = window_agrees(_space(), 1234)
+    finally:
+        dpi.queried_window_awareness = original
+
+    assert any("could not be read" in reason for reason in reasons)
+
+
+def test_an_unreadable_window_handle_reports_unknown():
+    assert dpi.queried_window_awareness(0)[0] == dpi.UNKNOWN_AWARENESS
+
+
+# --- D6 and D8: topology ordering and serialization -------------------------
+
+
+def test_monitor_topology_is_sorted_so_two_processes_agree():
+    """Enumeration order is not guaranteed stable between processes, and an
+    order difference is not a coordinate-space difference."""
+
+    rects = [
+        (None, None, (960, 0, 1920, 1080)),
+        (None, None, (0, 0, 960, 1080)),
+    ]
+    original = dpi.win32api.EnumDisplayMonitors
+    try:
+        dpi.win32api.EnumDisplayMonitors = lambda: rects
+        assert dpi.monitor_topology() == ((0, 0, 960, 1080), (960, 0, 1920, 1080))
+        rects.reverse()
+        assert dpi.monitor_topology() == ((0, 0, 960, 1080), (960, 0, 1920, 1080))
+    finally:
+        dpi.win32api.EnumDisplayMonitors = original
+
+
+def test_a_record_reports_the_number_of_monitors_it_carries():
+    two = _space(monitors=((0, 0, 960, 1080), (960, 0, 1920, 1080)))
+
+    assert two.as_record()["monitor_count"] == 2
+    assert from_record(two.as_record()) == two
+
+
+# --- D7: a malformed bracket refuses as a ValueError ------------------------
+
+
+@pytest.mark.parametrize("side", ["before", "after"])
+def test_a_bracket_record_missing_a_side_refuses_rather_than_raising_keyerror(side):
+    record = observe_bracketed(lambda: []).as_record()
+    del record[side]
+
+    with pytest.raises(ValueError, match="missing"):
+        bracket_from_record(record)
+
+
+@pytest.mark.parametrize("side", ["before", "after"])
+def test_a_bracket_side_that_is_not_a_mapping_refuses(side):
+    record = observe_bracketed(lambda: []).as_record()
+    record[side] = "not-a-space"
+
+    with pytest.raises(ValueError, match="must be a mapping"):
+        bracket_from_record(record)

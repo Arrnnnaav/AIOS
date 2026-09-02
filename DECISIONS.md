@@ -4087,7 +4087,9 @@ argue against.
 
 **Decision.** `CoordinateSpace.units` is derived from the DPI awareness
 actually in force in the producing process, through
-`dpi.coordinate_units()`. A per-monitor-aware process reports
+`dpi.units_for_awareness()` applied to the awareness that capture just
+measured -- not a second query, which could disagree with the first. A
+per-monitor-aware process reports
 `physical_pixels`; a system-aware one reports `system_dpi_pixels`; unaware
 reports `logical_pixels`. Only canonical values parse, and two processes must
 agree on units as well as on awareness.
@@ -4123,3 +4125,21 @@ rather than riding along with a signature cleanup.
 **Alternative rejected.** Fixing the setter inside this change and keeping
 `physical_pixels` true by construction. It would have made the claim honest
 and the coordinate space untested in the same commit.
+
+**Amended after the third independent review.** This decision named
+`dpi.coordinate_units()`, a function `9a094c3` had already moved away from --
+the fix landed and the prose did not, which is the same defect the previous
+round found in D105. Corrected above.
+
+`queried_thread_awareness()` also no longer falls back to a process-level API.
+The older APIs report the PROCESS default, and returning that labelled as
+thread awareness made `thread_matches_process` trivially true in exactly the
+case it exists to catch: a third-party library having set an exotic thread
+context. A platform that cannot answer the thread question now answers
+`unknown`, and unknown refuses geometry rather than agreeing with itself.
+That is D069's rule -- a gate asserts provenance, not mere completion.
+
+While this decision stands, the process must remain SYSTEM aware, and a test
+pins that. The assertion which previously claimed to guard it was
+`assert ... or True`, a tautology: flipping the process to per-monitor-v2
+passed the entire suite.

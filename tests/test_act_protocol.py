@@ -242,12 +242,50 @@ def test_a_rejection_does_not_satisfy_the_wait_on_its_own():
     assert wait.may_execute is False
 
 
-def test_geometry_may_not_start_after_it_was_rejected():
+@pytest.mark.parametrize(
+    "kind",
+    [
+        ReceiptKind.GEOMETRY_STARTED,
+        ReceiptKind.RAIL_STARTED,
+        ReceiptKind.PRESENTATION_COMPLETED,
+        ReceiptKind.RENDER_REJECTED,
+    ],
+)
+def test_a_refused_presentation_is_terminal_for_every_receipt_kind(kind):
+    """Rail fallback is a NEW request with its own generation and receipts.
+
+    Letting the refused wait continue meant the fallback was bound to nothing:
+    a RAIL_STARTED plus a completion on the same request reached
+    may_execute -- an effect running against a wait that had already refused.
+    """
+
     wait = _wait()
     wait.accept(_receipt(ReceiptKind.RENDER_REJECTED), now_ms=50.0)
 
-    with pytest.raises(ProtocolError, match="already refused"):
-        wait.accept(_receipt(ReceiptKind.GEOMETRY_STARTED), now_ms=60.0)
+    with pytest.raises(ProtocolError, match="needs a new request"):
+        wait.accept(_receipt(kind), now_ms=60.0)
+
+    assert wait.may_execute is False
+
+
+def test_a_rail_fallback_uses_a_fresh_request_and_then_may_execute():
+    """The fallback is legitimate -- it just has to be bound."""
+
+    refused = _wait()
+    refused.accept(_receipt(ReceiptKind.RENDER_REJECTED), now_ms=50.0)
+
+    fallback_request = _request(presentation_generation=2)
+    fallback = _wait(fallback_request)
+    fallback.accept(
+        _receipt(ReceiptKind.RAIL_STARTED, presentation_generation=2), now_ms=10.0
+    )
+    fallback.accept(
+        _receipt(ReceiptKind.PRESENTATION_COMPLETED, presentation_generation=2),
+        now_ms=20.0,
+    )
+
+    assert refused.may_execute is False
+    assert fallback.may_execute is True
 
 
 def test_a_geometry_required_presentation_refuses_rather_than_falling_back():
@@ -353,3 +391,114 @@ def test_every_refusal_code_is_distinct_and_snake_cased():
 
     assert len(values) == len(set(values))
     assert all(value == value.lower() and " " not in value for value in values)
+
+
+# --- the closed vocabulary is enforced at runtime --------------------------
+
+
+def test_an_unknown_receipt_kind_is_refused_at_construction():
+    """A plain string kind matched no branch and fell through to the
+    completion branch, so it could satisfy a wait and let an effect run."""
+
+    with pytest.raises(ProtocolError, match="not a known kind"):
+        Receipt("bogus", "s1", "c1", "n0", 1, 1)
+
+
+def test_an_unknown_kind_cannot_reach_execution_even_if_one_were_built():
+    wait = _wait()
+    wait.accept(_receipt(ReceiptKind.RAIL_STARTED), now_ms=10.0)
+    smuggled = _receipt(ReceiptKind.PRESENTATION_COMPLETED)
+    object.__setattr__(smuggled, "kind", "bogus")
+
+    with pytest.raises(ProtocolError, match="is not handled"):
+        wait.accept(smuggled, now_ms=20.0)
+
+    assert wait.may_execute is False
+
+
+@pytest.mark.parametrize("field", ["session_id", "cue_id", "nonce"])
+def test_an_empty_identity_is_refused(field):
+    """An empty identity matches another empty identity."""
+
+    with pytest.raises(ProtocolError, match="non-empty"):
+        _receipt(ReceiptKind.RAIL_STARTED, **{field: ""})
+
+
+@pytest.mark.parametrize(
+    "field", ["presentation_generation", "frame_generation"]
+)
+@pytest.mark.parametrize("value", [True, -1, 1.0, "1"])
+def test_a_generation_that_is_not_a_non_negative_integer_is_refused(field, value):
+    """True == 1, so a boolean generation compares equal to the first real
+    one -- the binding that stops a replay satisfied by a type confusion."""
+
+    with pytest.raises(ProtocolError, match="non-negative integer"):
+        _receipt(ReceiptKind.RAIL_STARTED, **{field: value})
+
+
+def test_a_request_validates_its_own_identities_too():
+    with pytest.raises(ProtocolError, match="non-empty"):
+        _request(cue_id="")
+    with pytest.raises(ProtocolError, match="boolean"):
+        _request(geometry_required="yes")
+
+
+@pytest.mark.parametrize("values", [(True, True), (500, 800.0), ("500", 800)])
+def test_a_deadline_that_is_not_an_integer_is_refused(values):
+    """bool is an int subclass, so ReceiptPolicy(True, True) built a policy
+    with one-millisecond deadlines that timed out everything."""
+
+    with pytest.raises(ProtocolError, match="must be an integer"):
+        ReceiptPolicy(*values)
+
+
+# --- geometry_required means geometry --------------------------------------
+
+
+def test_a_geometry_required_cue_may_not_be_satisfied_by_rail_text():
+    """Checking only RENDER_REJECTED let the acceptance case pass while
+    proving none of the geometry it exists to prove."""
+
+    wait = _wait(_request(geometry_required=True))
+
+    with pytest.raises(ProtocolError, match="started as rail_started"):
+        wait.accept(_receipt(ReceiptKind.RAIL_STARTED), now_ms=10.0)
+
+    assert wait.may_execute is False
+
+
+def test_a_geometry_required_cue_is_satisfied_by_geometry():
+    wait = _wait(_request(geometry_required=True))
+
+    wait.accept(_receipt(ReceiptKind.GEOMETRY_STARTED), now_ms=10.0)
+    wait.accept(_receipt(ReceiptKind.PRESENTATION_COMPLETED), now_ms=20.0)
+
+    assert wait.may_execute is True
+
+
+# --- ordering and clock sanity ---------------------------------------------
+
+
+def test_geometry_cannot_be_refused_after_the_presentation_started():
+    wait = _wait()
+    wait.accept(_receipt(ReceiptKind.GEOMETRY_STARTED), now_ms=10.0)
+
+    with pytest.raises(ProtocolError, match="after this presentation started"):
+        wait.accept(_receipt(ReceiptKind.RENDER_REJECTED), now_ms=20.0)
+
+
+def test_a_clock_that_moves_backwards_before_the_start_is_refused():
+    """A negative elapsed time passes every deadline comparison."""
+
+    wait = _wait(started_ms=100.0)
+
+    with pytest.raises(ProtocolError, match="moved backwards"):
+        wait.accept(_receipt(ReceiptKind.RAIL_STARTED), now_ms=50.0)
+
+
+def test_a_clock_that_moves_backwards_before_the_completion_is_refused():
+    wait = _wait(started_ms=0.0)
+    wait.accept(_receipt(ReceiptKind.RAIL_STARTED), now_ms=100.0)
+
+    with pytest.raises(ProtocolError, match="moved backwards"):
+        wait.accept(_receipt(ReceiptKind.PRESENTATION_COMPLETED), now_ms=50.0)

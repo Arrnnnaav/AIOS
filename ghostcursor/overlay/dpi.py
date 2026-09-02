@@ -179,9 +179,10 @@ def _declare_signatures() -> None:
     same ABI mistake this module already documents in the SETTER, where it
     makes `SetProcessDpiAwarenessContext` fail outright.
 
-    It is latent rather than visible here: measured on this machine the thread
-    context handle is 0x6010, small enough to survive truncation, so the
-    comparisons happen to be right. On a build where the handle is a genuine
+    It is latent rather than visible here: the thread context handle measured
+    in one process on this machine was 0x6010 and in another 0x7811 -- the
+    value is per-process, not a property of the machine -- and both are small
+    enough to survive truncation, so the comparisons happen to be right. On a build where the handle is a genuine
     pointer above 4 GB it would truncate, `AreDpiAwarenessContextsEqual` would
     match nothing, and every query would report `unknown` -- refusing all
     geometry rather than misplacing it, but for a reason that has nothing to
@@ -211,6 +212,14 @@ def _declare_signatures() -> None:
             wintypes.BOOL,
         ),
         ("IsProcessDPIAware", [], wintypes.BOOL),
+        # scale_factor()'s own calls. HDC is pointer-sized; an undeclared
+        # restype is a 32-bit int. Windows documents USER/GDI handles as
+        # 32-bit-significant and sign-extended, so this is not the live
+        # truncation risk DPI_AWARENESS_CONTEXT was -- but it is the same
+        # class in the same module, and "every DPI API is declared" was not
+        # true while these were not.
+        ("GetDC", [ctypes.c_void_p], ctypes.c_void_p),
+        ("ReleaseDC", [ctypes.c_void_p, ctypes.c_void_p], ctypes.c_int),
     ):
         function = getattr(user32, name, None)
         if function is not None:
@@ -224,6 +233,11 @@ def _declare_signatures() -> None:
     if function is not None:
         function.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_int)]
         function.restype = ctypes.c_long
+    gdi = getattr(ctypes.windll, "gdi32", None)
+    function = getattr(gdi, "GetDeviceCaps", None) if gdi is not None else None
+    if function is not None:
+        function.argtypes = [ctypes.c_void_p, ctypes.c_int]
+        function.restype = ctypes.c_int
 
 
 _declare_signatures()
@@ -291,7 +305,17 @@ def _legacy_awareness() -> tuple[str, str] | None:
 
 
 def queried_thread_awareness() -> tuple[str, str]:
-    """The calling THREAD's actual awareness, and the API that answered."""
+    """The calling THREAD's actual awareness, and the API that answered.
+
+    There is deliberately NO fallback to a process-level API here. The older
+    APIs report the PROCESS default, and returning that labelled as thread
+    awareness makes `thread_matches_process` trivially true -- exactly when a
+    third-party library has set an exotic thread context, which is the one
+    case that check exists to catch. A platform that cannot answer the thread
+    question answers `unknown`, and unknown refuses geometry rather than
+    quietly agreeing with itself.
+    """
+
     try:
         handle = ctypes.windll.user32.GetThreadDpiAwarenessContext()
         name = _canonical_context(handle)
@@ -299,8 +323,7 @@ def queried_thread_awareness() -> tuple[str, str]:
             return name, "GetThreadDpiAwarenessContext"
     except (AttributeError, OSError):
         pass
-    legacy = _legacy_awareness()
-    return legacy if legacy is not None else (UNKNOWN_AWARENESS, "none")
+    return UNKNOWN_AWARENESS, "none"
 
 
 def queried_window_awareness(hwnd: int) -> tuple[str, str]:

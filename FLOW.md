@@ -1226,6 +1226,19 @@ plan's own flattened node order and returns the deterministic cue groups. It
 is not yet reachable from `action_plans.py`: wiring it changes plan bytes and
 therefore every plan digest.
 
+`ghostcursor/act_protocol.py` fixes the vocabulary the session surfaces and
+the verifier speak: three verifier modes, four receipt kinds, the closed
+refusal-code set, lifecycle states and trust classes. `PresentationWait`
+tracks one cue against a `ReceiptPolicy` on an injected clock, and
+`may_execute` stays false until a start receipt and a completion receipt have
+both arrived inside their deadlines -- no effect runs from a cue the user was
+never shown. Receipts carry session, cue, nonce and presentation/frame
+generation, so a receipt from a previous attempt at the same cue cannot
+satisfy a later wait. `trust_for()` derives the trust class from the backend
+that acted and whether verification returned; it is never passed in, and every
+unproven state is NEUTRAL. `ReceiptPolicy` has no default deadlines because
+Phase E derives them.
+
 `ghostcursor/coordinate_space.py` is the contract a rectangle must satisfy
 before the overlay will draw it. Act's verifier runs out of process, so two
 processes have to agree what a pixel coordinate means; every value is queried
@@ -1234,4 +1247,10 @@ which setter path ran rather than what the process became. Awareness equality
 is load-bearing and virtual bounds plus monitor topology corroborate it --
 at 100% on one monitor an unaware and a per-monitor-v2 process report
 identical numbers. Unknown awareness and partial records are refused, never
-defaulted.
+defaulted, and units are derived from the measured awareness rather than
+asserted -- a system-aware producer reports `system_dpi_pixels` and cannot
+compare equal to a genuinely per-monitor peer (D106). A rectangle read is
+bracketed by two awareness samples: `observe_bracketed` captures the space,
+reads, and captures again, and `BracketedGeometry` refuses every rectangle if
+the space moved between them, because rectangles read across a context change
+may not share a space with each other.

@@ -84,6 +84,15 @@ def _exact_int(value: object, label: str) -> int:
 def _rectangle(value: object, label: str) -> tuple[int, int, int, int]:
     """Exactly four integers. Not three, not five, not coerced.
 
+    Shape only. This validator is deliberately blind to which four-integer
+    CONVENTION a field uses, and this module carries two: `virtual_bounds` is
+    (left, top, width, height) from `virtual_screen_rect()`, while `monitors`
+    and every observed rectangle are (left, top, right, bottom) as
+    `EnumDisplayMonitors` and UIA report them. Both are documented on the
+    fields that hold them, because the moment the producer is not this same
+    Python module a mixed-up convention is a rectangle in the wrong place with
+    four perfectly valid integers.
+
     Validating each coordinate's type while never counting them let a
     three-coordinate rectangle through, and a renderer handed one would either
     raise deep inside a paint or silently draw something else.
@@ -103,7 +112,11 @@ class CoordinateSpace:
     thread_awareness: str
     awareness_api: str
     units: str
+    #: (left, top, WIDTH, HEIGHT) -- the shape `virtual_screen_rect()` returns.
     virtual_bounds: tuple[int, int, int, int]
+    #: (left, top, RIGHT, BOTTOM) -- the shape `EnumDisplayMonitors` returns.
+    #: A different convention from `virtual_bounds` above, on purpose, because
+    #: each mirrors the API it came from rather than being silently converted.
     monitors: tuple[tuple[int, int, int, int], ...]
 
     @property
@@ -276,6 +289,9 @@ def bracket_from_record(value: Mapping[str, Any]) -> "BracketedGeometry":
     rectangles = value["rectangles"]
     if not isinstance(rectangles, (list, tuple)):
         raise ValueError("bracketed geometry rectangles is invalid")
+    for side in ("before", "after"):
+        if not isinstance(value[side], Mapping):
+            raise ValueError(f"bracketed geometry {side} must be a mapping")
     return BracketedGeometry(
         from_record(value["before"]),
         from_record(value["after"]),
@@ -283,12 +299,23 @@ def bracket_from_record(value: Mapping[str, Any]) -> "BracketedGeometry":
     )
 
 
-def observe_bracketed(read: Callable[[], Sequence[Sequence[int]]]) -> BracketedGeometry:
-    """Sample the space, run one rectangle read, sample it again."""
+def observe_bracketed(
+    read: Callable[[], Sequence[Sequence[int]]],
+    *,
+    sample: Callable[[], CoordinateSpace] = capture,
+) -> BracketedGeometry:
+    """Sample the space, run one rectangle read, sample it again.
 
-    before = capture()
+    ``sample`` is injected so a test can drive the two samples apart. Without
+    that seam nothing distinguishes this from ``BracketedGeometry(before,
+    before, ...)`` -- a bracket that never re-samples, always holds, and can
+    never detect the mid-read change it exists for.
+    """
+
+    before = sample()
     rectangles = tuple(_rectangle(rect, "rectangle") for rect in read())
-    return BracketedGeometry(before, capture(), rectangles)
+    after = sample()
+    return BracketedGeometry(before, after, rectangles)
 
 
 def disagreements(observer: CoordinateSpace, peer: CoordinateSpace) -> tuple[str, ...]:
