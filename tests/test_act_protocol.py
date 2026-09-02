@@ -12,6 +12,7 @@ import pytest
 
 from ghostcursor.act_protocol import (
     Backend,
+    fallback_request_for,
     LifecycleState,
     PresentationRequest,
     PresentationWait,
@@ -367,12 +368,21 @@ def test_a_non_positive_deadline_is_refused(values):
         ReceiptPolicy(*values)
 
 
-def test_a_completion_deadline_shorter_than_the_first_paint_deadline_is_refused():
-    """It would time out every presentation before its own start receipt could
-    be followed by a completion."""
+def test_a_fast_settle_after_a_slow_first_paint_is_a_legitimate_budget():
+    """The two deadlines are independent and neither is measured from the
+    other: first paint runs from the request, completion runs from the START
+    RECEIPT. An earlier version refused this pairing on the stated grounds
+    that completion was "measured after" first paint, which is not what the
+    code does -- and it made a real budget unrepresentable.
+    """
 
-    with pytest.raises(ProtocolError, match="must not be shorter"):
-        ReceiptPolicy(first_paint_deadline_ms=800, completion_deadline_ms=500)
+    policy = ReceiptPolicy(first_paint_deadline_ms=800, completion_deadline_ms=500)
+    wait = PresentationWait(_request(), policy, started_ms=0.0)
+
+    wait.accept(_receipt(ReceiptKind.RAIL_STARTED), now_ms=700.0)
+    wait.accept(_receipt(ReceiptKind.PRESENTATION_COMPLETED), now_ms=900.0)
+
+    assert wait.may_execute is True
 
 
 # --- the vocabulary is closed ----------------------------------------------
@@ -502,3 +512,213 @@ def test_a_clock_that_moves_backwards_before_the_completion_is_refused():
 
     with pytest.raises(ProtocolError, match="moved backwards"):
         wait.accept(_receipt(ReceiptKind.PRESENTATION_COMPLETED), now_ms=50.0)
+
+
+# --- the clock only moves forward ------------------------------------------
+
+
+def test_a_wait_that_already_expired_cannot_then_be_satisfied():
+    """The central defect. `expired()` reported the deadline passed, and a
+    receipt submitted against an earlier reading still reached may_execute --
+    reachable through an ordinary polling loop."""
+
+    wait = _wait()
+
+    assert wait.expired(now_ms=9999.0) is True
+
+    with pytest.raises(ProtocolError, match="moved backwards"):
+        wait.accept(_receipt(ReceiptKind.RAIL_STARTED), now_ms=400.0)
+
+    assert wait.may_execute is False
+
+
+def test_asking_whether_it_expired_advances_the_same_clock():
+    """Asking the question is observing the clock."""
+
+    wait = _wait()
+    wait.expired(now_ms=300.0)
+
+    with pytest.raises(ProtocolError, match="moved backwards"):
+        wait.accept(_receipt(ReceiptKind.RAIL_STARTED), now_ms=200.0)
+
+
+def test_a_receipt_refused_as_late_cannot_be_resubmitted_earlier():
+    wait = _wait()
+    with pytest.raises(ProtocolError):
+        wait.accept(_receipt(ReceiptKind.RAIL_STARTED), now_ms=10_000.0)
+
+    with pytest.raises(ProtocolError, match="moved backwards"):
+        wait.accept(_receipt(ReceiptKind.RAIL_STARTED), now_ms=100.0)
+
+    assert wait.may_execute is False
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+def test_a_non_finite_clock_reading_is_refused(bad):
+    """`NaN < x` and `NaN > x` are both False, so NaN passes every deadline
+    comparison and reaches may_execute with nothing enforced."""
+
+    wait = _wait()
+
+    with pytest.raises(ProtocolError, match="finite"):
+        wait.accept(_receipt(ReceiptKind.RAIL_STARTED), now_ms=bad)
+    with pytest.raises(ProtocolError, match="finite"):
+        wait.expired(now_ms=bad)
+
+
+@pytest.mark.parametrize("bad", [float("nan"), True, "0", None])
+def test_a_wait_validates_its_own_start_time(bad):
+    with pytest.raises(ProtocolError):
+        PresentationWait(_request(), POLICY, started_ms=bad)
+
+
+def test_a_wait_validates_its_request_and_policy():
+    with pytest.raises(ProtocolError, match="PresentationRequest"):
+        PresentationWait(object(), POLICY, started_ms=0.0)
+    with pytest.raises(ProtocolError, match="ReceiptPolicy"):
+        PresentationWait(_request(), object(), started_ms=0.0)
+
+
+def test_only_a_receipt_may_be_accepted():
+    with pytest.raises(ProtocolError, match="only a Receipt"):
+        _wait().accept(object(), now_ms=10.0)
+
+
+# --- expired() and accept() share one predicate ----------------------------
+
+
+def test_expired_and_accept_agree_on_the_boundary_instant():
+    """They computed this separately and could disagree about the same
+    instant -- one reporting a timeout while the other still accepted."""
+
+    on_time = _wait()
+    assert on_time.expired(now_ms=500.0) is False
+    on_time.accept(_receipt(ReceiptKind.RAIL_STARTED), now_ms=500.0)
+
+    late = _wait()
+    assert late.expired(now_ms=500.1) is True
+    with pytest.raises(ProtocolError, match=RefusalCode.RENDER_TIMEOUT.value):
+        late.accept(_receipt(ReceiptKind.RAIL_STARTED), now_ms=500.1)
+
+
+def test_a_refused_presentation_is_not_reported_as_expired():
+    """It ended. Reporting a render timeout for a clean rejection puts the
+    wrong refusal code in the run record."""
+
+    wait = _wait()
+    wait.accept(_receipt(ReceiptKind.RENDER_REJECTED), now_ms=50.0)
+
+    assert wait.expired(now_ms=9999.0) is False
+    assert wait.rejected is True
+
+
+def test_a_rejection_is_itself_subject_to_the_first_paint_deadline():
+    """It was handled before the clock guard and bound by no deadline at
+    all -- accepted long after expired() had already returned True."""
+
+    wait = _wait()
+
+    with pytest.raises(ProtocolError, match=RefusalCode.RENDER_TIMEOUT.value):
+        wait.accept(_receipt(ReceiptKind.RENDER_REJECTED), now_ms=10_000.0)
+
+
+# --- a rail fallback is genuinely fresh ------------------------------------
+
+
+def test_a_hand_built_fallback_with_the_same_identity_is_the_hazard():
+    """The wait cannot enforce freshness -- it never sees the other request --
+    so the helper is what makes the binding distinguish them."""
+
+    rejected = _request()
+    fallback = fallback_request_for(rejected, nonce="n1")
+
+    assert fallback.presentation_generation > rejected.presentation_generation
+    assert fallback.frame_generation > rejected.frame_generation
+    assert fallback.nonce != rejected.nonce
+    assert fallback.geometry_required is False
+
+
+def test_receipts_for_the_rejected_request_do_not_satisfy_its_fallback():
+    rejected = _request()
+    fallback = fallback_request_for(rejected, nonce="n1")
+    wait = PresentationWait(fallback, POLICY, started_ms=0.0)
+
+    with pytest.raises(ProtocolError, match="does not answer"):
+        wait.accept(_receipt(ReceiptKind.RAIL_STARTED), now_ms=10.0)
+
+
+def test_a_fallback_of_a_geometry_required_request_drops_the_requirement():
+    """A fallback exists precisely because geometry was unavailable."""
+
+    fallback = fallback_request_for(_request(geometry_required=True), nonce="n1")
+
+    assert fallback.geometry_required is False
+
+
+# --- trust fails closed on a new state -------------------------------------
+
+
+def test_every_lifecycle_state_is_explicitly_classified():
+    """The real hazard: a member added later and never classified.
+
+    A new Backend fails closed with a KeyError, but a new STATE used to fall
+    through to the backend's VERIFIED class -- the wrong way round for a
+    module whose premise is that a viewer cannot check the colour. Adding a
+    member without putting it in exactly one bucket fails here.
+    """
+
+    from ghostcursor.act_protocol import UNPROVEN_STATES
+
+    classified = set(UNPROVEN_STATES) | {
+        LifecycleState.REFUSED,
+        LifecycleState.VERIFIED,
+    }
+
+    assert classified == set(LifecycleState)
+    assert LifecycleState.VERIFIED not in UNPROVEN_STATES
+    assert LifecycleState.REFUSED not in UNPROVEN_STATES
+
+
+def test_a_state_that_is_neither_proven_nor_unproven_refuses(monkeypatch):
+    """Exercises the branch directly by removing a state from the unproven
+    set: it is then neither REFUSED, nor unproven, nor VERIFIED."""
+
+    from ghostcursor import act_protocol
+
+    monkeypatch.setattr(
+        act_protocol,
+        "UNPROVEN_STATES",
+        frozenset(act_protocol.UNPROVEN_STATES - {LifecycleState.EXECUTING}),
+    )
+
+    with pytest.raises(ProtocolError, match="no defined trust class"):
+        act_protocol.trust_for(Backend.OBJECT_MODEL, LifecycleState.EXECUTING)
+
+
+def test_every_declared_lifecycle_state_has_a_defined_trust_class():
+    for state in LifecycleState:
+        assert isinstance(trust_for(Backend.OBJECT_MODEL, state), TrustClass)
+
+
+# --- refusals are machine-readable -----------------------------------------
+
+
+def test_a_render_timeout_carries_its_code_not_only_its_message():
+    """A caller could only tell a timeout from an ordering error by matching
+    prose, which made the message string load-bearing."""
+
+    wait = _wait()
+
+    with pytest.raises(ProtocolError) as raised:
+        wait.accept(_receipt(ReceiptKind.RAIL_STARTED), now_ms=10_000.0)
+
+    assert raised.value.code is RefusalCode.RENDER_TIMEOUT
+
+
+def test_an_ordering_error_is_distinguishable_from_a_timeout():
+    wait = _wait()
+
+    with pytest.raises(ProtocolError) as raised:
+        wait.accept(_receipt(ReceiptKind.PRESENTATION_COMPLETED), now_ms=10.0)
+
+    assert raised.value.code is not RefusalCode.RENDER_TIMEOUT

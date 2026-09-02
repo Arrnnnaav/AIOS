@@ -180,11 +180,74 @@ def trust_for(backend: Backend, state: LifecycleState) -> TrustClass:
         return TrustClass.REFUSED
     if state in UNPROVEN_STATES:
         return TrustClass.NEUTRAL
+    if state is not LifecycleState.VERIFIED:
+        # Explicit rather than a fall-through. Without this a lifecycle state
+        # added later -- CANCELLED, say -- would inherit the backend's
+        # VERIFIED colour by default. A new Backend already fails closed with
+        # a KeyError; a new state has to fail closed too, or the one thing a
+        # viewer cannot check is the one thing that degrades silently.
+        raise ProtocolError(
+            f"lifecycle state {state.value!r} has no defined trust class",
+            RefusalCode.UNSUPPORTED_ACTION_SURFACE,
+        )
     return _VERIFIED_TRUST[backend]
 
 
 class ProtocolError(ValueError):
-    """A receipt or presentation sequence that must not be acted on."""
+    """A receipt or presentation sequence that must not be acted on.
+
+    Carries the machine-readable `RefusalCode` as well as the message. An
+    earlier version carried only a string, which meant a caller could only
+    tell a render timeout from an ordering error by matching prose -- and the
+    tests did exactly that, making the message text load-bearing. Structuring
+    it before any caller exists is far cheaper than retrofitting it after.
+    """
+
+    def __init__(self, message: str, code: "RefusalCode | None" = None) -> None:
+        super().__init__(message)
+        self.code = code
+
+
+def _finite(value: object, label: str) -> float:
+    """A real, finite clock reading.
+
+    NaN is the reason this exists: `NaN < x` and `NaN > x` are both False, so
+    a NaN timestamp passes every deadline comparison in this module and
+    reaches `may_execute` with no deadline enforced at all. bool is excluded
+    for the same reason generations exclude it -- `True == 1` is a timestamp
+    nobody meant.
+    """
+
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ProtocolError(f"{label} must be a real number")
+    number = float(value)
+    if number != number or number in (float("inf"), float("-inf")):
+        raise ProtocolError(f"{label} must be finite")
+    return number
+
+
+@dataclass(frozen=True)
+class Receipt:
+    """One acknowledgement, bound to the exact request it answers."""
+
+    kind: ReceiptKind
+    session_id: str
+    cue_id: str
+    nonce: str
+    presentation_generation: int
+    frame_generation: int
+
+    def __post_init__(self) -> None:
+        # The vocabulary is closed, and it has to be closed at RUNTIME: a
+        # plain string kind matches none of the branches below and would fall
+        # through to the completion branch, satisfying a wait.
+        if not isinstance(self.kind, ReceiptKind):
+            raise ProtocolError(f"receipt kind {self.kind!r} is not a known kind")
+        _identity(self.session_id, "session_id")
+        _identity(self.cue_id, "cue_id")
+        _identity(self.nonce, "nonce")
+        _generation(self.presentation_generation, "presentation_generation")
+        _generation(self.frame_generation, "frame_generation")
 
 
 def _identity(value: object, label: str) -> str:
@@ -209,37 +272,20 @@ def _generation(value: object, label: str) -> int:
 
 
 @dataclass(frozen=True)
-class Receipt:
-    """One acknowledgement, bound to the exact request it answers."""
-
-    kind: ReceiptKind
-    session_id: str
-    cue_id: str
-    nonce: str
-    presentation_generation: int
-    frame_generation: int
-
-    def __post_init__(self) -> None:
-        # The vocabulary is closed, and it has to be closed at RUNTIME. A
-        # plain string kind is not merely undocumented: it matches none of the
-        # branches above and falls through to the completion branch, so an
-        # unknown kind could satisfy a wait and let an effect run.
-        if not isinstance(self.kind, ReceiptKind):
-            raise ProtocolError(f"receipt kind {self.kind!r} is not a known kind")
-        _identity(self.session_id, "session_id")
-        _identity(self.cue_id, "cue_id")
-        _identity(self.nonce, "nonce")
-        _generation(self.presentation_generation, "presentation_generation")
-        _generation(self.frame_generation, "frame_generation")
-
-
-@dataclass(frozen=True)
 class ReceiptPolicy:
     """Deadlines for one presentation.
 
     No defaults. Phase E derives these from measurement, and a plausible
     constant here is the placeholder that derivation exists to replace -- it
     would also be the number every test silently agreed with.
+
+    The two deadlines are independent and deliberately unordered relative to
+    each other. `first_paint_deadline_ms` runs from the request;
+    `completion_deadline_ms` runs from the START RECEIPT, not from the
+    first-paint deadline. An earlier version refused a completion deadline
+    shorter than the first-paint one on the stated grounds that it was
+    "measured after" it, which is not what the code does -- and that made a
+    legitimate budget (slow first paint, fast settle) unrepresentable.
     """
 
     first_paint_deadline_ms: int
@@ -252,13 +298,8 @@ class ReceiptPolicy:
             # policy with one-millisecond deadlines that timed out everything.
             if isinstance(value, bool) or not isinstance(value, int):
                 raise ProtocolError(f"{label} must be an integer")
-        if self.first_paint_deadline_ms <= 0 or self.completion_deadline_ms <= 0:
-            raise ProtocolError("receipt deadlines must be positive")
-        if self.completion_deadline_ms < self.first_paint_deadline_ms:
-            raise ProtocolError(
-                "the completion deadline must not be shorter than the "
-                "first-paint deadline it is measured after"
-            )
+            if value <= 0:
+                raise ProtocolError(f"{label} must be positive")
 
 
 @dataclass(frozen=True)
@@ -282,15 +323,46 @@ class PresentationRequest:
             raise ProtocolError("geometry_required must be a boolean")
 
 
+def fallback_request_for(
+    rejected: PresentationRequest, *, nonce: str
+) -> PresentationRequest:
+    """A rail presentation to replace one whose geometry was refused.
+
+    A `PresentationWait` is terminal after a rejection, but it cannot enforce
+    that the REPLACEMENT is new -- it never sees the other request. Built by
+    hand with the same identity, the fallback is satisfiable by receipts
+    minted for the request it replaced. This mints the new generation and
+    nonce so the binding actually distinguishes them, and drops
+    `geometry_required`, since a fallback exists precisely because geometry
+    was unavailable.
+    """
+
+    if not isinstance(rejected, PresentationRequest):
+        raise ProtocolError("a fallback replaces a PresentationRequest")
+    return PresentationRequest(
+        session_id=rejected.session_id,
+        cue_id=rejected.cue_id,
+        nonce=_identity(nonce, "nonce"),
+        presentation_generation=rejected.presentation_generation + 1,
+        frame_generation=rejected.frame_generation + 1,
+        geometry_required=False,
+    )
+
+
 def receipt_answers(request: PresentationRequest, receipt: Receipt) -> bool:
     """Whether this receipt was produced for this exact request.
 
-    Every field is compared. A receipt matching on session and cue but not on
-    presentation generation is a receipt for a previous attempt at the same
-    cue, and accepting it would let a re-presented cue be satisfied by the
-    render that preceded its own re-request.
+    Every binding field is compared -- `kind` is not one, since a request does
+    not say which kind will answer it. A receipt matching on session and cue
+    but not on presentation generation is a receipt for a previous attempt at
+    the same cue, and accepting it would let a re-presented cue be satisfied
+    by the render that preceded its own re-request.
     """
 
+    if not isinstance(request, PresentationRequest) or not isinstance(
+        receipt, Receipt
+    ):
+        raise ProtocolError("receipt_answers compares a request with a receipt")
     return (
         receipt.session_id == request.session_id
         and receipt.cue_id == request.cue_id
@@ -303,10 +375,15 @@ def receipt_answers(request: PresentationRequest, receipt: Receipt) -> bool:
 class PresentationWait:
     """Tracks one cue's presentation against its policy, on an injected clock.
 
-    Ordered-sequence rather than end-state (D026): the questions that matter
-    are *when* each receipt arrived relative to which deadline, and an
-    end-state check cannot tell a completion that arrived late from one that
-    arrived at all.
+    Ordered-sequence rather than end-state (D026): what matters is *when* each
+    receipt arrived relative to which deadline.
+
+    **The clock only moves forward.** The wait keeps a high-water mark of
+    every `now_ms` it has been shown, including the ones passed to
+    `expired()`, and refuses any reading below it. Without that, a caller
+    could ask `expired()` at 9999, be told the deadline had passed, then
+    submit a receipt at 400 and reach `may_execute` -- the exact outcome this
+    module exists to prevent, reachable through an ordinary polling loop.
     """
 
     def __init__(
@@ -316,9 +393,14 @@ class PresentationWait:
         *,
         started_ms: float,
     ) -> None:
+        if not isinstance(request, PresentationRequest):
+            raise ProtocolError("a presentation wait needs a PresentationRequest")
+        if not isinstance(policy, ReceiptPolicy):
+            raise ProtocolError("a presentation wait needs a ReceiptPolicy")
         self._request = request
         self._policy = policy
-        self._started_ms = started_ms
+        self._started_ms = _finite(started_ms, "started_ms")
+        self._last_ms = self._started_ms
         self._start_receipt: Receipt | None = None
         self._start_ms: float | None = None
         self._completed = False
@@ -326,13 +408,17 @@ class PresentationWait:
 
     @property
     def rejected(self) -> bool:
-        """Geometry was refused. Production may re-present as rail text."""
+        """Geometry was refused. A rail fallback needs a fresh request."""
 
         return self._rejected
 
     @property
     def satisfied(self) -> bool:
-        """Both required receipts arrived inside their deadlines."""
+        """Both required receipts arrived, each inside its own deadline.
+
+        Guaranteed by `accept()`, which is the only path to either flag and
+        refuses a late or backwards reading.
+        """
 
         return self._start_receipt is not None and self._completed
 
@@ -342,25 +428,55 @@ class PresentationWait:
 
         return self.satisfied
 
+    def _observe(self, now_ms: object, label: str) -> float:
+        moment = _finite(now_ms, label)
+        if moment < self._last_ms:
+            raise ProtocolError(
+                "the presentation clock moved backwards", RefusalCode.RENDER_TIMEOUT
+            )
+        self._last_ms = moment
+        return moment
+
+    def _deadline_passed(self, moment: float) -> bool:
+        """One predicate, shared by `accept()` and `expired()`.
+
+        They used to compute this separately and could disagree about the same
+        instant -- one reporting a timeout while the other still accepted.
+        """
+
+        if self._rejected or self.satisfied:
+            return False
+        if self._start_receipt is None:
+            return moment - self._started_ms > self._policy.first_paint_deadline_ms
+        assert self._start_ms is not None
+        return moment - self._start_ms > self._policy.completion_deadline_ms
+
     def accept(self, receipt: Receipt, *, now_ms: float) -> None:
         """Record one receipt, or refuse the whole presentation."""
 
+        if not isinstance(receipt, Receipt):
+            raise ProtocolError("only a Receipt may be accepted")
+        moment = self._observe(now_ms, "now_ms")
+        if self._rejected:
+            # A rejected presentation is TERMINAL. Rail fallback is a new
+            # request with its own generation; letting this one continue would
+            # mean the fallback was never bound to anything.
+            raise ProtocolError(
+                "this presentation was refused; rail fallback needs a new request",
+                RefusalCode.RENDER_TIMEOUT,
+            )
         if not receipt_answers(self._request, receipt):
             raise ProtocolError(
                 f"receipt for cue {receipt.cue_id!r} generation "
-                f"{receipt.presentation_generation} does not answer the "
-                f"request for cue {self._request.cue_id!r} generation "
+                f"{receipt.presentation_generation} does not answer the request "
+                f"for cue {self._request.cue_id!r} generation "
                 f"{self._request.presentation_generation}"
             )
-        if self._rejected:
-            # A rejected presentation is TERMINAL. Rail fallback is a new
-            # request with its own generation and its own receipts; letting
-            # this one continue would mean the fallback was never bound to
-            # anything, and the effect would run against a wait that had
-            # already refused.
+        if self._deadline_passed(moment):
             raise ProtocolError(
-                "this presentation was refused; rail fallback needs a new request"
+                RefusalCode.RENDER_TIMEOUT.value, RefusalCode.RENDER_TIMEOUT
             )
+
         if receipt.kind is ReceiptKind.RENDER_REJECTED:
             if self._start_receipt is not None or self._completed:
                 raise ProtocolError(
@@ -372,8 +488,7 @@ class PresentationWait:
                 )
             self._rejected = True
             return
-        if now_ms < self._started_ms:
-            raise ProtocolError("the presentation clock moved backwards")
+
         if receipt.kind in START_RECEIPTS:
             if (
                 self._request.geometry_required
@@ -388,37 +503,35 @@ class PresentationWait:
                 )
             if self._start_receipt is not None:
                 raise ProtocolError("this presentation already started")
-            if now_ms - self._started_ms > self._policy.first_paint_deadline_ms:
-                raise ProtocolError(RefusalCode.RENDER_TIMEOUT.value)
             self._start_receipt = receipt
-            self._start_ms = now_ms
+            self._start_ms = moment
             return
+
         if receipt.kind is not ReceiptKind.PRESENTATION_COMPLETED:
             # Unreachable while ReceiptKind stays closed and Receipt validates
             # its kind. Kept because the cost of being wrong about that is an
-            # unknown kind falling into the completion branch and satisfying a
-            # wait.
+            # unknown kind falling into the completion branch.
             raise ProtocolError(f"receipt kind {receipt.kind!r} is not handled")
         if self._start_receipt is None:
             raise ProtocolError("a presentation cannot complete before it has started")
         if self._completed:
             raise ProtocolError("this presentation already completed")
-        assert self._start_ms is not None
-        if now_ms < self._start_ms:
-            raise ProtocolError("the presentation clock moved backwards")
-        if now_ms - self._start_ms > self._policy.completion_deadline_ms:
-            raise ProtocolError(RefusalCode.RENDER_TIMEOUT.value)
         self._completed = True
 
     def expired(self, *, now_ms: float) -> bool:
-        """Whether a deadline has passed with the receipt still missing."""
+        """Whether a deadline has passed with a required receipt still missing.
 
-        if self._start_receipt is None:
-            return now_ms - self._started_ms > self._policy.first_paint_deadline_ms
-        if not self._completed:
-            assert self._start_ms is not None
-            return now_ms - self._start_ms > self._policy.completion_deadline_ms
-        return False
+        Shares `_deadline_passed` with `accept()`, and advances the same
+        high-water mark -- asking the question is observing the clock, and a
+        caller must not be able to learn the deadline passed and then submit
+        against an earlier reading.
+
+        A refused presentation is not expired: it ended, and reporting a
+        render timeout for a clean rejection would put the wrong refusal code
+        in the run record.
+        """
+
+        return self._deadline_passed(self._observe(now_ms, "now_ms"))
 
 
 __all__ = [
@@ -435,6 +548,7 @@ __all__ = [
     "TrustClass",
     "UNPROVEN_STATES",
     "VerifierMode",
+    "fallback_request_for",
     "receipt_answers",
     "trust_for",
 ]
