@@ -196,9 +196,9 @@ built but not yet exercised by a caller or a live run.
 - [x] Per-node authorization minted only after the identity check passes
 
 **2. Shared signed generic UIA adapter (D108)**
-- [ ] `plugins/shared/uia_adapter.py` — Invoke, Select, Toggle, Value
+- [x] `plugins/shared/uia_adapter.py` — Invoke, Select, Toggle, Value, LegacyIAccessible
 - [ ] Copied byte-identically into the PowerPoint payload and signed there
-- [ ] Input-synthesis scan covers it
+- [x] Input-synthesis scan covers it (`plugins/shared` added to ADAPTER_ROOTS)
 
 **3. PowerPoint UIA feasibility and first pointer-visible action**
 - [ ] Read-only probe against PowerPoint's ribbon (live desktop)

@@ -201,8 +201,13 @@ def test_a_clean_module_trips_neither_scan():
 # anything would notice if the next one was not. The first adapter is the
 # template every later one gets copied from.
 
+#: Signed adapter sources. `plugins/shared` holds the canonical generic UIA
+#: adapter (D108), which is copied byte-identically into payloads -- scanning
+#: only the copies would let the source acquire input synthesis and be caught
+#: one build too late.
 ADAPTER_ROOTS = sorted(
-    (Path(__file__).resolve().parents[1] / "plugins" / "sources").glob("*/payload")
+    [Path(__file__).resolve().parents[1] / "plugins" / "shared"]
+    + list((Path(__file__).resolve().parents[1] / "plugins" / "sources").glob("*/payload"))
 )
 
 #: The core list minus `win32com.client.Dispatch`. Core may not drive an Office
