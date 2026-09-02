@@ -126,9 +126,11 @@ def present_cue(
     ``poll`` is asked whether to keep going, densely enough that no gap
     exceeds the schedule's poll interval. It returning False is a Stop.
 
-    ``paint`` is called with a scene, and with None to clear. It is cleared on
-    every exit path including the aborted one: a cue left on screen points at
-    a control nothing is about to click.
+    ``paint`` is called with a scene, and with None to clear. An ABORTED cue
+    is cleared here, because nothing follows it. A completed one is not: the
+    dispatch happens after the completion receipt, and the pointer has to
+    still be at the control while the control is invoked. The caller clears it
+    when the node ends.
 
     ``on_receipt`` is handed each receipt AND the clock reading at which it
     was emitted, which is what a `PresentationWait` needs to enforce its two
@@ -212,7 +214,11 @@ def present_cue(
         stop("stopped during the settle")
 
     receipts.append(receipt(ReceiptKind.PRESENTATION_COMPLETED))
-    paint(None)
+    # The cue STAYS. `execute_node` dispatches after this receipt, so clearing
+    # here would land the click on a blank screen -- a pointer shown at the
+    # control, removed, and then the control invoked. D109 is that the pointer
+    # is shown where the effect happens, and the effect has not happened yet.
+    # The caller clears it when the node reaches VERIFIED or REFUSED.
     return tuple(receipts)
 
 

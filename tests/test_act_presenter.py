@@ -393,7 +393,13 @@ def test_the_cue_is_cleared_on_every_stopping_point(stop_after):
     assert recorder.kinds()[-1] == "clear"
 
 
-def test_the_cue_is_cleared_after_a_completed_presentation(recorder):
+def test_a_completed_cue_stays_on_screen_for_the_dispatch(recorder):
+    """`execute_node` invokes the control AFTER the completion receipt.
+    Clearing here would show the pointer at the button, remove it, and then
+    press the button -- the click landing on a blank screen. D109 says the
+    pointer is shown where the effect happens, and at completion the effect
+    has not happened yet. The caller clears it when the node ends."""
+
     present_cue(
         REQUEST,
         POLICY,
@@ -403,7 +409,8 @@ def test_the_cue_is_cleared_after_a_completed_presentation(recorder):
         poll=recorder.poll,
     )
 
-    assert recorder.kinds()[-1] == "clear"
+    assert "clear" not in recorder.kinds()
+    assert recorder.kinds()[-1] == "poll"
 
 
 def test_no_stretch_of_the_presentation_goes_unpolled(recorder):

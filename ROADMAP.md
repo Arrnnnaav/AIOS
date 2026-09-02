@@ -210,8 +210,10 @@ built but not yet exercised by a caller or a live run.
 **4. Visual layer, receipts and interruption**
 - [ ] Rail mode selector: Ideate / Plan / Teach / Act
 - [ ] `Step N of M` wired to Act (executor-reported, never counted by the rail)
-- [ ] Ghost pointer, ring, callout, arrow, interpolation — all WM_PAINT-owned
-- [ ] Trust presentation: cyan object-model, violet UIA, neutral in flight
+- [x] Ghost pointer, ring, callout, interpolation — all WM_PAINT-owned
+      (`pointer_path.py`, `overlay/cue.py`, `overlay/window.py`)
+- [x] Trust presentation: cyan object-model, violet UIA, neutral in flight
+      (`overlay/cue.py` `TRUST_COLOURS`, sourced from `trust_for()`)
 - [ ] Presentation receipts wired to the worker
 - [ ] Pause / Stop during a run
 - [ ] Resume-with-edit: re-plan, re-validate, re-approve remainder (D110)
