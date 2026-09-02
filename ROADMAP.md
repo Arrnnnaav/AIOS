@@ -230,7 +230,9 @@ built but not yet exercised by a caller or a live run.
 - [ ] Atomic publish; failed runs never publish a partial file
 
 **7. Measured budgets (Phase E)**
-- [ ] Paint cost; derive frame count
+- [x] Paint cost; derive frame count — `docs/evidence/act-paint-budget.md`
+      (median 0.452ms, p99 0.865-1.077ms over 3x400 frames; budget 2ms;
+      the 12-frame ceiling binds on this machine, not the paint cost)
 - [ ] Verifier spawn-to-response per mode
 - [ ] Confirmation-to-invoke deadline
 - [ ] Interruption latency matrix

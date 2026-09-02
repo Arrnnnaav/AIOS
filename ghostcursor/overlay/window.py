@@ -223,13 +223,18 @@ def _ensure_label_font():
 
     global _label_font
     if _label_font is None:
-        _label_font = win32gui.CreateFont(
-            LABEL_FONT_HEIGHT, 0, 0, 0, win32con.FW_SEMIBOLD,
-            False, False, False,
-            win32con.DEFAULT_CHARSET, win32con.OUT_DEFAULT_PRECIS,
-            win32con.CLIP_DEFAULT_PRECIS, win32con.CLEARTYPE_QUALITY,
-            win32con.DEFAULT_PITCH | win32con.FF_SWISS, "Segoe UI",
-        )
+        # CreateFontIndirect with a LOGFONT, not CreateFont: pywin32's
+        # win32gui does not expose the latter at all.
+        logfont = win32gui.LOGFONT()
+        logfont.lfHeight = LABEL_FONT_HEIGHT
+        logfont.lfWeight = win32con.FW_SEMIBOLD
+        logfont.lfCharSet = win32con.DEFAULT_CHARSET
+        logfont.lfOutPrecision = win32con.OUT_DEFAULT_PRECIS
+        logfont.lfClipPrecision = win32con.CLIP_DEFAULT_PRECIS
+        logfont.lfQuality = win32con.CLEARTYPE_QUALITY
+        logfont.lfPitchAndFamily = win32con.DEFAULT_PITCH | win32con.FF_SWISS
+        logfont.lfFaceName = "Segoe UI"
+        _label_font = win32gui.CreateFontIndirect(logfont)
     return _label_font
 
 
