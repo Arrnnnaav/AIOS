@@ -629,8 +629,13 @@ def execute_approved_graph(
     seam on the production path must be incapable of that, not merely
     documented against it.
 
-    The observer's exceptions are swallowed for the same reason in reverse:
-    instrumentation must not be able to fail a run either.
+    The observer's ordinary exceptions are caught for the same reason in
+    reverse: instrumentation must not be able to fail a run either. That is
+    `Exception`, not `BaseException` -- swallowing a `KeyboardInterrupt` or a
+    `SystemExit` would be worse than the failure it prevents -- so an observer
+    raising one of those does propagate out, with `host.stop()` still running
+    on the way. Fail-safe in direction, but not the blanket guarantee an
+    earlier version of this docstring claimed.
     """
 
     verifier = VerifierHost(descriptor)

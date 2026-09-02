@@ -7,10 +7,15 @@ pattern-availability properties and identity properties only. It never calls
 scanned from the module's AST by `tests/test_uia_feasibility.py`.
 
 Target application: Excel `16.0.20326.20112` (`EXCEL.EXE`, Office 16 root) —
-the same Office build the PowerPoint adapter is accepted against. Window
+the same Office build the PowerPoint adapter is accepted against. Window class
 `XLMAIN`, one matching window. Disposable workbook
 `.artifacts/excel-probe/probe-workbook.xlsx`, created with `xlsxwriter`, never
 modified.
+
+The build, the exe path and the window class are recorded in
+`.artifacts/excel-probe/tabitem-topology.json`. They were originally asserted
+here from an unrecorded session, which D034 does not allow; the artifact was
+written afterwards from the same live window.
 
 ## Excel satisfies the generic-UIA gate
 
@@ -72,15 +77,25 @@ switching a ribbon tab would perturb the same set. Measured separation:
 
 | TabItem | parent | parent type | AutomationId |
 |---|---|---|---|
-| `Home`, `Insert`, `Draw`, … | `Ribbon Tabs` | Tab | `TabHome`, `TabInsert`, … |
+| `Home`, `Insert`, `Draw`, … (10) | `Ribbon Tabs` | Tab | `TabHome`, `TabInsert`, … |
 | `Sheet1` | `probe-workbook` | Tab | `SheetTab` |
+
+Recorded in `.artifacts/excel-probe/tabitem-topology.json`, a read-only
+enumeration of all 11 `TabItem`s with each one's parent and AutomationId.
 
 Two separable signals: the parent `Tab`, and the AutomationId.
 
 The parent Tab's name is the **workbook file name**, so scoping by it would
 bind a selector to a filename and carry content into the selector. Scoping by
-`TabItem` + AutomationId `SheetTab` is stable and non-positional, and is the
-proposed baseline for the Phase C contract.
+`TabItem` + AutomationId `SheetTab` is therefore the **proposed** baseline for
+the Phase C contract.
+
+**Its stability is not measured.** The 100-cycle probe ran against the
+`Add Sheet` *Button*; nothing here establishes that a worksheet `TabItem`
+keeps its identity across a cue's dwell, and an earlier draft of this document
+called the scoping "stable" as though it had. `SheetTab` is non-positional,
+which is a property of the string; stability is a separate measurement and
+belongs to whichever phase first needs to bind a tab.
 
 One caution for that contract: the `Add Sheet` **Button** also carries
 AutomationId `SheetTab`. AutomationId alone does not separate the action

@@ -365,17 +365,36 @@ def test_a_verify_observer_returning_true_cannot_pass_a_refused_verification(
     assert result.code is ActRunCode.VERIFICATION_FAILED
 
 
-def test_a_verify_observer_that_raises_cannot_fail_a_run_either(tmp_path):
+@pytest.mark.parametrize(
+    "error", [RuntimeError("diagnostics blew up"), ValueError("bad record")]
+)
+def test_an_ordinary_observer_exception_cannot_fail_a_run(tmp_path, error):
     """Instrumentation must not be able to break a run in the other direction."""
 
     def explode(_phase, _facts):
-        raise RuntimeError("diagnostics blew up")
+        raise error
 
     result = _run_with_observer(tmp_path, explode)
 
     # Still the verifier's refusal, not the observer's exception.
     assert result.code is ActRunCode.VERIFICATION_FAILED
-    assert "diagnostics blew up" not in result.detail
+    assert str(error) not in result.detail
+
+
+def test_a_base_exception_from_an_observer_is_deliberately_not_swallowed(tmp_path):
+    """The boundary is `Exception`, not `BaseException`.
+
+    Catching KeyboardInterrupt or SystemExit here would be worse than the
+    failure it prevents, so those propagate. The docstring used to promise
+    they did not; this pins the real boundary so the promise and the code
+    cannot drift apart again.
+    """
+
+    def explode(_phase, _facts):
+        raise SystemExit(3)
+
+    with pytest.raises(SystemExit):
+        _run_with_observer(tmp_path, explode)
 
 
 def test_the_observer_is_told_the_answer_the_signed_verifier_actually_gave(

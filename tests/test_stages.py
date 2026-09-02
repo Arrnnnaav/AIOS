@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from ghostcursor.stages import (
+    CUE_ARROW_DIRECTIONS,
     MAX_CUES_PER_PLAN,
     MAX_CUES_PER_STAGE,
     MAX_NODES_PER_STAGE,
@@ -419,3 +420,100 @@ def test_the_validated_plan_holds_tuples_even_when_given_lists():
     assert isinstance(plan.stages[0].node_ids, tuple)
     assert isinstance(plan.stages[0].cues, tuple)
     assert isinstance(plan.groups[0].node_ids, tuple)
+
+
+def test_a_nested_dict_inside_a_cue_target_is_frozen_too():
+    """One MappingProxyType is not a deep freeze: the outer view is read-only
+    while every nested dict inside it stays writable."""
+
+    target = {"selector": {"name": "Add Sheet", "control_type": "Button"}}
+    plan = validate_stage_plan(
+        [
+            _stage(
+                "a",
+                NODES,
+                cues=[Cue("c1", "text", "uia_pattern", NODES[0], target=target)],
+            )
+        ],
+        NODES,
+    )
+
+    frozen = plan.stages[0].cues[0].target
+    with pytest.raises(TypeError):
+        frozen["selector"]["name"] = "TAMPERED"
+    assert frozen["selector"]["name"] == "Add Sheet"
+
+
+def test_a_list_inside_a_cue_target_becomes_a_tuple():
+    plan = validate_stage_plan(
+        [
+            _stage(
+                "a",
+                NODES,
+                cues=[
+                    Cue("c1", "t", "uia_pattern", NODES[0], target={"path": ["a", "b"]})
+                ],
+            )
+        ],
+        NODES,
+    )
+
+    assert plan.stages[0].cues[0].target["path"] == ("a", "b")
+
+
+def test_mutating_the_original_target_after_validation_changes_nothing():
+    target = {"selector": {"name": "Add Sheet"}}
+    plan = validate_stage_plan(
+        [_stage("a", NODES, cues=[Cue("c1", "t", "uia_pattern", NODES[0], target=target)])],
+        NODES,
+    )
+
+    target["selector"]["name"] = "Something Else"
+
+    assert plan.stages[0].cues[0].target["selector"]["name"] == "Add Sheet"
+
+
+@pytest.mark.parametrize("bad", ["a string", 42, ["not", "a", "mapping"]])
+def test_a_non_mapping_cue_target_refuses_as_a_stage_plan_error(bad):
+    """A caller catching StagePlanError would otherwise miss a bare TypeError."""
+
+    with pytest.raises(StagePlanError, match="target must be a mapping"):
+        validate_stage_plan(
+            [_stage("a", NODES, cues=[Cue("c1", "t", "uia_pattern", NODES[0], target=bad)])],
+            NODES,
+        )
+
+
+def test_an_unknown_arrow_direction_refuses():
+    """An unconstrained string reaches the renderer and is silently ignored,
+    which looks the same as a cue that meant to point and does not."""
+
+    with pytest.raises(StagePlanError, match="arrow direction"):
+        validate_stage_plan(
+            [
+                _stage(
+                    "a",
+                    NODES,
+                    cues=[
+                        Cue("c1", "t", "uia_pattern", NODES[0], arrow_direction="sideways")
+                    ],
+                )
+            ],
+            NODES,
+        )
+
+
+@pytest.mark.parametrize("direction", sorted(CUE_ARROW_DIRECTIONS))
+def test_every_declared_arrow_direction_is_accepted(direction):
+    plan = validate_stage_plan(
+        [
+            _stage(
+                "a",
+                NODES,
+                cues=[Cue("c1", "t", "uia_pattern", NODES[0], arrow_direction=direction)],
+            )
+        ],
+        NODES,
+    )
+
+    assert plan.stages[0].cues[0].arrow_direction == direction

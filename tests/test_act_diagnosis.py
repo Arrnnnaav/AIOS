@@ -282,3 +282,29 @@ def test_every_failure_class_is_reachable(overrides, expected):
     labels, not a diagnosis."""
 
     assert classify_boundary(_record(**overrides)).classification == expected
+
+
+def test_a_record_with_no_verification_result_is_not_counted_as_a_pass():
+    """It failed toward success: `verified is not False` let a missing or null
+    result be reported as a verified node and excluded from the failures."""
+
+    record = _record()
+    del record["verified"]
+
+    assert classify_boundary(record).classification == "unclassified"
+
+
+def test_a_null_verification_result_without_an_error_is_unclassified():
+    assert (
+        classify_boundary(_record(verified=None, verifier_error=None)).classification
+        == "unclassified"
+    )
+
+
+def test_an_unclassified_node_is_reported_as_a_failure_by_the_summary():
+    """Otherwise the summary silently drops the node it could not explain."""
+
+    summary = summarise([_record(node_id="n001", verified=True), _record(verified=None)])
+
+    assert summary["first_failure"] is not None
+    assert summary["first_failure"].classification == "unclassified"

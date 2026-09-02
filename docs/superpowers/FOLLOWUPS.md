@@ -499,6 +499,10 @@ False and `resolve_target` refused with `no window matches pack powerpoint`
 while the process was alive and the title correct. Restoring it manually with
 `ShowWindow(SW_RESTORE)` let the run proceed and produced 255/255.
 
+Observed twice: PowerPoint during Phase A and Excel during Phase B, in both
+cases between window resolution and the next command. This is the
+environment's normal behaviour, not a one-off.
+
 **Trigger:** when the acceptance runner is built (Act v1 completion plan, the
 runner section). It already specifies "restores a minimized approved window
 without input synthesis"; nothing implements it, so every counted run

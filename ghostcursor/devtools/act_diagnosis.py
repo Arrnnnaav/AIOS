@@ -103,8 +103,17 @@ def classify_boundary(
         )
     if record.get("verifier_error"):
         return finding("verifier_error", str(record["verifier_error"]))
-    if verified is not False:
+    if verified is True:
         return finding("verified", "the declared postcondition was observed")
+    if verified is not False:
+        # Not a pass. A record with no verification result, or a null one that
+        # carried no verifier error either, says nothing about the node -- and
+        # a classifier that resolves silence into success would hide exactly
+        # the runs it exists to explain.
+        return finding(
+            "unclassified",
+            "the record carries no verification result for this node",
+        )
     if after_adapter.get("exists") is False:
         return finding("never_written", "the package did not exist after the save")
     if after_adapter.get("readable_zip") is False:

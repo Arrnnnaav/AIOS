@@ -38,7 +38,11 @@ MAX_STAGES_PER_PLAN = 32
 MAX_CUES_PER_STAGE = 6
 
 #: The plan cap on cues is derived, never maintained as a second number that
-#: could drift out of agreement with the two it comes from.
+#: could drift out of agreement with the two it comes from. Being derived from
+#: exactly the two per-stage limits also makes the plan-level check
+#: unreachable: no plan can pass those and exceed this. It is kept as a stated
+#: bound rather than deleted, so a future change to either limit cannot
+#: silently raise the total past what a session UI was designed to show.
 MAX_CUES_PER_PLAN = MAX_STAGES_PER_PLAN * MAX_CUES_PER_STAGE
 
 #: Backends a cue may claim, matching the executor's ladder. A cue that names
@@ -47,6 +51,11 @@ MAX_CUES_PER_PLAN = MAX_STAGES_PER_PLAN * MAX_CUES_PER_STAGE
 CUE_BACKENDS = frozenset(
     {"object_model", "uia_pattern", "legacy_iaccessible", "rail_only"}
 )
+
+#: An arrow points somewhere or it does not exist. An unconstrained string
+#: would reach the renderer and be silently ignored, which looks the same as a
+#: cue that meant to point and does not.
+CUE_ARROW_DIRECTIONS = frozenset({"up", "down", "left", "right"})
 
 #: Risk classes come from the signed operation registry, never from a stage
 #: author's opinion; a stage records which class its nodes carry so the
@@ -116,12 +125,27 @@ def _text(value: object, label: str, *, limit: int = 200) -> str:
     return value
 
 
-def _freeze_cue(cue: Cue) -> Cue:
-    """A frozen dataclass is shallow; a dict inside one is still mutable."""
+def _deep_freeze(value):
+    """Freeze a signed target descriptor all the way down.
 
+    A frozen dataclass is shallow and so is one MappingProxyType: wrapping the
+    outer mapping leaves every nested dict and list writable, so a caller that
+    kept a reference could still rewrite what a cue points at after the plan
+    was validated. Mappings become read-only views and sequences become tuples,
+    recursively; scalars are already immutable.
+    """
+
+    if isinstance(value, Mapping):
+        return MappingProxyType({key: _deep_freeze(item) for key, item in value.items()})
+    if isinstance(value, (list, tuple)):
+        return tuple(_deep_freeze(item) for item in value)
+    return value
+
+
+def _freeze_cue(cue: Cue) -> Cue:
     if cue.target is None:
         return cue
-    return replace(cue, target=MappingProxyType(dict(cue.target)))
+    return replace(cue, target=_deep_freeze(cue.target))
 
 
 def _freeze_stage(stage: Stage) -> Stage:
@@ -295,6 +319,21 @@ def _validate_cues(
             raise StagePlanError(
                 f"cue {cue_id!r} is rail-only but declares a visual target"
             )
+        if cue.target is not None and not isinstance(cue.target, Mapping):
+            # Refused here rather than left to blow up inside the freeze: a
+            # caller catching StagePlanError would otherwise miss a bare
+            # TypeError from a target that was never a mapping.
+            raise StagePlanError(
+                f"cue {cue_id!r} target must be a mapping, not "
+                f"{type(cue.target).__name__}"
+            )
+        if (
+            cue.arrow_direction is not None
+            and cue.arrow_direction not in CUE_ARROW_DIRECTIONS
+        ):
+            raise StagePlanError(
+                f"cue {cue_id!r} arrow direction {cue.arrow_direction!r} is unknown"
+            )
         index = order.get(cue.before_node_id)
         if index is None:
             raise StagePlanError(
@@ -324,6 +363,7 @@ def _validate_cues(
 
 
 __all__ = [
+    "CUE_ARROW_DIRECTIONS",
     "CUE_BACKENDS",
     "Cue",
     "CueGroup",

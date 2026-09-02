@@ -4032,11 +4032,21 @@ by the author of what it reviews.
 Phase A instrumentation is `ghostcursor/devtools/act_probe.py` and
 `act_diagnosis.py`. The probe records the package before a node, after the
 adapter's mandatory save, and after the verifier returned, with per-part
-digests, a two-read stability check, and verifier wall time. It cannot change
-the run: it returns the verifier's own answer, re-raises its exceptions,
-always forwards downstream events, and turns its own failures into
-`probe_fault` records. `execute_approved_graph` gained one optional
-`instrument_verify` seam that defaults to `None`.
+digests, a two-read agreement check, and verifier wall time. It cannot change
+the run: it observes, always forwards downstream events, and turns its own
+failures into `probe_fault` records. `execute_approved_graph` gained one
+optional `verify_observer` seam that defaults to `None`.
+
+**Amended after independent review.** The seam shipped first as
+`instrument_verify`, a callable handed the verifier and asked to return the
+same answer. Nothing enforced that, so it was a bypass: returning `True` in
+its place would have passed every node without the signed verifier running.
+Core now owns the call and the answer and the observer's return value is
+discarded (commit `6209ba2`). The review also found that this decision and
+`FLOW.md` still described the bypass as the design a full day after it was
+removed -- the fix commit touched both files and updated neither. That is
+exactly the failure D032 exists to catch, and it was caught by the gate rather
+than by the author.
 
 Phase B instrumentation is `ghostcursor/devtools/uia_feasibility.py`. It reads
 pattern availability and identity properties and never calls `Invoke`,

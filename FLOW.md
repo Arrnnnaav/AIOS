@@ -1181,33 +1181,57 @@ operation catalog now names the constants the application actually exposes.
 
 ## Act v1 completion tooling (Phase A/B/C, live runs pending)
 
-`execute_approved_graph` accepts one optional `instrument_verify` hook. It
-wraps the verification call for diagnostics and nothing else: it is handed the
-verifier callable and must return one with the same contract, so the answer
-that reaches the executor is always the verifier's own. Production leaves it
-unset and behaves exactly as before.
+`execute_approved_graph` accepts one optional `verify_observer`. It is an
+OBSERVER, not a wrapper: core constructs the `VerifierHost`, calls the signed
+verifier itself, and keeps the answer, while the observer is told
+`("verify_started" | "verify_finished", facts)` and has its return value
+discarded. An earlier design handed the verifier callable to a diagnostic
+wrapper and asked it to return the same answer; nothing enforced that, so
+`lambda verify: lambda *_a: True` would have passed every node without the
+signed verifier running. That capability is gone rather than discouraged, and
+`tests/test_act_runtime.py` forbids the old parameter by name.
+
+The observer's ordinary exceptions are caught so instrumentation cannot fail a
+run. `BaseException` is deliberately not caught -- swallowing `KeyboardInterrupt`
+would be worse than the failure it prevents -- so an observer raising one does
+propagate, with `host.stop()` still running.
 
 `ghostcursor/devtools/act_acceptance.py --diagnostics <path>` wires
-`ActBoundaryProbe` into both the event sink and that hook, writing JSONL:
+`ActBoundaryProbe` into both the event sink and that observer, writing JSONL:
 package state before each node, after the adapter's mandatory save, and after
 the verifier returned, plus which package parts each transition changed.
 `act_diagnosis.py` classifies those records into `never_written`,
-`wrong_part`, `unflushed`, `unreadable`, `verifier_not_read_only`, and
-`written_and_verified_false` -- the competing explanations for a node whose
-postcondition was not observed. `verifier_not_read_only` outranks the rest
-because a package that moved during verification invalidates the evidence
-rather than explaining the failure.
+`wrong_part`, `bytes_moved_during_read`, `unreadable`,
+`package_changed_during_verification`, and `written_and_verified_false` -- the
+competing explanations for a node whose postcondition was not observed.
+`package_changed_during_verification` outranks the rest because a package that
+moved during verification invalidates the digests rather than explaining the
+failure. It deliberately names no culprit: the probe watches the file, not the
+verifier, and an external writer is indistinguishable from where it stands.
 
 `ghostcursor/devtools/uia_feasibility.py` probes a control read-only: pattern
 availability per reviewed pattern, RuntimeId, AutomationId,
 NativeWindowHandle, bounding rectangle, and the LegacyIAccessible default
 action's *name*. Without `--name` it lists candidates instead of resolving
-one, because the accessible name of Excel's sheet-insert control has not been
-measured on this build. `probe_stability` re-resolves across the 650 ms cue
-dwell the real presentation will impose. Its live shim is unverified until it
-runs against a real desktop.
+one. That mode found the name of Excel's sheet-insert control on this build --
+`Add Sheet`, measured, where the plan had guessed "New Sheet"
+(`docs/evidence/act-phase-b-uia-feasibility.md`). `probe_stability` re-resolves
+across the 650 ms cue dwell the real presentation will impose, one complete
+observe-dwell-re-resolve pair per cycle. Discovery and the action path share
+one provider-side `FindAll` (`provider_type_query_for`); an earlier discovery
+walk disagreed with the action path about what a window contains.
 
 `ghostcursor/stages.py` validates signed stages and ordered cues against a
 plan's own flattened node order and returns the deterministic cue groups. It
 is not yet reachable from `action_plans.py`: wiring it changes plan bytes and
 therefore every plan digest.
+
+`ghostcursor/coordinate_space.py` is the contract a rectangle must satisfy
+before the overlay will draw it. Act's verifier runs out of process, so two
+processes have to agree what a pixel coordinate means; every value is queried
+from the live process rather than read off `dpi.AWARENESS`, which records
+which setter path ran rather than what the process became. Awareness equality
+is load-bearing and virtual bounds plus monitor topology corroborate it --
+at 100% on one monitor an unaware and a per-monitor-v2 process report
+identical numbers. Unknown awareness and partial records are refused, never
+defaulted.

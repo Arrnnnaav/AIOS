@@ -58,9 +58,13 @@ matches **direct children only**, so it saw `None`. A transition carrying the
 in this plan declares a duration — so every one of them was invisible.
 
 The adapter was correct throughout. Six defects had previously been found in
-the adapter; this is the first found in the verifier, and it is the first
-direct evidence that the separate signed verifier is load-bearing: an adapter
-reporting its own success would have called this node a pass.
+the adapter; this is the first found in the verifier.
+
+It is evidence that the verifier is genuinely INDEPENDENT -- it reached a
+different conclusion from the adapter, which a self-reporting adapter could
+not have done. It is not evidence that the verifier catches adapter defects,
+because here the verifier was the one that was wrong. Those are different
+claims and an earlier draft of this section ran them together.
 
 ## Run 2 — after the fix
 
@@ -80,11 +84,30 @@ Fresh store, fresh output, restarted from action 1.
 Produced artifact `deck-phaseA-02.pptx`, 94 392 bytes:
 
 - 10 slides, named `slide-01` … `slide-10`
-- 10 of 10 slides carry a transition
+- 10 of 10 slides carry a transition (20 `p:transition` elements: each is
+  written twice, once under `mc:Choice` and once under `mc:Fallback`)
 - 10 notes parts
-- 21 animation elements across the deck
+- 30 `p:cTn` elements carrying a `presetID`, matching the plan's 30
+  `powerpoint.add_animation` nodes exactly
+
+**Corrected after independent review.** This section first said "21 animation
+elements across the deck". That number named no record and matches no natural
+count of anything in the package: it was `animEffect` (18) plus `animScale`
+(3), a composite of two behaviour element types that happens to sum to 21. The
+deck contains `anim` 18, `animEffect` 18, `animScale` 3, `animMotion` 0. The
+figure that means something is the 30 `presetID`-carrying `cTn` elements,
+because it is the one that reconciles with the plan. Every other number in
+this document reproduced exactly; this one did not, which is what D034's
+"name where it is recorded" is for.
 
 Records: `.artifacts/powerpoint-act/diagnostics/phaseA-02.jsonl` (256 records).
+
+**The wall clock is not a budget.** 171.125 s is an *instrumented* run:
+`observe_package` takes two full SHA-256 passes plus every zip part, three
+times per node. `verifier_seconds` excludes that (the probe's observation sits
+outside the timing clock), but wall clock does not. An uninstrumented run is
+faster by an unmeasured amount, so this figure must not be reused as the
+timing budget Phase E derives.
 
 **Phase A's exit condition is met: one complete 255/255 diagnostic run.** It
 does not count toward acceptance, and cannot: adding signed stages will change
@@ -120,6 +143,11 @@ call, not input synthesis, and not on the banned list — returned it to
 The completion plan's campaign runner already requires "restores a minimized
 approved window without input synthesis". Nothing implements it yet, so this
 is currently a manual step. Recorded in `docs/superpowers/FOLLOWUPS.md`.
+
+It recurred: Excel minimized itself the same way during Phase B, and
+`resolve_single_window` refused with "found 0" while the process was alive.
+Two applications, two phases — this is the environment's normal behaviour, not
+a one-off.
 
 ## Open, not closed here
 
