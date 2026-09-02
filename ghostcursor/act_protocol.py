@@ -34,6 +34,7 @@ derivation is meant to replace.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import secrets
 from enum import Enum
 from typing import Mapping
 
@@ -97,6 +98,14 @@ class RefusalCode(str, Enum):
     UNSUPPORTED_ACTION_SURFACE = "unsupported_action_surface"
     #: Plugin, catalog, approval or target authority changed mid-run.
     AUTHORITY_CHANGED = "authority_changed"
+    #: A receipt that does not answer the request it was offered against.
+    RECEIPT_UNBOUND = "receipt_unbound"
+    #: Receipts arrived in an order the protocol does not allow.
+    PRESENTATION_OUT_OF_ORDER = "presentation_out_of_order"
+    #: The presentation was refused; a fallback needs its own request.
+    PRESENTATION_REFUSED = "presentation_refused"
+    #: A clock reading earlier than one already observed.
+    CLOCK_REGRESSED = "clock_regressed"
 
 
 class LifecycleState(str, Enum):
@@ -190,7 +199,13 @@ def trust_for(backend: Backend, state: LifecycleState) -> TrustClass:
             f"lifecycle state {state.value!r} has no defined trust class",
             RefusalCode.UNSUPPORTED_ACTION_SURFACE,
         )
-    return _VERIFIED_TRUST[backend]
+    try:
+        return _VERIFIED_TRUST[backend]
+    except KeyError:  # pragma: no cover - closed enum, kept for the same reason
+        raise ProtocolError(
+            f"backend {backend.value!r} has no defined trust class",
+            RefusalCode.UNSUPPORTED_ACTION_SURFACE,
+        ) from None
 
 
 class ProtocolError(ValueError):
@@ -219,10 +234,10 @@ def _finite(value: object, label: str) -> float:
     """
 
     if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise ProtocolError(f"{label} must be a real number")
+        raise ProtocolError(f"{label} must be a real number", RefusalCode.UNSUPPORTED_ACTION_SURFACE)
     number = float(value)
     if number != number or number in (float("inf"), float("-inf")):
-        raise ProtocolError(f"{label} must be finite")
+        raise ProtocolError(f"{label} must be finite", RefusalCode.UNSUPPORTED_ACTION_SURFACE)
     return number
 
 
@@ -242,7 +257,7 @@ class Receipt:
         # plain string kind matches none of the branches below and would fall
         # through to the completion branch, satisfying a wait.
         if not isinstance(self.kind, ReceiptKind):
-            raise ProtocolError(f"receipt kind {self.kind!r} is not a known kind")
+            raise ProtocolError(f"receipt kind {self.kind!r} is not a known kind", RefusalCode.UNSUPPORTED_ACTION_SURFACE)
         _identity(self.session_id, "session_id")
         _identity(self.cue_id, "cue_id")
         _identity(self.nonce, "nonce")
@@ -254,7 +269,7 @@ def _identity(value: object, label: str) -> str:
     """A non-empty identity. An empty one matches another empty one."""
 
     if not isinstance(value, str) or not value:
-        raise ProtocolError(f"{label} must be a non-empty string")
+        raise ProtocolError(f"{label} must be a non-empty string", RefusalCode.UNSUPPORTED_ACTION_SURFACE)
     return value
 
 
@@ -267,7 +282,7 @@ def _generation(value: object, label: str) -> int:
     """
 
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-        raise ProtocolError(f"{label} must be a non-negative integer")
+        raise ProtocolError(f"{label} must be a non-negative integer", RefusalCode.UNSUPPORTED_ACTION_SURFACE)
     return value
 
 
@@ -297,9 +312,9 @@ class ReceiptPolicy:
             # bool is an int subclass, so ReceiptPolicy(True, True) built a
             # policy with one-millisecond deadlines that timed out everything.
             if isinstance(value, bool) or not isinstance(value, int):
-                raise ProtocolError(f"{label} must be an integer")
+                raise ProtocolError(f"{label} must be an integer", RefusalCode.UNSUPPORTED_ACTION_SURFACE)
             if value <= 0:
-                raise ProtocolError(f"{label} must be positive")
+                raise ProtocolError(f"{label} must be positive", RefusalCode.UNSUPPORTED_ACTION_SURFACE)
 
 
 @dataclass(frozen=True)
@@ -320,11 +335,11 @@ class PresentationRequest:
         _generation(self.presentation_generation, "presentation_generation")
         _generation(self.frame_generation, "frame_generation")
         if not isinstance(self.geometry_required, bool):
-            raise ProtocolError("geometry_required must be a boolean")
+            raise ProtocolError("geometry_required must be a boolean", RefusalCode.UNSUPPORTED_ACTION_SURFACE)
 
 
 def fallback_request_for(
-    rejected: PresentationRequest, *, nonce: str
+    rejected: PresentationRequest, *, nonce: str | None = None
 ) -> PresentationRequest:
     """A rail presentation to replace one whose geometry was refused.
 
@@ -338,11 +353,18 @@ def fallback_request_for(
     """
 
     if not isinstance(rejected, PresentationRequest):
-        raise ProtocolError("a fallback replaces a PresentationRequest")
+        raise ProtocolError("a fallback replaces a PresentationRequest", RefusalCode.UNSUPPORTED_ACTION_SURFACE)
+    # Minted here, not accepted from the caller. Taking it as a parameter let
+    # `fallback_request_for(r, nonce=r.nonce)` return the rejected request's
+    # own nonce, which is exactly the collision the helper exists to prevent
+    # -- and the docstring claimed it was minted regardless.
+    minted = secrets.token_hex(16) if nonce is None else _identity(nonce, "nonce")
+    if minted == rejected.nonce:
+        raise ProtocolError("a fallback may not reuse the rejected nonce", RefusalCode.UNSUPPORTED_ACTION_SURFACE)
     return PresentationRequest(
         session_id=rejected.session_id,
         cue_id=rejected.cue_id,
-        nonce=_identity(nonce, "nonce"),
+        nonce=minted,
         presentation_generation=rejected.presentation_generation + 1,
         frame_generation=rejected.frame_generation + 1,
         geometry_required=False,
@@ -362,7 +384,7 @@ def receipt_answers(request: PresentationRequest, receipt: Receipt) -> bool:
     if not isinstance(request, PresentationRequest) or not isinstance(
         receipt, Receipt
     ):
-        raise ProtocolError("receipt_answers compares a request with a receipt")
+        raise ProtocolError("receipt_answers compares a request with a receipt", RefusalCode.UNSUPPORTED_ACTION_SURFACE)
     return (
         receipt.session_id == request.session_id
         and receipt.cue_id == request.cue_id
@@ -394,9 +416,9 @@ class PresentationWait:
         started_ms: float,
     ) -> None:
         if not isinstance(request, PresentationRequest):
-            raise ProtocolError("a presentation wait needs a PresentationRequest")
+            raise ProtocolError("a presentation wait needs a PresentationRequest", RefusalCode.UNSUPPORTED_ACTION_SURFACE)
         if not isinstance(policy, ReceiptPolicy):
-            raise ProtocolError("a presentation wait needs a ReceiptPolicy")
+            raise ProtocolError("a presentation wait needs a ReceiptPolicy", RefusalCode.UNSUPPORTED_ACTION_SURFACE)
         self._request = request
         self._policy = policy
         self._started_ms = _finite(started_ms, "started_ms")
@@ -432,7 +454,8 @@ class PresentationWait:
         moment = _finite(now_ms, label)
         if moment < self._last_ms:
             raise ProtocolError(
-                "the presentation clock moved backwards", RefusalCode.RENDER_TIMEOUT
+                "the presentation clock moved backwards",
+                RefusalCode.CLOCK_REGRESSED,
             )
         self._last_ms = moment
         return moment
@@ -455,7 +478,7 @@ class PresentationWait:
         """Record one receipt, or refuse the whole presentation."""
 
         if not isinstance(receipt, Receipt):
-            raise ProtocolError("only a Receipt may be accepted")
+            raise ProtocolError("only a Receipt may be accepted", RefusalCode.UNSUPPORTED_ACTION_SURFACE)
         moment = self._observe(now_ms, "now_ms")
         if self._rejected:
             # A rejected presentation is TERMINAL. Rail fallback is a new
@@ -463,14 +486,15 @@ class PresentationWait:
             # mean the fallback was never bound to anything.
             raise ProtocolError(
                 "this presentation was refused; rail fallback needs a new request",
-                RefusalCode.RENDER_TIMEOUT,
+                RefusalCode.PRESENTATION_REFUSED,
             )
         if not receipt_answers(self._request, receipt):
             raise ProtocolError(
                 f"receipt for cue {receipt.cue_id!r} generation "
                 f"{receipt.presentation_generation} does not answer the request "
                 f"for cue {self._request.cue_id!r} generation "
-                f"{self._request.presentation_generation}"
+                f"{self._request.presentation_generation}",
+                RefusalCode.RECEIPT_UNBOUND,
             )
         if self._deadline_passed(moment):
             raise ProtocolError(
@@ -478,15 +502,23 @@ class PresentationWait:
             )
 
         if receipt.kind is ReceiptKind.RENDER_REJECTED:
+            # Terminal FIRST, then refuse. Setting the flag only on the
+            # permissive path left the strict paths raising while the wait
+            # stayed open: a geometry_required cue could be refused and then
+            # satisfied by a start and a completion on the identical nonce and
+            # generation, reaching may_execute. A rejection ends this
+            # presentation however it is classified.
+            self._rejected = True
             if self._start_receipt is not None or self._completed:
                 raise ProtocolError(
-                    "geometry cannot be refused after this presentation started"
+                    "geometry cannot be refused after this presentation started",
+                    RefusalCode.RENDER_TIMEOUT,
                 )
             if self._request.geometry_required:
                 raise ProtocolError(
-                    "geometry was required for this presentation and was refused"
+                    "geometry was required for this presentation and was refused",
+                    RefusalCode.UNSUPPORTED_ACTION_SURFACE,
                 )
-            self._rejected = True
             return
 
         if receipt.kind in START_RECEIPTS:
@@ -499,10 +531,11 @@ class PresentationWait:
                 # proving none of the geometry it exists to prove.
                 raise ProtocolError(
                     "geometry was required for this presentation but it "
-                    f"started as {receipt.kind.value}"
+                    f"started as {receipt.kind.value}",
+                    RefusalCode.UNSUPPORTED_ACTION_SURFACE,
                 )
             if self._start_receipt is not None:
-                raise ProtocolError("this presentation already started")
+                raise ProtocolError("this presentation already started", RefusalCode.PRESENTATION_OUT_OF_ORDER)
             self._start_receipt = receipt
             self._start_ms = moment
             return
@@ -511,11 +544,11 @@ class PresentationWait:
             # Unreachable while ReceiptKind stays closed and Receipt validates
             # its kind. Kept because the cost of being wrong about that is an
             # unknown kind falling into the completion branch.
-            raise ProtocolError(f"receipt kind {receipt.kind!r} is not handled")
+            raise ProtocolError(f"receipt kind {receipt.kind!r} is not handled", RefusalCode.UNSUPPORTED_ACTION_SURFACE)
         if self._start_receipt is None:
-            raise ProtocolError("a presentation cannot complete before it has started")
+            raise ProtocolError("a presentation cannot complete before it has started", RefusalCode.PRESENTATION_OUT_OF_ORDER)
         if self._completed:
-            raise ProtocolError("this presentation already completed")
+            raise ProtocolError("this presentation already completed", RefusalCode.PRESENTATION_OUT_OF_ORDER)
         self._completed = True
 
     def expired(self, *, now_ms: float) -> bool:

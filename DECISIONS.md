@@ -4114,13 +4114,23 @@ to survive truncation, so the omission was latent rather than visible -- on a
 build where it is a pointer above 4 GB every comparison would fail and all
 geometry would be refused. Found by independent review, not by this desktop.
 
-**Why the setter stays undeclared.** Declaring it is exactly what makes the
-call succeed, switching the process to per-monitor-v2 and silently changing
-the coordinate space shared by every window rect, UIA rect, hint and capture.
-D010 exists because changing that silently is how a working overlay starts
-reporting confidently wrong numbers. It needs a scaled or mixed-DPI display to
-validate, which this desktop is not, so it is deferred to its own decision
-rather than riding along with a signature cleanup.
+**Why the setter stays undeclared.** The change that would flip the
+coordinate space is passing `c_void_p(-4)` at the CALL SITE in
+`_ensure_dpi_awareness()`. It needs a scaled or mixed-DPI display to validate,
+which this desktop is not, so it is deferred to its own decision rather than
+riding along with a signature cleanup. D010 exists because changing that
+silently is how a working overlay starts reporting confidently wrong numbers.
+
+**Corrected after the fifth review.** This decision, the module comment and
+the test all previously said that DECLARING the setter's signature "is exactly
+what makes the call succeed". That is false, and was measured false: adding
+`SetProcessDpiAwarenessContext` to `_declare_signatures()` leaves the process
+`system`, because `_declare_signatures()` runs at import below
+`AWARENESS = _ensure_dpi_awareness()` -- the setter has already been called by
+the time any declaration lands. The `argtypes is None` assertion therefore
+protects nothing; what guards the coordinate space is the subprocess test that
+measures `ghostcursor.run`'s actual awareness. Three consecutive rounds stated
+a mechanism this guard did not have.
 
 **Alternative rejected.** Fixing the setter inside this change and keeping
 `physical_pixels` true by construction. It would have made the claim honest

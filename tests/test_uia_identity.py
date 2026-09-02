@@ -238,3 +238,68 @@ def test_every_declared_identity_field_is_one_the_probe_can_observe():
     assert IDENTITY_FIELDS - {"legacy_child_id", "legacy_role"} <= observable | {
         "native_window_handle"
     }
+
+
+# --- the SIGNED control type is what is checked ----------------------------
+
+
+def test_a_policy_signed_for_a_button_refuses_a_tabitem():
+    """The exact hazard Phase B measured: `Add Sheet` (Button) and `Sheet1`
+    (TabItem) share AutomationId `SheetTab`, so control type is the only thing
+    separating the action target from the postcondition target.
+
+    Comparing baseline-against-observed did not catch it -- both are
+    caller-supplied, so a consistent pair of TabItems passed a Button policy.
+    """
+
+    tab = _observed(control_type="TabItem", name="Sheet1")
+
+    reasons = compare_identity(_policy(), tab, tab, match_count=1)
+
+    assert any("signed policy requires 'Button'" in reason for reason in reasons)
+
+
+def test_a_control_type_absent_from_the_observation_refuses():
+    observed = _observed()
+    del observed["control_type"]
+
+    assert compare_identity(_policy(), _observed(), observed, match_count=1) != ()
+
+
+def test_a_positional_automation_id_in_the_AUTHORIZED_identity_refuses():
+    """"In either role" means both sides. A baseline carrying a positional id
+    meant the thing being compared against was already an index."""
+
+    reasons = compare_identity(
+        _policy(), _observed(automation_id="list_id_2_3"), _observed(), match_count=1
+    )
+
+    assert any("authorized" in reason and "positional" in reason for reason in reasons)
+
+
+@pytest.mark.parametrize("bad", [True, 1.0, "1", None])
+def test_a_match_count_that_is_not_an_integer_is_refused(bad):
+    with pytest.raises(IdentityPolicyError, match="match_count"):
+        compare_identity(_policy(), _observed(), _observed(), match_count=bad)
+
+
+# --- the policy validates itself -------------------------------------------
+
+
+def test_a_list_of_required_fields_is_refused():
+    """A list leaves a frozen dataclass unhashable and its contents mutable
+    after validation -- rewritable between signing and comparison."""
+
+    with pytest.raises(IdentityPolicyError, match="must be a tuple"):
+        _policy(required_fields=["control_type", "name", "runtime_id"])
+
+
+def test_an_empty_control_type_is_refused():
+    with pytest.raises(IdentityPolicyError, match="control_type"):
+        _policy(control_type="")
+
+
+@pytest.mark.parametrize("bad", ["z" * 64, "A" * 64, 64 * "0" + "0"])
+def test_a_selector_digest_that_is_not_lowercase_hex_is_refused(bad):
+    with pytest.raises(IdentityPolicyError, match="digest"):
+        _policy(selector_sha256=bad)

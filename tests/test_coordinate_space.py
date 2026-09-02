@@ -411,6 +411,14 @@ def test_the_awareness_setter_is_deliberately_left_undeclared():
 
     setter = ctypes.windll.user32.SetProcessDpiAwarenessContext
 
+    # NOTE: this assertion does NOT protect the coordinate space, and an
+    # earlier comment here claimed it did. `_declare_signatures()` runs after
+    # `AWARENESS = _ensure_dpi_awareness()`, so declaring the setter there
+    # cannot affect a call that already happened -- measured: the process
+    # stays `system`. What guards the space is
+    # `test_the_production_entry_point_still_runs_in_its_measured_space`,
+    # which measures the awareness itself. This only pins that the deferred
+    # change has not been started.
     assert setter.argtypes is None
 
 
@@ -804,3 +812,207 @@ def test_a_bracket_side_that_is_not_a_mapping_refuses(side):
 
     with pytest.raises(ValueError, match="must be a mapping"):
         bracket_from_record(record)
+
+
+# --- what the ABI table actually covers ------------------------------------
+
+
+def test_every_api_the_module_declares_is_pinned_by_a_test():
+    """The GDI declarations were added with nothing enforcing them: deleting
+    GetDC, ReleaseDC, GetDeviceCaps or GetProcessDpiAwareness all passed."""
+
+    import ctypes
+
+    user32 = ctypes.windll.user32
+    for name, argtypes, restype in (
+        ("GetDC", [ctypes.c_void_p], ctypes.c_void_p),
+        ("ReleaseDC", [ctypes.c_void_p, ctypes.c_void_p], ctypes.c_int),
+        ("SetProcessDPIAware", [], ctypes.wintypes.BOOL),
+    ):
+        function = getattr(user32, name)
+        assert function.argtypes == argtypes, name
+        assert function.restype is restype, name
+
+    caps = ctypes.windll.gdi32.GetDeviceCaps
+    assert caps.argtypes == [ctypes.c_void_p, ctypes.c_int]
+    assert caps.restype is ctypes.c_int
+
+    awareness = ctypes.windll.shcore.GetProcessDpiAwareness
+    assert awareness.argtypes == [
+        ctypes.c_void_p,
+        ctypes.POINTER(ctypes.c_int),
+    ]
+
+
+def test_scale_factor_reports_a_plausible_ratio_and_releases_its_dc():
+    """It had zero callers and zero tests, so removing its ReleaseDC -- a real
+    handle leak -- passed the suite."""
+
+    import ctypes
+
+    released = []
+    real = ctypes.windll
+
+    class _CountingUser32:
+        def __getattr__(self, name):
+            function = getattr(real.user32, name)
+            if name != "ReleaseDC":
+                return function
+
+            def counting(hwnd, hdc):
+                released.append(hdc)
+                return function(hwnd, hdc)
+
+            return counting
+
+    class _Windll:
+        def __getattr__(self, name):
+            return _CountingUser32() if name == "user32" else getattr(real, name)
+
+    ctypes.windll = _Windll()
+    try:
+        ratio = dpi.scale_factor()
+    finally:
+        ctypes.windll = real
+
+    assert 0.5 <= ratio <= 4.0
+    assert len(released) == 1, "scale_factor must release the DC it acquires"
+
+
+# --- awareness_api may not contradict the awareness beside it --------------
+
+
+def test_a_record_claiming_a_real_awareness_answered_by_no_api_is_refused():
+    """Internally impossible: "none" is emitted only alongside unknown
+    awareness. It parsed, and 120 of the usable-but-differing pairs a brute
+    force found differed only in this field."""
+
+    record = _space().as_record()
+    record["awareness_api"] = "thread=none;process=none"
+
+    with pytest.raises(ValueError, match="contradicts thread awareness"):
+        from_record(record)
+
+
+def test_a_record_claiming_unknown_awareness_answered_by_an_api_is_refused():
+    record = _space(
+        thread_awareness=dpi.UNKNOWN_AWARENESS,
+        process_awareness=dpi.UNKNOWN_AWARENESS,
+        units=dpi.UNKNOWN_AWARENESS,
+    ).as_record()
+    record["awareness_api"] = "thread=GetThreadDpiAwarenessContext;process=x"
+
+    with pytest.raises(ValueError, match="contradicts thread awareness"):
+        from_record(record)
+
+
+def test_an_empty_awareness_api_is_refused():
+    record = _space().as_record()
+    record["awareness_api"] = ""
+
+    with pytest.raises(ValueError, match="non-empty"):
+        from_record(record)
+
+
+# --- the legacy fallback is exercised --------------------------------------
+
+
+class _FakeWinDLL:
+    """A ctypes.windll stand-in that can hide named libraries and functions."""
+
+    def __init__(self, hide_libraries=(), hide_functions=()):
+        import ctypes
+
+        self._real = ctypes.windll
+        self._hidden_libraries = set(hide_libraries)
+        self._hidden_functions = set(hide_functions)
+
+    def __getattr__(self, name):
+        if name in self._hidden_libraries:
+            raise OSError(f"{name} unavailable")
+        library = getattr(self._real, name)
+        hidden = self._hidden_functions
+
+        class _Library:
+            def __getattr__(self, function):
+                if function in hidden:
+                    raise AttributeError(function)
+                return getattr(library, function)
+
+        return _Library()
+
+
+def _process_awareness_without(hide_libraries=(), hide_functions=()):
+    import ctypes
+
+    original = ctypes.windll
+    try:
+        ctypes.windll = _FakeWinDLL(hide_libraries, hide_functions)
+        return dpi.queried_process_awareness()
+    finally:
+        ctypes.windll = original
+
+
+def test_the_first_legacy_rung_answers_when_the_modern_api_is_absent():
+    """The fallback feeds process_awareness and therefore
+    thread_matches_process, and it had no coverage at all."""
+
+    awareness, api = _process_awareness_without(
+        hide_functions={"GetDpiAwarenessContextForProcess"}
+    )
+
+    assert api == "GetProcessDpiAwareness"
+    assert awareness in {"unaware", "system", "per-monitor"}
+
+
+def test_the_second_legacy_rung_answers_when_shcore_is_absent_too():
+    """Inverting this branch previously passed the entire suite."""
+
+    awareness, api = _process_awareness_without(
+        hide_libraries={"shcore"},
+        hide_functions={"GetDpiAwarenessContextForProcess"},
+    )
+    modern, _api = dpi.queried_process_awareness()
+
+    assert api == "IsProcessDPIAware"
+    # Must AGREE with the modern reading on this machine. Asserting only
+    # "one of {system, unaware}" passed with the branch inverted, which is a
+    # rung reporting the opposite of the truth.
+    assert awareness == ("system" if modern != "unaware" else "unaware")
+
+
+def test_awareness_is_unknown_when_nothing_can_answer():
+    awareness, api = _process_awareness_without(
+        hide_libraries={"shcore"},
+        hide_functions={
+            "GetDpiAwarenessContextForProcess",
+            "GetProcessDpiAwareness",
+            "IsProcessDPIAware",
+        },
+    )
+
+    assert awareness == dpi.UNKNOWN_AWARENESS
+    assert api == "none"
+
+
+# --- guards that must be distinguishable from their neighbours -------------
+
+
+def test_a_bracket_side_that_is_not_a_mapping_names_the_side():
+    """The old assertion matched "must be a mapping", which from_record's own
+    top-level message also satisfies -- so the per-side check could be deleted
+    and the test still passed."""
+
+    record = observe_bracketed(lambda: []).as_record()
+    record["before"] = "not-a-space"
+
+    with pytest.raises(ValueError, match="bracketed geometry before"):
+        bracket_from_record(record)
+
+
+def test_a_monitors_field_that_is_not_a_list_is_refused_as_such():
+    record = _space().as_record()
+    record["monitors"] = "not-a-list"
+
+    with pytest.raises(ValueError, match="monitors is invalid"):
+        from_record(record)

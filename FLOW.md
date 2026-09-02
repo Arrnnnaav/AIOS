@@ -234,7 +234,7 @@ ghostcursor.run
   imports ghostcursor.overlay.window
       imports ghostcursor.overlay.dpi
           dpi._ensure_dpi_awareness()      <-- runs AT IMPORT, before any window
-              SetProcessDpiAwarenessContext(-4)   -> 0 (fails on this machine)
+              SetProcessDpiAwarenessContext(-4)   -> 0 (fails on argument marshalling, not on the machine -- D106)
               SetProcessDPIAware()                -> 1 (works; 1536x864 -> 1920x1080)
 ```
 

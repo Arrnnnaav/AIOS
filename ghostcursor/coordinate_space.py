@@ -17,8 +17,10 @@ a fallback is visible instead of silent.
 **Units are measured, not asserted.** An earlier version of this module
 hardcoded `physical_pixels`, which was not true of the process writing it:
 only a per-monitor-aware process is handed physical pixels on every monitor,
-and this one is system-aware. `dpi.coordinate_units()` derives the unit from
-the awareness actually in force, so a system-aware process says
+and this one is system-aware. `dpi.units_for_awareness()` derives the unit from
+the awareness this capture just measured -- deliberately NOT
+`dpi.coordinate_units()`, which performs the second query that
+`capture()` was changed to avoid -- so a system-aware process says
 `system_dpi_pixels` and cannot claim a precision it does not have.
 
 **Bounds and topology are drift checks, not substitutes.** Two processes on
@@ -216,8 +218,21 @@ def from_record(value: Mapping[str, Any]) -> CoordinateSpace:
             f"awareness {value['thread_awareness']!r}, which reports "
             f"{expected_units!r}"
         )
-    if not isinstance(value["awareness_api"], str):
-        raise ValueError("coordinate space awareness_api must be a string")
+    api = value["awareness_api"]
+    if not isinstance(api, str) or not api:
+        raise ValueError("coordinate space awareness_api must be a non-empty string")
+    # Diagnostic, never compared between processes -- two peers may legitimately
+    # reach the same awareness by different APIs. But it must not CONTRADICT the
+    # awareness beside it: "none" is emitted only alongside UNKNOWN_AWARENESS, so
+    # a record claiming a real awareness answered by no API is internally
+    # impossible and previously parsed. Same class as the units contradiction.
+    answered = "none" not in api
+    known = value["thread_awareness"] != dpi.UNKNOWN_AWARENESS
+    if known != answered:
+        raise ValueError(
+            f"coordinate space awareness_api {api!r} contradicts thread "
+            f"awareness {value['thread_awareness']!r}"
+        )
 
     parsed_bounds = _rectangle(value["virtual_bounds"], "virtual_bounds")
 
@@ -254,6 +269,8 @@ class BracketedGeometry:
 
     before: CoordinateSpace
     after: CoordinateSpace
+    #: (left, top, RIGHT, BOTTOM), as UIA reports a bounding rectangle -- the
+    #: same convention as `monitors`, NOT the one `virtual_bounds` uses.
     rectangles: tuple[tuple[int, int, int, int], ...] = ()
 
     @property
@@ -291,7 +308,7 @@ def bracket_from_record(value: Mapping[str, Any]) -> "BracketedGeometry":
         raise ValueError("bracketed geometry rectangles is invalid")
     for side in ("before", "after"):
         if not isinstance(value[side], Mapping):
-            raise ValueError(f"bracketed geometry {side} must be a mapping")
+            raise ValueError(f"bracketed geometry {side} must be a mapping value")
     return BracketedGeometry(
         from_record(value["before"]),
         from_record(value["after"]),

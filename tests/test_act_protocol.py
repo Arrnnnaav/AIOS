@@ -715,10 +715,150 @@ def test_a_render_timeout_carries_its_code_not_only_its_message():
     assert raised.value.code is RefusalCode.RENDER_TIMEOUT
 
 
-def test_an_ordering_error_is_distinguishable_from_a_timeout():
+def test_an_ordering_error_carries_its_own_code_not_merely_a_different_one():
+    """This asserted only `is not RENDER_TIMEOUT`, which `code is None`
+    satisfies -- so it passed while the code was never set at all."""
+
     wait = _wait()
 
     with pytest.raises(ProtocolError) as raised:
         wait.accept(_receipt(ReceiptKind.PRESENTATION_COMPLETED), now_ms=10.0)
 
-    assert raised.value.code is not RefusalCode.RENDER_TIMEOUT
+    assert raised.value.code is RefusalCode.PRESENTATION_OUT_OF_ORDER
+
+
+def test_every_refusal_this_module_raises_carries_a_code():
+    """A caller must not have to string-match prose to tell refusals apart.
+    29 assertions in this file matched messages and 2 matched codes."""
+
+    import ast
+    import pathlib as _pathlib
+
+    from ghostcursor import act_protocol
+
+    source = _pathlib.Path(act_protocol.__file__).read_text(encoding="utf-8")
+    codeless = []
+    for node in ast.walk(ast.parse(source)):
+        if not isinstance(node, ast.Raise) or node.exc is None:
+            continue
+        call = node.exc
+        if not isinstance(call, ast.Call):
+            continue
+        name = getattr(call.func, "id", None) or getattr(call.func, "attr", None)
+        if name == "ProtocolError" and len(call.args) < 2:
+            codeless.append(node.lineno)
+
+    assert not codeless, f"ProtocolError raised with no RefusalCode at {codeless}"
+
+
+@pytest.mark.parametrize(
+    "code",
+    [
+        RefusalCode.RENDER_TIMEOUT,
+        RefusalCode.PRESENTATION_OUT_OF_ORDER,
+        RefusalCode.PRESENTATION_REFUSED,
+        RefusalCode.CLOCK_REGRESSED,
+        RefusalCode.RECEIPT_UNBOUND,
+    ],
+)
+def test_each_presentation_refusal_code_is_actually_reachable(code):
+    """Seven of nine codes were raised nowhere; a code nothing raises is a
+    label, not a refusal."""
+
+    import ast
+    import pathlib as _pathlib
+
+    from ghostcursor import act_protocol
+
+    source = _pathlib.Path(act_protocol.__file__).read_text(encoding="utf-8")
+
+    assert f"RefusalCode.{code.name}" in source
+
+
+def test_a_clock_regression_is_told_apart_from_a_timeout():
+    wait = _wait(started_ms=100.0)
+
+    with pytest.raises(ProtocolError) as raised:
+        wait.accept(_receipt(ReceiptKind.RAIL_STARTED), now_ms=50.0)
+
+    assert raised.value.code is RefusalCode.CLOCK_REGRESSED
+
+
+def test_an_unbound_receipt_is_told_apart_from_an_ordering_error():
+    wait = _wait()
+
+    with pytest.raises(ProtocolError) as raised:
+        wait.accept(_receipt(ReceiptKind.RAIL_STARTED, cue_id="other"), now_ms=10.0)
+
+    assert raised.value.code is RefusalCode.RECEIPT_UNBOUND
+
+
+# --- a rejection ends the wait however it is classified --------------------
+
+
+def test_a_geometry_required_rejection_also_terminates_the_wait():
+    """The terminal flag was set only on the permissive path. A
+    geometry_required cue could be refused and then satisfied by a start and a
+    completion on the identical nonce and generation, reaching may_execute."""
+
+    wait = _wait(_request(geometry_required=True))
+
+    with pytest.raises(ProtocolError, match="geometry was required"):
+        wait.accept(_receipt(ReceiptKind.RENDER_REJECTED), now_ms=50.0)
+
+    assert wait.rejected is True
+    with pytest.raises(ProtocolError, match="needs a new request"):
+        wait.accept(_receipt(ReceiptKind.GEOMETRY_STARTED), now_ms=60.0)
+    assert wait.may_execute is False
+
+
+def test_a_late_rejection_also_terminates_the_wait():
+    wait = _wait()
+    wait.accept(_receipt(ReceiptKind.GEOMETRY_STARTED), now_ms=10.0)
+
+    with pytest.raises(ProtocolError, match="after this presentation started"):
+        wait.accept(_receipt(ReceiptKind.RENDER_REJECTED), now_ms=20.0)
+
+    assert wait.rejected is True
+    with pytest.raises(ProtocolError, match="needs a new request"):
+        wait.accept(_receipt(ReceiptKind.PRESENTATION_COMPLETED), now_ms=30.0)
+    assert wait.may_execute is False
+
+
+# --- the fallback mints its own nonce --------------------------------------
+
+
+def test_a_fallback_mints_its_own_nonce_by_default():
+    """It was caller-supplied, so `fallback_request_for(r, nonce=r.nonce)`
+    returned the rejected request's own nonce -- the collision the helper
+    exists to prevent, while its docstring claimed it minted one."""
+
+    rejected = _request()
+    a = fallback_request_for(rejected)
+    b = fallback_request_for(rejected)
+
+    assert a.nonce != rejected.nonce
+    assert b.nonce != a.nonce
+    assert len(a.nonce) >= 16
+
+
+def test_a_fallback_may_not_be_handed_the_rejected_nonce():
+    rejected = _request()
+
+    with pytest.raises(ProtocolError, match="may not reuse"):
+        fallback_request_for(rejected, nonce=rejected.nonce)
+
+
+def test_an_unmapped_backend_refuses_as_a_protocol_error():
+    """It escaped as a KeyError from a function that otherwise raises
+    ProtocolError, so a caller catching ProtocolError took a crash."""
+
+    from ghostcursor import act_protocol
+
+    original = dict(act_protocol._VERIFIED_TRUST)
+    try:
+        act_protocol._VERIFIED_TRUST.clear()
+        with pytest.raises(ProtocolError, match="no defined trust class"):
+            trust_for(Backend.OBJECT_MODEL, LifecycleState.VERIFIED)
+    finally:
+        act_protocol._VERIFIED_TRUST.update(original)

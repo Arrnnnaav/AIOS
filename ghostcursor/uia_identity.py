@@ -70,10 +70,26 @@ class IdentityPolicy:
     evidence_fields: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        if not self.operation_id or not self.selector_id:
-            raise IdentityPolicyError("identity policy needs an operation and selector")
-        if len(self.selector_sha256) != 64:
+        for label in ("operation_id", "selector_id", "control_type"):
+            value = getattr(self, label)
+            if not isinstance(value, str) or not value:
+                raise IdentityPolicyError(
+                    f"identity policy {label} must be a non-empty string"
+                )
+        digest = self.selector_sha256
+        if (
+            not isinstance(digest, str)
+            or len(digest) != 64
+            or any(character not in "0123456789abcdef" for character in digest)
+        ):
             raise IdentityPolicyError("identity policy selector digest is invalid")
+        for label in ("required_fields", "evidence_fields"):
+            value = getattr(self, label)
+            # A list here leaves a frozen dataclass unhashable and its
+            # contents mutable after validation -- the policy could be
+            # rewritten between being signed and being compared against.
+            if not isinstance(value, tuple):
+                raise IdentityPolicyError(f"identity policy {label} must be a tuple")
         if self.identity_mode not in IDENTITY_MODES:
             raise IdentityPolicyError(
                 f"identity mode {self.identity_mode!r} is unknown"
@@ -140,6 +156,21 @@ def compare_identity(
     """
 
     reasons: list[str] = []
+    # The signed VALUE, not merely the field name. `ALWAYS_REQUIRED` put
+    # "control_type" in required_fields, which made compare_identity check
+    # baseline-against-observed -- both caller-supplied -- so a policy signed
+    # for Button returned no reasons for a TabItem. Phase B measured why that
+    # matters: `Add Sheet` (Button) and `Sheet1` (TabItem) share AutomationId
+    # `SheetTab`, and control type is the only thing separating the action
+    # target from the postcondition target.
+    observed_type = observed.get("control_type")
+    if observed_type != policy.control_type:
+        reasons.append(
+            f"control type is {observed_type!r}, signed policy requires "
+            f"{policy.control_type!r}"
+        )
+    if not isinstance(match_count, int) or isinstance(match_count, bool):
+        raise IdentityPolicyError("match_count must be an integer")
     if match_count != 1:
         reasons.append(
             f"selector {policy.selector_id!r} matched {match_count} controls, "
@@ -155,11 +186,15 @@ def compare_identity(
         want, got = _comparable(baseline[field]), _comparable(observed[field])
         if want != got:
             reasons.append(f"{field} is {got!r}, authorized {want!r}")
-    for field in ("automation_id",):
-        value = observed.get(field)
+    # "In either role" means both sides. An authorized BASELINE carrying a
+    # positional id was previously accepted, so the thing being compared
+    # against was already an index rather than a control.
+    for role, source in (("resolved", observed), ("authorized", baseline)):
+        value = source.get("automation_id")
         if isinstance(value, str) and is_positional_automation_id(value):
             reasons.append(
-                f"AutomationId {value!r} is positional and is refused as identity"
+                f"the {role} AutomationId {value!r} is positional and is "
+                "refused as identity"
             )
     return tuple(reasons)
 

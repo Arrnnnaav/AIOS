@@ -70,9 +70,12 @@ def _ensure_dpi_awareness() -> str:
     """Declare DPI awareness. Idempotent, and safe to call late — but calling
     it late defeats the point, so this runs at import."""
     try:
-        # Deliberately called with an undeclared signature and a plain int.
-        # Declaring it is the fix, and the fix changes this project's
-        # coordinate space -- see the module docstring and FOLLOWUPS.md.
+        # Deliberately called with a plain int, which ctypes marshals 32-bit
+        # against a pointer-sized parameter, so this fails and the process
+        # falls through to system awareness. Passing `c_void_p(-4)` here is
+        # the fix AND the coordinate-space change -- see the module docstring
+        # and FOLLOWUPS.md. Declaring the signature in `_declare_signatures()`
+        # would NOT do it: that runs after this call.
         if ctypes.windll.user32.SetProcessDpiAwarenessContext(_PER_MONITOR_AWARE_V2):
             return "per-monitor-v2"
     except AttributeError:
@@ -193,12 +196,20 @@ def _declare_signatures() -> None:
     `c_bool` is C `_Bool` -- one byte -- so a return whose low byte is zero and
     whose upper bytes are not would read as False.
 
-    `SetProcessDpiAwarenessContext` is deliberately NOT declared here.
-    Declaring it is precisely what makes the call succeed, which would switch
-    this process to per-monitor-v2 and silently change the coordinate space
-    every window rect, UIA rect, hint and capture shares. That change belongs
-    to its own reviewed decision with a scaled display to validate it, not to
-    a signature cleanup. See FOLLOWUPS.md.
+    `SetProcessDpiAwarenessContext` is deliberately NOT declared here, but be
+    precise about why, because an earlier version of this comment was wrong.
+
+    Declaring it HERE changes nothing: `_declare_signatures()` runs at import
+    below `AWARENESS = _ensure_dpi_awareness()`, so the setter has already been
+    called by the time any declaration lands. Measured -- adding it to the
+    table above leaves the process `system`. It is left out because the
+    declaration would be misleading, not because it is load-bearing.
+
+    What WOULD flip the coordinate space is passing `c_void_p(-4)` at the CALL
+    SITE in `_ensure_dpi_awareness()`. That is the change deferred to its own
+    reviewed decision with a scaled display, and the only thing guarding it is
+    the subprocess test that measures `ghostcursor.run`'s actual awareness --
+    not an `argtypes is None` assertion, which protects nothing.
     """
 
     user32 = ctypes.windll.user32
@@ -220,6 +231,7 @@ def _declare_signatures() -> None:
         # true while these were not.
         ("GetDC", [ctypes.c_void_p], ctypes.c_void_p),
         ("ReleaseDC", [ctypes.c_void_p, ctypes.c_void_p], ctypes.c_int),
+        ("SetProcessDPIAware", [], wintypes.BOOL),
     ):
         function = getattr(user32, name, None)
         if function is not None:
