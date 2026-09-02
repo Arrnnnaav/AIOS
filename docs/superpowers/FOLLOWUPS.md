@@ -517,3 +517,26 @@ between an invariant that implies a property and one that correlates with it.
 Morph is a later extension whose element shape has not been measured on build
 16.0.20326, and asserting an unmeasured shape is what let `msoTrue` pass a
 contract test while failing in production. Measure first, then tighten.
+
+### GhostCursor runs system-aware while dpi.py intends per-monitor-v2
+
+`_ensure_dpi_awareness()` calls `SetProcessDpiAwarenessContext(-4)` with a
+plain Python int. ctypes marshals that as a 32-bit C int while the parameter
+is a pointer-sized `DPI_AWARENESS_CONTEXT`, so the call fails and the process
+falls through to `SetProcessDPIAware()` and runs SYSTEM aware.
+
+Measured 2 September 2026, first call in a fresh process on the same machine:
+`SetProcessDpiAwarenessContext(-4)` returns 0 with `GetLastError 87`
+(ERROR_INVALID_PARAMETER); `SetProcessDpiAwarenessContext(c_void_p(-4))`
+returns True and `GetThreadDpiAwarenessContext` then reports
+`per-monitor-v2`. The module's own docstring previously attributed the
+failure to the machine; that was wrong and has been corrected in place.
+
+**Trigger:** a reviewed decision with a scaled or mixed-DPI display available.
+On one monitor at 100% the two modes are indistinguishable, so neither the
+pixel lane nor any test on this desktop can validate the change -- which is
+also why nothing caught it. Correcting it changes the coordinate space shared
+by every window rect, UIA rect, hint and screen capture (D010), so it must not
+ride along with unrelated work. `AWARENESS` is read nowhere outside
+`ghostcursor/overlay/dpi.py`, so the blast radius is the coordinate space
+itself, not the call sites.
