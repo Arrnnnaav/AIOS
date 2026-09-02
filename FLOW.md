@@ -1262,3 +1262,15 @@ Nothing in `act_runtime.py` imports them; its only added seam is
 vertical slice now runs before the remaining Phase C modules: it is the first
 caller, and until it exists these three have only ever been judged against
 their own docstrings.
+
+`ghostcursor/uia_identity.py` holds the signed per-operation identity policy a
+UIA action must satisfy immediately before its pattern call: required fields
+refuse on any difference, evidence fields are recorded only, and positional
+AutomationIds are refused in either role (D069). The two modes come from
+measurement -- `runtime_id_required` where a RuntimeId was measured stable
+across the cue dwell, `semantic_exactly_one` where it was not (D107, and
+`docs/evidence/act-phase-b-uia-feasibility.md` for Excel's `Add Sheet`).
+
+The generic UIA adapter that will consume it is not written yet. D108 fixes
+its shape: one canonical source, copied byte-identically into each plugin's
+payload and signed there, never resolved from core by id.

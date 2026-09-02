@@ -204,6 +204,15 @@ rule, target identity, or bind input. They are also content and must not enter
 `sessions.sqlite` or default diagnostics. Unknown, duplicate, non-scalar,
 oversized, or non-finite guidance values fail before an overlay exists.
 
+Act's generic UIA backend is one canonical adapter source
+(`plugins/shared/uia_adapter.py`) that each plugin copies into its own payload
+and signs as its own adapter (D108). Copies are byte-identical, so one review
+covers them; separate signing keeps one plugin's adapter unable to act for
+another. Selectors, operations and identity policy stay per-plugin data, and
+the adapter learns nothing about the application. Never resolve a shared
+adapter from core by id -- that makes executable plugin authority many-to-one,
+which D100 refuses.
+
 The signed `ghostcursor.excel` plugin is active only for Excel
 `16.0.20326.20112`. `SELECT_CELL_B2` and `ADD_WORKSHEET` each passed three
 human desktop runs on the reviewed bytes with UIA-only grounding; their

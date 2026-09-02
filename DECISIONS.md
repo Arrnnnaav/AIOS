@@ -4213,3 +4213,59 @@ integration, as D105 ordered. It is the safer-sounding order and it is what
 produced three hardened modules that nothing calls. The measurement above is
 what changed the balance; before it, the risk was theoretical.
 
+## D108 — One generic UIA adapter source, carried and signed by each plugin
+
+**Decision.** Act's generic UIA backend is a single canonical adapter source,
+`plugins/shared/uia_adapter.py`. A plugin that declares UIA operations copies
+those exact bytes into its own payload at build time and signs them as its own
+adapter, exactly as `ghostcursor.powerpoint` signs its object-model adapter
+today. The copies are byte-identical, so they share one digest and one review.
+
+What stays per plugin, as signed DATA: the operation registry, the selectors,
+the identity policy (`ghostcursor/uia_identity.py`), the capability mapping and
+the action plans. The adapter learns nothing about the application; it is handed
+an already-approved selector and a pattern name.
+
+Nothing about the authority model changes. `adapter_api.entrypoint` still names
+a file inside one plugin's own signed payload, `authorize_intent()` is still the
+only thing that mints an `AuthorizedIntent`, and one plugin's adapter still
+cannot act for another.
+
+**Reason.** The Excel vertical slice needs an executable path, but
+`ghostcursor.excel` is `adapter_api: null` and CLAUDE.md prohibits
+application-specific production Python for it. That prohibition is about
+Excel-specific *knowledge*, not about executability: an adapter that invokes a
+signed selector's declared UIA pattern contains no Excel in it at all. The
+rule is preserved in substance -- Excel gains no application-specific Python,
+because the adapter it carries is generic.
+
+Duplicating identical bytes across plugins looks wasteful and is the point.
+Each plugin's adapter is separately signed and separately bound to that
+plugin's manifest, so a compromise of one plugin's payload cannot reach
+another's. Review cost does not multiply, because the bytes are identical and
+the digest is the same.
+
+**Alternative rejected: a core-resolved shared adapter.** One signed adapter
+installed once, referenced by id from many plugins. It removes the duplication
+and it removes the isolation with it -- a single compromised or defective
+adapter would then act on behalf of every plugin that names it, and
+`bind_workflow()`'s per-plugin authority check would be verifying a binding
+that no longer distinguishes them. D100 keeps executable plugin authority
+one-to-one on purpose; this would have made it many-to-one for the component
+that actually performs effects.
+
+**Alternative rejected: an Excel-specific adapter.** Simplest, and it would
+have put a second implementation of Invoke/Select/Toggle/Value into the tree
+for every application that ever needs one, each drifting separately. It also
+reads as the thing CLAUDE.md forbids even though the code would be generic.
+
+**Alternative rejected: core performs UIA directly.** D100 states production
+may load only signed bundles and that core must never hold executable UI
+knowledge. A pattern call driven by a selector is executable UI knowledge.
+
+**Scope.** This decision authorizes the shape only. The adapter itself is not
+written yet, and it changes nothing until a plugin declares `adapter_api` with
+it. The D006 prohibition is untouched: the adapter calls UIA patterns, never
+`SendInput`, cursor APIs, or generic mouse/keyboard automation, and the
+existing input-synthesis scan already covers `plugins/sources/*/payload`.
+
