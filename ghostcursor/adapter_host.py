@@ -27,6 +27,20 @@ class AdapterResponse:
 
 
 @dataclass(frozen=True)
+class UiaObservation:
+    """One read of a control through the adapter's read-only path.
+
+    Identity is authority-bearing and compared by `uia_identity`; the
+    rectangle is presentation-only and never enters an authorization
+    (D106/D109).
+    """
+
+    request_id: str
+    identity: Mapping[str, Any]
+    rectangle: tuple[int, int, int, int]
+
+
+@dataclass(frozen=True)
 class VerifierResponse:
     verified: bool
     detail: str
@@ -242,8 +256,6 @@ class AdapterHost:
         timeout_s: float,
         cancel_event: threading.Event | None = None,
     ) -> AdapterResponse:
-        if not self.running:
-            raise AdapterProtocolError("adapter is not running")
         request_id = uuid.uuid4().hex
         self._write(
             {
@@ -259,6 +271,126 @@ class AdapterHost:
             }
         )
         message = self._next_cancellable(timeout_s, cancel_event)
+        # Shared with `dispatch_pattern`: two backends returning the same
+        # frame must not drift into accepting different things.
+        return self._result(message, request_id)
+
+    def observe_control(
+        self,
+        control_type: str,
+        name: str,
+        *,
+        timeout_s: float,
+        cancel_event: threading.Event | None = None,
+    ) -> UiaObservation:
+        """Resolve one control and read it, without touching it.
+
+        A SEPARATE method from `execute`, not a flag on it. The generic UIA
+        adapter validates its request fields exactly, and the object-model
+        `execute` frame carries `operation_id`, `parameters`, `node_id`,
+        `ordinal` and `validation_sha256` -- none of which that adapter
+        accepts. One method with a mode would have to build two disjoint
+        frames anyway, and would make it possible to reach a dispatching call
+        by passing the wrong mode. This one has no pattern to send, so it
+        cannot dispatch even if something asked it to.
+        """
+
+        request_id = uuid.uuid4().hex
+        self._write(
+            {
+                "control_type": control_type,
+                "name": name,
+                "request_id": request_id,
+                "session_nonce": self.session_nonce,
+                "type": "observe",
+            }
+        )
+        message = self._next_cancellable(timeout_s, cancel_event)
+        if not isinstance(message, dict):
+            self.stop()
+            raise AdapterProtocolError("adapter response is not a message")
+        if message.get("type") == "result":
+            # The adapter reports a refused observation on the result frame.
+            self._refused(message)
+        if set(message) != {
+            "identity",
+            "outcome",
+            "rectangle",
+            "request_id",
+            "session_nonce",
+            "type",
+        }:
+            self.stop()
+            raise AdapterProtocolError("adapter observation fields are invalid")
+        if (
+            message["type"] != "observation"
+            or message["request_id"] != request_id
+            or message["session_nonce"] != self.session_nonce
+            or message["outcome"] != "observed"
+            or not isinstance(message["identity"], dict)
+            or not isinstance(message["rectangle"], list)
+            or len(message["rectangle"]) != 4
+            or not all(
+                isinstance(part, int) and not isinstance(part, bool)
+                for part in message["rectangle"]
+            )
+        ):
+            self.stop()
+            raise AdapterProtocolError("adapter observation is invalid or replayed")
+        return UiaObservation(
+            request_id=request_id,
+            identity=dict(message["identity"]),
+            rectangle=tuple(message["rectangle"]),
+        )
+
+    def dispatch_pattern(
+        self,
+        control_type: str,
+        name: str,
+        pattern: str,
+        *,
+        authorization_sha256: str,
+        value: Any = None,
+        timeout_s: float,
+        cancel_event: threading.Event | None = None,
+    ) -> AdapterResponse:
+        """Dispatch one UIA pattern on a control resolved by name and type.
+
+        The authorization digest travels with the request, so the adapter
+        refuses a frame that was not minted for this node.
+        """
+
+        request_id = uuid.uuid4().hex
+        self._write(
+            {
+                "authorization_sha256": authorization_sha256,
+                "control_type": control_type,
+                "name": name,
+                "pattern": pattern,
+                "request_id": request_id,
+                "session_nonce": self.session_nonce,
+                "type": "execute",
+                "value": value,
+            }
+        )
+        message = self._next_cancellable(timeout_s, cancel_event)
+        return self._result(message, request_id)
+
+    def _refused(self, message: Mapping[str, Any]) -> None:
+        """Turn a refused observation into an error naming the adapter's own
+        detail, rather than a field-shape complaint that hides it."""
+
+        detail = message.get("detail")
+        self.stop()
+        raise AdapterProtocolError(
+            "adapter refused the observation: "
+            + (detail if isinstance(detail, str) else "")
+        )
+
+    def _result(self, message: object, request_id: str) -> AdapterResponse:
+        """Validate one `result` frame. Shared by both dispatch paths so they
+        cannot drift into accepting different things."""
+
         if not isinstance(message, dict) or set(message) != {
             "data",
             "detail",
@@ -305,8 +437,6 @@ class AdapterHost:
         application-specific details such as shape names and animation enums.
         """
 
-        if not self.running:
-            raise AdapterProtocolError("adapter is not running")
         request_id = uuid.uuid4().hex
         self._write(
             {
@@ -405,6 +535,14 @@ class AdapterHost:
             self._responses.put(AdapterProtocolError("adapter output closed"))
 
     def _write(self, value: Mapping[str, Any]) -> None:
+        """The single "is the adapter alive" guard.
+
+        `execute`, `observe_control` and `dispatch_pattern` each used to
+        repeat it before calling here, which no test could distinguish from
+        not repeating it -- three copies of one condition that could drift
+        apart and only ever agreed by luck.
+        """
+
         if not self.running or self._process is None or self._process.stdin is None:
             raise AdapterProtocolError("adapter is not running")
         try:
