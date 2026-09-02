@@ -55,6 +55,7 @@ At 100% scaling none of this changes any number.
 """
 
 import ctypes
+import ctypes.wintypes as wintypes
 
 import win32api
 import win32con
@@ -112,11 +113,22 @@ _UNITS_FOR_AWARENESS = {
 }
 
 
+def units_for_awareness(awareness: str) -> str:
+    """The unit a process in ``awareness`` reports coordinates in.
+
+    Pure, so a caller that has already measured awareness derives units from
+    that exact value rather than querying a second time and risking two reads
+    that disagree.
+    """
+
+    return _UNITS_FOR_AWARENESS.get(awareness, UNKNOWN_AWARENESS)
+
+
 def coordinate_units() -> str:
     """The unit this process's Win32 coordinates are actually in."""
 
     awareness, _api = queried_thread_awareness()
-    return _UNITS_FOR_AWARENESS.get(awareness, UNKNOWN_AWARENESS)
+    return units_for_awareness(awareness)
 
 
 def virtual_screen_rect() -> tuple[int, int, int, int]:
@@ -175,6 +187,11 @@ def _declare_signatures() -> None:
     geometry rather than misplacing it, but for a reason that has nothing to
     do with the desktop.
 
+    The two BOOL-returning functions use `wintypes.BOOL`, not `c_bool`. Win32
+    BOOL is a 32-bit int and may hold ANY non-zero value for true, while
+    `c_bool` is C `_Bool` -- one byte -- so a return whose low byte is zero and
+    whose upper bytes are not would read as False.
+
     `SetProcessDpiAwarenessContext` is deliberately NOT declared here.
     Declaring it is precisely what makes the call succeed, which would switch
     this process to per-monitor-v2 and silently change the coordinate space
@@ -191,9 +208,9 @@ def _declare_signatures() -> None:
         (
             "AreDpiAwarenessContextsEqual",
             [ctypes.c_void_p, ctypes.c_void_p],
-            ctypes.c_bool,
+            wintypes.BOOL,
         ),
-        ("IsProcessDPIAware", [], ctypes.c_bool),
+        ("IsProcessDPIAware", [], wintypes.BOOL),
     ):
         function = getattr(user32, name, None)
         if function is not None:

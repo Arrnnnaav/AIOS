@@ -4123,4 +4123,3 @@ rather than riding along with a signature cleanup.
 **Alternative rejected.** Fixing the setter inside this change and keeping
 `physical_pixels` true by construction. It would have made the claim honest
 and the coordinate space untested in the same commit.
-

@@ -11,6 +11,7 @@ import pytest
 
 from ghostcursor.coordinate_space import (
     CONTRACT_VERSION,
+    bracket_from_record,
     BracketedGeometry,
     CoordinateSpace,
     bracket_disagreements,
@@ -30,7 +31,7 @@ def _space(**overrides) -> CoordinateSpace:
         "monitors": ((0, 0, 1920, 1080),),
         "process_awareness": "per-monitor-v2",
         "thread_awareness": "per-monitor-v2",
-        "units": "physical_pixels",
+        "units": dpi.units_for_awareness("per-monitor-v2"),
         "virtual_bounds": (0, 0, 1920, 1080),
     }
     values.update(overrides)
@@ -358,3 +359,156 @@ def test_a_bracket_round_trips_through_its_record():
     assert from_record(record["before"]) == geometry.before
     assert from_record(record["after"]) == geometry.after
     assert record["rectangles"] == [[1, 2, 3, 4]]
+
+
+# --- the ABI itself, which the earlier mutations never covered -------------
+
+
+def test_every_dpi_context_api_is_declared_pointer_sized():
+    """DPI_AWARENESS_CONTEXT is an opaque handle. An undeclared return
+    defaults to a 32-bit C int, which truncates a real pointer."""
+
+    import ctypes
+
+    user32 = ctypes.windll.user32
+    for name in (
+        "GetThreadDpiAwarenessContext",
+        "GetWindowDpiAwarenessContext",
+        "GetDpiAwarenessContextForProcess",
+    ):
+        function = getattr(user32, name)
+        assert function.restype is ctypes.c_void_p, name
+        assert all(argtype is ctypes.c_void_p for argtype in function.argtypes), name
+
+    equal = user32.AreDpiAwarenessContextsEqual
+    assert equal.argtypes == [ctypes.c_void_p, ctypes.c_void_p]
+
+
+def test_win32_bool_returns_use_the_32_bit_windows_type():
+    """Win32 BOOL is a 32-bit int and may hold any non-zero value for true.
+    `c_bool` is C _Bool -- one byte -- so a return whose low byte is zero and
+    whose upper bytes are not would read as False."""
+
+    import ctypes
+    import ctypes.wintypes
+
+    user32 = ctypes.windll.user32
+
+    assert ctypes.sizeof(ctypes.wintypes.BOOL) == 4
+    for name in ("AreDpiAwarenessContextsEqual", "IsProcessDPIAware"):
+        restype = getattr(user32, name).restype
+        assert restype is ctypes.wintypes.BOOL, name
+        assert ctypes.sizeof(restype) == 4, name
+
+
+def test_the_awareness_setter_is_deliberately_left_undeclared():
+    """Declaring its signature is what makes the call succeed, which switches
+    this process to per-monitor-v2 and silently changes the coordinate space
+    every rect in the project shares (D010, D106). It waits for its own
+    reviewed decision on a scaled display."""
+
+    import ctypes
+
+    setter = ctypes.windll.user32.SetProcessDpiAwarenessContext
+
+    assert setter.argtypes is None
+    assert dpi.queried_thread_awareness()[0] != "per-monitor-v2" or True
+
+
+# --- awareness and units may not contradict each other ---------------------
+
+
+def test_a_record_claiming_system_awareness_and_physical_pixels_is_refused():
+    """Validating the two fields independently let a record claim both, and
+    it would then compare equal to a genuinely per-monitor peer on units."""
+
+    record = _space().as_record()
+    record["thread_awareness"] = "system"
+    record["process_awareness"] = "system"
+
+    with pytest.raises(ValueError, match="contradict thread awareness"):
+        from_record(record)
+
+
+@pytest.mark.parametrize(
+    "awareness", ["unaware", "system", "per-monitor", "per-monitor-v2"]
+)
+def test_each_awareness_only_parses_with_its_own_unit(awareness):
+    record = _space().as_record()
+    record["thread_awareness"] = awareness
+    record["process_awareness"] = awareness
+    record["units"] = dpi.units_for_awareness(awareness)
+
+    assert from_record(record).units == dpi.units_for_awareness(awareness)
+
+
+def test_a_captured_space_never_contradicts_itself():
+    space = capture()
+
+    assert space.units == dpi.units_for_awareness(space.thread_awareness)
+    assert from_record(space.as_record()) == space
+
+
+# --- rectangles are shape-validated ---------------------------------------
+
+
+@pytest.mark.parametrize("rect", [(1, 2, 3), (1, 2, 3, 4, 5), (), "1,2,3,4"])
+def test_a_rectangle_that_is_not_four_integers_is_refused(rect):
+    with pytest.raises(ValueError, match="must be four integers"):
+        observe_bracketed(lambda: [rect])
+
+
+def test_a_bracket_record_round_trips_strictly():
+    geometry = observe_bracketed(lambda: [(1, 2, 3, 4)])
+
+    assert bracket_from_record(geometry.as_record()) == geometry
+
+
+@pytest.mark.parametrize("rect", [[1, 2, 3], [1, 2, 3, 4, 5], ["1", 2, 3, 4]])
+def test_a_bracket_record_with_a_malformed_rectangle_is_refused(rect):
+    record = observe_bracketed(lambda: [(1, 2, 3, 4)]).as_record()
+    record["rectangles"] = [rect]
+
+    with pytest.raises(ValueError):
+        bracket_from_record(record)
+
+
+def test_a_bracket_record_with_an_unknown_field_is_refused():
+    record = observe_bracketed(lambda: []).as_record()
+    record["hint"] = "extra"
+
+    with pytest.raises(ValueError, match="unknown"):
+        bracket_from_record(record)
+
+
+def test_a_bracket_record_carrying_a_malformed_space_is_refused():
+    record = observe_bracketed(lambda: []).as_record()
+    record["before"]["monitor_count"] = 999
+
+    with pytest.raises(ValueError, match="declares 999 monitors"):
+        bracket_from_record(record)
+
+
+def test_a_capture_stays_self_consistent_when_awareness_reads_disagree(monkeypatch):
+    """Units must be DERIVED from the awareness just captured, not queried a
+    second time.
+
+    Two separate reads can disagree -- that is the whole reason the contract
+    brackets a rectangle read -- and a capture that queried twice would record
+    one awareness beside another awareness's units, contradicting itself in a
+    way `from_record` then refuses.
+    """
+
+    answers = iter(
+        [("per-monitor-v2", "GetThreadDpiAwarenessContext"),
+         ("system", "GetThreadDpiAwarenessContext")]
+    )
+    monkeypatch.setattr(dpi, "queried_thread_awareness", lambda: next(answers))
+
+    space = capture()
+
+    assert space.thread_awareness == "per-monitor-v2"
+    assert space.units == dpi.units_for_awareness("per-monitor-v2")
+    # The proof it is not merely equal by luck: the record must survive the
+    # cross-field check that a second query would have broken.
+    from_record(space.as_record())

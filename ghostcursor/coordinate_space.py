@@ -81,6 +81,19 @@ def _exact_int(value: object, label: str) -> int:
     return value
 
 
+def _rectangle(value: object, label: str) -> tuple[int, int, int, int]:
+    """Exactly four integers. Not three, not five, not coerced.
+
+    Validating each coordinate's type while never counting them let a
+    three-coordinate rectangle through, and a renderer handed one would either
+    raise deep inside a paint or silently draw something else.
+    """
+
+    if not isinstance(value, (list, tuple)) or len(value) != 4:
+        raise ValueError(f"coordinate space {label} must be four integers")
+    return tuple(_exact_int(part, label) for part in value)
+
+
 @dataclass(frozen=True)
 class CoordinateSpace:
     """One process's measured account of the space its rectangles live in."""
@@ -141,7 +154,10 @@ def capture() -> CoordinateSpace:
         process_awareness,
         thread_awareness,
         f"thread={thread_api};process={process_api}",
-        dpi.coordinate_units(),
+        # Derived from the awareness just captured, not queried again: two
+        # separate reads could disagree and the record would then contradict
+        # itself.
+        dpi.units_for_awareness(thread_awareness),
         dpi.virtual_screen_rect(),
         dpi.monitor_topology(),
     )
@@ -176,22 +192,26 @@ def from_record(value: Mapping[str, Any]) -> CoordinateSpace:
             )
     if value["units"] not in CANONICAL_UNITS:
         raise ValueError(f"coordinate space units {value['units']!r} is not canonical")
+    expected_units = dpi.units_for_awareness(value["thread_awareness"])
+    if value["units"] != expected_units:
+        # Validating the two fields independently let a record claim
+        # system awareness AND physical pixels, which D106 says cannot both be
+        # true -- and which would compare equal to a genuinely per-monitor
+        # peer on the units check.
+        raise ValueError(
+            f"coordinate space units {value['units']!r} contradict thread "
+            f"awareness {value['thread_awareness']!r}, which reports "
+            f"{expected_units!r}"
+        )
     if not isinstance(value["awareness_api"], str):
         raise ValueError("coordinate space awareness_api must be a string")
 
-    bounds = value["virtual_bounds"]
-    if not isinstance(bounds, (list, tuple)) or len(bounds) != 4:
-        raise ValueError("coordinate space virtual_bounds is invalid")
-    parsed_bounds = tuple(_exact_int(part, "virtual_bounds") for part in bounds)
+    parsed_bounds = _rectangle(value["virtual_bounds"], "virtual_bounds")
 
     monitors = value["monitors"]
     if not isinstance(monitors, (list, tuple)):
         raise ValueError("coordinate space monitors is invalid")
-    parsed: list[tuple[int, int, int, int]] = []
-    for rect in monitors:
-        if not isinstance(rect, (list, tuple)) or len(rect) != 4:
-            raise ValueError("coordinate space monitor rectangle is invalid")
-        parsed.append(tuple(_exact_int(part, "monitor rectangle") for part in rect))
+    parsed = [_rectangle(rect, "monitor rectangle") for rect in monitors]
 
     declared = _exact_int(value["monitor_count"], "monitor_count")
     if declared != len(parsed):
@@ -237,13 +257,37 @@ class BracketedGeometry:
         }
 
 
+def bracket_from_record(value: Mapping[str, Any]) -> "BracketedGeometry":
+    """Rebuild a peer's bracketed read, as strictly as a CoordinateSpace.
+
+    Reconstructing this from arbitrary fields would reintroduce every
+    permissiveness `from_record` was hardened against, one level up.
+    """
+
+    if not isinstance(value, Mapping):
+        raise ValueError("bracketed geometry must be a mapping")
+    fields = {"after", "before", "rectangles"}
+    missing = fields - set(value)
+    if missing:
+        raise ValueError("bracketed geometry is missing " + ", ".join(sorted(missing)))
+    extra = set(value) - fields
+    if extra:
+        raise ValueError("bracketed geometry has unknown " + ", ".join(sorted(extra)))
+    rectangles = value["rectangles"]
+    if not isinstance(rectangles, (list, tuple)):
+        raise ValueError("bracketed geometry rectangles is invalid")
+    return BracketedGeometry(
+        from_record(value["before"]),
+        from_record(value["after"]),
+        tuple(_rectangle(rect, "rectangle") for rect in rectangles),
+    )
+
+
 def observe_bracketed(read: Callable[[], Sequence[Sequence[int]]]) -> BracketedGeometry:
     """Sample the space, run one rectangle read, sample it again."""
 
     before = capture()
-    rectangles = tuple(
-        tuple(_exact_int(part, "rectangle") for part in rect) for rect in read()
-    )
+    rectangles = tuple(_rectangle(rect, "rectangle") for rect in read())
     return BracketedGeometry(before, capture(), rectangles)
 
 
@@ -344,6 +388,7 @@ __all__ = [
     "BracketedGeometry",
     "CoordinateSpace",
     "bracket_disagreements",
+    "bracket_from_record",
     "capture",
     "disagreements",
     "from_record",
