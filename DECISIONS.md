@@ -4410,3 +4410,50 @@ happened to output that run.
 the current hand-authored plan remains the only PowerPoint plan until they
 are.
 
+
+## D112 — A pointer may outlive its node, if it is recoloured to what the node earned
+
+**Amends D109.** D109 says a pointer shown at a location means the next
+effect happens at that location. Read strictly, the cue must be cleared the
+moment a node ends, because after that the next effect is somewhere else.
+
+Implementing the presenter showed what that costs. A cue with no previous
+position must not fly in from an arbitrary corner — that would claim the
+pointer had been somewhere it was not — so it renders as a single settled
+frame at the destination. Clear between every node and *every* cue has no
+previous position, so every cue is one frame and the pointer never moves.
+The travelling cursor, which is the thing the user watches to know where the
+run is going and the specific behaviour the owner asked for, would not exist
+at all. Not degraded: absent.
+
+**The decision.** The pointer stays on screen after a node reaches VERIFIED,
+and the next node's cue travels from it. At the instant the outcome is known
+it is repainted in the trust class the node actually earned
+(`TrustClass.LIVE_STATE` for a true UIA pattern, `LEGACY_LIVE_STATE` for a
+default action), which is what keeps it truthful: a NEUTRAL pointer means
+"about to act here" and a verified-coloured one means "acted here". Those are
+different statements in different hues, and D109's concern — a pointer read
+as a promise about the next effect — applies only to the first.
+
+A REFUSED node clears immediately. Nothing follows a refusal, so there is no
+true reading of a pointer left behind. An aborted presentation clears for the
+same reason. Presentation itself always draws NEUTRAL regardless of how
+strong the backend is, because at presentation time nothing has been proven
+and D109's original prohibition on an unproven node wearing a verified colour
+is untouched.
+
+**What this does not change.** The final frame still lands exactly on the
+control's centre, the effect is still dispatched to the control the pointer
+is displayed on, and an object-model node still shows no pointer at all.
+
+**Where it lives.** `ghostcursor/act_overlay.py` — `on_node_state` and
+`_recolour`. `tests/test_act_overlay.py` covers both readings: that a
+presenting cue is NEUTRAL however strong its backend, that a verified one is
+repainted to the earned class and not to a stronger one, that a refused one
+clears, and that the second cue travels from where the first ended.
+
+**Open for the owner.** This is a real amendment to a rule the owner wrote,
+made because the alternative removed a feature they asked for. If the strict
+reading is preferred, the pointer stops travelling and the run becomes a
+sequence of cursors appearing in place — say so and it reverts to clearing on
+both terminal states.

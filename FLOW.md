@@ -283,7 +283,11 @@ run.main()
 |---|---|
 | `ghostcursor/run.py` | entry point, timer loop, ESC/timeout safety, arg parsing, grounder builder for live promotion |
 | `ghostcursor/overlay/dpi.py` | declares DPI awareness at import; one coordinate space |
-| `ghostcursor/overlay/window.py` | layered click-through window, WM_PAINT rendering |
+| `ghostcursor/overlay/window.py` | layered click-through window, WM_PAINT rendering; Teach hint ring and Act cue (ring, ghost pointer, label plate), plus `measure_label` for real font metrics |
+| `ghostcursor/overlay/cue.py` | pure Act cue layout: glyph outline tipped at the acted point, trust colour, callout placement clear of the control it names |
+| `ghostcursor/pointer_path.py` | pure pointer geometry and timing: eased traversal frames, settle, poll points, all derived from a measured paint cost |
+| `ghostcursor/act_presenter.py` | walks one cue on an injected clock and returns its receipts; a completed cue stays up for the dispatch, an aborted one clears and completes nothing |
+| `ghostcursor/act_overlay.py` | seam binding the presenter to a real HWND and the run's Stop; supplies `present`/`on_state` to `UiaNodeSession`, recolours a verified pointer (D112), pumps messages inside the Stop poll |
 | `ghostcursor/perception/uia.py` | UIA element/window lookup + raw win32 fallback |
 | `ghostcursor/reasoning/schema.py` | frozen data structures: Recipe, Step, VerificationRule, enums (UserAction, VerificationKind, Risk) |
 | `ghostcursor/reasoning/grounding.py` | turn step descriptions into live screen rectangles via the 4-rung matching ladder (id, type+exact name, UIA-only substring, OCR fuzzy at floor 95) + promotion |

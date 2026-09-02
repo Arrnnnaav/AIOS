@@ -212,12 +212,16 @@ rule, target identity, or bind input. They are also content and must not enter
 `sessions.sqlite` or default diagnostics. Unknown, duplicate, non-scalar,
 oversized, or non-finite guidance values fail before an overlay exists.
 
-**A pointer that is shown is a pointer that is acted on (D109).** If the
-session displays a pointer, ring, arrow or callout at a location, the next
-effect happens at that location through a control resolved there. Object-model
-actions show no pointer -- they show the rail step, a label, and the document
-region genuinely changing. Never draw a cursor over a control the runtime did
-not invoke.
+**A pointer that is shown is a pointer that is acted on (D109, amended by
+D112).** If the session displays a pointer, ring, arrow or callout at a
+location, the next effect happens at that location through a control resolved
+there. Object-model actions show no pointer -- they show the rail step, a
+label, and the document region genuinely changing. Never draw a cursor over a
+control the runtime did not invoke. A cue is always drawn NEUTRAL while it is
+presenting, however strong its backend. Under D112 a VERIFIED node's pointer
+stays on screen and is repainted in the trust class it earned, so the next
+cue can travel from it; a REFUSED node and an aborted presentation clear
+immediately.
 
 Interruption resumes with an **edited, re-validated, re-approved** plan
 (D110). Completed side-effecting nodes are never replayed, and a resumed plan
