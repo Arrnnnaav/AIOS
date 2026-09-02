@@ -185,11 +185,16 @@ def test_the_canonical_source_names_no_application():
 
 
 def test_the_canonical_source_declares_no_plugin_identity():
-    """Identity is stamped when the source is copied into a payload, so the
-    shared file cannot act for any particular plugin."""
+    """It cannot carry one. The bytes must be identical in every payload or
+    the canonical-digest check refuses them, so a build-time stamp would break
+    the property that lets one review cover every copy. Identity arrives in
+    the hello handshake, from the manifest core already verified."""
 
-    assert adapter.PLUGIN_ID is None
-    assert adapter.PLUGIN_VERSION is None
+    assert not hasattr(adapter, "PLUGIN_ID")
+    assert not hasattr(adapter, "PLUGIN_VERSION")
+    assert "PLUGIN_ID" not in SOURCE.read_text(encoding="utf-8").replace(
+        "plugin identity constant", ""
+    ).replace("stamping an id", "")
 
 
 # --- exactly one control, or nothing --------------------------------------

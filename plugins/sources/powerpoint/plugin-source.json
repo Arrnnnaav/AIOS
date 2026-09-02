@@ -1,30 +1,38 @@
 {
-  "applications": [
-    {"kind": "executable", "value": "powerpnt.exe"}
-  ],
   "adapter_api": {
     "entrypoint": "ghostcursor/adapter/powerpoint_adapter.py",
     "operations": "ghostcursor/operations.json",
     "plans": "ghostcursor/action-plans.json",
     "protocol_version": 1,
+    "uia_entrypoint": "ghostcursor/adapter/uia_adapter.py",
     "verifier": "ghostcursor/adapter/powerpoint_verifier.py"
   },
+  "applications": [
+    {
+      "kind": "executable",
+      "value": "powerpnt.exe"
+    }
+  ],
   "core_compatibility": {
     "maximum_exclusive": "2.0.0",
     "minimum": "1.0.0"
   },
   "files": [
     {
-      "destination": "ghostcursor/packs/index.json",
-      "source": "plugins/sources/powerpoint/index.json"
-    },
-    {
       "destination": "ghostcursor/action-plans.json",
       "source": "plugins/sources/powerpoint/payload/ghostcursor/action-plans.json"
     },
     {
+      "destination": "ghostcursor/adapter/uia_adapter.py",
+      "source": "plugins/sources/powerpoint/payload/ghostcursor/adapter/uia_adapter.py"
+    },
+    {
       "destination": "ghostcursor/operations.json",
       "source": "plugins/sources/powerpoint/payload/ghostcursor/operations.json"
+    },
+    {
+      "destination": "ghostcursor/packs/index.json",
+      "source": "plugins/sources/powerpoint/index.json"
     }
   ],
   "plugin_id": "ghostcursor.powerpoint",

@@ -31,8 +31,11 @@ import re
 import sys
 from pathlib import Path
 
-PLUGIN_ID = None  # stamped by the build when this source is copied into a payload
-PLUGIN_VERSION = None
+# No plugin identity constant, deliberately. The bytes must be IDENTICAL in
+# every payload that carries them, or the canonical-digest check refuses them
+# (D108) -- so stamping an id in at build time would break the very property
+# that lets one review cover every copy. Identity arrives in the `hello`
+# handshake instead, from the signed manifest core already verified.
 _SHA_RE = re.compile(r"[0-9a-f]{64}")
 
 #: TreeScope_Descendants. Scoped to the approved window's subtree, never the

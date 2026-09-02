@@ -565,6 +565,14 @@ class PluginStore:
                 plugin_version=bundle.version,
                 adapter_sha256=adapter_sha256,
             )
+            uia_declared = adapter.get("uia_entrypoint")
+            uia_entrypoint = None
+            uia_adapter_sha256 = None
+            if uia_declared is not None:
+                uia_entrypoint = root / Path(*PurePosixPath(uia_declared).parts)
+                uia_adapter_sha256 = hashlib.sha256(
+                    uia_entrypoint.read_bytes()
+                ).hexdigest()
             adapters[plugin_id] = AdapterDescriptor(
                 plugin_id=plugin_id,
                 plugin_version=bundle.version,
@@ -576,6 +584,8 @@ class PluginStore:
                 verifier_sha256=hashlib.sha256(verifier_bytes).hexdigest(),
                 registry=registry,
                 plans=plans,
+                uia_entrypoint=uia_entrypoint,
+                uia_adapter_sha256=uia_adapter_sha256,
             )
         return MappingProxyType(adapters)
 

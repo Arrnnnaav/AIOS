@@ -197,13 +197,13 @@ built but not yet exercised by a caller or a live run.
 
 **2. Shared signed generic UIA adapter (D108)**
 - [x] `plugins/shared/uia_adapter.py` — Invoke, Select, Toggle, Value, LegacyIAccessible
-- [ ] Copied byte-identically into the PowerPoint payload and signed there
+- [x] Copied byte-identically into the PowerPoint payload and signed there
 - [x] Input-synthesis scan covers it (`plugins/shared` added to ADAPTER_ROOTS)
 
 **3. PowerPoint UIA feasibility and first pointer-visible action**
-- [ ] Read-only probe against PowerPoint's ribbon (live desktop)
-- [ ] Record evidence; choose the operation with a genuine UI target
-- [ ] Signed selector + identity policy for that control
+- [x] Read-only probe against PowerPoint's ribbon (live desktop)
+- [x] Record evidence; chose `New Slide` — `docs/evidence/act-powerpoint-uia-feasibility.md`
+- [x] Signed selector + identity policy — `powerpoint.new_slide_uia`
 - [ ] One end-to-end action: pointer travels, label appears, dwell, invoke,
       independent verification
 
