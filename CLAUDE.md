@@ -29,6 +29,15 @@ A numeric threshold can be an active rule and stays — the 95 OCR floor, D020's
 not belong here. Cite decision numbers for provenance; never restate their
 content.
 
+**Decisions may evolve.** `DECISIONS.md` records the reasoning that was correct
+at a point in the product's development; it is not a promise that every choice
+is permanent. New evidence, changed requirements, or a better architecture may
+amend or supersede an earlier decision. Make that evolution explicit: identify
+the prior decision, state what changed and why, preserve the relevant history
+and measurements, and update the current rules in this file and the current
+architecture in `FLOW.md` in the same reviewed slice. Never silently rewrite an
+old decision merely to make the history appear consistent with the new design.
+
 ## Current build status
 
 Production runs signed, data-only plugins for VS Code, Synthetic Export, and
