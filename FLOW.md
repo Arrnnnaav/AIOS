@@ -1254,3 +1254,11 @@ bracketed by two awareness samples: `observe_bracketed` captures the space,
 reads, and captures again, and `BracketedGeometry` refuses every rectangle if
 the space moved between them, because rectangles read across a context change
 may not share a space with each other.
+
+`ghostcursor/stages.py`, `ghostcursor/coordinate_space.py` and
+`ghostcursor/act_protocol.py` are contracts with **no production caller yet**.
+Nothing in `act_runtime.py` imports them; its only added seam is
+`verify_observer`, which is Phase A diagnostics. D107 records why the Excel
+vertical slice now runs before the remaining Phase C modules: it is the first
+caller, and until it exists these three have only ever been judged against
+their own docstrings.

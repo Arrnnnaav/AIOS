@@ -4143,3 +4143,73 @@ While this decision stands, the process must remain SYSTEM aware, and a test
 pins that. The assertion which previously claimed to guard it was
 `assert ... or True`, a tautology: flipping the process to per-monitor-v2
 passed the entire suite.
+
+## D107 — Phase C freezes contracts a caller has exercised, not contracts alone
+
+**Amends D105.** D105 fixed the Act v1 completion order as A (PowerPoint
+diagnose-fix-rerun) -> B (read-only feasibility) -> C (freeze contracts) ->
+D (implement runtime) -> E (measure) -> F/H/J (independent review) ->
+I (sign and count). That order was adopted to stop schemas being frozen
+against a system whose live behaviour was unmeasured, and on that point it was
+right: Phase A found the AlternateContent verifier defect and Phase B found
+that Excel's control is named `Add Sheet`, both of which would have been
+baked into a frozen schema.
+
+**What changed.** Phase C produced three contracts -- `ghostcursor/stages.py`,
+`ghostcursor/coordinate_space.py`, `ghostcursor/act_protocol.py` -- and
+measured at `ac7ed85`, each has **zero production importers**:
+
+```
+ghostcursor/stages.py            production importers: 0
+ghostcursor/coordinate_space.py  production importers: 0
+ghostcursor/act_protocol.py      production importers: 0
+```
+
+Each has exactly one test file. `act_runtime.py`'s only new seam is
+`verify_observer`, which is Phase A diagnostics, not the receipt protocol.
+
+Four independent reviews have judged these contracts, and every one judged
+them against their own docstrings, because there is no caller to judge them
+against. They found real defects -- a verification bypass, a tautological
+assertion guarding the coordinate space, a bracket that need not bracket, a
+`geometry_required` cue satisfiable by rail text. None of those reviews could
+find an integration defect, because no integration exists.
+
+**Amendment.** Phase C is complete for a contract when a caller has exercised
+it, not when it is internally consistent. Concretely, the thin Excel vertical
+slice moves ahead of the remaining Phase C module work:
+
+    one approval
+      -> observe_before on the signed Add Sheet selector
+      -> present the cue and require its receipt
+      -> confirm_before, and refuse on drift
+      -> per-node authorization
+      -> InvokePattern through the signed adapter
+      -> verify_after: exactly one worksheet added, actual name recorded
+
+Signed identity-policy fields and the three verifier modes are built **inside**
+that slice, shaped by what it needs, rather than as further standalone modules
+ahead of it. Phase C and Phase D overlap for exactly one node.
+
+**Why this and not more modules first.** The remaining Phase C list --
+identity policy, verifier modes, stage wiring, staging, budgets, the runner --
+would each be built against the same untested assumption that the existing
+three compose. If they do not, one node is a cheap place to learn it and four
+more modules is an expensive one. The slice also crosses a real application
+boundary, which is the only thing that has reliably found defects on this
+project: every substantive Act finding so far came from a live run or from a
+reviewer, never from a module in isolation.
+
+**What does NOT change.** D105's gates all stand: three independent D032
+reviews by someone other than the author; the diagnostic run that does not
+count toward acceptance; three consecutive counted campaigns per application;
+release signing with a non-ephemeral external key; and the D006 prohibition on
+pointer and keyboard synthesis, which the ghost pointer does not touch because
+it draws rather than moves the OS cursor. Phase A and Phase B remain closed
+and their evidence stands unchanged.
+
+**Alternative rejected.** Finishing every Phase C contract before any
+integration, as D105 ordered. It is the safer-sounding order and it is what
+produced three hardened modules that nothing calls. The measurement above is
+what changed the balance; before it, the risk was theoretical.
+

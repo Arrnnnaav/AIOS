@@ -280,8 +280,11 @@ exact application build, because that is the only build it is valid for. A signe
 the application object model declared by its signed operation registry; it may
 not call `SendInput`, cursor APIs, or generic mouse/keyboard automation.
 
-The autonomous Act v1 completion program runs in the mandatory phase order
-recorded in D105. The PowerPoint diagnose-fix-rerun loop and the read-only UIA
+The autonomous Act v1 completion program runs in the phase order recorded in
+D105 **as amended by D107**: a Phase C contract is finished when a caller has
+exercised it, so the thin Excel vertical slice runs ahead of the remaining
+Phase C modules and Phase C/D overlap for exactly one node. Do not build
+further standalone contracts ahead of that slice. The PowerPoint diagnose-fix-rerun loop and the read-only UIA
 feasibility probes both complete before any contract is frozen, any runtime is
 implemented, or any timing budget is measured. Three independent D032 reviews
 gate it -- derived budgets, pre-sign candidate bytes, activation -- and none
