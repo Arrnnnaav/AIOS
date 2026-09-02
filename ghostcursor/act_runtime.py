@@ -10,7 +10,7 @@ import time
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Callable, Mapping
+from typing import Callable, Mapping, Sequence
 
 from ghostcursor.action import (
     ActionGraph,
@@ -18,6 +18,13 @@ from ghostcursor.action import (
     OperationRegistry,
     ValidatedActionGraph,
     validate_action_graph,
+)
+from ghostcursor.act_node import NodeRefused, Observation, execute_node
+from ghostcursor.act_protocol import (
+    LifecycleState,
+    PresentationRequest,
+    Receipt,
+    ReceiptPolicy,
 )
 from ghostcursor.adapter_host import (
     AdapterHost,
@@ -138,6 +145,36 @@ class ActControls:
             if self._resume_event.wait(timeout=0.05):
                 return True
         return False
+
+
+
+@dataclass
+class UiaNodeSession:
+    """Everything a control-driving node needs, supplied by the caller.
+
+    Kept out of `act_runtime` on purpose. The runtime decides WHETHER a node
+    may run; this decides how it is observed, shown and dispatched, and a run
+    that cannot do those things simply does not get one -- which is what makes
+    "no effect without an acknowledged presentation" structural rather than a
+    rule someone has to remember.
+    """
+
+    #: Reads the world through the signed read-only path. Called twice per
+    #: node: once before the cue and once after it.
+    observe: Callable[[object, str], Observation]
+    #: Shows the cue and returns the overlay's receipts for it.
+    present: Callable[[PresentationRequest, Observation | None], Sequence[Receipt]]
+    #: Dispatches the pattern on the control that was just compared.
+    dispatch: Callable[[object, object, Observation], None]
+    #: NOTE: this type deliberately has no `run` method. An earlier version
+    #: had one, and a caller could have overridden it to return a verified
+    #: outcome without ever calling the verifier -- the same bypass shape a
+    #: review already found once in this file. Core calls `execute_node`
+    #: itself and supplies the real verifier; the session only supplies edges.
+    policy: ReceiptPolicy
+    session_id: str
+    clock: Callable[[], float] = lambda: time.monotonic() * 1000.0
+    on_state: Callable[[object, LifecycleState], None] | None = None
 
 
 def approve_action_graph(
@@ -329,6 +366,7 @@ def _execute_approved_graph(
     event_sink: Callable[[ActEvent], None] | None = None,
     clock: Callable[[], float] = time.monotonic,
     wall_clock: Callable[[], float] = time.time,
+    uia_session: "UiaNodeSession | None" = None,
 ) -> ActRunResult:
     """Private effect seam used by production and hermetic contract tests."""
 
@@ -505,6 +543,95 @@ def _execute_approved_graph(
                     approval.output_path,
                 )
             operation = registry.operations[node.operation_id]
+
+            if operation.draws_a_pointer:
+                # A control-driving node takes the three-observation path and
+                # cannot run without an acknowledged presentation (D109). No
+                # presenter means no UIA execution -- refused by construction
+                # rather than by convention, because the alternative is an
+                # effect the user never saw.
+                if uia_session is None:
+                    publish(
+                        "refused",
+                        node,
+                        ordinal,
+                        "this run has no presentation surface, so a "
+                        "control-driving operation cannot be shown or run",
+                    )
+                    return ActRunResult(
+                        ActRunPhase.EXECUTION,
+                        ActRunCode.ADAPTER_FAILED,
+                        "a UIA operation requires a presentation surface",
+                        validated,
+                        tuple(completed),
+                        node.node_id,
+                        tuple(events),
+                        approval.output_path,
+                    )
+                publish("action_started", node, ordinal, "authorized action started")
+                request = PresentationRequest(
+                    session_id=uia_session.session_id,
+                    cue_id=f"{node.node_id}:{ordinal}",
+                    nonce=secrets.token_hex(16),
+                    presentation_generation=1,
+                    frame_generation=1,
+                    geometry_required=True,
+                )
+                try:
+                    # execute_node is called HERE, by core, with core's own
+                    # verifier. The session contributes observe, present and
+                    # dispatch and nothing else.
+                    outcome = execute_node(
+                        node,
+                        operation,
+                        request=request,
+                        policy=uia_session.policy,
+                        observe=lambda mode: uia_session.observe(node, mode),
+                        present=uia_session.present,
+                        authorize=lambda facts: _authorize_node(
+                            approval, validated, node=node, ordinal=ordinal
+                        ),
+                        dispatch=lambda token, confirmed: uia_session.dispatch(
+                            node, token, confirmed
+                        ),
+                        verify=lambda target: verify(
+                            target, operation, None, approval
+                        ),
+                        clock=uia_session.clock,
+                        on_state=(
+                            None
+                            if uia_session.on_state is None
+                            else (lambda state: uia_session.on_state(node, state))
+                        ),
+                    )
+                except NodeRefused as exc:
+                    publish("action_failed", node, ordinal, exc.detail)
+                    return ActRunResult(
+                        ActRunPhase.EXECUTION,
+                        ActRunCode.ADAPTER_FAILED,
+                        f"{exc.code.value}: {exc.detail}",
+                        validated,
+                        tuple(completed),
+                        node.node_id,
+                        tuple(events),
+                        approval.output_path,
+                    )
+                if not outcome.verified:
+                    publish("verification_failed", node, ordinal, outcome.detail)
+                    return ActRunResult(
+                        ActRunPhase.EXECUTION,
+                        ActRunCode.VERIFICATION_FAILED,
+                        outcome.detail,
+                        validated,
+                        tuple(completed),
+                        node.node_id,
+                        tuple(events),
+                        approval.output_path,
+                    )
+                completed.append(node.node_id)
+                publish("action_completed", node, ordinal, outcome.detail)
+                continue
+
             token = _authorize_node(approval, validated, node=node, ordinal=ordinal)
             publish("action_started", node, ordinal, "authorized action started")
             try:
@@ -616,6 +743,7 @@ def execute_approved_graph(
     controls: ActControls,
     event_sink: Callable[[ActEvent], None] | None = None,
     verify_observer: Callable[[str, Mapping[str, object]], None] | None = None,
+    uia_session: "UiaNodeSession | None" = None,
 ) -> ActRunResult:
     """Production execution path with the plugin's separate signed verifier.
 
@@ -700,6 +828,7 @@ def execute_approved_graph(
         verify=verify,
         controls=controls,
         event_sink=event_sink,
+        uia_session=uia_session,
     )
 
 
@@ -718,6 +847,7 @@ __all__ = [
     "ActRunPhase",
     "ActRunResult",
     "ActTarget",
+    "UiaNodeSession",
     "AuthorizedAction",
     "PlanApproval",
     "approve_action_graph",

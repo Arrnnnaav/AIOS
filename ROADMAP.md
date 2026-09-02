@@ -189,8 +189,8 @@ built but not yet exercised by a caller or a live run.
 
 **1. Deterministic execution path**
 - [x] Operation schema: backend, selector, identity policy in `operations.json`
-- [~] Receipt gating before each effect — `act_node.execute_node`, not yet wired into `act_runtime`
-- [~] Identity check before each pattern call — `act_node.execute_node`
+- [x] Receipt gating before each effect — wired: a UIA node with no presentation surface refuses
+- [x] Identity check before each pattern call — wired through `execute_node`
 - [ ] `act_runtime` calls `coordinate_space` (reject unusable geometry)
 - [~] Three verifier modes sequenced — `act_node.execute_node`; verifier protocol still to carry them
 - [x] Per-node authorization minted only after the identity check passes

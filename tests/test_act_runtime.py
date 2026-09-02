@@ -429,4 +429,222 @@ def test_execute_approved_graph_exposes_no_verifier_replacing_parameter():
         "controls",
         "event_sink",
         "verify_observer",
+        "uia_session",
     }
+
+
+def test_the_uia_session_cannot_replace_the_verifier():
+    """It supplies observe, present and dispatch. It has no `run` method, so
+    it cannot own the sequence and return a verified outcome without the
+    verifier having been called -- the bypass shape already found once here."""
+
+    from ghostcursor.act_runtime import UiaNodeSession
+
+    assert not hasattr(UiaNodeSession, "run")
+    assert set(UiaNodeSession.__dataclass_fields__) == {
+        "observe",
+        "present",
+        "dispatch",
+        "policy",
+        "session_id",
+        "clock",
+        "on_state",
+    }
+
+
+# --- the control-driving branch --------------------------------------------
+
+
+def _uia_registry():
+    """A registry whose single operation drives a control."""
+
+    from ghostcursor.uia_identity import IdentityPolicy
+
+    policy = IdentityPolicy(
+        operation_id="powerpoint.new_slide_uia",
+        selector_id="powerpoint.new-slide",
+        selector_sha256="c" * 64,
+        control_type="Button",
+        identity_mode="runtime_id_required",
+        required_fields=("control_type", "name", "runtime_id"),
+        evidence_fields=("automation_id",),
+    )
+    operations = {
+        "powerpoint.new_slide_uia": OperationSpec(
+            "powerpoint.new_slide_uia",
+            ActionRisk.LOW,
+            MappingProxyType({}),
+            postconditions=("slide.exists",),
+            timeout_s=2.0,
+            backend="uia_pattern",
+            uia_pattern="Invoke",
+            identity=policy,
+        )
+    }
+    return OperationRegistry(
+        PLUGIN, VERSION, ADAPTER, "b" * 64, MappingProxyType(operations)
+    )
+
+
+def _uia_graph(registry):
+    from ghostcursor.action import ActionGraph, ActionNode, validate_action_graph
+
+    graph = ActionGraph(
+        PLUGIN,
+        VERSION,
+        ADAPTER,
+        (ActionNode("n001", "powerpoint.new_slide_uia", {}),),
+        (),
+    )
+    return validate_action_graph(graph, registry)
+
+
+def _identity():
+    return {
+        "automation_id": "",
+        "control_type": "Button",
+        "name": "New Slide",
+        "runtime_id": (7, 1, 2),
+    }
+
+
+def _fake_session(*, receipts=True, record=None):
+    from ghostcursor.act_node import Observation
+    from ghostcursor.act_protocol import (
+        PresentationRequest,
+        Receipt,
+        ReceiptKind,
+        ReceiptPolicy,
+    )
+    from ghostcursor.act_runtime import UiaNodeSession
+
+    record = record if record is not None else {}
+    record.setdefault("dispatched", [])
+    record.setdefault("presented", [])
+
+    def present(request: PresentationRequest, baseline):
+        record["presented"].append(request)
+        if not receipts:
+            return []
+        return [
+            Receipt(
+                kind,
+                request.session_id,
+                request.cue_id,
+                request.nonce,
+                request.presentation_generation,
+                request.frame_generation,
+            )
+            for kind in (
+                ReceiptKind.GEOMETRY_STARTED,
+                ReceiptKind.PRESENTATION_COMPLETED,
+            )
+        ]
+
+    ticks = iter(range(1, 10_000))
+
+    return UiaNodeSession(
+        observe=lambda node, mode: Observation(
+            semantic={"slides": 3},
+            identity=_identity(),
+            rectangle=(10, 20, 110, 60),
+            match_count=1,
+        ),
+        present=present,
+        dispatch=lambda node, token, confirmed: record["dispatched"].append(node.node_id),
+        policy=ReceiptPolicy(first_paint_deadline_ms=500, completion_deadline_ms=800),
+        session_id="s1",
+        clock=lambda: float(next(ticks)),
+    ), record
+
+
+def _run_uia(tmp_path, *, session=None, verified=True):
+    import time as _time
+
+    registry = _uia_registry()
+    validated = _uia_graph(registry)
+    approval = _approval(tmp_path, validated, registry, now=_time.time())
+    (tmp_path / "owned").mkdir(exist_ok=True)
+    return _execute_approved_graph(
+        validated,
+        registry,
+        approval,
+        descriptor=_descriptor(tmp_path),
+        current_authority=_authority,
+        revalidate_target=lambda _target: None,
+        verify=lambda *_args: verified,
+        controls=ActControls(),
+        uia_session=session,
+    )
+
+
+def test_a_control_driving_node_refuses_when_there_is_no_presentation_surface(
+    tmp_path,
+):
+    """No presenter means no UIA execution -- refused by construction, because
+    the alternative is an effect the user never saw (D109)."""
+
+    result = _run_uia(tmp_path)
+
+    assert result.completed is False
+    assert result.code is ActRunCode.ADAPTER_FAILED
+    assert "presentation surface" in result.detail
+
+
+def test_a_control_driving_node_runs_the_three_observation_flow(tmp_path):
+    session, record = _fake_session()
+
+    result = _run_uia(tmp_path, session=session)
+
+    assert result.completed is True
+    assert record["dispatched"] == ["n001"]
+    # The cue it showed was bound to this node and required real geometry.
+    assert record["presented"][0].cue_id == "n001:1"
+    assert record["presented"][0].geometry_required is True
+
+
+def test_a_control_driving_node_without_receipts_never_dispatches(tmp_path):
+    session, record = _fake_session(receipts=False)
+
+    result = _run_uia(tmp_path, session=session)
+
+    assert result.completed is False
+    assert record["dispatched"] == []
+
+
+def test_a_dispatched_control_node_that_fails_verification_stops_the_run(tmp_path):
+    session, record = _fake_session()
+
+    result = _run_uia(tmp_path, session=session, verified=False)
+
+    assert result.code is ActRunCode.VERIFICATION_FAILED
+    assert record["dispatched"] == ["n001"]
+    assert result.completed_node_ids == ()
+
+
+def test_a_control_driving_node_does_not_take_the_object_model_path(tmp_path):
+    """The object-model path starts the adapter subprocess and calls execute
+    on it. A UIA node must never reach that."""
+
+    marker = tmp_path / "adapter-started"
+    session, _record = _fake_session()
+
+    registry = _uia_registry()
+    validated = _uia_graph(registry)
+    import time as _time
+
+    approval = _approval(tmp_path, validated, registry, now=_time.time())
+    (tmp_path / "owned").mkdir(exist_ok=True)
+    result = _execute_approved_graph(
+        validated,
+        registry,
+        approval,
+        descriptor=_descriptor(tmp_path, marker=marker),
+        current_authority=_authority,
+        revalidate_target=lambda _target: None,
+        verify=lambda *_args: True,
+        controls=ActControls(),
+        uia_session=session,
+    )
+
+    assert result.completed is True
