@@ -188,7 +188,7 @@ Marked as work completes. `[x]` means done AND its tests pass; `[~]` means
 built but not yet exercised by a caller or a live run.
 
 **1. Deterministic execution path**
-- [ ] Operation schema: backend, selector, identity policy in `operations.json`
+- [x] Operation schema: backend, selector, identity policy in `operations.json`
 - [ ] `act_runtime` calls `act_protocol` (receipt gating before each effect)
 - [ ] `act_runtime` calls `uia_identity` (identity check before each pattern call)
 - [ ] `act_runtime` calls `coordinate_space` (reject unusable geometry)

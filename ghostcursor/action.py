@@ -15,8 +15,12 @@ import json
 import math
 import re
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 from enum import Enum
 from types import MappingProxyType
+
+if TYPE_CHECKING:  # pragma: no cover
+    from ghostcursor.uia_identity import IdentityPolicy
 from typing import Any, Mapping, TypeAlias
 
 
@@ -94,6 +98,20 @@ class ActionParameterSpec:
     allowed_values: tuple[JsonScalar, ...] = ()
 
 
+#: How an operation performs its effect. Absent means OBJECT_MODEL, which
+#: is what every registry signed before UIA support declared implicitly --
+#: adding a required key would have changed those bytes and invalidated
+#: their digests, so the field is optional and defaults to the old
+#: behaviour.
+OPERATION_BACKENDS = frozenset(
+    {"object_model", "uia_pattern", "legacy_iaccessible"}
+)
+
+#: UIA patterns a signed operation may name. Closed: a pattern the adapter
+#: cannot dispatch would be an operation nothing can perform.
+UIA_PATTERNS = frozenset({"Invoke", "SelectionItem", "Toggle", "Value"})
+
+
 @dataclass(frozen=True)
 class OperationSpec:
     operation_id: str
@@ -106,6 +124,24 @@ class OperationSpec:
     safe_to_repeat: bool = False
     effect_key_fields: tuple[str, ...] = ()
     timeout_s: float = 20.0
+    backend: str = "object_model"
+    #: The UIA pattern to dispatch, and the identity the resolved control
+    #: must still have when it is dispatched. Both None for an
+    #: object-model operation, which drives an application API and has no
+    #: control to hold.
+    uia_pattern: str | None = None
+    identity: "IdentityPolicy | None" = None
+
+    @property
+    def draws_a_pointer(self) -> bool:
+        """Whether this operation may show a pointer at its target (D109).
+
+        Only a backend that resolves and acts on a real control may. An
+        object-model operation has no control it is clicking, so a pointer
+        over one would show an action where it did not happen.
+        """
+
+        return self.backend != "object_model"
 
 
 @dataclass(frozen=True)
@@ -258,6 +294,73 @@ def _validate_value_size(value: JsonValue, *, node_id: str, name: str) -> None:
         )
 
 
+
+def _parse_uia_block(operation_id: str, uia: object, backend: str):
+    """Read the signed UIA block into a pattern and an IdentityPolicy.
+
+    Refused rather than defaulted at every step. An operation that acts on
+    a real control must say exactly which control and what has to still be
+    true about it, because the gap between resolving it and acting on it is
+    where a selector starts matching something else.
+    """
+
+    from ghostcursor.uia_identity import IdentityPolicy, IdentityPolicyError
+
+    expected = {
+        "control_type",
+        "evidence_identity_fields",
+        "identity_mode",
+        "pattern",
+        "required_identity_fields",
+        "selector_id",
+        "selector_sha256",
+    }
+    if not isinstance(uia, dict) or set(uia) != expected:
+        _reject(
+            ActionValidationCode.INVALID_REGISTRY,
+            f"operation {operation_id!r} uia block is invalid",
+        )
+    pattern = uia["pattern"]
+    if backend == "legacy_iaccessible":
+        # The legacy default action is not a UIA pattern and must say so,
+        # rather than borrowing a pattern name it does not dispatch.
+        if pattern != "DoDefaultAction":
+            _reject(
+                ActionValidationCode.INVALID_REGISTRY,
+                f"operation {operation_id!r} legacy backend must declare "
+                "DoDefaultAction",
+            )
+    elif pattern not in UIA_PATTERNS:
+        _reject(
+            ActionValidationCode.INVALID_REGISTRY,
+            f"operation {operation_id!r} pattern {pattern!r} is not a "
+            "dispatchable UIA pattern",
+        )
+    for label in ("required_identity_fields", "evidence_identity_fields"):
+        if not isinstance(uia[label], list) or any(
+            not isinstance(name, str) for name in uia[label]
+        ):
+            _reject(
+                ActionValidationCode.INVALID_REGISTRY,
+                f"operation {operation_id!r} {label} is invalid",
+            )
+    try:
+        identity = IdentityPolicy(
+            operation_id=operation_id,
+            selector_id=uia["selector_id"],
+            selector_sha256=uia["selector_sha256"],
+            control_type=uia["control_type"],
+            identity_mode=uia["identity_mode"],
+            required_fields=tuple(uia["required_identity_fields"]),
+            evidence_fields=tuple(uia["evidence_identity_fields"]),
+        )
+    except IdentityPolicyError as exc:
+        _reject(
+            ActionValidationCode.INVALID_REGISTRY,
+            f"operation {operation_id!r} identity policy is invalid: {exc}",
+        )
+    return pattern, identity
+
 def load_operation_registry(
     raw: bytes,
     *,
@@ -308,7 +411,7 @@ def load_operation_registry(
             or _OPERATION_ID_RE.fullmatch(operation_id) is None
         ):
             _reject(ActionValidationCode.INVALID_REGISTRY, "operation id is invalid")
-        if not isinstance(item, dict) or set(item) != {
+        required_fields = {
             "effect_key_fields",
             "parameters",
             "postconditions",
@@ -316,7 +419,15 @@ def load_operation_registry(
             "risk",
             "safe_to_repeat",
             "timeout_s",
-        }:
+        }
+        # `backend` and `uia` are OPTIONAL so registries signed before UIA
+        # support keep validating byte-for-byte. Anything else is refused.
+        optional_fields = {"backend", "uia"}
+        if (
+            not isinstance(item, dict)
+            or not required_fields <= set(item)
+            or not set(item) <= required_fields | optional_fields
+        ):
             _reject(
                 ActionValidationCode.INVALID_REGISTRY,
                 f"operation {operation_id!r} fields are invalid",
@@ -409,6 +520,24 @@ def load_operation_registry(
                 ActionValidationCode.INVALID_REGISTRY,
                 f"operation {operation_id!r} effect key is invalid",
             )
+        backend = item.get("backend", "object_model")
+        if backend not in OPERATION_BACKENDS:
+            _reject(
+                ActionValidationCode.INVALID_REGISTRY,
+                f"operation {operation_id!r} backend {backend!r} is unknown",
+            )
+        uia = item.get("uia")
+        if backend == "object_model":
+            if uia is not None:
+                _reject(
+                    ActionValidationCode.INVALID_REGISTRY,
+                    f"operation {operation_id!r} is object_model but "
+                    "declares a uia block",
+                )
+            uia_pattern, identity = None, None
+        else:
+            uia_pattern, identity = _parse_uia_block(operation_id, uia, backend)
+
         timeout_s = item["timeout_s"]
         if type(timeout_s) not in {int, float} or not 0.1 <= float(timeout_s) <= 120.0:
             _reject(
@@ -423,6 +552,9 @@ def load_operation_registry(
         operations[operation_id] = OperationSpec(
             operation_id=operation_id,
             risk=risk,
+            backend=backend,
+            uia_pattern=uia_pattern,
+            identity=identity,
             parameters=MappingProxyType(parameters),
             preconditions=tuple(preconditions),
             postconditions=tuple(postconditions),
