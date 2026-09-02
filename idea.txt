@@ -1,129 +1,254 @@
-# idea.txt — context for planning. NOT execution authority.
+# idea.txt — planning context. NOT execution authority.
 #
-# The local model may read this to decide what is wanted, what is still
-# unclear, how to stage the work, and which REGISTERED plugin capabilities
-# could satisfy it, in what order.
+# The Ideate mode is not built yet. This file stands in for the conversation
+# that mode will one day hold: a worked-through discussion between the user
+# and the local model, ending in a settled brief the planner can act on.
 #
-# It may not invent application code, COM calls, UIA selectors, coordinates,
-# keystrokes, verification rules, shell commands, or capabilities that are not
-# in the active signed registry. The signed plugin remains the authority for
-# every executable detail.
+# The model may use this to decide what is wanted, what is still unclear, how
+# to stage the work, and which REGISTERED plugin capabilities to compose, in
+# what order. It may not invent application code, COM calls, UIA selectors,
+# coordinates, keystrokes, verification rules, shell commands, or capabilities
+# absent from the active signed registry. The signed plugin remains the
+# authority for every executable detail.
 #
-# Human-editable. Its exact bytes are hashed and bound to any plan proposed
-# from it, so editing this file invalidates a proposal rather than silently
-# changing what was approved.
+# These bytes are hashed and bound to any plan proposed from them. Editing
+# this file invalidates a proposal rather than silently changing what was
+# approved.
+
+
+================================================================================
+PART 1 — THE CONVERSATION
+================================================================================
+
+USER
+  I want a 10-slide investor pitch deck for GhostCursor. And I want you to
+  build it yourself, in PowerPoint, while I watch each step happen.
+
+MODEL
+  Before I propose anything: who is reading it, and in what setting?
+
+USER
+  Accelerator reviewers and early-stage investors. They'll click through it
+  themselves, no narrator. Technical enough to care how it works, not reading
+  code. Assume one pass and a few seconds per slide.
+
+MODEL
+  Then every slide has to land on its own. What is the product, in one line
+  you'd actually defend?
+
+USER
+  A runtime that turns human intent into safe, verified work inside the
+  software people already use. Customer-facing version: tell it what you want
+  to accomplish, and it helps you do it directly in the app you're already in.
+
+MODEL
+  What separates that from a chat assistant with screenshots, and from an
+  autonomous computer-use agent? Reviewers will have seen both.
+
+USER
+  It sits between them, and that's the whole point. A chatbot sees one
+  screenshot per turn and tells you what to do. An autonomous agent takes
+  your mouse and hopes. GhostCursor runs a continuous
+  perceive → decide → show → verify loop: it watches the live UI through
+  accessibility APIs, works out the next action, shows you where it is acting,
+  and then independently checks the result actually happened.
+
+MODEL
+  "Independently checks" — what does that mean concretely? That is the claim I
+  would push on if I were reviewing.
+
+USER
+  A separate signed process opens the saved file and confirms the effect. It
+  does not take the adapter's word for it. That distinction has already paid
+  for itself: in a 255-action run the adapter was correct and the verifier was
+  wrong, and we found it because they disagreed. A system that trusted its own
+  report would have called that a pass.
+
+MODEL
+  Do you have usage numbers, revenue, pilots or a closed round?
+
+USER
+  No. Pre-launch. No users, no revenue, no signed pilot, no raise closed.
+  Do not invent any of that, and do not imply it with vague wording like
+  "early traction". Slide 6 is engineering evidence instead — what actually
+  runs and what was measured. That is a stronger claim at this stage anyway,
+  because it is checkable.
+
+MODEL
+  Then what may slide 6 assert?
+
+USER
+  Only measured facts:
+    - One signed 255-action PowerPoint plan completed 255 of 255, with every
+      action independently verified from the saved file.
+    - Excel's sheet-insert control was measured exposing InvokePattern with a
+      RuntimeId stable across 100 of 100 observation cycles.
+    - Four signed application plugins exist; three ship data-only.
+    - Everything is local. No telemetry, no network, no cloud sync.
+  If a number is not in the repository's evidence directory, it does not go on
+  a slide.
+
+MODEL
+  Founders slide — names, roles, credentials?
+
+USER
+  Name and role only. Leave the credential line as a single short placeholder
+  I will fill before it ships. Do not write a bio you cannot source.
+
+MODEL
+  Business model and revenue — one story or several?
+
+USER
+  The architecture is modular on purpose, and that is the business model. Core
+  runtime plus application access plus intelligence modules plus knowledge
+  plus authority plus collaboration. A customer need selects modules and that
+  composition becomes a product package. Four we have already shaped:
+  B2C learning, Developer Pro, Enterprise Onboarding, Enterprise Support.
+  Pricing shape is not decided — say the packaging is modular, do not print a
+  price.
+
+MODEL
+  Fund utilization — amount and split?
+
+USER
+  Not decided. Show the shape of what the money buys, not a number: reliability
+  and verification depth, plugin coverage, and the enterprise trust surface.
+  I will add the figure myself.
+
+MODEL
+  Why now, and what compounds over time?
+
+USER
+  Why now: accessibility APIs plus small local models are finally good enough
+  to run this loop on a laptop without shipping anyone's screen to a server.
+  What compounds: reliable application-state understanding, a plugin
+  ecosystem, a verified workflow library, outcome-verification data, and the
+  loop where a human resolution becomes an approved skill.
+
+MODEL
+  Last one. What must the deck avoid?
+
+USER
+  Do not make it look like a generic corporate template. Dark, technical,
+  restrained. Diagrams instead of bullet paragraphs wherever something is a
+  relationship. And restrained motion — animation should reveal or direct
+  attention, never decorate. If a slide reads fine still, it ships still.
+
+MODEL
+  Understood. Settled brief below.
+
+
+================================================================================
+PART 2 — THE SETTLED BRIEF
+================================================================================
 
 PRODUCT OR TASK
-  A 10-slide investor pitch deck for GhostCursor, built autonomously by
-  GhostCursor itself through the signed PowerPoint plugin.
-
-  The deck is both the artifact and the demonstration: the product builds its
-  own pitch while the user watches each step happen.
+  A 10-slide investor pitch deck for GhostCursor, built autonomously through
+  the signed PowerPoint plugin while the user watches each step.
 
 AUDIENCE
-  Early-stage investors and accelerator reviewers. Technical enough to care
-  how it works; not reading code. Assume 3-5 seconds of attention per slide
-  and one pass, no re-reading.
+  Accelerator reviewers and early-stage investors. Self-guided reading, one
+  pass, a few seconds per slide. Technical but not reading code.
 
 DESIRED OUTCOME
-  Ten slides that a reviewer understands without narration, covering the
-  seven sections the submission form requires, saved to the approved output
-  path, with every slide verified against the saved file.
+  Ten slides a reviewer understands unnarrated, covering the seven required
+  sections, saved to the approved path, every slide verified from the saved
+  file rather than from the adapter's own report.
 
 CONTENT
-  Required sections, in this order:
-    1. Title
-    2. Problem Statement
-    3. Value Proposition
-    4. Founders
-    5. Business Model
-    6. Traction
-    7. Revenue Model
-    8. Fund Utilization
-    9. Why now / moat
-   10. Close and ask
+  Slide order:
+     1. Title — product line and the customer-facing sentence
+     2. Problem
+     3. Value proposition — the position between chatbot and autonomous agent
+     4. Founders
+     5. Business model — modular composition into packages
+     6. Traction — engineering evidence only
+     7. Revenue model — packaging shape, no price
+     8. Fund utilization — what it buys, no figure
+     9. Why now and what compounds
+    10. Close and ask
 
-  Facts that are TRUE and may be stated:
-    - Windows-first desktop runtime; perception is UIA first, then OCR on
-      captured pixels. No VLM in the shipping path.
-    - Executes only signed, digest-bound plugin plans. One human approval
-      binds plan, plugin version, target window, and output path.
-    - Every action is re-authorized immediately before it runs, and verified
-      afterwards by a separately signed read-only verifier process.
-    - Measured: one 255-action PowerPoint plan completed 255/255 with
-      independent per-action verification (docs/evidence/).
-    - Measured: Excel's sheet-insert control exposes InvokePattern with a
-      RuntimeId stable across 100 of 100 observation cycles (docs/evidence/).
-    - Local-only. No telemetry, no network, no cloud sync.
-    - It shows the user where it is acting rather than acting invisibly.
+  TRUE, may be stated:
+    - "A runtime that turns human intent into safe, verified work inside the
+      software people already use."
+    - Perception is UIA first, then OCR on captured pixels. No VLM in the
+      shipping path.
+    - Executes only signed, digest-bound plugin plans. One human approval binds
+      plan, plugin version, target window and output path.
+    - Every action is re-authorized immediately before it runs and verified
+      afterwards by a separately signed read-only process.
+    - Measured: a 255-action plan completed 255/255 with independent
+      per-action verification.
+    - Measured: Excel's sheet-insert control exposes InvokePattern, RuntimeId
+      stable 100/100 across observation cycles.
+    - Four signed application plugins; three data-only.
+    - Local-only: no telemetry, no network, no cloud sync.
+    - It shows where it is acting rather than acting invisibly.
+    - Modular composition: core runtime + application access + intelligence
+      modules + knowledge + authority + collaboration.
+    - Package shapes: B2C Learning, Developer Pro, Enterprise Onboarding,
+      Enterprise Support.
+    - Compounding assets: application-state understanding, plugin ecosystem,
+      verified workflow library, outcome-verification data, human-resolution
+      to approved-skill loop.
 
-  Facts that are NOT established and must NOT be asserted:
-    - Any user, revenue, retention or growth number.
-    - Any named customer, pilot, or partnership.
-    - Any funding amount raised or committed.
+  MUST NOT be asserted, in any wording:
+    - Any user, revenue, retention, growth or waitlist number.
+    - Any named customer, pilot or partnership.
+    - Any raise amount, valuation or committed capital.
     - Any team size or hiring claim.
-    See OPEN QUESTIONS.
+    - Any founder credential beyond name and role.
+    - Softened versions of the above ("early traction", "growing interest").
 
 DESIGN DIRECTION
-  Dark technical, restrained. One accent colour used sparingly for emphasis.
-  Two font families at most, with a clear title/body hierarchy. One idea per
-  slide. Whitespace over density. No stock-photo filler, no clip art.
-  Diagrams over paragraphs wherever a relationship is being explained.
-  Consistent spacing, corner radius and icon weight across all ten slides.
+  Dark, technical, restrained. One accent colour used sparingly. Two font
+  families at most, strong title/body hierarchy. One idea per slide.
+  Whitespace over density. Diagrams over paragraphs for anything relational.
+  No stock photography, no clip art. Consistent spacing, corner radius and
+  icon weight across all ten slides.
 
 STRUCTURE
-  Title slide, then one section per slide in the CONTENT order above.
-  Prefer these slide shapes over bulleted text:
-    - Problem: a before/after or friction diagram
-    - Value proposition: a three-part comparison
-    - Business model and revenue: metric cards
-    - Traction: a chart, only if real numbers exist (see OPEN QUESTIONS)
-    - Fund utilization: a proportional breakdown
+  Prefer these shapes over bulleted text:
+    - Problem: a friction or before/after diagram
+    - Value proposition: three-way comparison (chatbot / GhostCursor / agent)
+    - Business model and revenue: metric or module cards
+    - Traction: measured-evidence cards, not a growth chart
+    - Fund utilization: proportional breakdown, unlabelled by amount
   Speaker notes on every slide.
 
 MOTION
-  Motion must explain, never decorate. Permitted purposes: revealing a list
-  progressively, showing a process advancing, directing attention to one
-  number. One transition family for the whole deck. No effect chosen because
-  it looks impressive. If a slide reads correctly without animation, it ships
-  without animation.
+  Motion must explain. Permitted: progressive reveal of a list, a process
+  advancing, attention directed to one figure. One transition family for the
+  whole deck. If a slide reads correctly without animation, it ships without.
 
 CONSTRAINTS
-  Application: Microsoft PowerPoint, build 16.0.20326.20112.
-  Output: the approved path only; the file is created, never overwritten.
-  Privacy: local machine only; nothing leaves the device.
-  Time: the run should be watchable, not instant. Pointer movement and step
-  labels are part of the deliverable, not overhead to optimise away.
+  PowerPoint build 16.0.20326.20112. Output written to the approved path only,
+  created and never overwritten. Local machine only. The run should be
+  watchable rather than instant: pointer movement and step labels are part of
+  the deliverable, not overhead.
 
 AVAILABLE PLUGIN
   ghostcursor.powerpoint (candidate, quarantined pending release signing).
-  Only capabilities present in its signed capability and operation registries
-  may be composed. If a needed capability is absent, say so in OPEN QUESTIONS
-  rather than inventing one.
+  Compose only capabilities present in its signed capability and operation
+  registries. If something needed is absent, say so rather than inventing it.
 
 NON-GOALS
-  - Do not synthesise mouse or keyboard input.
-  - Do not act in any application other than the approved PowerPoint window.
-  - Do not read or modify any file outside the approved output path.
-  - Do not invent metrics, customers, funding or team facts.
-  - Do not produce a deck that requires a narrator to make sense.
+  - No mouse or keyboard synthesis.
+  - No action outside the approved PowerPoint window.
+  - No file access outside the approved output path.
+  - No invented metrics, customers, funding or credentials.
+  - No deck that needs a narrator to make sense.
 
 OPEN QUESTIONS
-  These must be answered by the user before a plan is proposed. Ask them;
-  do not guess.
-    1. Traction: is there any real usage, pilot or waitlist number to show?
-       If not, slide 6 should present engineering evidence instead
-       (measured runs, verification results) and say so plainly.
-    2. Founders: names, roles, one credential line each.
-    3. Fund utilization: amount being raised and intended split.
-    4. Revenue model: chosen pricing shape, or is it still open?
-    5. Is there a named design reference or existing brand palette to match?
+  Resolved in the conversation above. Two placeholders remain for the user to
+  fill by hand before the deck ships, and the model must leave them as short
+  visible placeholders rather than guessing:
+    - Founder credential line.
+    - Fund utilization figure.
 
 ACCEPTANCE
-  - The saved .pptx contains exactly 10 slides in the CONTENT order.
-  - Every slide carries speaker notes.
-  - Every claim on every slide traces to a fact in CONTENT or to a user
-    answer in OPEN QUESTIONS.
-  - No slide contains a number that is not sourced.
-  - Each action verified independently from the saved file, not from the
-    adapter's own report.
+  - Exactly 10 slides, in the CONTENT order.
+  - Speaker notes on every slide.
+  - Every claim traces to a TRUE item above.
+  - No number appears that is not sourced from the evidence directory.
+  - Each action verified independently from the saved file.
