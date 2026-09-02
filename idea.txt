@@ -1,0 +1,129 @@
+# idea.txt — context for planning. NOT execution authority.
+#
+# The local model may read this to decide what is wanted, what is still
+# unclear, how to stage the work, and which REGISTERED plugin capabilities
+# could satisfy it, in what order.
+#
+# It may not invent application code, COM calls, UIA selectors, coordinates,
+# keystrokes, verification rules, shell commands, or capabilities that are not
+# in the active signed registry. The signed plugin remains the authority for
+# every executable detail.
+#
+# Human-editable. Its exact bytes are hashed and bound to any plan proposed
+# from it, so editing this file invalidates a proposal rather than silently
+# changing what was approved.
+
+PRODUCT OR TASK
+  A 10-slide investor pitch deck for GhostCursor, built autonomously by
+  GhostCursor itself through the signed PowerPoint plugin.
+
+  The deck is both the artifact and the demonstration: the product builds its
+  own pitch while the user watches each step happen.
+
+AUDIENCE
+  Early-stage investors and accelerator reviewers. Technical enough to care
+  how it works; not reading code. Assume 3-5 seconds of attention per slide
+  and one pass, no re-reading.
+
+DESIRED OUTCOME
+  Ten slides that a reviewer understands without narration, covering the
+  seven sections the submission form requires, saved to the approved output
+  path, with every slide verified against the saved file.
+
+CONTENT
+  Required sections, in this order:
+    1. Title
+    2. Problem Statement
+    3. Value Proposition
+    4. Founders
+    5. Business Model
+    6. Traction
+    7. Revenue Model
+    8. Fund Utilization
+    9. Why now / moat
+   10. Close and ask
+
+  Facts that are TRUE and may be stated:
+    - Windows-first desktop runtime; perception is UIA first, then OCR on
+      captured pixels. No VLM in the shipping path.
+    - Executes only signed, digest-bound plugin plans. One human approval
+      binds plan, plugin version, target window, and output path.
+    - Every action is re-authorized immediately before it runs, and verified
+      afterwards by a separately signed read-only verifier process.
+    - Measured: one 255-action PowerPoint plan completed 255/255 with
+      independent per-action verification (docs/evidence/).
+    - Measured: Excel's sheet-insert control exposes InvokePattern with a
+      RuntimeId stable across 100 of 100 observation cycles (docs/evidence/).
+    - Local-only. No telemetry, no network, no cloud sync.
+    - It shows the user where it is acting rather than acting invisibly.
+
+  Facts that are NOT established and must NOT be asserted:
+    - Any user, revenue, retention or growth number.
+    - Any named customer, pilot, or partnership.
+    - Any funding amount raised or committed.
+    - Any team size or hiring claim.
+    See OPEN QUESTIONS.
+
+DESIGN DIRECTION
+  Dark technical, restrained. One accent colour used sparingly for emphasis.
+  Two font families at most, with a clear title/body hierarchy. One idea per
+  slide. Whitespace over density. No stock-photo filler, no clip art.
+  Diagrams over paragraphs wherever a relationship is being explained.
+  Consistent spacing, corner radius and icon weight across all ten slides.
+
+STRUCTURE
+  Title slide, then one section per slide in the CONTENT order above.
+  Prefer these slide shapes over bulleted text:
+    - Problem: a before/after or friction diagram
+    - Value proposition: a three-part comparison
+    - Business model and revenue: metric cards
+    - Traction: a chart, only if real numbers exist (see OPEN QUESTIONS)
+    - Fund utilization: a proportional breakdown
+  Speaker notes on every slide.
+
+MOTION
+  Motion must explain, never decorate. Permitted purposes: revealing a list
+  progressively, showing a process advancing, directing attention to one
+  number. One transition family for the whole deck. No effect chosen because
+  it looks impressive. If a slide reads correctly without animation, it ships
+  without animation.
+
+CONSTRAINTS
+  Application: Microsoft PowerPoint, build 16.0.20326.20112.
+  Output: the approved path only; the file is created, never overwritten.
+  Privacy: local machine only; nothing leaves the device.
+  Time: the run should be watchable, not instant. Pointer movement and step
+  labels are part of the deliverable, not overhead to optimise away.
+
+AVAILABLE PLUGIN
+  ghostcursor.powerpoint (candidate, quarantined pending release signing).
+  Only capabilities present in its signed capability and operation registries
+  may be composed. If a needed capability is absent, say so in OPEN QUESTIONS
+  rather than inventing one.
+
+NON-GOALS
+  - Do not synthesise mouse or keyboard input.
+  - Do not act in any application other than the approved PowerPoint window.
+  - Do not read or modify any file outside the approved output path.
+  - Do not invent metrics, customers, funding or team facts.
+  - Do not produce a deck that requires a narrator to make sense.
+
+OPEN QUESTIONS
+  These must be answered by the user before a plan is proposed. Ask them;
+  do not guess.
+    1. Traction: is there any real usage, pilot or waitlist number to show?
+       If not, slide 6 should present engineering evidence instead
+       (measured runs, verification results) and say so plainly.
+    2. Founders: names, roles, one credential line each.
+    3. Fund utilization: amount being raised and intended split.
+    4. Revenue model: chosen pricing shape, or is it still open?
+    5. Is there a named design reference or existing brand palette to match?
+
+ACCEPTANCE
+  - The saved .pptx contains exactly 10 slides in the CONTENT order.
+  - Every slide carries speaker notes.
+  - Every claim on every slide traces to a fact in CONTENT or to a user
+    answer in OPEN QUESTIONS.
+  - No slide contains a number that is not sourced.
+  - Each action verified independently from the saved file, not from the
+    adapter's own report.

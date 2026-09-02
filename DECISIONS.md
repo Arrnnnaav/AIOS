@@ -4279,3 +4279,97 @@ it. The D006 prohibition is untouched: the adapter calls UIA patterns, never
 `SendInput`, cursor APIs, or generic mouse/keyboard automation, and the
 existing input-synthesis scan already covers `plugins/sources/*/payload`.
 
+## D109 — A pointer that is shown is a pointer that is acted on
+
+**Decision.** If the session displays a pointer, ring, arrow or callout at a
+screen location, then the next effect occurs **at that location**, through a
+control resolved at that location. There is no other case.
+
+Concretely:
+
+- A **UIA** action shows the pointer. It travels to the resolved control,
+  the label appears, the presentation settles, and only then is the pattern
+  invoked -- on the control the pointer is sitting on. The dwell exists so the
+  movement and the label are real elapsed time the user can follow, not a
+  frame that flashes past.
+- An **object-model** action shows **no pointer**, because there is no control
+  it is clicking. It shows the rail step, a label naming what is happening,
+  and where a region of the document is genuinely changing, that region is
+  highlighted. The change itself is visible: slides, text and shapes appear in
+  the application window as they are created.
+- Trust presentation already separates these: cyan for object-model,
+  violet for a true UIA pattern (D104, `act_protocol.trust_for`).
+
+**Reason.** The product's value is that the user watches the work happen. The
+temptation is to draw a cursor gliding to a ribbon button while a COM call
+does the work off-screen, because it looks like the thing users expect. That
+is a lie about where an action occurred, and it is worse than showing nothing:
+a user who learns the pointer is decorative can no longer use it to tell what
+the system is about to touch. This project already refuses to paint a pixel
+guess in a confirmed control's colour (D006); the same rule applies to
+position.
+
+The delay is a feature, not latency to be optimised away. Movement the user
+cannot follow, and a label that appears after the click, communicate nothing.
+
+**Consequence for PowerPoint.** Deck construction stays on the object model,
+so most of the investor-deck run shows step text and visible document change
+rather than a travelling pointer. Operations that genuinely have a UI target
+may be promoted to UIA later and gain the pointer then. The demonstration is
+honest at every step rather than theatrical at some of them.
+
+**Alternative rejected.** Draw the pointer for every action regardless of
+backend, on the grounds that users expect it. It would have made the
+PowerPoint run look like the FL Studio reference immediately, and it would
+have made every pointer in the product unfalsifiable.
+
+## D110 — Interruption resumes with an edited plan, never with a replayed one
+
+**Decision.** Pause and Stop remain immediate. On resume, the user may supply
+an edited plan -- or may have changed the application themselves -- and the
+runtime treats that as a **new proposal**: the remaining work is re-planned,
+re-validated as a whole DAG, and re-approved before anything else runs.
+Completed side-effecting nodes are never replayed.
+
+The approved-plan digest, the `idea.txt` digest and the catalog epoch are all
+rebound at that point. A resumed run is a new authorization over the
+*remaining* goal, not a continuation of the old one.
+
+**Reason.** D090 already refuses to replay a completed prefix, and that stays.
+But refusing to replay is not the same as refusing to continue: the user
+asked to be able to intervene mid-run, correct the plan, and carry on, which
+is the difference between a tool and a batch job. Re-validating the remainder
+as a fresh graph gets that without ever re-executing an effect, and without
+inheriting an approval the user gave to a different plan.
+
+**Consequence.** The world may have moved while paused -- by the user's own
+edits. So the resumed plan is proposed against a fresh observation, not
+against the state captured before the pause.
+
+## D111 — The PowerPoint plugin gains semantic capabilities, not more raw operations
+
+**Decision.** The model composes slide-level capabilities -- `create_deck`,
+`apply_theme`, `create_title_slide`, `create_problem_slide`,
+`create_comparison_slide`, `create_timeline_slide`, `create_metric_cards`,
+`create_chart_slide`, `add_speaker_notes`, `apply_restrained_motion`,
+`inspect_deck`, `publish_deck`. Each expands **deterministically inside the
+signed plugin** into the reviewed low-level operations that already exist.
+
+The model never emits shape coordinates, font sizes or animation parameters.
+
+**Reason.** The existing 255-node investor plan is hand-authored. Asking a 4B
+model to emit 255 exact geometric operations is asking it to be a layout
+engine, which it is not, and every coordinate it invented would be an
+unreviewed executable detail -- precisely what the plugin boundary exists to
+prevent. Composing a dozen semantic capabilities is a task a small local model
+can do reliably, and the deterministic expansion is reviewable once rather
+than per-deck.
+
+It also makes the deck's *design* a property of the signed plugin, where it
+can be measured and improved, rather than a property of whatever the model
+happened to output that run.
+
+**Scope.** This authorizes the shape. The capabilities are not written, and
+the current hand-authored plan remains the only PowerPoint plan until they
+are.
+

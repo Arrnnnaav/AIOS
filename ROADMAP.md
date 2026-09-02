@@ -113,6 +113,56 @@ own internal phases, not the product phases above.
 | F/H/J — three independent D032 reviews | Not started; each must be done by someone other than the author |
 | I — release signing and counted runs | Not started. Needs a non-ephemeral external key |
 
+### The owner's specification for this phase
+
+Recorded 2 September 2026. This is what Act v1 must actually deliver, and it
+supersedes any narrower reading of the completion plan.
+
+- The panel offers **Ideate / Plan / Act**, plus Teach, and behaves according
+  to the mode chosen. Ideate is currently `available=False` and must become
+  real.
+- In Act, the model may **ask clarifying questions** before proposing, and
+  keeps asking until the required fields are resolved.
+- After one approval, the runtime **decomposes into steps and performs them
+  one at a time**, showing `Step N of M` on the bar.
+- It must **work in front of the user, live**. A result assembled invisibly
+  and handed back is worth nothing.
+- **A pointer that is shown is a pointer that is acted on (D109).** Where a
+  control is clicked, the pointer travels there, the label appears, the dwell
+  elapses, and the click lands where the pointer is. Where no control is
+  clicked, no pointer is drawn.
+- The user may **interrupt mid-run and resume with an edited plan** (D110).
+- The PowerPoint plugin gains **semantic slide capabilities** rather than more
+  raw shape operations (D111).
+- Planning context lives in **`idea.txt`**, hashed and bound to each proposal,
+  never execution authority.
+- The local planner is **`qwen3:4b-instruct`** over the Ollama REST API.
+  Measured on this laptop: RTX 3050 with 4 GB VRAM, 15.7 GB RAM. An 8B at q4
+  (~5.2 GB) does not fit VRAM and is unsuitable as a responsive planner here.
+  A 7B may be benchmarked later as a slower deep-planning mode, and adopted
+  only if it fits and measurably improves the result -- which requires
+  re-running the three-lane model gate.
+- The same deterministic campaign machinery becomes the **unattended test
+  operator** for later phases, so a human is not needed to click through
+  acceptance runs. It is a campaign system, not a model-controlled mouse.
+
+**Build order for this phase, as specified:**
+
+1. Finish the deterministic Act execution path.
+2. Shared signed generic UIA adapter (D108).
+3. Excel `Add Sheet` end-to-end vertical slice.
+4. Visual receipts, verifier modes, interruption.
+5. Unattended deterministic campaign runner.
+6. Repeated PowerPoint and Excel campaigns.
+7. `idea.txt` and the local clarification/planning loop.
+8. Semantic PowerPoint capabilities.
+9. Local model composes and validates a complex PowerPoint plan.
+10. Later: VLM and restricted raw-input for inaccessible surfaces.
+
+**Test task for the phase:** a 10-slide investor deck for this product,
+covering Problem, Value Proposition, Founders, Business Model, Traction,
+Revenue Model and Fund Utilization, built live while the user watches.
+
 **The next milestone is the thin Excel vertical slice**: one approval →
 observe → cue and receipt → confirm → `InvokePattern` → verify exactly one new
 worksheet. It is the first caller of all four Phase C contracts at once, and

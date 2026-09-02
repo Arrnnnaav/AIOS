@@ -212,6 +212,25 @@ rule, target identity, or bind input. They are also content and must not enter
 `sessions.sqlite` or default diagnostics. Unknown, duplicate, non-scalar,
 oversized, or non-finite guidance values fail before an overlay exists.
 
+**A pointer that is shown is a pointer that is acted on (D109).** If the
+session displays a pointer, ring, arrow or callout at a location, the next
+effect happens at that location through a control resolved there. Object-model
+actions show no pointer -- they show the rail step, a label, and the document
+region genuinely changing. Never draw a cursor over a control the runtime did
+not invoke.
+
+Interruption resumes with an **edited, re-validated, re-approved** plan
+(D110). Completed side-effecting nodes are never replayed, and a resumed plan
+is proposed against a fresh observation because the user may have changed the
+application while paused.
+
+`idea.txt` is planning context and never execution authority (D109-D111). The
+local model may decide what is wanted, what is unclear, how to stage it and
+which REGISTERED capabilities to compose. It may not emit application code,
+COM calls, UIA selectors, coordinates, keystrokes, verification rules or
+capabilities absent from the active signed registry. Its exact bytes are
+hashed and bound to any proposal made from it.
+
 Act's generic UIA backend is one canonical adapter source
 (`plugins/shared/uia_adapter.py`) that each plugin copies into its own payload
 and signs as its own adapter (D108). Copies are byte-identical, so one review
