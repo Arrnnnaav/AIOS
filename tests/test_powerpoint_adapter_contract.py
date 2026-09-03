@@ -667,3 +667,96 @@ def test_the_follow_names_no_application_constant():
 
     assert "_const(" not in body
     assert "self.constants" not in body
+
+
+# --- the region a node changed --------------------------------------------
+
+
+class _Shape:
+    def __init__(self, left, top, width, height):
+        self.Left, self.Top, self.Width, self.Height = left, top, width, height
+
+
+def _region_adapter(monkeypatch, shape):
+    """A real adapter instance with a fake window whose point conversion is
+    the identity, so the arithmetic under test is the adapter's own."""
+
+    import importlib.util
+    from pathlib import Path as _Path
+
+    spec = importlib.util.spec_from_file_location(
+        "_ppt_adapter_region",
+        _Path(__file__).resolve().parents[1]
+        / "plugins/sources/powerpoint/payload/ghostcursor/adapter/powerpoint_adapter.py",
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    adapter = module.PowerPointSession.__new__(module.PowerPointSession)
+    adapter.slides = {}
+    adapter.shapes = {("s1", "o1"): shape} if shape is not None else {}
+    window = SimpleNamespace(
+        PointsToScreenPixelsX=lambda v: int(v),
+        PointsToScreenPixelsY=lambda v: int(v),
+    )
+    adapter.presentation = SimpleNamespace(Windows=lambda _n: window)
+    return adapter
+
+
+def test_a_shapes_region_is_reported_as_four_screen_integers(monkeypatch):
+    adapter = _region_adapter(monkeypatch, _Shape(100, 200, 160, 45))
+
+    assert adapter._region({"slide_id": "s1", "object_id": "o1"}) == [100, 200, 260, 245]
+
+
+def test_a_flat_horizontal_line_still_gets_a_region(monkeypatch):
+    """A perfectly horizontal divider has a zero-height bounding box.
+    Dropping those cost 10 of the 18 dividers in the investor deck their
+    highlight; a thin region is still a region that changed."""
+
+    adapter = _region_adapter(monkeypatch, _Shape(100, 200, 300, 0))
+
+    region = adapter._region({"slide_id": "s1", "object_id": "o1"})
+
+    assert region is not None
+    assert region[2] - region[0] == 300
+    assert region[3] - region[1] >= 2
+
+
+def test_a_flat_vertical_line_still_gets_a_region(monkeypatch):
+    adapter = _region_adapter(monkeypatch, _Shape(100, 200, 0, 300))
+
+    region = adapter._region({"slide_id": "s1", "object_id": "o1"})
+
+    assert region is not None
+    assert region[2] - region[0] >= 2
+    assert region[3] - region[1] == 300
+
+
+def test_a_node_that_touches_no_shape_reports_no_region(monkeypatch):
+    """`add_slide`, `set_transition`, `add_notes` and the rest have no shape,
+    so there is nothing to ring."""
+
+    adapter = _region_adapter(monkeypatch, None)
+
+    assert adapter._region({"slide_id": "s1"}) is None
+    assert adapter._region({}) is None
+    assert adapter._region({"slide_id": "s1", "object_id": "missing"}) is None
+
+
+def test_a_window_that_cannot_convert_reports_no_region(monkeypatch):
+    """Presentation is never allowed to fail an authorized effect (D106)."""
+
+    adapter = _region_adapter(monkeypatch, _Shape(100, 200, 160, 45))
+
+    def explode(_value):
+        raise RuntimeError("PointsToScreenPixelsX refused")
+
+    adapter.presentation = SimpleNamespace(
+        Windows=lambda _n: SimpleNamespace(
+            PointsToScreenPixelsX=explode, PointsToScreenPixelsY=explode
+        )
+    )
+
+    assert adapter._region({"slide_id": "s1", "object_id": "o1"}) is None
+

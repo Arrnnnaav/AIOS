@@ -14,6 +14,9 @@ import sys
 from pathlib import Path
 
 
+#: Thinnest region worth ringing, in screen pixels.
+_MIN_REGION_PX = 4
+
 PLUGIN_ID = "ghostcursor.powerpoint"
 PLUGIN_VERSION = "1.0.0"
 _ID_RE = re.compile(r"[a-z][a-z0-9]*(?:[-_][a-z0-9]+)*")
@@ -398,9 +401,18 @@ class PowerPointSession:
             bottom = int(window.PointsToScreenPixelsY(shape.Top + shape.Height))
         except Exception:
             return None
+        # A perfectly horizontal or vertical line has a zero-area bounding
+        # box. Dropping those cost 10 of the 18 dividers in the investor deck
+        # their highlight -- a thin region is still a region that changed, so
+        # the flat axis is opened to a visible minimum rather than refused.
+        # Presentation only, so widening by two pixels misrepresents nothing.
+        if right - left < _MIN_REGION_PX:
+            middle = (left + right) // 2
+            left, right = middle - _MIN_REGION_PX // 2, middle + _MIN_REGION_PX // 2
+        if bottom - top < _MIN_REGION_PX:
+            middle = (top + bottom) // 2
+            top, bottom = middle - _MIN_REGION_PX // 2, middle + _MIN_REGION_PX // 2
         if right <= left or bottom <= top:
-            # A degenerate rect would be refused by the overlay anyway; not
-            # reporting one keeps the refusal out of the run record.
             return None
         return [left, top, right, bottom]
 
