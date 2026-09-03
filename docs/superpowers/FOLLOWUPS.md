@@ -571,7 +571,7 @@ migrated to the same rule in the same slice so the two do not disagree about
 what "a worksheet was added" means. Changing the recipe changes signed plugin
 bytes and needs fresh acceptance runs (D032, D070).
 
-## A live-state verifier for `uia_pattern` operations
+## A live-state verifier for `uia_pattern` operations — CLOSED 3 Sep 2026
 
 **Trigger:** before any `uia_pattern` operation can be verified, adopted, or
 counted toward acceptance evidence.
@@ -601,5 +601,11 @@ What this needs:
   and `confirm_before` both call the verifier — so the shape exists; what is
   missing is the operation declaring what change it expects.
 
-Until this lands, no `uia_pattern` operation may be adopted, and no run of one
-may be presented as acceptance evidence.
+**Closed 3 September 2026** by `powerpoint_live_verifier.py`, the
+`live_verifier` slot in `adapter_api`, and the postcondition change from
+`slide.exists` to `slide.count.increased_by_one`. Run 4 in
+`docs/evidence/act-live-pointer-run.md` verifies, and the non-vacuity matrix
+there shows seven distinct ways it refuses.
+
+The adoption bar is unchanged and still unmet: acceptance needs 3/3 through a
+real approval, which this harness does not mint.

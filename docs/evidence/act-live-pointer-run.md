@@ -74,7 +74,7 @@ Fixed by passing the wait's own `accept` into `present` as a sink, so each
 receipt is recorded at the instant it is emitted. Run 3 is the same
 configuration as run 2 after the fix and reaches `verifying`.
 
-### 2. There is no live-state verifier — this is the remaining gap
+### 2. There was no live-state verifier — CLOSED, same day
 
 Every run reports `verified: False`, `the declared postcondition was not
 observed`. The cause is not the action:
@@ -93,10 +93,9 @@ UI state" — evidence the artifact verifier does not have and never claimed to.
 The node reporting `refused` rather than `verified` is the system failing
 closed on a verification it genuinely could not perform.
 
-**A live-state verifier does not exist yet.** `adapter_api` declares a single
-`verifier`, so a separately signed read-only live-state verifier also needs a
-manifest slot, mirroring the `uia_entrypoint` slot D108 added. Recorded in
-`docs/superpowers/FOLLOWUPS.md`.
+**Closed by `powerpoint_live_verifier.py`** and a `live_verifier` slot in
+`adapter_api`, mirroring the `uia_entrypoint` slot D108 added. See the
+"Run 4" section below.
 
 ## Not established here
 
@@ -105,3 +104,59 @@ manifest slot, mirroring the `uia_entrypoint` slot D108 added. Recorded in
 - Anything about repeated or unattended execution.
 - Anything about `_execute_approved_graph`, which this harness bypasses.
 - Any acceptance claim whatsoever.
+
+---
+
+## Run 4 — verified, with the live-state verifier
+
+Same harness, same window, after `powerpoint_live_verifier.py` landed.
+
+```
+verifier   live application state independently confirms the change
+           observed={'slide_count': 4, 'slide_current': 4}
+verified   True
+trust      live_state
+detail     the declared postcondition was independently observed
+lifecycle  preparing -> presenting -> confirming -> executing -> verifying -> verified
+receipts   geometry_started@100173921ms, presentation_completed@100175109ms
+elapsed    2.98s
+```
+
+The deck went 3 → 4 slides and the postcondition
+`slide.count.increased_by_one` held against the reading taken before the cue.
+
+`slide.exists` — the previous postcondition — would have passed here too, and
+would equally have passed had nothing happened at all. Naming a change rather
+than a state is what makes the verification mean something.
+
+## Non-vacuity of the live verifier
+
+A verifier that always says yes is worth nothing, so it was run directly
+against the same live PowerPoint with baselines chosen so the declared
+relation could not hold:
+
+| Case | Outcome |
+|---|---|
+| baseline == now (nothing happened) | refused |
+| baseline two behind (two slides added, not one) | refused |
+| count went **down** against `slide.count.increased` | refused |
+| baseline one behind, `increased_by_one` — **control** | verified |
+| `slide.count.unchanged`, and it was — **control** | verified |
+| postcondition nobody can answer (`slide.teleported`) | refused |
+| no postcondition declared at all | refused |
+| baseline carrying no slide count | refused |
+| no baseline, as on an observation | refused |
+
+Seven refusals and two verifications, and both verifications are true
+statements about the deck at that moment. The two that matter most are the
+last three refusals: an unanswerable postcondition, an empty postcondition
+list, and a missing baseline all fail closed rather than passing by being
+skipped — which is the shape of a check that looks present in the record and
+enforces nothing.
+
+## Still not established
+
+- Repeatability. One verified run is not the 3/3 acceptance policy, and this
+  harness still mints no real approval.
+- Anything about `_execute_approved_graph`, which it bypasses.
+- The `legacy_iaccessible` backend, which has no operation and no evidence.
