@@ -28,6 +28,17 @@ MAX_TASK_GOAL_CHARS = 1024
 MAX_TASK_SUMMARY_CHARS = 512
 TASK_GRAPH_NUM_PREDICT = 768
 
+#: Most questions one clarification round may ask. A model that needs twenty
+#: answers before it can plan is not clarifying, it is interviewing, and a
+#: person will abandon the conversation before it finishes.
+MAX_CLARIFY_QUESTIONS = 4
+
+#: Longest single question. Bounded for the same reason a turn is.
+MAX_QUESTION_CHARS = 200
+
+#: The two things a planning round may return, and it is exactly one of them.
+OUTCOMES = ("clarification", "plan")
+
 
 class TaskProposalRejected(ValueError):
     """Model output was not closed capability-graph data."""
@@ -41,6 +52,27 @@ class TaskPlanStep:
     capability_id: str
     instruction: str
     guidance_values: tuple[GuidanceValue, ...] = ()
+
+
+@dataclass(frozen=True)
+class ClarificationRequired:
+    """The model does not know enough yet, and says so instead of guessing.
+
+    This is a SEPARATE TYPE from a proposal rather than a proposal with empty
+    nodes, because the two must be impossible to confuse. A caller that
+    received a half-formed plan and treated its emptiness as "nothing to do"
+    would execute nothing and report success; a caller that receives this
+    cannot mistake it for anything but a question.
+
+    It carries no graph, no capability and no parameters — there is nowhere
+    to put a partial plan, so a partial plan cannot leak through as if it
+    were complete.
+    """
+
+    questions: tuple[str, ...]
+    summary: str
+    generation: GenerateResponse
+    brief_sha256: str | None = None
 
 
 @dataclass(frozen=True)
@@ -95,6 +127,20 @@ def task_graph_response_schema(registry: CapabilityRegistry) -> dict:
     return {
         "type": "object",
         "properties": {
+            # The discriminator. The model states which of the two things it
+            # is returning; the PARSER then enforces that it returned exactly
+            # that and nothing of the other. A schema alone cannot be trusted
+            # to keep them apart -- the model is not a validator.
+            "outcome": {"type": "string", "enum": list(OUTCOMES)},
+            "questions": {
+                "type": "array",
+                "maxItems": MAX_CLARIFY_QUESTIONS,
+                "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": MAX_QUESTION_CHARS,
+                },
+            },
             "summary": {
                 "type": "string",
                 "minLength": 1,
@@ -102,7 +148,7 @@ def task_graph_response_schema(registry: CapabilityRegistry) -> dict:
             },
             "nodes": {
                 "type": "array",
-                "minItems": 1,
+                "minItems": 0,
                 "maxItems": MAX_GRAPH_NODES,
                 "items": {
                     "type": "object",
@@ -140,7 +186,7 @@ def task_graph_response_schema(registry: CapabilityRegistry) -> dict:
                 },
             },
         },
-        "required": ["summary", "nodes", "edges"],
+        "required": ["outcome", "summary", "questions", "nodes", "edges"],
         "additionalProperties": False,
     }
 
@@ -171,8 +217,20 @@ def parse_task_graph_proposal(
     """Parse exact model fields; plugin identity never comes from the model."""
 
     value = _strict_model_object(raw)
-    if set(value) != {"summary", "nodes", "edges"}:
+    if set(value) != {"outcome", "summary", "questions", "nodes", "edges"}:
         raise TaskProposalRejected("model response has invalid task graph fields")
+    if value["outcome"] != "plan":
+        raise TaskProposalRejected(
+            "model response is not a plan; parse it with parse_planning_response"
+        )
+    if value["questions"]:
+        # A response that both asks and plans is refused rather than having
+        # one half ignored. Ignoring the questions would execute a plan the
+        # model itself said it lacked information for.
+        raise TaskProposalRejected(
+            "a plan response may not also ask questions; the two outcomes are "
+            "mutually exclusive"
+        )
     summary = value["summary"]
     if (
         not isinstance(summary, str)
@@ -234,6 +292,65 @@ def parse_task_graph_proposal(
     )
 
 
+def parse_planning_response(
+    raw: object,
+    registry: CapabilityRegistry,
+    generation,
+    *,
+    brief_sha256: str | None = None,
+):
+    """Parse one planning round into exactly one of the two outcomes.
+
+    Refuses a response that is both or neither. "Neither" matters as much as
+    "both": a clarification with no questions is a dead end that would leave
+    a caller waiting for input it was never asked for.
+    """
+
+    value = _strict_model_object(raw)
+    outcome = value.get("outcome")
+    if outcome not in OUTCOMES:
+        raise TaskProposalRejected(
+            f"model response outcome must be one of {OUTCOMES}, not {outcome!r}"
+        )
+    if outcome == "plan":
+        graph, summary = parse_task_graph_proposal(value, registry)
+        return graph, summary
+
+    questions = value.get("questions")
+    if not isinstance(questions, list) or not questions:
+        raise TaskProposalRejected(
+            "a clarification must ask at least one question; a clarification "
+            "with none is a dead end"
+        )
+    if len(questions) > MAX_CLARIFY_QUESTIONS:
+        raise TaskProposalRejected(
+            f"a clarification may ask at most {MAX_CLARIFY_QUESTIONS} questions"
+        )
+    cleaned = []
+    for question in questions:
+        if (
+            not isinstance(question, str)
+            or not question.strip()
+            or len(question) > MAX_QUESTION_CHARS
+        ):
+            raise TaskProposalRejected("a clarification question is invalid")
+        cleaned.append(question.strip())
+    if value.get("nodes"):
+        raise TaskProposalRejected(
+            "a clarification may not also carry nodes; the two outcomes are "
+            "mutually exclusive"
+        )
+    summary = value.get("summary")
+    if not isinstance(summary, str) or not summary.strip():
+        raise TaskProposalRejected("a clarification needs a summary")
+    return ClarificationRequired(
+        questions=tuple(cleaned),
+        summary=summary.strip(),
+        generation=generation,
+        brief_sha256=brief_sha256,
+    )
+
+
 def _capability_prompt(registry: CapabilityRegistry) -> str:
     rows = []
     for capability_id, capability in sorted(registry.capabilities.items()):
@@ -266,8 +383,13 @@ def infer_task_graph(
     endpoint: str = "http://127.0.0.1:11434",
     model: str = DEFAULT_MODEL,
     timeout: float = 20.0,
-) -> TaskGraphProposal:
-    """Ask the model for graph data, then apply the complete trusted validator."""
+) -> "TaskGraphProposal | ClarificationRequired":
+    """Ask the model for one planning round, and apply the trusted validator.
+
+    Returns a `TaskGraphProposal` or a `ClarificationRequired` — exactly one,
+    never a blend. The caller answers a clarification by appending the answers
+    to the brief and asking again, which is why the brief is a living file.
+    """
 
     if not isinstance(goal, str) or not goal.strip() or len(goal) > MAX_TASK_GOAL_CHARS:
         raise TaskProposalRejected("task goal is invalid")
@@ -291,9 +413,13 @@ def infer_task_graph(
     prompt = (
         "Decompose the user's goal into a bounded dependency graph using only the "
         "registered capability IDs below. Do not invent capabilities, UI actions, "
-        "selectors, instructions, or verification. Return a short summary, nodes, "
-        "and dependency edges only. Every required precondition must be provided by "
-        "an initial fact or a predecessor node.\n"
+        "selectors, instructions, or verification. Every required precondition "
+        "must be provided by an initial fact or a predecessor node.\n"
+        "If the goal does not yet contain enough information to plan, set "
+        "outcome to \"clarification\" and ask up to "
+        f"{MAX_CLARIFY_QUESTIONS} specific questions, with no nodes. "
+        "Otherwise set outcome to \"plan\" and return nodes and edges with no "
+        "questions. Never both.\n"
         f"Initial facts: {json.dumps(list(initial_facts))}\n"
         f"Capabilities: {_capability_prompt(registry)}\n"
         f"{brief_context}"
@@ -307,7 +433,15 @@ def infer_task_graph(
         timeout=timeout,
         num_predict=TASK_GRAPH_NUM_PREDICT,
     )
-    graph, summary = parse_task_graph_proposal(generation.payload, registry)
+    parsed = parse_planning_response(
+        generation.payload, registry, generation, brief_sha256=brief_sha256
+    )
+    if isinstance(parsed, ClarificationRequired):
+        # The model said it does not know enough. It gets returned as a
+        # question, never coerced into an empty plan -- an empty plan would
+        # execute nothing and report success.
+        return parsed
+    graph, summary = parsed
     validated = validate_task_graph(graph, registry, initial_facts=initial_facts)
     return TaskGraphProposal(
         graph,
@@ -328,8 +462,14 @@ def propose_task_graph(
     endpoint: str = "http://127.0.0.1:11434",
     model: str = DEFAULT_MODEL,
     timeout: float = 20.0,
-) -> TaskGraphProposal:
-    """Production proposal entry point; an absent plugin never contacts a model."""
+) -> "TaskGraphProposal | ClarificationRequired":
+    """Production proposal entry point; an absent plugin never contacts a model.
+
+    Only the named plugin's registry reaches the model. Passing the whole
+    catalog would let it compose across plugins, which no authority path
+    permits and which the validator would refuse later -- after the user had
+    already been shown a plan that could never run.
+    """
 
     from ghostcursor.plugins.platform import load_composition_context
 
