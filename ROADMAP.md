@@ -258,7 +258,8 @@ built but not yet exercised by a caller or a live run.
 - [x] Paint cost; derive frame count — `docs/evidence/act-paint-budget.md`
       (median 0.452ms, p99 0.865-1.077ms over 3x400 frames; budget 2ms;
       the 12-frame ceiling binds on this machine, not the paint cost)
-- [ ] Verifier spawn-to-response per mode
+- [x] Verifier spawn-to-response — max 0.188s, mean ~0.142s over 765
+      invocations (`docs/evidence/act-diagnostic-rerun.md`)
 - [ ] Confirmation-to-invoke deadline
 - [ ] Interruption latency matrix
 - [ ] Independent D032 review of the derived budgets

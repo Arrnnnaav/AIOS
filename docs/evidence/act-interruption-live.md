@@ -142,8 +142,9 @@ Stop would leave an effect that happened and was never checked. Mutation
 testing confirms this: adding a stop check before verification fails a test.
 
 ## Not measured here
-- **Stop during verification.** Not measured, and by design not honoured:
-  after a dispatch the verification runs to completion. What is unmeasured is
-  how long that takes, which bounds how late a stop can be observed on a
-  node that already acted.
+- **Stop during verification.** By design not honoured: after a dispatch the
+  verification runs to completion. How long that takes is now measured —
+  **max 0.188 s** over 765 invocations
+  (`docs/evidence/act-diagnostic-rerun.md`) — which bounds how late a stop
+  can be observed on a node that already acted.
 - **ESC**, as opposed to a rail Stop. The rail path is what these exercise.
