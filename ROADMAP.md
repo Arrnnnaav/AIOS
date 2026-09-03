@@ -219,8 +219,13 @@ built but not yet exercised by a caller or a live run.
 - [x] Trust presentation: cyan object-model, violet UIA, neutral in flight
       (`overlay/cue.py` `TRUST_COLOURS`, sourced from `trust_for()`)
 - [x] Presentation receipts wired to the worker (`act_overlay`, `act_uia_session`)
-- [~] Pause / Stop during a run — wired and hermetically covered;
-      NOT yet measured interrupting a live run within D020's 0.5s
+- [~] Pause / Stop during a run — MEASURED live 3 Sep 2026:
+      Stop 0.094-0.187s (D020 ceiling 0.5s), zero nodes started after,
+      in Quick and Watch, during pacing and during execution.
+      Pause held 4.06-4.47s then resumed to 255/255.
+      (`docs/evidence/act-interruption-live.md`)
+      REMAINING: the presenter's traversal/settle/confirmation stop
+      points, which need the single-node UIA vehicle.
 - [ ] Resume-with-edit: re-plan, re-validate, re-approve remainder (D110)
 
 **4b. Watch Build** — DONE 3 Sep 2026
@@ -237,9 +242,12 @@ built but not yet exercised by a caller or a live run.
 - [ ] Stops on drift, refusal, DPI mismatch or worker failure
 - [ ] Runs desktop lanes serially
 
-**6. Transactional output**
+**6. Transactional output** — CONFIRMED MISSING, with evidence
 - [ ] Same-volume staging; final path absent until fully verified
 - [ ] Atomic publish; failed runs never publish a partial file
+      Measured 3 Sep 2026: every stopped run left a partial deck at its
+      approved output path (36-53KB against ~94KB complete). The adapter
+      saves after every operation, so the file exists from node 1.
 
 **7. Measured budgets (Phase E)**
 - [x] Paint cost; derive frame count — `docs/evidence/act-paint-budget.md`
