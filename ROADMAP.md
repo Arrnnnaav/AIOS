@@ -214,7 +214,7 @@ built but not yet exercised by a caller or a live run.
       (`pointer_path.py`, `overlay/cue.py`, `overlay/window.py`)
 - [x] Trust presentation: cyan object-model, violet UIA, neutral in flight
       (`overlay/cue.py` `TRUST_COLOURS`, sourced from `trust_for()`)
-- [ ] Presentation receipts wired to the worker
+- [x] Presentation receipts wired to the worker (`act_overlay`, `act_uia_session`)
 - [ ] Pause / Stop during a run
 - [ ] Resume-with-edit: re-plan, re-validate, re-approve remainder (D110)
 
