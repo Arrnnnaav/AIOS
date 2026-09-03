@@ -94,7 +94,7 @@ def test_the_step_comes_from_the_executors_own_numbers(rail):
 
     session.on_event(_event("action_started", 12, 255))
 
-    assert rail.statuses[-1] == "Step 12 of 255 · running"
+    assert rail.statuses[-1] == "Step 12 of 255"
 
 
 def test_the_rail_does_not_count_its_own_events(rail):
@@ -187,7 +187,7 @@ def test_pause_toggles_and_resumes(rail):
     rail.press("pause")
     session.poll(controls)
     assert controls.paused is True
-    assert rail.statuses[-1] == "Paused — Step 5 of 255"
+    assert rail.statuses[-1] == "Paused · 5/255"
 
     rail.press("pause")
     session.poll(controls)
@@ -226,7 +226,9 @@ def test_polling_with_nothing_pressed_changes_nothing(rail):
 # --- the end is the end ---------------------------------------------------
 
 
-@pytest.mark.parametrize("kind", ["run_completed", "run_failed", "refused"])
+@pytest.mark.parametrize(
+    "kind", ["completed", "refused", "stopped", "action_failed", "verification_failed"]
+)
 def test_a_terminal_event_shows_its_own_detail(rail, kind):
     session = open_rail()
     session.on_event(_event("action_started", 255, 255))
@@ -241,7 +243,7 @@ def test_nothing_after_the_end_rewords_the_outcome(rail):
     the session surface may not reinterpret published state."""
 
     session = open_rail()
-    session.on_event(_event("run_failed", 12, 255, detail="verification failed"))
+    session.on_event(_event("action_failed", 12, 255, detail="verification failed"))
 
     session.on_event(_event("action_started", 13, 255))
 
@@ -251,7 +253,7 @@ def test_nothing_after_the_end_rewords_the_outcome(rail):
 def test_a_long_detail_is_shortened_rather_than_dropped(rail):
     session = open_rail()
 
-    session.on_event(_event("run_failed", 1, 2, detail="x" * 200))
+    session.on_event(_event("action_failed", 1, 2, detail="x" * 200))
 
     assert len(rail.statuses[-1]) <= 40
     assert rail.statuses[-1].endswith("…")
@@ -260,7 +262,7 @@ def test_a_long_detail_is_shortened_rather_than_dropped(rail):
 def test_a_terminal_event_with_no_detail_still_says_something(rail):
     session = open_rail()
 
-    session.on_event(_event("run_completed", 255, 255, detail="   "))
+    session.on_event(_event("completed", 255, 255, detail="   "))
 
     assert rail.statuses[-1] == "finished"
 
@@ -300,3 +302,60 @@ def test_the_session_keeps_every_event_for_the_record(rail):
 
     assert [event.ordinal for event in session.events] == [1, 2, 3]
     assert isinstance(session, RailSession)
+
+
+# --- the rail's vocabulary is the executor's, not one it invented ---------
+
+
+def test_every_event_name_the_rail_knows_is_one_the_executor_publishes():
+    """The defect a live run found. The rail listed `run_completed` and
+    `run_failed`; the executor publishes `completed` and `action_failed`. So a
+    finished 255-node run kept showing "Step 255 of 255" instead of its
+    outcome — and the unit tests agreed, because they fed the same invented
+    names back in. A closed loop that proved nothing about the real executor.
+
+    Read from `act_runtime`'s source rather than restated here, so the two
+    cannot drift apart again without this failing.
+    """
+
+    import re
+    from pathlib import Path
+
+    source = (
+        Path(__file__).resolve().parents[1] / "ghostcursor/act_runtime.py"
+    ).read_text(encoding="utf-8")
+    published = set(re.findall(r'publish\(\s*"([a-z_]+)"', source))
+
+    assert published, "found no published event names to check against"
+    assert act_rail._TERMINAL <= published
+    assert set(act_rail._LABELS) <= published
+
+
+def test_a_terminal_event_is_not_also_a_label():
+    """A type in both would take the terminal path and never use its label,
+    which reads as the label being applied when it is not."""
+
+    assert act_rail._TERMINAL & set(act_rail._LABELS) == set()
+
+
+def test_no_status_the_rail_can_show_overflows_the_compact_rail():
+    """Measured, not guessed. The compact rail is 148px wide and Win32 clips
+    rather than wraps, so a status one character too long loses the end of
+    the number — `Step 103 of 255 · done` came back as `Step 103 of 255` on
+    one line and a cut-off `· done` on the next.
+
+    22 characters is what the widest real status needs: `Step 255 of 255` is
+    15, `Paused · 255/255` is 16, and a shortened terminal detail is capped
+    at 40 but is a full-width message rather than a number that must stay
+    exact.
+    """
+
+    from ghostcursor import act_rail as module
+
+    widest = f"Step {255} of {255}"
+    paused = f"Paused · {255}/{255}"
+
+    assert len(widest) <= 22
+    assert len(paused) <= 22
+    assert module._shorten("x" * 100) == "x" * 39 + "…"
+

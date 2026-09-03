@@ -36,15 +36,24 @@ from ghostcursor.overlay import bar
 #: Event types that mean the run has finished, whatever the outcome. Held as
 #: data rather than as a chain of `if`s so a new terminal event cannot quietly
 #: leave the rail showing a step that is no longer running.
-_TERMINAL = frozenset({"run_completed", "run_failed", "refused"})
+#:
+#: These names are the executor's, read from `act_runtime`. An earlier version
+#: invented `run_completed` and `run_failed`, which the executor never
+#: publishes -- so a finished run kept showing its last step, and the tests
+#: agreed because they used the invented names too. `test_act_rail` now
+#: compares this set against the names `act_runtime` actually publishes.
+_TERMINAL = frozenset(
+    {"completed", "refused", "stopped", "action_failed", "verification_failed"}
+)
 
-#: What the rail says for each event it knows about. A type absent from here
-#: leaves the status alone rather than blanking it: an unrecognised event is
-#: not evidence that the previous one stopped being true.
+#: Event types the rail redraws on. The VALUE is unused on the compact rail
+#: and kept for a wider surface: `Step 103 of 255 · done` overflows 148px and
+#: Win32 clipped it mid-word, so the adornment was making the one thing the
+#: rail must show unreadable. The step number is the contract (D109); a word
+#: saying whether it is part-way through is not.
 _LABELS = {
     "action_started": "running",
     "action_completed": "done",
-    "verification_failed": "unverified",
 }
 
 
@@ -89,9 +98,10 @@ class RailSession:
         ordinal, total = self.step
         text = f"Step {ordinal} of {total}"
         if self.paused:
-            text = f"Paused — {text}"
-        elif label:
-            text = f"{text} · {label}"
+            # Paused replaces rather than prefixes, for the same width
+            # reason: "Paused — Step 103 of 255" does not fit either, and a
+            # clipped "Paused — Step 103 of 2" reads as a smaller deck.
+            text = f"Paused · {ordinal}/{total}"
         bar.set_status(self.hwnd, text)
 
     def poll(self, controls) -> None:
