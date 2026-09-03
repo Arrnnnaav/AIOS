@@ -20,6 +20,7 @@ from ghostcursor.action import (
     validate_action_graph,
 )
 from ghostcursor.act_node import NodeRefused, Observation, execute_node
+from ghostcursor.act_pacing import QUICK, Pace, interruptible_wait
 from ghostcursor.act_protocol import (
     LifecycleState,
     PresentationRequest,
@@ -370,6 +371,7 @@ def _execute_approved_graph(
     clock: Callable[[], float] = time.monotonic,
     wall_clock: Callable[[], float] = time.time,
     uia_session: "UiaNodeSession | None" = None,
+    pace: Pace = QUICK,
 ) -> ActRunResult:
     """Private effect seam used by production and hermetic contract tests."""
 
@@ -494,8 +496,28 @@ def _execute_approved_graph(
                 events=tuple(events),
                 output_path=approval.output_path,
             )
+        def _paced(milliseconds: int, node, ordinal: int) -> bool:
+            """Wait, staying stoppable throughout. False means Stop was read.
+
+            Sliced rather than slept, so Watch Build gives the user MORE
+            chances to stop the run than Quick Build, not fewer. A plain
+            sleep here would put the run inside an uninterruptible call for
+            tenths of a second while D020 allows half a second for the whole
+            abort path.
+            """
+
+            if milliseconds <= 0:
+                return not controls.stop_event.is_set()
+            return interruptible_wait(
+                milliseconds,
+                poll=lambda: not controls.stop_event.is_set(),
+                clock=lambda: clock() * 1000.0,
+            )
+
         for ordinal, node in enumerate(validated.ordered_nodes, 1):
-            if not controls.wait_until_runnable():
+            if not controls.wait_until_runnable() or not _paced(
+                pace.before_node_ms, node, ordinal
+            ):
                 publish("stopped", node, ordinal, "stopped before action")
                 return ActRunResult(
                     ActRunPhase.EXECUTION,
@@ -633,6 +655,7 @@ def _execute_approved_graph(
                     )
                 completed.append(node.node_id)
                 publish("action_completed", node, ordinal, outcome.detail)
+                _paced(pace.after_node_ms, node, ordinal)
                 continue
 
             token = _authorize_node(approval, validated, node=node, ordinal=ordinal)
@@ -710,6 +733,10 @@ def _execute_approved_graph(
                 )
             completed.append(node.node_id)
             publish("action_completed", node, ordinal, response.detail)
+            # The beat that lets the change register. A slide that appears and
+            # is immediately replaced reads as a flicker, not as an action.
+            # Zero in Quick Build, so this costs that mode nothing.
+            _paced(pace.after_node_ms, node, ordinal)
     finally:
         host.stop()
     publish("completed", None, len(validated.ordered_nodes), "all actions verified")
@@ -747,6 +774,7 @@ def execute_approved_graph(
     event_sink: Callable[[ActEvent], None] | None = None,
     verify_observer: Callable[[str, Mapping[str, object]], None] | None = None,
     uia_session: "UiaNodeSession | None" = None,
+    pace: Pace = QUICK,
 ) -> ActRunResult:
     """Production execution path with the plugin's separate signed verifier.
 
@@ -832,6 +860,7 @@ def execute_approved_graph(
         controls=controls,
         event_sink=event_sink,
         uia_session=uia_session,
+        pace=pace,
     )
 
 

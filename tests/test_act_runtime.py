@@ -430,7 +430,36 @@ def test_execute_approved_graph_exposes_no_verifier_replacing_parameter():
         "event_sink",
         "verify_observer",
         "uia_session",
+        # Timing only, and deliberately NOT a callable: a `Pace` is two
+        # integers, so nothing passed here can return a verification answer.
+        # It changes how long the run waits between nodes and changes nothing
+        # about what any node is allowed to do.
+        "pace",
     }
+
+
+def test_the_pace_cannot_carry_behaviour_into_the_run():
+    """A pace is data. If it could hold a callable, the timing parameter
+    would be a way to hand the executor code -- which is the shape of every
+    bypass this file guards against."""
+
+    from ghostcursor.act_pacing import WATCH
+
+    for field, value in vars(WATCH).items():
+        assert isinstance(value, (str, int)), f"{field} is not a scalar"
+        assert not callable(value)
+
+
+def test_a_paced_run_still_refuses_everything_an_unpaced_one_does(tmp_path):
+    """Pacing must not become a second code path with different checks."""
+
+    from ghostcursor.act_pacing import WATCH
+
+    quick = _run_uia(tmp_path)
+    assert quick.code is ActRunCode.ADAPTER_FAILED
+
+    watched = _run_uia(tmp_path, pace=WATCH)
+    assert watched.code is quick.code
 
 
 def test_the_uia_session_cannot_replace_the_verifier():
@@ -566,7 +595,7 @@ def _fake_session(*, receipts=True, record=None):
     ), record
 
 
-def _run_uia(tmp_path, *, session=None, verified=True):
+def _run_uia(tmp_path, *, session=None, verified=True, pace=None):
     import time as _time
 
     registry = _uia_registry()
@@ -583,6 +612,7 @@ def _run_uia(tmp_path, *, session=None, verified=True):
         verify=lambda *_args: verified,
         controls=ActControls(),
         uia_session=session,
+        **({} if pace is None else {"pace": pace}),
     )
 
 

@@ -166,6 +166,9 @@ def run(args) -> int:
             }
         )
 
+    from ghostcursor.act_pacing import pace_by_name
+
+    pace = pace_by_name(args.mode)
     controls = ActControls()
     rail = None
     if args.rail:
@@ -176,7 +179,7 @@ def run(args) -> int:
         from ghostcursor import act_rail
 
         rail = act_rail.open_rail()
-        _emit("rail_opened", hwnd=rail.hwnd)
+        _emit("rail_opened", hwnd=rail.hwnd, mode=pace.name)
         published = event_sink
 
         def event_sink(event):  # noqa: F811 - deliberately wraps the recorder
@@ -198,6 +201,7 @@ def run(args) -> int:
             controls=controls,
             event_sink=event_sink,
             verify_observer=verify_observer,
+            pace=pace,
         )
     finally:
         if rail is not None:
@@ -250,6 +254,13 @@ def main() -> int:
             "refuses and names every candidate (D075) -- a handle narrows, it "
             "never supplies identity."
         ),
+    )
+    parser.add_argument(
+        "--mode",
+        choices=("quick", "watch"),
+        default="quick",
+        help="quick runs at the executor's own speed; watch paces each "
+        "node so a person can follow it, staying stoppable throughout",
     )
     parser.add_argument(
         "--rail",
