@@ -172,8 +172,13 @@ def test_composition_reverifies_and_exposes_both_signed_adapter_processes(tmp_pa
     files["ghostcursor/adapter/uia_adapter.py"] = (
         Path(__file__).resolve().parents[1] / "plugins/shared/uia_adapter.py"
     ).read_bytes()
+    # ...and a live-state verifier, by the same pairing rule: the file-reading
+    # verifier cannot answer for an effect that exists only in the running
+    # application.
+    files["ghostcursor/adapter/powerpoint_live_verifier.py"] = b"# live state"
     adapter_api = {
         "entrypoint": "ghostcursor/adapter/powerpoint_adapter.py",
+        "live_verifier": "ghostcursor/adapter/powerpoint_live_verifier.py",
         "operations": OPERATION_ARTIFACT_PATH,
         "plans": "ghostcursor/action-plans.json",
         "protocol_version": 1,

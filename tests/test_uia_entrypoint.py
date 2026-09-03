@@ -39,14 +39,23 @@ class _Registry:
         }
 
 
-def _files(uia_bytes=None, path="ghostcursor/adapter/uia_adapter.py"):
+LIVE_VERIFIER = "ghostcursor/adapter/powerpoint_live_verifier.py"
+
+
+def _files(
+    uia_bytes=None,
+    path="ghostcursor/adapter/uia_adapter.py",
+    live_verifier=LIVE_VERIFIER,
+):
     files = {"ghostcursor/adapter/powerpoint_adapter.py": b"# object model"}
     if uia_bytes is not None:
         files[path] = uia_bytes
+    if live_verifier is not None:
+        files[live_verifier] = b"# live state"
     return files
 
 
-def _adapter(uia_entrypoint=None):
+def _adapter(uia_entrypoint=None, live_verifier=None):
     adapter = {
         "entrypoint": "ghostcursor/adapter/powerpoint_adapter.py",
         "operations": "ghostcursor/operations.json",
@@ -56,6 +65,15 @@ def _adapter(uia_entrypoint=None):
     }
     if uia_entrypoint is not None:
         adapter["uia_entrypoint"] = uia_entrypoint
+        # A UIA backend needs BOTH: something to dispatch the pattern and
+        # something that can verify a live effect. Defaulted together here so
+        # the existing cases keep testing what they were written to test; the
+        # rule that each is required has its own tests below.
+        adapter["live_verifier"] = (
+            LIVE_VERIFIER if live_verifier is None else live_verifier
+        )
+    elif live_verifier is not None:
+        adapter["live_verifier"] = live_verifier
     return adapter
 
 
@@ -77,7 +95,9 @@ def test_the_pinned_digest_is_the_canonical_sources_own_digest():
 
 def test_a_plugin_with_no_uia_operation_ships_no_uia_adapter():
     _check_backend_declarations(
-        _adapter(), _Registry(["object_model", "object_model"]), _files()
+        _adapter(),
+        _Registry(["object_model", "object_model"]),
+        _files(live_verifier=None),
     )
 
 
@@ -238,3 +258,56 @@ def test_a_missing_required_adapter_field_is_refused(field):
 
     with pytest.raises(BundleVerificationError, match="closed adapter declaration"):
         verify_adapter_shape(adapter)
+
+
+# --- a UIA effect must be verifiable, not merely performable --------------
+
+
+def test_declaring_a_uia_backend_without_a_live_verifier_is_refused():
+    """The gap the first live run hit. The artifact verifier reads a saved
+    file; a UIA effect is live state that reaches no file until somebody
+    saves. Shipping the backend without a live verifier ships an action that
+    can be PERFORMED and never independently confirmed."""
+
+    with pytest.raises(BundleVerificationError, match="no live_verifier is shipped"):
+        _check_backend_declarations(
+            _adapter("ghostcursor/adapter/uia_adapter.py", live_verifier=False)
+            | {"live_verifier": None},
+            _Registry(["uia_pattern"]),
+            _files(SHARED.read_bytes()),
+        )
+
+
+def test_shipping_a_live_verifier_with_no_uia_operation_is_refused():
+    """Same rule as the adapter: an unused executable is an unreviewed one."""
+
+    with pytest.raises(
+        BundleVerificationError, match="no operation declares a UIA backend"
+    ):
+        _check_backend_declarations(
+            _adapter(live_verifier=LIVE_VERIFIER),
+            _Registry(["object_model"]),
+            _files(),
+        )
+
+
+def test_a_declared_live_verifier_absent_from_the_payload_is_refused():
+    with pytest.raises(
+        BundleVerificationError, match="live_verifier is not present"
+    ):
+        _check_backend_declarations(
+            _adapter("ghostcursor/adapter/uia_adapter.py"),
+            _Registry(["uia_pattern"]),
+            _files(SHARED.read_bytes(), live_verifier=None),
+        )
+
+
+@pytest.mark.parametrize("backend", ["uia_pattern", "legacy_iaccessible"])
+def test_either_control_driving_backend_requires_a_live_verifier(backend):
+    with pytest.raises(BundleVerificationError, match="no live_verifier"):
+        _check_backend_declarations(
+            _adapter("ghostcursor/adapter/uia_adapter.py") | {"live_verifier": None},
+            _Registry([backend]),
+            _files(SHARED.read_bytes()),
+        )
+

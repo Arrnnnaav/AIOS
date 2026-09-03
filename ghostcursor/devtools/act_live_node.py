@@ -127,7 +127,10 @@ def main() -> int:
     print("--- signed data ---")
     operations_bytes = (PAYLOAD / "ghostcursor/operations.json").read_bytes()
     uia_entry = PAYLOAD / "ghostcursor/adapter/uia_adapter.py"
-    verifier_entry = PAYLOAD / "ghostcursor/adapter/powerpoint_verifier.py"
+    # The LIVE-state verifier. The other one in this payload reads a saved
+    # .pptx, which is the wrong evidence for an effect that exists only in
+    # the running application.
+    verifier_entry = PAYLOAD / "ghostcursor/adapter/powerpoint_live_verifier.py"
     adapter_sha = hashlib.sha256(uia_entry.read_bytes()).hexdigest()
     registry = load_operation_registry(
         operations_bytes,
@@ -255,12 +258,24 @@ def main() -> int:
             )
 
             print("--- node ---")
+            # The reading taken before anything was shown. `execute_node`
+            # keeps its own copy for the drift check; this one is what the
+            # postcondition is measured against, and it has to be captured
+            # here because the verify callback runs after the effect.
+            baseline: dict = {}
+
+            def observe(mode):
+                observation = session.observe(node, mode)
+                if mode == "observe_before":
+                    baseline.update(dict(observation.semantic))
+                return observation
+
             outcome = execute_node(
                 node,
                 spec,
                 request=request,
                 policy=session.policy,
-                observe=lambda mode: session.observe(node, mode),
+                observe=observe,
                 present=session.present,
                 # This diagnostic mints no real approval, so the token is the
                 # digest itself. That is exactly why this is not an acceptance
@@ -281,6 +296,8 @@ def main() -> int:
                         "hwnd": hwnd,
                         "pid": pid,
                     },
+                    baseline=baseline,
+                    postconditions=spec.postconditions,
                 ),
                 clock=lambda: time.monotonic() * 1000.0,
                 on_state=session.on_state and (lambda s: session.on_state(node, s)),
@@ -338,14 +355,26 @@ def main() -> int:
     return 0 if outcome is not None and outcome.verified else 1
 
 
-def _verify(verifier, node, validation_sha256, output_path, target) -> bool:
+def _verify(
+    verifier,
+    node,
+    validation_sha256,
+    output_path,
+    target,
+    *,
+    baseline=None,
+    postconditions=(),
+) -> bool:
     answer = verifier.verify(
         node=node,
         validation_sha256=validation_sha256,
         output_path=output_path,
         target=target,
         timeout_s=15.0,
+        baseline=baseline,
+        postconditions=postconditions,
     )
+    print(f"  {'verifier':22s} {answer.detail} observed={dict(answer.observed)}")
     return bool(answer.verified)
 
 

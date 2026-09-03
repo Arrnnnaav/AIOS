@@ -79,8 +79,23 @@ class FakeVerifier:
         self._fails = fails
         self.seen: list[str] = []
 
-    def verify(self, *, node, validation_sha256, output_path, target, timeout_s=10.0):
+    def verify(
+        self,
+        *,
+        node,
+        validation_sha256,
+        output_path,
+        target,
+        timeout_s=10.0,
+        baseline=None,
+        postconditions=None,
+    ):
         self.calls += 1
+        # An OBSERVATION must carry no baseline: there is nothing yet to
+        # compare against, and a baseline here would mean the reading before
+        # the cue was being verified against itself.
+        assert baseline is None
+        self.seen.append(tuple(postconditions or ()))
         if self._fails:
             raise AdapterProtocolError("verifier timed out")
         slides = 4 if self.calls == self._drift_on else 3
@@ -134,6 +149,7 @@ def _spec(digest, *, control_type="Button", pattern="Invoke", identity=True):
         uia_pattern=pattern,
         identity=policy,
         draws_a_pointer=True,
+        postconditions=("slide.count.increased_by_one",),
     )
 
 
@@ -451,3 +467,24 @@ def test_the_session_exposes_no_way_to_declare_a_node_verified(tmp_path):
     assert not hasattr(session, "run")
     assert session.present is not None
     assert session.on_state is not None
+
+
+# --- the live-state request is marked as one ------------------------------
+
+
+def test_an_observation_sends_the_postconditions_and_no_baseline(tmp_path):
+    """`postconditions` is what marks a frame as a live-state request: an
+    artifact verifier validates its fields exactly and refuses one carrying
+    it, which is how the two kinds stay separable without a mode flag.
+
+    The baseline is absent because an observation has nothing to compare
+    against yet. Sending one would verify the pre-cue reading against itself
+    and report `verified` for a comparison that never happened."""
+
+    verifier = FakeVerifier()
+    with _host(tmp_path) as host:
+        session = _session(tmp_path, host, verifier=verifier)
+        session.observe(_node(), "observe_before")
+
+    assert verifier.seen == [("slide.count.increased_by_one",)]
+

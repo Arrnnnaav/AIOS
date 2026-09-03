@@ -92,12 +92,20 @@ def build_uia_session(
         # identity alone -- that is exactly the vacuous drift check this
         # module exists to avoid.
         try:
+            # No baseline on an OBSERVATION: there is nothing yet to compare
+            # against, and the live verifier answers `refused` with a reading
+            # rather than inventing a verdict. `postconditions` is still sent,
+            # because its presence is what marks this as a live-state request
+            # -- an artifact verifier validates its fields exactly and would
+            # refuse a frame carrying either key.
             answer = verifier.verify(
                 node=node,
                 validation_sha256=validation_sha256,
                 output_path=output_path,
                 target=target,
                 timeout_s=verify_timeout_s,
+                baseline=None,
+                postconditions=spec.postconditions,
             )
         except AdapterProtocolError as exc:
             raise UiaSessionError(

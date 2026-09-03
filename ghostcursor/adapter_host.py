@@ -62,7 +62,23 @@ class VerifierHost:
         target: Mapping[str, Any],
         timeout_s: float = 10.0,
         cancel_event: threading.Event | None = None,
+        baseline: Mapping[str, Any] | None = None,
+        postconditions: "tuple[str, ...] | None" = None,
     ) -> VerifierResponse:
+        """Run the verifier once.
+
+        `baseline` and `postconditions` are sent ONLY when a caller supplies
+        them, and their presence is what distinguishes a live-state request
+        from an artifact one. An artifact verifier validates its request
+        fields exactly and would refuse a frame carrying either, so adding
+        them unconditionally would break every already-signed verifier --
+        including the one Phase A's 255/255 was measured against.
+
+        The baseline is passed through untouched. Core does not interpret it:
+        "a slide was added" is knowledge about PowerPoint, and the comparison
+        belongs in signed plugin code.
+        """
+
         nonce = uuid.uuid4().hex
         request = {
             "node": {
@@ -79,6 +95,9 @@ class VerifierHost:
             "validation_sha256": validation_sha256,
             "verifier_sha256": self.descriptor.verifier_sha256,
         }
+        if postconditions is not None:
+            request["baseline"] = _plain(baseline) if baseline is not None else None
+            request["postconditions"] = list(postconditions)
         process = subprocess.Popen(
             [sys.executable, str(self.descriptor.verifier), "--json"],
             cwd=str(self.descriptor.payload_root),

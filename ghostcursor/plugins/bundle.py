@@ -150,7 +150,7 @@ def _validate_manifest(value: dict[str, Any]) -> None:
         if adapter is not None:
             raise BundleVerificationError("plugin API v1 forbids executable adapters")
     else:
-        entrypoint, operations, plans, verifier, uia_entrypoint = (
+        entrypoint, operations, plans, verifier, uia_entrypoint, live_verifier = (
             verify_adapter_shape(adapter)
         )
         if operations != "ghostcursor/operations.json":
@@ -248,7 +248,7 @@ def verify_adapter_shape(adapter):
     if (
         not isinstance(adapter, dict)
         or not required <= set(adapter)
-        or not set(adapter) <= required | {"uia_entrypoint"}
+        or not set(adapter) <= required | {"uia_entrypoint", "live_verifier"}
     ):
         raise BundleVerificationError(
             "plugin API v2 requires one closed adapter declaration"
@@ -305,7 +305,31 @@ def verify_adapter_shape(adapter):
                 "and the verifier"
             )
 
-    return entrypoint, operations, plans, verifier, uia_entrypoint
+    live_verifier = adapter.get("live_verifier")
+    if live_verifier is not None:
+        # Optional for the same reason `uia_entrypoint` is: every bundle
+        # signed before live-state verification keeps verifying byte for
+        # byte. It answers a different question from the artifact verifier --
+        # what the RUNNING application is, not what a saved file contains --
+        # and those carry different trust classes (LIVE_STATE against
+        # ARTIFACT), so one file must never be able to answer for both.
+        if not isinstance(live_verifier, str):
+            raise BundleVerificationError("adapter live_verifier must be a string")
+        if _entry_name(live_verifier) != live_verifier or not (
+            live_verifier.startswith("ghostcursor/adapter/")
+            and live_verifier.endswith(".py")
+        ):
+            raise BundleVerificationError(
+                "adapter live_verifier must be a Python source file under "
+                "ghostcursor/adapter/"
+            )
+        if live_verifier in {entrypoint, verifier, uia_entrypoint}:
+            raise BundleVerificationError(
+                "adapter live_verifier must be distinct from the entrypoint, "
+                "the verifier and the uia_entrypoint"
+            )
+
+    return entrypoint, operations, plans, verifier, uia_entrypoint, live_verifier
 
 
 def _check_backend_declarations(adapter, registry, file_bytes):
@@ -333,6 +357,24 @@ def _check_backend_declarations(adapter, registry, file_bytes):
         # nothing in the registry says what it is allowed to do.
         raise BundleVerificationError(
             "a uia_entrypoint is shipped but no operation declares a UIA backend"
+        )
+    live_verifier = adapter.get("live_verifier")
+    if needs_uia and live_verifier is None:
+        # A UIA operation whose effect nothing can verify is an operation that
+        # can only be PERFORMED. The artifact verifier reads a saved file and
+        # a UIA effect is live state, so shipping the backend without this is
+        # shipping an action with no possible independent confirmation.
+        raise BundleVerificationError(
+            "operations declare a UIA backend but no live_verifier is shipped: "
+            + ", ".join(needs_uia)
+        )
+    if live_verifier is not None and not needs_uia:
+        raise BundleVerificationError(
+            "a live_verifier is shipped but no operation declares a UIA backend"
+        )
+    if live_verifier is not None and live_verifier not in file_bytes:
+        raise BundleVerificationError(
+            "adapter live_verifier is not present in the signed payload"
         )
     if uia_entrypoint is None:
         return

@@ -322,3 +322,47 @@ def test_the_action_scan_catches_a_planted_call(snippet):
 
 def test_reading_the_default_action_name_is_not_treated_as_performing_it():
     assert _action_calls_in(ast.parse("name = pattern.CurrentDefaultAction")) == set()
+
+
+# --- the live-state verifier is held to the same prohibition --------------
+
+
+def test_the_live_state_verifier_calls_nothing_that_acts():
+    """It runs against the same live application the adapter acts on, and it
+    is the thing that says whether the effect happened. A verifier able to
+    cause an effect could confirm one it produced itself, which is the
+    self-referential failure the separate signed process exists to prevent.
+
+    Scanned with the same walker as the feasibility probe, and that walker is
+    proven non-vacuous by the planted-call cases above.
+    """
+
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "plugins/sources/powerpoint/payload/ghostcursor/adapter"
+        / "powerpoint_live_verifier.py"
+    ).read_text(encoding="utf-8")
+
+    assert _action_calls_in(ast.parse(source)) == set()
+
+
+def test_the_live_state_verifier_imports_no_input_synthesis():
+    """A narrower scan than D006's, aimed at this one file: the modules that
+    move a cursor or press a key must not be reachable from it at all."""
+
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "plugins/sources/powerpoint/payload/ghostcursor/adapter"
+        / "powerpoint_live_verifier.py"
+    ).read_text(encoding="utf-8")
+    forbidden = {"pyautogui", "pynput", "ctypes", "win32api", "keyboard", "mouse"}
+
+    imported: set[str] = set()
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Import):
+            imported.update(alias.name.split(".")[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imported.add(node.module.split(".")[0])
+
+    assert imported & forbidden == set()
+

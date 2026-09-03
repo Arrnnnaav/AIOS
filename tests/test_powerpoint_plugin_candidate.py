@@ -105,6 +105,7 @@ def test_each_candidate_loads_and_compiles_without_application_python(
         for path in SOURCE_ROOT.rglob("*.py")
     } == {
         "payload/ghostcursor/adapter/powerpoint_adapter.py",
+        "payload/ghostcursor/adapter/powerpoint_live_verifier.py",
         "payload/ghostcursor/adapter/powerpoint_verifier.py",
         "payload/ghostcursor/adapter/uia_adapter.py",
     }
@@ -181,4 +182,9 @@ def test_candidate_source_declares_only_the_powerpoint_executable():
         # that pairing on its own (D108).
         "uia_entrypoint": "ghostcursor/adapter/uia_adapter.py",
         "verifier": "ghostcursor/adapter/powerpoint_verifier.py",
+        # The live-state verifier, required by the same pairing rule. The
+        # verifier above reads a saved file, which is the wrong evidence for
+        # an effect that only exists in the running application; shipping a
+        # UIA backend without this would ship an action nothing can confirm.
+        "live_verifier": "ghostcursor/adapter/powerpoint_live_verifier.py",
     }

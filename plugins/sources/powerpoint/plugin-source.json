@@ -1,6 +1,7 @@
 {
   "adapter_api": {
     "entrypoint": "ghostcursor/adapter/powerpoint_adapter.py",
+    "live_verifier": "ghostcursor/adapter/powerpoint_live_verifier.py",
     "operations": "ghostcursor/operations.json",
     "plans": "ghostcursor/action-plans.json",
     "protocol_version": 1,
