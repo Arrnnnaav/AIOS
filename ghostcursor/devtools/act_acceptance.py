@@ -11,9 +11,11 @@ import argparse
 import hashlib
 import json
 import threading
+import uuid
 import time
 from pathlib import Path
 
+from ghostcursor.act_staging import StagingError, abandon, open_staging, publish
 from ghostcursor.act_runtime import (
     ActControls,
     ActTarget,
@@ -55,8 +57,23 @@ def _live_target(target: ActTarget) -> None:
 
 def run(args) -> int:
     bundle = args.bundle.resolve()
-    output = args.output.resolve()
+    final_output = args.output.resolve()
     owned_root = args.owned_root.resolve()
+    # The run writes a staging file the runtime owns; the approved final path
+    # comes into existence once, atomically, after everything verified. The
+    # adapter is handed the STAGING path and is never told where the final
+    # deck goes, so it cannot expose a partial one even if asked.
+    owned_root.mkdir(parents=True, exist_ok=True)
+    area = open_staging(
+        final_output, owned_root=owned_root, run_id=uuid.uuid4().hex[:12]
+    )
+    output = area.staging
+    _emit(
+        "staged",
+        final_path=str(area.final),
+        marker=str(area.marker),
+        staging_path=str(area.staging),
+    )
     if _sha(bundle) != args.bundle_sha256:
         raise RuntimeError("candidate bundle digest disagrees with reviewed bytes")
     public_key = args.public_key.read_bytes()
@@ -287,6 +304,38 @@ def run(args) -> int:
             if probe is not None and probe.probe_faults:
                 _emit("probe_faults", count=probe.probe_faults)
             diagnostics.close()
+    published_sha256 = None
+    if result.completed:
+        try:
+            published_sha256 = publish(area)
+            _emit(
+                "published",
+                final_path=str(area.final),
+                sha256=published_sha256,
+            )
+        except StagingError as exc:
+            # A run that verified but could not publish is NOT a completed
+            # run. Reporting it as one would mean the record said a deck
+            # exists at a path where nothing does.
+            _emit("publish_refused", detail=str(exc), final_path=str(area.final))
+            abandon(area)
+            _emit(
+                "interrupt_probe" if interrupt is not None else "result",
+                code="publish_refused",
+                completed=False,
+                completed_nodes=len(result.completed_node_ids),
+                detail=str(exc),
+                failed_node_id=None,
+                output_path=str(area.staging),
+                phase=result.phase.value,
+            )
+            return 4
+    else:
+        # Stopped, refused or failed. The staging file stays, labelled, and
+        # the final path was never created.
+        abandon(area)
+        _emit("not_published", final_path=str(area.final), staging=str(area.staging))
+
     _emit(
         "interrupt_probe" if interrupt is not None else "result",
         code=result.code.value,
@@ -294,7 +343,8 @@ def run(args) -> int:
         completed_nodes=len(result.completed_node_ids),
         detail=result.detail,
         failed_node_id=result.failed_node_id,
-        output_path=result.output_path,
+        output_path=str(area.final) if published_sha256 else result.output_path,
+        published_sha256=published_sha256,
         phase=result.phase.value,
     )
     if interrupt is not None:
