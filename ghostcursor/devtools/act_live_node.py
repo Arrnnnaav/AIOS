@@ -107,6 +107,19 @@ def main() -> int:
         required=True,
         help="measured paint cost; see docs/evidence/act-paint-budget.md",
     )
+    parser.add_argument(
+        "--stop-after-ms",
+        type=int,
+        default=None,
+        help="DIAGNOSTIC. Stop the run this many ms after the first paint, "
+        "so a Stop can be landed inside the traversal or the settle.",
+    )
+    parser.add_argument(
+        "--stop-before",
+        choices=("confirmation", "dispatch"),
+        default=None,
+        help="DIAGNOSTIC. Stop at a phase boundary rather than on a clock.",
+    )
     parser.add_argument("--traversal-ms", type=int, default=700)
     parser.add_argument("--settle-ms", type=int, default=900)
     parser.add_argument("--json", type=Path, default=None)
@@ -192,10 +205,36 @@ def main() -> int:
     overlay_hwnd = overlay_window.create_overlay_window()
     note("overlay", f"hwnd={overlay_hwnd}")
 
+    stopped = {"at": None, "first_poll": None}
+
     def keep_running() -> bool:
         # ESC, polled on the same callback that pumps messages, so a cue that
         # is still drawing is always a cue that can still be stopped.
+        now = time.monotonic()
+        if stopped["first_poll"] is None:
+            stopped["first_poll"] = now
+        if arguments.stop_after_ms is not None and stopped["at"] is None:
+            if (now - stopped["first_poll"]) * 1000.0 >= arguments.stop_after_ms:
+                stopped["at"] = now
+                note("stop requested", f"{arguments.stop_after_ms}ms after first poll")
+                return False
+        if stopped["at"] is not None:
+            return False
         return not (win32api.GetAsyncKeyState(win32con.VK_ESCAPE) & 0x8000)
+
+    def should_continue() -> bool:
+        """The phase-boundary Stop. Fires once, at the named boundary."""
+
+        if arguments.stop_before is None:
+            return True
+        reached = stopped.setdefault("boundaries", [])
+        boundary = "confirmation" if len(reached) == 0 else "dispatch"
+        reached.append(boundary)
+        if boundary == arguments.stop_before:
+            stopped["at"] = time.monotonic()
+            note("stop requested", f"at the {boundary} boundary")
+            return False
+        return True
 
     receipts: list[tuple[str, float]] = []
     lifecycle: list[str] = []
@@ -216,6 +255,8 @@ def main() -> int:
     )
 
     started = time.monotonic()
+    elapsed_at_stop = {"end": None}
+    dispatched = {"count": 0}
     outcome = None
     failure = None
     try:
@@ -282,9 +323,10 @@ def main() -> int:
                 # harness: the authority boundary is stubbed here and is not
                 # stubbed in `_execute_approved_graph`.
                 authorize=lambda facts: facts,
-                dispatch=lambda token, confirmed: session.dispatch(
-                    node, token, confirmed
-                ),
+                dispatch=lambda token, confirmed: (
+                    dispatched.__setitem__("count", dispatched["count"] + 1),
+                    session.dispatch(node, token, confirmed),
+                )[1],
                 verify=lambda _node: _verify(
                     VerifierHost(verifier_descriptor),
                     node,
@@ -300,6 +342,7 @@ def main() -> int:
                     postconditions=spec.postconditions,
                 ),
                 clock=lambda: time.monotonic() * 1000.0,
+                should_continue=should_continue,
                 on_state=session.on_state and (lambda s: session.on_state(node, s)),
             )
     except (NodeRefused, UiaSessionError) as exc:
@@ -310,10 +353,14 @@ def main() -> int:
         note("error", failure)
     finally:
         elapsed = time.monotonic() - started
+        elapsed_at_stop["end"] = time.monotonic()
         overlay.release()
         overlay_window.destroy_overlay_window(overlay_hwnd)
 
     print("--- result ---")
+    if stopped["at"] is not None:
+        note("stop response", f"{(elapsed_at_stop['end'] - stopped['at']):.4f}s")
+        note("dispatched after stop", str(dispatched["count"]))
     if outcome is not None:
         note("verified", str(outcome.verified))
         note("trust", outcome.trust.value)

@@ -141,6 +141,9 @@ def _run(
     verified=True,
     request=None,
     on_state=None,
+    should_continue=None,
+    dispatch_spy=None,
+    verify_spy=None,
 ):
     spec = spec or _spec()
     request = request or _request()
@@ -162,9 +165,13 @@ def _run(
 
     def dispatch(token, confirmed):
         calls["dispatched"].append((token, confirmed))
+        if dispatch_spy is not None:
+            dispatch_spy.append(token)
 
     def verify(node):
         calls["verified"].append(node)
+        if verify_spy is not None:
+            verify_spy.append(node)
         return verified
 
     outcome = execute_node(
@@ -178,6 +185,7 @@ def _run(
         dispatch=dispatch,
         verify=verify,
         clock=clock,
+        should_continue=should_continue,
         on_state=on_state,
     )
     return outcome, calls
@@ -402,3 +410,78 @@ def test_an_unknown_backend_refuses_before_anything_happens():
         _run(_spec("vision"))
 
     assert raised.value.code is RefusalCode.UNSUPPORTED_ACTION_SURFACE
+
+
+# --- the operator's Stop, at the boundaries where it is free --------------
+
+
+def test_a_stop_before_the_confirmation_refuses_without_dispatching():
+    """The gap a UIA run exposed: without this, a Stop landing after the cue
+    completed was not noticed until the node ended -- confirmation,
+    authorization, dispatch and verification all ran."""
+
+    dispatched = []
+
+    with pytest.raises(NodeRefused) as raised:
+        _run(
+            should_continue=lambda: False,
+            dispatch_spy=dispatched,
+        )
+
+    assert raised.value.code is RefusalCode.OPERATOR_STOPPED
+    assert "before the confirmation" in raised.value.detail
+    assert dispatched == []
+
+
+def test_a_stop_before_the_dispatch_refuses_after_confirming():
+    """Confirmation has happened, so identity was compared; the effect has
+    not. This is the last point at which stopping costs nothing."""
+
+    answers = iter([True, False])
+    dispatched = []
+
+    with pytest.raises(NodeRefused) as raised:
+        _run(
+            should_continue=lambda: next(answers),
+            dispatch_spy=dispatched,
+        )
+
+    assert raised.value.code is RefusalCode.OPERATOR_STOPPED
+    assert "before the dispatch" in raised.value.detail
+    assert dispatched == []
+
+
+def test_a_stop_after_the_dispatch_does_not_skip_verification():
+    """Once an effect has been issued the run owes it a verification.
+    Skipping one because someone pressed Stop would leave an effect that
+    happened and was never checked -- worse than a stop a second late."""
+
+    answers = iter([True, True, False, False, False])
+    verified = []
+
+    outcome, _calls = _run(
+        should_continue=lambda: next(answers, False),
+        verify_spy=verified,
+    )
+
+    assert verified, "verification must still run"
+    assert outcome.verified is True
+
+
+def test_no_stop_callable_means_the_node_runs_as_before():
+    """The parameter is optional, and absent it changes nothing."""
+
+    outcome, _calls = _run()
+
+    assert outcome.verified is True
+
+
+def test_the_stop_callable_cannot_make_a_node_succeed():
+    """It only ever reduces what happens. There is no answer it can give
+    that turns an unverified node into a verified one -- which is why
+    accepting a callable here is safe at all."""
+
+    outcome, _calls = _run(verified=False, should_continue=lambda: True)
+
+    assert outcome.verified is False
+

@@ -29,6 +29,7 @@ check being real, and Phase E measures it rather than assuming it is small.
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
@@ -62,6 +63,7 @@ def build_uia_session(
     validation_sha256: str,
     output_path: str,
     authorization_for: Callable[[object], str],
+    cancel_event: "threading.Event | None" = None,
     observe_timeout_s: float = 5.0,
     dispatch_timeout_s: float = 10.0,
     verify_timeout_s: float = 10.0,
@@ -77,6 +79,12 @@ def build_uia_session(
     dispatch. It is a callable rather than a value because a digest is minted
     per node, and one reused across nodes would be an authorization for
     something else.
+
+    ``cancel_event`` lets a READ be abandoned when the operator stops. It is
+    passed to the observation and deliberately not to the dispatch: a read
+    can be given up freely, but abandoning a dispatch that has already been
+    sent loses the ability to verify an effect that may have landed. A
+    dispatch is instead bounded by its own timeout.
     """
 
     def observe(node, mode: str) -> Observation:
@@ -118,6 +126,7 @@ def build_uia_session(
                 selector.control_type,
                 selector.name,
                 timeout_s=observe_timeout_s,
+                cancel_event=cancel_event,
             )
         except AdapterProtocolError as exc:
             raise UiaSessionError(

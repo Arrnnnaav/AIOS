@@ -106,6 +106,11 @@ class RefusalCode(str, Enum):
     PRESENTATION_REFUSED = "presentation_refused"
     #: A clock reading earlier than one already observed.
     CLOCK_REGRESSED = "clock_regressed"
+    #: The operator stopped the run at a phase boundary. A distinct code
+    #: because a stopped node and a failed one are different findings, and a
+    #: campaign that could not tell them apart would count an operator's
+    #: decision as a defect.
+    OPERATOR_STOPPED = "operator_stopped"
 
 
 class LifecycleState(str, Enum):

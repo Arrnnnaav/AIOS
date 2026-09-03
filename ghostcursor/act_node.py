@@ -113,8 +113,33 @@ def execute_node(
     verify: Callable[[Any], bool],
     clock: Callable[[], float],
     on_state: Callable[[LifecycleState], None] | None = None,
+    should_continue: Callable[[], bool] | None = None,
 ) -> NodeOutcome:
-    """Run one authorized node, refusing rather than guessing at every gap."""
+    """Run one authorized node, refusing rather than guessing at every gap.
+
+    ``should_continue`` is the operator's Stop, asked at the two phase
+    boundaries where stopping is still free: before the confirmation, and
+    before the dispatch. It can only ever REDUCE what happens -- there is no
+    answer it can give that makes a node succeed -- which is why it is safe
+    to accept a callable here at all.
+
+    It is deliberately NOT asked after the dispatch. Once an effect has been
+    issued, verification must run: skipping it because someone pressed Stop
+    would leave an effect that happened and was never checked, which is a
+    worse outcome than a stop that arrives a second late.
+
+    Without it, a Stop landing after the cue completed was not noticed until
+    the node ended -- confirmation, authorization, dispatch and verification
+    all ran -- which for a UIA node is an unresponsive window measured in
+    seconds against D020's half-second ceiling.
+    """
+
+    def stopped_here(phase: str) -> None:
+        if should_continue is not None and not should_continue():
+            raise NodeRefused(
+                RefusalCode.OPERATOR_STOPPED,
+                f"the operator stopped the run before {phase}",
+            )
 
     backend = _BACKEND_BY_NAME.get(spec.backend)
     if backend is None:
@@ -184,6 +209,7 @@ def execute_node(
     identity_record = None
     confirmed = None
     if spec.draws_a_pointer:
+        stopped_here("the confirmation")
         enter(LifecycleState.CONFIRMING)
         confirmed = observe("confirm_before")
         if confirmed.semantic != baseline.semantic:
@@ -207,6 +233,9 @@ def execute_node(
         identity_record = identity_evidence(spec.identity, confirmed.identity)
 
     # --- authorize and dispatch -------------------------------------------
+    # The last point at which stopping costs nothing. After this line an
+    # effect may exist, and the run owes it a verification.
+    stopped_here("the dispatch")
     enter(LifecycleState.EXECUTING)
     token = authorize(
         {

@@ -623,6 +623,11 @@ def _execute_approved_graph(
                             target, operation, None, approval
                         ),
                         clock=uia_session.clock,
+                        # The operator's Stop, asked at the two boundaries
+                        # where stopping is still free. Without it a Stop
+                        # landing after the cue completed went unnoticed
+                        # until the node ended.
+                        should_continue=lambda: not controls.stop_event.is_set(),
                         on_state=(
                             None
                             if uia_session.on_state is None
