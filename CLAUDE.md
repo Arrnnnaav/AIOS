@@ -247,15 +247,14 @@ ship a separately signed read-only `live_verifier`; bundle verification
 refuses either half of that pairing alone, exactly as it does for
 `uia_entrypoint`.
 
-**NOT YET WIRED IN PRODUCTION (D032 review, 4 Sep 2026).** Bundle
-verification requires the live verifier, but `AdapterDescriptor` carries no
-field for it and `execute_approved_graph` always constructs a `VerifierHost`
-on the ARTIFACT verifier. Nothing outside `devtools/act_live_node.py`
-consumes it. This is latent only because `act_cli` passes no `uia_session`,
-so production refuses every UIA node before reaching a verifier. **No
-`uia_pattern` operation may be adopted until the runtime routes by the
-operation's signed backend declaration.** The sentence above states the
-requirement, not the current wiring.
+`choose_verifier()` routes by the operation's signed `backend`, and a
+control-driving operation with no live verifier shipped is REFUSED rather
+than falling back to the artifact one — a silent fallback is what made a UIA
+effect look unverifiable when it was merely being asked the wrong question.
+An object-model operation is sent no baseline and no postconditions, so an
+artifact verifier's exact field check still passes. **No `uia_pattern`
+operation may be adopted until it has an independent D032 review, externally
+signed bytes and a counted acceptance campaign.**
 The live verifier must answer a postcondition naming a CHANGE against the
 reading taken before the cue -- a state such as `slide.exists` is satisfied by
 a node that did nothing. The comparison stays in signed plugin code; core

@@ -610,7 +610,7 @@ there shows seven distinct ways it refuses.
 The adoption bar is unchanged and still unmet: acceptance needs 3/3 through a
 real approval, which this harness does not mint.
 
-## The UIA vertical is not wired into production
+## The UIA vertical is not wired into production — CLOSED 4 Sep 2026
 
 **Trigger:** before any `uia_pattern` operation is adopted, or any claim is
 made that production verifies a UIA effect.
@@ -642,8 +642,16 @@ What this needs:
 - Staging wired into `act_cli`, which currently passes the caller's real
   output path straight to the approval (F1).
 
-Until then `CLAUDE.md`'s live-state paragraph states a requirement, not the
-wiring, and says so.
+**Closed 4 September 2026.** `AdapterDescriptor` carries `live_verifier` and
+its digest; `choose_verifier` routes by the operation's signed backend and
+REFUSES a control-driving operation with no live verifier rather than falling
+back; the live verifier's field-set and authority checks moved inside its
+`try` so a malformed frame refuses at exit 0; and `act_cli` stages, publishes
+after verification and abandons otherwise.
+
+What remains before a `uia_pattern` operation can be adopted is unchanged and
+is not code: an independent D032 review of these changes, an external release
+key, and a counted acceptance campaign on the signed bytes.
 
 ## One unexplained test failure
 

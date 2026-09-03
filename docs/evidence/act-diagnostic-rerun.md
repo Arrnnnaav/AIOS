@@ -69,3 +69,65 @@ verified node count, the slide and shape count, and the classification set.
   separately and are not part of these runs, which were kept uninstrumented
   apart from `--diagnostics` so the measurement is of the adapter and not of
   the presentation layer.
+
+---
+
+# Path B and the busy-application flake — 4 September 2026
+
+## What changed
+
+The D032 review's blocking finding (F10-F12) is closed. `AdapterDescriptor`
+carries `live_verifier`, `choose_verifier` routes by the operation's signed
+backend, the live verifier reports a malformed frame instead of exiting
+non-zero, and `act_cli` stages like the harness does.
+
+Bundle `7bf909973b6a5656de3e22dc73e3ffe92fdb90a9e81dd4988c6bdbce29e3a4f5`.
+
+## A misdiagnosis, recorded
+
+A 255-node build started failing at nodes 3-5 with
+`com_error (-2147418111) Call was rejected by callee`.
+
+Bundle v4 passed 255/255 and v5 failed at node 4, and **I called that
+decisive evidence that my own change had caused it.** It was one run on each
+side. Re-run under the same conditions, v5 passed 255/255, and a later v5 run
+failed at node 4 again. The variable was PowerPoint's state, not the bundle.
+
+The two bundles differ only in `powerpoint_live_verifier.py` — bytes that an
+object-model node never touches — and that should have stopped the conclusion
+before the comparison did. Recorded because "one run each way" is exactly the
+shape of evidence this project has been burned by before.
+
+## The real cause, and why retrying is safe here
+
+`RPC_E_CALL_REJECTED` and `RPC_E_SERVERCALL_RETRYLATER` mean the application
+**refused** the call rather than running it. PowerPoint rejects calls while
+mid-operation — closing a presentation, finishing a save, showing a transient
+dialog — and the harness's habit of closing leftovers via COM immediately
+before each run provoked it.
+
+A rejected call did not happen, so repeating it cannot double an effect. That
+is what makes a retry safe for these two HRESULTs **and for nothing else**: a
+generic retry would be dangerous because most COM failures leave the call's
+effect undefined. A test asserts a different HRESULT is raised on the first
+attempt and never repeated.
+
+Bounded to six attempts, backoff capped at two seconds, so a permanently busy
+application fails the run rather than hanging it.
+
+## Verification
+
+Three back-to-back builds with **no settle between them** — the exact pattern
+that had been failing about half the time:
+
+| Run | Result | Nodes |
+|---|---|---|
+| retry-01 | completed | 255/255 |
+| retry-02 | completed | 255/255 |
+| retry-03 | completed | 255/255 |
+
+## Still not acceptance evidence
+
+The signing key remains the ephemeral development pair, and the D032 review
+of these specific changes has not happened — the review that found F10-F12
+predates them.
