@@ -204,10 +204,10 @@ built but not yet exercised by a caller or a live run.
 - [x] Read-only probe against PowerPoint's ribbon (live desktop)
 - [x] Record evidence; chose `New Slide` — `docs/evidence/act-powerpoint-uia-feasibility.md`
 - [x] Signed selector + identity policy — `powerpoint.new_slide_uia`
-- [~] One end-to-end action: pointer travels, label appears, dwell, invoke —
-      all confirmed live on 3 Sep 2026 (`docs/evidence/act-live-pointer-run.md`).
-      Independent verification BLOCKED: the signed verifier reads a saved
-      file and a UIA operation changes live state. See FOLLOWUPS.
+- [x] One end-to-end action: pointer travels, label appears, dwell, invoke,
+      independent verification — run 4, 3 Sep 2026, verified/live_state
+      (`docs/evidence/act-live-pointer-run.md`). Adoption still needs 3/3
+      through a real approval, which the diagnostic does not mint.
 
 **4. Visual layer, receipts and interruption**
 - [ ] Rail mode selector: Ideate / Plan / Teach / Act

@@ -235,6 +235,19 @@ COM calls, UIA selectors, coordinates, keystrokes, verification rules or
 capabilities absent from the active signed registry. Its exact bytes are
 hashed and bound to any proposal made from it.
 
+A `uia_pattern` operation is verified from LIVE state, never from a saved
+artifact. The artifact verifier reads a file and a UIA effect reaches no file
+until someone saves, so a plugin declaring a UIA backend must also ship a
+separately signed read-only `live_verifier`; bundle verification refuses
+either half of that pairing alone, exactly as it does for `uia_entrypoint`.
+The live verifier must answer a postcondition naming a CHANGE against the
+reading taken before the cue -- a state such as `slide.exists` is satisfied by
+a node that did nothing. The comparison stays in signed plugin code; core
+passes the baseline through and never interprets it. `baseline` and
+`postconditions` are sent only to a live verifier, because an artifact
+verifier validates its request fields exactly. A live verifier may never call
+an effect API, and that prohibition is AST-scanned.
+
 Act's generic UIA backend is one canonical adapter source
 (`plugins/shared/uia_adapter.py`) that each plugin copies into its own payload
 and signs as its own adapter (D108). Copies are byte-identical, so one review

@@ -287,6 +287,7 @@ run.main()
 | `ghostcursor/overlay/cue.py` | pure Act cue layout: glyph outline tipped at the acted point, trust colour, callout placement clear of the control it names |
 | `ghostcursor/pointer_path.py` | pure pointer geometry and timing: eased traversal frames, settle, poll points, all derived from a measured paint cost |
 | `ghostcursor/act_presenter.py` | walks one cue on an injected clock and returns its receipts; a completed cue stays up for the dispatch, an aborted one clears and completes nothing |
+| `plugins/sources/powerpoint/payload/ghostcursor/adapter/powerpoint_live_verifier.py` | signed read-only LIVE-state verifier: reads the running deck's slide count and answers a postcondition naming a CHANGE against the pre-cue baseline; AST-scanned to prove it cannot act |
 | `ghostcursor/selectors.py` | loads the signed selector an operation names and proves its digest; an action selector must be `exactly_one` and agree with the operation's control type |
 | `ghostcursor/act_uia_session.py` | composes one UIA node's session: verifier reading as `semantic`, adapter read-only read as identity/rectangle, overlay as the cue |
 | `ghostcursor/act_overlay.py` | seam binding the presenter to a real HWND and the run's Stop; supplies `present`/`on_state` to `UiaNodeSession`, recolours a verified pointer (D112), pumps messages inside the Stop poll |
