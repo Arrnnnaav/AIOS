@@ -76,7 +76,7 @@ configuration as run 2 after the fix and reaches `verifying`.
 
 ### 2. There was no live-state verifier — CLOSED, same day
 
-Every run reports `verified: False`, `the declared postcondition was not
+Runs 1-3 all report `verified: False`, `the declared postcondition was not
 observed`. The cause is not the action:
 `plugins/sources/powerpoint/payload/ghostcursor/adapter/powerpoint_verifier.py`
 opens a **saved `.pptx` on disk** and counts slides in the package. It is an
@@ -97,10 +97,10 @@ closed on a verification it genuinely could not perform.
 `adapter_api`, mirroring the `uia_entrypoint` slot D108 added. See the
 "Run 4" section below.
 
-## Not established here
+## Not established by runs 1-3
 
-- That the effect is *correct* — only that a slide count increased. The
-  postcondition remains unverified by any signed verifier.
+- That the effect is *correct* — only that a slide count increased. Run 4
+  below is where a signed verifier confirms the declared postcondition.
 - Anything about repeated or unattended execution.
 - Anything about `_execute_approved_graph`, which this harness bypasses.
 - Any acceptance claim whatsoever.
@@ -148,7 +148,7 @@ relation could not hold:
 | no baseline, as on an observation | refused |
 
 Seven refusals and two verifications, and both verifications are true
-statements about the deck at that moment. The two that matter most are the
+statements about the deck at that moment. The three that matter most are the
 last three refusals: an unanswerable postcondition, an empty postcondition
 list, and a missing baseline all fail closed rather than passing by being
 skipped — which is the shape of a check that looks present in the record and
