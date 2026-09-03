@@ -242,12 +242,13 @@ built but not yet exercised by a caller or a live run.
 - [ ] Stops on drift, refusal, DPI mismatch or worker failure
 - [ ] Runs desktop lanes serially
 
-**6. Transactional output** — CONFIRMED MISSING, with evidence
-- [ ] Same-volume staging; final path absent until fully verified
-- [ ] Atomic publish; failed runs never publish a partial file
-      Measured 3 Sep 2026: every stopped run left a partial deck at its
-      approved output path (36-53KB against ~94KB complete). The adapter
-      saves after every operation, so the file exists from node 1.
+**6. Transactional output** — DONE 3 Sep 2026 (`ghostcursor/act_staging.py`)
+- [x] Same-volume staging; final path absent until fully verified
+- [x] Atomic publish; failed runs never publish a partial file
+- [x] Retained staging files carry an explicit `.incomplete.json` marker
+      Verified live both ways: a Stop at node 45 leaves the approved path
+      absent and a labelled 49437-byte partial in `.staging`; a complete run
+      publishes 94371 bytes atomically with a matching digest.
 
 **7. Measured budgets (Phase E)**
 - [x] Paint cost; derive frame count — `docs/evidence/act-paint-budget.md`

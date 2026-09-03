@@ -65,7 +65,7 @@ Note that `response_s` for a pause is meaningless — it measures request to
 run-return, which for a resumed run is the whole build (272.9 s and 63.7 s).
 It is recorded but is not the measurement.
 
-## A real gap this exposed: stopped runs publish a partial deck
+## A real gap this exposed: stopped runs published a partial deck — FIXED
 
 Every stopped run left a `.pptx` at its approved output path: 36 902, 37 760,
 47 676, 47 742 and 52 919 bytes, against ~94 400 for a complete deck.
@@ -75,14 +75,31 @@ The cause is that the adapter calls `SaveAs` on `create_presentation` and
 grows. **Transactional output — same-volume staging, final path absent until
 fully verified, atomic publish — is ROADMAP item 6 and is not built.**
 
-So the honest summary is: Stop is clean at the executor level and not yet at
-the artifact level. A stopped run leaves a partial deck a person could open
-and mistake for a finished one.
+**Fixed the same day** by `ghostcursor/act_staging.py`. Re-measured with
+staging active, same interrupt at node 45:
 
-This also interacts with "Act never overwrites an existing output artifact":
-because the partial file is at the approved path, a retry to the same path is
-refused. Correct in itself, but it means an unattended campaign must allocate
-a fresh path per attempt rather than reusing one.
+```
+staged        .staging/3bcd21901879-stopped-deck.pptx  (+ .incomplete.json)
+not_published stopped-deck.pptx
+result        stopped, 44 nodes, response 0.157s, started_after []
+on disk       49437 bytes  .staging/3bcd21901879-stopped-deck.pptx
+                395 bytes  .staging/…-stopped-deck.pptx.incomplete.json
+```
+
+**The approved path does not exist.** The partial work is kept, in the
+staging directory, explicitly labelled.
+
+And the success path, with PowerPoint holding the staging file open:
+
+```
+published     good-deck.pptx  sha256 896bdaf16d7cf2b0…
+result        completed, 255 nodes, published_sha256 matches
+on disk       94371 bytes  good-deck.pptx
+```
+
+10 slides, 191 shapes, digest matches the record, marker cleared, no
+`.partial` left behind, and the earlier stopped run's staging file still
+marked incomplete.
 
 ## Not measured here
 
