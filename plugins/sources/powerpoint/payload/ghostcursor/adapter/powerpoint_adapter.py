@@ -368,7 +368,41 @@ class PowerPointSession:
             self.presentation.Save()
         if shown is not None:
             data["shown_slide_index"] = shown
+        region = self._region(p if isinstance(p, dict) else {})
+        if region is not None:
+            data["region"] = region
         return data
+
+    def _region(self, p):
+        """Screen rect of the shape this node just touched, or None.
+
+        PRESENTATION ONLY (D106). No verification reads it, no authorization
+        depends on it, and it is reported after the effect rather than
+        consulted before one. A failure to compute it is silently None: a
+        highlight that cannot be drawn must never fail an authorized effect.
+
+        `PointsToScreenPixelsX/Y` is used rather than assumed to exist --
+        `Application.HWND` and every sibling window handle raise
+        DISP_E_MEMBERNOTFOUND on Office 16.0.20326, so this one was probed on
+        the same build before being relied on.
+        """
+        slide_id, object_id = p.get("slide_id"), p.get("object_id")
+        shape = self.shapes.get((slide_id, object_id)) if object_id else None
+        if shape is None:
+            return None
+        try:
+            window = self.presentation.Windows(1)
+            left = int(window.PointsToScreenPixelsX(shape.Left))
+            top = int(window.PointsToScreenPixelsY(shape.Top))
+            right = int(window.PointsToScreenPixelsX(shape.Left + shape.Width))
+            bottom = int(window.PointsToScreenPixelsY(shape.Top + shape.Height))
+        except Exception:
+            return None
+        if right <= left or bottom <= top:
+            # A degenerate rect would be refused by the overlay anyway; not
+            # reporting one keeps the refusal out of the run record.
+            return None
+        return [left, top, right, bottom]
 
     def _follow(self, slide_id):
         """Bring the slide this node works on into view. Presentation only.

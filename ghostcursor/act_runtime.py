@@ -99,6 +99,33 @@ class ActEvent:
     total: int
     detail: str
     at_s: float
+    #: Screen rect of the document region this node changed, or None.
+    #: PRESENTATION ONLY (D106) -- it exists so a session surface can show
+    #: where a change landed, and nothing downstream may treat it as
+    #: authority. Typed as four integers rather than an open data bag on
+    #: purpose: a general dict here would be a channel for anything an
+    #: adapter felt like sending, and presentation is all this may carry.
+    region: tuple[int, int, int, int] | None = None
+
+
+
+def _region_of(value) -> "tuple[int, int, int, int] | None":
+    """Four integers, or nothing.
+
+    Validated here rather than trusted, because it arrives from an adapter
+    subprocess. A malformed rect is dropped rather than raised: this is
+    presentation, and a highlight that cannot be drawn must never fail an
+    authorized effect that already happened.
+    """
+
+    if not isinstance(value, (list, tuple)) or len(value) != 4:
+        return None
+    if any(isinstance(part, bool) or not isinstance(part, int) for part in value):
+        return None
+    left, top, right, bottom = value
+    if right <= left or bottom <= top:
+        return None
+    return (left, top, right, bottom)
 
 
 @dataclass(frozen=True)
@@ -379,7 +406,7 @@ def _execute_approved_graph(
     completed: list[str] = []
     started = clock()
 
-    def publish(kind: str, node, ordinal: int, detail: str) -> None:
+    def publish(kind: str, node, ordinal: int, detail: str, region=None) -> None:
         event = ActEvent(
             kind,
             getattr(node, "node_id", None),
@@ -388,6 +415,7 @@ def _execute_approved_graph(
             len(validated.ordered_nodes),
             detail,
             clock() - started,
+            _region_of(region),
         )
         events.append(event)
         if event_sink is not None:
@@ -737,7 +765,13 @@ def _execute_approved_graph(
                     approval.output_path,
                 )
             completed.append(node.node_id)
-            publish("action_completed", node, ordinal, response.detail)
+            publish(
+                "action_completed",
+                node,
+                ordinal,
+                response.detail,
+                region=response.data.get("region"),
+            )
             # The beat that lets the change register. A slide that appears and
             # is immediately replaced reads as a flicker, not as an action.
             # Zero in Quick Build, so this costs that mode nothing.

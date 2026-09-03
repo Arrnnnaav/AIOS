@@ -153,6 +153,7 @@ def run(args) -> int:
             total=event.total,
             detail=event.detail,
             at_s=round(event.at_s, 3),
+            region=list(event.region) if event.region else None,
         )
 
     # Phase A instrumentation.  Absent --diagnostics, nothing is wrapped and
@@ -190,6 +191,9 @@ def run(args) -> int:
     pace = pace_by_name(args.mode)
     controls = ActControls()
     rail = None
+    overlay_hwnd = None
+    overlay_bounds = None
+    overlay_metrics = None
 
     # --- interruption probe ------------------------------------------------
     #
@@ -255,6 +259,15 @@ def run(args) -> int:
 
         rail = act_rail.open_rail()
         _emit("rail_opened", hwnd=rail.hwnd, mode=pace.name)
+        if args.regions:
+            from ghostcursor.overlay import dpi
+            from ghostcursor.overlay import window as overlay_window
+
+            left, top, width, height = dpi.virtual_screen_rect()
+            overlay_bounds = (left, top, left + width, top + height)
+            overlay_hwnd = overlay_window.create_overlay_window()
+            overlay_metrics = overlay_window.measure_label(overlay_hwnd, "Adding text")
+            _emit("regions_shown", hwnd=overlay_hwnd)
         published = event_sink
 
         def event_sink(event):  # noqa: F811 - deliberately wraps the recorder
@@ -264,6 +277,18 @@ def run(args) -> int:
                 published(event)
             rail.on_event(event)
             rail.poll(controls)
+            if overlay_hwnd is not None and event.region is not None:
+                # The other half of what an object-model node shows (D109):
+                # the region genuinely changing, with a label and NO cursor,
+                # because nothing was clicked.
+                scene = act_rail.region_scene(
+                    event.region,
+                    (event.operation_id or "").rsplit(".", 1)[-1].replace("_", " "),
+                    overlay_metrics,
+                    bounds=overlay_bounds,
+                )
+                if scene is not None:
+                    overlay_window.set_cue(overlay_hwnd, scene)
 
     started_events = []
     _started_sink = event_sink
@@ -290,6 +315,11 @@ def run(args) -> int:
         )
     finally:
         finished = time.monotonic()
+        if overlay_hwnd is not None:
+            from ghostcursor.overlay import window as overlay_window
+
+            overlay_window.clear_cue(overlay_hwnd)
+            overlay_window.destroy_overlay_window(overlay_hwnd)
         if rail is not None:
             from ghostcursor import act_rail
 
@@ -427,6 +457,12 @@ def main() -> int:
         default="quick",
         help="quick runs at the executor's own speed; watch paces each "
         "node so a person can follow it, staying stoppable throughout",
+    )
+    parser.add_argument(
+        "--regions",
+        action="store_true",
+        help="highlight the document region each node changes, with a "
+        "label and no cursor (requires --rail)",
     )
     parser.add_argument(
         "--rail",

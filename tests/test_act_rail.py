@@ -359,3 +359,116 @@ def test_no_status_the_rail_can_show_overflows_the_compact_rail():
     assert len(paused) <= 22
     assert module._shorten("x" * 100) == "x" * 39 + "…"
 
+
+# --- the region a node changed, drawn without a cursor --------------------
+
+
+def _metrics():
+    from ghostcursor.overlay.cue import LabelMetrics
+
+    return LabelMetrics(char_width=8, line_height=16)
+
+
+def test_a_changed_region_is_drawn_with_no_pointer():
+    """D109: an object-model node clicks nothing, so a cursor over the region
+    would show an action where it did not happen. The ring and the label say
+    where a change landed, which is what the rule prescribes instead."""
+
+    from ghostcursor.act_rail import region_scene
+
+    scene = region_scene(
+        (581, 310, 1086, 331), "Adding: headline", _metrics(), bounds=(0, 0, 1920, 1080)
+    )
+
+    assert scene is not None
+    assert scene.pointer is None
+    assert scene.target == (581, 310, 1086, 331)
+    assert scene.label == "Adding: headline"
+
+
+def test_the_region_label_is_placed_clear_of_the_region():
+    from ghostcursor.act_rail import region_scene
+
+    scene = region_scene(
+        (581, 310, 1086, 331), "Adding: headline", _metrics(), bounds=(0, 0, 1920, 1080)
+    )
+    left, top, right, bottom = scene.label_rect
+
+    assert not (left < 1086 and 581 < right and top < 331 and 310 < bottom)
+
+
+def test_a_changed_region_is_shown_in_the_artifact_trust_class():
+    """An object-model effect is verified by reading the saved file, which is
+    TrustClass.ARTIFACT. Showing it in the UIA class would claim live-state
+    evidence nothing gathered."""
+
+    from ghostcursor.act_protocol import TrustClass
+    from ghostcursor.act_rail import region_scene
+
+    scene = region_scene(
+        (10, 10, 100, 50), "Adding", _metrics(), bounds=(0, 0, 1920, 1080)
+    )
+
+    assert scene.trust is TrustClass.ARTIFACT
+
+
+@pytest.mark.parametrize(
+    "region",
+    [
+        None,
+        (1, 2, 3),
+        (10, 10, 10, 50),
+        "10,10,100,50",
+        (1.0, 2, 3, 4),
+        # These two do NOT raise CueLayoutError: an int is not iterable
+        # (TypeError) and an empty tuple has no [0] (IndexError). Without
+        # them the wider catch was defensive code no test reached, and
+        # narrowing it to CueLayoutError alone changed nothing visible.
+        5,
+        (),
+    ],
+)
+def test_an_unusable_region_is_not_drawn_rather_than_raising(region):
+    """A highlight is presentation (D106). It must never fail a node that
+    already acted, so an unusable rect is simply not shown."""
+
+    from ghostcursor.act_rail import region_scene
+
+    assert region_scene(region, "Adding", _metrics(), bounds=(0, 0, 1920, 1080)) is None
+
+
+def test_an_event_carries_the_region_as_four_integers_or_nothing():
+    """Typed rather than an open data bag: a general dict on the event would
+    be a channel for anything an adapter felt like sending, and presentation
+    is all this may carry."""
+
+    from ghostcursor.act_runtime import ActEvent
+
+    fields = ActEvent.__dataclass_fields__
+
+    assert "region" in fields
+    assert "data" not in fields
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        ([1, 2, 3, 4], (1, 2, 3, 4)),
+        ((1, 2, 3, 4), (1, 2, 3, 4)),
+        ([1, 2, 3], None),
+        ([1, 2, 3, 4, 5], None),
+        ([True, 2, 3, 4], None),
+        ([1.0, 2, 3, 4], None),
+        ([5, 2, 3, 4], None),
+        ("1,2,3,4", None),
+        (None, None),
+    ],
+)
+def test_a_region_from_the_adapter_is_validated_not_trusted(value, expected):
+    """It arrives from a subprocess. A malformed rect is dropped rather than
+    raised -- raising would fail an effect that already happened."""
+
+    from ghostcursor.act_runtime import _region_of
+
+    assert _region_of(value) == expected
+

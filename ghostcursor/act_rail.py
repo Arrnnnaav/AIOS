@@ -173,3 +173,47 @@ def rail_pump(session: RailSession, controls) -> Callable[[], bool]:
 
 
 __all__ = ["RailSession", "close_rail", "open_rail", "rail_pump"]
+
+
+# --- the region a node changed --------------------------------------------
+#
+# The other half of what an object-model node shows. D109 says such a node
+# draws no pointer -- nothing is clicked, so a cursor would show an action
+# where it did not happen -- and shows instead "the rail step, a label, and
+# the document region genuinely changing". The rail is the step; this is the
+# region and the label.
+#
+# `CueScene` with `pointer=None` already draws a ring and a callout and no
+# cursor glyph, so nothing new is rendered here. What is new is that the rect
+# comes from the application's own geometry rather than from anything guessed.
+
+
+def region_scene(region, label, metrics, *, bounds):
+    """A cue for a region that changed, with no pointer.
+
+    Returns None when there is nothing honest to draw. A region highlight is
+    presentation (D106): it must never fail a node that already acted, so an
+    unusable rect is simply not shown.
+    """
+
+    from ghostcursor.act_protocol import TrustClass
+    from ghostcursor.overlay.cue import CueLayoutError, CueScene, label_box
+
+    if region is None:
+        return None
+    try:
+        rect = tuple(region)
+        box = label_box(
+            (rect[0], rect[1]), label, metrics, bounds=bounds, avoid=rect
+        )
+        return CueScene(
+            pointer=None,
+            target=rect,
+            label=label,
+            trust=TrustClass.ARTIFACT,
+            final=True,
+            label_rect=box,
+        )
+    except (CueLayoutError, TypeError, IndexError):
+        return None
+
