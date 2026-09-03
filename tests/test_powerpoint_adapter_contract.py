@@ -760,3 +760,104 @@ def test_a_window_that_cannot_convert_reports_no_region(monkeypatch):
 
     assert adapter._region({"slide_id": "s1", "object_id": "o1"}) is None
 
+
+# --- a rejected call is retried; nothing else is --------------------------
+
+
+def _retry_adapter():
+    import importlib.util
+    from pathlib import Path as _Path
+
+    spec = importlib.util.spec_from_file_location(
+        "_ppt_adapter_retry",
+        _Path(__file__).resolve().parents[1]
+        / "plugins/sources/powerpoint/payload/ghostcursor/adapter/powerpoint_adapter.py",
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.PowerPointSession.__new__(module.PowerPointSession)
+
+
+class _Rejected(Exception):
+    """Shaped like a com_error: the HRESULT is args[0]."""
+
+    def __init__(self, code):
+        super().__init__(code, "Call was rejected by callee.", None, None)
+
+
+def test_a_rejected_call_is_retried_until_it_succeeds(monkeypatch):
+    """RPC_E_CALL_REJECTED means the application REFUSED the call, so it did
+    not happen and repeating it cannot double an effect."""
+
+    monkeypatch.setattr("time.sleep", lambda _s: None)
+    adapter = _retry_adapter()
+    attempts = {"n": 0}
+
+    def flaky():
+        attempts["n"] += 1
+        if attempts["n"] < 3:
+            raise _Rejected(-2147418111)
+        return "done"
+
+    assert adapter._retrying(flaky) == "done"
+    assert attempts["n"] == 3
+
+
+@pytest.mark.parametrize("code", [-2147418111, -2147417846])
+def test_both_rejection_codes_are_retried(monkeypatch, code):
+    monkeypatch.setattr("time.sleep", lambda _s: None)
+    adapter = _retry_adapter()
+    attempts = {"n": 0}
+
+    def flaky():
+        attempts["n"] += 1
+        if attempts["n"] < 2:
+            raise _Rejected(code)
+        return "ok"
+
+    assert adapter._retrying(flaky) == "ok"
+
+
+def test_any_other_com_failure_is_raised_immediately(monkeypatch):
+    """A generic retry would be dangerous: most COM failures leave the
+    call's effect UNDEFINED, so repeating one could double an effect. Only a
+    call that was rejected is known not to have happened."""
+
+    monkeypatch.setattr("time.sleep", lambda _s: None)
+    adapter = _retry_adapter()
+    attempts = {"n": 0}
+
+    def failing():
+        attempts["n"] += 1
+        raise _Rejected(-2147352567)  # DISP_E_EXCEPTION: it may have run
+
+    with pytest.raises(Exception):
+        adapter._retrying(failing)
+    assert attempts["n"] == 1, "a call that may have run must not be repeated"
+
+
+def test_the_retry_is_bounded(monkeypatch):
+    """A permanently busy application must fail the run rather than hang
+    it."""
+
+    monkeypatch.setattr("time.sleep", lambda _s: None)
+    adapter = _retry_adapter()
+    attempts = {"n": 0}
+
+    def always_rejected():
+        attempts["n"] += 1
+        raise _Rejected(-2147418111)
+
+    with pytest.raises(Exception):
+        adapter._retrying(always_rejected)
+    assert attempts["n"] <= 6
+
+
+def test_a_successful_call_is_made_once(monkeypatch):
+    adapter = _retry_adapter()
+    attempts = {"n": 0}
+
+    adapter._retrying(lambda: attempts.__setitem__("n", attempts["n"] + 1))
+
+    assert attempts["n"] == 1
+

@@ -355,6 +355,36 @@ class PowerPointSession:
                 "PowerPoint must be the single approved process; found " + repr(live)
             )
 
+    #: HRESULTs that mean the application REJECTED the call rather than
+    #: running it. Retrying is safe for exactly these two and for nothing
+    #: else: a call that was rejected did not happen, so repeating it cannot
+    #: double an effect. A generic "retry on com_error" would be dangerous,
+    #: because most COM failures leave the call's effect undefined.
+    _REJECTED = (-2147418111, -2147417846)  # RPC_E_CALL_REJECTED, RETRYLATER
+
+    def _retrying(self, call):
+        """Run one COM call, waiting out a busy application.
+
+        PowerPoint rejects calls while it is mid-operation -- closing a
+        presentation, showing a transient dialog, finishing a save. Measured
+        4 September 2026: a 255-node build failed at a different node on
+        roughly half its attempts with RPC_E_CALL_REJECTED, and the same
+        bundle passed on the others. Nothing about the plan was wrong; the
+        application was briefly unavailable.
+        """
+        import time as _time
+
+        delay = 0.15
+        for attempt in range(6):
+            try:
+                return call()
+            except Exception as exc:  # noqa: BLE001 - re-raised below
+                code = getattr(exc, "args", (None,))[0]
+                if code not in self._REJECTED or attempt == 5:
+                    raise
+                _time.sleep(delay)
+                delay = min(delay * 2, 2.0)
+
     def execute(self, operation_id, p):
         method = getattr(self, "do_" + operation_id.replace(".", "_"), None)
         if method is None: raise Refusal("operation is not implemented")
@@ -364,11 +394,11 @@ class PowerPointSession:
         # to. A slide this node is about to CREATE is not known yet, which is
         # why the same call is made again afterwards.
         shown = self._follow(slide_id)
-        data = method(p) or {}
+        data = self._retrying(lambda: method(p)) or {}
         if shown is None:
             shown = self._follow(slide_id)
         if self.presentation is not None and operation_id != "powerpoint.inspect_presentation":
-            self.presentation.Save()
+            self._retrying(self.presentation.Save)
         if shown is not None:
             data["shown_slide_index"] = shown
         region = self._region(p if isinstance(p, dict) else {})
