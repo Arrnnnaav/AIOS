@@ -164,6 +164,32 @@ def load_brief(path: Path) -> Brief:
     )
 
 
+def bind_brief(brief: Brief) -> str:
+    """Confirm the brief on disk is still the one being bound, and return it.
+
+    A `Brief` is an ordinary frozen value, so its `sha256` field is only as
+    trustworthy as whoever built it. Re-reading the source at bind time is
+    what makes the digest a fact rather than a claim.
+
+    It also catches the case this is really for: a conversation that was
+    APPENDED TO between being read and being proposed from. The brief is a
+    living file — that is the whole point of it — so the window between load
+    and proposal is real, and a proposal binding a digest that no longer
+    describes the file would be bound to nothing.
+    """
+
+    if not isinstance(brief, Brief):
+        raise BriefError("only a Brief can be bound to a proposal")
+    current = load_brief(brief.source)
+    if current.sha256 != brief.sha256:
+        raise BriefError(
+            f"the brief at {brief.source} changed after it was read "
+            f"({brief.sha256} -> {current.sha256}); a proposal cannot bind a "
+            "digest that no longer describes the file"
+        )
+    return current.sha256
+
+
 def parse_turns(text: str) -> tuple[Turn, ...]:
     """The turns in a brief, in order.
 
@@ -202,6 +228,7 @@ __all__ = [
     "BriefError",
     "Turn",
     "append_turn",
+    "bind_brief",
     "brief_path",
     "load_brief",
     "parse_turns",

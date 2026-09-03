@@ -17,6 +17,7 @@ import pytest
 
 from ghostcursor.brief import (
     MAX_BRIEF_BYTES,
+    bind_brief,
     MAX_TURN_BYTES,
     SPEAKERS,
     Brief,
@@ -293,3 +294,66 @@ def test_prose_before_the_first_heading_is_not_attributed_to_anyone():
 
     assert len(turns) == 1
     assert turns[0].text == "Ten slides."
+
+
+# --- binding a brief to a proposal ----------------------------------------
+
+
+def test_binding_returns_the_digest_of_the_brief_on_disk(root):
+    brief = load_brief(append_turn(root, "deck", "user", "Ten slides."))
+
+    assert bind_brief(brief) == brief.sha256
+
+
+def test_a_brief_appended_to_after_being_read_cannot_be_bound(root):
+    """The case this exists for. A brief is a LIVING file — that is the whole
+    point of it — so the window between reading it and proposing from it is
+    real. A proposal binding a digest that no longer describes the file would
+    be bound to nothing."""
+
+    brief = load_brief(append_turn(root, "deck", "user", "Ten slides."))
+    append_turn(root, "deck", "assistant", "Which audience?")
+
+    with pytest.raises(BriefError, match="changed after it was read"):
+        bind_brief(brief)
+
+
+def test_a_brief_claiming_a_digest_it_does_not_have_cannot_be_bound(root):
+    """`Brief` is an ordinary frozen value, so its sha256 field is only as
+    trustworthy as whoever built it. Re-reading the source is what makes the
+    digest a fact rather than a claim."""
+
+    real = load_brief(append_turn(root, "deck", "user", "Ten slides."))
+    forged = Brief(
+        source=real.source, text=real.text, sha256="f" * 64, turns=real.turns
+    )
+
+    with pytest.raises(BriefError, match="changed after it was read"):
+        bind_brief(forged)
+
+
+def test_a_brief_whose_file_vanished_cannot_be_bound(root):
+    brief = load_brief(append_turn(root, "deck", "user", "Ten slides."))
+    brief.source.unlink()
+
+    with pytest.raises(BriefError, match="no brief at"):
+        bind_brief(brief)
+
+
+@pytest.mark.parametrize("value", [None, "a" * 64, 7, object()])
+def test_only_a_brief_can_be_bound(value):
+    with pytest.raises(BriefError, match="only a Brief"):
+        bind_brief(value)
+
+
+def test_a_proposal_records_whether_it_had_a_brief_at_all():
+    """None is meaningfully different from a digest, and is not a default
+    that hides a missing brief."""
+
+    from ghostcursor.task_planner import TaskGraphProposal
+
+    fields = TaskGraphProposal.__dataclass_fields__
+
+    assert "brief_sha256" in fields
+    assert fields["brief_sha256"].default is None
+

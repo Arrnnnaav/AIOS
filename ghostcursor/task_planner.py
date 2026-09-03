@@ -50,6 +50,13 @@ class TaskGraphProposal:
     summary: str
     generation: GenerateResponse
     steps: tuple[TaskPlanStep, ...]
+    #: Digest of the brief this proposal was made from, or None if it was
+    #: made from a bare goal. Bound here so a proposal can never be separated
+    #: from the conversation that produced it (D109-D111, D113): the brief is
+    #: planning context, and "which context" has to be answerable later.
+    #: None is meaningfully different from a digest and is not a default that
+    #: hides a missing brief.
+    brief_sha256: str | None = None
 
 
 def task_plan_steps(
@@ -255,6 +262,7 @@ def infer_task_graph(
     registry: CapabilityRegistry,
     *,
     initial_facts: tuple[str, ...] = (),
+    brief=None,
     endpoint: str = "http://127.0.0.1:11434",
     model: str = DEFAULT_MODEL,
     timeout: float = 20.0,
@@ -267,6 +275,19 @@ def infer_task_graph(
     # the advisory prompt. The model is not a validator or a recovery path.
     initial_facts = validate_initial_facts(initial_facts)
     capability_registry_sha256(registry)
+    # Bound BEFORE the model is contacted. Re-reading the source here is what
+    # makes the digest a fact rather than a claim, and it catches a brief
+    # appended to between being read and being proposed from.
+    brief_sha256 = None
+    brief_context = ""
+    if brief is not None:
+        from ghostcursor.brief import bind_brief
+
+        brief_sha256 = bind_brief(brief)
+        # Context, never authority. The model may decide from this what is
+        # wanted; it may not take a capability, selector or coordinate from
+        # it, and the schema it answers under admits none of those anyway.
+        brief_context = f"Conversation so far:\n{brief.text.strip()}\n"
     prompt = (
         "Decompose the user's goal into a bounded dependency graph using only the "
         "registered capability IDs below. Do not invent capabilities, UI actions, "
@@ -275,6 +296,7 @@ def infer_task_graph(
         "an initial fact or a predecessor node.\n"
         f"Initial facts: {json.dumps(list(initial_facts))}\n"
         f"Capabilities: {_capability_prompt(registry)}\n"
+        f"{brief_context}"
         f"Goal: {goal.strip()}"
     )
     generation = generate_structured(
@@ -293,6 +315,7 @@ def infer_task_graph(
         summary,
         generation,
         task_plan_steps(validated, registry),
+        brief_sha256,
     )
 
 
@@ -301,6 +324,7 @@ def propose_task_graph(
     plugin_id: str,
     *,
     initial_facts: tuple[str, ...] = (),
+    brief=None,
     endpoint: str = "http://127.0.0.1:11434",
     model: str = DEFAULT_MODEL,
     timeout: float = 20.0,
@@ -317,6 +341,7 @@ def propose_task_graph(
         goal,
         registry,
         initial_facts=initial_facts,
+        brief=brief,
         endpoint=endpoint,
         model=model,
         timeout=timeout,
