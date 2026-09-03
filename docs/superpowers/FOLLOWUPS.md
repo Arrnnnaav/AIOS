@@ -609,3 +609,50 @@ there shows seven distinct ways it refuses.
 
 The adoption bar is unchanged and still unmet: acceptance needs 3/3 through a
 real approval, which this harness does not mint.
+
+## The UIA vertical is not wired into production
+
+**Trigger:** before any `uia_pattern` operation is adopted, or any claim is
+made that production verifies a UIA effect.
+
+Found by the D032 review of 4 September 2026 (F10, F11, F12).
+
+`bundle.py` validates and requires a `live_verifier`, then `AdapterDescriptor`
+(`ghostcursor/plugins/store.py`) carries no field for it and drops it.
+`execute_approved_graph` always constructs `VerifierHost(descriptor)` on the
+ARTIFACT verifier — the one whose own docstring says it can only decline a
+UIA effect. `uia_entrypoint` has the same problem: outside
+`devtools/act_live_node.py`, nothing consumes either.
+
+This is latent rather than dangerous only because `act_cli` never passes a
+`uia_session`, so production refuses every UIA node before reaching a
+verifier. That is a refusal by accident, not by design.
+
+What this needs:
+
+- `live_verifier` on `AdapterDescriptor`, resolved from the manifest the same
+  way `verifier` and `uia_entrypoint` are.
+- `execute_approved_graph` routing by the operation's signed `backend` — the
+  artifact verifier for `object_model`, the live verifier for `uia_pattern`.
+  `AdapterDescriptor.uia_entrypoint`'s comment already claims core does this.
+- The live verifier's `main()` validates its request field set at module
+  level, BEFORE its `try:`. A frame missing `baseline`/`postconditions` exits
+  non-zero, and the resulting `AdapterProtocolError` escapes
+  `_execute_approved_graph` rather than becoming an `ActRunResult`.
+- Staging wired into `act_cli`, which currently passes the caller's real
+  output path straight to the approval (F1).
+
+Until then `CLAUDE.md`'s live-state paragraph states a requirement, not the
+wiring, and says so.
+
+## One unexplained test failure
+
+`tests/test_run.py::test_run_tour_creates_overlay_only_after_live_revalidation`
+failed once on 4 September 2026 during a full hermetic lane, and passed on
+the two lanes either side of it plus in isolation. Test order is
+deterministic — `pytest-randomly` is not installed — so the same order both
+failed and passed.
+
+The failure message was not captured. Recording it as **unexplained** rather
+than as a flake: this project has twice misattributed a real failure to
+flakiness. If it recurs, capture the full output before rerunning.
