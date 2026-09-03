@@ -100,7 +100,14 @@ def execute_node(
     request: PresentationRequest,
     policy: ReceiptPolicy,
     observe: Callable[[str], Observation],
-    present: Callable[[PresentationRequest, Observation | None], Sequence[Receipt]],
+    present: Callable[
+        [
+            PresentationRequest,
+            "Observation | None",
+            Callable[[Receipt, float], None],
+        ],
+        Sequence[Receipt],
+    ],
     authorize: Callable[[Mapping[str, Any]], Any],
     dispatch: Callable[[Any, Observation | None], Any],
     verify: Callable[[Any], bool],
@@ -157,8 +164,14 @@ def execute_node(
         )
     wait = PresentationWait(request, policy, started_ms=clock())
     try:
-        for receipt in present(request, baseline):
-            wait.accept(receipt, now_ms=clock())
+        # The wait is fed AS EACH RECEIPT HAPPENS, not from the returned
+        # sequence. `present` only returns once the whole presentation is
+        # over, so timestamping its results afterwards judged a first paint
+        # that arrived promptly against the moment the settle ended -- a
+        # 900ms dwell passed a 2000ms first-paint deadline and a 4000ms dwell
+        # did not, though both painted immediately. The deadlines existed and
+        # measured the wrong interval.
+        present(request, baseline, lambda receipt, at_ms: wait.accept(receipt, now_ms=at_ms))
     except ProtocolError as exc:
         raise NodeRefused(exc.code or RefusalCode.RENDER_TIMEOUT, str(exc)) from None
     if not wait.may_execute:

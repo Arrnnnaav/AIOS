@@ -179,7 +179,20 @@ def overlay_presenter(
         if on_state is not None:
             on_state(node, lifecycle)
 
-    def present(request: PresentationRequest, observation: object) -> Sequence[Receipt]:
+    def present(
+        request: PresentationRequest,
+        observation: object,
+        sink: Callable[[Receipt, float], None] | None = None,
+    ) -> Sequence[Receipt]:
+        def report(receipt: Receipt, at_ms: float) -> None:
+            # Both, in this order. The caller's wait must see the receipt at
+            # the moment it happened; the run's own recorder is secondary and
+            # must not be able to suppress it.
+            if sink is not None:
+                sink(receipt, at_ms)
+            if on_receipt is not None:
+                on_receipt(receipt, at_ms)
+
         rectangle = getattr(observation, "rectangle", None)
         if rectangle is None:
             # No geometry was observed, so there is nothing honest to point
@@ -192,7 +205,7 @@ def overlay_presenter(
                 paint=paint,
                 clock=clock,
                 poll=poll,
-                on_receipt=on_receipt,
+                on_receipt=report,
             )
 
         label = label_for(observation)
@@ -224,7 +237,7 @@ def overlay_presenter(
                 paint=paint,
                 clock=clock,
                 poll=poll,
-                on_receipt=on_receipt,
+                on_receipt=report,
             )
         except PresentationAborted as aborted:
             # The user stopped it. The partial receipts are RETURNED rather

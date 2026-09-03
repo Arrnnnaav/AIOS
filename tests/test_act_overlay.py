@@ -397,3 +397,79 @@ def test_the_frame_budget_has_no_default():
 
     with pytest.raises(TypeError):
         CueBudget(traversal_ms=400, settle_ms=250)
+
+
+# --- the deadlines measure the interval they name -------------------------
+
+
+def test_a_long_dwell_does_not_time_out_a_prompt_first_paint(screen, clock):
+    """The defect a live run found. `present` only returns once the whole cue
+    is over, so a caller timestamping its RESULTS judged a first paint that
+    happened at 0ms against the moment the settle ended. A 900ms dwell passed
+    a 2000ms first-paint deadline and a 4000ms dwell did not, though both
+    painted immediately -- the deadline existed and measured the wrong
+    interval.
+
+    The sink is what fixes it: receipts are reported as they happen.
+    """
+
+    from ghostcursor.act_protocol import PresentationWait
+
+    policy = ReceiptPolicy(first_paint_deadline_ms=2000, completion_deadline_ms=8000)
+    session = _session(
+        screen,
+        clock,
+        budget=CueBudget(traversal_ms=900, settle_ms=4000, frame_budget_ms=2),
+        policy=policy,
+    )
+    wait = PresentationWait(_request(), policy, started_ms=0.0)
+
+    session.present(
+        _request(), _observation(), lambda receipt, at: wait.accept(receipt, now_ms=at)
+    )
+
+    assert wait.may_execute is True
+
+
+def test_a_first_paint_that_really_was_late_still_times_out(screen, clock):
+    """The other half. Feeding receipts live must not make the deadline
+    unenforceable -- only accurate."""
+
+    from ghostcursor.act_protocol import ProtocolError, PresentationWait
+
+    policy = ReceiptPolicy(first_paint_deadline_ms=10, completion_deadline_ms=8000)
+    session = _session(
+        screen,
+        clock,
+        budget=CueBudget(traversal_ms=900, settle_ms=400, frame_budget_ms=2),
+        policy=policy,
+    )
+    wait = PresentationWait(_request(), policy, started_ms=0.0)
+    clock.now = 500.0  # the paint is already 500ms late before it happens
+
+    with pytest.raises(ProtocolError):
+        session.present(
+            _request(),
+            _observation(),
+            lambda receipt, at: wait.accept(receipt, now_ms=at),
+        )
+
+    assert wait.may_execute is False
+
+
+def test_the_runs_own_recorder_still_sees_every_receipt(screen, clock):
+    """The sink is the authority path; `on_receipt` is the record. One must
+    not be able to suppress the other."""
+
+    seen: list[str] = []
+    sunk: list[str] = []
+    session = _session(
+        screen, clock, on_receipt=lambda receipt, _at: seen.append(receipt.kind.value)
+    )
+
+    session.present(
+        _request(), _observation(), lambda receipt, _at: sunk.append(receipt.kind.value)
+    )
+
+    assert seen == sunk == ["geometry_started", "presentation_completed"]
+

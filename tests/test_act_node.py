@@ -72,12 +72,12 @@ def _request(**overrides) -> PresentationRequest:
     return PresentationRequest(**values)
 
 
-def _receipts(request, kinds=None):
+def _receipts(request, kinds=None, sink=None, clock=None):
     # `kinds or default` would treat an empty tuple as absent, which is
     # exactly the no-receipts case one of these tests needs.
     if kinds is None:
         kinds = (ReceiptKind.GEOMETRY_STARTED, ReceiptKind.PRESENTATION_COMPLETED)
-    return [
+    issued = [
         Receipt(
             kind,
             request.session_id,
@@ -88,6 +88,18 @@ def _receipts(request, kinds=None):
         )
         for kind in kinds
     ]
+    if sink is not None:
+        # Reported one at a time, as the real presenter does. Handing the
+        # whole list back and letting the caller timestamp it afterwards is
+        # exactly the defect this argument exists to prevent.
+        #
+        # The times come from the SAME clock `execute_node` is using. A fake
+        # that invented its own numbers reported receipts from before the
+        # wait had started, which the wait correctly rejects as the clock
+        # moving backwards -- proving nothing about the deadlines.
+        for receipt in issued:
+            sink(receipt, clock() if clock is not None else 0.0)
+    return issued
 
 
 def _identity(**overrides):
@@ -134,12 +146,15 @@ def _run(
     request = request or _request()
     calls = {"authorized": [], "dispatched": [], "verified": []}
     seq = list(observations or [_observation(), _observation()])
+    # One clock, shared by the node and the fake presenter. Two clocks would
+    # let receipts be reported from an instant the wait never saw.
+    clock = _Clock()
 
     def observe(mode):
         return seq.pop(0)
 
-    def present(req, baseline):
-        return _receipts(req, receipt_kinds)
+    def present(req, baseline, sink=None):
+        return _receipts(req, receipt_kinds, sink, clock)
 
     def authorize(facts):
         calls["authorized"].append(facts)
@@ -162,7 +177,7 @@ def _run(
         authorize=authorize,
         dispatch=dispatch,
         verify=verify,
-        clock=_Clock(),
+        clock=clock,
         on_state=on_state,
     )
     return outcome, calls
@@ -225,7 +240,9 @@ def test_a_node_whose_cue_was_never_acknowledged_at_all_does_not_dispatch():
 
 
 def test_a_receipt_for_another_request_does_not_authorize_this_node():
-    def present(req, baseline):
+    clock = _Clock()
+
+    def present(req, baseline, sink=None):
         other = PresentationRequest(
             cue_id="other",
             frame_generation=1,
@@ -234,7 +251,7 @@ def test_a_receipt_for_another_request_does_not_authorize_this_node():
             presentation_generation=1,
             session_id="s1",
         )
-        return _receipts(other)
+        return _receipts(other, sink=sink, clock=clock)
 
     with pytest.raises(NodeRefused) as raised:
         execute_node(
@@ -247,7 +264,7 @@ def test_a_receipt_for_another_request_does_not_authorize_this_node():
             authorize=lambda facts: None,
             dispatch=lambda token, confirmed: pytest.fail("must not dispatch"),
             verify=lambda node: True,
-            clock=_Clock(),
+            clock=clock,
         )
 
     assert raised.value.code is RefusalCode.RECEIPT_UNBOUND
@@ -331,6 +348,7 @@ def test_an_observation_without_identity_refuses(which):
 
 def test_the_token_is_minted_only_after_the_identity_check_passes():
     minted: list = []
+    clock = _Clock()
 
     def authorize(facts):
         minted.append(facts)
@@ -347,11 +365,13 @@ def test_the_token_is_minted_only_after_the_identity_check_passes():
                     runtime_id=(1,) if mode == "confirm_before" else (2,)
                 )
             ),
-            present=lambda req, baseline: _receipts(req),
+            present=lambda req, baseline, sink=None: _receipts(
+                req, sink=sink, clock=clock
+            ),
             authorize=authorize,
             dispatch=lambda token, confirmed: pytest.fail("must not dispatch"),
             verify=lambda node: True,
-            clock=_Clock(),
+            clock=clock,
         )
 
     assert minted == []

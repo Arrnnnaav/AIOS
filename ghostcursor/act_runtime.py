@@ -163,7 +163,10 @@ class UiaNodeSession:
     #: node: once before the cue and once after it.
     observe: Callable[[object, str], Observation]
     #: Shows the cue and returns the overlay's receipts for it.
-    present: Callable[[PresentationRequest, Observation | None], Sequence[Receipt]]
+    present: Callable[
+        [PresentationRequest, "Observation | None", Callable[[Receipt, float], None]],
+        Sequence[Receipt],
+    ]
     #: Dispatches the pattern on the control that was just compared.
     dispatch: Callable[[object, object, Observation], None]
     #: NOTE: this type deliberately has no `run` method. An earlier version

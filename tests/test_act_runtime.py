@@ -522,11 +522,14 @@ def _fake_session(*, receipts=True, record=None):
     record.setdefault("dispatched", [])
     record.setdefault("presented", [])
 
-    def present(request: PresentationRequest, baseline):
+    ticks = iter(range(1, 10_000))
+    clock = lambda: float(next(ticks))  # noqa: E731 - one shared clock
+
+    def present(request: PresentationRequest, baseline, sink=None):
         record["presented"].append(request)
         if not receipts:
             return []
-        return [
+        issued = [
             Receipt(
                 kind,
                 request.session_id,
@@ -540,8 +543,13 @@ def _fake_session(*, receipts=True, record=None):
                 ReceiptKind.PRESENTATION_COMPLETED,
             )
         ]
-
-    ticks = iter(range(1, 10_000))
+        if sink is not None:
+            # As each happens, on the same clock the node reads. A fake that
+            # returned the list and let the caller timestamp it afterwards
+            # would reproduce the very defect this argument prevents.
+            for receipt in issued:
+                sink(receipt, clock())
+        return issued
 
     return UiaNodeSession(
         observe=lambda node, mode: Observation(
@@ -554,7 +562,7 @@ def _fake_session(*, receipts=True, record=None):
         dispatch=lambda node, token, confirmed: record["dispatched"].append(node.node_id),
         policy=ReceiptPolicy(first_paint_deadline_ms=500, completion_deadline_ms=800),
         session_id="s1",
-        clock=lambda: float(next(ticks)),
+        clock=clock,
     ), record
 
 
