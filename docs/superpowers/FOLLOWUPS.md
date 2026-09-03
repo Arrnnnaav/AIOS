@@ -570,3 +570,36 @@ postcondition must use the set difference, and the Teach recipe should be
 migrated to the same rule in the same slice so the two do not disagree about
 what "a worksheet was added" means. Changing the recipe changes signed plugin
 bytes and needs fresh acceptance runs (D032, D070).
+
+## A live-state verifier for `uia_pattern` operations
+
+**Trigger:** before any `uia_pattern` operation can be verified, adopted, or
+counted toward acceptance evidence.
+
+The signed PowerPoint verifier reads a saved `.pptx` and counts slides in the
+package. That is the right shape for an `object_model` operation whose effect
+is a file, and it is the wrong shape for a `uia_pattern` operation, whose
+effect is live application state that no file reflects until someone saves.
+
+Measured on 3 September 2026 (`docs/evidence/act-live-pointer-run.md`): the
+`New Slide` Invoke landed — `Slide 1 of 1` became `Slide 3 of 3` across two
+dispatches — and every run still reported `verified: False`. The system failed
+closed on a verification it genuinely could not perform, which is correct
+behaviour and not a usable end state.
+
+What this needs:
+
+- A separately signed, read-only live-state verifier that reads the running
+  application rather than a package. For PowerPoint the reading already used
+  by hand is the status bar's `View Indicator Slide N of M` through UIA.
+- A manifest slot for it. `adapter_api` declares one `verifier`; this needs a
+  second, mirroring the `uia_entrypoint` slot D108 added, with the same bundle
+  validation and the same prohibition on it calling any effect API.
+- The postcondition to be expressible as a comparison rather than a bare
+  `slide.exists`, since "a slide exists" is satisfied by a deck that was
+  already non-empty. The before-reading is already taken — `observe_before`
+  and `confirm_before` both call the verifier — so the shape exists; what is
+  missing is the operation declaring what change it expects.
+
+Until this lands, no `uia_pattern` operation may be adopted, and no run of one
+may be presented as acceptance evidence.
