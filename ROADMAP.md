@@ -272,7 +272,8 @@ built but not yet exercised by a caller or a live run.
 - [x] `idea.txt` written as the stand-in Ideate conversation
 - [x] Brief store: append turns, load back, digest the exact bytes
       (`ghostcursor/brief.py`)
-- [ ] Bind a brief's digest to each proposal
+- [x] Bind a brief's digest to each proposal — re-read at bind time,
+      so an appended-to brief refuses rather than binding a stale digest
 - [ ] `ClarificationRequired` vs `PlanProposal` as mutually exclusive outputs
 - [ ] Keep asking until required fields resolve
 - [ ] Pass only the active plugin's capability catalog to the model
