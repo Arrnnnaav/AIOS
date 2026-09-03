@@ -1,0 +1,297 @@
+"""Runs a counted campaign of Act attempts, and refuses to miscount one.
+
+The 3/3 acceptance policy is a claim about consecutive clean runs, so the
+thing that counts them has to be at least as careful as the thing that runs
+them. What this exists to prevent:
+
+**A probe counted as an attempt.** `act_acceptance` can inject a Stop for
+interruption testing, and stamps such a run `interrupt_probe` instead of
+`result`. This counts `result` records only, and refuses outright if it sees
+an `interrupt_probe` — not because one is invalid, but because its presence
+means the campaign was configured to interrupt itself, which is never what a
+counted campaign wants.
+
+**A reused store or output path.** Each attempt gets its own store root and
+its own output path. Reusing either would let one attempt's state decide the
+next one's outcome, and "three consecutive" would stop meaning three
+independent runs.
+
+**A minimised target failing obscurely.** Measured on 3 September 2026: a
+build refused with `no window matches pack powerpoint` because PowerPoint had
+minimised itself, and `live_windows_for` excludes minimised windows
+deliberately — a hint drawn over a window nobody can see points at nothing.
+That is correct behaviour and a terrible campaign failure, because the
+message names the pack rather than the cause. This restores minimised
+windows explicitly before each attempt and says that it did.
+
+**A campaign that continues past a failure.** The first non-clean attempt
+ends it. Continuing would produce "3 of 5 passed", which is not what the
+policy asks and reads like a pass rate.
+
+Serial only. D025 forbids two desktop/UIA sessions at once, so attempts never
+overlap and the runner does not offer a parallel mode to be tempted by.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import subprocess
+import sys
+import time
+import uuid
+from dataclasses import dataclass, field
+from pathlib import Path
+
+#: Record type that counts. Anything else is not an attempt outcome.
+RESULT_RECORD = "result"
+
+#: Record type that must never be counted, and whose presence ends a campaign.
+PROBE_RECORD = "interrupt_probe"
+
+
+class CampaignError(RuntimeError):
+    """A campaign that must not start, or must not continue."""
+
+
+@dataclass(frozen=True)
+class Attempt:
+    """One run's outcome, as read from its own records."""
+
+    index: int
+    completed: bool
+    code: str
+    nodes: int
+    published_sha256: str | None
+    output_path: str | None
+    seconds: float
+    records: tuple = field(default=())
+
+    @property
+    def clean(self) -> bool:
+        """A clean attempt completed AND published. A run that verified every
+        node but could not publish is not a clean attempt: the artifact the
+        campaign is about does not exist."""
+
+        return self.completed and bool(self.published_sha256)
+
+
+def restore_target_windows(class_name: str) -> tuple[int, ...]:
+    """Bring minimised windows of this class back, and report what was found.
+
+    Returns every visible window handle of the class, minimised ones having
+    been restored. The caller decides whether the count is acceptable —
+    choosing a target is never this function's job (D075).
+    """
+
+    import win32con
+    import win32gui
+
+    found: list[int] = []
+
+    def visit(hwnd, _):
+        if win32gui.GetClassName(hwnd) == class_name and win32gui.IsWindowVisible(hwnd):
+            found.append(hwnd)
+        return True
+
+    win32gui.EnumWindows(visit, None)
+    for hwnd in found:
+        if win32gui.IsIconic(hwnd):
+            win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+    return tuple(found)
+
+
+def read_records(stdout: str) -> tuple[dict, ...]:
+    """Every JSON record a run emitted, in order."""
+
+    records = []
+    for line in stdout.splitlines():
+        if not line.startswith("{"):
+            continue
+        try:
+            records.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    return tuple(records)
+
+
+def attempt_from(index: int, records, seconds: float) -> Attempt:
+    """Read one attempt's outcome, or refuse to read one.
+
+    Refuses rather than defaulting. A run with no result record has an
+    unknown outcome, and an unknown outcome counted as anything at all is
+    how a campaign reports a pass it did not observe.
+    """
+
+    probes = [r for r in records if r.get("type") == PROBE_RECORD]
+    if probes:
+        raise CampaignError(
+            "attempt emitted an interrupt_probe record; a campaign configured "
+            "to interrupt itself cannot count its own attempts"
+        )
+    results = [r for r in records if r.get("type") == RESULT_RECORD]
+    if len(results) != 1:
+        raise CampaignError(
+            f"attempt emitted {len(results)} result records, expected exactly one"
+        )
+    result = results[0]
+    return Attempt(
+        index=index,
+        completed=bool(result.get("completed")),
+        code=str(result.get("code")),
+        nodes=int(result.get("completed_nodes") or 0),
+        published_sha256=result.get("published_sha256"),
+        output_path=result.get("output_path"),
+        seconds=round(seconds, 3),
+        records=records,
+    )
+
+
+def run_campaign(
+    *,
+    attempts: int,
+    build_command,
+    workspace: Path,
+    window_class: str,
+    restore=restore_target_windows,
+    launch=None,
+    settle_s: float = 2.0,
+) -> tuple[Attempt, ...]:
+    """Run attempts serially, stopping at the first that is not clean.
+
+    ``build_command`` is given (index, store_root, output_path) and returns
+    the argv for one attempt. Passing the paths in rather than letting the
+    command choose them is what makes "fresh per attempt" a property of the
+    runner rather than a habit of the caller.
+    """
+
+    if not isinstance(attempts, int) or isinstance(attempts, bool) or attempts < 1:
+        raise CampaignError("a campaign needs at least one attempt")
+    workspace = Path(workspace).resolve()
+    workspace.mkdir(parents=True, exist_ok=True)
+    runner = subprocess.run if launch is None else launch
+
+    completed: list[Attempt] = []
+    for index in range(1, attempts + 1):
+        windows = restore(window_class)
+        if len(windows) != 1:
+            raise CampaignError(
+                f"attempt {index} needs exactly one visible {window_class} window, "
+                f"found {len(windows)}: {list(windows)}"
+            )
+        if settle_s:
+            time.sleep(settle_s)
+
+        token = uuid.uuid4().hex[:10]
+        store = workspace / f"store-{index:02d}-{token}"
+        output = workspace / "out" / f"attempt-{index:02d}-{token}.pptx"
+        output.parent.mkdir(parents=True, exist_ok=True)
+
+        started = time.monotonic()
+        proc = runner(
+            build_command(index, store, output),
+            capture_output=True,
+            text=True,
+            timeout=1800,
+        )
+        seconds = time.monotonic() - started
+
+        attempt = attempt_from(index, read_records(proc.stdout), seconds)
+        completed.append(attempt)
+        if not attempt.clean:
+            raise CampaignError(
+                f"attempt {index} was not clean ({attempt.code}, "
+                f"{attempt.nodes} nodes, published="
+                f"{bool(attempt.published_sha256)}); the campaign ends here "
+                f"rather than reporting a pass rate"
+            )
+    return tuple(completed)
+
+
+def main() -> int:  # pragma: no cover - thin CLI over run_campaign
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--attempts", type=int, default=3)
+    parser.add_argument("--workspace", type=Path, required=True)
+    parser.add_argument("--window-class", default="PPTFrameClass")
+    parser.add_argument("--bundle", type=Path, required=True)
+    parser.add_argument("--bundle-sha256", required=True)
+    parser.add_argument("--public-key", type=Path, required=True)
+    parser.add_argument("--key-id", required=True)
+    parser.add_argument("--plan-id", default="build-investor-deck-v1")
+    parser.add_argument("--plan-sha256", required=True)
+    parser.add_argument("--mode", choices=("quick", "watch"), default="quick")
+    parser.add_argument("--report", type=Path, default=None)
+    arguments = parser.parse_args()
+
+    def build(index, store, output):
+        return [
+            sys.executable,
+            "-m",
+            "ghostcursor.devtools.act_acceptance",
+            "--bundle",
+            str(arguments.bundle.resolve()),
+            "--bundle-sha256",
+            arguments.bundle_sha256,
+            "--public-key",
+            str(arguments.public_key.resolve()),
+            "--key-id",
+            arguments.key_id,
+            "--store-root",
+            str(store),
+            "--owned-root",
+            str(output.parent),
+            "--output",
+            str(output),
+            "--plan-id",
+            arguments.plan_id,
+            "--plan-sha256",
+            arguments.plan_sha256,
+            "--mode",
+            arguments.mode,
+        ]
+
+    try:
+        attempts = run_campaign(
+            attempts=arguments.attempts,
+            build_command=build,
+            workspace=arguments.workspace,
+            window_class=arguments.window_class,
+        )
+    except CampaignError as exc:
+        print(json.dumps({"campaign": "refused", "detail": str(exc)}, sort_keys=True))
+        return 3
+
+    summary = {
+        "attempts": [
+            {
+                "code": a.code,
+                "index": a.index,
+                "nodes": a.nodes,
+                "published_sha256": a.published_sha256,
+                "seconds": a.seconds,
+            }
+            for a in attempts
+        ],
+        "campaign": "clean",
+        "count": len(attempts),
+    }
+    print(json.dumps(summary, indent=2, sort_keys=True))
+    if arguments.report is not None:
+        arguments.report.write_text(
+            json.dumps(summary, indent=2, sort_keys=True), encoding="utf-8"
+        )
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(main())
+
+
+__all__ = [
+    "Attempt",
+    "CampaignError",
+    "attempt_from",
+    "read_records",
+    "restore_target_windows",
+    "run_campaign",
+]
