@@ -7,6 +7,7 @@ import json
 import secrets
 import threading
 import time
+from types import SimpleNamespace
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -801,6 +802,41 @@ def prepare_action_graph(
     return validate_action_graph(graph, registry, initial_facts=initial_facts)
 
 
+
+def choose_verifier(artifact, live, operation):
+    """Which verifier may answer for this operation, and with what.
+
+    Returns `(verifier, baseline, postconditions)`. Module level rather than a
+    closure so it can be called directly: as a closure the only way to reach
+    it was through a subprocess-spawning run, which meant the routing was
+    effectively untested.
+
+    Routing is by the OPERATION's signed backend declaration, never by
+    anything a caller chooses. An object-model effect is a file and is
+    verified by reading it; a UIA effect exists only in the running
+    application and no file reflects it until somebody saves.
+
+    A control-driving operation with no live verifier shipped is REFUSED
+    rather than falling back to the artifact one. That fallback is what made
+    a UIA effect look unverifiable when it was merely being asked the wrong
+    question, and a silent fallback would hide it again.
+
+    An object-model operation gets `None` and `()` so nothing extra is sent
+    to a verifier that validates its request fields exactly -- including the
+    one Phase A's 255/255 was measured against.
+    """
+
+    if getattr(operation, "backend", "object_model") == "object_model":
+        return artifact, None, ()
+    if live is None:
+        raise AdapterProtocolError(
+            f"operation {operation.operation_id!r} declares backend "
+            f"{operation.backend!r} but the plugin ships no live_verifier; "
+            "the artifact verifier cannot answer for a live effect"
+        )
+    return live, {}, tuple(operation.postconditions)
+
+
 def execute_approved_graph(
     validated: ValidatedActionGraph,
     registry: OperationRegistry,
@@ -838,6 +874,28 @@ def execute_approved_graph(
 
     verifier = VerifierHost(descriptor)
 
+    # The LIVE-state verifier, when the plugin ships one. Routing is by the
+    # OPERATION's signed backend declaration, not by anything the caller
+    # chooses: an object-model effect is a file and is verified by reading
+    # it; a UIA effect exists only in the running application and no file
+    # reflects it until somebody saves. Before this, every node was verified
+    # by the artifact verifier, so a UIA effect was checked by the one thing
+    # that can only decline it (D032 review, F10-F12).
+    live_verifier = None
+    if getattr(descriptor, "live_verifier", None) is not None:
+        live_verifier = VerifierHost(
+            SimpleNamespace(
+                plugin_id=descriptor.plugin_id,
+                plugin_version=descriptor.plugin_version,
+                payload_root=descriptor.payload_root,
+                verifier=descriptor.live_verifier,
+                verifier_sha256=descriptor.live_verifier_sha256,
+            )
+        )
+
+    def _verifier_for(operation):
+        return choose_verifier(verifier, live_verifier, operation)
+
     def observe(phase: str, facts: Mapping[str, object]) -> None:
         if verify_observer is None:
             return
@@ -850,8 +908,9 @@ def execute_approved_graph(
         node_id = getattr(node, "node_id", None)
         observe("verify_started", {"node_id": node_id})
         started = time.monotonic()
+        chosen, baseline, postconditions = _verifier_for(operation)
         try:
-            result = verifier.verify(
+            result = chosen.verify(
                 node=node,
                 validation_sha256=validated.validation_sha256,
                 output_path=current_approval.output_path,
@@ -863,6 +922,11 @@ def execute_approved_graph(
                 },
                 timeout_s=min(30.0, max(2.0, operation.timeout_s)),
                 cancel_event=controls.stop_event,
+                **(
+                    {}
+                    if not postconditions
+                    else {"baseline": baseline, "postconditions": postconditions}
+                ),
             )
         except Exception as exc:
             observe(
@@ -918,6 +982,7 @@ __all__ = [
     "ActRunPhase",
     "ActRunResult",
     "ActTarget",
+    "choose_verifier",
     "UiaNodeSession",
     "AuthorizedAction",
     "PlanApproval",

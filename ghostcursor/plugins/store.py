@@ -92,6 +92,13 @@ class AdapterDescriptor:
     #: selects between the two by the OPERATION's signed backend declaration
     #: and never by anything a model produced (D108).
     uia_entrypoint: Path | None = None
+    #: The separately signed read-only LIVE-state verifier, when the plugin
+    #: ships one. Bundle verification already requires it beside a UIA
+    #: backend; without this field it was validated and then dropped, so the
+    #: runtime fell back to the ARTIFACT verifier for a UIA effect — the one
+    #: that can only decline it (D032 review, F10-F12).
+    live_verifier: Path | None = None
+    live_verifier_sha256: str | None = None
     uia_adapter_sha256: str | None = None
 
 
@@ -573,6 +580,14 @@ class PluginStore:
                 uia_adapter_sha256 = hashlib.sha256(
                     uia_entrypoint.read_bytes()
                 ).hexdigest()
+            live_declared = adapter.get("live_verifier")
+            live_verifier = None
+            live_verifier_sha256 = None
+            if live_declared is not None:
+                live_verifier = root / Path(*PurePosixPath(live_declared).parts)
+                live_verifier_sha256 = hashlib.sha256(
+                    live_verifier.read_bytes()
+                ).hexdigest()
             adapters[plugin_id] = AdapterDescriptor(
                 plugin_id=plugin_id,
                 plugin_version=bundle.version,
@@ -586,6 +601,8 @@ class PluginStore:
                 plans=plans,
                 uia_entrypoint=uia_entrypoint,
                 uia_adapter_sha256=uia_adapter_sha256,
+                live_verifier=live_verifier,
+                live_verifier_sha256=live_verifier_sha256,
             )
         return MappingProxyType(adapters)
 

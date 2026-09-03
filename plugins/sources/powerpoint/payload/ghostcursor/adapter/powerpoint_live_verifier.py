@@ -174,37 +174,47 @@ def main():
     if sys.argv[1:] != ["--json"]:
         return 2
     request = json.loads(sys.stdin.readline())
-    _exact(
-        request,
-        {
-            "baseline",
-            "node",
-            "output_path",
-            "plugin_id",
-            "plugin_version",
-            "postconditions",
-            "session_nonce",
-            "target",
-            "type",
-            "validation_sha256",
-            "verifier_sha256",
-        },
-        "verification request",
-    )
-    _exact(
-        request["node"], {"node_id", "operation_id", "parameters"}, "verification node"
-    )
-    own_sha = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
-    if (
-        request["type"] != "verify"
-        or request["plugin_id"] != PLUGIN_ID
-        or request["plugin_version"] != PLUGIN_VERSION
-        or request["verifier_sha256"] != own_sha
-        or _SHA_RE.fullmatch(request["validation_sha256"]) is None
-    ):
-        raise Refusal("verifier authority disagrees")
 
+    # Everything that can refuse is INSIDE the try, the field-set and
+    # authority checks included. They used to run before it, so a frame
+    # missing `baseline` or `postconditions` raised, exited non-zero, and the
+    # host turned that into an AdapterProtocolError that escaped the run
+    # rather than becoming an ActRunResult (D032 review, F12). A verifier
+    # reports a refusal; it does not crash its caller.
+    observed, outcome, detail = {}, "refused", "unset"
     try:
+        _exact(
+            request,
+            {
+                "baseline",
+                "node",
+                "output_path",
+                "plugin_id",
+                "plugin_version",
+                "postconditions",
+                "session_nonce",
+                "target",
+                "type",
+                "validation_sha256",
+                "verifier_sha256",
+            },
+            "verification request",
+        )
+        _exact(
+            request["node"],
+            {"node_id", "operation_id", "parameters"},
+            "verification node",
+        )
+        own_sha = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+        if (
+            request["type"] != "verify"
+            or request["plugin_id"] != PLUGIN_ID
+            or request["plugin_version"] != PLUGIN_VERSION
+            or request["verifier_sha256"] != own_sha
+            or _SHA_RE.fullmatch(request["validation_sha256"]) is None
+        ):
+            raise Refusal("verifier authority disagrees")
+
         observed = LiveWindow(request["target"]).slide_count()
         baseline = request["baseline"]
         if baseline is None:
@@ -223,19 +233,27 @@ def main():
     except Exception as exc:  # noqa: BLE001 - every refusal is reported
         observed, outcome, detail = {}, "refused", f"{type(exc).__name__}: {exc}"
 
+    # A request that never parsed still gets a well-formed reply. The host
+    # binds node_id, nonce and validation digest, so echoing what arrived
+    # lets it reject the reply on its own terms rather than on a crash.
+    node = request.get("node") if isinstance(request, dict) else None
     sys.stdout.write(
         _canonical(
             {
                 "detail": detail,
-                "node_id": request["node"]["node_id"],
+                "node_id": node.get("node_id", "") if isinstance(node, dict) else "",
                 "observed": observed,
                 "outcome": outcome,
-                "session_nonce": request["session_nonce"],
+                "session_nonce": request.get("session_nonce", "")
+                if isinstance(request, dict)
+                else "",
                 "type": "verification_result",
-                "validation_sha256": request["validation_sha256"],
+                "validation_sha256": request.get("validation_sha256", "")
+                if isinstance(request, dict)
+                else "",
             }
         )
-        + "\n"
+        + chr(10)
     )
     return 0
 

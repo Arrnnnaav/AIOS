@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+import uuid
 from pathlib import Path
 from typing import Callable
 
 from ghostcursor.act_runtime import (
+    ActRunCode,
     ActControls,
     ActTarget,
     approve_action_graph,
@@ -52,6 +54,8 @@ class ActProposal:
     goal: str
     intent_id: str
     plugin_id: str
+    #: Where the artifact is DELIVERED. The plan is materialized against the
+    #: staging path below, so the adapter is never told this one.
     output_path: Path
     target: ActTarget
     validated: object
@@ -59,6 +63,10 @@ class ActProposal:
     active_index_sha256: str
     catalog_generation: int
     store: object
+    #: The runtime-owned staging area, when the caller supplied an owned
+    #: root. None means this run writes its final path directly, which is
+    #: what every production run did before staging existed.
+    staging: object = None
 
     @property
     def summary(self) -> str:
@@ -81,6 +89,7 @@ def prepare_act_goal(
     output_path: Path,
     target_hwnd: int | None,
     store=None,
+    owned_output_root: Path | None = None,
 ) -> ActProposal:
     """Return one inert, fully validated production proposal."""
 
@@ -111,8 +120,23 @@ def prepare_act_goal(
             "authorized intent does not map to exactly one signed action plan"
         )
     output = Path(output_path).resolve()
+    # Stage when an owned root is available. The plan is materialized against
+    # the STAGING path, so the adapter is never told where the final artifact
+    # goes and cannot expose a partial one (D032 review, F1). Without an owned
+    # root there is nowhere the runtime owns to stage into, and the run writes
+    # its final path directly — as every production run did before staging
+    # existed.
+    staging = None
+    written = output
+    if owned_output_root is not None:
+        from ghostcursor.act_staging import open_staging
+
+        staging = open_staging(
+            output, owned_root=Path(owned_output_root), run_id=uuid.uuid4().hex[:12]
+        )
+        written = staging.staging
     validated = materialize_action_plan(
-        matching[0], {"output_path": str(output)}, descriptor.registry
+        matching[0], {"output_path": str(written)}, descriptor.registry
     )
     packs = [
         pack
@@ -146,6 +170,7 @@ def prepare_act_goal(
         context.catalog.index_sha256,
         context.catalog.generation,
         store,
+        staging,
     )
 
 
@@ -167,7 +192,14 @@ def execute_act_proposal(
         active_index_sha256=proposal.active_index_sha256,
         catalog_generation=proposal.catalog_generation,
         target=proposal.target,
-        output_path=proposal.output_path,
+        # The path the run WRITES. Staged runs write the staging file and the
+        # final path comes into existence once, atomically, after everything
+        # verified.
+        output_path=(
+            proposal.staging.staging
+            if proposal.staging is not None
+            else proposal.output_path
+        ),
         unattended=unattended,
         owned_output_root=owned_output_root,
     )
@@ -183,7 +215,7 @@ def execute_act_proposal(
             adapter.adapter_sha256,
         )
 
-    return execute_approved_graph(
+    result = execute_approved_graph(
         proposal.validated,
         descriptor.registry,
         approval,
@@ -193,6 +225,29 @@ def execute_act_proposal(
         controls=controls or ActControls(),
         event_sink=event_sink,
     )
+    if proposal.staging is None:
+        return result
+
+    from ghostcursor.act_staging import StagingError, abandon, publish
+
+    if not result.completed:
+        # Stopped, refused or failed. The staging file stays, labelled, and
+        # the final path was never created.
+        abandon(proposal.staging)
+        return result
+    try:
+        publish(proposal.staging)
+    except StagingError as exc:
+        # A run that verified but could not publish is NOT completed. Saying
+        # otherwise would report a deck at a path where nothing exists.
+        abandon(proposal.staging)
+        return replace(
+            result,
+            code=ActRunCode.ADAPTER_FAILED,
+            detail=f"the verified run could not be published: {exc}",
+            output_path=str(proposal.staging.staging),
+        )
+    return replace(result, output_path=str(proposal.output_path))
 
 
 def run_act_goal(
@@ -208,7 +263,10 @@ def run_act_goal(
 
     try:
         proposal = prepare_act_goal(
-            goal, output_path=output_path, target_hwnd=target_hwnd
+            goal,
+            output_path=output_path,
+            target_hwnd=target_hwnd,
+            owned_output_root=owned_output_root,
         )
     except Exception as exc:
         _emit(

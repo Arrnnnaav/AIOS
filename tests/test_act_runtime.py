@@ -686,3 +686,122 @@ def test_a_control_driving_node_does_not_take_the_object_model_path(tmp_path):
     )
 
     assert result.completed is True
+
+
+# --- the verifier is chosen by the operation's signed backend -------------
+
+
+def _routing_descriptor(tmp_path, *, live=True):
+    from types import SimpleNamespace
+
+    descriptor = _descriptor(tmp_path)
+    if live:
+        live_path = tmp_path / "live_verifier.py"
+        live_path.write_text("# live", encoding="utf-8")
+        return SimpleNamespace(
+            **{
+                **vars(descriptor),
+                "live_verifier": live_path,
+                "live_verifier_sha256": "d" * 64,
+            }
+        )
+    return SimpleNamespace(**{**vars(descriptor), "live_verifier": None})
+
+
+from ghostcursor.act_runtime import choose_verifier
+
+
+def _op(backend, postconditions=("slide.count.increased_by_one",)):
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        operation_id="powerpoint.new_slide_uia",
+        backend=backend,
+        postconditions=postconditions,
+    )
+
+
+def test_an_object_model_operation_gets_the_artifact_verifier():
+    """A file effect is verified by reading the file."""
+
+    from ghostcursor.act_runtime import choose_verifier
+
+    chosen, baseline, postconditions = choose_verifier(
+        "ARTIFACT", "LIVE", _op("object_model")
+    )
+
+    assert chosen == "ARTIFACT"
+    assert baseline is None
+    assert postconditions == ()
+
+
+def test_an_object_model_operation_is_sent_no_postconditions():
+    """An artifact verifier validates its request fields exactly, so sending
+    baseline/postconditions would refuse every object-model node — including
+    the ones Phase A's 255/255 was measured against."""
+
+    _chosen, baseline, postconditions = choose_verifier(
+        "ARTIFACT", "LIVE", _op("object_model", ("slide.exists",))
+    )
+
+    assert (baseline, postconditions) == (None, ())
+
+
+@pytest.mark.parametrize("backend", ["uia_pattern", "legacy_iaccessible"])
+def test_a_control_driving_operation_gets_the_live_verifier(backend):
+    chosen, baseline, postconditions = choose_verifier("ARTIFACT", "LIVE", _op(backend))
+
+    assert chosen == "LIVE"
+    assert baseline == {}
+    assert postconditions == ("slide.count.increased_by_one",)
+
+
+@pytest.mark.parametrize("backend", ["uia_pattern", "legacy_iaccessible"])
+def test_a_control_driving_operation_without_a_live_verifier_is_refused(backend):
+    """Not silently fallen back to the artifact verifier. That fallback made
+    a UIA effect look unverifiable when it was merely being asked the wrong
+    question, and a silent one would hide it again."""
+
+    from ghostcursor.adapter_host import AdapterProtocolError
+
+    with pytest.raises(AdapterProtocolError, match="ships no live_verifier"):
+        choose_verifier("ARTIFACT", None, _op(backend))
+
+
+def test_an_operation_with_no_declared_backend_is_treated_as_object_model():
+    """Registries signed before UIA support omit the key entirely."""
+
+    from types import SimpleNamespace
+
+    chosen, _b, _p = choose_verifier(
+        "ARTIFACT", "LIVE", SimpleNamespace(operation_id="x", postconditions=())
+    )
+
+    assert chosen == "ARTIFACT"
+
+
+def test_the_routing_reads_the_operation_not_the_caller():
+    """A caller cannot ask for the live verifier on an object-model node, or
+    the artifact one on a UIA node. The signed backend decides."""
+
+    import inspect
+
+    from ghostcursor.act_runtime import choose_verifier as chooser
+
+    parameters = list(inspect.signature(chooser).parameters)
+
+    assert parameters == ["artifact", "live", "operation"]
+
+
+def test_the_descriptor_carries_the_live_verifier_through(tmp_path):
+    """Bundle verification requires it beside a UIA backend; before this it
+    was validated and then dropped."""
+
+    from ghostcursor.plugins.store import AdapterDescriptor
+
+    fields = AdapterDescriptor.__dataclass_fields__
+
+    assert "live_verifier" in fields
+    assert "live_verifier_sha256" in fields
+    assert fields["live_verifier"].default is None
+
