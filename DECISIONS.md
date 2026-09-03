@@ -4457,3 +4457,55 @@ made because the alternative removed a feature they asked for. If the strict
 reading is preferred, the pointer stops travelling and the run becomes a
 sequence of cursors appearing in place — say so and it reverts to clearing on
 both terminal states.
+
+## D113 — Planning context is a stored conversation, not a file called idea.txt
+
+**Generalises D109-D111.** Those decisions say `idea.txt` is planning context
+and never execution authority, and that its exact bytes are hashed and bound
+to any proposal made from it. Every word of that stays true. What changes is
+what "it" refers to.
+
+`idea.txt` was always a stand-in. Its own first line says the Ideate mode is
+not built and the file stands in for the conversation. In the product there
+is no such file: a person and the model talk about what they want, and
+something is built from that talk later — in a session that has ended.
+
+**The decision.** The planning context is a **brief**: a stored conversation,
+appended to as it happens, loaded back when a plan is proposed from it.
+`idea.txt` is one brief that happens to have been written by hand rather than
+accumulated turn by turn, and nothing special-cases it. It was referenced in
+zero Python when this was decided, so nothing had to be unwound.
+
+**What the rules mean now.** Everywhere D109-D111 say `idea.txt`, read "the
+brief a proposal was made from". Its exact bytes are hashed and bound. The
+model may decide from it what is wanted, what is unclear, how to stage it,
+and which REGISTERED capabilities to compose. It may not take an application
+call, a selector, a coordinate, a keystroke, a verification rule, or a
+capability absent from the active signed registry.
+
+**Three properties that make it more than a text file.**
+
+The digest is of the BYTES, not the parsed turns and not a normalised form.
+A proposal binds one specific byte sequence, so two briefs with identical
+turns and different whitespace must not bind as one.
+
+A `Brief` is a closed type with four fields — source, text, sha256, turns —
+and structurally no field that could carry a selector, capability, parameter
+or plan. A dict would have made "never execution authority" a promise to
+remember rather than a property of the type.
+
+A turn may not contain a line in the exact heading form, or a turn could put
+words in the other party's mouth when the brief is read back. The speaker
+vocabulary is closed to `user` and `assistant`; an open one is a way for a
+third party to appear in a conversation that only had two.
+
+**Where it lives.** A separate store from everything else, local only (D017).
+Not `sessions.sqlite`, which must not persist goals or instructions by
+default. Not `kb.sqlite`, which holds screen-derived observations and is
+erasable. Not the signed plan artifacts, which are the only things that
+authorize anything. A conversation is a fourth kind of thing.
+
+Markdown, so a person can read it, edit it and see it in a diff. A brief
+nobody can inspect is a brief nobody can correct.
+
+**Where it is.** `ghostcursor/brief.py`, `tests/test_brief.py`.

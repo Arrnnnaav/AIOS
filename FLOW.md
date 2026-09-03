@@ -291,6 +291,7 @@ run.main()
 | `ghostcursor/selectors.py` | loads the signed selector an operation names and proves its digest; an action selector must be `exactly_one` and agree with the operation's control type |
 | `ghostcursor/act_uia_session.py` | composes one UIA node's session: verifier reading as `semantic`, adapter read-only read as identity/rectangle, overlay as the cue |
 | `ghostcursor/devtools/act_campaign.py` | counts consecutive clean Act attempts; fresh store/output per attempt, target re-checked and restored each time, refuses an `interrupt_probe` record, stops at the first unclean run |
+| `ghostcursor/brief.py` | the stored conversation a plan is proposed from (D113); appends turns to a Markdown brief, loads it back, digests the exact bytes; a closed type with no field that could carry anything executable |
 | `ghostcursor/act_staging.py` | the approved output path holds a complete artifact or nothing: runtime-owned staging file, copy-then-atomic-rename publish, digest bound, `.incomplete.json` marker written at claim and cleared only by a successful publish |
 | `ghostcursor/act_rail.py` | the Stop/Pause safety rail for an Act run; shows the executor-reported `Step N of M` and never counts; the ONLY visible surface for an object-model plan (D109) |
 | `ghostcursor/act_overlay.py` | seam binding the presenter to a real HWND and the run's Stop; supplies `present`/`on_state` to `UiaNodeSession`, recolours a verified pointer (D112), pumps messages inside the Stop poll |

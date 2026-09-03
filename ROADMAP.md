@@ -267,9 +267,12 @@ built but not yet exercised by a caller or a live run.
 - [ ] Interruption latency matrix
 - [ ] Independent D032 review of the derived budgets
 
-**8. `idea.txt` and the local planning loop**
+**8. The brief and the local planning loop** (D113 — a brief is the
+   stored conversation; `idea.txt` is one, and is not special-cased)
 - [x] `idea.txt` written as the stand-in Ideate conversation
-- [ ] Hash `idea.txt` and bind its digest to each proposal
+- [x] Brief store: append turns, load back, digest the exact bytes
+      (`ghostcursor/brief.py`)
+- [ ] Bind a brief's digest to each proposal
 - [ ] `ClarificationRequired` vs `PlanProposal` as mutually exclusive outputs
 - [ ] Keep asking until required fields resolve
 - [ ] Pass only the active plugin's capability catalog to the model

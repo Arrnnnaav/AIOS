@@ -228,12 +228,17 @@ Interruption resumes with an **edited, re-validated, re-approved** plan
 is proposed against a fresh observation because the user may have changed the
 application while paused.
 
-`idea.txt` is planning context and never execution authority (D109-D111). The
-local model may decide what is wanted, what is unclear, how to stage it and
-which REGISTERED capabilities to compose. It may not emit application code,
-COM calls, UIA selectors, coordinates, keystrokes, verification rules or
-capabilities absent from the active signed registry. Its exact bytes are
-hashed and bound to any proposal made from it.
+A **brief** is planning context and never execution authority (D109-D111, as
+generalised by D113). A brief is the stored conversation a proposal is made
+from; `idea.txt` is one brief that was written by hand rather than
+accumulated turn by turn, and nothing special-cases it. The local model may
+decide what is wanted, what is unclear, how to stage it and which REGISTERED
+capabilities to compose. It may not emit application code, COM calls, UIA
+selectors, coordinates, keystrokes, verification rules or capabilities absent
+from the active signed registry. The brief's exact BYTES are hashed and bound
+to any proposal made from it — not its parsed turns and not a normalised
+form. A `Brief` carries no field that could hold a selector, capability,
+parameter or plan; that is a property of the type, not a rule to remember.
 
 A `uia_pattern` operation is verified from LIVE state, never from a saved
 artifact. The artifact verifier reads a file and a UIA effect reaches no file
