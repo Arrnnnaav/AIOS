@@ -72,8 +72,9 @@ Every stopped run left a `.pptx` at its approved output path: 36 902, 37 760,
 
 The cause is that the adapter calls `SaveAs` on `create_presentation` and
 `Save()` after every subsequent operation, so the file exists from node 1 and
-grows. **Transactional output — same-volume staging, final path absent until
-fully verified, atomic publish — is ROADMAP item 6 and is not built.**
+grows. Transactional output — same-volume staging, final path absent until
+fully verified, atomic publish — was ROADMAP item 6 and was **not built at the
+time these runs were taken**.
 
 **Fixed the same day** by `ghostcursor/act_staging.py`. Re-measured with
 staging active, same interrupt at node 45:
