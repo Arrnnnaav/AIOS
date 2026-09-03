@@ -211,13 +211,16 @@ built but not yet exercised by a caller or a live run.
 
 **4. Visual layer, receipts and interruption**
 - [ ] Rail mode selector: Ideate / Plan / Teach / Act
-- [ ] `Step N of M` wired to Act (executor-reported, never counted by the rail)
+- [x] `Step N of M` wired to Act (executor-reported, never counted by the rail)
+      — `ghostcursor/act_rail.py`, live on 4 deck builds
+      (`docs/evidence/act-deck-build-with-rail.md`)
 - [x] Ghost pointer, ring, callout, interpolation — all WM_PAINT-owned
       (`pointer_path.py`, `overlay/cue.py`, `overlay/window.py`)
 - [x] Trust presentation: cyan object-model, violet UIA, neutral in flight
       (`overlay/cue.py` `TRUST_COLOURS`, sourced from `trust_for()`)
 - [x] Presentation receipts wired to the worker (`act_overlay`, `act_uia_session`)
-- [ ] Pause / Stop during a run
+- [~] Pause / Stop during a run — wired and hermetically covered;
+      NOT yet measured interrupting a live run within D020's 0.5s
 - [ ] Resume-with-edit: re-plan, re-validate, re-approve remainder (D110)
 
 **5. Unattended campaign runner**
