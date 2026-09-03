@@ -223,6 +223,13 @@ built but not yet exercised by a caller or a live run.
       NOT yet measured interrupting a live run within D020's 0.5s
 - [ ] Resume-with-edit: re-plan, re-validate, re-approve remainder (D110)
 
+**4b. Watch Build** — DONE 3 Sep 2026
+- [x] Two modes: Quick Build (executor speed) and Watch Build (paced)
+- [x] Pacing waits are sliced and interruptible, never a plain sleep
+- [x] Visible slide follows the node being built (adapter view-follow)
+- [ ] Region highlight + label on the changing area (needs the shape's
+      screen rect via `PointsToScreenPixelsX/Y`)
+
 **5. Unattended campaign runner**
 - [ ] Resolves exactly one approved window; restores it if minimized
 - [ ] Fresh stores, staging and output paths per run

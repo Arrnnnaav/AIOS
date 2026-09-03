@@ -104,3 +104,66 @@ Confirmed by screenshot at step 88 of 255, fitting on one line.
 - These are diagnostic builds, not acceptance runs: the signing key is the
   ephemeral development pair, not a reviewed release key.
 - No independent review of this evidence has happened (D032).
+
+---
+
+# Watch Build and slide-follow — 3 September 2026
+
+Bundle rebuilt after the adapter gained view-follow:
+`9af59719132cfa941090175dc43ec9a1db1b0555e3103b50396449c4c7b551de`,
+manifest `cae796d0…`. Plan digest unchanged.
+
+## Two modes, measured
+
+| Mode | Elapsed | Nodes | Pacing added |
+|---|---|---|---|
+| Quick Build | ~65 s | 255/255 | none |
+| Watch Build (`watch-01`) | 226.7 s | 255/255 | 255 × 550 ms |
+| Watch Build (`watch-03`) | 222.4 s | 255/255 | 255 × 550 ms |
+
+3.4× slower, which is the point: Watch Build exists to be followed.
+
+The pacing numbers (300 ms before a node, 250 ms after) are a **choice about
+legibility, not a measurement**, and are labelled as such in
+`ghostcursor/act_pacing.py` so nobody later cites them as though something had
+been measured (D034).
+
+## The visible slide follows the node
+
+Observed live during `watch-03`, read from the object model while the run was
+at node ~143 of 255:
+
+```
+view on slide 6 of 6
+view on slide 7 of 7
+view on slide 8 of 8
+view on slide 9 of 9
+```
+
+**UIA could not answer this.** The newly created presentation's window has a
+cold accessibility tree — 8 descendants, no status bar, no view indicator —
+the same phenomenon D035 documents for a cold Chromium tree. The reading was
+taken through COM instead. Worth recording, because a future check that
+assumed UIA could see a background PowerPoint window would silently observe
+nothing and report it as "the view never moved".
+
+## What did not change
+
+No ghost cursor is drawn for any of these 255 nodes. They are object-model
+operations; nothing is clicked, and D109 forbids a pointer over a control the
+runtime did not invoke. The visible surface is the rail step plus the document
+region genuinely changing — which is what slide-follow now provides.
+
+## Consequences to carry forward
+
+- **Phase A's 255/255 no longer describes the shipped adapter.** The follow
+  changed `adapter_sha256`. That run must be redone before any acceptance
+  claim rests on it.
+- **Stop and Pause are still unexercised.** `stop_requested` is false on every
+  run recorded here, Quick and Watch alike. Watch Build is where interruption
+  matters most — it is the mode a person watches, and the mode with waiting in
+  it — and no live measurement exists yet.
+- PowerPoint exited between runs at one point and a subsequent build refused
+  at target resolution with `TargetNotRunning`, correctly, rather than
+  proceeding. An unattended runner must restore or refuse explicitly rather
+  than fail obscurely.
