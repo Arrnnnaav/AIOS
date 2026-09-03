@@ -547,3 +547,123 @@ def test_a_transition_buried_deeper_than_slide_level_is_not_accepted(tmp_path):
     )
 
     assert not result.verified
+
+
+# --- the view follows the node, and never decides anything ----------------
+
+
+class _Slide:
+    def __init__(self, index):
+        self.SlideIndex = index
+
+
+class _View:
+    def __init__(self, log, fails=False):
+        self.log = log
+        self._fails = fails
+
+    def GotoSlide(self, index):
+        if self._fails:
+            raise RuntimeError("the window refused to scroll")
+        self.log.append(index)
+
+
+def _adapter_with_slides(monkeypatch, *, fails=False, log=None):
+    """A real adapter instance with fake COM slides and window."""
+
+    import importlib.util
+    from pathlib import Path as _Path
+
+    spec = importlib.util.spec_from_file_location(
+        "_ppt_adapter_view",
+        _Path(__file__).resolve().parents[1]
+        / "plugins/sources/powerpoint/payload/ghostcursor/adapter/powerpoint_adapter.py",
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    adapter = module.PowerPointSession.__new__(module.PowerPointSession)
+    adapter.slides = {"slide-07": _Slide(7), "slide-01": _Slide(1)}
+    adapter.shapes = {}
+    view = _View(log if log is not None else [], fails=fails)
+    adapter.presentation = SimpleNamespace(
+        Windows=lambda _n: SimpleNamespace(View=view), Save=lambda: None
+    )
+    return adapter, view
+
+
+def test_the_view_moves_to_the_slide_the_node_names(monkeypatch):
+    """The visible slide should be the one being built. Building slide 7 while
+    slide 1 is on screen shows the user nothing happening."""
+
+    log = []
+    adapter, _view = _adapter_with_slides(monkeypatch, log=log)
+
+    assert adapter._follow("slide-07") == 7
+    assert log == [7]
+
+
+def test_a_node_naming_no_slide_moves_nothing(monkeypatch):
+    log = []
+    adapter, _view = _adapter_with_slides(monkeypatch, log=log)
+
+    assert adapter._follow(None) is None
+    assert adapter._follow("") is None
+    assert log == []
+
+
+def test_a_slide_that_does_not_exist_yet_moves_nothing(monkeypatch):
+    """`add_slide` names a slide before creating it. The follow is attempted
+    again after the effect, which is when it becomes possible."""
+
+    log = []
+    adapter, _view = _adapter_with_slides(monkeypatch, log=log)
+
+    assert adapter._follow("slide-99") is None
+    assert log == []
+
+
+def test_a_view_that_will_not_move_does_not_fail_the_node(monkeypatch):
+    """The view is not authority (D106): no verification reads it and no
+    authorization depends on it. Refusing a real authorized effect because a
+    window would not scroll would be the wrong trade."""
+
+    adapter, _view = _adapter_with_slides(monkeypatch, fails=True)
+
+    assert adapter._follow("slide-07") is None  # reported, not raised
+
+
+def test_the_index_that_was_shown_is_reported(monkeypatch):
+    """So a run where the view never moved is visible in the record rather
+    than merely unnoticed."""
+
+    import inspect
+
+    from pathlib import Path as _Path
+
+    source = (
+        _Path(__file__).resolve().parents[1]
+        / "plugins/sources/powerpoint/payload/ghostcursor/adapter/powerpoint_adapter.py"
+    ).read_text(encoding="utf-8")
+
+    assert '"shown_slide_index"' in source
+
+
+def test_the_follow_names_no_application_constant():
+    """`GotoSlide` takes a plain integer. A stubbed constant the application
+    does not expose is what let every exit animation refuse in production
+    while the contract test passed, so the follow resolves none."""
+
+    from pathlib import Path as _Path
+
+    source = (
+        _Path(__file__).resolve().parents[1]
+        / "plugins/sources/powerpoint/payload/ghostcursor/adapter/powerpoint_adapter.py"
+    ).read_text(encoding="utf-8")
+    after = source.split("def _follow(", 1)[1]
+    # Cut at the next method at the same indent, not at a name that
+    # happens to appear later in the file.
+    body = after.split(chr(10) + "    def ", 1)[0]
+
+    assert "_const(" not in body
+    assert "self.constants" not in body

@@ -355,10 +355,45 @@ class PowerPointSession:
     def execute(self, operation_id, p):
         method = getattr(self, "do_" + operation_id.replace(".", "_"), None)
         if method is None: raise Refusal("operation is not implemented")
+        slide_id = p.get("slide_id") if isinstance(p, dict) else None
+        # BEFORE the effect, so the change is watched landing on a slide that
+        # is already in view rather than appearing on one the view then jumps
+        # to. A slide this node is about to CREATE is not known yet, which is
+        # why the same call is made again afterwards.
+        shown = self._follow(slide_id)
         data = method(p) or {}
+        if shown is None:
+            shown = self._follow(slide_id)
         if self.presentation is not None and operation_id != "powerpoint.inspect_presentation":
             self.presentation.Save()
+        if shown is not None:
+            data["shown_slide_index"] = shown
         return data
+
+    def _follow(self, slide_id):
+        """Bring the slide this node works on into view. Presentation only.
+
+        Returns the 1-based index shown, or None if there was nothing to show.
+
+        A failure here is swallowed deliberately and is never fatal. The view
+        is not authority (D106) -- no verification reads it and no
+        authorization depends on it -- so refusing a real, authorized effect
+        because a window would not scroll would be the wrong trade. The index
+        that WAS shown is reported in the result, so a run where the view
+        never moved is visible in the record rather than merely unnoticed.
+        """
+        if not slide_id or slide_id not in self.slides:
+            return None
+        try:
+            index = int(self.slides[slide_id].SlideIndex)
+            # `GotoSlide` takes a plain integer. No application constant is
+            # named here on purpose: a stubbed constant the application does
+            # not expose is what let every exit animation refuse in
+            # production while the contract test passed.
+            self.presentation.Windows(1).View.GotoSlide(index)
+            return index
+        except Exception:
+            return None
 
     def _slide(self, slide_id): return self.slides[slide_id]
     def _shape(self, slide_id, object_id): return self.shapes[(slide_id, object_id)]
