@@ -224,8 +224,10 @@ built but not yet exercised by a caller or a live run.
       in Quick and Watch, during pacing and during execution.
       Pause held 4.06-4.47s then resumed to 255/255.
       (`docs/evidence/act-interruption-live.md`)
-      REMAINING: the presenter's traversal/settle/confirmation stop
-      points, which need the single-node UIA vehicle.
+- [x] Presenter stop points measured on the UIA vehicle 3 Sep 2026:
+      traversal/settle/confirmation/dispatch, 0.016-0.031s, zero dispatches.
+      Found and fixed a real gap: execute_node had no stop awareness, so a
+      Stop after the cue went unnoticed until the node ended.
 - [ ] Resume-with-edit: re-plan, re-validate, re-approve remainder (D110)
 
 **4b. Watch Build** — DONE 3 Sep 2026

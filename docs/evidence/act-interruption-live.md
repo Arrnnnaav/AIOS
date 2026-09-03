@@ -102,13 +102,48 @@ on disk       94371 bytes  good-deck.pptx
 `.partial` left behind, and the earlier stopped run's staging file still
 marked incomplete.
 
-## Not measured here
+## The presenter's stop points — measured on the UIA vehicle
 
-- **The presenter's stop points.** Traversal, settle and confirmation exist
-  only for a pointer-drawing node, and all 255 deck nodes are object-model.
-  Those three need the single-node UIA vehicle, and are not covered by
-  anything above. Any claim of full interruption coverage must exclude them
-  until they are.
-- **Stop during verification.** The verifier is a separate short-lived
-  process; a stop landing inside it was not isolated as its own case.
+All 255 deck nodes are object-model, so nothing above can reach the
+presenter. These were taken with `act_live_node` against `powerpoint.new_slide_uia`,
+traversal 900 ms, settle 1200 ms.
+
+| Stop landed | Response | Dispatches after | Lifecycle reached |
+|---|---|---|---|
+| traversal, 350 ms in | **0.0310 s** | **0** | preparing → presenting |
+| settle, 1100 ms in | **0.0310 s** | **0** | preparing → presenting |
+| confirmation boundary | **0.0310 s** | **0** | preparing → presenting |
+| dispatch boundary | **0.0160 s** | **0** | preparing → presenting → **confirming** |
+
+Independently confirmed: `live.pptx` was reopened from disk holding one
+slide, and holds one slide after all four runs. No effect landed.
+
+The traversal and settle cases refuse with *"the presentation for this node
+was never acknowledged"* rather than an explicit stop. That is the receipt
+mechanism doing the work rather than a check someone remembered to add: an
+aborted cue emits no completion receipt, so `PresentationWait.may_execute`
+never becomes true and no effect can follow.
+
+The dispatch case is the only one that reaches `confirming` — identity was
+compared, then the run stopped before the effect. That is the last boundary
+at which stopping costs nothing.
+
+### A gap this found before it was measured
+
+`execute_node` had **no stop awareness at all**, and `act_uia_session` passed
+no cancel event anywhere. A Stop landing after the cue completed went
+unnoticed while confirmation, authorization, dispatch and verification all
+ran — seconds, against D020's half second. Fixed by asking the operator's
+Stop at the two boundaries where stopping is free.
+
+It is deliberately **not** asked after the dispatch. Once an effect has been
+issued the run owes it a verification; skipping one because someone pressed
+Stop would leave an effect that happened and was never checked. Mutation
+testing confirms this: adding a stop check before verification fails a test.
+
+## Not measured here
+- **Stop during verification.** Not measured, and by design not honoured:
+  after a dispatch the verification runs to completion. What is unmeasured is
+  how long that takes, which bounds how late a stop can be observed on a
+  node that already acted.
 - **ESC**, as opposed to a rail Stop. The rail path is what these exercise.
