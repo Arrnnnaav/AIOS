@@ -166,6 +166,27 @@ def run(args) -> int:
             }
         )
 
+    controls = ActControls()
+    rail = None
+    if args.rail:
+        # The rail is the ONLY visible surface for an object-model plan.
+        # D109: such a node draws no pointer -- there is no control it is
+        # clicking -- so what the user sees is the step, a label, and the
+        # document changing. Without this a 255-node deck build is invisible.
+        from ghostcursor import act_rail
+
+        rail = act_rail.open_rail()
+        _emit("rail_opened", hwnd=rail.hwnd)
+        published = event_sink
+
+        def event_sink(event):  # noqa: F811 - deliberately wraps the recorder
+            # The recorder first: the run record must not depend on the rail
+            # having accepted an event.
+            if published is not None:
+                published(event)
+            rail.on_event(event)
+            rail.poll(controls)
+
     try:
         result = execute_approved_graph(
             validated,
@@ -174,11 +195,21 @@ def run(args) -> int:
             descriptor=descriptor,
             current_authority=current_authority,
             revalidate_target=_live_target,
-            controls=ActControls(),
+            controls=controls,
             event_sink=event_sink,
             verify_observer=verify_observer,
         )
     finally:
+        if rail is not None:
+            from ghostcursor import act_rail
+
+            _emit(
+                "rail_closed",
+                stop_requested=rail.stopping,
+                events=len(rail.events),
+                last_status=act_rail.bar.get_status(rail.hwnd),
+            )
+            act_rail.close_rail(rail)
         if diagnostics is not None:
             if probe is not None and probe.probe_faults:
                 _emit("probe_faults", count=probe.probe_faults)
@@ -219,6 +250,11 @@ def main() -> int:
             "refuses and names every candidate (D075) -- a handle narrows, it "
             "never supplies identity."
         ),
+    )
+    parser.add_argument(
+        "--rail",
+        action="store_true",
+        help="show the Stop/Pause safety rail and the executor-reported step",
     )
     parser.add_argument("--core-version", default="1.0.0")
     parser.add_argument("--approval-lifetime", type=float, default=1800.0)
