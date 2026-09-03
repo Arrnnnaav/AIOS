@@ -239,12 +239,15 @@ built but not yet exercised by a caller or a live run.
       221 of 255 nodes, the other 34 touching no shape
       (`docs/evidence/act-deck-build-with-rail.md`)
 
-**5. Unattended campaign runner**
-- [ ] Resolves exactly one approved window; restores it if minimized
-- [ ] Fresh stores, staging and output paths per run
-- [ ] Records every digest, receipt and timing
-- [ ] Stops on drift, refusal, DPI mismatch or worker failure
-- [ ] Runs desktop lanes serially
+**5. Unattended campaign runner** — DONE 4 Sep 2026
+      (`ghostcursor/devtools/act_campaign.py`)
+- [x] Resolves exactly one approved window; restores it if minimized,
+      re-checked before EVERY attempt, refuses on 0 or 2+ (D075)
+- [x] Fresh store and output path per attempt, handed by the runner
+- [x] Records code, nodes, published digest and timing per attempt
+- [x] Stops at the first attempt that is not clean; an `interrupt_probe`
+      record refuses the whole campaign
+- [x] Serial only; a test asserts no parallel or thread path exists (D025)
 
 **6. Transactional output** — DONE 3 Sep 2026 (`ghostcursor/act_staging.py`)
 - [x] Same-volume staging; final path absent until fully verified
