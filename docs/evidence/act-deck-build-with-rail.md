@@ -167,3 +167,69 @@ region genuinely changing — which is what slide-follow now provides.
   at target resolution with `TargetNotRunning`, correctly, rather than
   proceeding. An unattended runner must restore or refuse explicitly rather
   than fail obscurely.
+
+---
+
+# Region highlight — 3 September 2026
+
+Bundle `3fb104f62c6f4974f1d0d4a7882ec2762b3c5e5557546efe0879ad3152b7e80a`,
+manifest `5ba2cdc3…`. Plan digest unchanged.
+
+## The geometry was probed, not assumed
+
+`Application.HWND` and every sibling window handle raise
+`DISP_E_MEMBERNOTFOUND` on Office 16.0.20326. `PointsToScreenPixelsX/Y` is a
+sibling of those, so it was probed on the same build before anything relied
+on it.
+
+It works. A shape at `(48.96, 30.24)` sized `417.6 × 16.96` points converted
+to screen rect `(581, 310, 1086, 331)`. Computed rects for five shapes were
+drawn over a screenshot and land exactly on their shapes.
+
+## What is shown, and what is not
+
+No cursor. These are object-model nodes; nothing is clicked, and D109 forbids
+a pointer over a control the runtime did not invoke. What is drawn is the
+ring and the label — "the document region genuinely changing", which is what
+the rule prescribes instead.
+
+Shown in the ARTIFACT trust class, because an object-model effect is verified
+by reading the saved file. Showing it as LIVE_STATE would claim evidence
+nothing gathered.
+
+Observed together at node 103 of 255: the rail reading `Step 103 of 255`, a
+cyan ring around the trust strip labelled `add shape`, PowerPoint on slide 4
+where that node was working, and no cursor anywhere on screen.
+
+## Coverage, accounted for exactly
+
+**221 of 255 nodes carry a region.** The 34 without are every operation that
+touches no shape:
+
+| Operation | Count | Region |
+|---|---|---|
+| `add_text` | 117 | yes |
+| `add_shape` | 56 | yes |
+| `add_animation` | 30 | yes |
+| `add_line` | 18 | yes |
+| `add_slide` | 10 | no shape |
+| `add_notes` | 10 | no shape |
+| `set_transition` | 10 | no shape |
+| `create_presentation`, `set_theme`, `save_presentation`, `inspect_presentation` | 4 | no shape |
+
+117 + 56 + 30 + 18 = 221.
+
+An earlier run reported 209, and the difference is a finding rather than
+noise: 10 of the 18 dividers are perfectly horizontal or vertical, so their
+bounding box has zero area and the degenerate check dropped them. A flat line
+is still a region that changed, so the flat axis is now opened to a visible
+minimum.
+
+## The channel
+
+The event carries a **typed** region — four integers — not an open data bag.
+A general dict on the event would be a channel for anything an adapter felt
+like sending, and presentation is all this may carry (D106). It is validated
+in core rather than trusted, because it crosses a process boundary, and a
+malformed rect is dropped rather than raised: a highlight that cannot be
+drawn must never fail an effect that already happened.

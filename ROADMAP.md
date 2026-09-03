@@ -234,8 +234,10 @@ built but not yet exercised by a caller or a live run.
 - [x] Two modes: Quick Build (executor speed) and Watch Build (paced)
 - [x] Pacing waits are sliced and interruptible, never a plain sleep
 - [x] Visible slide follows the node being built (adapter view-follow)
-- [ ] Region highlight + label on the changing area (needs the shape's
-      screen rect via `PointsToScreenPixelsX/Y`)
+- [x] Region highlight + label on the changing area, no cursor —
+      `PointsToScreenPixelsX/Y` probed and working on 16.0.20326;
+      221 of 255 nodes, the other 34 touching no shape
+      (`docs/evidence/act-deck-build-with-rail.md`)
 
 **5. Unattended campaign runner**
 - [ ] Resolves exactly one approved window; restores it if minimized
