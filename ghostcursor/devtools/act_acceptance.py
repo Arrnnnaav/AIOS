@@ -10,6 +10,8 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import threading
+import time
 from pathlib import Path
 
 from ghostcursor.act_runtime import (
@@ -171,6 +173,62 @@ def run(args) -> int:
     pace = pace_by_name(args.mode)
     controls = ActControls()
     rail = None
+
+    # --- interruption probe ------------------------------------------------
+    #
+    # Fires the SAME `controls.stop()` / `.pause()` a rail click fires, at a
+    # named point in a named node, and records when. It exists because the
+    # only evidence that Stop works on a live run is a live run that was
+    # stopped.
+    #
+    # A run carrying an injected interrupt can NEVER be acceptance evidence:
+    # the result record is stamped `interrupt_probe` instead of `result`, so
+    # a campaign counting `result` records cannot pick one up by accident.
+    # A flag that aborts a run has no business living unmarked in the harness
+    # that produces acceptance evidence.
+    interrupt = None
+    if args.interrupt_on is not None:
+        interrupt = {
+            "fired_at": None,
+            "kind": args.interrupt_kind,
+            "node": args.interrupt_after_node,
+            "on": args.interrupt_on,
+            "resumed_at": None,
+        }
+        published_for_interrupt = event_sink
+
+        def event_sink(event):  # noqa: F811 - deliberately wraps the recorder
+            if published_for_interrupt is not None:
+                published_for_interrupt(event)
+            if (
+                interrupt["fired_at"] is None
+                and event.type == interrupt["on"]
+                and event.ordinal == interrupt["node"]
+            ):
+                interrupt["fired_at"] = time.monotonic()
+                _emit(
+                    "interrupt_fired",
+                    at_ordinal=event.ordinal,
+                    # `interrupt_kind`, not `kind`: `_emit`'s own first
+                    # parameter is named `kind`, so the obvious name collides
+                    # with it and every probe run dies before firing.
+                    interrupt_kind=interrupt["kind"],
+                    on=event.type,
+                )
+                if interrupt["kind"] == "pause":
+                    controls.pause()
+                    # Resumed from a separate thread after a fixed hold, so
+                    # the run really does sit paused rather than the pause
+                    # being a no-op the main thread lifts immediately.
+                    def _resume() -> None:
+                        time.sleep(args.pause_hold_s)
+                        interrupt["resumed_at"] = time.monotonic()
+                        controls.resume()
+
+                    threading.Thread(target=_resume, daemon=True).start()
+                else:
+                    controls.stop()
+
     if args.rail:
         # The rail is the ONLY visible surface for an object-model plan.
         # D109: such a node draws no pointer -- there is no control it is
@@ -190,6 +248,16 @@ def run(args) -> int:
             rail.on_event(event)
             rail.poll(controls)
 
+    started_events = []
+    _started_sink = event_sink
+
+    def event_sink(event):  # noqa: F811 - records starts for the measurement
+        if _started_sink is not None:
+            _started_sink(event)
+        if event.type == "action_started":
+            started_events.append(event)
+
+    run_started = time.monotonic()
     try:
         result = execute_approved_graph(
             validated,
@@ -204,6 +272,7 @@ def run(args) -> int:
             pace=pace,
         )
     finally:
+        finished = time.monotonic()
         if rail is not None:
             from ghostcursor import act_rail
 
@@ -219,7 +288,7 @@ def run(args) -> int:
                 _emit("probe_faults", count=probe.probe_faults)
             diagnostics.close()
     _emit(
-        "result",
+        "interrupt_probe" if interrupt is not None else "result",
         code=result.code.value,
         completed=result.completed,
         completed_nodes=len(result.completed_node_ids),
@@ -228,6 +297,40 @@ def run(args) -> int:
         output_path=result.output_path,
         phase=result.phase.value,
     )
+    if interrupt is not None:
+        fired = interrupt["fired_at"]
+        _emit(
+            "interrupt_measured",
+            fired=fired is not None,
+            interrupt_kind=interrupt["kind"],
+            # Seconds from the interrupt being requested to the run returning.
+            # This is the number D020's 0.5s ceiling applies to.
+            response_s=None if fired is None else round(finished - fired, 4),
+            resumed=interrupt["resumed_at"] is not None,
+            # Every node that STARTED after the interrupt was requested. The
+            # guarantee is that no NEW node begins; the in-flight one may
+            # still land, because its COM call executes in the application's
+            # process and killing the adapter cannot un-issue it.
+            started_after=[
+                event.ordinal
+                for event in started_events
+                if fired is not None and event.at_s > fired - run_started
+            ],
+            # For a PAUSE, stop-to-return is the whole run and says nothing.
+            # What matters is that the run actually sat still: the gap from
+            # the pause being requested to the next node starting. A pause
+            # that the executor ignored would show a gap near zero.
+            held_s=None
+            if fired is None
+            else next(
+                (
+                    round(event.at_s - (fired - run_started), 4)
+                    for event in started_events
+                    if event.at_s > fired - run_started
+                ),
+                None,
+            ),
+        )
     return 0 if result.completed else 3
 
 
@@ -255,6 +358,19 @@ def main() -> int:
             "never supplies identity."
         ),
     )
+    parser.add_argument(
+        "--interrupt-on",
+        default=None,
+        help="DIAGNOSTIC. Fire Stop/Pause when this event type is "
+        "published for --interrupt-after-node. A run using this emits an "
+        "interrupt_probe record, never a result, so it can never be "
+        "counted as acceptance evidence.",
+    )
+    parser.add_argument("--interrupt-after-node", type=int, default=1)
+    parser.add_argument(
+        "--interrupt-kind", choices=("stop", "pause"), default="stop"
+    )
+    parser.add_argument("--pause-hold-s", type=float, default=3.0)
     parser.add_argument(
         "--mode",
         choices=("quick", "watch"),
