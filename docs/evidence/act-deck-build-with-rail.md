@@ -219,11 +219,19 @@ touches no shape:
 
 117 + 56 + 30 + 18 = 221.
 
-An earlier run reported 209, and the difference is a finding rather than
-noise: 10 of the 18 dividers are perfectly horizontal or vertical, so their
-bounding box has zero area and the degenerate check dropped them. A flat line
-is still a region that changed, so the flat axis is now opened to a visible
-minimum.
+An earlier run reported 209. The difference is **12 nodes, not 10**, and the
+first version of this paragraph explained only the 10 — recomputed from the
+logs during the D032 review of 4 September 2026, the missing set was 10
+`add_line` **and 2 `add_animation`**.
+
+The cause is the same for both: a perfectly horizontal or vertical shape has
+a zero-area bounding box and the degenerate check dropped it. The two
+animations target flat line shapes, so they inherited the same rect. A flat
+line is still a region that changed, so the flat axis is now opened to a
+visible minimum.
+
+Recording this because the original explanation accounted for 10 of 12 and
+read as though it accounted for all of them.
 
 ## The channel
 

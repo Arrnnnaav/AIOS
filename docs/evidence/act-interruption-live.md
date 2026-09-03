@@ -5,7 +5,19 @@
 **Bundle:** `9af59719132cfa941090175dc43ec9a1db1b0555e3103b50396449c4c7b551de`
 **Application:** PowerPoint `16.0.20326.20112`
 **Harness:** `act_acceptance --interrupt-on … --interrupt-after-node …`
-**Raw records:** `.artifacts/act-live/deck/interrupt-matrix.json` (ignored path)
+**Raw records:** `.artifacts/act-live/interrupt/<case>.json`, one file per
+case (ignored path)
+
+> **Correction, 4 September 2026.** An earlier version of this document cited
+> `.artifacts/act-live/deck/interrupt-matrix.json` as the raw records for
+> "every run here". It was not. Re-running the matrix with only the pause
+> cases **overwrote** that file, so the four Stop measurements it was cited
+> for no longer existed anywhere but this prose — a direct D034 violation,
+> found by the D032 review. Every case is now written to its own file, so a
+> later run cannot silently erase an earlier one, and the numbers below were
+> re-measured rather than restated.
+
+
 
 Every run here fires the same `controls.stop()` / `controls.pause()` a rail
 click fires. Each is stamped `interrupt_probe`, never `result`, so none can be
@@ -30,31 +42,49 @@ must re-observe rather than trust the list (D110).
 
 ## Stop — measured
 
-| Mode | Fired during | Response | Nodes started after | Result |
-|---|---|---|---|---|
-| Quick | execution (`action_started`, node 40) | **0.187 s** | **0** | `stopped` |
-| Quick | after a node (`action_completed`, node 60) | **0.094 s** | **0** | `stopped` |
-| Watch | pacing (`action_completed`, node 8) | **0.094 s** | **0** | `stopped` |
-| Watch | execution (`action_started`, node 12) | **0.172 s** | **0** | `stopped` |
+Re-measured 4 September 2026. Each row cites its own record file.
 
-**All four are inside D020's 0.5 s ceiling**, worst case 0.187 s — a 2.7×
+| Mode | Fired during | Response | Started after | Record |
+|---|---|---|---|---|
+| Quick | execution (`action_started`, node 40) | **0.250 s** | **0** | `quick-stop-in-execution.json` |
+| Quick | after a node (`action_completed`, node 60) | **0.125 s** | **0** | `quick-stop-after-a-node.json` |
+| Watch | pacing (`action_completed`, node 8) | **0.110 s** | **0** | `watch-stop-in-pacing.json` |
+| Watch | execution (`action_started`, node 12) | **0.218 s** | **0** | `watch-stop-in-execution.json` |
+
+**All four are inside D020's 0.5 s ceiling**, worst case 0.250 s — a 2.0×
 margin. **Zero nodes started after the request in every case.**
 
 The two "in execution" cases are the slower pair, which is what should
 happen: they wait out the ≤50 ms cancel poll plus adapter process teardown.
-The two caught between nodes return in half that.
+The two caught between nodes return in roughly half that.
 
 Watch Build is not slower to stop than Quick Build. That was the risk the
 sliced waiting in `act_pacing` exists to prevent, and the numbers say it
-worked: 0.094 s stopping inside a pacing wait is the same as stopping between
-nodes in Quick.
+worked: 0.110 s stopping inside a pacing wait is the fastest of the four.
+
+### These are samples, not the worst case
+
+**Every one of these four fired while the adapter was idle** — at a node
+boundary, or during a pacing wait. That is the common case and not the bound.
+
+`AdapterHost.stop()` sends a stop frame and waits `1.0 s`, then terminates
+and waits `2.0 s`, then kills and waits `2.0 s`. A stop landing while the
+adapter is genuinely wedged inside a COM call therefore has a **structural
+worst case near 5 seconds — ten times D020's ceiling.** No sample here
+exercised that path, and this document previously reported "a 2.7× margin"
+without saying so (D032 review, F24).
+
+What the four rows establish is that the *common* path is well inside the
+ceiling. What bounds the *worst* path is the teardown budget above, and
+nothing here measured it. Treating 0.250 s as the abort guarantee would be
+reading a sample as a bound.
 
 ## Pause — measured
 
-| Mode | Requested hold | Actual hold | Then |
-|---|---|---|---|
-| Watch | 4.0 s | **4.468 s** | resumed, completed 255/255 |
-| Quick | 4.0 s | **4.062 s** | resumed, completed 255/255 |
+| Mode | Requested hold | Actual hold | Then | Record |
+|---|---|---|---|---|
+| Watch | 4.0 s | **4.406 s** | resumed, completed 255/255 | `watch-pause-then-resume.json` |
+| Quick | 4.0 s | **4.140 s** | resumed, completed 255/255 | `quick-pause-then-resume.json` |
 
 "Hold" is the gap from the pause being requested to the next node starting. A
 pause the executor ignored would show a gap near zero; both show the full
@@ -63,7 +93,8 @@ completion.
 
 Note that `response_s` for a pause is meaningless — it measures request to
 run-return, which for a resumed run is the whole build (272.9 s and 63.7 s).
-It is recorded but is not the measurement.
+It is recorded but is not the measurement (237.4 s and 148.9 s in the
+re-measured runs).
 
 ## A real gap this exposed: stopped runs published a partial deck — FIXED
 

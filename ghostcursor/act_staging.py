@@ -9,6 +9,13 @@ The fix is that the run never writes the final path. It writes a staging file
 the runtime owns, and the final path is created once, atomically, after
 everything has verified.
 
+**Scope, as of 4 September 2026:** the only caller is
+`devtools/act_acceptance.py`. `act_cli.py` — the production planning and
+execution entry point — still passes the caller's real output path straight
+to the approval, so a production run is NOT staged. Everything below
+describes what the campaign harness does; wiring `act_cli` through here is
+outstanding (D032 review, F1).
+
 **The adapter is not told where the final deck goes.** The plan's
 `output_path` parameter is materialized to the staging path, so the adapter
 has no way to write the approved final artifact even if something asked it

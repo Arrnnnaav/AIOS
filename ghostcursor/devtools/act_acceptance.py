@@ -277,6 +277,12 @@ def run(args) -> int:
                 published(event)
             rail.on_event(event)
             rail.poll(controls)
+            if overlay_hwnd is not None and event.type == "action_started":
+                # 34 of the 255 nodes touch no shape -- add_slide, add_notes,
+                # set_transition and the rest. Leaving the previous node's
+                # ring standing would point at a region THIS node did not
+                # change, which is the same lie D109 forbids of a pointer.
+                overlay_window.clear_cue(overlay_hwnd)
             if overlay_hwnd is not None and event.region is not None:
                 # The other half of what an object-model node shows (D109):
                 # the region genuinely changing, with a label and NO cursor,

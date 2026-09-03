@@ -330,6 +330,20 @@ def test_every_event_name_the_rail_knows_is_one_the_executor_publishes():
     assert act_rail._TERMINAL <= published
     assert set(act_rail._LABELS) <= published
 
+    # Subset is not enough, and the D032 review of 4 September 2026 said so.
+    # A NEW terminal event added to the executor would satisfy every
+    # assertion above while the rail kept showing a step for a run that had
+    # ended -- exactly the property the module docstring claims to guarantee.
+    # So every published name must be accounted for: terminal, labelled, or
+    # explicitly known to be neither.
+    ONGOING = {"action_started", "action_completed", "verification_failed"}
+    accounted = act_rail._TERMINAL | set(act_rail._LABELS) | ONGOING
+    unaccounted = published - accounted
+    assert not unaccounted, (
+        f"the executor publishes {sorted(unaccounted)}, which the rail neither "
+        "treats as terminal nor labels; decide which it is"
+    )
+
 
 def test_a_terminal_event_is_not_also_a_label():
     """A type in both would take the terminal path and never use its label,

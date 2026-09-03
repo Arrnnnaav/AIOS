@@ -121,6 +121,24 @@ def build_uia_session(
                 RefusalCode.PRECONDITION_DRIFTED,
             ) from None
 
+        # A verifier that CANNOT READ reports it the normal way: exit 0,
+        # `outcome="refused"`, `observed={}`. `VerifierHost.verify` accepts
+        # that without raising, because "refused" is a legitimate answer.
+        #
+        # So a failed reading used to become an empty semantic -- and two
+        # empty semantics compare EQUAL, which meant `execute_node`'s drift
+        # check passed on two consecutive failures and the node dispatched.
+        # The test that claimed to cover this used a fake that RAISED, which
+        # is not how the real verifier reports a failed read: it enforced an
+        # invariant that correlated with the property instead of implying it
+        # (D031). Found by the D032 review of 4 September 2026.
+        if not answer.observed:
+            raise UiaSessionError(
+                f"the read-only verifier returned no reading for {mode}: "
+                f"{answer.detail}",
+                RefusalCode.PRECONDITION_DRIFTED,
+            )
+
         try:
             seen = host.observe_control(
                 selector.control_type,

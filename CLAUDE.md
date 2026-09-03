@@ -240,11 +240,22 @@ to any proposal made from it — not its parsed turns and not a normalised
 form. A `Brief` carries no field that could hold a selector, capability,
 parameter or plan; that is a property of the type, not a rule to remember.
 
-A `uia_pattern` operation is verified from LIVE state, never from a saved
-artifact. The artifact verifier reads a file and a UIA effect reaches no file
-until someone saves, so a plugin declaring a UIA backend must also ship a
-separately signed read-only `live_verifier`; bundle verification refuses
-either half of that pairing alone, exactly as it does for `uia_entrypoint`.
+A `uia_pattern` operation must be verified from LIVE state, never from a
+saved artifact. The artifact verifier reads a file and a UIA effect reaches
+no file until someone saves, so a plugin declaring a UIA backend must also
+ship a separately signed read-only `live_verifier`; bundle verification
+refuses either half of that pairing alone, exactly as it does for
+`uia_entrypoint`.
+
+**NOT YET WIRED IN PRODUCTION (D032 review, 4 Sep 2026).** Bundle
+verification requires the live verifier, but `AdapterDescriptor` carries no
+field for it and `execute_approved_graph` always constructs a `VerifierHost`
+on the ARTIFACT verifier. Nothing outside `devtools/act_live_node.py`
+consumes it. This is latent only because `act_cli` passes no `uia_session`,
+so production refuses every UIA node before reaching a verifier. **No
+`uia_pattern` operation may be adopted until the runtime routes by the
+operation's signed backend declaration.** The sentence above states the
+requirement, not the current wiring.
 The live verifier must answer a postcondition naming a CHANGE against the
 reading taken before the cue -- a state such as `slide.exists` is satisfied by
 a node that did nothing. The comparison stays in signed plugin code; core

@@ -73,7 +73,14 @@ class FakeVerifier:
     """Answers what the document is. Returns a different reading on the Nth
     call when `drift_on` is set, which is how the drift check is exercised."""
 
-    def __init__(self, *, drift_on: int | None = None, fails: bool = False):
+    def __init__(
+        self,
+        *,
+        drift_on: int | None = None,
+        fails: bool = False,
+        empty_on: int | None = None,
+    ):
+        self._empty_on = empty_on
         self.calls = 0
         self._drift_on = drift_on
         self._fails = fails
@@ -91,6 +98,10 @@ class FakeVerifier:
         postconditions=None,
     ):
         self.calls += 1
+        if self._empty_on is not None and self.calls >= self._empty_on:
+            # How a real verifier reports a failed read: exit 0, outcome
+            # "refused", nothing observed. It does NOT raise.
+            return SimpleNamespace(verified=False, detail="cannot read", observed={})
         # An OBSERVATION must carry no baseline: there is nothing yet to
         # compare against, and a baseline here would mean the reading before
         # the cue was being verified against itself.
@@ -487,4 +498,39 @@ def test_an_observation_sends_the_postconditions_and_no_baseline(tmp_path):
         session.observe(_node(), "observe_before")
 
     assert verifier.seen == [("slide.count.increased_by_one",)]
+
+
+def test_a_verifier_that_returns_no_reading_refuses_the_node(tmp_path):
+    """The vacuous drift check the D032 review found.
+
+    A verifier that cannot read reports it with exit 0, `outcome="refused"`
+    and `observed={}` — it does NOT raise. That used to become an empty
+    semantic, and two empty semantics compare EQUAL, so `execute_node`'s
+    drift check passed on two consecutive failures and the node dispatched.
+
+    The older test used a fake that raised, which enforced an invariant
+    (verifier raises → node refuses) that CORRELATED with the property
+    (a failed reading must not authorize a dispatch) without implying it.
+    """
+
+    verifier = FakeVerifier(empty_on=1)
+    with _host(tmp_path) as host:
+        session = _session(tmp_path, host, verifier=verifier)
+
+        with pytest.raises(UiaSessionError, match="no reading"):
+            session.observe(_node(), "observe_before")
+
+
+def test_two_failed_readings_can_never_compare_equal(tmp_path):
+    """The property, stated directly rather than through a proxy. Neither
+    observation may return at all, so there is nothing for the drift check
+    to find equal."""
+
+    verifier = FakeVerifier(empty_on=1)
+    with _host(tmp_path) as host:
+        session = _session(tmp_path, host, verifier=verifier)
+
+        for mode in ("observe_before", "confirm_before"):
+            with pytest.raises(UiaSessionError):
+                session.observe(_node(), mode)
 

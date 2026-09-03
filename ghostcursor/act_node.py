@@ -1,8 +1,12 @@
 """One node's journey from authorized to verified, with the user watching.
 
-This is the first caller of `act_protocol`, `uia_identity` and
-`coordinate_space` together. Until it existed those contracts had only ever
-been judged against their own docstrings (D107).
+This is the first caller of `act_protocol` and `uia_identity` together.
+Until it existed those contracts had only ever been judged against their own
+docstrings (D107).
+
+It does NOT use `coordinate_space`. An earlier version of this docstring
+said it did; nothing imports that module, and a screen rectangle reaching
+the overlay is currently unbracketed by it (D032 review, 4 Sep 2026).
 
 The order is fixed and the reasons are separate:
 
