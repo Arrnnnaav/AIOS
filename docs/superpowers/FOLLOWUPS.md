@@ -698,13 +698,22 @@ input synthesis, and `tests/test_no_input_synthesis.py` covers `devtools/`).
 The recipe sets no `fail_after_timeout`, so the mark bounds nothing here; it is
 a diagnostic landmark only.
 
-**Why this still blocks that record as evidence.** `Step.preconditions` is
-parsed in `reasoning/schema.py` and never read by the reasoning path, so the
-declared `slide1_before` precondition gates nothing. The timing mark is the
-loop's own record that it observed evidence of a user action, and
-`tools/render_open_extensions_evidence.py` already refuses a record missing
-it. Admitting this one would mean weakening a gate to fit an unexplained
-record — the shape of failure D031 and D032 exist to catch.
+**Why this still blocks that record as evidence.** Not because the mark is
+universally required — `tools/render_excel_plugin_evidence.py` declares it
+per workflow (`verification_started: False` for `SELECT_CELL_B2`, `True` for
+`ADD_WORKSHEET`) and enforces that by exact set equality, so for some
+workflows its ABSENCE is what the gate demands. The bar is **consistency**:
+whichever expectation ADD_SLIDE declares, a set that produces the mark in two
+runs and not the third violates it, on identical bytes and one HWND. That is
+a nondeterministic landmark, which is a finding in its own right.
+
+`Step.preconditions` is parsed in `reasoning/schema.py` and never read by the
+reasoning path, so the declared `slide1_before` precondition gates nothing —
+noted here because it removes the other structural check one might reach for.
+
+Admitting the record by declaring the mark optional would mean widening a
+gate to fit an unexplained result, the shape of failure D031 and D032 exist
+to catch.
 
 Next: reproduce with the loop instrumented (not on an acceptance run), and
 determine which of the two possibilities holds before either explaining the
