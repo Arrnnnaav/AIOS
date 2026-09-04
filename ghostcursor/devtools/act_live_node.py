@@ -284,9 +284,6 @@ def main() -> int:
                 },
                 validation_sha256=hashlib.sha256(operations_bytes).hexdigest(),
                 output_path=str(PAYLOAD),
-                authorization_for=lambda _n: hashlib.sha256(
-                    f"{session_id}:live-001".encode()
-                ).hexdigest(),
             )
 
             request = PresentationRequest(
@@ -318,11 +315,16 @@ def main() -> int:
                 policy=session.policy,
                 observe=observe,
                 present=session.present,
-                # This diagnostic mints no real approval, so the token is the
-                # digest itself. That is exactly why this is not an acceptance
-                # harness: the authority boundary is stubbed here and is not
-                # stubbed in `_execute_approved_graph`.
-                authorize=lambda facts: facts,
+                # This diagnostic mints no real approval. It stands in for
+                # the `AuthorizedAction` core would mint, carrying only the
+                # field the dispatch reads. That is exactly why this is not
+                # an acceptance harness: the authority boundary is stubbed
+                # here and is not stubbed in `_execute_approved_graph`.
+                authorize=lambda facts: SimpleNamespace(
+                    authorization_sha256=hashlib.sha256(
+                        f"{session_id}:live-001".encode()
+                    ).hexdigest()
+                ),
                 dispatch=lambda token, confirmed: (
                     dispatched.__setitem__("count", dispatched["count"] + 1),
                     session.dispatch(node, token, confirmed),

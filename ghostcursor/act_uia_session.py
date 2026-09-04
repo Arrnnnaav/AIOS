@@ -62,7 +62,6 @@ def build_uia_session(
     target: Mapping[str, Any],
     validation_sha256: str,
     output_path: str,
-    authorization_for: Callable[[object], str],
     cancel_event: "threading.Event | None" = None,
     observe_timeout_s: float = 5.0,
     dispatch_timeout_s: float = 10.0,
@@ -75,10 +74,10 @@ def build_uia_session(
     selector and pattern come from the signed registry rather than from
     anything this function was told.
 
-    ``authorization_for`` returns the digest that must travel with the
-    dispatch. It is a callable rather than a value because a digest is minted
-    per node, and one reused across nodes would be an authorization for
-    something else.
+    The digest that travels with a dispatch is taken from the token
+    `execute_node` hands to `dispatch` -- the authorization core minted for
+    that node -- never from anything this function was given. There is one
+    source, so there is nothing to diverge.
 
     ``cancel_event`` lets a READ be abandoned when the operator stops. It is
     passed to the observation and deliberately not to the dispatch: a read
@@ -159,8 +158,21 @@ def build_uia_session(
             match_count=1,
         )
 
-    def dispatch(node, _token, confirmed: Observation | None) -> None:
+    def dispatch(node, token, confirmed: Observation | None) -> None:
         spec = operation_for(node)
+        if token is None or not getattr(token, "authorization_sha256", ""):
+            # The authorization core minted for THIS node, or nothing. An
+            # earlier version ignored the token and sent a digest computed by
+            # a separate callable the caller supplied. Nothing made the two
+            # agree, so the adapter could be handed an authorization core had
+            # never minted -- and the only caller was a diagnostic that
+            # stubbed the token, so the divergence could not show up until
+            # production wired this in.
+            raise UiaSessionError(
+                "a control-driving dispatch needs the authorization core "
+                "minted for this node",
+                RefusalCode.TARGET_IDENTITY_MISMATCH,
+            )
         if confirmed is None:
             # Unreachable through `execute_node` for a pointer-drawing node,
             # and refused rather than asserted: reaching here would mean
@@ -175,7 +187,7 @@ def build_uia_session(
             selector.control_type,
             selector.name,
             spec.uia_pattern,
-            authorization_sha256=authorization_for(node),
+            authorization_sha256=token.authorization_sha256,
             timeout_s=dispatch_timeout_s,
         )
         if response.outcome != "completed":

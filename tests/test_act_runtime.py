@@ -430,6 +430,14 @@ def test_execute_approved_graph_exposes_no_verifier_replacing_parameter():
         "event_sink",
         "verify_observer",
         "uia_session",
+        # A place to DRAW, not a way to act. `PresentationSurface` carries an
+        # overlay and receipt deadlines and has no dispatch, so a caller
+        # supplying one cannot decide what a node does to the application --
+        # the runtime composes the session itself around the adapter host it
+        # owns and never hands out. The rejected alternative was a factory
+        # taking that host, which would have given every caller the live
+        # adapter.
+        "presentation",
         # Timing only, and deliberately NOT a callable: a `Pace` is two
         # integers, so nothing passed here can return a verification answer.
         # It changes how long the run waits between nodes and changes nothing
@@ -588,7 +596,9 @@ def _fake_session(*, receipts=True, record=None):
             match_count=1,
         ),
         present=present,
-        dispatch=lambda node, token, confirmed: record["dispatched"].append(node.node_id),
+        dispatch=lambda node, token, confirmed: record["dispatched"].append(
+            node.node_id
+        ),
         policy=ReceiptPolicy(first_paint_deadline_ms=500, completion_deadline_ms=800),
         session_id="s1",
         clock=clock,
@@ -804,4 +814,3 @@ def test_the_descriptor_carries_the_live_verifier_through(tmp_path):
     assert "live_verifier" in fields
     assert "live_verifier_sha256" in fields
     assert fields["live_verifier"].default is None
-

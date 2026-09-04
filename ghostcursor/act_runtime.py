@@ -109,7 +109,6 @@ class ActEvent:
     region: tuple[int, int, int, int] | None = None
 
 
-
 def _region_of(value) -> "tuple[int, int, int, int] | None":
     """Four integers, or nothing.
 
@@ -176,7 +175,6 @@ class ActControls:
         return False
 
 
-
 @dataclass
 class UiaNodeSession:
     """Everything a control-driving node needs, supplied by the caller.
@@ -207,6 +205,28 @@ class UiaNodeSession:
     session_id: str
     clock: Callable[[], float] = lambda: time.monotonic() * 1000.0
     on_state: Callable[[object, LifecycleState], None] | None = None
+
+
+@dataclass(frozen=True)
+class PresentationSurface:
+    """Where a control-driving node's cue is shown, and how long it may take.
+
+    This is what a production caller supplies instead of a `UiaNodeSession`.
+    The difference matters: a session carries `dispatch`, so a caller handing
+    one in decides what a node does to the application. A surface can draw a
+    cue and hand back receipts, and there is no path from it to an effect --
+    the runtime composes the session itself, around the adapter host it owns
+    and never exposes.
+
+    That is why this is not a factory taking the host. A factory would be
+    simpler and would give every caller the live adapter, which is strictly
+    more authority than injecting a session already was.
+    """
+
+    #: Draws the cue and returns its receipts. `OverlaySession` in production.
+    overlay: object
+    #: Receipt deadlines. Data, not behaviour.
+    policy: ReceiptPolicy
 
 
 def approve_action_graph(
@@ -399,6 +419,8 @@ def _execute_approved_graph(
     clock: Callable[[], float] = time.monotonic,
     wall_clock: Callable[[], float] = time.time,
     uia_session: "UiaNodeSession | None" = None,
+    presentation: "PresentationSurface | None" = None,
+    live_verifier: "VerifierHost | None" = None,
     pace: Pace = QUICK,
 ) -> ActRunResult:
     """Private effect seam used by production and hermetic contract tests."""
@@ -525,6 +547,61 @@ def _execute_approved_graph(
                 events=tuple(events),
                 output_path=approval.output_path,
             )
+
+        if uia_session is None and presentation is not None:
+            # Composed HERE, after the host is running, because the session
+            # reads and dispatches through that host. A caller cannot build
+            # one for the same reason: it never gets the host.
+            #
+            # A live verifier is required rather than optional. `observe`
+            # asks it what the document currently is, and that reading is the
+            # semantic the drift check compares -- without it the node would
+            # be left comparing identity against itself, which is the vacuous
+            # check `act_uia_session` exists to avoid.
+            if live_verifier is None:
+                return ActRunResult(
+                    ActRunPhase.EXECUTION,
+                    ActRunCode.ADAPTER_FAILED,
+                    "a control-driving run needs the plugin's signed "
+                    "read-only live verifier, and this plugin ships none",
+                    validated,
+                    events=tuple(events),
+                    output_path=approval.output_path,
+                )
+            from ghostcursor.act_uia_session import build_uia_session
+
+            try:
+                uia_session = build_uia_session(
+                    host=host,
+                    verifier=live_verifier,
+                    payload_root=Path(descriptor.payload_root),
+                    overlay=presentation.overlay,
+                    policy=presentation.policy,
+                    session_id=approval.approval_id,
+                    operation_for=lambda node: registry.operations[node.operation_id],
+                    target={
+                        "executable": approval.target.executable.casefold(),
+                        "executable_version": approval.target.executable_version,
+                        "hwnd": approval.target.hwnd,
+                        "pid": approval.target.pid,
+                    },
+                    validation_sha256=validated.validation_sha256,
+                    output_path=approval.output_path,
+                    # A read may be abandoned when the operator stops; a
+                    # dispatch may not, and is bounded by its own timeout.
+                    cancel_event=controls.stop_event,
+                )
+            except Exception as exc:  # noqa: BLE001 - fail closed, never run
+                return ActRunResult(
+                    ActRunPhase.EXECUTION,
+                    ActRunCode.ADAPTER_FAILED,
+                    f"the presentation session could not be assembled: "
+                    f"{type(exc).__name__}: {exc}",
+                    validated,
+                    events=tuple(events),
+                    output_path=approval.output_path,
+                )
+
         def _paced(milliseconds: int, node, ordinal: int) -> bool:
             """Wait, staying stoppable throughout. False means Stop was read.
 
@@ -648,9 +725,7 @@ def _execute_approved_graph(
                         dispatch=lambda token, confirmed: uia_session.dispatch(
                             node, token, confirmed
                         ),
-                        verify=lambda target: verify(
-                            target, operation, None, approval
-                        ),
+                        verify=lambda target: verify(target, operation, None, approval),
                         clock=uia_session.clock,
                         # The operator's Stop, asked at the two boundaries
                         # where stopping is still free. Without it a Stop
@@ -802,7 +877,6 @@ def prepare_action_graph(
     return validate_action_graph(graph, registry, initial_facts=initial_facts)
 
 
-
 def choose_verifier(artifact, live, operation):
     """Which verifier may answer for this operation, and with what.
 
@@ -849,6 +923,7 @@ def execute_approved_graph(
     event_sink: Callable[[ActEvent], None] | None = None,
     verify_observer: Callable[[str, Mapping[str, object]], None] | None = None,
     uia_session: "UiaNodeSession | None" = None,
+    presentation: "PresentationSurface | None" = None,
     pace: Pace = QUICK,
 ) -> ActRunResult:
     """Production execution path with the plugin's separate signed verifier.
@@ -963,6 +1038,8 @@ def execute_approved_graph(
         controls=controls,
         event_sink=event_sink,
         uia_session=uia_session,
+        presentation=presentation,
+        live_verifier=live_verifier,
         pace=pace,
     )
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 import uuid
 from pathlib import Path
@@ -181,8 +182,16 @@ def execute_act_proposal(
     owned_output_root: Path | None = None,
     controls: ActControls | None = None,
     event_sink: Callable[[object], None] | None = None,
+    presentation=None,
 ):
-    """Approve the exact reviewed proposal once, then run its signed plan."""
+    """Approve the exact reviewed proposal once, then run its signed plan.
+
+    ``presentation`` is where a control-driving node's cue is drawn. It is
+    passed through untouched: this function decides nothing about how a cue
+    looks and cannot dispatch through it. A plan whose signed operations are
+    all object-model needs none, and `run_act_goal` does not create one --
+    see `plan_draws_a_pointer`.
+    """
 
     descriptor = proposal.descriptor
     approval = approve_action_graph(
@@ -224,6 +233,7 @@ def execute_act_proposal(
         revalidate_target=_revalidate,
         controls=controls or ActControls(),
         event_sink=event_sink,
+        presentation=presentation,
     )
     if proposal.staging is None:
         return result
@@ -289,18 +299,33 @@ def run_act_goal(
             detail="re-run with --approve after reviewing the complete plan",
         )
         return 4
-    result = execute_act_proposal(
-        proposal,
-        unattended=unattended,
-        owned_output_root=owned_output_root,
-        event_sink=lambda event: _emit(
-            "event",
-            event=event.type,
-            node_id=event.node_id,
-            ordinal=event.ordinal,
-            total=event.total,
-        ),
+    sink = lambda event: _emit(  # noqa: E731 - one expression, used twice
+        "event",
+        event=event.type,
+        node_id=event.node_id,
+        ordinal=event.ordinal,
+        total=event.total,
     )
+    # A surface is created only for a plan whose SIGNED operations include a
+    # control-driving one. An object-model plan gets none, and the runtime
+    # then refuses any pointer-drawing node by construction rather than by
+    # this function having remembered to check.
+    if not plan_draws_a_pointer(proposal):
+        result = execute_act_proposal(
+            proposal,
+            unattended=unattended,
+            owned_output_root=owned_output_root,
+            event_sink=sink,
+        )
+    else:
+        with _pointer_surface() as presentation:
+            result = execute_act_proposal(
+                proposal,
+                unattended=unattended,
+                owned_output_root=owned_output_root,
+                event_sink=sink,
+                presentation=presentation,
+            )
     _emit(
         "result",
         code=result.code.value,
@@ -314,6 +339,68 @@ def run_act_goal(
 __all__ = [
     "ActProposal",
     "execute_act_proposal",
+    "plan_draws_a_pointer",
     "prepare_act_goal",
     "run_act_goal",
 ]
+
+
+def plan_draws_a_pointer(proposal: ActProposal) -> bool:
+    """Whether any node in this approved plan may show a pointer (D109).
+
+    Asked from the SIGNED registry, never from a flag a caller passed. It is
+    what decides whether a run needs a presentation surface at all, and an
+    object-model plan must not get one: a window nothing draws in is still a
+    window, and creating it would suggest a pointer path exists where the
+    backend has no control to hold.
+    """
+
+    operations = proposal.descriptor.registry.operations
+    return any(
+        operations[node.operation_id].draws_a_pointer
+        for node in proposal.validated.ordered_nodes
+    )
+
+
+@contextmanager
+def _pointer_surface():
+    """A real overlay window for the length of one run, then destroyed.
+
+    Imported lazily and created only on the pointer path. `act_cli` is
+    imported by hermetic tests that have no desktop, and a Win32 window at
+    module import would make the whole production planning path require one.
+
+    The window is destroyed in a `finally`, including when the run raises:
+    a leaked topmost click-through window covering the screen is exactly the
+    failure the ESC and timeout rules in `run.py` exist to prevent.
+    """
+
+    from ghostcursor.act_overlay import CueBudget, overlay_presenter
+    from ghostcursor.act_protocol import ReceiptPolicy, TrustClass
+    from ghostcursor.act_runtime import PresentationSurface
+    from ghostcursor.overlay import window as overlay_window
+
+    hwnd = overlay_window.create_overlay_window()
+    try:
+        policy = ReceiptPolicy(
+            first_paint_deadline_ms=2000, completion_deadline_ms=8000
+        )
+        overlay = overlay_presenter(
+            hwnd,
+            budget=CueBudget(),
+            policy=policy,
+            # The label names what the observation actually found. A fixed
+            # string here would let the cue describe a control the run did
+            # not resolve.
+            label_for=lambda observation: str(
+                dict(getattr(observation, "identity", {}) or {}).get("name", "")
+            ),
+            # What a UIA node earns ONCE VERIFIED. The cue itself is always
+            # drawn NEUTRAL while presenting, however strong the backend
+            # (D109, amended by D112).
+            backend_trust=TrustClass.LIVE_STATE,
+            keep_running=lambda: True,
+        )
+        yield PresentationSurface(overlay=overlay, policy=policy)
+    finally:
+        overlay_window.destroy_overlay_window(hwnd)

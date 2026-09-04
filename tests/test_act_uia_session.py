@@ -209,10 +209,17 @@ def _session(tmp_path, host, *, verifier=None, digest=None, spec=None, **overrid
         target={"hwnd": 4242},
         validation_sha256="a" * 64,
         output_path=str(tmp_path / "out.pptx"),
-        authorization_for=lambda _node: "b" * 64,
     )
     kwargs.update(overrides)
     return build_uia_session(**kwargs)
+
+
+def _token(digest: str = "b" * 64):
+    """Stands in for the `AuthorizedAction` core mints per node. Only the
+    field the dispatch reads is modelled, so a test cannot accidentally rely
+    on the rest of that type."""
+
+    return SimpleNamespace(authorization_sha256=digest)
 
 
 def _node():
@@ -419,7 +426,7 @@ def test_the_dispatch_goes_to_the_selector_named_control(tmp_path):
     digest = _payload(tmp_path, name="Reuse Slides")
     with _host(tmp_path) as host:
         session = _session(tmp_path, host, digest=digest)
-        session.dispatch(_node(), object(), Observation(semantic=(), identity={}))
+        session.dispatch(_node(), _token(), Observation(semantic=(), identity={}))
     # No exception means the adapter reported completed for that name; the
     # name itself is asserted through the observe path above.
 
@@ -432,7 +439,7 @@ def test_a_dispatch_without_a_confirmation_is_refused(tmp_path):
         session = _session(tmp_path, host)
 
         with pytest.raises(UiaSessionError, match="needs a confirmed observation"):
-            session.dispatch(_node(), object(), None)
+            session.dispatch(_node(), _token(), None)
 
 
 @pytest.mark.parametrize("outcome", ["refused", "failed"])
@@ -444,23 +451,49 @@ def test_an_adapter_that_did_not_complete_refuses_the_node(tmp_path, outcome):
         session = _session(tmp_path, host)
 
         with pytest.raises(UiaSessionError, match="did not complete the dispatch"):
-            session.dispatch(_node(), object(), Observation(semantic=(), identity={}))
+            session.dispatch(_node(), _token(), Observation(semantic=(), identity={}))
 
 
-def test_the_dispatch_carries_a_per_node_authorization(tmp_path):
-    """A callable, not a value: a digest reused across nodes would be an
-    authorization for something else."""
+def test_the_dispatch_carries_the_authorization_core_minted(tmp_path):
+    """The digest travelling with a dispatch comes from the token
+    `execute_node` handed in -- the authorization core minted for THIS node --
+    not from anything the session was constructed with.
 
-    minted: list = []
+    Before this, `dispatch` ignored the token and called a separate
+    caller-supplied callable. Nothing made the two agree, so the adapter
+    could receive an authorization core never minted; the only caller was a
+    diagnostic that stubbed the token, so it could not show up until
+    production wired this in."""
+
+    sent: list = []
     with _host(tmp_path) as host:
-        session = _session(
-            tmp_path,
-            host,
-            authorization_for=lambda node: minted.append(node.node_id) or "d" * 64,
-        )
-        session.dispatch(_node(), object(), Observation(semantic=(), identity={}))
+        real = host.dispatch_pattern
 
-    assert minted == ["n001"]
+        def spy(*args, **kwargs):
+            sent.append(kwargs.get("authorization_sha256"))
+            return real(*args, **kwargs)
+
+        host.dispatch_pattern = spy
+        session = _session(tmp_path, host)
+        session.dispatch(
+            _node(), _token("d" * 64), Observation(semantic=(), identity={})
+        )
+
+    assert sent == ["d" * 64]
+
+
+@pytest.mark.parametrize("token", [None, SimpleNamespace(authorization_sha256="")])
+def test_a_dispatch_without_the_minted_authorization_is_refused(tmp_path, token):
+    """Fail closed. A dispatch that cannot name its authorization is an
+    effect nothing approved."""
+
+    with _host(tmp_path) as host:
+        session = _session(tmp_path, host)
+        with pytest.raises(UiaSessionError, match="authorization"):
+            session.dispatch(
+                _node(), token, Observation(semantic=(), identity={})
+            )
+    assert not getattr(host, "dispatched", [])
 
 
 # --- the session hands the runtime only edges -----------------------------
