@@ -288,11 +288,16 @@ built but not yet exercised by a caller or a live run.
 - [ ] Local model composes a 10-slide deck from `idea.txt`
 
 **10. Acceptance and release**
-- [ ] Three consecutive PowerPoint campaigns
+- [x] Three consecutive PowerPoint campaigns — 4 Sep 2026, 255/255 each,
+      on externally signed bytes (`docs/evidence/act-acceptance-campaign.md`)
 - [ ] Animation-catalog campaign
 - [ ] All lanes green independently
-- [ ] D032 pre-sign review — *needs a non-author reviewer*
-- [ ] External non-ephemeral signing key — *needs the owner*
+- [x] D032 pre-sign review — three independent cold passes; 26 + 4 + 3
+      findings, all fixed. The blocking one was a COM retry that could
+      duplicate a slide in a signed artifact.
+- [x] External non-ephemeral signing key — `ghostcursor-release-2026-3`,
+      generated outside the repo, public half committed, pair verified
+      through the production PluginStore path
 - [ ] D032 activation review — *needs a non-author reviewer*
 
 **Already built, awaiting a caller**
