@@ -683,3 +683,29 @@ def test_records_spanning_years_are_refused(tmp_path):
     code, output = _render(_campaign(tmp_path, records), tmp_path / "o.md")
     assert code == 2
     assert "one sitting" in output
+
+
+def test_a_record_from_another_application_is_refused(tmp_path):
+    """The target executable is what says these runs drove PowerPoint. A
+    reviewer disabled the check and nothing noticed."""
+
+    records = _three()
+    for record in records:
+        record["target"] = dict(record["target"], executable="excel.exe")
+    code, output = _render(_campaign(tmp_path, records), tmp_path / "o.md")
+    assert code == 2
+    assert "executable" in output
+
+
+@pytest.mark.parametrize("hwnd", [0, -1, None, "1050680"])
+def test_a_record_without_a_usable_window_handle_is_refused(tmp_path, hwnd):
+    """A handle is what the runs were bound to. Zero, negative, absent or a
+    string is not one, and the one-HWND check would happily agree three
+    records shared the same non-handle."""
+
+    records = _three()
+    for record in records:
+        record["target"] = dict(record["target"], hwnd=hwnd)
+    code, output = _render(_campaign(tmp_path, records), tmp_path / "o.md")
+    assert code == 2
+    assert "HWND" in output or "hwnd" in output

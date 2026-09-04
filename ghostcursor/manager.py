@@ -1209,8 +1209,23 @@ class _ActWorker:
 
         def execute() -> None:
             try:
-                from ghostcursor.act_cli import execute_act_proposal
+                from ghostcursor.act_cli import (
+                    execute_act_proposal,
+                    plan_draws_a_pointer,
+                )
 
+                if plan_draws_a_pointer(proposal):
+                    # The manager has no presentation surface, and a
+                    # control-driving node without one is refused by the
+                    # runtime anyway (D109). Refusing HERE says why, on a
+                    # worker thread that cannot create the overlay: the
+                    # window must be made on the thread that pumps for it,
+                    # and receipt deadlines are still underived (D034).
+                    raise RuntimeError(
+                        "this plan contains a control-driving operation; the "
+                        "manager has no presentation surface for it yet, so "
+                        "it cannot be shown or run from here"
+                    )
                 result = execute_act_proposal(
                     proposal,
                     controls=self.controls,

@@ -194,6 +194,35 @@ def run(args) -> int:
     overlay_hwnd = None
     overlay_bounds = None
     overlay_metrics = None
+    presentation = None
+
+    # --- a control-driving plan needs a presentation surface ---------------
+    #
+    # This harness produces the counted acceptance evidence CLAUDE.md requires
+    # before a `uia_pattern` operation may be adopted. Without a surface the
+    # runtime refuses every such node by construction (D109), so the harness
+    # could never produce that evidence -- it was left on the refusal branch
+    # while `act_cli` was wired, and an independent review found it.
+    operations = descriptor.registry.operations
+    draws_pointer = any(
+        operations[node.operation_id].draws_a_pointer
+        for node in validated.ordered_nodes
+    )
+    if draws_pointer:
+        if args.first_paint_deadline_ms is None or args.completion_deadline_ms is None:
+            # Not defaulted. `ReceiptPolicy` says it itself: Phase E derives
+            # these from measurement, and a plausible constant here is the
+            # placeholder derivation exists to replace (D034).
+            _emit(
+                "refused",
+                detail=(
+                    "this plan contains a control-driving operation, so it "
+                    "needs receipt deadlines; pass "
+                    "--first-paint-deadline-ms and --completion-deadline-ms "
+                    "citing where they are recorded"
+                ),
+            )
+            return 2
 
     # --- interruption probe ------------------------------------------------
     #
@@ -305,6 +334,39 @@ def run(args) -> int:
         if event.type == "action_started":
             started_events.append(event)
 
+    if draws_pointer:
+        # One overlay window for the run, shared with the region highlights
+        # if those are on. A second topmost full-screen window would fight
+        # this one for the same pixels.
+        from ghostcursor.act_cli import default_cue_budget
+        from ghostcursor.act_overlay import overlay_presenter
+        from ghostcursor.act_protocol import ReceiptPolicy, TrustClass
+        from ghostcursor.act_runtime import PresentationSurface
+        from ghostcursor.overlay import window as overlay_window
+
+        if overlay_hwnd is None:
+            overlay_hwnd = overlay_window.create_overlay_window()
+        policy = ReceiptPolicy(
+            first_paint_deadline_ms=args.first_paint_deadline_ms,
+            completion_deadline_ms=args.completion_deadline_ms,
+        )
+        presentation = PresentationSurface(
+            overlay=overlay_presenter(
+                overlay_hwnd,
+                budget=default_cue_budget(),
+                policy=policy,
+                label_for=lambda observation: str(
+                    dict(getattr(observation, "identity", {}) or {}).get("name", "")
+                ),
+                backend_trust=TrustClass.LIVE_STATE,
+                # Stop must reach the cue, or a presentation keeps painting
+                # after the operator asked the run to stop.
+                keep_running=lambda: not controls.stop_event.is_set(),
+            ),
+            policy=policy,
+        )
+        _emit("presentation_ready", hwnd=overlay_hwnd)
+
     run_started = time.monotonic()
     try:
         result = execute_approved_graph(
@@ -317,6 +379,7 @@ def run(args) -> int:
             controls=controls,
             event_sink=event_sink,
             verify_observer=verify_observer,
+            presentation=presentation,
             pace=pace,
         )
     finally:
@@ -474,6 +537,22 @@ def main() -> int:
         "--rail",
         action="store_true",
         help="show the Stop/Pause safety rail and the executor-reported step",
+    )
+    parser.add_argument(
+        "--first-paint-deadline-ms",
+        type=int,
+        default=None,
+        help=(
+            "receipt deadline for the first painted frame; required for a "
+            "plan containing a control-driving operation, and deliberately "
+            "not defaulted (D034)"
+        ),
+    )
+    parser.add_argument(
+        "--completion-deadline-ms",
+        type=int,
+        default=None,
+        help="receipt deadline from the start receipt to completion",
     )
     parser.add_argument("--core-version", default="1.0.0")
     parser.add_argument("--approval-lifetime", type=float, default=1800.0)
