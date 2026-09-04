@@ -649,9 +649,21 @@ back; the live verifier's field-set and authority checks moved inside its
 `try` so a malformed frame refuses at exit 0; and `act_cli` stages, publishes
 after verification and abandons otherwise.
 
-What remains before a `uia_pattern` operation can be adopted is unchanged and
-is not code: an independent D032 review of these changes, an external release
-key, and a counted acceptance campaign on the signed bytes.
+**Corrected 4 September 2026.** This closure said what remains "is not code".
+That is wrong, and it was written by the author of the change it describes.
+`build_uia_session` is called only from `ghostcursor/devtools/act_live_node.py`;
+neither `act_cli` nor `manager` passes a `uia_session`, so
+`act_runtime.py`'s `if uia_session is None` branch refuses every
+control-driving node in production. The refusal is correct by design -- no
+presentation surface means no UIA effect (D109) -- but it means the UIA
+vertical is exercised only by a devtool.
+
+So what remains is code AND process:
+
+- **Code:** build a `uia_session` on the production path so `act_cli` and the
+  manager can run a control-driving node at all.
+- **Process, unchanged:** an independent D032 review of these changes, an
+  external release key, and a counted acceptance campaign on the signed bytes.
 
 ## One unexplained test failure
 
