@@ -1148,6 +1148,13 @@ class _PlanningWorker:
                         request.goal,
                         output_path=request.output_path,
                         target_hwnd=request.target_hwnd,
+                        # The directory the user chose for the artifact is
+                        # the root the runtime may stage inside. Without it
+                        # every manager-initiated run wrote its final path
+                        # directly and could leave a partial deck where a
+                        # finished one belongs -- the exact defect staging
+                        # was built to fix (D032 review, 4 Sep 2026).
+                        owned_output_root=request.output_path.parent,
                     )
                 else:
                     from ghostcursor.reasoning.planner import plan_compiled_goal
@@ -1202,6 +1209,7 @@ class _ActWorker:
                     proposal,
                     controls=self.controls,
                     event_sink=self._events.put,
+                    owned_output_root=proposal.output_path.parent,
                 )
             except Exception as exc:
                 result = exc

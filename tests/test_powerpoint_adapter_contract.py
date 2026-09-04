@@ -861,3 +861,44 @@ def test_a_successful_call_is_made_once(monkeypatch):
 
     assert attempts["n"] == 1
 
+
+def test_no_effect_creating_handler_is_wrapped_in_a_retry():
+    """The duplication bug the D032 review found.
+
+    `_retrying` repeats its call. A handler makes MANY COM calls —
+    `do_powerpoint_add_slide` calls `Slides.Add` and then five more — so a
+    rejection landing after the creating call re-ran the whole method and
+    added a SECOND slide to a signed artifact.
+
+    "A rejected call did not happen" is true of ONE call and false of a
+    method that already completed part of its work. Only single idempotent
+    calls may be retried, and this asserts the handler dispatch is not.
+    """
+
+    from pathlib import Path as _Path
+
+    source = (
+        _Path(__file__).resolve().parents[1]
+        / "plugins/sources/powerpoint/payload/ghostcursor/adapter/powerpoint_adapter.py"
+    ).read_text(encoding="utf-8")
+
+    assert "self._retrying(lambda: method(p))" not in source
+    assert "data = method(p) or {}" in source
+
+
+def test_the_only_retried_call_is_idempotent():
+    """`Save()` repeated writes the same bytes again. Every other retried
+    call must be equally repeatable; if this list grows, each addition needs
+    the same argument made for it."""
+
+    import re
+    from pathlib import Path as _Path
+
+    source = (
+        _Path(__file__).resolve().parents[1]
+        / "plugins/sources/powerpoint/payload/ghostcursor/adapter/powerpoint_adapter.py"
+    ).read_text(encoding="utf-8")
+    retried = re.findall(r"self\._retrying\(([^)]*)\)", source)
+
+    assert retried == ["self.presentation.Save"], retried
+

@@ -363,7 +363,11 @@ class PowerPointSession:
     _REJECTED = (-2147418111, -2147417846)  # RPC_E_CALL_REJECTED, RETRYLATER
 
     def _retrying(self, call):
-        """Run one COM call, waiting out a busy application.
+        """Run ONE idempotent COM call, waiting out a busy application.
+
+        Callers must pass a single call whose repetition changes nothing --
+        `Save()`, a read, a view change. Never a method that creates
+        something: see the comment in `execute`.
 
         PowerPoint rejects calls while it is mid-operation -- closing a
         presentation, showing a transient dialog, finishing a save. Measured
@@ -394,7 +398,18 @@ class PowerPointSession:
         # to. A slide this node is about to CREATE is not known yet, which is
         # why the same call is made again afterwards.
         shown = self._follow(slide_id)
-        data = self._retrying(lambda: method(p)) or {}
+        # NOT retried. A handler makes MANY COM calls -- `do_powerpoint_add_slide`
+        # calls `Slides.Add` and then five more -- so a rejection landing after
+        # the creating call would re-run the whole method and add a SECOND
+        # slide. "A rejected call did not happen" is true of ONE call; it is
+        # false of a method that already completed part of its work. Wrapping
+        # the handler was a real duplication bug in a signed adapter, found by
+        # the D032 review of 4 September 2026.
+        #
+        # A rejection mid-handler now fails the node, which is correct: a
+        # failed run is recoverable and a duplicated slide in a signed
+        # artifact is not.
+        data = method(p) or {}
         if shown is None:
             shown = self._follow(slide_id)
         if self.presentation is not None and operation_id != "powerpoint.inspect_presentation":

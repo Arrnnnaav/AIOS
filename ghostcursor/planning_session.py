@@ -64,6 +64,7 @@ class PlanningRound:
 def plan_from_brief(
     topic: str,
     plugin_id: str,
+    goal: str,
     *,
     brief_root: Path,
     answer: Callable[[tuple[str, ...]], str | None],
@@ -80,7 +81,15 @@ def plan_from_brief(
 
     ``propose`` is the planning round — `task_planner.propose_task_graph` in
     production. Injected for the same reason.
+
+    ``goal`` is required rather than derived from the brief. Deriving it
+    would mean this module deciding which sentence of a conversation is the
+    request, which is exactly the kind of judgement that belongs to the
+    person or the model, not to the loop between them.
     """
+
+    if not isinstance(goal, str) or not goal.strip():
+        raise ValueError("a planning session needs a goal")
 
     if (
         not isinstance(max_rounds, int)
@@ -94,8 +103,13 @@ def plan_from_brief(
     rounds: list[PlanningRound] = []
     for index in range(1, max_rounds + 1):
         brief = load_brief(brief_path(Path(brief_root), topic))
+        # The GOAL is a short request; the BRIEF is the conversation around
+        # it. Passing the brief text as the goal looked tidy and was wrong:
+        # a goal is capped at 1024 characters, `idea.txt` alone is 10 831,
+        # and every real multi-turn brief would have been refused before it
+        # reached the model (D032 review, 4 September 2026).
         outcome = propose(
-            brief.text,
+            goal,
             plugin_id,
             initial_facts=initial_facts,
             brief=brief,

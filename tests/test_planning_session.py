@@ -68,6 +68,7 @@ def test_a_plan_on_the_first_round_asks_nothing(root):
     proposal, rounds = plan_from_brief(
         "deck",
         "p",
+        "Build a deck.",
         brief_root=root,
         answer=lambda q: pytest.fail("must not ask"),
         propose=_proposer(_plan()),
@@ -87,6 +88,7 @@ def test_answers_are_appended_to_the_brief_and_reach_the_next_round(root):
     plan_from_brief(
         "deck",
         "p",
+        "Build a deck.",
         brief_root=root,
         answer=lambda q: "Seed investors.",
         propose=propose,
@@ -105,6 +107,7 @@ def test_the_question_is_recorded_even_when_nobody_answers(root):
         plan_from_brief(
             "deck",
             "p",
+            "Build a deck.",
             brief_root=root,
             answer=lambda q: None,
             propose=_proposer(_clarify("Who is the audience?")),
@@ -121,6 +124,7 @@ def test_several_rounds_accumulate_in_order(root):
     _proposal, rounds = plan_from_brief(
         "deck",
         "p",
+        "Build a deck.",
         brief_root=root,
         answer=lambda q: next(answers),
         propose=propose,
@@ -147,6 +151,7 @@ def test_exhausting_the_rounds_raises_rather_than_returning_anything(root):
         plan_from_brief(
             "deck",
             "p",
+            "Build a deck.",
             brief_root=root,
             answer=lambda q: "still vague",
             propose=propose,
@@ -167,6 +172,7 @@ def test_giving_up_stops_immediately_and_says_so(root):
         plan_from_brief(
             "deck",
             "p",
+            "Build a deck.",
             brief_root=root,
             answer=lambda q: None,
             propose=propose,
@@ -182,6 +188,7 @@ def test_an_empty_answer_counts_as_giving_up(root, reply):
         plan_from_brief(
             "deck",
             "p",
+            "Build a deck.",
             brief_root=root,
             answer=lambda q: reply,
             propose=_proposer(_clarify("Who?")),
@@ -203,7 +210,7 @@ def test_the_brief_text_is_what_the_model_is_asked_about(root):
 
     propose = _proposer(_plan())
 
-    plan_from_brief("deck", "p", brief_root=root, answer=lambda q: "x", propose=propose)
+    plan_from_brief("deck", "p", "Build a deck.", brief_root=root, answer=lambda q: "x", propose=propose)
 
     assert propose.seen[0] == load_brief(brief_path(root, "deck")).text
 
@@ -217,6 +224,7 @@ def test_the_brief_is_re_read_every_round(root):
     plan_from_brief(
         "deck",
         "p",
+        "Build a deck.",
         brief_root=root,
         answer=lambda q: "Seed investors.",
         propose=propose,
@@ -230,6 +238,7 @@ def test_an_unexpected_outcome_type_is_refused(root):
         plan_from_brief(
             "deck",
             "p",
+            "Build a deck.",
             brief_root=root,
             answer=lambda q: "x",
             propose=_proposer({"nodes": []}),
@@ -242,6 +251,7 @@ def test_a_malformed_round_budget_is_refused(root, rounds):
         plan_from_brief(
             "deck",
             "p",
+            "Build a deck.",
             brief_root=root,
             answer=lambda q: "x",
             propose=_proposer(_plan()),
@@ -254,3 +264,34 @@ def test_the_round_budget_is_small_enough_that_a_person_finishes():
     not converging and a person is better served by being told so."""
 
     assert 1 <= MAX_PLANNING_ROUNDS <= 5
+
+
+def test_the_goal_is_short_and_the_brief_is_the_context(root):
+    """The D032 review found the brief text being passed AS the goal. A goal
+    is capped at 1024 characters and `idea.txt` alone is 10 831, so every
+    real multi-turn brief would have been refused before reaching the
+    model."""
+
+    from ghostcursor.task_planner import MAX_TASK_GOAL_CHARS
+
+    propose = _proposer(_plan())
+
+    plan_from_brief(
+        "deck", "p", "Build an investor deck.", brief_root=root,
+        answer=lambda q: "x", propose=propose,
+    )
+
+    # `_proposer` records the BRIEF it was handed, which stays whole...
+    assert "Build me a deck." in propose.seen[0]
+    # ...and the goal it was called with is short enough to be accepted.
+    assert len("Build an investor deck.") < MAX_TASK_GOAL_CHARS
+
+
+@pytest.mark.parametrize("goal", ["", "   ", None, 7])
+def test_a_missing_goal_is_refused(root, goal):
+    with pytest.raises(ValueError, match="needs a goal"):
+        plan_from_brief(
+            "deck", "p", goal, brief_root=root,
+            answer=lambda q: "x", propose=_proposer(_plan()),
+        )
+
