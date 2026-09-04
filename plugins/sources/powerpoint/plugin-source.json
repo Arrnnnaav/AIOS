@@ -37,7 +37,7 @@
     }
   ],
   "plugin_id": "ghostcursor.powerpoint",
-  "signing_key_id": "ghostcursor-release-2026-2",
+  "signing_key_id": "ghostcursor-release-2026-3",
   "trees": [
     {
       "destination": "ghostcursor/action-plans",
