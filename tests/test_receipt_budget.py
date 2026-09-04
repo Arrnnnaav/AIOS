@@ -132,3 +132,107 @@ def test_both_deadlines_are_measured_from_their_own_instant():
     source = inspect.getsource(receipt_budget.measure)
     assert "started - requested_ms" in source
     assert "finished - started" in source
+
+
+# --- the measured numbers, and where they came from -----------------------
+
+
+def test_the_measured_policy_matches_the_rendered_evidence():
+    """D034: a measured number in code must name where it is recorded, and
+    the two must agree. A constant that drifts from its evidence is worse
+    than one with no evidence at all -- it looks checked."""
+
+    import re
+    from pathlib import Path
+
+    from ghostcursor.act_cli import measured_receipt_policy
+
+    document = Path("docs/evidence/act-receipt-budget.md").read_text(encoding="utf-8")
+    match = re.search(
+        r"`first_paint_deadline_ms = (\d+)`, `completion_deadline_ms = (\d+)`",
+        document,
+    )
+    assert match, "the evidence document states no derived deadlines"
+
+    policy = measured_receipt_policy()
+    assert policy.first_paint_deadline_ms == int(match.group(1))
+    assert policy.completion_deadline_ms == int(match.group(2))
+
+
+def test_the_code_names_the_evidence_file():
+    from pathlib import Path
+
+    source = Path("ghostcursor/act_cli.py").read_text(encoding="utf-8")
+    assert "act-receipt-budget.md" in source
+    assert Path("docs/evidence/act-receipt-budget.md").is_file()
+
+
+def test_a_measured_deadline_clears_the_enforcement_clock():
+    """A deadline below the clock's granularity cannot be enforced by the
+    clock that checks it, however precisely it was measured."""
+
+    import json
+    from pathlib import Path
+
+    from ghostcursor.act_cli import measured_receipt_policy
+
+    record = json.loads(
+        (Path("docs/evidence/receipt-budget/run-1.json")).read_text(encoding="utf-8")
+    )
+    granularity = record["enforcement_clock_granularity_ms"]
+    policy = measured_receipt_policy()
+
+    assert policy.first_paint_deadline_ms >= granularity
+    assert policy.completion_deadline_ms >= granularity
+
+
+def test_the_measured_policy_is_never_a_default():
+    """An operator on another machine has not measured these -- the paint
+    cost scales with desktop area. It is a value to pass, not one that
+    appears on its own."""
+
+    import inspect
+
+    from ghostcursor.act_cli import run_act_goal
+
+    parameters = inspect.signature(run_act_goal).parameters
+    assert parameters["receipt_policy"].default is None
+
+
+def test_the_measured_deadlines_flag_actually_supplies_them():
+    """The flag existing is not the flag working. Returning None instead
+    would put the CLI straight back on the refusal branch while advertising
+    a way off it."""
+
+    from types import SimpleNamespace
+
+    import pytest
+
+    import ghostcursor.run as run_module
+
+    def fail(message):
+        raise SystemExit(message)
+
+    parser = SimpleNamespace(error=fail)
+    policy = run_module._receipt_policy(
+        parser,
+        SimpleNamespace(
+            measured_deadlines=True,
+            first_paint_deadline_ms=None,
+            completion_deadline_ms=None,
+        ),
+    )
+    assert policy is not None, "--measured-deadlines supplied no policy"
+    assert policy.first_paint_deadline_ms > 0
+    assert policy.completion_deadline_ms > 0
+
+    # ...and it is not two answers to the same question.
+    with pytest.raises(SystemExit):
+        run_module._receipt_policy(
+            parser,
+            SimpleNamespace(
+                measured_deadlines=True,
+                first_paint_deadline_ms=2000,
+                completion_deadline_ms=8000,
+            ),
+        )

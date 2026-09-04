@@ -1,0 +1,53 @@
+{
+  "budget": {
+    "frame_budget_ms": 2,
+    "poll_interval_ms": 50,
+    "settle_ms": 250,
+    "traversal_ms": 300
+  },
+  "completion_ms": {
+    "max": 560.14,
+    "mean": 548.819,
+    "median": 548.651,
+    "p99": 560.14,
+    "samples": 59
+  },
+  "cues_measured": 59,
+  "cues_requested": 60,
+  "cues_without_both_receipts": 0,
+  "derived": {
+    "completion_deadline_ms": 1121,
+    "first_paint_deadline_ms": 15
+  },
+  "enforcement_clock_granularity_ms": 15.0,
+  "first_paint_ms": {
+    "max": 5.354,
+    "mean": 2.357,
+    "median": 2.343,
+    "p99": 5.354,
+    "samples": 59
+  },
+  "margin_over_p99": 2.0,
+  "settled_first_cue": {
+    "completion_ms": {
+      "max": 241.307,
+      "mean": 241.307,
+      "median": 241.307,
+      "p99": 241.307,
+      "samples": 1
+    },
+    "first_paint_ms": {
+      "max": 10.058,
+      "mean": 10.058,
+      "median": 10.058,
+      "p99": 10.058,
+      "samples": 1
+    }
+  },
+  "virtual_screen": [
+    0,
+    0,
+    1920,
+    1080
+  ]
+}

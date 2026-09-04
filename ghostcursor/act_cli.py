@@ -387,6 +387,7 @@ def run_act_goal(
 __all__ = [
     "ActProposal",
     "default_cue_budget",
+    "measured_receipt_policy",
     "execute_act_proposal",
     "plan_draws_a_pointer",
     "prepare_act_goal",
@@ -462,6 +463,37 @@ def _pointer_surface(budget, policy, *, keep_running=None):
         yield PresentationSurface(overlay=overlay, policy=policy)
     finally:
         overlay_window.destroy_overlay_window(hwnd)
+
+
+#: The measured receipt deadlines for this machine's topology, from
+#: `docs/evidence/act-receipt-budget.md` (three 60-cue runs; the p99 with a
+#: stated margin, taking the highest of the three, floored at the enforcement
+#: clock's measured 15ms tick).
+#:
+#: Cited rather than chosen. `ReceiptPolicy` refuses to default them, and
+#: until they were measured both production paths refused every
+#: control-driving plan -- correctly, and that refusal was the binding
+#: constraint on the whole Act vertical.
+MEASURED_FIRST_PAINT_DEADLINE_MS = 22
+MEASURED_COMPLETION_DEADLINE_MS = 1121
+
+
+def measured_receipt_policy():
+    """The deadlines Phase E derived, for a caller that wants them.
+
+    Not a default. `run_act_goal` still refuses a control-driving plan when
+    no policy is supplied, because an operator on another machine has not
+    measured these -- the paint cost scales with desktop area and the
+    document says so. This is the value to pass, not a value that appears on
+    its own.
+    """
+
+    from ghostcursor.act_protocol import ReceiptPolicy
+
+    return ReceiptPolicy(
+        first_paint_deadline_ms=MEASURED_FIRST_PAINT_DEADLINE_MS,
+        completion_deadline_ms=MEASURED_COMPLETION_DEADLINE_MS,
+    )
 
 
 #: The measured per-frame paint cost for this machine's topology, from

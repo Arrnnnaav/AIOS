@@ -508,6 +508,15 @@ def main() -> int:
     # CLI refused every control-driving plan while reading as though it could
     # run one.
     parser.add_argument(
+        "--measured-deadlines",
+        action="store_true",
+        help=(
+            "use the receipt deadlines recorded in "
+            "docs/evidence/act-receipt-budget.md; valid only for the machine "
+            "and screen topology that document names"
+        ),
+    )
+    parser.add_argument(
         "--first-paint-deadline-ms",
         type=int,
         help=(
@@ -1036,6 +1045,15 @@ def _receipt_policy(parser, args):
 
     first = getattr(args, "first_paint_deadline_ms", None)
     completion = getattr(args, "completion_deadline_ms", None)
+    if getattr(args, "measured_deadlines", False):
+        if first is not None or completion is not None:
+            parser.error(
+                "--measured-deadlines and an explicit deadline are two "
+                "answers to the same question"
+            )
+        from ghostcursor.act_cli import measured_receipt_policy
+
+        return measured_receipt_policy()
     if first is None and completion is None:
         return None
     if first is None or completion is None:

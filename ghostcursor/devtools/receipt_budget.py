@@ -79,7 +79,39 @@ def measure(cues: int, budget: CueBudget) -> dict:
 
     first_paint: list[float] = []
     completion: list[float] = []
+    settled_first_paint: list[float] = []
+    settled_completion: list[float] = []
     rejected = 0
+
+    # ONE presenter for every cue, because a presenter keeps the pointer's
+    # position between presentations and that is what makes the next cue
+    # TRAVEL. An earlier version of this tool built a fresh presenter per cue,
+    # so `state["position"]` was always None and -- in `act_overlay`'s own
+    # words -- "every cue becomes a single settled frame and the pointer never
+    # travels at all". It measured sixty first cues and reported a first-paint
+    # median of 0.0ms and a completion equal to `settle_ms` exactly, with the
+    # 300ms traversal nowhere in the numbers.
+    #
+    # The first cue of a real run has nothing to travel from either, so it is
+    # measured and reported SEPARATELY rather than discarded: it is a real
+    # case, it is just not the one a deadline has to cover.
+    #
+    # Timed on `perf_counter`, NOT on the presenter's default clock. That
+    # default is `time.monotonic`, whose granularity on this platform is
+    # ~15ms -- so every receipt timestamp is quantised to it, first paint
+    # read 0.0ms for all 59 travelled cues, and the derived deadline came out
+    # as 0, which `ReceiptPolicy` would refuse. A measurement cannot be finer
+    # than the clock it is taken on, and that clock was hiding the entire
+    # first-paint distribution.
+    presenter = overlay_presenter(
+        hwnd,
+        budget=budget,
+        policy=permissive,
+        label_for=lambda _observation: "New Slide",
+        backend_trust=TrustClass.LIVE_STATE,
+        keep_running=lambda: True,
+        clock=lambda: time.perf_counter() * 1000.0,
+    )
     try:
         for index in range(cues):
             marks: dict[str, float] = {}
@@ -87,14 +119,6 @@ def measure(cues: int, budget: CueBudget) -> dict:
             def sink(receipt, at_ms, marks=marks):
                 marks.setdefault(receipt.kind.value, at_ms)
 
-            presenter = overlay_presenter(
-                hwnd,
-                budget=budget,
-                policy=permissive,
-                label_for=lambda _observation: "New Slide",
-                backend_trust=TrustClass.LIVE_STATE,
-                keep_running=lambda: True,
-            )
             request = PresentationRequest(
                 session_id="receipt-budget",
                 cue_id=f"cue:{index}",
@@ -103,7 +127,7 @@ def measure(cues: int, budget: CueBudget) -> dict:
                 frame_generation=1,
                 geometry_required=True,
             )
-            requested_ms = time.monotonic() * 1000.0
+            requested_ms = time.perf_counter() * 1000.0
             receipts = presenter.present(
                 request, _observation(index, width, height), sink
             )
@@ -120,8 +144,14 @@ def measure(cues: int, budget: CueBudget) -> dict:
             if started is None or finished is None:
                 rejected += 1
                 continue
-            first_paint.append(started - requested_ms)
-            completion.append(finished - started)
+            # Index 0 travels from nothing; every later cue travels from
+            # where the previous one left the pointer.
+            if index == 0:
+                settled_first_paint.append(started - requested_ms)
+                settled_completion.append(finished - started)
+            else:
+                first_paint.append(started - requested_ms)
+                completion.append(finished - started)
     finally:
         overlay_window.clear_cue(hwnd)
         overlay_window.destroy_overlay_window(hwnd)
@@ -137,9 +167,37 @@ def measure(cues: int, budget: CueBudget) -> dict:
             "poll_interval_ms": budget.poll_interval_ms,
         },
         "virtual_screen": [left, top, left + width, top + height],
+        # What PRODUCTION times receipts on, measured rather than assumed.
+        # A deadline finer than this cannot be enforced by the clock that
+        # checks it, however precisely it was measured.
+        "enforcement_clock_granularity_ms": _clock_granularity(),
         "first_paint_ms": _summary(first_paint),
         "completion_ms": _summary(completion),
+        # The first cue of a run, which has no previous position and so does
+        # not travel. Reported so the difference is visible rather than
+        # averaged away.
+        "settled_first_cue": {
+            "first_paint_ms": _summary(settled_first_paint),
+            "completion_ms": _summary(settled_completion),
+        },
     }
+
+
+def _clock_granularity(samples: int = 200) -> float:
+    """The smallest change `time.monotonic` can report, measured.
+
+    `act_overlay` defaults its clock to monotonic, so this is the resolution
+    a receipt timestamp actually has in production. On this platform it is
+    about 15ms, which is larger than the entire first-paint cost.
+    """
+
+    ticks = []
+    for _ in range(samples):
+        start = time.monotonic()
+        while time.monotonic() == start:
+            pass
+        ticks.append((time.monotonic() - start) * 1000.0)
+    return round(min(ticks), 4)
 
 
 def _summary(values: list[float]) -> dict:
@@ -155,7 +213,7 @@ def _summary(values: list[float]) -> dict:
     }
 
 
-def _derived(summary: dict, margin: float) -> "int | None":
+def _derived(summary: dict, margin: float, granularity: float = 0.0) -> "int | None":
     """A deadline from a distribution: the p99 with a stated margin, rounded up.
 
     The margin is a CHOICE and is reported as one, so nobody later cites it as
@@ -166,7 +224,12 @@ def _derived(summary: dict, margin: float) -> "int | None":
 
     if not summary.get("samples"):
         return None
-    return int(math.ceil(summary["p99"] * margin))
+    derived = int(math.ceil(summary["p99"] * margin))
+    # A deadline below the enforcement clock's granularity is not a deadline:
+    # the clock that checks it cannot tell that value from zero. Floored to
+    # one tick, and the report states both numbers so the floor is visible
+    # rather than folded into a figure that looks measured.
+    return max(derived, int(math.ceil(granularity)))
 
 
 def main(argv=None) -> int:
@@ -199,10 +262,15 @@ def main(argv=None) -> int:
             frame_budget_ms=args.frame_budget_ms,
         ),
     )
+    granularity = report["enforcement_clock_granularity_ms"]
     report["margin_over_p99"] = args.margin
     report["derived"] = {
-        "first_paint_deadline_ms": _derived(report["first_paint_ms"], args.margin),
-        "completion_deadline_ms": _derived(report["completion_ms"], args.margin),
+        "first_paint_deadline_ms": _derived(
+            report["first_paint_ms"], args.margin, granularity
+        ),
+        "completion_deadline_ms": _derived(
+            report["completion_ms"], args.margin, granularity
+        ),
     }
     print(json.dumps(report, indent=2, sort_keys=True))
     return 0 if report["cues_measured"] else 2
