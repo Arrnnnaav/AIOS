@@ -320,4 +320,33 @@ def test_the_document_names_the_directory_it_actually_read(tmp_path):
     records = _campaign(tmp_path, _three())
     out = tmp_path / "out.md"
     assert _render(records, out)[0] == 0
-    assert str(records) in out.read_text(encoding="utf-8")
+    document = out.read_text(encoding="utf-8")
+
+    # It names the directory it read...
+    assert "records/add-slide" in document
+    # ...and NOT the durable committed location, which is what a hardcoded
+    # string produced: a document rendered from a scratch directory that
+    # claimed the records lived where evidence is kept.
+    assert "acceptance-records/add-slide" not in document
+
+
+def test_the_named_path_does_not_depend_on_how_it_was_invoked(tmp_path):
+    """`--check` compares exact bytes, so a document whose text changed with
+    a relative-versus-absolute argument would fail for a reason that has
+    nothing to do with the evidence."""
+
+    records = _campaign(tmp_path, _three())
+    absolute = tmp_path / "abs.md"
+    assert _render(records.resolve(), absolute)[0] == 0
+    relative = tmp_path / "rel.md"
+    import os
+
+    here = Path.cwd()
+    try:
+        os.chdir(records.parent)
+        assert _render(Path("add-slide"), relative)[0] == 0
+    finally:
+        os.chdir(here)
+    assert absolute.read_text(encoding="utf-8") == relative.read_text(
+        encoding="utf-8"
+    )

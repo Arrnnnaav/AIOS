@@ -83,3 +83,38 @@ def no_real_control_bar_in_hermetic_tests(request: pytest.FixtureRequest, monkey
     from ghostcursor.overlay import bar
 
     monkeypatch.setattr(bar, "create_bar_window", lambda: None)
+
+
+@pytest.fixture(autouse=True)
+def no_real_keyboard_in_hermetic_tests(request: pytest.FixtureRequest, monkeypatch):
+    """A hermetic test must not read the machine's real ESC key.
+
+    `escape_pressed()` calls `GetAsyncKeyState`, whose low bit means "pressed
+    since the previous call" — so ANY ESC tap anywhere on the machine, at any
+    point since the last poll, makes it true. `_run_compiled_tour` checks it
+    before creating the overlay and returns 0 if it is set, which is correct
+    for production and fatal for a test that asserts what happens after that
+    point.
+
+    That is what made
+    `test_run_tour_creates_overlay_only_after_live_revalidation` fail twice on
+    a full lane and pass in isolation and on the lanes either side: it does not
+    pin `escape_pressed`, so it failed exactly when someone had pressed ESC —
+    which, during an acceptance campaign where ESC is the documented abort key,
+    happens often. It was recorded as an unexplained failure for a day.
+
+    Pinned to False rather than to a fixture-controlled flag: a test that cares
+    about ESC sets it itself, and `monkeypatch.setattr` inside the test body
+    runs after this and wins. Lanes that drive a real desktop are left alone,
+    exactly as the control-bar fixture above leaves them.
+    """
+
+    if any(
+        request.node.get_closest_marker(name) is not None
+        for name in ("interactive", "pixel", "hung")
+    ):
+        return
+
+    import ghostcursor.run as run_module
+
+    monkeypatch.setattr(run_module, "escape_pressed", lambda: False)

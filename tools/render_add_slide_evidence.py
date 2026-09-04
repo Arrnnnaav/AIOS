@@ -54,6 +54,26 @@ VERIFICATION_NAME = "View Indicator Slide 2 of 2"
 ACTION_SELECTOR = "new_slide"
 ACTION_NAME = "New Slide"
 
+#: This file lives in `tools/`, so the repository root is its parent's parent.
+REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
+
+
+def _display_path(path: pathlib.Path) -> str:
+    """How a directory is NAMED in the document.
+
+    Repo-relative and posix-separated whenever it is inside the repository,
+    so the rendered bytes do not depend on whether the renderer was invoked
+    with a relative or an absolute path, nor on the platform's separator.
+    `--check` compares exact bytes, so either would make a correct document
+    fail for a reason that has nothing to do with the evidence.
+    """
+
+    resolved = path.resolve()
+    try:
+        return resolved.relative_to(REPO_ROOT).as_posix()
+    except ValueError:
+        return resolved.as_posix()
+
 
 class EvidenceRefused(Exception):
     """Raised rather than emitting a document that overstates what was run."""
@@ -157,15 +177,37 @@ def _check_sequence(records: list[dict], directory: pathlib.Path) -> None:
             + ", ".join(f"{r['_source']}={s}" for r, s in zip(records, starts))
         )
 
-    excluded = directory.parent / "excluded"
+    _check_window(starts, directory.parent / "excluded")
+
+
+def _rejected_runs(excluded: pathlib.Path) -> tuple[int, int]:
+    """How many rejected runs are committed, and how many can be placed in
+    time. The second number is what the window check can actually see."""
+
+    if not excluded.is_dir():
+        return 0, 0
+    total = placed = 0
+    for path in sorted(excluded.glob("*.json")):
+        total += 1
+        when = _canonical_json(path).get("started_at")
+        if isinstance(when, str) and when:
+            placed += 1
+    return total, placed
+
+
+def _check_window(starts: list[str], excluded: pathlib.Path) -> None:
+    first, last = starts[0], starts[-1]
     if not excluded.is_dir():
         # Nothing rejected is COMMITTED, which is not the same as nothing
-        # having been rejected. Say so rather than reporting a clean window.
+        # having been rejected.
         return
-    first, last = starts[0], starts[-1]
     for path in sorted(excluded.glob("*.json")):
-        other = _canonical_json(path)
-        when = other.get("started_at")
+        when = _canonical_json(path).get("started_at")
+        # A record predating run-identity stamping cannot be placed in time.
+        # Skipped rather than refused -- old records can never gain a
+        # timestamp, so refusing would block every future campaign forever --
+        # and the rendered document reports how many were skipped, because a
+        # check that silently saw nothing would read as a check that passed.
         if not isinstance(when, str) or not when:
             continue
         if first <= when <= last:
@@ -307,7 +349,46 @@ def check(records: list[dict], candidate_root: pathlib.Path) -> dict:
     return loaded
 
 
+def _mark_survey(records_dir: pathlib.Path, accepted: list[dict]):
+    """Count the timing mark across EVERY committed record, accepted and
+    rejected alike.
+
+    Derived rather than written down. A sentence saying "all six records"
+    was already stale the moment a fourth attempt set was committed, and a
+    stale number in an evidence document is the D034 failure this renderer
+    exists to prevent -- so the document counts them at render time.
+    """
+
+    seen = [(r["_source"], r) for r in accepted]
+    excluded = records_dir.parent / "excluded"
+    if excluded.is_dir():
+        for path in sorted(excluded.glob("*.json")):
+            seen.append((path.name, _canonical_json(path)))
+
+    drains: set[str] = set()
+    unmarked: list[str] = []
+    marked = 0
+    for name, record in seen:
+        timing = record.get("timing") or {}
+        mark = timing.get("verification_started_s")
+        if mark is None:
+            # An aborted run never reached verification; its missing mark is
+            # explained and is not the anomaly.
+            if record.get("outcome") == "passed":
+                unmarked.append(name)
+            continue
+        marked += 1
+        drains.add(f"{timing['ended_s'] - mark:.3f}s")
+    phrase = " or ".join(sorted(drains)) if drains else "not measured"
+    return marked, phrase, sorted(unmarked)
+
+
 def render(records: list[dict], loaded: dict, records_dir: pathlib.Path) -> str:
+    rejected, placed = _rejected_runs(records_dir.parent / "excluded")
+    marked, drains, unmarked = _mark_survey(records_dir, records)
+    unmarked_names = (
+        ", ".join(f"`{name}`" for name in unmarked) if unmarked else "none"
+    )
     target = records[0]["target"]
     urls = loaded["recipe"]["steps"][0]["provenance"]["source_urls"]
     lines = [
@@ -339,9 +420,10 @@ def render(records: list[dict], loaded: dict, records_dir: pathlib.Path) -> str:
         "",
         "## Acceptance runs",
         "",
-        f"Records read from `{records_dir}`, so every number below names where",
-        "it is recorded (D034). This path is the one the renderer was pointed",
-        "at, not a fixed string: an earlier draft hardcoded it and would have",
+        f"Records read from `{_display_path(records_dir)}`, so every number",
+        "below names where it is recorded (D034). This path is the one the",
+        "renderer was pointed at, not a fixed string: an earlier draft hardcoded",
+        "it and would have",
         "claimed a durable location while rendering from a scratch directory.",
         "Attempt sets that did not qualify are preserved alongside under",
         "`excluded/` with the note explaining why.",
@@ -353,6 +435,12 @@ def render(records: list[dict], loaded: dict, records_dir: pathlib.Path) -> str:
         "committed under `excluded/` happened between the first accepted run",
         "and the last. Excluded records are committed beside the accepted ones",
         "so that question is asked of the repository, not of memory.",
+        "",
+        f"Rejected runs committed under `excluded/`: {rejected}. Of those,",
+        f"{placed} carry a start time and can be placed against this window;",
+        f"{rejected - placed} predate run-identity stamping and cannot be. A",
+        "check that silently saw nothing would read as a check that passed,",
+        "so the numbers are stated rather than the verdict alone.",
         "",
         "What this still does not prove: that no rejected run happened and was",
         "never committed. An operator who deletes a failure leaves no trace of",
@@ -437,14 +525,14 @@ def render(records: list[dict], loaded: dict, records_dir: pathlib.Path) -> str:
         "",
         "## A recorded anomaly in the earlier attempt sets",
         "",
-        "`verification_started_s` is missing from **two** passing runs across",
-        "the excluded sets -- `attempt-set-01-run-02.json` and",
-        "`attempt-set-02-run-03.json` -- on identical bytes and one HWND. An",
-        "earlier draft of this document said one run; an independent review",
-        "found the second.",
+        f"`verification_started_s` is missing from **{len(unmarked)}** passing",
+        f"runs across the excluded sets -- {unmarked_names} -- on identical",
+        "bytes and one HWND. An earlier draft of this document said one run;",
+        "an independent review found the second. These counts are derived from",
+        "the committed records, so they cannot go stale as sets are added.",
         "",
-        "Where the mark is present, `ended_s - verification_started_s` is",
-        "0.500s or 0.516s in all six records that carry it. That is fixed",
+        f"Where the mark is present, `ended_s - verification_started_s` is",
+        f"{drains} across all {marked} records that carry it. That is fixed",
         "drain, not a gap between two events: `compiled_tour`'s driver sleeps",
         "0.25s per iteration, and after the rule is satisfied the run still",
         "passes through `VERIFYING` and `OBSERVING` before reaching `DONE`,",

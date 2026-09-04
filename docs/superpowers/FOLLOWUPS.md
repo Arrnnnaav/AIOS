@@ -665,17 +665,43 @@ So what remains is code AND process:
 - **Process, unchanged:** an independent D032 review of these changes, an
   external release key, and a counted acceptance campaign on the signed bytes.
 
-## One unexplained test failure
+## A hermetic test was reading the real ESC key — CLOSED 4 Sep 2026
 
 `tests/test_run.py::test_run_tour_creates_overlay_only_after_live_revalidation`
-failed once on 4 September 2026 during a full hermetic lane, and passed on
-the two lanes either side of it plus in isolation. Test order is
-deterministic — `pytest-randomly` is not installed — so the same order both
-failed and passed.
+failed twice on a full hermetic lane on 4 September 2026 and passed in
+isolation and on the lanes either side. It was recorded as unexplained rather
+than as a flake, because this project has twice misattributed a real failure
+to flakiness. That was the right call: it was not a flake.
 
-The failure message was not captured. Recording it as **unexplained** rather
-than as a flake: this project has twice misattributed a real failure to
-flakiness. If it recurs, capture the full output before rerunning.
+**Cause.** `escape_pressed()` calls `key_was_pressed(VK_ESCAPE)`, which reads
+`GetAsyncKeyState`. Its low bit means *pressed since the previous call*, so any
+ESC tap anywhere on the machine since the last poll makes it true.
+`_run_compiled_tour` checks it and returns 0 **before** creating the overlay —
+correct for production, since an abort already waiting must stop a full-screen
+topmost window from existing at all. The test does not pin `escape_pressed`, so
+whenever ESC had been pressed the run returned early, `create_overlay` was
+never reached, and `pytest.raises` failed with DID NOT RAISE at
+`tests/test_run.py:295`.
+
+ESC is the documented abort key for the acceptance harness, so a campaign day
+is exactly when this fires. The neighbouring test passes only because it pins
+`escape_pressed` to True and asserts the early return.
+
+**Reproduced on demand.** Forcing `GetAsyncKeyState` to report ESC down
+produces `tests/test_run.py:295: Failed`, the exact observed signature; with
+the fix it passes.
+
+**Fix.** An autouse fixture in `tests/conftest.py` pins `escape_pressed` to
+False for the hermetic lane, leaving the interactive, pixel and hung lanes
+alone. A test that cares about ESC still sets it itself and wins, because
+`monkeypatch.setattr` in the test body runs after the fixture. Four other
+hermetic tests reached the same check unpinned and had the same latent
+exposure.
+
+**What this cost, and the lesson.** The first occurrence was lost because the
+lane output was piped through `tail`. The second was nearly lost the same way.
+A failure that cannot be read is a failure that gets called a flake — capture
+the full output to a file before rerunning anything.
 
 ## ADD_SLIDE run recorded no `verification_started_s`
 
