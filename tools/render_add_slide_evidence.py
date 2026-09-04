@@ -354,7 +354,10 @@ def main(argv=None) -> int:
             return 2
         print(f"{args.out} matches the records")
         return 0
-    args.out.write_text(document, encoding="utf-8")
+    # newline="" so the document keeps the LF bytes it was built from.
+    # Otherwise Windows translates them on write and the committed file
+    # depends on git's normalisation rather than on this renderer.
+    args.out.write_text(document, encoding="utf-8", newline="")
     print(f"wrote {args.out}")
     return 0
 
