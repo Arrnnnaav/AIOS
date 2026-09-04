@@ -63,12 +63,18 @@ here or anywhere.
 
 | Run record | Run id | Started (UTC) | Outcome | Steps | Grounding | First observation | First hint | Verification start | End |
 |---|---|---|---|---|---|---|---|---|---|
-| `run-1.json` | `bae8bf16` | 2026-09-04T12:55:35.633+00:00 | passed | 1/1 | uia | 1.016s | 1.766s | 3.531s | 4.031s |
-| `run-2.json` | `dc75fa7f` | 2026-09-04T12:56:07.543+00:00 | passed | 1/1 | uia | 1.015s | 1.765s | 5.047s | 5.547s |
-| `run-3.json` | `aab5c585` | 2026-09-04T12:56:37.822+00:00 | passed | 1/1 | uia | 0.750s | 1.500s | 3.265s | 3.765s |
+| `run-1.json` | `bae8bf16d7d845af9181a4213ef2e738` | 2026-09-04T12:55:35.633000+00:00 | passed | 1/1 | uia | 1.016s | 1.766s | 3.531s | 4.031s |
+| `run-2.json` | `dc75fa7f4a3948f8b2b1202afc7f7059` | 2026-09-04T12:56:07.543000+00:00 | passed | 1/1 | uia | 1.015s | 1.765s | 5.047s | 5.547s |
+| `run-3.json` | `aab5c5858a26449e8e703cf6cf7f688e` | 2026-09-04T12:56:37.822000+00:00 | passed | 1/1 | uia | 0.750s | 1.500s | 3.265s | 3.765s |
 
-First run began 2026-09-04T12:55:35.633+00:00 and the last
-2026-09-04T12:56:37.822+00:00: 1m 2s apart. The ids and instants are
+First run began 2026-09-04T12:55:35.633000+00:00 and the last
+2026-09-04T12:56:37.822000+00:00: 1m 2s apart. Every instant here is
+normalised to UTC and every record must carry an offset, because the
+sequence checks compare instants: an independent review defeated the
+ordering, overlap and window checks at once with a `+05:30` stamp
+that sorted correctly as TEXT while naming an earlier moment, and the
+document then printed that the window check had passed. The ids and
+instants are
 printed because they are what the consecutiveness claim rests on, and
 a reader cannot audit a claim from numbers the document withholds --
 an earlier draft showed only relative timings, so records dated years
@@ -78,7 +84,7 @@ Result: **3/3 passed**, each `1/1` step and UIA-only.
 
 All three are also bound to one captured HWND (`1050680`)
 with identical artifact digests and one application build. Those are
-required gates, not evidence of a campaign: both are true of every
+required gates, not evidence of a campaign: each is true of every
 record for this candidate by construction, since it is one plugin on
 one machine.
 
@@ -147,21 +153,29 @@ No workflow-specific production Python was added.
   topology.** One build, one machine, three supervised runs.
 - **Nothing about the `uia_pattern` backend.** This is a guided,
   human-performed workflow, not an Act adapter dispatch.
+- **The sequence checks bound assembly, not intent.** They compare
+  instants and require an offset, refuse a nested or empty
+  `excluded/`, and refuse an implausible run or campaign duration.
+  What they cannot see is a rejected run that was never committed at
+  all, and they authenticate nothing: a stamp can be written by hand.
 
 ## A recorded anomaly in the earlier attempt sets
 
 `verification_started_s` is missing from **2** passing
-runs across the excluded sets -- `attempt-set-01-run-02.json`, `attempt-set-02-run-03.json` -- on identical
-bytes and one HWND. An earlier draft of this document said one run;
+runs among every record committed for this candidate, accepted and
+non-qualifying alike -- `attempt-set-01-run-02.json`, `attempt-set-02-run-03.json` -- on identical bytes and
+one HWND. An earlier draft of this document said one run;
 an independent review found the second. These counts are derived from
 the committed records, so they cannot go stale as sets are added.
 
 Where the mark is present, `ended_s - verification_started_s` is
-0.500s or 0.516s across all 9 records that carry it. That is fixed
+0.500s or 0.516s across all 9 of those records that carry it. That is
+fixed
 drain, not a gap between two events: `compiled_tour`'s driver sleeps
 0.25s per iteration, and after the rule is satisfied the run still
 passes through `VERIFYING` and `OBSERVING` before reaching `DONE`,
-where the timing is read. Two sleeps, exactly 0.500s.
+where the timing is read. Two sleeps: 0.500s, plus about 16ms of
+ordinary per-tick overhead in the records that read 0.516s.
 
 An earlier draft of this document read the same number as one tick
 and concluded that arming and satisfaction fell on different ticks.

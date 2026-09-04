@@ -764,14 +764,30 @@ from the traversal loop (`perception/service.py`, the `for query in
 plan.queries` block), and the union is built from it.
 
 **What is not in doubt:** the run's pass is sound independently of the mark.
-`element_appears` is `not was and bool(now)` against the run-start baseline,
-so the view indicator read something other than `"View Indicator Slide 2 of
-2"` when the run started and exactly that when the rule fired. The harness
-cannot click or edit the document (no COM, no input synthesis, and
-`tests/test_no_input_synthesis.py` covers `devtools/`), so a person did it.
+`element_appears` is `not was and bool(now)`, so the view indicator did not
+read `"View Indicator Slide 2 of 2"` at the last observation before the
+verification clock armed, and read exactly that when the rule fired.
 
-**Corrected 4 September 2026.** This paragraph previously said that selector
-was reachable only from a one-slide deck. It is not: navigating to slide 2 of
+**Not** "when the run started": `reasoning/loop.py:196-198` re-assigns
+`self._before` on every `OBSERVING` pass while the clock is unarmed, and the
+loop re-enters `OBSERVING` on an unexpected-change interrupt, so the baseline
+is the last observation before arming.
+
+The harness synthesizes no input — `tests/test_no_input_synthesis.py` scans
+`devtools/` explicitly — and makes no COM call, so the change came from
+outside the harness. That the person who made it was the supervising operator
+rests on procedure. The cited scan establishes the absence of input synthesis;
+it does not by itself establish the absence of COM, and "not the harness"
+therefore does not on its own mean "a person".
+
+**Corrected 4 September 2026, twice.** This paragraph previously said that
+selector was reachable only from a one-slide deck. A later review found that
+the correction itself had left two more retracted claims standing in the very
+paragraph above it — the run-start baseline and "so a person did it" — which
+the rendered evidence had already withdrawn. Fourth recurrence of one
+retracted claim surviving into another tracked copy; the lesson recorded here
+is to grep every tracked file for the exact retracted sentence, not to fix the
+copy that prompted the review. It is not: navigating to slide 2 of
 an existing two-slide deck, or deleting a slide from a three-slide deck viewed
 at slide 2, both satisfy the same absent-then-present rule with no slide
 added. The rendered evidence retracted that claim in commit `b3cc294`; this

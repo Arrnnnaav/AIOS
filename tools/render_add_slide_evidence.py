@@ -163,6 +163,46 @@ def _started(record: dict) -> str:
     return value
 
 
+def _instant(record_or_text, label: str = "") -> "datetime":
+    """The moment a run began, as an aware UTC datetime.
+
+    Every sequence check compares INSTANTS, never the raw strings. Comparing
+    text is what an independent review broke: a `+05:30` offset sorts after a
+    `+00:00` string that is five hours LATER in real time, so a run stamped in
+    another timezone walked through the ordering, the overlap check and the
+    window check at once -- and the document then affirmatively printed that
+    the window check had passed.
+
+    The harness stamps UTC, so string order CORRELATES with instant order. It
+    does not IMPLY it (D031): this renderer reads files, and its stated
+    adversary is a stamp written by hand.
+
+    An offset is required rather than assumed. A naive timestamp could be
+    read as UTC, but that is a guess about a number the document then presents
+    as measured.
+    """
+
+    from datetime import datetime, timezone
+
+    text = record_or_text if isinstance(record_or_text, str) else _started(record_or_text)
+    name = label or (
+        record_or_text.get("_source", "?") if isinstance(record_or_text, dict) else "?"
+    )
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        raise EvidenceRefused(
+            f"{name}: `started_at` {text!r} is not an ISO-8601 instant"
+        ) from None
+    if parsed.tzinfo is None:
+        raise EvidenceRefused(
+            f"{name}: `started_at` {text!r} carries no UTC offset, so it names "
+            "no instant; two records in different timezones would compare as "
+            "text and order wrongly"
+        )
+    return parsed.astimezone(timezone.utc)
+
+
 def _check_sequence(records: list[dict], directory: pathlib.Path) -> None:
     """Three runs, distinct, in order, with nothing rejected in between.
 
@@ -190,23 +230,26 @@ def _check_sequence(records: list[dict], directory: pathlib.Path) -> None:
     if len(set(ids)) != len(ids):
         raise EvidenceRefused(f"two accepted records share a run_id: {sorted(ids)}")
 
-    starts = [_started(record) for record in records]
-    # STRICTLY increasing. `!= sorted()` accepts ties, and three ~4s runs
-    # cannot begin in the same millisecond on one machine.
-    if any(a >= b for a, b in zip(starts, starts[1:])):
+    instants = [_instant(record) for record in records]
+    # STRICTLY increasing, and compared as INSTANTS. `!= sorted()` accepts
+    # ties, and three ~4s runs cannot begin in the same millisecond.
+    if any(a >= b for a, b in zip(instants, instants[1:])):
         raise EvidenceRefused(
             "the accepted runs do not start strictly in order: "
-            + ", ".join(f"{r['_source']}={s}" for r, s in zip(records, starts))
+            + ", ".join(
+                f"{r['_source']}={i.isoformat()}" for r, i in zip(records, instants)
+            )
         )
 
     # A run cannot begin before the previous one ended. Ordering alone allows
     # three overlapping records, which no single operator could have produced.
-    for earlier, later in zip(records, records[1:]):
+    for earlier, later, later_start in zip(records, records[1:], instants[1:]):
         finished = _finished_at(earlier)
-        if finished is not None and finished > _started(later):
+        if finished is not None and finished > later_start:
             raise EvidenceRefused(
-                f"{later['_source']} started at {_started(later)}, before "
-                f"{earlier['_source']} finished at {finished}; the runs overlap"
+                f"{later['_source']} started at {later_start.isoformat()}, "
+                f"before {earlier['_source']} finished at {finished.isoformat()}; "
+                "the runs overlap"
             )
 
     # A counted campaign is three supervised runs in one sitting. This bound
@@ -215,12 +258,7 @@ def _check_sequence(records: list[dict], directory: pathlib.Path) -> None:
     # measured (D034). It is deliberately generous; it exists to refuse
     # records that are obviously not one session, such as the three dated
     # 2019, 2025 and 2031 an independent review assembled.
-    from datetime import datetime
-
-    try:
-        elapsed = datetime.fromisoformat(starts[-1]) - datetime.fromisoformat(starts[0])
-    except ValueError as exc:
-        raise EvidenceRefused(f"unparseable start time: {exc}") from None
+    elapsed = instants[-1] - instants[0]
     if elapsed.total_seconds() > MAX_CAMPAIGN_SECONDS:
         raise EvidenceRefused(
             f"the three runs span {elapsed}, longer than the "
@@ -228,41 +266,87 @@ def _check_sequence(records: list[dict], directory: pathlib.Path) -> None:
             "to run in; these are not one sitting"
         )
 
-    _check_window(starts, directory.parent / "excluded")
+    _check_window(instants, directory.parent / "excluded")
 
 
-def _finished_at(record: dict) -> "str | None":
-    """When a run ended, as an instant comparable with `started_at`.
+#: Longest one run may plausibly have taken. A CHOICE, reported as one: these
+#: runs finish in about four seconds, and this exists to refuse an `ended_s`
+#: that makes the overlap check meaningless rather than to bound the workflow.
+MAX_RUN_SECONDS = 15 * 60
+
+
+def _finished_at(record: dict) -> "datetime | None":
+    """When a run ended, as an aware UTC instant.
 
     Derived from the start plus the executor's own `ended_s` rather than
     stamped separately: two independently written instants could disagree,
     and the run record already carries the elapsed time it measured.
     """
 
-    from datetime import datetime, timedelta
+    from datetime import timedelta
 
     ended = (record.get("timing") or {}).get("ended_s")
     if not isinstance(ended, (int, float)) or isinstance(ended, bool):
         return None
-    if not math.isfinite(ended):
-        return None
-    try:
-        began = datetime.fromisoformat(_started(record))
-    except ValueError:
-        return None
-    return (began + timedelta(seconds=float(ended))).isoformat(
-        timespec="milliseconds"
-    )
+    if not math.isfinite(ended) or ended < 0:
+        raise EvidenceRefused(
+            f"{record['_source']}: `ended_s` is {ended!r}, which names no duration"
+        )
+    if ended > MAX_RUN_SECONDS:
+        # An unbounded `ended_s` makes the overlap check vacuous in one
+        # direction and poisons the rendered drain figure in the other.
+        raise EvidenceRefused(
+            f"{record['_source']}: `ended_s` is {ended}s, longer than the "
+            f"{MAX_RUN_SECONDS // 60} minutes one supervised run is taken to last"
+        )
+    return _instant(record) + timedelta(seconds=float(ended))
+
+
+def _excluded_records(excluded: pathlib.Path) -> list[pathlib.Path]:
+    """Every committed non-qualifying record, and a refusal if any could hide.
+
+    `glob("*.json")` is not recursive, so a rejected run in
+    `excluded/archive/` was invisible to the window check while the count
+    stayed the same and the document reported "evaluated zero records". The
+    campaign directory has had a stray-file guard since an earlier review;
+    this directory had none, and it is the one the consecutiveness claim is
+    asked about.
+
+    An EMPTY directory is refused too. Git does not track empty directories,
+    so one means the non-qualifying records are simply absent -- and then
+    every derived count reads zero while the document still narrates the
+    recorded anomaly, which is the self-contradiction the sibling requirement
+    exists to prevent.
+    """
+
+    if not excluded.is_dir():
+        return []
+    stray = [
+        entry.name
+        for entry in sorted(excluded.iterdir())
+        if entry.is_dir() or entry.suffix not in {".json", ".md"}
+    ]
+    if stray:
+        raise EvidenceRefused(
+            f"{excluded} contains {stray}; a rejected run inside a "
+            "subdirectory is invisible to the sequence check while the counts "
+            "stay the same"
+        )
+    records = sorted(excluded.glob("*.json"))
+    if not records:
+        raise EvidenceRefused(
+            f"{excluded} holds no run records; every derived count would read "
+            "zero while the document still describes the recorded anomaly"
+        )
+    return records
 
 
 def _rejected_runs(excluded: pathlib.Path) -> tuple[int, int]:
     """How many rejected runs are committed, and how many can be placed in
     time. The second number is what the window check can actually see."""
 
-    if not excluded.is_dir():
-        return 0, 0
     total = placed = 0
-    for path in sorted(excluded.glob("*.json")):
+    for path in _excluded_records(excluded):
         total += 1
         when = _canonical_json(path).get("started_at")
         if isinstance(when, str) and when:
@@ -270,8 +354,8 @@ def _rejected_runs(excluded: pathlib.Path) -> tuple[int, int]:
     return total, placed
 
 
-def _check_window(starts: list[str], excluded: pathlib.Path) -> None:
-    first, last = starts[0], starts[-1]
+def _check_window(instants: list, excluded: pathlib.Path) -> None:
+    first, last = instants[0], instants[-1]
     if not excluded.is_dir():
         # Refused rather than skipped. Without the sibling directory the
         # derived counts all read zero while the document's narrative still
@@ -283,7 +367,7 @@ def _check_window(starts: list[str], excluded: pathlib.Path) -> None:
             "something to ask, and a campaign rendered without them reports "
             "counts of zero that mean nothing was looked at"
         )
-    for path in sorted(excluded.glob("*.json")):
+    for path in _excluded_records(excluded):
         when = _canonical_json(path).get("started_at")
         # A record predating run-identity stamping cannot be placed in time.
         # Skipped rather than refused -- old records can never gain a
@@ -292,11 +376,13 @@ def _check_window(starts: list[str], excluded: pathlib.Path) -> None:
         # check that silently saw nothing would read as a check that passed.
         if not isinstance(when, str) or not when:
             continue
-        if first <= when <= last:
+        moment = _instant(when, path.name)
+        if first <= moment <= last:
             raise EvidenceRefused(
-                f"{path.name} was rejected and ran at {when}, between the "
-                f"first accepted run ({first}) and the last ({last}); these "
-                "three runs were not consecutive"
+                f"{path.name} was rejected and ran at {moment.isoformat()}, "
+                f"between the first accepted run ({first.isoformat()}) and the "
+                f"last ({last.isoformat()}); these three runs were not "
+                "consecutive"
             )
 
 
@@ -469,10 +555,8 @@ def _mark_survey(records_dir: pathlib.Path, accepted: list[dict]):
     """
 
     seen = [(r["_source"], r) for r in accepted]
-    excluded = records_dir.parent / "excluded"
-    if excluded.is_dir():
-        for path in sorted(excluded.glob("*.json")):
-            seen.append((path.name, _canonical_json(path)))
+    for path in _excluded_records(records_dir.parent / "excluded"):
+        seen.append((path.name, _canonical_json(path)))
 
     drains: set[str] = set()
     unmarked: list[str] = []
@@ -585,8 +669,8 @@ def render(records: list[dict], loaded: dict, records_dir: pathlib.Path) -> str:
     for record in records:
         timing = record["timing"]
         lines.append(
-            f"| `{record['_source']}` | `{record['run_id'][:8]}` | "
-            f"{record['started_at']} | {record['outcome']} | "
+            f"| `{record['_source']}` | `{record['run_id']}` | "
+            f"{_instant(record).isoformat()} | {record['outcome']} | "
             f"{record['steps']['completed']}/{record['steps']['total']} | "
             f"{', '.join(record['grounding_provenance'])} | "
             f"{timing['first_observation_s']:.3f}s | "
@@ -596,8 +680,14 @@ def render(records: list[dict], loaded: dict, records_dir: pathlib.Path) -> str:
         )
     lines += [
         "",
-        f"First run began {records[0]['started_at']} and the last",
-        f"{records[-1]['started_at']}: {span}. The ids and instants are",
+        f"First run began {_instant(records[0]).isoformat()} and the last",
+        f"{_instant(records[-1]).isoformat()}: {span}. Every instant here is",
+        "normalised to UTC and every record must carry an offset, because the",
+        "sequence checks compare instants: an independent review defeated the",
+        "ordering, overlap and window checks at once with a `+05:30` stamp",
+        "that sorted correctly as TEXT while naming an earlier moment, and the",
+        "document then printed that the window check had passed. The ids and",
+        "instants are",
         "printed because they are what the consecutiveness claim rests on, and",
         "a reader cannot audit a claim from numbers the document withholds --",
         "an earlier draft showed only relative timings, so records dated years",
@@ -610,7 +700,7 @@ def render(records: list[dict], loaded: dict, records_dir: pathlib.Path) -> str:
         "",
         f"All three are also bound to one captured HWND (`{target['hwnd']}`)",
         "with identical artifact digests and one application build. Those are",
-        "required gates, not evidence of a campaign: both are true of every",
+        "required gates, not evidence of a campaign: each is true of every",
         "record for this candidate by construction, since it is one plugin on",
         "one machine.",
         "",
@@ -679,21 +769,29 @@ def render(records: list[dict], loaded: dict, records_dir: pathlib.Path) -> str:
         "  topology.** One build, one machine, three supervised runs.",
         "- **Nothing about the `uia_pattern` backend.** This is a guided,",
         "  human-performed workflow, not an Act adapter dispatch.",
+        "- **The sequence checks bound assembly, not intent.** They compare",
+        "  instants and require an offset, refuse a nested or empty",
+        "  `excluded/`, and refuse an implausible run or campaign duration.",
+        "  What they cannot see is a rejected run that was never committed at",
+        "  all, and they authenticate nothing: a stamp can be written by hand.",
         "",
         "## A recorded anomaly in the earlier attempt sets",
         "",
         f"`verification_started_s` is missing from **{len(unmarked)}** passing",
-        f"runs across the excluded sets -- {unmarked_names} -- on identical",
-        "bytes and one HWND. An earlier draft of this document said one run;",
+        f"runs among every record committed for this candidate, accepted and",
+        f"non-qualifying alike -- {unmarked_names} -- on identical bytes and",
+        "one HWND. An earlier draft of this document said one run;",
         "an independent review found the second. These counts are derived from",
         "the committed records, so they cannot go stale as sets are added.",
         "",
         f"Where the mark is present, `ended_s - verification_started_s` is",
-        f"{drains} across all {marked} records that carry it. That is fixed",
+        f"{drains} across all {marked} of those records that carry it. That is",
+        "fixed",
         "drain, not a gap between two events: `compiled_tour`'s driver sleeps",
         "0.25s per iteration, and after the rule is satisfied the run still",
         "passes through `VERIFYING` and `OBSERVING` before reaching `DONE`,",
-        "where the timing is read. Two sleeps, exactly 0.500s.",
+        "where the timing is read. Two sleeps: 0.500s, plus about 16ms of",
+        "ordinary per-tick overhead in the records that read 0.516s.",
         "",
         "An earlier draft of this document read the same number as one tick",
         "and concluded that arming and satisfaction fell on different ticks.",

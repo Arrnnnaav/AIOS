@@ -106,8 +106,12 @@ def _campaign(tmp_path: Path, records: list[dict], *, excluded=()) -> Path:
     """
 
     directory = _write(tmp_path / "records" / "add-slide", records)
-    _write(directory.parent / "excluded", list(excluded))
-    (directory.parent / "excluded").mkdir(parents=True, exist_ok=True)
+    # At least one non-qualifying record by default, and unstamped, which is
+    # what the real repository holds: every committed one predates run-identity
+    # stamping. An EMPTY directory is refused, because git does not track one
+    # and every derived count would read zero.
+    default = {k: v for k, v in _record().items() if k != "started_at"}
+    _write(directory.parent / "excluded", list(excluded) or [default])
     return directory
 
 
@@ -618,7 +622,7 @@ def test_a_non_finite_timing_landmark_is_refused(tmp_path):
 
     code, output = _render(records, tmp_path / "o.md")
     assert code == 2
-    assert "finite" in output
+    assert "finite" in output or "no duration" in output
 
 
 def test_a_record_missing_started_at_in_the_first_position_is_refused(tmp_path):
@@ -660,9 +664,13 @@ def test_the_document_publishes_the_ids_and_instants(tmp_path):
     out = tmp_path / "o.md"
     assert _render(_campaign(tmp_path, records), out)[0] == 0
     document = out.read_text(encoding="utf-8")
+    from datetime import datetime
+
     for record in records:
-        assert record["run_id"][:8] in document
-        assert record["started_at"] in document
+        assert record["run_id"] in document
+        # NORMALISED to UTC, because the column header says UTC and the
+        # sequence checks compare instants rather than the raw text.
+        assert datetime.fromisoformat(record["started_at"]).isoformat() in document
 
 
 def test_records_spanning_years_are_refused(tmp_path):
@@ -709,3 +717,125 @@ def test_a_record_without_a_usable_window_handle_is_refused(tmp_path, hwnd):
     code, output = _render(_campaign(tmp_path, records), tmp_path / "o.md")
     assert code == 2
     assert "HWND" in output or "hwnd" in output
+
+
+# --- instants, not strings (D032 review, round 4) --------------------------
+#
+# All three sequence checks compared raw `started_at` TEXT. A reviewer stamped
+# one run `+05:30`, which sorts after a `+00:00` string naming a LATER moment,
+# and defeated the ordering, the overlap check and the window check at once --
+# then the document affirmatively printed that the window check had passed.
+
+
+def test_a_timezone_offset_cannot_reorder_the_runs(tmp_path):
+    """`13:00+05:30` is 07:30 UTC, five and a half hours BEFORE
+    `10:00+00:00`, while sorting after it as text."""
+
+    records = _three()
+    records[1]["started_at"] = "2026-09-04T13:00:00.000+05:30"
+    code, output = _render(_campaign(tmp_path, records), tmp_path / "o.md")
+    assert code == 2
+    assert "strictly in order" in output
+
+
+def test_a_rejected_run_cannot_hide_behind_an_offset(tmp_path):
+    """The worst version: a failed run squarely inside the accepted window,
+    stamped in another timezone, slipped the window check -- and the document
+    then claimed the check had evaluated it and found nothing."""
+
+    accepted = _campaign(
+        tmp_path,
+        _three(),
+        excluded=[
+            _record(
+                run_id="d" * 32,
+                # 10:07 UTC, inside the 10:00-10:10 window, written as IST.
+                started_at="2026-09-04T15:37:00.000+05:30",
+                outcome="failed",
+            )
+        ],
+    )
+    code, output = _render(accepted, tmp_path / "o.md")
+    assert code == 2
+    assert "not consecutive" in output
+
+
+@pytest.mark.parametrize(
+    "stamp", ["2026-09-04T10:00:00.000", "2026-09-04", "not-a-time", ""]
+)
+def test_a_start_time_that_names_no_instant_is_refused(tmp_path, stamp):
+    """An offset is required rather than assumed. Reading a naive stamp as
+    UTC would be a guess about a number the document presents as measured --
+    and a naive value previously raised an uncaught TypeError."""
+
+    records = _three()
+    records[0]["started_at"] = stamp
+    code, output = _render(_campaign(tmp_path, records), tmp_path / "o.md")
+    assert code == 2
+    assert "instant" in output or "started_at" in output
+
+
+def test_an_equivalent_offset_is_accepted(tmp_path):
+    """Normalisation must not become strictness for its own sake: the same
+    instant written in another timezone is the same instant."""
+
+    records = _three()
+    records[1]["started_at"] = "2026-09-04T15:35:00.000+05:30"  # 10:05 UTC
+    out = tmp_path / "o.md"
+    code, output = _render(_campaign(tmp_path, records), out)
+    assert code == 0, output
+    # ...and it is PRINTED normalised, because the column says UTC.
+    assert "10:05:00+00:00" in out.read_text(encoding="utf-8")
+
+
+# --- the excluded directory is guarded like the campaign directory ---------
+
+
+def test_a_rejected_run_in_a_subdirectory_is_refused(tmp_path):
+    """`glob("*.json")` is not recursive. A failed run in `excluded/archive/`
+    was invisible to the window check while the counts stayed the same."""
+
+    accepted = _campaign(tmp_path, _three())
+    nested = accepted.parent / "excluded" / "archive"
+    _write(nested, [_record(run_id="d" * 32)])
+    code, output = _render(accepted, tmp_path / "o.md")
+    assert code == 2
+    assert "subdirector" in output
+
+
+def test_an_empty_excluded_directory_is_refused(tmp_path):
+    """Git does not track empty directories, so one means the non-qualifying
+    records are absent -- and every derived count reads zero while the
+    document still narrates the recorded anomaly."""
+
+    accepted = _write(tmp_path / "records" / "add-slide", _three())
+    (accepted.parent / "excluded").mkdir(parents=True)
+    code, output = _render(accepted, tmp_path / "o.md")
+    assert code == 2
+    assert "no run records" in output
+
+
+# --- a run duration that makes the overlap check meaningless ---------------
+
+
+@pytest.mark.parametrize("ended", [-1.0, 2592000.0])
+def test_an_implausible_run_duration_is_refused(tmp_path, ended):
+    """An unbounded `ended_s` makes the overlap check vacuous in one
+    direction and poisons the rendered drain figure in the other."""
+
+    records = _three()
+    records[0]["timing"]["ended_s"] = ended
+    code, output = _render(_campaign(tmp_path, records), tmp_path / "o.md")
+    assert code == 2
+
+
+def test_the_document_prints_the_whole_run_id(tmp_path):
+    """Truncating to eight characters was in tension with the document's own
+    rationale for printing them at all."""
+
+    records = _three()
+    out = tmp_path / "o.md"
+    assert _render(_campaign(tmp_path, records), out)[0] == 0
+    document = out.read_text(encoding="utf-8")
+    for record in records:
+        assert record["run_id"] in document
