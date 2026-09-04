@@ -215,10 +215,30 @@ def abandon(area: Staging, *, remove: bool = False) -> None:
 
     if not isinstance(area, Staging):
         raise StagingError("abandon needs a Staging")
-    if not remove:
+    if remove:
+        area.staging.unlink(missing_ok=True)
+        area.marker.unlink(missing_ok=True)
         return
-    area.staging.unlink(missing_ok=True)
-    area.marker.unlink(missing_ok=True)
+    # Record that the run ENDED without publishing. Without this the call did
+    # nothing at all -- deleting it changed no behaviour, which made it
+    # decorative cleanup rather than cleanup (D032 re-review). The
+    # distinction it now records is real: a staging file left by a run that
+    # stopped is a different thing from one left by a process that died, and
+    # only the first can say so.
+    if not area.marker.exists():
+        return
+    try:
+        record = json.loads(area.marker.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return
+    record["abandoned_epoch_s"] = round(time.time(), 3)
+    record["note"] = (
+        "ABANDONED. The run ended without publishing and this staging file "
+        "was never delivered. It is not a finished artifact."
+    )
+    area.marker.write_text(
+        json.dumps(record, indent=2, sort_keys=True), encoding="utf-8"
+    )
 
 
 def incomplete_files(owned_root: Path) -> tuple[Staging, ...]:

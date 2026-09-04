@@ -236,6 +236,44 @@ def test_the_marker_says_what_the_file_is_and_is_not(owned):
     assert "INCOMPLETE" in record["note"]
 
 
+def test_abandoning_records_that_the_run_ended(owned):
+    """The call used to do nothing at all: with `remove=False` it returned
+    immediately, so deleting it changed no behaviour and it was decorative
+    cleanup rather than cleanup (D032 re-review, 4 Sep 2026).
+
+    The distinction it now records is real. A staging file left by a run that
+    STOPPED is a different thing from one left by a process that died, and
+    only the first can say so."""
+
+    import json
+
+    area = _area(owned)
+    _write(area)
+
+    abandon(area)
+
+    record = json.loads(area.marker.read_text(encoding="utf-8"))
+    assert "ABANDONED" in record["note"]
+    assert "abandoned_epoch_s" in record
+
+
+def test_a_crashed_run_is_distinguishable_from_an_abandoned_one(owned):
+    """Nothing runs when a process dies, so its marker keeps the original
+    wording. That is the whole point of recording the difference."""
+
+    import json
+
+    crashed = _area(owned, "crashed.pptx", "runa")
+    stopped = _area(owned, "stopped.pptx", "runb")
+    _write(crashed)
+    _write(stopped)
+
+    abandon(stopped)  # the crashed one gets no call, by definition
+
+    assert "ABANDONED" not in json.loads(crashed.marker.read_text())["note"]
+    assert "ABANDONED" in json.loads(stopped.marker.read_text())["note"]
+
+
 def test_abandoning_keeps_the_label_by_default(owned):
     """A staging file whose marker was removed is an anonymous partial .pptx
     someone can mistake for a deck. That is the thing being prevented."""

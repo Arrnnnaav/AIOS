@@ -190,6 +190,12 @@ def act_preview_rows(proposal: object) -> tuple[str, ...]:
 
 def default_act_output_path() -> Path:
     root = Path.home() / "Documents" / "GhostCursor" / "Outputs"
+    # Created here, because this function owns the convention and staging
+    # requires the owned root to EXIST. Nothing created it before, so a fresh
+    # install's very first Act run through the GUI failed in `open_staging`
+    # with "owned output root is not a directory" -- the primary surface,
+    # broken on first use (D032 re-review, 4 September 2026).
+    root.mkdir(parents=True, exist_ok=True)
     return (
         root
         / f"ghostcursor-{time.strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}.pptx"

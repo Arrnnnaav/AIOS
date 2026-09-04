@@ -21,58 +21,6 @@ def test_the_proposal_carries_a_staging_area():
     assert fields["staging"].default is None
 
 
-def test_a_run_with_no_owned_root_is_not_staged():
-    """There is nowhere the runtime owns to stage into. Stated rather than
-    silently degraded: without an owned root the run writes its final path
-    directly, exactly as every production run did before staging existed."""
-
-    import inspect
-
-    from ghostcursor.act_cli import prepare_act_goal
-
-    source = inspect.getsource(prepare_act_goal)
-
-    assert "if owned_output_root is not None:" in source
-    assert "written = staging.staging" in source
-
-
-def test_the_plan_is_materialized_against_the_written_path():
-    """So the adapter is never told where the final artifact goes and cannot
-    expose a partial one, which is what makes it structural."""
-
-    import inspect
-
-    from ghostcursor.act_cli import prepare_act_goal
-
-    source = inspect.getsource(prepare_act_goal)
-
-    assert '{"output_path": str(written)}' in source
-
-
-def test_a_run_that_could_not_publish_is_not_reported_as_completed():
-    """Saying otherwise would report a deck at a path where nothing exists."""
-
-    import inspect
-
-    from ghostcursor.act_cli import execute_act_proposal
-
-    source = inspect.getsource(execute_act_proposal)
-
-    assert "could not be published" in source
-    assert "ActRunCode.ADAPTER_FAILED" in source
-
-
-def test_an_incomplete_run_abandons_rather_than_publishing():
-    import inspect
-
-    from ghostcursor.act_cli import execute_act_proposal
-
-    source = inspect.getsource(execute_act_proposal)
-    incomplete = source.split("if not result.completed:", 1)[1].split("try:", 1)[0]
-
-    assert "abandon(proposal.staging)" in incomplete
-    assert "publish" not in incomplete
-
 
 # --- behavioural: publish and abandon actually happen ---------------------
 #
@@ -195,17 +143,38 @@ def test_an_unstaged_run_is_returned_untouched(tmp_path, monkeypatch):
     assert result.output_path == "ignored"
 
 
-def test_the_manager_supplies_an_owned_root(tmp_path):
-    """The pilot GUI ran unstaged: `prepare_act_goal` was called without an
-    owned root, so every manager-initiated run wrote its final path directly
-    (D032 review, 4 Sep 2026)."""
+def test_the_managers_default_output_directory_exists_after_asking_for_one():
+    """A fresh install's first GUI run died in `open_staging` with "owned
+    output root is not a directory", because nothing ever created
+    `Documents/GhostCursor/Outputs`. The primary surface, broken on first
+    use (D032 re-review, 4 Sep 2026).
 
-    import inspect
+    Behavioural: it calls the function and checks the directory is really
+    there. An earlier version of this test grepped `manager.py`'s source for
+    a substring — the exact anti-pattern the commit it shipped in claimed to
+    have eliminated, reintroduced in the same commit.
+    """
 
-    from ghostcursor import manager
+    from ghostcursor.manager import default_act_output_path
 
-    source = inspect.getsource(manager)
+    path = default_act_output_path()
 
-    assert "owned_output_root=request.output_path.parent" in source
-    assert "owned_output_root=proposal.output_path.parent" in source
+    assert path.parent.is_dir()
+    assert path.suffix == ".pptx"
+
+
+def test_the_managers_default_path_can_actually_be_staged():
+    """The end-to-end claim, rather than an assertion about a call site: the
+    path the GUI hands to `prepare_act_goal` is one `open_staging` accepts."""
+
+    from ghostcursor.act_staging import abandon, open_staging
+    from ghostcursor.manager import default_act_output_path
+
+    path = default_act_output_path()
+    area = open_staging(path, owned_root=path.parent, run_id="probe01")
+    try:
+        assert area.staging.parent.is_dir()
+        assert area.marker.is_file()
+    finally:
+        abandon(area, remove=True)
 
