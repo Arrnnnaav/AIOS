@@ -84,6 +84,30 @@ def load_records(directory: pathlib.Path) -> list[dict]:
         record = _canonical_json(path)
         record["_source"] = path.name
         records.append(record)
+
+    # Three files is not three runs. Copying one record under three names
+    # rendered a document claiming "3/3 passed" until an independent review
+    # tried it, because nothing here looked past the file count.
+    #
+    # This catches duplication; it does not PROVE distinctness, and the
+    # difference matters (D031). `RunRecord.to_json` emits no run id and no
+    # wall-clock time, so two genuinely separate runs can serialise
+    # identically and nothing in a record establishes that three of them were
+    # consecutive. Editing one field would defeat this check. It is a guard
+    # against careless duplication, not against forgery, and the rendered
+    # document says so rather than implying the records carry more than they
+    # do.
+    seen: dict[str, str] = {}
+    for record in records:
+        payload = json.dumps(
+            {k: v for k, v in record.items() if k != "_source"}, sort_keys=True
+        )
+        if payload in seen:
+            raise EvidenceRefused(
+                f"{record['_source']} is identical to {seen[payload]}; "
+                "three files are not three runs"
+            )
+        seen[payload] = record["_source"]
     return records
 
 
@@ -218,7 +242,7 @@ def check(records: list[dict], candidate_root: pathlib.Path) -> dict:
     return loaded
 
 
-def render(records: list[dict], loaded: dict) -> str:
+def render(records: list[dict], loaded: dict, records_dir: pathlib.Path) -> str:
     target = records[0]["target"]
     urls = loaded["recipe"]["steps"][0]["provenance"]["source_urls"]
     lines = [
@@ -250,11 +274,18 @@ def render(records: list[dict], loaded: dict) -> str:
         "",
         "## Acceptance runs",
         "",
-        "Records are committed under",
-        "`plugins/sources/powerpoint/acceptance-records/add-slide/`, so every",
-        "number below names where it is recorded (D034). Attempt sets that did",
-        "not qualify are preserved beside them under `excluded/` with the note",
-        "explaining why.",
+        f"Records read from `{records_dir}`, so every number below names where",
+        "it is recorded (D034). This path is the one the renderer was pointed",
+        "at, not a fixed string: an earlier draft hardcoded it and would have",
+        "claimed a durable location while rendering from a scratch directory.",
+        "Attempt sets that did not qualify are preserved alongside under",
+        "`excluded/` with the note explaining why.",
+        "",
+        "Three files are not three runs, and the records cannot prove they are.",
+        "`RunRecord.to_json` emits no run id and no wall-clock time, so nothing",
+        "in a record establishes that these three were distinct or consecutive.",
+        "The renderer refuses byte-identical duplicates; sequence rests on",
+        "operator procedure.",
         "",
         "| Run record | Outcome | Steps | Grounding | First observation | "
         "First hint | Verification start | End |",
@@ -286,14 +317,31 @@ def render(records: list[dict], loaded: dict) -> str:
         f"(name {VERIFICATION_NAME!r}) under `element_appears`, which is",
         "absent-then-present against the run-start baseline.",
         "",
-        "That selector is reachable only from a one-slide deck: from two slides",
-        "viewing slide 1, adding a slide yields `View Indicator Slide 2 of 3`,",
-        "which does not match. So each passing run took the deck from one slide",
-        "to two, and the starting state is established by the record rather",
-        "than assumed. The harness cannot itself produce that change -- it makes",
-        "no COM call and synthesizes no input, and",
+        "Precisely: the view indicator read something other than",
+        f"{VERIFICATION_NAME!r} when the run started, and read exactly that",
+        "when the rule fired. The harness cannot itself have produced the",
+        "change -- it makes no COM call and synthesizes no input, and",
         "`tests/test_no_input_synthesis.py` covers the `devtools` package",
-        "explicitly.",
+        "explicitly -- so a person did it.",
+        "",
+        "### What the verification does not establish",
+        "",
+        "**It does not establish the deck's starting slide count.** An earlier",
+        "draft of this document claimed the rule was reachable only from a",
+        "one-slide deck. That is wrong, and an independent review caught it.",
+        "Other state changes satisfy the same absent-then-present rule with no",
+        "slide added:",
+        "",
+        "- a two-slide deck viewed at slide 1 (`Slide 1 of 2`) where the person",
+        "  merely navigates to slide 2, which then reads `Slide 2 of 2`;",
+        "- a three-slide deck viewed at slide 2 (`Slide 2 of 3`) where a slide",
+        "  is deleted, leaving `Slide 2 of 2`.",
+        "",
+        "The recipe does observe `slide1_before` on every tick as a context",
+        "selector, and that observation is what WOULD settle the starting",
+        "state -- but the run record carries no selector results, so it cannot",
+        "be reconstructed from the committed evidence. The one-slide start",
+        "therefore rests on operator procedure, not on the record.",
         "",
         "No workflow-specific production Python was added.",
         "",
@@ -316,13 +364,24 @@ def render(records: list[dict], loaded: dict) -> str:
         "- **Nothing about the `uia_pattern` backend.** This is a guided,",
         "  human-performed workflow, not an Act adapter dispatch.",
         "",
-        "## A recorded anomaly in an earlier attempt set",
+        "## A recorded anomaly in the earlier attempt sets",
         "",
-        "The second attempt set produced three passing runs, one of which",
-        "recorded no `verification_started_s` while the other two did, on",
-        "identical bytes and one HWND. It was refused for that inconsistency",
-        "and preserved rather than discarded, and the discrepancy remains",
-        "unexplained by static reading. See `docs/superpowers/FOLLOWUPS.md`.",
+        "`verification_started_s` is missing from **two** passing runs across",
+        "the excluded sets -- `attempt-set-01-run-02.json` and",
+        "`attempt-set-02-run-03.json` -- on identical bytes and one HWND. An",
+        "earlier draft of this document said one run; an independent review",
+        "found the second.",
+        "",
+        "Where the mark is present it is always exactly one tick before the",
+        "end: `ended_s - verification_started_s` is 0.500s or 0.516s in all six",
+        "records that carry it. So arming and satisfaction fell on different",
+        "ticks in those runs, and in the two without it the rule was satisfied",
+        "with no tick ever arming. Static reading of `reasoning/loop.py` says",
+        "that should not happen -- the arming branch precedes the satisfaction",
+        "branch on the same tick, nothing on the completion path clears the",
+        "mark, and the published selector union changes exactly when the rule",
+        "fires. It remains unexplained rather than explained away. See",
+        "`docs/superpowers/FOLLOWUPS.md`.",
         "",
     ]
     return "\n".join(lines)
@@ -338,7 +397,7 @@ def main(argv=None) -> int:
     try:
         records = load_records(args.records)
         loaded = check(records, args.candidate_root)
-        document = render(records, loaded)
+        document = render(records, loaded, args.records)
     except EvidenceRefused as exc:
         print(f"evidence refused: {exc}", file=sys.stderr)
         return 2

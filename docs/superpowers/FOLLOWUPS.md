@@ -667,11 +667,20 @@ flakiness. If it recurs, capture the full output before rerunning.
 
 ## ADD_SLIDE run recorded no `verification_started_s`
 
-On 4 September 2026, the third run of the second ADD_SLIDE acceptance attempt
-set passed — `1/1`, UIA-only, same digests, same HWND — but its `timing` block
-contains only `first_observation_s`, `first_hint_s` and `ended_s`. The two
-runs either side of it recorded `verification_started_s` normally
-(`.artifacts/add-slide-acceptance/attempt-set-02/`).
+On 4 September 2026, two passing ADD_SLIDE runs recorded no
+`verification_started_s` — `attempt-set-01-run-02.json` and
+`attempt-set-02-run-03.json` — while the other six passing runs did, on
+identical bytes and one HWND. Records are committed under
+`plugins/sources/powerpoint/acceptance-records/`.
+
+An independent D032 review found the second occurrence; this entry originally
+said one run, which understated it.
+
+**A measured clue.** Where the mark is present, `ended_s -
+verification_started_s` is 0.500s or 0.516s in all six records — exactly one
+tick. So arming and satisfaction fell on *different* ticks in every run that
+armed, and in the two without the mark the rule was satisfied with no tick
+ever arming.
 
 **Static reading does not explain it, and contradicts it.** In
 `reasoning/loop.py`'s `AWAITING_USER_ACTION`, the arming branch
@@ -688,6 +697,13 @@ So a run appears to have satisfied `element_appears` on a tick where
 `action_detected` was false. Either `elements` does not carry what the above
 assumes for this plan shape, or the step completed by a path that does not
 pass through that branch.
+
+**One hypothesis is already refuted.** It looked like `Snapshot.elements`
+might exclude selectors answered by a `provider_exact` query, which would make
+`elements_changed` blind to this recipe's effect. It does not:
+`run_observation_plan` extends the same `observed` list from the query loop as
+from the traversal loop (`perception/service.py`, the `for query in
+plan.queries` block), and the union is built from it.
 
 **What is not in doubt:** the run's pass is sound independently of the mark.
 `element_appears` is `not was and bool(now)` against the run-start baseline,

@@ -7,13 +7,13 @@ HWND `1050680` across all three.
 
 | Record | End | verification_started_s |
 |---|---|---|
-| `set2-run-01.json` | 5.797s | 5.281s |
-| `set2-run-02.json` | 3.531s | 3.015s |
-| `set2-run-03.json` | 2.782s | **absent** |
+| `attempt-set-02-run-01.json` | 5.797s | 5.281s |
+| `attempt-set-02-run-02.json` | 3.531s | 3.015s |
+| `attempt-set-02-run-03.json` | 2.782s | **absent** |
 
 ## Why this set does not close the gate
 
-`set2-run-03.json` records no `verification_started_s`. Per D075 an absent
+`attempt-set-02-run-03.json` records no `verification_started_s`. Per D075 an absent
 timing mark means the event never happened, and that is the finding rather
 than a formatting detail. `tools/render_open_extensions_evidence.py` — the
 existing precedent for a single-intent candidate acceptance — requires the
