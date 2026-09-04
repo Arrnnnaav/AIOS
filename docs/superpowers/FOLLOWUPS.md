@@ -664,3 +664,48 @@ failed and passed.
 The failure message was not captured. Recording it as **unexplained** rather
 than as a flake: this project has twice misattributed a real failure to
 flakiness. If it recurs, capture the full output before rerunning.
+
+## ADD_SLIDE run recorded no `verification_started_s`
+
+On 4 September 2026, the third run of the second ADD_SLIDE acceptance attempt
+set passed — `1/1`, UIA-only, same digests, same HWND — but its `timing` block
+contains only `first_observation_s`, `first_hint_s` and `ended_s`. The two
+runs either side of it recorded `verification_started_s` normally
+(`.artifacts/add-slide-acceptance/attempt-set-02/`).
+
+**Static reading does not explain it, and contradicts it.** In
+`reasoning/loop.py`'s `AWAITING_USER_ACTION`, the arming branch
+(`if self._verification_started_at is None and action_detected`) runs *before*
+the `elif satisfied` branch on the same tick, and nothing on the completion
+path clears the mark: `VERIFYING` does not reset it, and `OBSERVING`
+re-baselines only while it is unset. The union published into
+`Snapshot.elements` also changes on the satisfying tick, because the recipe's
+`slide1_before` selector stops matching and `slide2_after` starts — so
+`elements_changed(previous, after)` should be true exactly when the rule is
+satisfied.
+
+So a run appears to have satisfied `element_appears` on a tick where
+`action_detected` was false. Either `elements` does not carry what the above
+assumes for this plan shape, or the step completed by a path that does not
+pass through that branch.
+
+**What is not in doubt:** the run's pass is sound independently of the mark.
+`element_appears` is `not was and bool(now)` against the run-start baseline,
+and `"View Indicator Slide 2 of 2"` is reachable only from a one-slide deck —
+from two slides viewing slide 1, adding a slide yields `"Slide 2 of 3"`, which
+does not match. The harness cannot click or edit the document (no COM, no
+input synthesis, and `tests/test_no_input_synthesis.py` covers `devtools/`).
+The recipe sets no `fail_after_timeout`, so the mark bounds nothing here; it is
+a diagnostic landmark only.
+
+**Why this still blocks that record as evidence.** `Step.preconditions` is
+parsed in `reasoning/schema.py` and never read by the reasoning path, so the
+declared `slide1_before` precondition gates nothing. The timing mark is the
+loop's own record that it observed evidence of a user action, and
+`tools/render_open_extensions_evidence.py` already refuses a record missing
+it. Admitting this one would mean weakening a gate to fit an unexplained
+record — the shape of failure D031 and D032 exist to catch.
+
+Next: reproduce with the loop instrumented (not on an acceptance run), and
+determine which of the two possibilities holds before either explaining the
+gate away or tightening the arming condition.
