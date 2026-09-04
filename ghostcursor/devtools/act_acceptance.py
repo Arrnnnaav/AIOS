@@ -335,37 +335,11 @@ def run(args) -> int:
             started_events.append(event)
 
     if draws_pointer:
-        # One overlay window for the run, shared with the region highlights
-        # if those are on. A second topmost full-screen window would fight
-        # this one for the same pixels.
-        from ghostcursor.act_cli import default_cue_budget
-        from ghostcursor.act_overlay import overlay_presenter
-        from ghostcursor.act_protocol import ReceiptPolicy, TrustClass
-        from ghostcursor.act_runtime import PresentationSurface
-        from ghostcursor.overlay import window as overlay_window
-
-        if overlay_hwnd is None:
-            overlay_hwnd = overlay_window.create_overlay_window()
-        policy = ReceiptPolicy(
-            first_paint_deadline_ms=args.first_paint_deadline_ms,
-            completion_deadline_ms=args.completion_deadline_ms,
-        )
-        presentation = PresentationSurface(
-            overlay=overlay_presenter(
-                overlay_hwnd,
-                budget=default_cue_budget(),
-                policy=policy,
-                label_for=lambda observation: str(
-                    dict(getattr(observation, "identity", {}) or {}).get("name", "")
-                ),
-                backend_trust=TrustClass.LIVE_STATE,
-                # Stop must reach the cue, or a presentation keeps painting
-                # after the operator asked the run to stop.
-                keep_running=lambda: not controls.stop_event.is_set(),
-            ),
-            policy=policy,
+        overlay_hwnd, presentation = presentation_for(
+            args, controls, overlay_hwnd=overlay_hwnd
         )
         _emit("presentation_ready", hwnd=overlay_hwnd)
+
 
     run_started = time.monotonic()
     try:
@@ -571,3 +545,54 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+def presentation_for(args, controls, *, overlay_hwnd=None):
+    """Build the cue surface a control-driving plan needs.
+
+    Extracted so it can be tested. Inline, two properties this harness exists
+    to hold were unprotected, and an independent review reverted both with the
+    whole suite still green: passing `presentation=None` (a verbatim revert of
+    the change that let the harness run such a node at all) and hardwiring
+    `keep_running` to True (the precise defect the same change removed).
+
+    Returns the window handle alongside the surface, because the caller owns
+    destroying it and must not have to guess whether one was created here.
+    """
+
+    from ghostcursor.act_cli import default_cue_budget
+    from ghostcursor.act_overlay import overlay_presenter
+    from ghostcursor.act_protocol import ReceiptPolicy, TrustClass
+    from ghostcursor.act_runtime import PresentationSurface
+    from ghostcursor.overlay import window as overlay_window
+
+    # The POLICY first, then the window. `ReceiptPolicy` refuses a
+    # non-positive deadline, and building the window first meant
+    # `--first-paint-deadline-ms 0` created a topmost click-through window
+    # covering the whole screen and then raised past every cleanup, leaving it
+    # up with no way to close it.
+    policy = ReceiptPolicy(
+        first_paint_deadline_ms=args.first_paint_deadline_ms,
+        completion_deadline_ms=args.completion_deadline_ms,
+    )
+    # One window for the run, shared with the region highlights when those are
+    # on. A second topmost full-screen window would fight this one for the
+    # same pixels.
+    if overlay_hwnd is None:
+        overlay_hwnd = overlay_window.create_overlay_window()
+    surface = PresentationSurface(
+        overlay=overlay_presenter(
+            overlay_hwnd,
+            budget=default_cue_budget(),
+            policy=policy,
+            label_for=lambda observation: str(
+                dict(getattr(observation, "identity", {}) or {}).get("name", "")
+            ),
+            backend_trust=TrustClass.LIVE_STATE,
+            # Stop must reach the cue, or a presentation keeps painting after
+            # the operator asked the run to stop.
+            keep_running=lambda: not controls.stop_event.is_set(),
+        ),
+        policy=policy,
+    )
+    return overlay_hwnd, surface

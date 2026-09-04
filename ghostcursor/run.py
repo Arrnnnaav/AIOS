@@ -501,6 +501,25 @@ def main() -> int:
         type=Path,
         help="required containment root for unattended Act",
     )
+    # Receipt deadlines for a control-driving Act plan. No defaults: Phase E
+    # derives them from measurement (`ghostcursor.devtools.receipt_budget`),
+    # and a plausible constant is the placeholder derivation exists to replace
+    # (D034). Without these the pointer path was unreachable from here, so the
+    # CLI refused every control-driving plan while reading as though it could
+    # run one.
+    parser.add_argument(
+        "--first-paint-deadline-ms",
+        type=int,
+        help=(
+            "receipt deadline from the presentation request to the first "
+            "painted frame; required for a control-driving Act plan"
+        ),
+    )
+    parser.add_argument(
+        "--completion-deadline-ms",
+        type=int,
+        help="receipt deadline from the start receipt to completion",
+    )
     args = parser.parse_args()
 
     if args.manager:
@@ -523,6 +542,7 @@ def main() -> int:
                 approved=args.approve,
                 unattended=args.unattended,
                 owned_output_root=args.owned_output_root,
+                receipt_policy=_receipt_policy(parser, args),
             )
         from ghostcursor.reasoning.planner import PlanStatus, plan_compiled_goal
 
@@ -999,3 +1019,32 @@ def pump_messages() -> None:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+def _receipt_policy(parser, args):
+    """The receipt deadlines a control-driving Act plan needs, or None.
+
+    Both or neither. One alone is a half-specified policy, and
+    `ReceiptPolicy` would refuse it deeper in with a message about a field
+    rather than about what the operator forgot.
+
+    None is returned when neither was given, and `run_act_goal` then refuses
+    a control-driving plan and says why. That refusal is the honest state
+    while Phase E has not derived the numbers -- but it must be reachable
+    with them, or the flag exists and the path does not.
+    """
+
+    first = getattr(args, "first_paint_deadline_ms", None)
+    completion = getattr(args, "completion_deadline_ms", None)
+    if first is None and completion is None:
+        return None
+    if first is None or completion is None:
+        parser.error(
+            "--first-paint-deadline-ms and --completion-deadline-ms are "
+            "given together or not at all"
+        )
+    from ghostcursor.act_protocol import ReceiptPolicy
+
+    return ReceiptPolicy(
+        first_paint_deadline_ms=first, completion_deadline_ms=completion
+    )

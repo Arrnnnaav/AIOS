@@ -827,3 +827,43 @@ or tightening the arming condition.
 publish race then the same race could reach the satisfaction check itself on a
 recipe that does set a timeout. Keep this open until the mechanism is found,
 not until the evidence is accepted.
+
+## Two writers on one overlay window during a paced Act run
+
+Found by the D032 wiring review, 4 September 2026. With `--rail --regions`
+and a control-driving plan, `devtools/act_acceptance.py` shares one overlay
+window between the region highlighter and the cue presenter, and neither owns
+it. The region sink calls `overlay_window.clear_cue(hwnd)` on every
+`action_started` and `set_cue()` on every region event, directly on the window
+the presenter is animating, while the presenter keeps `state["position"]` and
+`state["scene"]` in its own closure (`act_overlay.py`).
+
+After an external clear the two diverge. A VERIFIED node's pointer -- which
+D112 deliberately keeps on screen *so the next cue can travel from it* -- is
+wiped by the next node's `action_started`, and the following cue then animates
+from a position nothing is painted at. Nothing crashes and no effect is
+unshown; the cue simply starts from a place the user cannot see.
+
+Sharing one window is right: a second topmost full-screen window would fight
+the first for the same pixels. What is missing is an owner. Either the
+presenter exposes the region highlight as one of its own scene layers, or the
+region sink is suppressed for the duration of a presentation. Both change what
+the user sees during a paced run, so this wants a decision rather than a patch.
+
+Not urgent: the combination needs `--regions` AND a control-driving plan, and
+no `uia_pattern` operation is adopted.
+
+## `act_live_node` still dispatches under invented receipt deadlines
+
+`ghostcursor/devtools/act_live_node.py` hardcodes
+`ReceiptPolicy(first_paint_deadline_ms=2000, completion_deadline_ms=8000)` --
+verbatim the constants removed from `act_cli` and never added to
+`act_acceptance`, for having nothing measured behind them (D034).
+
+It is a declared diagnostic that bypasses `execute_approved_graph` and mints
+no real approval, so it is off the reviewed authority paths. But it does
+dispatch a real UIA effect, and it does so under deadlines nobody derived.
+Once `ghostcursor.devtools.receipt_budget` has run, this should take the
+measured numbers as arguments like every other caller; until then its report
+should say the deadlines are invented rather than leaving a reader to assume
+Phase E produced them.

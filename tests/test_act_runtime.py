@@ -875,14 +875,23 @@ def _run_with_surface(tmp_path, *, descriptor=None, surface=None, live_verifier=
 
 
 def test_a_presentation_surface_reaches_the_composition_block(tmp_path):
-    """The block must actually run. Making it unreachable left the whole
-    suite green, so this asserts the run got PAST "no presentation surface"
-    and failed for a later reason instead."""
+    """The block must actually run.
 
-    result = _run_with_surface(tmp_path)
+    The first version of this test asserted `"no presentation surface" not in
+    result.detail` -- which can never fail, because that phrase lives only in
+    the EVENT detail; the refusal's result says "a UIA operation requires a
+    presentation surface". A reviewer made the whole block unreachable and
+    this test still passed. It now asserts the positive: with a surface the
+    run reaches the session and fails on the fake overlay's empty receipts,
+    and without one it takes the refusal branch."""
 
-    assert result.code is ActRunCode.ADAPTER_FAILED
-    assert "no presentation surface" not in result.detail
+    with_surface = _run_with_surface(tmp_path)
+    assert with_surface.code is ActRunCode.ADAPTER_FAILED
+    assert "requires a presentation surface" not in with_surface.detail
+
+    without = _run_uia(tmp_path)
+    assert "requires a presentation surface" in without.detail
+    assert with_surface.detail != without.detail
 
 
 def test_a_control_driving_run_refuses_without_the_plugins_live_verifier(tmp_path):
@@ -1052,3 +1061,37 @@ def test_the_uia_path_authorizes_the_node_it_is_running(tmp_path):
             ordinal,
             expected.authorization_sha256,
         )
+
+
+def test_the_uia_failure_result_carries_the_runs_events(tmp_path):
+    """`tuple(events)` -> `()` survived the whole suite. A result with no
+    events is a run nobody can reconstruct, and the events are how a session
+    surface knows what happened before the failure."""
+
+    def explode(*_args, **_kwargs):
+        raise RuntimeError("the read-only verifier could not answer")
+
+    session, _record = _fake_session()
+    session.observe = explode
+
+    result = _run_uia(tmp_path, session=session)
+
+    assert result.code is ActRunCode.ADAPTER_FAILED
+    assert result.events, "the failure result carried no events"
+    assert any(event.type == "action_failed" for event in result.events)
+
+
+def test_the_uia_except_does_not_swallow_a_keyboard_interrupt(tmp_path):
+    """`except Exception`, never `BaseException`. Swallowing a
+    KeyboardInterrupt or SystemExit would be worse than the failure it
+    prevents -- the equivalent property on the observer path has a test and
+    this one did not, and `except BaseException` survived the suite."""
+
+    def interrupt(*_args, **_kwargs):
+        raise KeyboardInterrupt("operator pressed ctrl-c")
+
+    session, _record = _fake_session()
+    session.observe = interrupt
+
+    with pytest.raises(KeyboardInterrupt):
+        _run_uia(tmp_path, session=session)

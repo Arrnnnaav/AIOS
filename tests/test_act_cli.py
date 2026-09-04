@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+from types import SimpleNamespace
+
 import pytest
 
 
@@ -337,3 +340,253 @@ def test_a_pointer_plan_refuses_when_no_receipt_deadlines_were_supplied():
     source = inspect.getsource(run_act_goal)
     assert "receipt_policy is None" in source
     assert "D034" in source
+# --- the refusals and the Stop, driven rather than grepped ----------------
+#
+# D032 review, round 2. The receipt-deadline refusal was "covered" by a test
+# asserting `"receipt_policy is None" in source` -- a substring check the
+# mutation `if receipt_policy is None and False:` walks straight through,
+# and which never called `run_act_goal`. The invariant (a substring exists)
+# merely CORRELATED with the property (the refusal fires and nothing runs).
+
+
+def _pointer_proposal(monkeypatch, *, pointer=True):
+    """Make `prepare_act_goal` yield a proposal whose signed operations do or
+    do not include a control-driving one, without touching a plugin store."""
+
+    from types import MappingProxyType, SimpleNamespace
+
+    from ghostcursor import act_cli
+    from ghostcursor.action import ActionRisk, OperationSpec
+
+    backend = "uia_pattern" if pointer else "object_model"
+    spec = OperationSpec(
+        "op0",
+        ActionRisk.LOW,
+        MappingProxyType({}),
+        postconditions=("thing.exists",),
+        timeout_s=2.0,
+        backend=backend,
+        **({"uia_pattern": "Invoke"} if pointer else {}),
+    )
+    proposal = SimpleNamespace(
+        goal="g",
+        intent_id="ADD_SLIDE",
+        plugin_id="ghostcursor.powerpoint",
+        output_path=Path("out.pptx"),
+        target=SimpleNamespace(hwnd=7),
+        validated=SimpleNamespace(
+            ordered_nodes=(SimpleNamespace(node_id="n0", operation_id="op0"),),
+            graph_sha256="a" * 64,
+        ),
+        descriptor=SimpleNamespace(
+            registry=SimpleNamespace(operations=MappingProxyType({"op0": spec}))
+        ),
+    )
+    monkeypatch.setattr(act_cli, "prepare_act_goal", lambda *a, **k: proposal)
+    return proposal
+
+
+def test_a_pointer_plan_with_no_deadlines_refuses_before_anything_runs(
+    monkeypatch, capsys
+):
+    """The refusal must FIRE, not merely be written. Nothing may execute and
+    no overlay window may be created."""
+
+    from ghostcursor import act_cli
+    from ghostcursor.overlay import window as overlay_window
+
+    _pointer_proposal(monkeypatch)
+    executed, created = [], []
+    monkeypatch.setattr(
+        act_cli, "execute_act_proposal", lambda *a, **k: executed.append(1)
+    )
+    monkeypatch.setattr(
+        overlay_window, "create_overlay_window", lambda: created.append(1) or 1
+    )
+
+    code = act_cli.run_act_goal(
+        "add a slide",
+        output_path=Path("out.pptx"),
+        target_hwnd=7,
+        approved=True,
+        receipt_policy=None,
+        poll_escape=False,
+    )
+
+    assert code == 2
+    assert executed == [], "the plan ran without receipt deadlines"
+    assert created == [], "an overlay was created for a refused plan"
+    assert '"type":"refused"' in capsys.readouterr().out
+
+
+def test_an_object_model_plan_needs_no_deadlines(monkeypatch):
+    """The refusal must not become a blanket one: an object-model plan draws
+    no pointer and has no receipts to be late."""
+
+    from ghostcursor import act_cli
+
+    _pointer_proposal(monkeypatch, pointer=False)
+    seen = {}
+
+    def execute(proposal, **kwargs):
+        seen.update(kwargs)
+        return SimpleNamespace(
+            code=SimpleNamespace(value="completed"),
+            completed=True,
+            detail="",
+            output_path="out.pptx",
+        )
+
+    monkeypatch.setattr(act_cli, "execute_act_proposal", execute)
+
+    code = act_cli.run_act_goal(
+        "build a deck",
+        output_path=Path("out.pptx"),
+        target_hwnd=7,
+        approved=True,
+        receipt_policy=None,
+        poll_escape=False,
+    )
+
+    assert code == 0
+    assert seen.get("presentation") is None
+
+
+def test_the_run_and_the_cue_share_one_stoppable_controls(monkeypatch):
+    """`execute_act_proposal` was called without controls, so the runtime
+    built its own that nothing could signal -- the CLI Act path had no Stop
+    at all. And `_pointer_surface` was called without `keep_running`, so it
+    took the `lambda: True` fallback its own docstring calls a defect."""
+
+    from ghostcursor import act_cli
+    from ghostcursor.act_protocol import ReceiptPolicy
+    from ghostcursor.overlay import window as overlay_window
+
+    _pointer_proposal(monkeypatch)
+    monkeypatch.setattr(overlay_window, "create_overlay_window", lambda: 4242)
+    monkeypatch.setattr(overlay_window, "destroy_overlay_window", lambda hwnd: None)
+
+    captured = {}
+
+    def presenter(hwnd, **kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(present=lambda *a: [], on_node_state=lambda *a: None)
+
+    monkeypatch.setattr("ghostcursor.act_overlay.overlay_presenter", presenter)
+
+    def execute(proposal, **kwargs):
+        captured["controls"] = kwargs.get("controls")
+        return SimpleNamespace(
+            code=SimpleNamespace(value="completed"),
+            completed=True,
+            detail="",
+            output_path="out.pptx",
+        )
+
+    monkeypatch.setattr(act_cli, "execute_act_proposal", execute)
+
+    act_cli.run_act_goal(
+        "add a slide",
+        output_path=Path("out.pptx"),
+        target_hwnd=7,
+        approved=True,
+        receipt_policy=ReceiptPolicy(
+            first_paint_deadline_ms=2000, completion_deadline_ms=8000
+        ),
+        poll_escape=False,
+    )
+
+    controls = captured["controls"]
+    assert controls is not None, "the run was given controls nothing could signal"
+
+    keep_running = captured["keep_running"]
+    assert keep_running() is True
+    controls.stop()
+    assert keep_running() is False, "Stop cannot reach the cue"
+
+
+def test_the_escape_watcher_stops_the_run(monkeypatch):
+    """ESC is polled, not handled: the overlay is topmost, click-through and
+    never takes focus. A full-screen cue nobody can abort is what D020's
+    ceiling exists to prevent."""
+
+    import time
+
+    from ghostcursor import act_cli
+    from ghostcursor.act_runtime import ActControls
+
+    pressed = {"now": False}
+    monkeypatch.setattr("ghostcursor.run.escape_pressed", lambda: pressed["now"])
+
+    controls = ActControls()
+    watcher = act_cli._escape_watcher(controls)
+    try:
+        assert not controls.stop_event.is_set()
+        pressed["now"] = True
+        deadline = time.monotonic() + 2.0
+        while not controls.stop_event.is_set() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert controls.stop_event.is_set(), "ESC did not stop the run"
+    finally:
+        controls.stop()
+        watcher.join(timeout=1.0)
+
+
+# --- run.py can actually reach the pointer path ---------------------------
+
+
+def test_the_entry_point_passes_the_deadlines_it_parses():
+    """`run.py` never passed `receipt_policy`, so every control-driving plan
+    hit the refusal unconditionally and `_pointer_surface` was dead code on
+    the real entry path -- while the commit message said production could run
+    such a node."""
+
+    import inspect
+
+    import ghostcursor.run as run_module
+
+    source = inspect.getsource(run_module.main)
+    assert "receipt_policy=_receipt_policy(parser, args)" in source
+    assert "--first-paint-deadline-ms" in source
+    assert "--completion-deadline-ms" in source
+
+
+def test_the_deadlines_are_given_together_or_not_at_all():
+    """One alone is a half-specified policy, and `ReceiptPolicy` would refuse
+    it deeper in with a message about a field rather than about what the
+    operator forgot."""
+
+    import ghostcursor.run as run_module
+
+    errors = []
+
+    def fail(message):
+        # argparse's `error` never returns; a stub that does would let the
+        # function continue past a refusal it just made.
+        errors.append(message)
+        raise SystemExit(2)
+
+    parser = SimpleNamespace(error=fail)
+
+    assert (
+        run_module._receipt_policy(
+            parser,
+            SimpleNamespace(first_paint_deadline_ms=None, completion_deadline_ms=None),
+        )
+        is None
+    )
+    assert errors == []
+
+    with pytest.raises(SystemExit):
+        run_module._receipt_policy(
+            parser,
+            SimpleNamespace(first_paint_deadline_ms=2000, completion_deadline_ms=None),
+        )
+    assert errors and "together" in errors[0]
+
+    policy = run_module._receipt_policy(
+        parser,
+        SimpleNamespace(first_paint_deadline_ms=2000, completion_deadline_ms=8000),
+    )
+    assert policy.first_paint_deadline_ms == 2000
+    assert policy.completion_deadline_ms == 8000

@@ -451,6 +451,14 @@ to a scratch file incrementally rather than reporting only at the end.
 This is cheap, and it is the single instruction with the best measured
 return of anything tried on this project.
 
+**Never run a reviewer and an implementer against the same worktree.** A
+review of the Act wiring had its full-suite run contaminated by another
+agent's uncommitted edits -- 43 unrelated failures -- and separately observed
+one of its own mutations still sitting in the tree. With both live at once,
+"the suite is green" is unattributable, and a mutation that survived cannot be
+told apart from a file someone else was mid-edit on. Give a reviewer its own
+worktree, or hold implementation until it reports.
+
 ## Tech stack (decided, see DECISIONS.md D002–D005)
 
 - **Platform:** Windows-first, not cross-platform (v1). Packaging with Tauri is a later,

@@ -269,6 +269,7 @@ def run_act_goal(
     unattended: bool = False,
     owned_output_root: Path | None = None,
     receipt_policy=None,
+    poll_escape: bool = True,
 ) -> int:
     """Classify, authorize, preview, and optionally execute one Act goal.
 
@@ -316,6 +317,20 @@ def run_act_goal(
         ordinal=event.ordinal,
         total=event.total,
     )
+
+    # ONE controls object, handed to both the run and the cue.
+    #
+    # Before this, `execute_act_proposal` was called without it, so
+    # `execute_approved_graph` built a fresh `ActControls()` that nothing
+    # could signal -- the CLI Act path had no Stop at all, for object-model
+    # runs as well. And `_pointer_surface` was called without `keep_running`,
+    # so it took the `lambda: True` fallback its own docstring calls a defect,
+    # leaving the cue's abort poll unable to fire. A non-abortable
+    # full-screen cue is what D020's ceiling exists to prevent.
+    controls = ActControls()
+    watcher = None
+    if poll_escape:
+        watcher = _escape_watcher(controls)
     # A surface is created only for a plan whose SIGNED operations include a
     # control-driving one. An object-model plan gets none, and the runtime
     # then refuses any pointer-drawing node by construction rather than by
@@ -326,6 +341,7 @@ def run_act_goal(
             unattended=unattended,
             owned_output_root=owned_output_root,
             event_sink=sink,
+            controls=controls,
         )
     else:
         if receipt_policy is None:
@@ -339,14 +355,25 @@ def run_act_goal(
                 ),
             )
             return 2
-        with _pointer_surface(default_cue_budget(), receipt_policy) as presentation:
+        with _pointer_surface(
+            default_cue_budget(),
+            receipt_policy,
+            keep_running=lambda: not controls.stop_event.is_set(),
+        ) as presentation:
             result = execute_act_proposal(
                 proposal,
                 unattended=unattended,
                 owned_output_root=owned_output_root,
                 event_sink=sink,
+                controls=controls,
                 presentation=presentation,
             )
+    if watcher is not None:
+        # Release the poller. The run is over, so setting the stop flag
+        # changes nothing about its outcome and is the only thing the thread
+        # is waiting on.
+        controls.stop()
+        watcher.join(timeout=1.0)
     _emit(
         "result",
         code=result.code.value,
@@ -460,3 +487,33 @@ def default_cue_budget():
         settle_ms=250,
         frame_budget_ms=MEASURED_FRAME_BUDGET_MS,
     )
+
+
+def _escape_watcher(controls):
+    """Polls ESC on a daemon thread and stops the run.
+
+    Act's CLI had no abort at all: `execute_act_proposal` was called without
+    controls, so the runtime built its own that nothing could signal. The
+    overlay is topmost, click-through and takes no focus, so ESC is polled
+    rather than handled -- exactly as `run.py` does for a guided tour, and for
+    the same reason: a rendering bug in a window the user cannot close is how
+    this locks someone out of their machine.
+
+    A daemon thread so it can never keep the process alive, and it exits as
+    soon as the run stops.
+    """
+
+    import threading
+
+    from ghostcursor.run import escape_pressed
+
+    def watch() -> None:
+        while not controls.stop_event.wait(timeout=0.05):
+            if escape_pressed():
+                _emit("stopping", detail="ESC pressed")
+                controls.stop()
+                return
+
+    thread = threading.Thread(target=watch, name="GhostCursorActEscape", daemon=True)
+    thread.start()
+    return thread
