@@ -32,31 +32,55 @@ Attempt sets that did not qualify are preserved alongside under
 
 Each record carries a `run_id` minted at capture and the wall-clock
 instant the run began, so three files can be shown to be three runs.
-The renderer requires distinct ids, start times in order, and -- the
-check that makes *consecutive* mean something -- that no REJECTED run
-committed under `excluded/` happened between the first accepted run
-and the last. Excluded records are committed beside the accepted ones
-so that question is asked of the repository, not of memory.
+The renderer requires distinct ids, start times strictly in order,
+and runs that do not overlap in time. It also asks whether any
+non-qualifying run committed alongside fell between the first
+accepted run and the last -- what that question could answer here is
+stated below rather than assumed.
 
-Rejected runs committed under `excluded/`: 9. Of those,
-0 carry a start time and can be placed against this window;
-9 predate run-identity stamping and cannot be. A
-check that silently saw nothing would read as a check that passed,
-so the numbers are stated rather than the verdict alone.
+Runs from non-qualifying attempt sets, committed under
+`plugins/sources/powerpoint/acceptance-records/excluded`: 9. Of
+those, 0 carry a start time and can be placed against this
+window; 9 predate run-identity stamping and cannot
+be.
 
-What this still does not prove: that no rejected run happened and was
-never committed. An operator who deletes a failure leaves no trace of
-it, here or anywhere.
+**On this campaign the window check evaluated zero records and
+therefore established nothing.** Every committed non-qualifying
+run predates stamping, so consecutiveness here rests on the
+start-time ordering and non-overlap of the three accepted runs
+alone. The check will constrain a future campaign; it does not
+constrain this one, and reporting only its verdict would have
+read as a check that passed.
 
-| Run record | Outcome | Steps | Grounding | First observation | First hint | Verification start | End |
-|---|---|---|---|---|---|---|---|
-| `run-1.json` | passed | 1/1 | uia | 1.016s | 1.766s | 3.531s | 4.031s |
-| `run-2.json` | passed | 1/1 | uia | 1.015s | 1.765s | 5.047s | 5.547s |
-| `run-3.json` | passed | 1/1 | uia | 0.750s | 1.500s | 3.265s | 3.765s |
+What this still does not prove. Nothing AUTHENTICATES a committed
+record: its fields are checked, not signed. A record's stamps can be
+written by hand, so the gate constrains careless assembly rather than
+a deliberate one -- an independent review assembled a document from
+records of three different rejected sets by adding two fields to each.
+Nor can anything see a rejected run that happened and was never
+committed; an operator who deletes a failure leaves no trace of it,
+here or anywhere.
 
-Result: **3/3 passed**, each `1/1` step and UIA-only, all three bound
-to one captured HWND (`1050680`) with identical artifact
-digests and one application build.
+| Run record | Run id | Started (UTC) | Outcome | Steps | Grounding | First observation | First hint | Verification start | End |
+|---|---|---|---|---|---|---|---|---|---|
+| `run-1.json` | `bae8bf16` | 2026-09-04T12:55:35.633+00:00 | passed | 1/1 | uia | 1.016s | 1.766s | 3.531s | 4.031s |
+| `run-2.json` | `dc75fa7f` | 2026-09-04T12:56:07.543+00:00 | passed | 1/1 | uia | 1.015s | 1.765s | 5.047s | 5.547s |
+| `run-3.json` | `aab5c585` | 2026-09-04T12:56:37.822+00:00 | passed | 1/1 | uia | 0.750s | 1.500s | 3.265s | 3.765s |
+
+First run began 2026-09-04T12:55:35.633+00:00 and the last
+2026-09-04T12:56:37.822+00:00: 1m 2s apart. The ids and instants are
+printed because they are what the consecutiveness claim rests on, and
+a reader cannot audit a claim from numbers the document withholds --
+an earlier draft showed only relative timings, so records dated years
+apart rendered a document indistinguishable from this one.
+
+Result: **3/3 passed**, each `1/1` step and UIA-only.
+
+All three are also bound to one captured HWND (`1050680`)
+with identical artifact digests and one application build. Those are
+required gates, not evidence of a campaign: both are true of every
+record for this candidate by construction, since it is one plugin on
+one machine.
 
 ## What established the outcome
 
@@ -64,14 +88,25 @@ The action was grounded by the declarative `new_slide`
 selector (`provider_exact`, `exactly_one`, name 'New Slide').
 Completion was established by `slide2_after`
 (name 'View Indicator Slide 2 of 2') under `element_appears`, which is
-absent-then-present against the run-start baseline.
+absent-then-present.
 
-Precisely: the view indicator read something other than
-'View Indicator Slide 2 of 2' when the run started, and read exactly that
-when the rule fired. The harness cannot itself have produced the
-change -- it makes no COM call and synthesizes no input, and
-`tests/test_no_input_synthesis.py` covers the `devtools` package
-explicitly -- so a person did it.
+Precisely: the view indicator did not read
+'View Indicator Slide 2 of 2' at the last observation before the
+verification clock armed, and read exactly that when the rule fired.
+**Not** "when the run started": `reasoning/loop.py` re-assigns the
+baseline on every `OBSERVING` pass while the clock is unarmed, and
+re-enters `OBSERVING` on an unexpected-change interrupt, so the
+baseline is the last observation before arming. An earlier draft said
+run-start, which tracing the loop refutes -- the same failure this
+document records against itself further down.
+
+The harness synthesizes no input -- `tests/test_no_input_synthesis.py`
+scans the `devtools` package explicitly -- and makes no COM call, so
+the change came from outside the harness. That the person who made it
+was the supervising operator rests on procedure, exactly as the
+one-slide start does. The cited scan establishes the absence of input
+synthesis; it does not by itself establish the absence of COM, which
+is why the object-model path exists elsewhere in this repository.
 
 ### What the verification does not establish
 

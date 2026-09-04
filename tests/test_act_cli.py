@@ -178,3 +178,162 @@ def test_the_managers_default_path_can_actually_be_staged():
     finally:
         abandon(area, remove=True)
 
+# --- the production pointer path (D032 review of 63c1af8) ------------------
+#
+# `plan_draws_a_pointer` and `_pointer_surface` shipped with no tests at all.
+# `_pointer_surface` called `CueBudget()` with no arguments and raised
+# TypeError on its first line of real work, so the pointer path crashed the
+# CLI with no result line -- behind a commit message asserting production
+# could now run a control-driving node. A reviewer also forced
+# `plan_draws_a_pointer` to return False and the whole suite stayed green.
+
+
+def _op(operation_id, backend):
+    from types import MappingProxyType
+
+    from ghostcursor.action import ActionRisk, OperationSpec
+
+    return OperationSpec(
+        operation_id,
+        ActionRisk.LOW,
+        MappingProxyType({}),
+        postconditions=("thing.exists",),
+        timeout_s=2.0,
+        backend=backend,
+        **({"uia_pattern": "Invoke"} if backend == "uia_pattern" else {}),
+    )
+
+
+def _proposal_with(*backends):
+    from types import MappingProxyType, SimpleNamespace
+
+    operations = {
+        f"op{index}": _op(f"op{index}", backend)
+        for index, backend in enumerate(backends)
+    }
+    nodes = tuple(
+        SimpleNamespace(node_id=f"n{index}", operation_id=f"op{index}")
+        for index in range(len(backends))
+    )
+    return SimpleNamespace(
+        descriptor=SimpleNamespace(
+            registry=SimpleNamespace(operations=MappingProxyType(operations))
+        ),
+        validated=SimpleNamespace(ordered_nodes=nodes),
+    )
+
+
+def test_an_object_model_plan_draws_no_pointer():
+    """An object-model operation has no control it is clicking, so a pointer
+    over one would show an action where it did not happen (D109)."""
+
+    from ghostcursor.act_cli import plan_draws_a_pointer
+
+    assert plan_draws_a_pointer(_proposal_with("object_model", "object_model")) is False
+
+
+def test_a_plan_with_one_control_driving_node_draws_a_pointer():
+    from ghostcursor.act_cli import plan_draws_a_pointer
+
+    assert plan_draws_a_pointer(_proposal_with("object_model", "uia_pattern")) is True
+
+
+def test_the_pointer_decision_reads_the_signed_registry():
+    """Not a caller flag. The operation's backend is signed data, and it is
+    what decides whether a run needs a presentation surface at all."""
+
+    import inspect
+
+    from ghostcursor.act_cli import plan_draws_a_pointer
+
+    source = inspect.getsource(plan_draws_a_pointer)
+    assert "descriptor.registry.operations" in source
+    assert "draws_a_pointer" in source
+
+
+def test_the_cue_budget_is_constructible_and_cites_its_measured_frame_cost():
+    """`CueBudget` has no defaults on purpose -- `frame_budget_ms` is a
+    measured paint cost. Calling it with no arguments raised TypeError and
+    took the whole pointer path down with it."""
+
+    from ghostcursor.act_cli import MEASURED_FRAME_BUDGET_MS, default_cue_budget
+
+    budget = default_cue_budget()
+
+    assert budget.frame_budget_ms == MEASURED_FRAME_BUDGET_MS
+    assert budget.traversal_ms > 0 and budget.settle_ms > 0
+    # The measured budget must not exceed the interrupt poll interval, or a
+    # frame can outlast the window in which a Stop is noticed.
+    assert budget.frame_budget_ms <= budget.poll_interval_ms
+
+
+def test_the_measured_frame_budget_names_where_it_is_recorded():
+    """D034: a measured number in code must name its source, or it is a
+    number nobody can check."""
+
+    import pathlib
+
+    source = pathlib.Path("ghostcursor/act_cli.py").read_text(encoding="utf-8")
+    assert "act-paint-budget.md" in source
+    assert pathlib.Path("docs/evidence/act-paint-budget.md").is_file()
+
+
+def test_the_surface_requires_a_budget_and_a_policy():
+    """Neither may be defaulted here. Both are deadlines someone has to
+    measure, and this is the wrong place to invent either (D034)."""
+
+    import inspect
+
+    from ghostcursor.act_cli import _pointer_surface
+
+    parameters = inspect.signature(_pointer_surface).parameters
+    assert list(parameters)[:2] == ["budget", "policy"]
+    for name in ("budget", "policy"):
+        assert parameters[name].default is inspect.Parameter.empty
+
+
+def test_the_surface_creates_and_always_destroys_its_window(monkeypatch):
+    """A leaked topmost click-through window covering the screen is the
+    failure the ESC and timeout rules exist to prevent, so the destroy runs
+    on the exception path too."""
+
+    from ghostcursor import act_cli
+    from ghostcursor.act_protocol import ReceiptPolicy
+    from ghostcursor.overlay import window as overlay_window
+
+    created, destroyed = [], []
+    monkeypatch.setattr(
+        overlay_window, "create_overlay_window", lambda: created.append(1) or 4242
+    )
+    monkeypatch.setattr(
+        overlay_window, "destroy_overlay_window", lambda hwnd: destroyed.append(hwnd)
+    )
+
+    policy = ReceiptPolicy(first_paint_deadline_ms=2000, completion_deadline_ms=8000)
+    with act_cli._pointer_surface(act_cli.default_cue_budget(), policy) as surface:
+        assert surface.policy is policy
+        assert surface.overlay is not None
+    assert created == [1] and destroyed == [4242]
+
+    with pytest.raises(RuntimeError, match="inside the run"):
+        with act_cli._pointer_surface(act_cli.default_cue_budget(), policy):
+            raise RuntimeError("inside the run")
+    assert destroyed == [4242, 4242], "the window survived an exception"
+
+
+def test_a_pointer_plan_refuses_when_no_receipt_deadlines_were_supplied():
+    """Phase E derives those deadlines from measurement. An earlier version
+    wrote 2000/8000ms with nothing behind them; refusing keeps the gap
+    visible instead of papering over it (D034)."""
+
+    import inspect
+
+    from ghostcursor.act_cli import run_act_goal
+
+    parameters = inspect.signature(run_act_goal).parameters
+    assert "receipt_policy" in parameters
+    assert parameters["receipt_policy"].default is None
+
+    source = inspect.getsource(run_act_goal)
+    assert "receipt_policy is None" in source
+    assert "D034" in source

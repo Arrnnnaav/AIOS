@@ -19,10 +19,18 @@ than a formatting detail. `tools/render_open_extensions_evidence.py` — the
 existing precedent for a single-intent candidate acceptance — requires the
 full ordered landmark set and refuses a record without it.
 
-The pass itself is sound: `element_appears` is absent-then-present against the
-run-start baseline, and `"View Indicator Slide 2 of 2"` is reachable only from
-a one-slide deck. What is missing is the loop's own record that it observed
-evidence of the user's action. Static reading of `reasoning/loop.py` does not
+The pass itself is sound: `element_appears` is absent-then-present, so the view
+indicator did not read `"View Indicator Slide 2 of 2"` before and did after.
+What is missing is the loop's own record that it observed evidence of the
+user's action.
+
+**Corrected 4 September 2026, after an independent review.** This note said
+that selector was "reachable only from a one-slide deck". It is not:
+navigating to slide 2 of an existing two-slide deck, or deleting a slide from
+a three-slide deck viewed at slide 2, both satisfy the same rule with no slide
+added. The rendered evidence retracted the claim and `FOLLOWUPS.md` was
+corrected; this third copy, sitting beside the records themselves, was missed
+until a later review found it. Static reading of `reasoning/loop.py` does not
 explain the absence and in fact contradicts it — see
 `docs/superpowers/FOLLOWUPS.md`, "ADD_SLIDE run recorded no
 `verification_started_s`".
@@ -38,5 +46,6 @@ into a later set: consecutiveness does not span a non-qualifying run.
   `8ff0c62`, which has no uncommitted change under the candidate root.
 - `Step.preconditions` is parsed in `reasoning/schema.py` and never read by the
   reasoning path. The recipe's declared `slide1_before` precondition therefore
-  gates nothing; the one-slide starting state is established by the
-  verification selector's semantics, not by the precondition.
+  gates nothing. Nor does the verification selector establish the starting
+  state, as this note originally went on to claim -- see the correction above.
+  The one-slide start rests on operator procedure.

@@ -96,8 +96,19 @@ def _write(directory: Path, records: list[dict]) -> Path:
     return directory
 
 
-def _campaign(tmp_path: Path, records: list[dict]) -> Path:
-    return _write(tmp_path / "records" / "add-slide", records)
+def _campaign(tmp_path: Path, records: list[dict], *, excluded=()) -> Path:
+    """An accepted campaign directory, with the sibling `excluded/` the
+    renderer requires.
+
+    The sibling is mandatory, not optional: without it every derived count
+    reads zero while the document's narrative still describes the recorded
+    anomaly, so the document contradicts itself and silently drops a finding.
+    """
+
+    directory = _write(tmp_path / "records" / "add-slide", records)
+    _write(directory.parent / "excluded", list(excluded))
+    (directory.parent / "excluded").mkdir(parents=True, exist_ok=True)
+    return directory
 
 
 def _three() -> list[dict]:
@@ -175,7 +186,61 @@ def test_records_out_of_start_order_are_refused(tmp_path):
     records[0]["started_at"] = "2026-09-04T23:00:00.000+00:00"
     code, output = _render(_campaign(tmp_path, records), tmp_path / "o.md")
     assert code == 2
-    assert "start order" in output
+    assert "strictly in order" in output
+
+
+def test_records_starting_at_the_same_instant_are_refused(tmp_path):
+    """Ordering that accepts ties is not ordering. Three ~4s runs cannot
+    begin in the same millisecond on one machine, and a renderer that shrugs
+    at it will shrug at three copies stamped by hand."""
+
+    records = _three()
+    for record in records:
+        record["started_at"] = "2026-09-04T10:00:00.000+00:00"
+    code, output = _render(_campaign(tmp_path, records), tmp_path / "o.md")
+    assert code == 2
+    assert "strictly in order" in output
+
+
+def test_runs_that_overlap_in_time_are_refused(tmp_path):
+    """A run cannot begin before the previous one finished. Start ordering
+    alone allows three overlapping records, which no single operator could
+    have produced."""
+
+    records = _three()
+    # run-2 starts one second after run-1 began, but run-1 lasted 3.5s.
+    records[1]["started_at"] = "2026-09-04T10:00:01.000+00:00"
+    records[2]["started_at"] = "2026-09-04T10:00:02.000+00:00"
+    code, output = _render(_campaign(tmp_path, records), tmp_path / "o.md")
+    assert code == 2
+    assert "overlap" in output
+
+
+def test_a_campaign_with_no_sibling_excluded_directory_is_refused(tmp_path):
+    """Every derived count would read zero while the narrative still
+    describes the recorded anomaly, so the document would contradict itself
+    and silently drop a finding."""
+
+    bare = _write(tmp_path / "bare" / "add-slide", _three())
+    code, output = _render(bare, tmp_path / "o.md")
+    assert code == 2
+    assert "excluded" in output
+
+
+def test_a_stray_file_or_subdirectory_in_the_campaign_is_refused(tmp_path):
+    """`*.json` is not recursive, so a fourth record could sit in a
+    subdirectory where the exactly-three count cannot see it."""
+
+    campaign = _campaign(tmp_path, _three())
+    (campaign / "extra").mkdir()
+    code, output = _render(campaign, tmp_path / "o.md")
+    assert code == 2
+    assert "nothing else" in output
+
+    campaign2 = _campaign(tmp_path / "b", _three())
+    (campaign2 / "run-4.json.bak").write_text("{}", encoding="utf-8")
+    code, output = _render(campaign2, tmp_path / "o2.md")
+    assert code == 2
 
 
 # --- consecutive means nothing rejected happened in between ---------------
@@ -187,10 +252,10 @@ def test_a_rejected_run_inside_the_window_is_refused(tmp_path):
     clean "3/3 passed". Excluded records are committed beside the accepted
     ones so this question can be asked of the repository."""
 
-    accepted = _campaign(tmp_path, _three())
-    _write(
-        accepted.parent / "excluded",
-        [_record(run_id="d" * 32, started_at="2026-09-04T10:07:00.000+00:00")],
+    accepted = _campaign(
+        tmp_path,
+        _three(),
+        excluded=[_record(run_id="d" * 32, started_at="2026-09-04T10:07:00.000+00:00")],
     )
     code, output = _render(accepted, tmp_path / "o.md")
     assert code == 2
@@ -202,10 +267,10 @@ def test_a_rejected_run_outside_the_window_does_not_refuse(tmp_path):
     one landing BETWEEN the accepted runs breaks the sequence -- otherwise
     the gate would refuse every candidate that ever needed a second try."""
 
-    accepted = _campaign(tmp_path, _three())
-    _write(
-        accepted.parent / "excluded",
-        [_record(run_id="d" * 32, started_at="2026-09-04T09:00:00.000+00:00")],
+    accepted = _campaign(
+        tmp_path,
+        _three(),
+        excluded=[_record(run_id="d" * 32, started_at="2026-09-04T09:00:00.000+00:00")],
     )
     code, output = _render(accepted, tmp_path / "o.md")
     assert code == 0, output
@@ -350,3 +415,271 @@ def test_the_named_path_does_not_depend_on_how_it_was_invoked(tmp_path):
     assert absolute.read_text(encoding="utf-8") == relative.read_text(
         encoding="utf-8"
     )
+# --- the candidate the document describes (D032 review, round 3) -----------
+#
+# `_check_recipe` and `_check_artifacts` had NO coverage. A reviewer disabled
+# all eight of their checks one at a time and no test noticed. They exist so
+# the document cannot describe a selector the signed recipe does not declare,
+# and so its digest table is a statement about files rather than about JSON --
+# "correct and unmutation-verified" is exactly what D018 forbids for a gate
+# the document's factual claims rest on.
+
+
+@pytest.fixture
+def candidate(tmp_path):
+    """A writable copy of the real candidate root, so a test can perturb one
+    field without touching the tracked pack."""
+
+    import shutil
+
+    root = tmp_path / "candidate"
+    shutil.copytree(CANDIDATE, root)
+    return root
+
+
+def _render_candidate(records: Path, root: Path, out: Path, renderer: Path = None):
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(renderer or RENDERER),
+            "--records",
+            str(records),
+            "--candidate-root",
+            str(root),
+            "--out",
+            str(out),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    return result.returncode, (result.stderr or result.stdout)
+
+
+RECIPE_DIGEST = "96ad179d9e4349b1846014c2592c113cf7f0ddd6f33c195fecef589cf23dcad1"
+
+
+def _repin(root: Path, records: Path, out_dir: Path) -> Path:
+    """Re-pin the perturbed recipe's digest EVERYWHERE a careless edit would:
+    in every run record and in the renderer's own constant.
+
+    Without both, the record-digest check fires first and `_check_recipe` is
+    never reached -- which is how eight of its checks went uncovered while
+    appearing tested. Returns the patched renderer to invoke.
+    """
+
+    import hashlib
+    import json as _json
+
+    digest = hashlib.sha256((root / "recipes/add_slide.json").read_bytes()).hexdigest()
+    for path in records.glob("*.json"):
+        record = _json.loads(path.read_text(encoding="utf-8"))
+        record["digests"]["recipe"] = digest
+        path.write_text(
+            _json.dumps(record, indent=2, sort_keys=True), encoding="utf-8", newline=""
+        )
+    patched = out_dir / "renderer.py"
+    patched.write_text(
+        RENDERER.read_text(encoding="utf-8").replace(RECIPE_DIGEST, digest),
+        encoding="utf-8",
+        newline="",
+    )
+    return patched
+
+
+def _edit_recipe(root: Path, mutate) -> None:
+    path = root / "recipes/add_slide.json"
+    recipe = json.loads(path.read_text(encoding="utf-8"))
+    mutate(recipe)
+    path.write_text(
+        json.dumps(recipe, indent=2, sort_keys=True), encoding="utf-8", newline=""
+    )
+
+
+def test_the_real_candidate_renders(tmp_path, candidate):
+    """Baseline. Without it every refusal below proves nothing."""
+
+    records = _campaign(tmp_path, _three())
+    code, output = _render_candidate(records, candidate, tmp_path / "o.md")
+    assert code == 0, output
+
+
+@pytest.mark.parametrize(
+    "mutate, expected",
+    [
+        (
+            lambda r: r["steps"][0]["verification_rule"].__setitem__(
+                "selector", "slide1_before"
+            ),
+            "verification selector",
+        ),
+        (
+            lambda r: r["steps"][0]["verification_rule"].__setitem__(
+                "kind", "window_title_matches"
+            ),
+            "verification kind",
+        ),
+        (
+            lambda r: r["steps"][0].__setitem__("target_selector", "slide2_after"),
+            "action selector",
+        ),
+        (
+            lambda r: r["selectors"]["new_slide"].__setitem__(
+                "cardinality", "at_least_one"
+            ),
+            "EXACTLY_ONE",
+        ),
+        (
+            lambda r: r["selectors"]["new_slide"].__setitem__("strategy", "fuzzy"),
+            "provider_exact",
+        ),
+        (
+            lambda r: r["selectors"]["slide2_after"].__setitem__("names", ["Slide 2"]),
+            "selector names",
+        ),
+        (
+            lambda r: r["steps"].append(json.loads(json.dumps(r["steps"][0]))),
+            "steps",
+        ),
+    ],
+)
+def test_a_recipe_that_does_not_declare_what_the_document_says_is_refused(
+    tmp_path, candidate, mutate, expected
+):
+    """Each of these would make the rendered document describe a selector,
+    cardinality or rule the signed recipe does not actually declare."""
+
+    records = _campaign(tmp_path, _three())
+    _edit_recipe(candidate, mutate)
+    renderer = _repin(candidate, records, tmp_path)
+
+    code, output = _render_candidate(
+        records, candidate, tmp_path / "o.md", renderer=renderer
+    )
+    assert code == 2
+    assert expected in output
+
+
+def test_candidate_bytes_are_re_hashed_from_disk(tmp_path, candidate):
+    """The document says "re-hashed from disk at render time". A record only
+    CLAIMS what the harness was handed; re-hashing is what makes the digest
+    table a statement about files."""
+
+    records = _campaign(tmp_path, _three())
+    path = candidate / "recipes/add_slide.json"
+    path.write_bytes(path.read_bytes() + b"\n")
+
+    code, output = _render_candidate(records, candidate, tmp_path / "o.md")
+    assert code == 2
+    assert "hash to" in output
+
+
+def test_a_missing_candidate_artifact_is_refused(tmp_path, candidate):
+    records = _campaign(tmp_path, _three())
+    (candidate / "recipes/add_slide.json").unlink()
+
+    code, output = _render_candidate(records, candidate, tmp_path / "o.md")
+    assert code == 2
+    assert "missing" in output
+
+
+def test_check_against_a_document_that_does_not_exist_is_refused(tmp_path):
+    records = _campaign(tmp_path, _three())
+    code, output = _render(records, tmp_path / "absent.md", "--check")
+    assert code == 2
+    assert "does not exist" in output
+
+
+def test_check_compares_bytes_not_text(tmp_path):
+    """The document says `--check` compares exact bytes. `read_text` applies
+    universal-newline translation, so a CRLF-converted document passed a
+    check described as byte-exact."""
+
+    records = _campaign(tmp_path, _three())
+    out = tmp_path / "out.md"
+    assert _render(records, out)[0] == 0
+    out.write_bytes(out.read_bytes().replace(b"\n", b"\r\n"))
+
+    code, output = _render(records, out, "--check")
+    assert code == 2
+
+
+def test_a_non_finite_timing_landmark_is_refused(tmp_path):
+    """`json.loads` accepts NaN, and NaN compares false against everything,
+    so it slid past the ordering check in every position but the first and
+    rendered a table cell reading "nans"."""
+
+    records = _campaign(tmp_path, _three())
+    path = records / "run-2.json"
+    path.write_text(
+        path.read_text(encoding="utf-8").replace('"ended_s": 3.5', '"ended_s": NaN'),
+        encoding="utf-8",
+        newline="",
+    )
+
+    code, output = _render(records, tmp_path / "o.md")
+    assert code == 2
+    assert "finite" in output
+
+
+def test_a_record_missing_started_at_in_the_first_position_is_refused(tmp_path):
+    """The existing case deleted it from the MIDDLE record, so the ordering
+    check fired first and the guard itself was never exercised -- the test
+    passed for the wrong reason and the reviewer's mutation walked through
+    it."""
+
+    records = _three()
+    del records[0]["started_at"]
+    code, output = _render(_campaign(tmp_path, records), tmp_path / "o.md")
+    assert code == 2
+    assert "started_at" in output
+
+
+def test_the_document_reports_that_the_window_check_saw_nothing(tmp_path):
+    """When every committed non-qualifying run predates stamping, the check
+    evaluates zero records. Reporting only its verdict would read as a check
+    that passed."""
+
+    records = _campaign(
+        tmp_path,
+        _three(),
+        excluded=[{k: v for k, v in _record().items() if k != "started_at"}],
+    )
+    out = tmp_path / "o.md"
+    assert _render(records, out)[0] == 0
+    document = out.read_text(encoding="utf-8")
+    assert "evaluated zero records" in document
+    assert "established nothing" in document
+
+
+def test_the_document_publishes_the_ids_and_instants(tmp_path):
+    """A reader cannot audit consecutiveness from numbers the document
+    withholds: records dated years apart rendered a document
+    indistinguishable from a real campaign."""
+
+    records = _three()
+    out = tmp_path / "o.md"
+    assert _render(_campaign(tmp_path, records), out)[0] == 0
+    document = out.read_text(encoding="utf-8")
+    for record in records:
+        assert record["run_id"][:8] in document
+        assert record["started_at"] in document
+
+
+def test_records_spanning_years_are_refused(tmp_path):
+    """A counted campaign is three supervised runs in one sitting. Records
+    dated 2019, 2025 and 2031 are ordered and non-overlapping and passed
+    every other check."""
+
+    records = _three()
+    for record, stamp in zip(
+        records,
+        [
+            "2019-01-01T10:00:00.000+00:00",
+            "2025-01-01T10:00:00.000+00:00",
+            "2031-01-01T10:00:00.000+00:00",
+        ],
+    ):
+        record["started_at"] = stamp
+    code, output = _render(_campaign(tmp_path, records), tmp_path / "o.md")
+    assert code == 2
+    assert "one sitting" in output

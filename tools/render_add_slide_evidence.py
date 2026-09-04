@@ -6,7 +6,7 @@ session is not evidence (D034) -- so this reads the JSON `candidate_acceptance`
 printed and refuses anything it cannot substantiate.
 
     py -3.12 tools/render_add_slide_evidence.py `
-      --records .artifacts/add-slide-acceptance/attempt-set-03 `
+      --records plugins/sources/powerpoint/acceptance-records/add-slide `
       --candidate-root plugins/sources/powerpoint/payload/ghostcursor/packs/powerpoint `
       --out docs/evidence/add-slide-candidate-acceptance.md
 
@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import pathlib
 import sys
 
@@ -46,6 +47,11 @@ EXPECTED_DIGESTS = {
 #: two runs and not the third, on identical bytes and one HWND, and was
 #: refused for exactly that -- see `docs/superpowers/FOLLOWUPS.md`.
 VERIFICATION_STARTED = True
+
+#: Longest a counted campaign may span, end to end. A CHOICE, not a measured
+#: number: three supervised runs happen in one sitting, and this refuses
+#: records that plainly are not one.
+MAX_CAMPAIGN_SECONDS = 24 * 3600
 
 #: The recipe's selectors. Named here so the rendered document cannot describe
 #: a selector the signed recipe does not actually declare.
@@ -99,6 +105,18 @@ def load_records(directory: pathlib.Path) -> list[dict]:
         raise EvidenceRefused(
             f"expected exactly 3 run records under {directory}, found {len(paths)}"
         )
+    stray = [
+        entry.name
+        for entry in sorted(directory.iterdir())
+        if entry.is_dir() or entry.suffix != ".json"
+    ]
+    if stray:
+        raise EvidenceRefused(
+            f"{directory} contains {stray}; a campaign directory holds exactly "
+            "the three run records and nothing else, or a fourth run can sit "
+            "where the count cannot see it"
+        )
+
     records = []
     for path in paths:
         record = _canonical_json(path)
@@ -109,14 +127,16 @@ def load_records(directory: pathlib.Path) -> list[dict]:
     # rendered a document claiming "3/3 passed" until an independent review
     # tried it, because nothing here looked past the file count.
     #
-    # This catches duplication; it does not PROVE distinctness, and the
-    # difference matters (D031). `RunRecord.to_json` emits no run id and no
-    # wall-clock time, so two genuinely separate runs can serialise
-    # identically and nothing in a record establishes that three of them were
-    # consecutive. Editing one field would defeat this check. It is a guard
-    # against careless duplication, not against forgery, and the rendered
-    # document says so rather than implying the records carry more than they
-    # do.
+    # This catches duplication. It does not PROVE distinctness, and the
+    # difference matters (D031).
+    #
+    # `RunRecord` now stamps a run_id and a start time, so a careless copy is
+    # caught. Nothing AUTHENTICATES a committed record: the fields are
+    # checked, not signed, so a record's stamps can be written by hand and a
+    # rejected run can be dressed as an accepted one. An independent review
+    # did exactly that on this renderer. The rendered document states this
+    # limitation; an earlier version of this comment claimed it did while it
+    # did not.
     seen: dict[str, str] = {}
     for record in records:
         payload = json.dumps(
@@ -171,13 +191,68 @@ def _check_sequence(records: list[dict], directory: pathlib.Path) -> None:
         raise EvidenceRefused(f"two accepted records share a run_id: {sorted(ids)}")
 
     starts = [_started(record) for record in records]
-    if starts != sorted(starts):
+    # STRICTLY increasing. `!= sorted()` accepts ties, and three ~4s runs
+    # cannot begin in the same millisecond on one machine.
+    if any(a >= b for a, b in zip(starts, starts[1:])):
         raise EvidenceRefused(
-            "the accepted runs are not in start order: "
+            "the accepted runs do not start strictly in order: "
             + ", ".join(f"{r['_source']}={s}" for r, s in zip(records, starts))
         )
 
+    # A run cannot begin before the previous one ended. Ordering alone allows
+    # three overlapping records, which no single operator could have produced.
+    for earlier, later in zip(records, records[1:]):
+        finished = _finished_at(earlier)
+        if finished is not None and finished > _started(later):
+            raise EvidenceRefused(
+                f"{later['_source']} started at {_started(later)}, before "
+                f"{earlier['_source']} finished at {finished}; the runs overlap"
+            )
+
+    # A counted campaign is three supervised runs in one sitting. This bound
+    # is a CHOICE, not a measurement -- said plainly the way `act_pacing` says
+    # it of its delays, so nobody later cites it as though something had been
+    # measured (D034). It is deliberately generous; it exists to refuse
+    # records that are obviously not one session, such as the three dated
+    # 2019, 2025 and 2031 an independent review assembled.
+    from datetime import datetime
+
+    try:
+        elapsed = datetime.fromisoformat(starts[-1]) - datetime.fromisoformat(starts[0])
+    except ValueError as exc:
+        raise EvidenceRefused(f"unparseable start time: {exc}") from None
+    if elapsed.total_seconds() > MAX_CAMPAIGN_SECONDS:
+        raise EvidenceRefused(
+            f"the three runs span {elapsed}, longer than the "
+            f"{MAX_CAMPAIGN_SECONDS // 3600}h a supervised campaign is taken "
+            "to run in; these are not one sitting"
+        )
+
     _check_window(starts, directory.parent / "excluded")
+
+
+def _finished_at(record: dict) -> "str | None":
+    """When a run ended, as an instant comparable with `started_at`.
+
+    Derived from the start plus the executor's own `ended_s` rather than
+    stamped separately: two independently written instants could disagree,
+    and the run record already carries the elapsed time it measured.
+    """
+
+    from datetime import datetime, timedelta
+
+    ended = (record.get("timing") or {}).get("ended_s")
+    if not isinstance(ended, (int, float)) or isinstance(ended, bool):
+        return None
+    if not math.isfinite(ended):
+        return None
+    try:
+        began = datetime.fromisoformat(_started(record))
+    except ValueError:
+        return None
+    return (began + timedelta(seconds=float(ended))).isoformat(
+        timespec="milliseconds"
+    )
 
 
 def _rejected_runs(excluded: pathlib.Path) -> tuple[int, int]:
@@ -198,9 +273,16 @@ def _rejected_runs(excluded: pathlib.Path) -> tuple[int, int]:
 def _check_window(starts: list[str], excluded: pathlib.Path) -> None:
     first, last = starts[0], starts[-1]
     if not excluded.is_dir():
-        # Nothing rejected is COMMITTED, which is not the same as nothing
-        # having been rejected.
-        return
+        # Refused rather than skipped. Without the sibling directory the
+        # derived counts all read zero while the document's narrative still
+        # describes the recorded anomaly, so the document contradicts itself
+        # and silently drops a finding.
+        raise EvidenceRefused(
+            f"no sibling {excluded} directory; non-qualifying attempt sets are "
+            "committed beside the accepted campaign so the sequence check has "
+            "something to ask, and a campaign rendered without them reports "
+            "counts of zero that mean nothing was looked at"
+        )
     for path in sorted(excluded.glob("*.json")):
         when = _canonical_json(path).get("started_at")
         # A record predating run-identity stamping cannot be placed in time.
@@ -235,10 +317,18 @@ def _check_timing(record: dict) -> None:
     if VERIFICATION_STARTED:
         ordered.append(timing["verification_started_s"])
     ordered.append(timing["ended_s"])
-    if any(not isinstance(value, (int, float)) for value in ordered) or not (
-        0 <= ordered[0] and ordered == sorted(ordered)
-    ):
-        raise EvidenceRefused(f"{source}: timing landmarks are unordered")
+    if any(
+        not isinstance(value, (int, float))
+        or isinstance(value, bool)
+        # `json.loads` accepts NaN and Infinity. A NaN compares false against
+        # everything, so it slid past the ordering check in every position but
+        # the first and rendered a table cell reading "nans".
+        or not math.isfinite(value)
+        for value in ordered
+    ) or not (0 <= ordered[0] and ordered == sorted(ordered)):
+        raise EvidenceRefused(
+            f"{source}: timing landmarks are unordered or not finite numbers"
+        )
 
 
 def _check_records(records: list[dict]) -> None:
@@ -349,6 +439,25 @@ def check(records: list[dict], candidate_root: pathlib.Path) -> dict:
     return loaded
 
 
+def _elapsed(first: str, last: str) -> str:
+    """How long the campaign took, end to end, in words a reader can check."""
+
+    from datetime import datetime
+
+    try:
+        delta = datetime.fromisoformat(last) - datetime.fromisoformat(first)
+    except ValueError:  # pragma: no cover - both parsed already
+        return "an unparseable span"
+    seconds = int(delta.total_seconds())
+    if seconds < 60:
+        return f"{seconds} seconds apart"
+    minutes, seconds = divmod(seconds, 60)
+    if minutes < 60:
+        return f"{minutes}m {seconds}s apart"
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours}h {minutes}m apart"
+
+
 def _mark_survey(records_dir: pathlib.Path, accepted: list[dict]):
     """Count the timing mark across EVERY committed record, accepted and
     rejected alike.
@@ -385,6 +494,7 @@ def _mark_survey(records_dir: pathlib.Path, accepted: list[dict]):
 
 def render(records: list[dict], loaded: dict, records_dir: pathlib.Path) -> str:
     rejected, placed = _rejected_runs(records_dir.parent / "excluded")
+    span = _elapsed(records[0]["started_at"], records[-1]["started_at"])
     marked, drains, unmarked = _mark_survey(records_dir, records)
     unmarked_names = (
         ", ".join(f"`{name}`" for name in unmarked) if unmarked else "none"
@@ -430,30 +540,53 @@ def render(records: list[dict], loaded: dict, records_dir: pathlib.Path) -> str:
         "",
         "Each record carries a `run_id` minted at capture and the wall-clock",
         "instant the run began, so three files can be shown to be three runs.",
-        "The renderer requires distinct ids, start times in order, and -- the",
-        "check that makes *consecutive* mean something -- that no REJECTED run",
-        "committed under `excluded/` happened between the first accepted run",
-        "and the last. Excluded records are committed beside the accepted ones",
-        "so that question is asked of the repository, not of memory.",
+        "The renderer requires distinct ids, start times strictly in order,",
+        "and runs that do not overlap in time. It also asks whether any",
+        "non-qualifying run committed alongside fell between the first",
+        "accepted run and the last -- what that question could answer here is",
+        "stated below rather than assumed.",
         "",
-        f"Rejected runs committed under `excluded/`: {rejected}. Of those,",
-        f"{placed} carry a start time and can be placed against this window;",
-        f"{rejected - placed} predate run-identity stamping and cannot be. A",
-        "check that silently saw nothing would read as a check that passed,",
-        "so the numbers are stated rather than the verdict alone.",
+        f"Runs from non-qualifying attempt sets, committed under",
+        f"`{_display_path(records_dir.parent / 'excluded')}`: {rejected}. Of",
+        f"those, {placed} carry a start time and can be placed against this",
+        f"window; {rejected - placed} predate run-identity stamping and cannot",
+        "be.",
         "",
-        "What this still does not prove: that no rejected run happened and was",
-        "never committed. An operator who deletes a failure leaves no trace of",
-        "it, here or anywhere.",
+        *(
+            [
+                "**On this campaign the window check evaluated zero records and",
+                "therefore established nothing.** Every committed non-qualifying",
+                "run predates stamping, so consecutiveness here rests on the",
+                "start-time ordering and non-overlap of the three accepted runs",
+                "alone. The check will constrain a future campaign; it does not",
+                "constrain this one, and reporting only its verdict would have",
+                "read as a check that passed.",
+            ]
+            if placed == 0
+            else [
+                f"The window check evaluated {placed} of them and none fell",
+                "between the first accepted run and the last.",
+            ]
+        ),
         "",
-        "| Run record | Outcome | Steps | Grounding | First observation | "
-        "First hint | Verification start | End |",
-        "|---|---|---|---|---|---|---|---|",
+        "What this still does not prove. Nothing AUTHENTICATES a committed",
+        "record: its fields are checked, not signed. A record's stamps can be",
+        "written by hand, so the gate constrains careless assembly rather than",
+        "a deliberate one -- an independent review assembled a document from",
+        "records of three different rejected sets by adding two fields to each.",
+        "Nor can anything see a rejected run that happened and was never",
+        "committed; an operator who deletes a failure leaves no trace of it,",
+        "here or anywhere.",
+        "",
+        "| Run record | Run id | Started (UTC) | Outcome | Steps | Grounding | "
+        "First observation | First hint | Verification start | End |",
+        "|---|---|---|---|---|---|---|---|---|---|",
     ]
     for record in records:
         timing = record["timing"]
         lines.append(
-            f"| `{record['_source']}` | {record['outcome']} | "
+            f"| `{record['_source']}` | `{record['run_id'][:8]}` | "
+            f"{record['started_at']} | {record['outcome']} | "
             f"{record['steps']['completed']}/{record['steps']['total']} | "
             f"{', '.join(record['grounding_provenance'])} | "
             f"{timing['first_observation_s']:.3f}s | "
@@ -461,12 +594,25 @@ def render(records: list[dict], loaded: dict, records_dir: pathlib.Path) -> str:
             f"{timing['verification_started_s']:.3f}s | "
             f"{timing['ended_s']:.3f}s |"
         )
+    lines += [
+        "",
+        f"First run began {records[0]['started_at']} and the last",
+        f"{records[-1]['started_at']}: {span}. The ids and instants are",
+        "printed because they are what the consecutiveness claim rests on, and",
+        "a reader cannot audit a claim from numbers the document withholds --",
+        "an earlier draft showed only relative timings, so records dated years",
+        "apart rendered a document indistinguishable from this one.",
+    ]
 
     lines += [
         "",
-        "Result: **3/3 passed**, each `1/1` step and UIA-only, all three bound",
-        f"to one captured HWND (`{target['hwnd']}`) with identical artifact",
-        "digests and one application build.",
+        "Result: **3/3 passed**, each `1/1` step and UIA-only.",
+        "",
+        f"All three are also bound to one captured HWND (`{target['hwnd']}`)",
+        "with identical artifact digests and one application build. Those are",
+        "required gates, not evidence of a campaign: both are true of every",
+        "record for this candidate by construction, since it is one plugin on",
+        "one machine.",
         "",
         "## What established the outcome",
         "",
@@ -474,14 +620,25 @@ def render(records: list[dict], loaded: dict, records_dir: pathlib.Path) -> str:
         f"selector (`provider_exact`, `exactly_one`, name {ACTION_NAME!r}).",
         f"Completion was established by `{VERIFICATION_SELECTOR}`",
         f"(name {VERIFICATION_NAME!r}) under `element_appears`, which is",
-        "absent-then-present against the run-start baseline.",
+        "absent-then-present.",
         "",
-        "Precisely: the view indicator read something other than",
-        f"{VERIFICATION_NAME!r} when the run started, and read exactly that",
-        "when the rule fired. The harness cannot itself have produced the",
-        "change -- it makes no COM call and synthesizes no input, and",
-        "`tests/test_no_input_synthesis.py` covers the `devtools` package",
-        "explicitly -- so a person did it.",
+        "Precisely: the view indicator did not read",
+        f"{VERIFICATION_NAME!r} at the last observation before the",
+        "verification clock armed, and read exactly that when the rule fired.",
+        "**Not** \"when the run started\": `reasoning/loop.py` re-assigns the",
+        "baseline on every `OBSERVING` pass while the clock is unarmed, and",
+        "re-enters `OBSERVING` on an unexpected-change interrupt, so the",
+        "baseline is the last observation before arming. An earlier draft said",
+        "run-start, which tracing the loop refutes -- the same failure this",
+        "document records against itself further down.",
+        "",
+        "The harness synthesizes no input -- `tests/test_no_input_synthesis.py`",
+        "scans the `devtools` package explicitly -- and makes no COM call, so",
+        "the change came from outside the harness. That the person who made it",
+        "was the supervising operator rests on procedure, exactly as the",
+        "one-slide start does. The cited scan establishes the absence of input",
+        "synthesis; it does not by itself establish the absence of COM, which",
+        "is why the object-model path exists elsewhere in this repository.",
         "",
         "### What the verification does not establish",
         "",
@@ -568,7 +725,10 @@ def main(argv=None) -> int:
         if not args.out.is_file():
             print(f"evidence refused: {args.out} does not exist", file=sys.stderr)
             return 2
-        if args.out.read_text(encoding="utf-8") != document:
+        # BYTES, not text. `read_text` applies universal-newline translation,
+        # so a CRLF-converted document passed a check the document describes
+        # as comparing exact bytes.
+        if args.out.read_bytes() != document.encode("utf-8"):
             print(
                 f"evidence refused: {args.out} differs from a fresh render",
                 file=sys.stderr,

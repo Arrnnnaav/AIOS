@@ -707,16 +707,20 @@ the full output to a file before rerunning anything.
 
 On 4 September 2026, two passing ADD_SLIDE runs recorded no
 `verification_started_s` — `attempt-set-01-run-02.json` and
-`attempt-set-02-run-03.json` — while the other six passing runs did, on
+`attempt-set-02-run-03.json` — while every other passing run did, on
 identical bytes and one HWND. Records are committed under
 `plugins/sources/powerpoint/acceptance-records/`.
 
 An independent D032 review found the second occurrence; this entry originally
 said one run, which understated it.
 
+**Counts live in the rendered evidence, not here.** It states them derived
+from the committed records, so they cannot go stale; this entry twice carried
+a hardcoded "six" that a later attempt set had already made wrong.
+
 **A measured number, and the wrong story about it.** Where the mark is
-present, `ended_s - verification_started_s` is 0.500s or 0.516s in all six
-records. This entry first read that as "exactly one tick", and concluded that
+present, `ended_s - verification_started_s` is 0.500s or 0.516s in every
+record. This entry first read that as "exactly one tick", and concluded that
 arming and satisfaction fell on *different* ticks. An independent review
 traced it and that is wrong.
 

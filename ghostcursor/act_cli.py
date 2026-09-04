@@ -268,8 +268,18 @@ def run_act_goal(
     approved: bool,
     unattended: bool = False,
     owned_output_root: Path | None = None,
+    receipt_policy=None,
 ) -> int:
-    """Classify, authorize, preview, and optionally execute one Act goal."""
+    """Classify, authorize, preview, and optionally execute one Act goal.
+
+    ``receipt_policy`` is required for a plan whose signed operations include
+    a control-driving one, and there is deliberately no default. `ReceiptPolicy`
+    says so itself: Phase E derives those deadlines from measurement, and a
+    plausible constant is the placeholder derivation exists to replace. An
+    earlier version wrote 2000/8000ms here with nothing measured behind them.
+    A pointer plan with no policy is refused, so the gap is visible rather
+    than papered over.
+    """
 
     try:
         proposal = prepare_act_goal(
@@ -318,7 +328,18 @@ def run_act_goal(
             event_sink=sink,
         )
     else:
-        with _pointer_surface() as presentation:
+        if receipt_policy is None:
+            _emit(
+                "refused",
+                detail=(
+                    "this plan contains a control-driving operation, which "
+                    "needs receipt deadlines; Phase E has not derived them, "
+                    "and inventing them here would be a number nobody "
+                    "measured (D034)"
+                ),
+            )
+            return 2
+        with _pointer_surface(default_cue_budget(), receipt_policy) as presentation:
             result = execute_act_proposal(
                 proposal,
                 unattended=unattended,
@@ -338,6 +359,7 @@ def run_act_goal(
 
 __all__ = [
     "ActProposal",
+    "default_cue_budget",
     "execute_act_proposal",
     "plan_draws_a_pointer",
     "prepare_act_goal",
@@ -363,8 +385,17 @@ def plan_draws_a_pointer(proposal: ActProposal) -> bool:
 
 
 @contextmanager
-def _pointer_surface():
+def _pointer_surface(budget, policy, *, keep_running=None):
     """A real overlay window for the length of one run, then destroyed.
+
+    ``budget`` and ``policy`` are REQUIRED and are not defaulted here. An
+    earlier version called `CueBudget()` with no arguments, which raises
+    `TypeError` on its first line of real work -- the whole pointer path
+    crashed the CLI with no result line, behind a commit message asserting
+    production could now run a control-driving node. It could not, and no
+    test said so because neither this function nor `plan_draws_a_pointer`
+    had one. Both numbers are deadlines someone has to measure, and this
+    function is the wrong place to invent either (D034).
 
     Imported lazily and created only on the pointer path. `act_cli` is
     imported by hermetic tests that have no desktop, and a Win32 window at
@@ -375,19 +406,16 @@ def _pointer_surface():
     failure the ESC and timeout rules in `run.py` exist to prevent.
     """
 
-    from ghostcursor.act_overlay import CueBudget, overlay_presenter
-    from ghostcursor.act_protocol import ReceiptPolicy, TrustClass
+    from ghostcursor.act_overlay import overlay_presenter
+    from ghostcursor.act_protocol import TrustClass
     from ghostcursor.act_runtime import PresentationSurface
     from ghostcursor.overlay import window as overlay_window
 
     hwnd = overlay_window.create_overlay_window()
     try:
-        policy = ReceiptPolicy(
-            first_paint_deadline_ms=2000, completion_deadline_ms=8000
-        )
         overlay = overlay_presenter(
             hwnd,
-            budget=CueBudget(),
+            budget=budget,
             policy=policy,
             # The label names what the observation actually found. A fixed
             # string here would let the cue describe a control the run did
@@ -399,8 +427,36 @@ def _pointer_surface():
             # drawn NEUTRAL while presenting, however strong the backend
             # (D109, amended by D112).
             backend_trust=TrustClass.LIVE_STATE,
-            keep_running=lambda: True,
+            # Stop must reach the cue, or a presentation keeps painting after
+            # the operator asked to stop. `lambda: True` was hardwired here
+            # and made the cue's own abort poll unable to ever fire.
+            keep_running=keep_running or (lambda: True),
         )
         yield PresentationSurface(overlay=overlay, policy=policy)
     finally:
         overlay_window.destroy_overlay_window(hwnd)
+
+
+#: The measured per-frame paint cost for this machine's topology, from
+#: `docs/evidence/act-paint-budget.md` (three 400-frame runs; p99 straddles
+#: 1ms, so the budget is the higher of the three, 2ms). Cited rather than
+#: chosen, because `CueBudget` refuses a `frame_budget_ms` nobody measured.
+MEASURED_FRAME_BUDGET_MS = 2
+
+
+def default_cue_budget():
+    """The cue geometry a production run uses.
+
+    `frame_budget_ms` is measured and cited above. `traversal_ms` and
+    `settle_ms` are CHOICES about how long a cue takes to travel and rest --
+    said plainly here the way `act_pacing` says it of its delays, so nobody
+    later cites them as though something had been measured (D034).
+    """
+
+    from ghostcursor.act_overlay import CueBudget
+
+    return CueBudget(
+        traversal_ms=300,
+        settle_ms=250,
+        frame_budget_ms=MEASURED_FRAME_BUDGET_MS,
+    )

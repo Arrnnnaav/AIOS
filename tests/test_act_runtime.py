@@ -429,7 +429,6 @@ def test_execute_approved_graph_exposes_no_verifier_replacing_parameter():
         "controls",
         "event_sink",
         "verify_observer",
-        "uia_session",
         # A place to DRAW, not a way to act. `PresentationSurface` carries an
         # overlay and receipt deadlines and has no dispatch, so a caller
         # supplying one cannot decide what a node does to the application --
@@ -437,6 +436,14 @@ def test_execute_approved_graph_exposes_no_verifier_replacing_parameter():
         # owns and never hands out. The rejected alternative was a factory
         # taking that host, which would have given every caller the live
         # adapter.
+        #
+        # `uia_session` is deliberately NOT here. It carried dispatch, observe
+        # AND present, so a caller passing one chose the effect and skipped
+        # the live-verifier gate entirely -- the runtime only composes, and so
+        # only checks for a live verifier, when no session was handed in. It
+        # survives on the private seam for contract tests. Leaving it public
+        # meant `PresentationSurface` merely CORRELATED with "a caller cannot
+        # choose the effect" while a wider door stood open beside it (D031).
         "presentation",
         # Timing only, and deliberately NOT a callable: a `Pace` is two
         # integers, so nothing passed here can return a verification answer.
@@ -814,3 +821,234 @@ def test_the_descriptor_carries_the_live_verifier_through(tmp_path):
     assert "live_verifier" in fields
     assert "live_verifier_sha256" in fields
     assert fields["live_verifier"].default is None
+# --- the runtime composes the session itself (D032 review of 63c1af8) -------
+#
+# Every UIA test above reaches the path through the PRIVATE `uia_session`
+# seam. That left the whole composition block -- the live-verifier
+# requirement, the `build_uia_session` call and its arguments, and the
+# fail-closed assembly guard -- reachable by no test at all: an independent
+# reviewer made the entire block unreachable and 2234 tests still passed.
+# These drive it through `presentation`, which is what production uses.
+
+
+def _policy():
+    from ghostcursor.act_protocol import ReceiptPolicy
+
+    return ReceiptPolicy(first_paint_deadline_ms=2000, completion_deadline_ms=8000)
+
+
+def _surface(overlay=None):
+    """A presentation surface whose overlay returns no receipts, so a node
+    refuses before any dispatch."""
+
+    from ghostcursor.act_runtime import PresentationSurface
+
+    return PresentationSurface(
+        overlay=overlay
+        or SimpleNamespace(
+            present=lambda request, observation, sink: [],
+            on_node_state=lambda node, state: None,
+        ),
+        policy=_policy(),
+    )
+
+
+def _run_with_surface(tmp_path, *, descriptor=None, surface=None, live_verifier=True):
+    import time as _time
+
+    registry = _uia_registry()
+    validated = _uia_graph(registry)
+    approval = _approval(tmp_path, validated, registry, now=_time.time())
+    (tmp_path / "owned").mkdir(exist_ok=True)
+    return _execute_approved_graph(
+        validated,
+        registry,
+        approval,
+        descriptor=descriptor if descriptor is not None else _descriptor(tmp_path),
+        current_authority=_authority,
+        revalidate_target=lambda _target: None,
+        verify=lambda *_args: True,
+        controls=ActControls(),
+        presentation=surface if surface is not None else _surface(),
+        live_verifier=SimpleNamespace() if live_verifier else None,
+    )
+
+
+def test_a_presentation_surface_reaches_the_composition_block(tmp_path):
+    """The block must actually run. Making it unreachable left the whole
+    suite green, so this asserts the run got PAST "no presentation surface"
+    and failed for a later reason instead."""
+
+    result = _run_with_surface(tmp_path)
+
+    assert result.code is ActRunCode.ADAPTER_FAILED
+    assert "no presentation surface" not in result.detail
+
+
+def test_a_control_driving_run_refuses_without_the_plugins_live_verifier(tmp_path):
+    """observe() asks the live verifier what the document currently is, and
+    that reading is the semantic the drift check compares. Without one the
+    node would compare identity against itself -- the vacuous check
+    `act_uia_session` exists to avoid -- so the run refuses instead."""
+
+    result = _run_with_surface(tmp_path, live_verifier=False)
+
+    assert result.code is ActRunCode.ADAPTER_FAILED
+    assert "live verifier" in result.detail
+
+
+def test_a_session_that_cannot_be_assembled_fails_closed(tmp_path):
+    """An assembly error becomes a result, not an escaping exception: a run
+    that dies mid-flight loses its events and its output path, and the CLI
+    never reaches its staging cleanup.
+
+    The surface is the thing a caller supplies, so it is the thing that can
+    be wrong. One missing the overlay methods the session composes from is
+    refused rather than crashing the run."""
+
+    from ghostcursor.act_runtime import PresentationSurface
+
+    result = _run_with_surface(
+        tmp_path,
+        surface=PresentationSurface(overlay=object(), policy=_policy()),
+    )
+
+    assert result.completed is False
+    assert result.code is ActRunCode.ADAPTER_FAILED
+    assert "could not be assembled" in result.detail
+
+
+def test_a_failure_inside_the_session_becomes_a_result_not_an_exception(tmp_path):
+    """UiaSessionError is a plain RuntimeError, and is what a failed verifier
+    read, an unreadable control, a missing authorization and an incomplete
+    dispatch all raise. They used to escape uncaught -- fail-closed on the
+    effect, fail-OPEN on the bookkeeping, losing the run record and leaving
+    a staging file unlabelled."""
+
+    def explode(*_args, **_kwargs):
+        raise RuntimeError("the read-only verifier could not answer")
+
+    session, _record = _fake_session()
+    session.observe = explode
+
+    result = _run_uia(tmp_path, session=session)
+
+    assert result.code is ActRunCode.ADAPTER_FAILED
+    assert result.output_path is not None
+    assert "could not answer" in result.detail
+
+
+def test_the_uia_path_authorizes_the_node_it_is_running(tmp_path):
+    """A reviewer changed this call site to authorize node[0] at ordinal 1
+    always, and the whole suite still passed. The signed adapter only checks
+    the digest is 64 hex characters, so core minting the RIGHT one is the
+    only thing that makes `authorization_sha256` mean anything."""
+
+    import time as _time
+
+    from ghostcursor.act_runtime import _authorize_node
+
+    registry = _uia_registry()
+    validated = _uia_graph(registry)
+    approval = _approval(tmp_path, validated, registry, now=_time.time())
+    node = validated.ordered_nodes[0]
+
+    # The ordinal is inside the digest, so the same node at a different
+    # position is a different authorization.
+    first = _authorize_node(approval, validated, node=node, ordinal=1)
+    second = _authorize_node(approval, validated, node=node, ordinal=2)
+    assert first.authorization_sha256 != second.authorization_sha256
+
+    # TWO nodes, or this proves nothing. With a single-node graph
+    # `ordered_nodes[0]` at ordinal 1 IS the right answer, so authorizing
+    # that always is indistinguishable from authorizing the node being run --
+    # the first version of this test was vacuous for exactly that reason and
+    # the mutation walked through it.
+    from ghostcursor.action import ActionGraph, ActionNode, validate_action_graph
+    from ghostcursor.uia_identity import IdentityPolicy
+
+    def _uia_op(operation_id, postcondition):
+        return OperationSpec(
+            operation_id,
+            ActionRisk.LOW,
+            MappingProxyType({}),
+            postconditions=(postcondition,),
+            timeout_s=2.0,
+            backend="uia_pattern",
+            uia_pattern="Invoke",
+            identity=IdentityPolicy(
+                operation_id=operation_id,
+                selector_id="powerpoint.new-slide",
+                selector_sha256="c" * 64,
+                control_type="Button",
+                identity_mode="runtime_id_required",
+                required_fields=("control_type", "name", "runtime_id"),
+                evidence_fields=("automation_id",),
+            ),
+        )
+
+    # Two DISTINCT operations: the validator refuses a repeated
+    # non-idempotent effect, and rightly so.
+    registry = OperationRegistry(
+        PLUGIN,
+        VERSION,
+        ADAPTER,
+        "b" * 64,
+        MappingProxyType(
+            {
+                "powerpoint.new_slide_uia": _uia_op(
+                    "powerpoint.new_slide_uia", "slide.exists"
+                ),
+                "powerpoint.second_uia": _uia_op(
+                    "powerpoint.second_uia", "second.exists"
+                ),
+            }
+        ),
+    )
+    two = validate_action_graph(
+        ActionGraph(
+            PLUGIN,
+            VERSION,
+            ADAPTER,
+            (
+                ActionNode("n001", "powerpoint.new_slide_uia", {}),
+                ActionNode("n002", "powerpoint.second_uia", {}),
+            ),
+            (),
+        ),
+        registry,
+    )
+    approval = _approval(tmp_path, two, registry, now=_time.time())
+
+    seen = []
+    session, _record = _fake_session()
+    original = session.dispatch
+
+    def watch(n, token, confirmed):
+        seen.append((token.node_id, token.ordinal, token.authorization_sha256))
+        return original(n, token, confirmed)
+
+    session.dispatch = watch
+    (tmp_path / "owned").mkdir(exist_ok=True)
+    _execute_approved_graph(
+        two,
+        registry,
+        approval,
+        descriptor=_descriptor(tmp_path),
+        current_authority=_authority,
+        revalidate_target=lambda _target: None,
+        verify=lambda *_args: True,
+        controls=ActControls(),
+        uia_session=session,
+    )
+
+    assert len(seen) == 2, f"both nodes must dispatch, saw {seen}"
+    for ordinal, dispatched in enumerate(two.ordered_nodes, start=1):
+        expected = _authorize_node(
+            approval, two, node=dispatched, ordinal=ordinal
+        )
+        assert seen[ordinal - 1] == (
+            dispatched.node_id,
+            ordinal,
+            expected.authorization_sha256,
+        )

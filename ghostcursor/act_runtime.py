@@ -750,6 +750,37 @@ def _execute_approved_graph(
                         tuple(events),
                         approval.output_path,
                     )
+                except Exception as exc:  # noqa: BLE001 - see below
+                    # Everything else the session or the verifier can raise:
+                    # a failed or empty verifier reading, a control that could
+                    # not be read, the missing-authorization refusal, an
+                    # incomplete dispatch, a bad selector, an adapter protocol
+                    # fault from `choose_verifier`.
+                    #
+                    # These used to escape as unhandled exceptions, which is
+                    # fail-CLOSED on the effect and fail-OPEN on the
+                    # bookkeeping: the run record, its events and its output
+                    # path were lost, `act_cli` never reached its staging
+                    # cleanup so a partial artifact kept its staging file
+                    # unlabelled, and the CLI died with a traceback and no
+                    # result line. The object-model path already converts its
+                    # failures into a result; this makes the two agree.
+                    publish(
+                        "action_failed",
+                        node,
+                        ordinal,
+                        f"{type(exc).__name__}: {exc}",
+                    )
+                    return ActRunResult(
+                        ActRunPhase.EXECUTION,
+                        ActRunCode.ADAPTER_FAILED,
+                        f"{type(exc).__name__}: {exc}",
+                        validated,
+                        tuple(completed),
+                        node.node_id,
+                        tuple(events),
+                        approval.output_path,
+                    )
                 if not outcome.verified:
                     publish("verification_failed", node, ordinal, outcome.detail)
                     return ActRunResult(
@@ -922,7 +953,6 @@ def execute_approved_graph(
     controls: ActControls,
     event_sink: Callable[[ActEvent], None] | None = None,
     verify_observer: Callable[[str, Mapping[str, object]], None] | None = None,
-    uia_session: "UiaNodeSession | None" = None,
     presentation: "PresentationSurface | None" = None,
     pace: Pace = QUICK,
 ) -> ActRunResult:
@@ -1037,7 +1067,6 @@ def execute_approved_graph(
         verify=verify,
         controls=controls,
         event_sink=event_sink,
-        uia_session=uia_session,
         presentation=presentation,
         live_verifier=live_verifier,
         pace=pace,
@@ -1054,6 +1083,7 @@ def _plain(value):
 
 __all__ = [
     "ActControls",
+    "PresentationSurface",
     "ActEvent",
     "ActRunCode",
     "ActRunPhase",
