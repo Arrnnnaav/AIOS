@@ -108,7 +108,72 @@ def load_records(directory: pathlib.Path) -> list[dict]:
                 "three files are not three runs"
             )
         seen[payload] = record["_source"]
+
+    _check_sequence(records, directory)
     return records
+
+
+def _started(record: dict) -> str:
+    value = record.get("started_at")
+    if not isinstance(value, str) or not value:
+        raise EvidenceRefused(
+            f"{record['_source']}: no `started_at`, so nothing establishes "
+            "when this run happened or that three runs were consecutive"
+        )
+    return value
+
+
+def _check_sequence(records: list[dict], directory: pathlib.Path) -> None:
+    """Three runs, distinct, in order, with nothing rejected in between.
+
+    The anti-duplicate check above catches copying one record three times. It
+    does NOT catch the worse case an independent review found: three
+    genuinely distinct, individually clean records drawn from two DIFFERENT
+    already-rejected attempt sets rendered a clean "3/3 passed", because the
+    only cross-record checks were a shared HWND and shared digests -- both
+    true of every record for this candidate by construction, since it is one
+    plugin on one machine.
+
+    What "consecutive" actually means is checkable once records carry a start
+    time: the three accepted runs are ordered, and **no rejected run happened
+    between the first and the last**. Excluded records are committed beside
+    the accepted ones precisely so that question can be asked of the
+    repository rather than of the operator's memory.
+    """
+
+    ids = [record.get("run_id") for record in records]
+    if any(not isinstance(value, str) or not value for value in ids):
+        raise EvidenceRefused(
+            "every run record must carry a `run_id`; without one, three files "
+            "cannot be shown to be three runs"
+        )
+    if len(set(ids)) != len(ids):
+        raise EvidenceRefused(f"two accepted records share a run_id: {sorted(ids)}")
+
+    starts = [_started(record) for record in records]
+    if starts != sorted(starts):
+        raise EvidenceRefused(
+            "the accepted runs are not in start order: "
+            + ", ".join(f"{r['_source']}={s}" for r, s in zip(records, starts))
+        )
+
+    excluded = directory.parent / "excluded"
+    if not excluded.is_dir():
+        # Nothing rejected is COMMITTED, which is not the same as nothing
+        # having been rejected. Say so rather than reporting a clean window.
+        return
+    first, last = starts[0], starts[-1]
+    for path in sorted(excluded.glob("*.json")):
+        other = _canonical_json(path)
+        when = other.get("started_at")
+        if not isinstance(when, str) or not when:
+            continue
+        if first <= when <= last:
+            raise EvidenceRefused(
+                f"{path.name} was rejected and ran at {when}, between the "
+                f"first accepted run ({first}) and the last ({last}); these "
+                "three runs were not consecutive"
+            )
 
 
 def _check_timing(record: dict) -> None:
@@ -281,11 +346,17 @@ def render(records: list[dict], loaded: dict, records_dir: pathlib.Path) -> str:
         "Attempt sets that did not qualify are preserved alongside under",
         "`excluded/` with the note explaining why.",
         "",
-        "Three files are not three runs, and the records cannot prove they are.",
-        "`RunRecord.to_json` emits no run id and no wall-clock time, so nothing",
-        "in a record establishes that these three were distinct or consecutive.",
-        "The renderer refuses byte-identical duplicates; sequence rests on",
-        "operator procedure.",
+        "Each record carries a `run_id` minted at capture and the wall-clock",
+        "instant the run began, so three files can be shown to be three runs.",
+        "The renderer requires distinct ids, start times in order, and -- the",
+        "check that makes *consecutive* mean something -- that no REJECTED run",
+        "committed under `excluded/` happened between the first accepted run",
+        "and the last. Excluded records are committed beside the accepted ones",
+        "so that question is asked of the repository, not of memory.",
+        "",
+        "What this still does not prove: that no rejected run happened and was",
+        "never committed. An operator who deletes a failure leaves no trace of",
+        "it, here or anywhere.",
         "",
         "| Run record | Outcome | Steps | Grounding | First observation | "
         "First hint | Verification start | End |",
@@ -372,16 +443,20 @@ def render(records: list[dict], loaded: dict, records_dir: pathlib.Path) -> str:
         "earlier draft of this document said one run; an independent review",
         "found the second.",
         "",
-        "Where the mark is present it is always exactly one tick before the",
-        "end: `ended_s - verification_started_s` is 0.500s or 0.516s in all six",
-        "records that carry it. So arming and satisfaction fell on different",
-        "ticks in those runs, and in the two without it the rule was satisfied",
-        "with no tick ever arming. Static reading of `reasoning/loop.py` says",
-        "that should not happen -- the arming branch precedes the satisfaction",
-        "branch on the same tick, nothing on the completion path clears the",
-        "mark, and the published selector union changes exactly when the rule",
-        "fires. It remains unexplained rather than explained away. See",
-        "`docs/superpowers/FOLLOWUPS.md`.",
+        "Where the mark is present, `ended_s - verification_started_s` is",
+        "0.500s or 0.516s in all six records that carry it. That is fixed",
+        "drain, not a gap between two events: `compiled_tour`'s driver sleeps",
+        "0.25s per iteration, and after the rule is satisfied the run still",
+        "passes through `VERIFYING` and `OBSERVING` before reaching `DONE`,",
+        "where the timing is read. Two sleeps, exactly 0.500s.",
+        "",
+        "An earlier draft of this document read the same number as one tick",
+        "and concluded that arming and satisfaction fell on different ticks.",
+        "An independent review traced it and that was wrong. They fall on the",
+        "same tick, which makes the absence more surprising: the selector",
+        "union changes at the moment the rule is satisfied, so the arming",
+        "condition should be true exactly then. It remains unexplained rather",
+        "than explained away. See `docs/superpowers/FOLLOWUPS.md`.",
         "",
     ]
     return "\n".join(lines)

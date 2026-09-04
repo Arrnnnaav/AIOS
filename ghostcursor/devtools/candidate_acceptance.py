@@ -36,6 +36,8 @@ import argparse
 import contextlib
 import hashlib
 import json
+import uuid
+from datetime import datetime, timezone
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -193,6 +195,20 @@ class RunRecord:
     #: A timeout record that says only "timed out" is what left this
     #: milestone unable to explain an Open Folder failure after the fact.
     timing: Mapping[str, float] = field(default_factory=dict)
+    #: Unique to this invocation, and the wall-clock instant it began.
+    #:
+    #: Without these, three files are only three files. An independent review
+    #: rendered a clean "3/3 passed" from three genuinely distinct, individually
+    #: clean records drawn from two DIFFERENT already-rejected attempt sets:
+    #: nothing in a record said which run it was or when it happened, so
+    #: nothing distinguished a real consecutive campaign from records
+    #: cherry-picked out of the project's history.
+    #:
+    #: A wall-clock time is written here and nowhere else. It is diagnostic
+    #: provenance for a committed acceptance record, not session history:
+    #: `sessions.sqlite` is a separate store and is unaffected.
+    run_id: str = ""
+    started_at: str = ""
 
     @property
     def grounded_by_uia_only(self) -> bool:
@@ -225,6 +241,8 @@ class RunRecord:
                     "total": self.steps_total,
                 },
                 "detail": self.detail,
+                "run_id": self.run_id,
+                "started_at": self.started_at,
                 "timing": {k: round(v, 3) for k, v in sorted(self.timing.items())},
             },
             indent=2,
@@ -493,6 +511,13 @@ def record_for(
         steps_total=result.steps_total,
         detail=result.detail,
         timing=result.timing,
+        # Minted here, and there is deliberately no parameter for either.
+        # An operator who could choose a run's identity or its start time
+        # could make three cherry-picked records look like one consecutive
+        # campaign -- precisely the gap these fields exist to close, so
+        # accepting them as arguments would reopen it in the same change.
+        run_id=uuid.uuid4().hex,
+        started_at=datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
     )
 
 

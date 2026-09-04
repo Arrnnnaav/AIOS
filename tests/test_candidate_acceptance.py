@@ -795,6 +795,12 @@ def test_a_record_cannot_be_told_its_own_outcome(candidate) -> None:
     parameters = list(inspect.signature(record_for).parameters)
     assert parameters == ["graph", "target", "result"]
 
+    # `run_id` and `started_at` are minted inside, and must stay that way.
+    # They exist so three records can be shown to be three consecutive runs;
+    # an operator who could pass either could make cherry-picked records look
+    # like one campaign, reopening the gap they were added to close.
+    assert "run_id" not in parameters and "started_at" not in parameters
+
     outcomes = {member.value for member in RunOutcome}
     assert outcomes == {"passed", "failed", "timed_out", "aborted"}
     with pytest.raises(ValueError):

@@ -688,11 +688,27 @@ identical bytes and one HWND. Records are committed under
 An independent D032 review found the second occurrence; this entry originally
 said one run, which understated it.
 
-**A measured clue.** Where the mark is present, `ended_s -
-verification_started_s` is 0.500s or 0.516s in all six records — exactly one
-tick. So arming and satisfaction fell on *different* ticks in every run that
-armed, and in the two without the mark the rule was satisfied with no tick
-ever arming.
+**A measured number, and the wrong story about it.** Where the mark is
+present, `ended_s - verification_started_s` is 0.500s or 0.516s in all six
+records. This entry first read that as "exactly one tick", and concluded that
+arming and satisfaction fell on *different* ticks. An independent review
+traced it and that is wrong.
+
+The 0.500s is fixed drain, not a gap between two events. `compiled_tour`'s
+driver sleeps `tick_interval_s` (0.25s) at the end of every iteration, and
+after the rule is satisfied the run still passes through `VERIFYING` (which
+advances the step index and returns to `OBSERVING`) and then `OBSERVING`
+(which sees no current step and reaches `DONE`, where `_timing()` is read).
+That is two sleeps -- 0.500s exactly -- and the two records at 0.516s carry
+about 16ms of ordinary per-tick overhead on top.
+
+So arming and satisfaction happen on the **same** tick, which makes the
+absence *more* surprising rather than less: on the satisfying tick the
+selector union changes, so `elements_changed` should be true at the moment
+`satisfied` becomes true.
+
+Recorded as a D031 failure of my own: a numeric coincidence was promoted to a
+causal story without tracing the code that produces the number.
 
 **Static reading does not explain it, and contradicts it.** In
 `reasoning/loop.py`'s `AWAITING_USER_ACTION`, the arming branch
@@ -719,12 +735,20 @@ plan.queries` block), and the union is built from it.
 
 **What is not in doubt:** the run's pass is sound independently of the mark.
 `element_appears` is `not was and bool(now)` against the run-start baseline,
-and `"View Indicator Slide 2 of 2"` is reachable only from a one-slide deck —
-from two slides viewing slide 1, adding a slide yields `"Slide 2 of 3"`, which
-does not match. The harness cannot click or edit the document (no COM, no
-input synthesis, and `tests/test_no_input_synthesis.py` covers `devtools/`).
-The recipe sets no `fail_after_timeout`, so the mark bounds nothing here; it is
-a diagnostic landmark only.
+so the view indicator read something other than `"View Indicator Slide 2 of
+2"` when the run started and exactly that when the rule fired. The harness
+cannot click or edit the document (no COM, no input synthesis, and
+`tests/test_no_input_synthesis.py` covers `devtools/`), so a person did it.
+
+**Corrected 4 September 2026.** This paragraph previously said that selector
+was reachable only from a one-slide deck. It is not: navigating to slide 2 of
+an existing two-slide deck, or deleting a slide from a three-slide deck viewed
+at slide 2, both satisfy the same absent-then-present rule with no slide
+added. The rendered evidence retracted that claim in commit `b3cc294`; this
+copy was missed, so two tracked documents disagreed until an independent
+review found it.
+
+The recipe sets no `fail_after_timeout`, so the mark bounds nothing here.
 
 **Why this still blocks that record as evidence.** Not because the mark is
 universally required — `tools/render_excel_plugin_evidence.py` declares it
@@ -743,6 +767,17 @@ Admitting the record by declaring the mark optional would mean widening a
 gate to fit an unexplained result, the shape of failure D031 and D032 exist
 to catch.
 
-Next: reproduce with the loop instrumented (not on an acceptance run), and
-determine which of the two possibilities holds before either explaining the
-gate away or tightening the arming condition.
+**The one hypothesis still standing.** A worker-thread publish race: the
+`satisfied` tick comparing against a `previous` that is not truly the
+immediately-prior published snapshot. Constructed but not confirmed.
+
+Next: reproduce with the loop instrumented (not on an acceptance run), logging
+`_verification_started_at`, `action_detected` and `elements_changed` per tick,
+and determine which possibility holds before either explaining the gate away
+or tightening the arming condition.
+
+**Not cosmetic.** The mark bounds nothing for *this* recipe because it sets no
+`fail_after_timeout`. But the cause is unattributed, and if it is a perception
+publish race then the same race could reach the satisfaction check itself on a
+recipe that does set a timeout. Keep this open until the mechanism is found,
+not until the evidence is accepted.
