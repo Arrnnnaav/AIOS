@@ -282,9 +282,18 @@ which D100 refuses.
 Route every UIA request to the payload's signed `uia_entrypoint`, never to its
 object-model `entrypoint`. Immediately before invoking, that adapter must
 resolve exactly one selector match, compare every required identity field and
-the displayed rectangle against core's confirmation, recheck window/process
-ownership, consume the authorization once even on refusal, and invoke that
-same resolved element without another lookup. The digest is an audit binding
+the displayed rectangle against core's confirmation, and require the final
+bracketed coordinate-space read to match the confirmed one. Every rectangle
+crossing from the adapter must carry the strict `coordinate_space.py` contract;
+the host requires that contract to contain the same rectangle, and the overlay
+must independently bracket its UI-thread acceptance and match process/thread
+awareness, units, desktop bounds, monitor topology, and overlay-HWND awareness
+before painting. Bare, malformed, unknown, changed, or mismatched geometry is a
+refusal, never a best-effort pointer. Geometry is presentation-only and must not
+enter authorization digests, session snapshots, learned identity, or default
+diagnostics. Recheck window/process ownership, consume the authorization once
+even on refusal, and invoke that same resolved element without another lookup.
+The digest is an audit binding
 delivered over the nonce-bound private session pipe; do not call it an
 independently signed token. A parameterless UIA plan is materialized with no
 invented artifact parameter, binds `output_path=None`, and does not create a

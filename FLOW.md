@@ -1159,10 +1159,12 @@ natural-language goal
          reload the original authority epoch
          revalidate the exact target
          for UIA: observe pre-state, show/receipt the cue, confirm unchanged
+         for UIA: accept geometry only when the signed adapter's bracketed
+         DPI/process/thread/topology contract matches the overlay thread and HWND
          mint one node-bound authorization digest including observation digests
          for UIA: re-resolve exactly one control, compare the confirmed
-         required identity and rectangle, consume the authorization once,
-         then invoke that same element
+         required identity, rectangle, and coordinate contract, consume the
+         authorization once, then invoke that same element
          execute only the registered operation
          launch one separately signed read-only verifier
          continue only when the backend-appropriate verifier proves the effect
@@ -1273,15 +1275,23 @@ reads, and captures again, and `BracketedGeometry` refuses every rectangle if
 the space moved between them, because rectangles read across a context change
 may not share a space with each other.
 
-`act_protocol.py` and `uia_identity.py` now have production callers through
+`act_protocol.py`, `uia_identity.py`, and `coordinate_space.py` now have
+production callers through
 `act_node`, `act_uia_session`, and `act_runtime`. The public executor preserves
 the immutable pre-cue semantic observation through dispatch and gives that
 exact baseline to the separately signed live verifier. It routes UIA requests
 to `uia_entrypoint`, never to the plugin's object-model entrypoint, and skips
-object-model preflight for a UIA-only graph. `coordinate_space.py` is still not
-wired into that path, so current rectangles remain non-acceptance evidence.
-`stages.py` likewise remains schema-detached because wiring it changes plan
-bytes.
+object-model preflight for a UIA-only graph. The signed generic UIA adapter
+brackets every rectangle read with queried coordinate-space samples; the host
+strictly parses that record and requires it to carry the same rectangle. The
+overlay independently brackets its UI-thread read and checks process/thread
+awareness, units, virtual bounds, monitor topology, and overlay-HWND awareness
+before painting. The final adapter-side read must still match the confirmed
+contract before Invoke/Select/Toggle/Value is called. A missing, malformed, or
+drifted contract refuses the visual/effect rather than drawing at bare numbers.
+Geometry stays ephemeral presentation data: it is absent from authorization
+digests, session snapshots, learned identity, and default diagnostics (D115).
+`stages.py` remains schema-detached because wiring it changes plan bytes.
 
 `ghostcursor/uia_identity.py` holds the signed per-operation identity policy a
 UIA action must satisfy immediately before its pattern call: required fields

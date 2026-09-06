@@ -4537,9 +4537,9 @@ refusal, not matching `None` values.
 
 The authorization SHA-256 is deliberately described as an audit binding over
 the nonce-bound private adapter session, not a signature the adapter can
-independently verify. Current rectangle comparisons still lack the D106
-cross-process coordinate-space contract, so this slice is not acceptance
-evidence. The full hermetic lane after the change passed 2,336 tests with 71
+independently verify. At this slice's commit, rectangle comparisons still
+lacked the D106 cross-process coordinate-space contract; D115 closes that
+separate boundary. The full hermetic lane after the change passed 2,336 tests with 71
 deselected; that run proves regression behavior, not D032 independence or a
 live desktop outcome.
 
@@ -4550,3 +4550,44 @@ may run unattended without an artifact root; object-model graphs still require
 an absent approved output under the owned root. Focused approval and CLI tests
 passed after that correction. The rest of the review was explicitly incomplete,
 so this does not close the pre-sign D032 gate.
+
+## D115 — UIA rectangles cross processes only with a measured coordinate contract
+
+**Date:** 7 September 2026
+**Status:** Candidate implementation; requires independent D032 review before
+signing or activation.
+
+**Decision.** A UIA rectangle is not four sufficient integers. Every control
+observation from the signed generic UIA adapter carries a strict
+`BracketedGeometry` record from `ghostcursor.coordinate_space`: queried process
+and thread awareness, derived units, virtual-desktop bounds, monitor topology,
+and samples before and after the rectangle read. The host rejects malformed or
+partial records and requires the record's sole rectangle to equal the explicit
+rectangle in the response.
+
+Immediately before paint, the overlay brackets its own UI-thread acceptance
+read, compares it with the producer, and separately requires the overlay HWND's
+awareness to equal the painting thread's. Missing, unknown, internally changed,
+or cross-process-mismatched geometry produces `render_rejected`; it never falls
+back to drawing the same numbers. Immediately before dispatch, the adapter
+brackets the freshly re-resolved element again and requires that coordinate
+space to match the confirmed observation before invoking that same element.
+
+The canonical generic adapter imports the core-owned coordinate contract before
+COM/UIA libraries. `AdapterHost` adds the trusted GhostCursor package root to
+the child `PYTHONPATH`, because copying the DPI parser/query implementation into
+each plugin would create two definitions of compatibility. The plugin still
+carries and signs the executable adapter bytes; the imported contract is part
+of the trusted core runtime, not application knowledge or a second adapter.
+
+**Authority and privacy boundary.** Geometry remains ephemeral presentation
+data. It is deliberately absent from node authorization facts, semantic and
+identity digests, `SessionSnapshot`, persistence, learned observations, and
+default diagnostics. It may prevent a pointer/effect when unsafe, but it cannot
+authorize one or prove its postcondition.
+
+**Evidence.** The full hermetic lane passed **2,419 tests** after integration.
+Focused tests independently vary malformed records, rectangle/record
+disagreement, producer/overlay awareness disagreement, a coordinate change
+during the final adapter read, and the pre-effect final comparison. This is
+regression evidence, not a D032 review or live scaled-display acceptance.

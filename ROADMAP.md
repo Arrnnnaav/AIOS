@@ -107,8 +107,8 @@ own internal phases, not the product phases above.
 |---|---|
 | A — PowerPoint diagnose-fix-rerun | **Closed.** 255/255 diagnostic run; `docs/evidence/act-phase-a-diagnostic.md` |
 | B — read-only UIA feasibility | **Closed.** Excel passes; `docs/evidence/act-phase-b-uia-feasibility.md` |
-| C — freeze contracts | Partial. Receipt and identity contracts have production callers; coordinate-space admission and signed stages remain unfinished |
-| D — runtime implementation | In progress. The public executor routes object-model and UIA operations to separate signed adapters and carries the pre-cue baseline into live verification (D114) |
+| C — freeze contracts | Partial. Receipt, identity, and coordinate-space contracts have production callers; signed stages remain unfinished |
+| D — runtime implementation | In progress. The public executor routes object-model and UIA operations to separate signed adapters, carries the pre-cue baseline into live verification, and rejects cross-process geometry drift (D114–D115) |
 | E — measure budgets | Partial. Paint and receipt budgets are recorded; confirmation/dispatch budget closure remains |
 | F/H/J — three independent D032 reviews | Not started; each must be done by someone other than the author |
 | I — release signing and counted runs | Not started. Needs a non-ephemeral external key |
@@ -191,7 +191,9 @@ built but not yet exercised by a caller or a live run.
 - [x] Operation schema: backend, selector, identity policy in `operations.json`
 - [x] Receipt gating before each effect — wired: a UIA node with no presentation surface refuses
 - [x] Identity check before each pattern call — repeated inside the signed UIA adapter against the same element it invokes (D114)
-- [ ] `act_runtime` calls `coordinate_space` (reject unusable geometry)
+- [x] UIA observation and overlay call `coordinate_space`; malformed,
+      unbracketed, cross-awareness, topology-drifted, and HWND-mismatched
+      geometry is rejected before paint/dispatch (D115)
 - [~] Before/confirm/after are sequenced and the real baseline reaches live verification; explicit verifier-mode wire vocabulary remains to be closed
 - [x] Per-node authorization minted only after the identity check passes
 
@@ -302,17 +304,18 @@ built but not yet exercised by a caller or a live run.
 
 **Already built, awaiting a caller**
 - [~] `ghostcursor/stages.py` — stage and cue validation
-- [~] `ghostcursor/coordinate_space.py` — cross-process DPI/geometry contract
+- [x] `ghostcursor/coordinate_space.py` — called by the signed UIA producer,
+      strict host parser, overlay admission, and final pre-dispatch check (D115)
 - [~] `ghostcursor/act_protocol.py` — receipts, refusal codes, trust classes
 - [~] `ghostcursor/uia_identity.py` — signed per-operation identity policy
 - [x] Phase A: 255/255 diagnostic run — `docs/evidence/act-phase-a-diagnostic.md`
 - [x] Phase B: UIA feasibility probe — `docs/evidence/act-phase-b-uia-feasibility.md`
 
-**The next milestone is the thin vertical slice**: one approval → observe →
-cue and receipt → confirm → `InvokePattern` → independent verification, against
-a PowerPoint ribbon control. It is the first caller of all four Phase C
-contracts at once, and until it exists those contracts have only ever been
-judged against their own docstrings (D107).
+**The next integration milestone is the manager UI-thread bridge**: the worker
+requests a cue, the manager-owned UI thread validates and paints it, and the
+receipt returns to the waiting node without creating or pumping a Win32 overlay
+from the worker. Until that bridge exists, the CLI/live harness can exercise
+the pointer path but the normal manager deliberately refuses pointer plans.
 
 **Act v1 is deliberately not general computer use.** No mouse or keyboard
 synthesis (D006), no VLM-driven clicking, no cross-application graphs, no
