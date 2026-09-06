@@ -157,6 +157,7 @@ def build_uia_session(
             semantic=answer.observed,
             identity=seen.identity,
             rectangle=seen.rectangle,
+            geometry=seen.geometry,
             match_count=1,
         )
 
@@ -185,9 +186,13 @@ def build_uia_session(
                 RefusalCode.TARGET_IDENTITY_MISMATCH,
             )
         selector = _resolve_selector(payload_root, spec)
-        if confirmed.identity is None or confirmed.rectangle is None:
+        if (
+            confirmed.identity is None
+            or confirmed.rectangle is None
+            or confirmed.geometry is None
+        ):
             raise UiaSessionError(
-                "dispatch requires confirmed identity and geometry",
+                "dispatch requires confirmed identity and bracketed geometry",
                 RefusalCode.TARGET_IDENTITY_MISMATCH,
             )
         reasons = compare_identity(
@@ -204,6 +209,7 @@ def build_uia_session(
             expected_identity={field: confirmed.identity[field]
                                for field in spec.identity.required_fields},
             expected_rectangle=confirmed.rectangle,
+            expected_geometry=confirmed.geometry,
             timeout_s=dispatch_timeout_s,
         )
         if response.outcome != "completed":

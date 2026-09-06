@@ -4,9 +4,10 @@ This is the first caller of `act_protocol` and `uia_identity` together.
 Until it existed those contracts had only ever been judged against their own
 docstrings (D107).
 
-It does NOT use `coordinate_space`. An earlier version of this docstring
-said it did; nothing imports that module, and a screen rectangle reaching
-the overlay is currently unbracketed by it (D032 review, 4 Sep 2026).
+Every presentation rectangle carries the producer's bracketed coordinate
+contract.  The overlay independently samples its own process/thread/window
+space before drawing; the geometry remains presentation-only and never
+becomes authorization or learned identity.
 
 The order is fixed and the reasons are separate:
 
@@ -56,6 +57,7 @@ from ghostcursor.act_protocol import (
     TrustClass,
     trust_for,
 )
+from ghostcursor.coordinate_space import BracketedGeometry
 from ghostcursor.uia_identity import compare_identity, identity_evidence
 
 
@@ -80,6 +82,9 @@ class Observation:
     identity: Mapping[str, Any] | None = None
     #: Presentation-only, never authority (D106/D109).
     rectangle: tuple[int, int, int, int] | None = None
+    #: Cross-process provenance for ``rectangle``. Ephemeral and deliberately
+    #: absent from semantic/identity digests and run persistence.
+    geometry: BracketedGeometry | None = None
     match_count: int = 1
 
     def __post_init__(self) -> None:

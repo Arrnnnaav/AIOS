@@ -24,17 +24,19 @@ from ghostcursor.adapter_host import (
     AdapterProtocolError,
     UiaObservation,
 )
+from ghostcursor.coordinate_space import observe_bracketed
 
 #: A fake that mirrors the real adapter's exact-field discipline, and records
 #: every frame it was sent so a test can assert what was NOT in it.
 SCRIPT = r"""
 import json
 import sys
+from ghostcursor.coordinate_space import observe_bracketed
 
 OBSERVE = {"control_type", "name", "request_id", "session_nonce", "type"}
 EXECUTE = {
     "authorization_sha256", "control_type", "expected_identity",
-    "expected_rectangle", "name", "pattern",
+    "expected_coordinate_space", "expected_rectangle", "name", "pattern",
     "request_id", "session_nonce", "type", "value",
 }
 
@@ -54,6 +56,9 @@ for line in sys.stdin:
             if set(request) != OBSERVE:
                 raise ValueError("observe fields are wrong: " + repr(sorted(request)))
             emit({
+                "coordinate_space": observe_bracketed(
+                    lambda: [[100, 200, 260, 245]]
+                ).as_record(),
                 "identity": {
                     "automation_id": "",
                     "control_type": request["control_type"],
@@ -112,6 +117,7 @@ def _host(tmp_path, source: str = SCRIPT):
 
 
 def _confirmed():
+    geometry = observe_bracketed(lambda: [[100, 200, 260, 245]])
     return {
         "expected_identity": {
             "control_type": "Button",
@@ -119,6 +125,7 @@ def _confirmed():
             "runtime_id": [7, 1, 2],
         },
         "expected_rectangle": (100, 200, 260, 245),
+        "expected_geometry": geometry,
     }
 
 
@@ -132,6 +139,7 @@ def test_a_control_can_be_read_without_being_touched(tmp_path):
     assert isinstance(observation, UiaObservation)
     assert observation.identity["name"] == "New Slide"
     assert observation.rectangle == (100, 200, 260, 245)
+    assert observation.geometry.rectangles == ((100, 200, 260, 245),)
 
 
 def test_the_observe_frame_carries_no_pattern_to_dispatch(tmp_path):
@@ -211,7 +219,39 @@ def test_a_boolean_rectangle_coordinate_is_refused(tmp_path):
         tmp_path, SCRIPT.replace("[100, 200, 260, 245]", "[True, 200, 260, 245]", 1)
     )
     host.start()
-    with pytest.raises(AdapterProtocolError, match="invalid or replayed"):
+    with pytest.raises(AdapterProtocolError, match="must be an integer"):
+        host.observe_control("Button", "New Slide", timeout_s=5.0)
+
+    assert host.running is False
+
+
+def test_a_malformed_coordinate_contract_is_refused(tmp_path):
+    source = SCRIPT.replace(
+        '"coordinate_space": observe_bracketed(\n'
+        '                    lambda: [[100, 200, 260, 245]]\n'
+        '                ).as_record(),',
+        '"coordinate_space": {"bad": 1},',
+        1,
+    )
+    host = _host(tmp_path, source)
+    host.start()
+
+    with pytest.raises(AdapterProtocolError, match="coordinate space is invalid"):
+        host.observe_control("Button", "New Slide", timeout_s=5.0)
+
+    assert host.running is False
+
+
+def test_a_rectangle_outside_its_coordinate_contract_is_refused(tmp_path):
+    source = SCRIPT.replace(
+        '"rectangle": [100, 200, 260, 245],',
+        '"rectangle": [101, 200, 260, 245],',
+        1,
+    )
+    host = _host(tmp_path, source)
+    host.start()
+
+    with pytest.raises(AdapterProtocolError, match="disagrees"):
         host.observe_control("Button", "New Slide", timeout_s=5.0)
 
     assert host.running is False
@@ -393,6 +433,7 @@ def test_the_shipped_adapter_accepts_exactly_the_fields_the_host_sends():
         "authorization_sha256",
         "control_type",
         "expected_identity",
+        "expected_coordinate_space",
         "expected_rectangle",
         "name",
         "pattern",

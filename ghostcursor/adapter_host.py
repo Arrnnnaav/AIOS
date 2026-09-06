@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import queue
 import subprocess
 import sys
@@ -10,7 +11,10 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Mapping
+
+from ghostcursor.coordinate_space import BracketedGeometry, bracket_from_record
 
 
 class AdapterProtocolError(RuntimeError):
@@ -38,6 +42,7 @@ class UiaObservation:
     request_id: str
     identity: Mapping[str, Any]
     rectangle: tuple[int, int, int, int]
+    geometry: BracketedGeometry
 
 
 @dataclass(frozen=True)
@@ -215,6 +220,7 @@ class AdapterHost:
             encoding="utf-8",
             errors="strict",
             bufsize=1,
+            env=_adapter_environment(),
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         self._process = process
@@ -332,6 +338,7 @@ class AdapterHost:
             # The adapter reports a refused observation on the result frame.
             self._refused(message)
         if set(message) != {
+            "coordinate_space",
             "identity",
             "outcome",
             "rectangle",
@@ -341,6 +348,13 @@ class AdapterHost:
         }:
             self.stop()
             raise AdapterProtocolError("adapter observation fields are invalid")
+        try:
+            geometry = bracket_from_record(message["coordinate_space"])
+        except (TypeError, ValueError) as exc:
+            self.stop()
+            raise AdapterProtocolError(
+                f"adapter observation coordinate space is invalid: {exc}"
+            ) from None
         if (
             message["type"] != "observation"
             or message["request_id"] != request_id
@@ -356,10 +370,17 @@ class AdapterHost:
         ):
             self.stop()
             raise AdapterProtocolError("adapter observation is invalid or replayed")
+        rectangle = tuple(message["rectangle"])
+        if geometry.rectangles != (rectangle,):
+            self.stop()
+            raise AdapterProtocolError(
+                "adapter observation rectangle disagrees with its coordinate contract"
+            )
         return UiaObservation(
             request_id=request_id,
             identity=dict(message["identity"]),
-            rectangle=tuple(message["rectangle"]),
+            rectangle=rectangle,
+            geometry=geometry,
         )
 
     def dispatch_pattern(
@@ -371,6 +392,7 @@ class AdapterHost:
         authorization_sha256: str,
         expected_identity: Mapping[str, Any],
         expected_rectangle: tuple[int, int, int, int],
+        expected_geometry: BracketedGeometry,
         value: Any = None,
         timeout_s: float,
         cancel_event: threading.Event | None = None,
@@ -389,6 +411,7 @@ class AdapterHost:
                 "authorization_sha256": authorization_sha256,
                 "expected_identity": _plain(expected_identity),
                 "expected_rectangle": list(expected_rectangle),
+                "expected_coordinate_space": expected_geometry.as_record(),
                 "control_type": control_type,
                 "name": name,
                 "pattern": pattern,
@@ -630,10 +653,30 @@ def _plain(value: Any) -> Any:
     return value
 
 
+def _adapter_environment() -> dict[str, str]:
+    """Let a signed adapter import the core-owned wire contracts.
+
+    The child runs with the plugin payload as its working directory, so the
+    repository/package root is not otherwise importable.  The coordinate
+    contract must remain one implementation shared by producer and consumer;
+    copying its DPI logic into every plugin would recreate the drift this
+    protocol exists to detect.
+    """
+
+    environment = dict(os.environ)
+    package_root = str(Path(__file__).resolve().parent.parent)
+    inherited = environment.get("PYTHONPATH")
+    environment["PYTHONPATH"] = (
+        package_root + os.pathsep + inherited if inherited else package_root
+    )
+    return environment
+
+
 __all__ = [
     "AdapterHost",
     "AdapterProtocolError",
     "AdapterResponse",
+    "UiaObservation",
     "VerifierHost",
     "VerifierResponse",
 ]

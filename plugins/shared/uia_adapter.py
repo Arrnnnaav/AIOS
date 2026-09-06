@@ -31,6 +31,15 @@ import re
 import sys
 from pathlib import Path
 
+# This must precede comtypes/pywinauto/mss imports: another library declaring
+# DPI awareness first would make the same four rectangle integers mean a
+# different thing in this process.
+from ghostcursor.coordinate_space import (
+    bracket_disagreements,
+    bracket_from_record,
+    observe_bracketed,
+)
+
 # No plugin identity constant, deliberately. The bytes must be IDENTICAL in
 # every payload that carries them, or the canonical-digest check refuses them
 # (D108) -- so stamping an id in at build time would break the very property
@@ -187,17 +196,21 @@ class UiaSession:
                 identity[key] = reader()
             except Exception:  # noqa: BLE001 - absence is the honest answer
                 identity[key] = None
-        try:
-            rect = element.CurrentBoundingRectangle
-            rectangle = [
-                int(rect.left),
-                int(rect.top),
-                int(rect.right),
-                int(rect.bottom),
-            ]
-        except Exception:  # noqa: BLE001
-            rectangle = None
-        return identity, rectangle
+        def read_rectangle():
+            try:
+                rect = element.CurrentBoundingRectangle
+                return [[
+                    int(rect.left),
+                    int(rect.top),
+                    int(rect.right),
+                    int(rect.bottom),
+                ]]
+            except Exception:  # noqa: BLE001
+                return []
+
+        geometry = observe_bracketed(read_rectangle)
+        rectangle = list(geometry.rectangles[0]) if len(geometry.rectangles) == 1 else None
+        return identity, rectangle, geometry
 
     def dispatch(self, element, pattern, value=None):
         """Invoke the declared pattern on THIS element.
@@ -267,16 +280,28 @@ class UiaSession:
                 or not all(type(v) is int for v in wanted_rect)
                 or wanted_rect[2] <= wanted_rect[0] or wanted_rect[3] <= wanted_rect[1]):
             raise Refusal("confirmed rectangle is invalid")
+        try:
+            expected_geometry = bracket_from_record(
+                request["expected_coordinate_space"]
+            )
+        except (TypeError, ValueError) as exc:
+            raise Refusal(f"confirmed coordinate space is invalid: {exc}") from None
+        if expected_geometry.rectangles != (tuple(wanted_rect),):
+            raise Refusal("confirmed rectangle disagrees with its coordinate space")
+        if bracket_disagreements(expected_geometry.before, expected_geometry):
+            raise Refusal("confirmed coordinate space did not hold during observation")
         element = self.resolve_exactly_one(request["control_type"], request["name"])
-        identity, rectangle = self.describe(element, request["control_type"])
+        identity, rectangle, geometry = self.describe(element, request["control_type"])
         for field, wanted in expected.items():
             if field not in identity or _canonical(identity[field]) != _canonical(wanted):
                 raise Refusal(f"confirmed target identity changed: {field}")
         if rectangle != wanted_rect:
             raise Refusal("confirmed target rectangle changed")
+        if bracket_disagreements(expected_geometry.before, geometry):
+            raise Refusal("target coordinate space changed before dispatch")
         self._verify_window_authority()
         self.dispatch(element, request["pattern"], request.get("value"))
-        return identity, rectangle
+        return identity, rectangle, geometry
 
 
 def main():
@@ -324,9 +349,12 @@ def main():
                 element = session.resolve_exactly_one(
                     request["control_type"], request["name"]
                 )
-                identity, rectangle = session.describe(element, request["control_type"])
+                identity, rectangle, geometry = session.describe(
+                    element, request["control_type"]
+                )
                 _write(
                     {
+                        "coordinate_space": geometry.as_record(),
                         "identity": identity,
                         "outcome": "observed",
                         "rectangle": rectangle,
@@ -342,6 +370,7 @@ def main():
                 request,
                 {
                     "authorization_sha256",
+                    "expected_coordinate_space",
                     "expected_identity",
                     "expected_rectangle",
                     "control_type",
@@ -354,10 +383,14 @@ def main():
                 },
                 "execute",
             )
-            identity, rectangle = session.execute_confirmed(request)
+            identity, rectangle, geometry = session.execute_confirmed(request)
             _write(
                 {
-                    "data": {"identity": identity, "rectangle": rectangle},
+                    "data": {
+                        "coordinate_space": geometry.as_record(),
+                        "identity": identity,
+                        "rectangle": rectangle,
+                    },
                     "detail": "pattern dispatched on the resolved control",
                     "facts": [],
                     "outcome": "completed",

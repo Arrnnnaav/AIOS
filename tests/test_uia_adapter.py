@@ -9,6 +9,7 @@ real dispatch is proven on a desktop, not here.
 from __future__ import annotations
 
 import importlib.util
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -290,6 +291,7 @@ def test_the_legacy_default_action_is_dispatched_separately_from_patterns():
 
 
 def _confirmed_request(**overrides):
+    geometry = adapter.observe_bracketed(lambda: [[10, 20, 110, 60]])
     value = {
         "authorization_sha256": "a" * 64,
         "control_type": "Button",
@@ -298,6 +300,7 @@ def _confirmed_request(**overrides):
             "name": "New Slide",
             "runtime_id": [7, 1, 2],
         },
+        "expected_coordinate_space": geometry.as_record(),
         "expected_rectangle": [10, 20, 110, 60],
         "name": "New Slide",
         "pattern": "Invoke",
@@ -312,10 +315,11 @@ def test_confirmed_dispatch_compares_and_invokes_the_same_element():
     session = _session([element])
 
     with session._patch:
-        identity, rectangle = session.execute_confirmed(_confirmed_request())
+        identity, rectangle, geometry = session.execute_confirmed(_confirmed_request())
 
     assert identity["runtime_id"] == [7, 1, 2]
     assert rectangle == [10, 20, 110, 60]
+    assert geometry.rectangles == ((10, 20, 110, 60),)
     assert element.invoked == [("Invoke", None)]
 
 
@@ -333,6 +337,44 @@ def test_a_changed_confirmed_target_refuses_before_the_effect(change, detail):
 
     with session._patch, pytest.raises(adapter.Refusal, match=detail):
         session.execute_confirmed(_confirmed_request(**change))
+
+    assert element.invoked == []
+
+
+def test_a_coordinate_space_change_refuses_before_the_effect():
+    element = _Element()
+    session = _session([element])
+    request = _confirmed_request()
+    record = request["expected_coordinate_space"]
+    changed = list(record["before"]["virtual_bounds"])
+    changed[2] += 1
+    record["before"]["virtual_bounds"] = changed
+    record["after"]["virtual_bounds"] = list(changed)
+
+    with session._patch, pytest.raises(adapter.Refusal, match="coordinate space changed"):
+        session.execute_confirmed(request)
+
+    assert element.invoked == []
+
+
+def test_a_coordinate_context_that_changes_during_final_read_refuses_before_effect(
+    monkeypatch,
+):
+    from ghostcursor.coordinate_space import BracketedGeometry, capture
+
+    element = _Element()
+    session = _session([element])
+    request = _confirmed_request()
+    before = capture()
+    after = replace(before, virtual_bounds=(0, 0, before.virtual_bounds[2] + 1, 1))
+    monkeypatch.setattr(
+        adapter,
+        "observe_bracketed",
+        lambda _read: BracketedGeometry(before, after, ((10, 20, 110, 60),)),
+    )
+
+    with session._patch, pytest.raises(adapter.Refusal, match="coordinate space changed"):
+        session.execute_confirmed(request)
 
     assert element.invoked == []
 
@@ -361,16 +403,17 @@ def test_a_control_without_legacy_support_refuses():
 # --- what it reports back --------------------------------------------------
 
 
-def test_describe_reports_identity_and_rectangle():
+def test_describe_reports_identity_rectangle_and_coordinate_space():
     element = _Element()
     session = _session([element])
 
-    identity, rectangle = session.describe(element, "Button")
+    identity, rectangle, geometry = session.describe(element, "Button")
 
     assert identity["control_type"] == "Button"
     assert identity["name"] == "New Slide"
     assert identity["runtime_id"] == [7, 1, 2]
     assert rectangle == [10, 20, 110, 60]
+    assert geometry.rectangles == ((10, 20, 110, 60),)
 
 
 def test_an_unreadable_property_is_reported_absent_not_defaulted():
@@ -385,11 +428,12 @@ def test_an_unreadable_property_is_reported_absent_not_defaulted():
     type(element).GetRuntimeId = lambda self: explode()
     session = _session([element])
 
-    identity, rectangle = session.describe(element, "Button")
+    identity, rectangle, geometry = session.describe(element, "Button")
 
     assert identity["runtime_id"] is None
     assert identity["name"] == "New Slide"
     assert rectangle == [10, 20, 110, 60]
+    assert geometry.rectangles == ((10, 20, 110, 60),)
 
 
 # --- the closed vocabularies ----------------------------------------------

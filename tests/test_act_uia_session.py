@@ -32,6 +32,7 @@ POLICY = ReceiptPolicy(first_paint_deadline_ms=500, completion_deadline_ms=2000)
 ADAPTER = r"""
 import json
 import sys
+from ghostcursor.coordinate_space import observe_bracketed
 
 def emit(value):
     print(json.dumps(value, sort_keys=True, separators=(",", ":")), flush=True)
@@ -44,6 +45,9 @@ for line in sys.stdin:
         break
     if request["type"] == "observe":
         emit({
+            "coordinate_space": observe_bracketed(
+                lambda: [[100, 200, 260, 245]]
+            ).as_record(),
             "identity": {
                 "automation_id": "",
                 "control_type": request["control_type"],
@@ -230,6 +234,8 @@ def _node():
 
 
 def _confirmed():
+    from ghostcursor.coordinate_space import observe_bracketed
+
     return Observation(
         semantic={"slides": 3},
         identity={
@@ -239,6 +245,7 @@ def _confirmed():
             "runtime_id": (7, 1, 2),
         },
         rectangle=(100, 200, 260, 245),
+        geometry=observe_bracketed(lambda: [[100, 200, 260, 245]]),
     )
 
 
@@ -255,6 +262,7 @@ def test_an_observation_carries_the_document_reading_and_the_control(tmp_path):
     assert observation.semantic == {"slides": 3}
     assert observation.identity["name"] == "New Slide"
     assert observation.rectangle == (100, 200, 260, 245)
+    assert observation.geometry.rectangles == ((100, 200, 260, 245),)
 
 
 def test_the_control_name_comes_from_the_signed_selector(tmp_path):

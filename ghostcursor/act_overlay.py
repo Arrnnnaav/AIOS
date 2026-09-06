@@ -55,6 +55,12 @@ from ghostcursor.act_protocol import (
     ReceiptPolicy,
     TrustClass,
 )
+from ghostcursor.coordinate_space import (
+    BracketedGeometry,
+    bracket_disagreements,
+    observe_bracketed,
+    window_agrees,
+)
 from ghostcursor.overlay import window as overlay_window
 from ghostcursor.overlay.cue import CueLayoutError, CueScene
 from ghostcursor.pointer_path import PointerPathError
@@ -115,6 +121,9 @@ def overlay_presenter(
     on_state: Callable[[object, LifecycleState], None] | None = None,
     on_receipt: Callable[[Receipt, float], None] | None = None,
     pump: Callable[[], None] | None = None,
+    geometry_check: Callable[
+        [int, object, tuple[int, int, int, int]], Sequence[str]
+    ] | None = None,
 ) -> OverlaySession:
     """Build the overlay edges for one Act run.
 
@@ -144,6 +153,8 @@ def overlay_presenter(
         clock = _monotonic_ms
     if pump is None:
         pump = overlay_window.pump_messages_nonblocking
+    if geometry_check is None:
+        geometry_check = _coordinate_disagreements
 
     # Where the pointer currently is, so the next node's cue travels from it
     # rather than teleporting. None until the first cue and after any clear:
@@ -194,7 +205,8 @@ def overlay_presenter(
                 on_receipt(receipt, at_ms)
 
         rectangle = getattr(observation, "rectangle", None)
-        if rectangle is None:
+        geometry = getattr(observation, "geometry", None)
+        if rectangle is None or geometry is None:
             # No geometry was observed, so there is nothing honest to point
             # at. Reported as a rejection rather than drawn at a guessed
             # position (D109).
@@ -208,10 +220,20 @@ def overlay_presenter(
                 on_receipt=report,
             )
 
+        rectangle = tuple(rectangle)
+        reasons = tuple(geometry_check(hwnd, geometry, rectangle))
+        if reasons:
+            if state["scene"] is not None:
+                clear()
+            return receipts_for_scene_error(
+                request,
+                CueLayoutError("coordinate space refused: " + "; ".join(reasons)),
+            )
+
         label = label_for(observation)
         try:
             plan = plan_cue(
-                tuple(rectangle),
+                rectangle,
                 label,
                 TrustClass.NEUTRAL,
                 start=state["position"],
@@ -252,6 +274,31 @@ def overlay_presenter(
         return receipts
 
     return OverlaySession(present=present, on_node_state=on_node_state, release=clear)
+
+
+def _coordinate_disagreements(
+    hwnd: int,
+    geometry: object,
+    rectangle: tuple[int, int, int, int],
+) -> tuple[str, ...]:
+    """Refuse a producer rectangle unless the painting thread agrees.
+
+    The overlay samples its thread/process/topology immediately around this
+    acceptance read.  The overlay HWND is checked separately because a window
+    retains the awareness of the thread that created it.  These checks happen
+    on the presenter/UI thread, immediately before layout and paint.
+    """
+
+    if not isinstance(geometry, BracketedGeometry):
+        return ("the producer supplied no valid bracketed coordinate contract",)
+    if geometry.rectangles != (rectangle,):
+        return ("the producer rectangle disagrees with its coordinate contract",)
+
+    observer = observe_bracketed(lambda: [rectangle])
+    reasons = list(bracket_disagreements(observer.before, observer))
+    reasons.extend(bracket_disagreements(observer.before, geometry))
+    reasons.extend(window_agrees(observer.after, hwnd))
+    return tuple(dict.fromkeys(reasons))
 
 
 def _recolour(hwnd: int, state: dict, trust: TrustClass) -> None:

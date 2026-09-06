@@ -21,6 +21,7 @@ from ghostcursor.act_protocol import (
     ReceiptPolicy,
     TrustClass,
 )
+from ghostcursor.coordinate_space import BracketedGeometry, CoordinateSpace
 from ghostcursor.overlay.cue import TRUST_COLOURS, LabelMetrics
 
 HWND = 12345
@@ -109,6 +110,7 @@ def _session(screen, clock, *, keep_running=None, **overrides):
         bounds=BOUNDS,
         clock=clock.read,
         pump=screen.pump_messages_nonblocking,
+        geometry_check=lambda _hwnd, _geometry, _rectangle: (),
     )
     kwargs.update(overrides)
     return overlay_presenter(HWND, **kwargs)
@@ -119,6 +121,7 @@ def _observation(rectangle=(400, 300, 520, 340)):
         semantic={"slides": 3},
         identity={"control_type": "Button", "name": "New Slide"},
         rectangle=rectangle,
+        geometry=object(),
         match_count=1,
     )
 
@@ -370,6 +373,87 @@ def test_a_degenerate_rectangle_is_rejected_and_leaves_nothing_up(screen, clock)
 
     assert [r.kind for r in receipts] == [ReceiptKind.RENDER_REJECTED]
     assert screen.kinds == ["clear"]
+
+
+def test_a_coordinate_contract_disagreement_is_rejected_before_paint(screen, clock):
+    session = _session(
+        screen,
+        clock,
+        geometry_check=lambda _hwnd, _geometry, _rectangle: ("DPI mismatch",),
+    )
+
+
+def _space(*, awareness="system"):
+    units = "system_dpi_pixels" if awareness == "system" else "physical_pixels"
+    return CoordinateSpace(
+        contract_version=2,
+        process_awareness=awareness,
+        thread_awareness=awareness,
+        awareness_api="thread=test;process=test",
+        units=units,
+        virtual_bounds=(0, 0, 1920, 1080),
+        monitors=((0, 0, 1920, 1080),),
+    )
+
+    receipts = session.present(_request(), _observation())
+
+    assert [r.kind for r in receipts] == [ReceiptKind.RENDER_REJECTED]
+    assert screen.events == []
+
+
+def test_the_default_check_compares_producer_overlay_thread_and_window(
+    screen, clock, monkeypatch
+):
+    rectangle = (400, 300, 520, 340)
+    observer_space = _space()
+    producer = BracketedGeometry(observer_space, observer_space, (rectangle,))
+    sampled = BracketedGeometry(observer_space, observer_space, (rectangle,))
+    window_checks: list[tuple[CoordinateSpace, int]] = []
+    monkeypatch.setattr(act_overlay, "observe_bracketed", lambda _read: sampled)
+    monkeypatch.setattr(
+        act_overlay,
+        "window_agrees",
+        lambda space, hwnd: window_checks.append((space, hwnd)) or (),
+    )
+    session = _session(screen, clock, geometry_check=None)
+    observation = Observation(
+        semantic={"slides": 3},
+        identity={"control_type": "Button", "name": "New Slide"},
+        rectangle=rectangle,
+        geometry=producer,
+    )
+
+    receipts = session.present(_request(), observation)
+
+    assert [receipt.kind for receipt in receipts] == [
+        ReceiptKind.GEOMETRY_STARTED,
+        ReceiptKind.PRESENTATION_COMPLETED,
+    ]
+    assert window_checks == [(observer_space, HWND)]
+
+
+def test_the_default_check_refuses_a_different_producer_awareness(
+    screen, clock, monkeypatch
+):
+    rectangle = (400, 300, 520, 340)
+    observer_space = _space()
+    producer_space = _space(awareness="per-monitor-v2")
+    producer = BracketedGeometry(producer_space, producer_space, (rectangle,))
+    sampled = BracketedGeometry(observer_space, observer_space, (rectangle,))
+    monkeypatch.setattr(act_overlay, "observe_bracketed", lambda _read: sampled)
+    monkeypatch.setattr(act_overlay, "window_agrees", lambda _space, _hwnd: ())
+    session = _session(screen, clock, geometry_check=None)
+    observation = Observation(
+        semantic={"slides": 3},
+        identity={"control_type": "Button", "name": "New Slide"},
+        rectangle=rectangle,
+        geometry=producer,
+    )
+
+    receipts = session.present(_request(), observation)
+
+    assert [receipt.kind for receipt in receipts] == [ReceiptKind.RENDER_REJECTED]
+    assert screen.events == []
 
 
 def test_a_paint_too_slow_for_the_poll_interval_is_rejected(screen, clock):
