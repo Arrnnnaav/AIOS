@@ -369,20 +369,26 @@ class AdapterHost:
         pattern: str,
         *,
         authorization_sha256: str,
+        expected_identity: Mapping[str, Any],
+        expected_rectangle: tuple[int, int, int, int],
         value: Any = None,
         timeout_s: float,
         cancel_event: threading.Event | None = None,
     ) -> AdapterResponse:
         """Dispatch one UIA pattern on a control resolved by name and type.
 
-        The authorization digest travels with the request, so the adapter
-        refuses a frame that was not minted for this node.
+        The private session pipe carries the core-minted authorization;
+        its digest is an audit binding, not an independently signed token.
+        The adapter consumes it once and checks the confirmed identity and
+        displayed rectangle before invoking the same resolved element.
         """
 
         request_id = uuid.uuid4().hex
         self._write(
             {
                 "authorization_sha256": authorization_sha256,
+                "expected_identity": _plain(expected_identity),
+                "expected_rectangle": list(expected_rectangle),
                 "control_type": control_type,
                 "name": name,
                 "pattern": pattern,

@@ -39,6 +39,7 @@ from ghostcursor.act_protocol import ReceiptPolicy, RefusalCode
 from ghostcursor.act_runtime import UiaNodeSession
 from ghostcursor.adapter_host import AdapterHost, AdapterProtocolError, VerifierHost
 from ghostcursor.selectors import SelectorError, load_action_selector
+from ghostcursor.uia_identity import compare_identity
 
 
 class UiaSessionError(RuntimeError):
@@ -111,6 +112,7 @@ def build_uia_session(
                 output_path=output_path,
                 target=target,
                 timeout_s=verify_timeout_s,
+                cancel_event=cancel_event,
                 baseline=None,
                 postconditions=spec.postconditions,
             )
@@ -152,7 +154,7 @@ def build_uia_session(
             ) from None
 
         return Observation(
-            semantic=_canonical(answer.observed),
+            semantic=answer.observed,
             identity=seen.identity,
             rectangle=seen.rectangle,
             match_count=1,
@@ -183,11 +185,25 @@ def build_uia_session(
                 RefusalCode.TARGET_IDENTITY_MISMATCH,
             )
         selector = _resolve_selector(payload_root, spec)
+        if confirmed.identity is None or confirmed.rectangle is None:
+            raise UiaSessionError(
+                "dispatch requires confirmed identity and geometry",
+                RefusalCode.TARGET_IDENTITY_MISMATCH,
+            )
+        reasons = compare_identity(
+            spec.identity, confirmed.identity, confirmed.identity,
+            match_count=confirmed.match_count,
+        )
+        if reasons:
+            raise UiaSessionError("; ".join(reasons), RefusalCode.TARGET_IDENTITY_MISMATCH)
         response = host.dispatch_pattern(
             selector.control_type,
             selector.name,
             spec.uia_pattern,
             authorization_sha256=token.authorization_sha256,
+            expected_identity={field: confirmed.identity[field]
+                               for field in spec.identity.required_fields},
+            expected_rectangle=confirmed.rectangle,
             timeout_s=dispatch_timeout_s,
         )
         if response.outcome != "completed":

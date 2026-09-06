@@ -1151,16 +1151,23 @@ natural-language goal
          validation + manifest + adapter + active catalog epoch
          + exact target + output path + expiry + unattended scope
     -> recheck catalog authority and target
-    -> start one nonce-bound adapter subprocess
-    -> adapter independently preflights the complete plan before effects
+    -> start the nonce-bound adapter required by each signed backend
+         object-model nodes -> application adapter + whole-plan preflight
+         UIA nodes -> canonical generic UIA adapter
     -> for each ordered node:
          pause/stop gate
          reload the original authority epoch
          revalidate the exact target
-         mint one node-bound authorization digest
+         for UIA: observe pre-state, show/receipt the cue, confirm unchanged
+         mint one node-bound authorization digest including observation digests
+         for UIA: re-resolve exactly one control, compare the confirmed
+         required identity and rectangle, consume the authorization once,
+         then invoke that same element
          execute only the registered operation
          launch one separately signed read-only verifier
-         continue only when the saved artifact proves the effect
+         continue only when the backend-appropriate verifier proves the effect
+              object model -> saved artifact
+              UIA -> live state changed against the immutable pre-cue baseline
     -> final verified artifact or an explicit terminal refusal
 ```
 
@@ -1190,7 +1197,7 @@ window identity and is recorded as such rather than presented as equivalent.
 Three animation constants and `msoTrue` likewise do not exist at runtime; the
 operation catalog now names the constants the application actually exposes.
 
-## Act v1 completion tooling (Phase A/B/C, live runs pending)
+## Act v1 completion tooling and runtime integration
 
 `execute_approved_graph` accepts one optional `verify_observer`. It is an
 OBSERVER, not a wrapper: core constructs the `VerifierHost`, calls the signed
@@ -1266,13 +1273,15 @@ reads, and captures again, and `BracketedGeometry` refuses every rectangle if
 the space moved between them, because rectangles read across a context change
 may not share a space with each other.
 
-`ghostcursor/stages.py`, `ghostcursor/coordinate_space.py` and
-`ghostcursor/act_protocol.py` are contracts with **no production caller yet**.
-Nothing in `act_runtime.py` imports them; its only added seam is
-`verify_observer`, which is Phase A diagnostics. D107 records why the Excel
-vertical slice now runs before the remaining Phase C modules: it is the first
-caller, and until it exists these three have only ever been judged against
-their own docstrings.
+`act_protocol.py` and `uia_identity.py` now have production callers through
+`act_node`, `act_uia_session`, and `act_runtime`. The public executor preserves
+the immutable pre-cue semantic observation through dispatch and gives that
+exact baseline to the separately signed live verifier. It routes UIA requests
+to `uia_entrypoint`, never to the plugin's object-model entrypoint, and skips
+object-model preflight for a UIA-only graph. `coordinate_space.py` is still not
+wired into that path, so current rectangles remain non-acceptance evidence.
+`stages.py` likewise remains schema-detached because wiring it changes plan
+bytes.
 
 `ghostcursor/uia_identity.py` holds the signed per-operation identity policy a
 UIA action must satisfy immediately before its pattern call: required fields
@@ -1282,6 +1291,12 @@ measurement -- `runtime_id_required` where a RuntimeId was measured stable
 across the cue dwell, `semantic_exactly_one` where it was not (D107, and
 `docs/evidence/act-phase-b-uia-feasibility.md` for Excel's `Add Sheet`).
 
-The generic UIA adapter that will consume it is not written yet. D108 fixes
-its shape: one canonical source, copied byte-identically into each plugin's
-payload and signed there, never resolved from core by id.
+The generic UIA adapter is `plugins/shared/uia_adapter.py`, copied
+byte-identically into each declaring payload. Immediately before an effect it
+resolves exactly one signed selector match, compares every core-supplied
+required identity field and the displayed rectangle, rechecks window/process
+authority, consumes the node authorization once, and invokes that same element.
+The digest is an audit binding delivered over the nonce-bound private session
+pipe; it is not described as an independently signed token. Parameterless UIA
+plans materialize with no invented `output_path`, while artifact plans retain
+same-volume staging. Quick and Watch pacing now reach the public CLI.

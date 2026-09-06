@@ -184,6 +184,9 @@ def compare_identity(
             reasons.append(f"the resolved control exposes no {field}")
             continue
         want, got = _comparable(baseline[field]), _comparable(observed[field])
+        if want is None or got is None or want == "" or got == "" or want == () or got == ():
+            reasons.append(f"required {field} was not successfully read")
+            continue
         if want != got:
             reasons.append(f"{field} is {got!r}, authorized {want!r}")
     # "In either role" means both sides. An authorized BASELINE carrying a

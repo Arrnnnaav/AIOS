@@ -4509,3 +4509,36 @@ Markdown, so a person can read it, edit it and see it in a diff. A brief
 nobody can inspect is a brief nobody can correct.
 
 **Where it is.** `ghostcursor/brief.py`, `tests/test_brief.py`.
+
+## D114 — A UIA node keeps one baseline and ends on the confirmed control
+
+**Date:** 6 September 2026
+**Status:** Candidate implementation; requires independent D032 review before
+signing or adoption.
+
+The first public-path integration exposed three broken handoffs. The executor
+discarded `observe_before` and gave the live verifier `{}`; the production
+session sent UIA frames to the application object-model adapter; and the UIA
+adapter re-resolved by selector but was never told which identity and rectangle
+the cue had confirmed. Each component worked alone while their composition
+could either refuse every real verification or act on a control different from
+the one shown.
+
+The runtime now freezes the semantic reading at the observation boundary,
+binds baseline and confirmation digests into the node authorization, and gives
+that original baseline to live verification. After presentation it rechecks
+approval expiry, catalog authority, and target identity before minting. UIA
+operations run only through the separately signed `uia_entrypoint`; an
+object-model adapter preflights only object-model nodes. The generic adapter
+consumes one authorization once, resolves one control, compares required
+identity plus the displayed rectangle, rechecks window ownership, and invokes
+that same element. Required identity fields that could not be read are a
+refusal, not matching `None` values.
+
+The authorization SHA-256 is deliberately described as an audit binding over
+the nonce-bound private adapter session, not a signature the adapter can
+independently verify. Current rectangle comparisons still lack the D106
+cross-process coordinate-space contract, so this slice is not acceptance
+evidence. The full hermetic lane after the change passed 2,336 tests with 71
+deselected; that run proves regression behavior, not D032 independence or a
+live desktop outcome.

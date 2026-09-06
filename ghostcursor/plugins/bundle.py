@@ -221,7 +221,7 @@ def _validate_manifest(value: dict[str, Any]) -> None:
 #: (`plugins/shared/uia_adapter.py`). A plugin carries a byte-identical copy,
 #: so one review covers every copy -- and a copy that has drifted from the
 #: reviewed bytes is refused rather than executed (D108).
-CANONICAL_UIA_ADAPTER_SHA256 = "0752ebc2bef68f69f4dfc3ced66fc38eb71f58d08e2edc6c0fe6cca53205c465"
+CANONICAL_UIA_ADAPTER_SHA256 = "7234a6e342cbef0bf2231fee0e33abcf36a1ef856a71373f8aee1cf87cd8d37e"
 
 
 def verify_adapter_shape(adapter):

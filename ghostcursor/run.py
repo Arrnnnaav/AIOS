@@ -489,6 +489,12 @@ def main() -> int:
     )
     parser.add_argument("--output", type=Path, help="new output artifact for Act mode")
     parser.add_argument(
+        "--act-pace",
+        choices=("quick", "watch"),
+        default="quick",
+        help="quick runs at executor speed; watch adds interruptible visual pacing",
+    )
+    parser.add_argument(
         "--approve", action="store_true", help="approve the complete Act plan once"
     )
     parser.add_argument(
@@ -543,6 +549,7 @@ def main() -> int:
             if args.unattended and args.owned_output_root is None:
                 parser.error("unattended Act requires --owned-output-root")
             from ghostcursor.act_cli import run_act_goal
+            from ghostcursor.act_pacing import pace_by_name
 
             return run_act_goal(
                 args.goal,
@@ -552,6 +559,7 @@ def main() -> int:
                 unattended=args.unattended,
                 owned_output_root=args.owned_output_root,
                 receipt_policy=_receipt_policy(parser, args),
+                pace=pace_by_name(args.act_pace),
             )
         from ghostcursor.reasoning.planner import PlanStatus, plan_compiled_goal
 

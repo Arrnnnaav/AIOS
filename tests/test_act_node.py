@@ -168,7 +168,7 @@ def _run(
         if dispatch_spy is not None:
             dispatch_spy.append(token)
 
-    def verify(node):
+    def verify(node, baseline):
         calls["verified"].append(node)
         if verify_spy is not None:
             verify_spy.append(node)
@@ -271,7 +271,7 @@ def test_a_receipt_for_another_request_does_not_authorize_this_node():
             present=present,
             authorize=lambda facts: None,
             dispatch=lambda token, confirmed: pytest.fail("must not dispatch"),
-            verify=lambda node: True,
+            verify=lambda node, baseline: True,
             clock=clock,
         )
 
@@ -378,7 +378,7 @@ def test_the_token_is_minted_only_after_the_identity_check_passes():
             ),
             authorize=authorize,
             dispatch=lambda token, confirmed: pytest.fail("must not dispatch"),
-            verify=lambda node: True,
+            verify=lambda node, baseline: True,
             clock=clock,
         )
 

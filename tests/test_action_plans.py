@@ -29,7 +29,8 @@ OPERATIONS_PATH = ROOT / "operations.json"
 
 def _files():
     return {
-        "ghostcursor/action-plans/build-investor-deck-v1.json": PLAN_PATH.read_bytes(),
+        **{f"ghostcursor/action-plans/{path.name}": path.read_bytes()
+           for path in (ROOT / "action-plans").glob("*.json")},
         "ghostcursor/action-plans.json": INDEX_PATH.read_bytes(),
         "ghostcursor/operations.json": OPERATIONS_PATH.read_bytes(),
     }

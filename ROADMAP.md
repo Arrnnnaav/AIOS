@@ -107,9 +107,9 @@ own internal phases, not the product phases above.
 |---|---|
 | A — PowerPoint diagnose-fix-rerun | **Closed.** 255/255 diagnostic run; `docs/evidence/act-phase-a-diagnostic.md` |
 | B — read-only UIA feasibility | **Closed.** Excel passes; `docs/evidence/act-phase-b-uia-feasibility.md` |
-| C — freeze contracts | Partial. Stage/cue, coordinate space, receipt protocol and identity policy written; **none has a production caller** |
-| D — runtime implementation | Not started. D107 moved the thin Excel slice ahead of the rest of C |
-| E — measure budgets | Not started. Every timing bound is deliberately absent until measured |
+| C — freeze contracts | Partial. Receipt and identity contracts have production callers; coordinate-space admission and signed stages remain unfinished |
+| D — runtime implementation | In progress. The public executor routes object-model and UIA operations to separate signed adapters and carries the pre-cue baseline into live verification (D114) |
+| E — measure budgets | Partial. Paint and receipt budgets are recorded; confirmation/dispatch budget closure remains |
 | F/H/J — three independent D032 reviews | Not started; each must be done by someone other than the author |
 | I — release signing and counted runs | Not started. Needs a non-ephemeral external key |
 
@@ -190,9 +190,9 @@ built but not yet exercised by a caller or a live run.
 **1. Deterministic execution path**
 - [x] Operation schema: backend, selector, identity policy in `operations.json`
 - [x] Receipt gating before each effect — wired: a UIA node with no presentation surface refuses
-- [x] Identity check before each pattern call — wired through `execute_node`
+- [x] Identity check before each pattern call — repeated inside the signed UIA adapter against the same element it invokes (D114)
 - [ ] `act_runtime` calls `coordinate_space` (reject unusable geometry)
-- [~] Three verifier modes sequenced — `act_node.execute_node`; verifier protocol still to carry them
+- [~] Before/confirm/after are sequenced and the real baseline reaches live verification; explicit verifier-mode wire vocabulary remains to be closed
 - [x] Per-node authorization minted only after the identity check passes
 
 **2. Shared signed generic UIA adapter (D108)**

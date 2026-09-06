@@ -15,6 +15,8 @@ from ghostcursor.act_runtime import (
     execute_approved_graph,
     approve_action_graph,
 )
+from ghostcursor.act_node import Observation
+from ghostcursor.uia_identity import identity_evidence
 from ghostcursor.action import (
     ActionEdge,
     ActionGraph,
@@ -766,10 +768,13 @@ def test_an_object_model_operation_is_sent_no_postconditions():
 
 @pytest.mark.parametrize("backend", ["uia_pattern", "legacy_iaccessible"])
 def test_a_control_driving_operation_gets_the_live_verifier(backend):
-    chosen, baseline, postconditions = choose_verifier("ARTIFACT", "LIVE", _op(backend))
+    from ghostcursor.act_node import Observation
+    chosen, baseline, postconditions = choose_verifier(
+        "ARTIFACT", "LIVE", _op(backend), observation=Observation({"slide_count": 3})
+    )
 
     assert chosen == "LIVE"
-    assert baseline == {}
+    assert baseline == {"slide_count": 3}
     assert postconditions == ("slide.count.increased_by_one",)
 
 
@@ -807,7 +812,7 @@ def test_the_routing_reads_the_operation_not_the_caller():
 
     parameters = list(inspect.signature(chooser).parameters)
 
-    assert parameters == ["artifact", "live", "operation"]
+    assert parameters == ["artifact", "live", "operation", "observation"]
 
 
 def test_the_descriptor_carries_the_live_verifier_through(tmp_path):
@@ -1054,7 +1059,15 @@ def test_the_uia_path_authorizes_the_node_it_is_running(tmp_path):
     assert len(seen) == 2, f"both nodes must dispatch, saw {seen}"
     for ordinal, dispatched in enumerate(two.ordered_nodes, start=1):
         expected = _authorize_node(
-            approval, two, node=dispatched, ordinal=ordinal
+            approval, two, node=dispatched, ordinal=ordinal,
+            observation_facts={
+                "backend": "uia_pattern",
+                "node_id": dispatched.node_id,
+                "operation_id": dispatched.operation_id,
+                "identity": identity_evidence(registry.operations[dispatched.operation_id].identity, _identity()),
+                "baseline_sha256": Observation({"slides": 3}).semantic_sha256,
+                "confirmation_sha256": Observation({"slides": 3}).semantic_sha256,
+            },
         )
         assert seen[ordinal - 1] == (
             dispatched.node_id,

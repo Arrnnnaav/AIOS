@@ -38,7 +38,11 @@ authority it sequences.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import hashlib
+import json
 from typing import Any, Callable, Mapping, Sequence
+
+from ghostcursor.action import _freeze, _plain
 
 from ghostcursor.act_protocol import (
     Backend,
@@ -78,6 +82,19 @@ class Observation:
     rectangle: tuple[int, int, int, int] | None = None
     match_count: int = 1
 
+    def __post_init__(self) -> None:
+        # Copy recursively at the observation boundary, not after the cue:
+        # providers may reuse their dictionaries for the next read.
+        object.__setattr__(self, "semantic", _freeze(_plain(self.semantic)))
+        if self.identity is not None:
+            object.__setattr__(self, "identity", _freeze(_plain(self.identity)))
+
+    @property
+    def semantic_sha256(self) -> str:
+        return hashlib.sha256(json.dumps(
+            _plain(self.semantic), sort_keys=True, separators=(",", ":"),
+        ).encode()).hexdigest()
+
 
 @dataclass(frozen=True)
 class NodeOutcome:
@@ -114,7 +131,7 @@ def execute_node(
     ],
     authorize: Callable[[Mapping[str, Any]], Any],
     dispatch: Callable[[Any, Observation | None], Any],
-    verify: Callable[[Any], bool],
+    verify: Callable[[Any, Observation | None], bool],
     clock: Callable[[], float],
     on_state: Callable[[LifecycleState], None] | None = None,
     should_continue: Callable[[], bool] | None = None,
@@ -234,6 +251,11 @@ def execute_node(
         )
         if reasons:
             raise NodeRefused(RefusalCode.TARGET_IDENTITY_MISMATCH, "; ".join(reasons))
+        if confirmed.rectangle != baseline.rectangle:
+            raise NodeRefused(
+                RefusalCode.TARGET_IDENTITY_MISMATCH,
+                "the confirmed target moved away from the displayed cue",
+            )
         identity_record = identity_evidence(spec.identity, confirmed.identity)
 
     # --- authorize and dispatch -------------------------------------------
@@ -247,13 +269,15 @@ def execute_node(
             "identity": identity_record,
             "node_id": node.node_id,
             "operation_id": node.operation_id,
+            "baseline_sha256": baseline.semantic_sha256 if baseline else None,
+            "confirmation_sha256": confirmed.semantic_sha256 if confirmed else None,
         }
     )
     dispatch(token, confirmed)
 
     # --- verify ------------------------------------------------------------
     enter(LifecycleState.VERIFYING)
-    if verify(node):
+    if verify(node, baseline):
         return outcome(
             True,
             "the declared postcondition was independently observed",

@@ -16,6 +16,7 @@ from ghostcursor.act_runtime import (
     approve_action_graph,
     execute_approved_graph,
 )
+from ghostcursor.act_pacing import QUICK, Pace
 from ghostcursor.action_plans import materialize_action_plan
 from ghostcursor.packs.compile import compile_matcher
 from ghostcursor.packs.workflow import (
@@ -129,16 +130,18 @@ def prepare_act_goal(
     # existed.
     staging = None
     written = output
-    if owned_output_root is not None:
+    plan_parameters = matching[0].parameters
+    if owned_output_root is not None and "output_path" in plan_parameters:
         from ghostcursor.act_staging import open_staging
 
         staging = open_staging(
             output, owned_root=Path(owned_output_root), run_id=uuid.uuid4().hex[:12]
         )
         written = staging.staging
-    validated = materialize_action_plan(
-        matching[0], {"output_path": str(written)}, descriptor.registry
+    parameter_values = (
+        {"output_path": str(written)} if "output_path" in plan_parameters else {}
     )
+    validated = materialize_action_plan(matching[0], parameter_values, descriptor.registry)
     packs = [
         pack
         for pack in context.catalog.packs.values()
@@ -183,6 +186,7 @@ def execute_act_proposal(
     controls: ActControls | None = None,
     event_sink: Callable[[object], None] | None = None,
     presentation=None,
+    pace: Pace = QUICK,
 ):
     """Approve the exact reviewed proposal once, then run its signed plan.
 
@@ -234,6 +238,7 @@ def execute_act_proposal(
         controls=controls or ActControls(),
         event_sink=event_sink,
         presentation=presentation,
+        pace=pace,
     )
     if proposal.staging is None:
         return result
@@ -270,6 +275,7 @@ def run_act_goal(
     owned_output_root: Path | None = None,
     receipt_policy=None,
     poll_escape: bool = True,
+    pace: Pace = QUICK,
 ) -> int:
     """Classify, authorize, preview, and optionally execute one Act goal.
 
@@ -342,6 +348,7 @@ def run_act_goal(
             owned_output_root=owned_output_root,
             event_sink=sink,
             controls=controls,
+            pace=pace,
         )
     else:
         if receipt_policy is None:
@@ -354,6 +361,9 @@ def run_act_goal(
                     "measured (D034)"
                 ),
             )
+            if watcher is not None:
+                controls.stop()
+                watcher.join(timeout=1.0)
             return 2
         with _pointer_surface(
             default_cue_budget(),
@@ -367,6 +377,7 @@ def run_act_goal(
                 event_sink=sink,
                 controls=controls,
                 presentation=presentation,
+                pace=pace,
             )
     if watcher is not None:
         # Release the poller. The run is over, so setting the stop flag

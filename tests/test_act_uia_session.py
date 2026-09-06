@@ -94,6 +94,7 @@ class FakeVerifier:
         output_path,
         target,
         timeout_s=10.0,
+        cancel_event=None,
         baseline=None,
         postconditions=None,
     ):
@@ -228,6 +229,19 @@ def _node():
     )
 
 
+def _confirmed():
+    return Observation(
+        semantic={"slides": 3},
+        identity={
+            "automation_id": "",
+            "control_type": "Button",
+            "name": "New Slide",
+            "runtime_id": (7, 1, 2),
+        },
+        rectangle=(100, 200, 260, 245),
+    )
+
+
 # --- an observation is three readings that agree --------------------------
 
 
@@ -238,7 +252,7 @@ def test_an_observation_carries_the_document_reading_and_the_control(tmp_path):
         observation = session.observe(_node(), "observe_before")
 
     assert isinstance(observation, Observation)
-    assert observation.semantic == (("slides", 3),)
+    assert observation.semantic == {"slides": 3}
     assert observation.identity["name"] == "New Slide"
     assert observation.rectangle == (100, 200, 260, 245)
 
@@ -426,7 +440,7 @@ def test_the_dispatch_goes_to_the_selector_named_control(tmp_path):
     digest = _payload(tmp_path, name="Reuse Slides")
     with _host(tmp_path) as host:
         session = _session(tmp_path, host, digest=digest)
-        session.dispatch(_node(), _token(), Observation(semantic=(), identity={}))
+        session.dispatch(_node(), _token(), _confirmed())
     # No exception means the adapter reported completed for that name; the
     # name itself is asserted through the observe path above.
 
@@ -451,7 +465,7 @@ def test_an_adapter_that_did_not_complete_refuses_the_node(tmp_path, outcome):
         session = _session(tmp_path, host)
 
         with pytest.raises(UiaSessionError, match="did not complete the dispatch"):
-            session.dispatch(_node(), _token(), Observation(semantic=(), identity={}))
+            session.dispatch(_node(), _token(), _confirmed())
 
 
 def test_the_dispatch_carries_the_authorization_core_minted(tmp_path):
@@ -476,7 +490,7 @@ def test_the_dispatch_carries_the_authorization_core_minted(tmp_path):
         host.dispatch_pattern = spy
         session = _session(tmp_path, host)
         session.dispatch(
-            _node(), _token("d" * 64), Observation(semantic=(), identity={})
+            _node(), _token("d" * 64), _confirmed()
         )
 
     assert sent == ["d" * 64]
@@ -491,7 +505,7 @@ def test_a_dispatch_without_the_minted_authorization_is_refused(tmp_path, token)
         session = _session(tmp_path, host)
         with pytest.raises(UiaSessionError, match="authorization"):
             session.dispatch(
-                _node(), token, Observation(semantic=(), identity={})
+                _node(), token, _confirmed()
             )
     assert not getattr(host, "dispatched", [])
 
@@ -566,4 +580,3 @@ def test_two_failed_readings_can_never_compare_equal(tmp_path):
         for mode in ("observe_before", "confirm_before"):
             with pytest.raises(UiaSessionError):
                 session.observe(_node(), mode)
-

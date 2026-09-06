@@ -142,9 +142,8 @@ def _powerpoint_adapter_files():
             root / "adapter" / "powerpoint_verifier.py"
         ).read_bytes(),
         "ghostcursor/action-plans.json": (root / "action-plans.json").read_bytes(),
-        "ghostcursor/action-plans/build-investor-deck-v1.json": (
-            root / "action-plans" / "build-investor-deck-v1.json"
-        ).read_bytes(),
+        **{f"ghostcursor/action-plans/{path.name}": path.read_bytes()
+           for path in (root / "action-plans").glob("*.json")},
         OPERATION_ARTIFACT_PATH: (root / "operations.json").read_bytes(),
     }
 

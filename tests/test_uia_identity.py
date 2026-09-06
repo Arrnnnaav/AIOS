@@ -187,6 +187,15 @@ def test_control_type_can_never_be_opted_out_of():
         _policy(required_fields=("name", "runtime_id"))
 
 
+@pytest.mark.parametrize("missing", [None, "", ()])
+def test_a_required_identity_field_must_have_been_successfully_read(missing):
+    observed = _observed(runtime_id=missing)
+
+    reasons = compare_identity(_policy(), _observed(), observed, match_count=1)
+
+    assert any("successfully read" in reason for reason in reasons)
+
+
 def test_a_field_may_not_be_both_required_and_evidence_only():
     """Allowing both makes the stronger role decorative."""
 

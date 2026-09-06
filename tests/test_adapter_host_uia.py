@@ -33,7 +33,8 @@ import sys
 
 OBSERVE = {"control_type", "name", "request_id", "session_nonce", "type"}
 EXECUTE = {
-    "authorization_sha256", "control_type", "name", "pattern",
+    "authorization_sha256", "control_type", "expected_identity",
+    "expected_rectangle", "name", "pattern",
     "request_id", "session_nonce", "type", "value",
 }
 
@@ -108,6 +109,17 @@ def _descriptor(tmp_path: Path, source: str = SCRIPT):
 
 def _host(tmp_path, source: str = SCRIPT):
     return AdapterHost(_descriptor(tmp_path, source), session_nonce="nonce")
+
+
+def _confirmed():
+    return {
+        "expected_identity": {
+            "control_type": "Button",
+            "name": "New Slide",
+            "runtime_id": [7, 1, 2],
+        },
+        "expected_rectangle": (100, 200, 260, 245),
+    }
 
 
 # --- reading a control ----------------------------------------------------
@@ -249,6 +261,7 @@ def test_a_pattern_is_dispatched_on_the_named_control(tmp_path):
             "New Slide",
             "Invoke",
             authorization_sha256="a" * 64,
+            **_confirmed(),
             timeout_s=5.0,
         )
 
@@ -272,6 +285,7 @@ def test_the_authorization_digest_travels_with_the_dispatch(tmp_path):
             "New Slide",
             "Invoke",
             authorization_sha256="b" * 64,
+            **_confirmed(),
             timeout_s=5.0,
         )
 
@@ -289,6 +303,7 @@ def test_a_dispatch_frame_the_real_adapter_would_refuse_is_not_sent(tmp_path):
             "New Slide",
             "Invoke",
             authorization_sha256="c" * 64,
+            **_confirmed(),
             timeout_s=5.0,
         )
 
@@ -307,6 +322,7 @@ def test_a_dispatch_refusal_is_reported_rather_than_raised(tmp_path):
             "New Slide",
             "Invoke",
             authorization_sha256="d" * 64,
+            **_confirmed(),
             timeout_s=5.0,
         )
 
@@ -322,6 +338,7 @@ def test_dispatching_without_a_running_adapter_is_refused(tmp_path):
             "New Slide",
             "Invoke",
             authorization_sha256="e" * 64,
+            **_confirmed(),
             timeout_s=5.0,
         )
 
@@ -341,6 +358,7 @@ def test_a_replayed_dispatch_result_is_refused(tmp_path):
             "New Slide",
             "Invoke",
             authorization_sha256="f" * 64,
+            **_confirmed(),
             timeout_s=5.0,
         )
 
@@ -374,6 +392,8 @@ def test_the_shipped_adapter_accepts_exactly_the_fields_the_host_sends():
     for field in (
         "authorization_sha256",
         "control_type",
+        "expected_identity",
+        "expected_rectangle",
         "name",
         "pattern",
         "request_id",

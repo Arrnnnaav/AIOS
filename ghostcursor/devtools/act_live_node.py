@@ -296,24 +296,12 @@ def main() -> int:
             )
 
             print("--- node ---")
-            # The reading taken before anything was shown. `execute_node`
-            # keeps its own copy for the drift check; this one is what the
-            # postcondition is measured against, and it has to be captured
-            # here because the verify callback runs after the effect.
-            baseline: dict = {}
-
-            def observe(mode):
-                observation = session.observe(node, mode)
-                if mode == "observe_before":
-                    baseline.update(dict(observation.semantic))
-                return observation
-
             outcome = execute_node(
                 node,
                 spec,
                 request=request,
                 policy=session.policy,
-                observe=observe,
+                observe=lambda mode: session.observe(node, mode),
                 present=session.present,
                 # This diagnostic mints no real approval. It stands in for
                 # the `AuthorizedAction` core would mint, carrying only the
@@ -329,7 +317,7 @@ def main() -> int:
                     dispatched.__setitem__("count", dispatched["count"] + 1),
                     session.dispatch(node, token, confirmed),
                 )[1],
-                verify=lambda _node: _verify(
+                verify=lambda _node, baseline: _verify(
                     VerifierHost(verifier_descriptor),
                     node,
                     hashlib.sha256(operations_bytes).hexdigest(),
@@ -340,7 +328,7 @@ def main() -> int:
                         "hwnd": hwnd,
                         "pid": pid,
                     },
-                    baseline=baseline,
+                    baseline=baseline.semantic,
                     postconditions=spec.postconditions,
                 ),
                 clock=lambda: time.monotonic() * 1000.0,

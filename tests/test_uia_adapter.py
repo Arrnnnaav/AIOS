@@ -289,6 +289,67 @@ def test_the_legacy_default_action_is_dispatched_separately_from_patterns():
     assert "DoDefaultAction" not in adapter._PATTERNS
 
 
+def _confirmed_request(**overrides):
+    value = {
+        "authorization_sha256": "a" * 64,
+        "control_type": "Button",
+        "expected_identity": {
+            "control_type": "Button",
+            "name": "New Slide",
+            "runtime_id": [7, 1, 2],
+        },
+        "expected_rectangle": [10, 20, 110, 60],
+        "name": "New Slide",
+        "pattern": "Invoke",
+        "value": None,
+    }
+    value.update(overrides)
+    return value
+
+
+def test_confirmed_dispatch_compares_and_invokes_the_same_element():
+    element = _Element()
+    session = _session([element])
+
+    with session._patch:
+        identity, rectangle = session.execute_confirmed(_confirmed_request())
+
+    assert identity["runtime_id"] == [7, 1, 2]
+    assert rectangle == [10, 20, 110, 60]
+    assert element.invoked == [("Invoke", None)]
+
+
+@pytest.mark.parametrize(
+    "change,detail",
+    [
+        ({"expected_identity": {"control_type": "Button", "name": "New Slide", "runtime_id": [9]}}, "runtime_id"),
+        ({"expected_rectangle": [11, 20, 110, 60]}, "rectangle"),
+        ({"expected_identity": {"control_type": "TabItem", "name": "New Slide"}}, "control type"),
+    ],
+)
+def test_a_changed_confirmed_target_refuses_before_the_effect(change, detail):
+    element = _Element()
+    session = _session([element])
+
+    with session._patch, pytest.raises(adapter.Refusal, match=detail):
+        session.execute_confirmed(_confirmed_request(**change))
+
+    assert element.invoked == []
+
+
+def test_a_confirmation_authorization_is_one_use_even_after_refusal():
+    element = _Element()
+    session = _session([element])
+    wrong = _confirmed_request(expected_rectangle=[11, 20, 110, 60])
+
+    with session._patch, pytest.raises(adapter.Refusal, match="rectangle"):
+        session.execute_confirmed(wrong)
+    with session._patch, pytest.raises(adapter.Refusal, match="already consumed"):
+        session.execute_confirmed(_confirmed_request())
+
+    assert element.invoked == []
+
+
 def test_a_control_without_legacy_support_refuses():
     element = _Element(patterns={})
     session = _session([element])

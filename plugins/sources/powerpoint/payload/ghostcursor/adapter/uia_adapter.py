@@ -111,6 +111,7 @@ class UiaSession:
         self.executable_version = str(target["executable_version"])
         self._automation = None
         self._module = None
+        self._consumed = set()
 
     def _connect(self):
         if self._automation is None:
@@ -230,6 +231,53 @@ class UiaSession:
         else:
             getattr(interface, method)()
 
+    def execute_confirmed(self, request):
+        """Consume one request and compare immediately before the effect.
+
+        Core selects required fields from signed policy. This boundary does
+        not select a policy: every supplied expectation must hold. Failed
+        attempts consume the token too, so callers cannot replay uncertain
+        effects or retry a refused target silently.
+        """
+        digest = request["authorization_sha256"]
+        if not isinstance(digest, str) or _SHA_RE.fullmatch(digest) is None:
+            raise Refusal("authorization digest is invalid")
+        if digest in self._consumed:
+            raise Refusal("authorization was already consumed")
+        self._consumed.add(digest)
+        expected = request["expected_identity"]
+        allowed = {"control_type", "name", "runtime_id", "automation_id", "native_window_handle"}
+        if (not isinstance(expected, dict) or not expected
+                or not set(expected) <= allowed or "control_type" not in expected
+                or not ({"name", "runtime_id"} & set(expected))):
+            raise Refusal("confirmed identity fields are invalid")
+        if expected["control_type"] != request["control_type"]:
+            raise Refusal("confirmed control type disagrees with selector")
+        for key, value in expected.items():
+            if key == "runtime_id":
+                valid = isinstance(value, list) and bool(value) and all(type(v) is int for v in value)
+            elif key == "native_window_handle":
+                valid = type(value) is int and value > 0
+            else:
+                valid = isinstance(value, str) and bool(value)
+            if not valid:
+                raise Refusal(f"required {key} was not successfully read")
+        wanted_rect = request["expected_rectangle"]
+        if (not isinstance(wanted_rect, list) or len(wanted_rect) != 4
+                or not all(type(v) is int for v in wanted_rect)
+                or wanted_rect[2] <= wanted_rect[0] or wanted_rect[3] <= wanted_rect[1]):
+            raise Refusal("confirmed rectangle is invalid")
+        element = self.resolve_exactly_one(request["control_type"], request["name"])
+        identity, rectangle = self.describe(element, request["control_type"])
+        for field, wanted in expected.items():
+            if field not in identity or _canonical(identity[field]) != _canonical(wanted):
+                raise Refusal(f"confirmed target identity changed: {field}")
+        if rectangle != wanted_rect:
+            raise Refusal("confirmed target rectangle changed")
+        self._verify_window_authority()
+        self.dispatch(element, request["pattern"], request.get("value"))
+        return identity, rectangle
+
 
 def main():
     if sys.argv[1:] != ["--jsonl"]:
@@ -294,6 +342,8 @@ def main():
                 request,
                 {
                     "authorization_sha256",
+                    "expected_identity",
+                    "expected_rectangle",
                     "control_type",
                     "name",
                     "pattern",
@@ -304,13 +354,7 @@ def main():
                 },
                 "execute",
             )
-            if _SHA_RE.fullmatch(request["authorization_sha256"]) is None:
-                raise Refusal("authorization digest is invalid")
-            element = session.resolve_exactly_one(
-                request["control_type"], request["name"]
-            )
-            identity, rectangle = session.describe(element, request["control_type"])
-            session.dispatch(element, request["pattern"], request.get("value"))
+            identity, rectangle = session.execute_confirmed(request)
             _write(
                 {
                     "data": {"identity": identity, "rectangle": rectangle},

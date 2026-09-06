@@ -263,6 +263,13 @@ passes the baseline through and never interprets it. `baseline` and
 verifier validates its request fields exactly. A live verifier may never call
 an effect API, and that prohibition is AST-scanned.
 
+The immutable `observe_before` semantic value is the baseline supplied to
+live `verify_after`; an empty placeholder is forbidden. Freeze it at the
+observation boundary, bind its digest and the confirmation digest into the
+per-node authorization, and never reconstruct it after dispatch. Recheck the
+approval, catalog epoch, and exact target after the cue and immediately before
+minting that authorization.
+
 Act's generic UIA backend is one canonical adapter source
 (`plugins/shared/uia_adapter.py`) that each plugin copies into its own payload
 and signs as its own adapter (D108). Copies are byte-identical, so one review
@@ -271,6 +278,16 @@ another. Selectors, operations and identity policy stay per-plugin data, and
 the adapter learns nothing about the application. Never resolve a shared
 adapter from core by id -- that makes executable plugin authority many-to-one,
 which D100 refuses.
+
+Route every UIA request to the payload's signed `uia_entrypoint`, never to its
+object-model `entrypoint`. Immediately before invoking, that adapter must
+resolve exactly one selector match, compare every required identity field and
+the displayed rectangle against core's confirmation, recheck window/process
+ownership, consume the authorization once even on refusal, and invoke that
+same resolved element without another lookup. The digest is an audit binding
+delivered over the nonce-bound private session pipe; do not call it an
+independently signed token. A parameterless UIA plan is materialized with no
+invented artifact parameter and does not create a staging file.
 
 The signed `ghostcursor.excel` plugin is active only for Excel
 `16.0.20326.20112`. `SELECT_CELL_B2` and `ADD_WORKSHEET` each passed three

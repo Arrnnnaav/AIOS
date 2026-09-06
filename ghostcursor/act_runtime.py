@@ -383,6 +383,7 @@ def _authorize_node(
     *,
     node,
     ordinal: int,
+    observation_facts: Mapping[str, object] | None = None,
 ) -> AuthorizedAction:
     value = {
         "approval_sha256": approval.approval_sha256,
@@ -392,6 +393,8 @@ def _authorize_node(
         "parameters": _plain(node.parameters),
         "validation_sha256": validated.validation_sha256,
     }
+    if observation_facts is not None:
+        value["observation_facts"] = _plain(observation_facts)
     digest = hashlib.sha256(
         json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()
@@ -477,7 +480,11 @@ def _execute_approved_graph(
             validated,
             output_path=approval.output_path,
         )
-    if Path(approval.output_path).exists():
+    writes_artifact = any(
+        not registry.operations[node.operation_id].draws_a_pointer
+        for node in validated.ordered_nodes
+    )
+    if writes_artifact and Path(approval.output_path).exists():
         return ActRunResult(
             ActRunPhase.APPROVAL,
             ActRunCode.APPROVAL_STALE,
@@ -517,6 +524,8 @@ def _execute_approved_graph(
             output_path=approval.output_path,
         )
 
+    object_nodes = tuple(n for n in validated.ordered_nodes
+                         if not registry.operations[n.operation_id].draws_a_pointer)
     host = AdapterHost(
         descriptor,
         session_nonce=secrets.token_hex(16),
@@ -530,14 +539,17 @@ def _execute_approved_graph(
             },
         },
     )
+    uia_host = None
     try:
-        host.start()
+        if object_nodes:
+            host.start()
         try:
-            host.preflight(
-                validated.ordered_nodes,
-                validation_sha256=validated.validation_sha256,
-                cancel_event=controls.stop_event,
-            )
+            if object_nodes:
+                host.preflight(
+                    object_nodes,
+                    validation_sha256=validated.validation_sha256,
+                    cancel_event=controls.stop_event,
+                )
         except AdapterProtocolError as exc:
             return ActRunResult(
                 ActRunPhase.VALIDATION,
@@ -571,8 +583,22 @@ def _execute_approved_graph(
             from ghostcursor.act_uia_session import build_uia_session
 
             try:
+                if getattr(descriptor, "uia_entrypoint", None) is None:
+                    raise AdapterProtocolError("plugin ships no signed UIA adapter")
+                uia_host = AdapterHost(
+                    SimpleNamespace(
+                        plugin_id=descriptor.plugin_id,
+                        plugin_version=descriptor.plugin_version,
+                        payload_root=descriptor.payload_root,
+                        entrypoint=descriptor.uia_entrypoint,
+                        adapter_sha256=descriptor.uia_adapter_sha256,
+                    ),
+                    session_nonce=secrets.token_hex(16),
+                    session_context={"target": host.session_context["target"]},
+                )
+                uia_host.start()
                 uia_session = build_uia_session(
-                    host=host,
+                    host=uia_host,
                     verifier=live_verifier,
                     payload_root=Path(descriptor.payload_root),
                     overlay=presentation.overlay,
@@ -712,6 +738,23 @@ def _execute_approved_graph(
                     # execute_node is called HERE, by core, with core's own
                     # verifier. The session contributes observe, present and
                     # dispatch and nothing else.
+                    def authorize_observed(facts):
+                        # The cue and confirmation can take seconds. The
+                        # node-entry authority check is no longer fresh here.
+                        if approval.expires_at < wall_clock():
+                            raise AdapterProtocolError("approval expired during presentation")
+                        if current_authority() != (
+                            approval.active_index_sha256, approval.catalog_generation,
+                            approval.plugin_version, approval.manifest_sha256,
+                            approval.adapter_sha256,
+                        ):
+                            raise AdapterProtocolError("authority changed during presentation")
+                        revalidate_target(approval.target)
+                        return _authorize_node(
+                            approval, validated, node=node, ordinal=ordinal,
+                            observation_facts=facts,
+                        )
+
                     outcome = execute_node(
                         node,
                         operation,
@@ -719,13 +762,13 @@ def _execute_approved_graph(
                         policy=uia_session.policy,
                         observe=lambda mode: uia_session.observe(node, mode),
                         present=uia_session.present,
-                        authorize=lambda facts: _authorize_node(
-                            approval, validated, node=node, ordinal=ordinal
-                        ),
+                        authorize=authorize_observed,
                         dispatch=lambda token, confirmed: uia_session.dispatch(
                             node, token, confirmed
                         ),
-                        verify=lambda target: verify(target, operation, None, approval),
+                        verify=lambda target, baseline: verify(
+                            target, operation, baseline, approval
+                        ),
                         clock=uia_session.clock,
                         # The operator's Stop, asked at the two boundaries
                         # where stopping is still free. Without it a Stop
@@ -884,7 +927,11 @@ def _execute_approved_graph(
             # Zero in Quick Build, so this costs that mode nothing.
             _paced(pace.after_node_ms, node, ordinal)
     finally:
-        host.stop()
+        try:
+            if uia_host is not None:
+                uia_host.stop()
+        finally:
+            host.stop()
     publish("completed", None, len(validated.ordered_nodes), "all actions verified")
     return ActRunResult(
         ActRunPhase.COMPLETE,
@@ -908,7 +955,7 @@ def prepare_action_graph(
     return validate_action_graph(graph, registry, initial_facts=initial_facts)
 
 
-def choose_verifier(artifact, live, operation):
+def choose_verifier(artifact, live, operation, *, observation=None):
     """Which verifier may answer for this operation, and with what.
 
     Returns `(verifier, baseline, postconditions)`. Module level rather than a
@@ -939,7 +986,13 @@ def choose_verifier(artifact, live, operation):
             f"{operation.backend!r} but the plugin ships no live_verifier; "
             "the artifact verifier cannot answer for a live effect"
         )
-    return live, {}, tuple(operation.postconditions)
+    if (not isinstance(observation, Observation)
+            or not isinstance(observation.semantic, Mapping)
+            or not observation.semantic):
+        raise AdapterProtocolError("live verification requires the node's nonempty baseline")
+    if not operation.postconditions:
+        raise AdapterProtocolError("live verification requires declared postconditions")
+    return live, observation.semantic, tuple(operation.postconditions)
 
 
 def execute_approved_graph(
@@ -998,8 +1051,8 @@ def execute_approved_graph(
             )
         )
 
-    def _verifier_for(operation):
-        return choose_verifier(verifier, live_verifier, operation)
+    def _verifier_for(operation, observation):
+        return choose_verifier(verifier, live_verifier, operation, observation=observation)
 
     def observe(phase: str, facts: Mapping[str, object]) -> None:
         if verify_observer is None:
@@ -1013,7 +1066,7 @@ def execute_approved_graph(
         node_id = getattr(node, "node_id", None)
         observe("verify_started", {"node_id": node_id})
         started = time.monotonic()
-        chosen, baseline, postconditions = _verifier_for(operation)
+        chosen, baseline, postconditions = _verifier_for(operation, _response)
         try:
             result = chosen.verify(
                 node=node,
