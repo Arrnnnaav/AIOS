@@ -58,7 +58,7 @@ class ActProposal:
     plugin_id: str
     #: Where the artifact is DELIVERED. The plan is materialized against the
     #: staging path below, so the adapter is never told this one.
-    output_path: Path
+    output_path: Path | None
     target: ActTarget
     validated: object
     descriptor: object
@@ -72,6 +72,11 @@ class ActProposal:
 
     @property
     def summary(self) -> str:
+        if self.output_path is None:
+            return (
+                f"{len(self.validated.ordered_nodes)} low-risk live actions "
+                "will run in the approved application."
+            )
         return (
             f"{len(self.validated.ordered_nodes)} low-risk actions will create "
             f"{self.output_path.name} in {self.output_path.parent}."
@@ -88,7 +93,7 @@ class ActProposal:
 def prepare_act_goal(
     goal: str,
     *,
-    output_path: Path,
+    output_path: Path | None,
     target_hwnd: int | None,
     store=None,
     owned_output_root: Path | None = None,
@@ -121,7 +126,7 @@ def prepare_act_goal(
         raise RuntimeError(
             "authorized intent does not map to exactly one signed action plan"
         )
-    output = Path(output_path).resolve()
+    output = None if output_path is None else Path(output_path).resolve()
     # Stage when an owned root is available. The plan is materialized against
     # the STAGING path, so the adapter is never told where the final artifact
     # goes and cannot expose a partial one (D032 review, F1). Without an owned
@@ -129,9 +134,13 @@ def prepare_act_goal(
     # its final path directly — as every production run did before staging
     # existed.
     staging = None
-    written = output
     plan_parameters = matching[0].parameters
-    if owned_output_root is not None and "output_path" in plan_parameters:
+    if "output_path" in plan_parameters and output is None:
+        raise RuntimeError("this Act plan creates an artifact and requires --output")
+    if "output_path" not in plan_parameters:
+        output = None
+    written = output
+    if owned_output_root is not None and output is not None:
         from ghostcursor.act_staging import open_staging
 
         staging = open_staging(
@@ -139,7 +148,7 @@ def prepare_act_goal(
         )
         written = staging.staging
     parameter_values = (
-        {"output_path": str(written)} if "output_path" in plan_parameters else {}
+        {"output_path": str(written)} if written is not None else {}
     )
     validated = materialize_action_plan(matching[0], parameter_values, descriptor.registry)
     packs = [
@@ -268,7 +277,7 @@ def execute_act_proposal(
 def run_act_goal(
     goal: str,
     *,
-    output_path: Path,
+    output_path: Path | None,
     target_hwnd: int,
     approved: bool,
     unattended: bool = False,
@@ -306,7 +315,7 @@ def run_act_goal(
         graph_sha256=proposal.validated.graph_sha256,
         intent_id=proposal.intent_id,
         nodes=len(proposal.validated.ordered_nodes),
-        output_path=str(proposal.output_path),
+        output_path=(None if proposal.output_path is None else str(proposal.output_path)),
         plugin_id=proposal.plugin_id,
         target_hwnd=proposal.target.hwnd,
     )

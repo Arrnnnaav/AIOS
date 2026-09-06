@@ -74,7 +74,7 @@ class PlanApproval:
     active_index_sha256: str
     catalog_generation: int
     target: ActTarget
-    output_path: str
+    output_path: str | None
     unattended: bool
     approved_at: float
     expires_at: float
@@ -237,7 +237,7 @@ def approve_action_graph(
     active_index_sha256: str,
     catalog_generation: int,
     target: ActTarget,
-    output_path: Path,
+    output_path: Path | None,
     owned_output_root: Path | None = None,
     unattended: bool = False,
     lifetime_s: float = 300.0,
@@ -268,9 +268,6 @@ def approve_action_graph(
         raise ValueError("approval target is invalid")
     if len(manifest_sha256) != 64 or len(active_index_sha256) != 64:
         raise ValueError("approval authority digest is invalid")
-    output = Path(output_path).resolve()
-    if output.exists():
-        raise ValueError("Act never overwrites an existing output artifact")
     declared_output_values = [
         node.parameters["output_path"]
         for node in validated.ordered_nodes
@@ -278,10 +275,21 @@ def approve_action_graph(
     ]
     if any(not isinstance(value, str) for value in declared_output_values):
         raise ValueError("action graph output path is invalid")
+    writes_artifact = any(
+        not registry.operations[node.operation_id].draws_a_pointer
+        for node in validated.ordered_nodes
+    )
+    output = None if output_path is None else Path(output_path).resolve()
+    if writes_artifact and output is None:
+        raise ValueError("an artifact-producing action graph requires an output path")
+    if not writes_artifact and output is not None:
+        raise ValueError("a live-only action graph must not bind an artifact path")
+    if output is not None and output.exists():
+        raise ValueError("Act never overwrites an existing output artifact")
     declared_outputs = {str(Path(value).resolve()) for value in declared_output_values}
     if declared_outputs and declared_outputs != {str(output)}:
         raise ValueError("action graph output disagrees with the approved artifact")
-    if unattended:
+    if unattended and output is not None:
         if owned_output_root is None:
             raise ValueError("unattended Act requires an owned output root")
         root = Path(owned_output_root).resolve()
@@ -298,7 +306,7 @@ def approve_action_graph(
         active_index_sha256=active_index_sha256,
         catalog_generation=catalog_generation,
         target=target,
-        output_path=str(output),
+        output_path=None if output is None else str(output),
         unattended=unattended,
         expires_at=approved_at + lifetime_s,
     )
@@ -313,7 +321,7 @@ def approve_action_graph(
         active_index_sha256=active_index_sha256,
         catalog_generation=catalog_generation,
         target=target,
-        output_path=str(output),
+        output_path=None if output is None else str(output),
         unattended=unattended,
         approved_at=approved_at,
         expires_at=approved_at + lifetime_s,
@@ -329,7 +337,7 @@ def _approval_payload(
     active_index_sha256: str,
     catalog_generation: int,
     target: ActTarget,
-    output_path: str,
+    output_path: str | None,
     unattended: bool,
     expires_at: float,
 ) -> dict[str, object]:
@@ -484,7 +492,9 @@ def _execute_approved_graph(
         not registry.operations[node.operation_id].draws_a_pointer
         for node in validated.ordered_nodes
     )
-    if writes_artifact and Path(approval.output_path).exists():
+    if writes_artifact and (
+        approval.output_path is None or Path(approval.output_path).exists()
+    ):
         return ActRunResult(
             ActRunPhase.APPROVAL,
             ActRunCode.APPROVAL_STALE,

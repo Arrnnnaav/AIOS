@@ -4542,3 +4542,11 @@ cross-process coordinate-space contract, so this slice is not acceptance
 evidence. The full hermetic lane after the change passed 2,336 tests with 71
 deselected; that run proves regression behavior, not D032 independence or a
 live desktop outcome.
+
+The first independent review found that the implementation had stopped
+materializing the parameter but still required and advertised the path at the
+CLI and approval boundaries. Live-only graphs now bind `output_path=None` and
+may run unattended without an artifact root; object-model graphs still require
+an absent approved output under the owned root. Focused approval and CLI tests
+passed after that correction. The rest of the review was explicitly incomplete,
+so this does not close the pre-sign D032 gate.

@@ -544,10 +544,8 @@ def main() -> int:
 
     if args.goal:
         if args.mode == "act":
-            if args.output is None or args.target_hwnd is None:
-                parser.error("Act mode requires --output and --target-hwnd")
-            if args.unattended and args.owned_output_root is None:
-                parser.error("unattended Act requires --owned-output-root")
+            if args.target_hwnd is None:
+                parser.error("Act mode requires --target-hwnd")
             from ghostcursor.act_cli import run_act_goal
             from ghostcursor.act_pacing import pace_by_name
 

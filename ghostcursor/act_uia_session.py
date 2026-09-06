@@ -62,7 +62,7 @@ def build_uia_session(
     operation_for: Callable[[object], Any],
     target: Mapping[str, Any],
     validation_sha256: str,
-    output_path: str,
+    output_path: str | None,
     cancel_event: "threading.Event | None" = None,
     observe_timeout_s: float = 5.0,
     dispatch_timeout_s: float = 10.0,

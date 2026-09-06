@@ -1298,5 +1298,7 @@ required identity field and the displayed rectangle, rechecks window/process
 authority, consumes the node authorization once, and invokes that same element.
 The digest is an audit binding delivered over the nonce-bound private session
 pipe; it is not described as an independently signed token. Parameterless UIA
-plans materialize with no invented `output_path`, while artifact plans retain
-same-volume staging. Quick and Watch pacing now reach the public CLI.
+plans materialize and approve with `output_path=None`; the CLI therefore needs
+only `--target-hwnd` for a live-only plan and reports no fictional artifact.
+Artifact plans still require `--output` and retain same-volume staging. Quick
+and Watch pacing now reach the public CLI.

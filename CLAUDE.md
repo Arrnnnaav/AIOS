@@ -287,7 +287,9 @@ ownership, consume the authorization once even on refusal, and invoke that
 same resolved element without another lookup. The digest is an audit binding
 delivered over the nonce-bound private session pipe; do not call it an
 independently signed token. A parameterless UIA plan is materialized with no
-invented artifact parameter and does not create a staging file.
+invented artifact parameter, binds `output_path=None`, and does not create a
+staging file. Artifact-producing object-model plans still require a new output
+path; never make that requirement global to all Act plans.
 
 The signed `ghostcursor.excel` plugin is active only for Excel
 `16.0.20326.20112`. `SELECT_CELL_B2` and `ADD_WORKSHEET` each passed three

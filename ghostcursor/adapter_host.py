@@ -58,7 +58,7 @@ class VerifierHost:
         *,
         node,
         validation_sha256: str,
-        output_path: str,
+        output_path: str | None,
         target: Mapping[str, Any],
         timeout_s: float = 10.0,
         cancel_event: threading.Event | None = None,

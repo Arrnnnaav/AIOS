@@ -24,6 +24,19 @@ def test_the_proposal_carries_a_staging_area():
     assert fields["staging"].default is None
 
 
+def test_a_live_only_proposal_does_not_claim_it_creates_a_file():
+    from ghostcursor.act_cli import ActProposal
+
+    proposal = ActProposal(
+        "add a slide", "ADD_SLIDE", "ghostcursor.powerpoint", None,
+        SimpleNamespace(), SimpleNamespace(ordered_nodes=(SimpleNamespace(),)),
+        SimpleNamespace(), "a" * 64, 1, SimpleNamespace(),
+    )
+
+    assert "live actions" in proposal.summary
+    assert "create" not in proposal.summary
+
+
 
 # --- behavioural: publish and abandon actually happen ---------------------
 #

@@ -138,6 +138,12 @@ def _approval(tmp_path, validated, registry, **changes):
         "owned_output_root": tmp_path / "owned",
         "now": 100.0,
     }
+    if all(
+        registry.operations[node.operation_id].draws_a_pointer
+        for node in validated.ordered_nodes
+    ):
+        values["output_path"] = None
+        values["owned_output_root"] = None
     values.update(changes)
     return approve_action_graph(validated, registry, **values)
 
@@ -543,6 +549,53 @@ def _uia_graph(registry):
         (),
     )
     return validate_action_graph(graph, registry)
+
+
+def test_a_live_only_graph_binds_no_fictional_artifact_path(tmp_path):
+    registry = _uia_registry()
+    validated = _uia_graph(registry)
+
+    approval = approve_action_graph(
+        validated,
+        registry,
+        manifest_sha256=MANIFEST,
+        active_index_sha256=ACTIVE,
+        catalog_generation=7,
+        target=_target(),
+        output_path=None,
+        unattended=True,
+        now=100.0,
+    )
+
+    assert approval.output_path is None
+    with pytest.raises(ValueError, match="must not bind an artifact path"):
+        approve_action_graph(
+            validated,
+            registry,
+            manifest_sha256=MANIFEST,
+            active_index_sha256=ACTIVE,
+            catalog_generation=7,
+            target=_target(),
+            output_path=tmp_path / "fictional.pptx",
+            now=100.0,
+        )
+
+
+def test_an_artifact_graph_still_requires_its_output_path():
+    registry = _registry()
+    validated = _validated(registry)
+
+    with pytest.raises(ValueError, match="requires an output path"):
+        approve_action_graph(
+            validated,
+            registry,
+            manifest_sha256=MANIFEST,
+            active_index_sha256=ACTIVE,
+            catalog_generation=7,
+            target=_target(),
+            output_path=None,
+            now=100.0,
+        )
 
 
 def _identity():
@@ -1017,7 +1070,7 @@ def test_a_failure_inside_the_session_becomes_a_result_not_an_exception(tmp_path
     result = _run_uia(tmp_path, session=session)
 
     assert result.code is ActRunCode.ADAPTER_FAILED
-    assert result.output_path is not None
+    assert result.output_path is None
     assert "could not answer" in result.detail
 
 
