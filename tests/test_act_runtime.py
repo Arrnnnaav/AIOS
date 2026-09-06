@@ -660,6 +660,75 @@ def test_a_control_driving_node_runs_the_three_observation_flow(tmp_path):
     assert record["presented"][0].geometry_required is True
 
 
+def test_the_pre_cue_baseline_reaches_post_action_verification(tmp_path):
+    session, _record = _fake_session()
+    seen = []
+    registry = _uia_registry()
+    validated = _uia_graph(registry)
+    import time as _time
+    approval = _approval(tmp_path, validated, registry, now=_time.time())
+    (tmp_path / "owned").mkdir(exist_ok=True)
+
+    result = _execute_approved_graph(
+        validated,
+        registry,
+        approval,
+        descriptor=_descriptor(tmp_path),
+        current_authority=_authority,
+        revalidate_target=lambda _target: None,
+        verify=lambda _node, _operation, baseline, _approval: (
+            seen.append(baseline.semantic) or True
+        ),
+        controls=ActControls(),
+        uia_session=session,
+    )
+
+    assert result.completed is True
+    assert seen == [{"slides": 3}]
+
+
+def test_the_composed_uia_session_receives_the_signed_uia_adapter(tmp_path, monkeypatch):
+    """A mixed plugin has two entrypoints. UIA must never be sent to COM."""
+
+    import ghostcursor.act_uia_session as assembly
+    registry = _uia_registry()
+    validated = _uia_graph(registry)
+    import time as _time
+    approval = _approval(tmp_path, validated, registry, now=_time.time())
+    (tmp_path / "owned").mkdir(exist_ok=True)
+    descriptor = _descriptor(tmp_path)
+    uia_entrypoint = tmp_path / "uia-adapter.py"
+    _adapter(uia_entrypoint)
+    descriptor = SimpleNamespace(
+        **vars(descriptor),
+        uia_entrypoint=uia_entrypoint,
+        uia_adapter_sha256="e" * 64,
+    )
+    captured = []
+    session, _record = _fake_session()
+
+    def assemble(**kwargs):
+        captured.append(kwargs["host"].descriptor.entrypoint)
+        return session
+
+    monkeypatch.setattr(assembly, "build_uia_session", assemble)
+    result = _execute_approved_graph(
+        validated,
+        registry,
+        approval,
+        descriptor=descriptor,
+        current_authority=_authority,
+        revalidate_target=lambda _target: None,
+        verify=lambda *_args: True,
+        controls=ActControls(),
+        presentation=_surface(),
+        live_verifier=SimpleNamespace(),
+    )
+
+    assert result.completed is True
+    assert captured == [uia_entrypoint]
+
+
 def test_a_control_driving_node_without_receipts_never_dispatches(tmp_path):
     session, record = _fake_session(receipts=False)
 
