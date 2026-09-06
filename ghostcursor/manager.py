@@ -1200,37 +1200,38 @@ class _ActWorker:
     def running(self) -> bool:
         return self._thread is not None and self._thread.is_alive()
 
-    def start(self, proposal: object) -> None:
+    def start(
+        self,
+        proposal: object,
+        *,
+        controls: object | None = None,
+        presentation: object | None = None,
+    ) -> None:
         if self.running:
             raise RuntimeError("Act is already running")
         from ghostcursor.act_runtime import ActControls
 
-        self.controls = ActControls()
+        self.controls = controls or ActControls()
 
         def execute() -> None:
             try:
-                from ghostcursor.act_cli import (
-                    execute_act_proposal,
-                    plan_draws_a_pointer,
-                )
+                from ghostcursor.act_cli import execute_act_proposal, plan_draws_a_pointer
 
-                if plan_draws_a_pointer(proposal):
-                    # The manager has no presentation surface, and a
-                    # control-driving node without one is refused by the
-                    # runtime anyway (D109). Refusing HERE says why, on a
-                    # worker thread that cannot create the overlay: the
-                    # window must be made on the thread that pumps for it,
-                    # and receipt deadlines are still underived (D034).
+                if plan_draws_a_pointer(proposal) and presentation is None:
                     raise RuntimeError(
                         "this plan contains a control-driving operation; the "
-                        "manager has no presentation surface for it yet, so "
-                        "it cannot be shown or run from here"
+                        "manager supplied no UI-thread presentation surface"
                     )
                 result = execute_act_proposal(
                     proposal,
                     controls=self.controls,
                     event_sink=self._events.put,
-                    owned_output_root=proposal.output_path.parent,
+                    owned_output_root=(
+                        None
+                        if proposal.output_path is None
+                        else proposal.output_path.parent
+                    ),
+                    presentation=presentation,
                 )
             except Exception as exc:
                 result = exc
@@ -1264,6 +1265,58 @@ class _ActWorker:
             self._thread.join(timeout=5.0)
 
 
+@dataclass
+class _ManagerActPresentation:
+    """A manager-owned overlay plus the worker bridge feeding it."""
+
+    hwnd: int
+    bridge: object
+    surface: object
+
+    def pump(self) -> None:
+        self.bridge.pump()
+
+    def close(self) -> None:
+        from ghostcursor.overlay import window as overlay_window
+
+        self.bridge.close()
+        overlay_window.destroy_overlay_window(self.hwnd)
+
+
+def _create_manager_act_presentation(controls: object) -> _ManagerActPresentation:
+    """Create every Win32 presentation object on the manager/UI thread."""
+
+    from ghostcursor.act_cli import default_cue_budget, measured_receipt_policy
+    from ghostcursor.act_overlay import overlay_presenter
+    from ghostcursor.act_protocol import TrustClass
+    from ghostcursor.act_runtime import PresentationSurface
+    from ghostcursor.act_ui_bridge import UiThreadPresentationBridge
+    from ghostcursor.overlay import window as overlay_window
+
+    policy = measured_receipt_policy()
+    hwnd = overlay_window.create_overlay_window()
+    try:
+        overlay = overlay_presenter(
+            hwnd,
+            budget=default_cue_budget(),
+            policy=policy,
+            label_for=lambda observation: str(
+                dict(getattr(observation, "identity", {}) or {}).get("name", "")
+            ),
+            backend_trust=TrustClass.LIVE_STATE,
+            keep_running=lambda: not controls.stop_event.is_set(),
+        )
+        bridge = UiThreadPresentationBridge(overlay)
+        return _ManagerActPresentation(
+            hwnd,
+            bridge,
+            PresentationSurface(overlay=bridge, policy=policy),
+        )
+    except BaseException:
+        overlay_window.destroy_overlay_window(hwnd)
+        raise
+
+
 def launch_manager() -> int:
     """Run the pilot-facing manager and tours in one native UI process."""
 
@@ -1272,10 +1325,13 @@ def launch_manager() -> int:
     manager = NativeManagerWindow()
     planning = _PlanningWorker()
     act = _ActWorker()
+    act_presentation: _ManagerActPresentation | None = None
     unsubscribe = session_events.subscribe(manager.render_snapshot)
     try:
         while win32gui.IsWindow(manager.hwnd):
             pump_messages_nonblocking()
+            if act_presentation is not None:
+                act_presentation.pump()
             if manager.plugin_refresh_requested:
                 try:
                     manager.set_plugins(plugin_presentations())
@@ -1301,12 +1357,38 @@ def launch_manager() -> int:
                     manager.show_task_result(result)
                 manager.plugin_refresh_requested = True
             elif isinstance(request, ActExecutionRequest):
-                act.start(request.proposal)
-                manager._act_controls = act.controls
-                manager._set(ID_STATUS, "Act starting")
-                manager._set(ID_VERIFICATION, "Revalidating authority before action 1.")
-                win32gui.EnableWindow(manager._controls[ID_PAUSE], True)
-                win32gui.EnableWindow(manager._controls[ID_STOP], True)
+                from ghostcursor.act_cli import plan_draws_a_pointer
+                from ghostcursor.act_runtime import ActControls
+
+                controls = ActControls()
+                try:
+                    if plan_draws_a_pointer(request.proposal):
+                        act_presentation = _create_manager_act_presentation(controls)
+                    act.start(
+                        request.proposal,
+                        controls=controls,
+                        presentation=(
+                            None
+                            if act_presentation is None
+                            else act_presentation.surface
+                        ),
+                    )
+                    manager._act_controls = act.controls
+                    manager._set(ID_STATUS, "Act starting")
+                    manager._set(
+                        ID_VERIFICATION,
+                        "Revalidating authority before action 1.",
+                    )
+                    win32gui.EnableWindow(manager._controls[ID_PAUSE], True)
+                    win32gui.EnableWindow(manager._controls[ID_STOP], True)
+                except Exception as exc:
+                    if act_presentation is not None:
+                        act_presentation.close()
+                        act_presentation = None
+                    manager.show_unavailable(
+                        "",
+                        f"Act failed safely: {type(exc).__name__}: {exc}",
+                    )
             elif request is not None and not planning.running:
                 manager.show_understanding(request.goal)
                 planning.start(request)
@@ -1347,6 +1429,9 @@ def launch_manager() -> int:
                 manager.show_act_event(event)
             act_result = act.take_result()
             if act_result is not None:
+                if act_presentation is not None:
+                    act_presentation.close()
+                    act_presentation = None
                 if isinstance(act_result, BaseException):
                     manager.show_unavailable(
                         "",
@@ -1358,6 +1443,10 @@ def launch_manager() -> int:
                 manager.plugin_refresh_requested = True
             time.sleep(0.02)
     finally:
+        if act.controls is not None:
+            act.controls.stop()
+        if act_presentation is not None:
+            act_presentation.close()
         act.stop_and_wait()
         unsubscribe()
         manager.dispose()

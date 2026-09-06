@@ -784,7 +784,11 @@ def _execute_approved_graph(
                         # where stopping is still free. Without it a Stop
                         # landing after the cue completed went unnoticed
                         # until the node ended.
-                        should_continue=lambda: not controls.stop_event.is_set(),
+                        # A Pause pressed while the cue is moving must hold
+                        # before confirmation/dispatch, not merely before the
+                        # next node. This waits in ActControls' 50ms slices and
+                        # returns False only when Stop wins.
+                        should_continue=controls.wait_until_runnable,
                         on_state=(
                             None
                             if uia_session.on_state is None

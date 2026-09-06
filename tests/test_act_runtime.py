@@ -713,6 +713,63 @@ def test_a_control_driving_node_runs_the_three_observation_flow(tmp_path):
     assert record["presented"][0].geometry_required is True
 
 
+def test_pause_pressed_during_the_cue_holds_before_dispatch(tmp_path):
+    """The outer per-node pause gate has already passed when a cue begins.
+    A pause arriving while it moves must therefore be checked again before
+    confirmation/dispatch, or the visible click happens while the UI says
+    paused."""
+
+    import threading
+
+    controls = ActControls()
+    session, record = _fake_session()
+    original_present = session.present
+    cue_finished = threading.Event()
+    run_finished = threading.Event()
+    result = []
+
+    def pause_during_cue(request, baseline, sink=None):
+        receipts = original_present(request, baseline, sink)
+        controls.pause()
+        cue_finished.set()
+        return receipts
+
+    session.present = pause_during_cue
+    registry = _uia_registry()
+    validated = _uia_graph(registry)
+    import time as _time
+    approval = _approval(tmp_path, validated, registry, now=_time.time())
+    (tmp_path / "owned").mkdir(exist_ok=True)
+
+    def run():
+        result.append(
+            _execute_approved_graph(
+                validated,
+                registry,
+                approval,
+                descriptor=_descriptor(tmp_path),
+                current_authority=_authority,
+                revalidate_target=lambda _target: None,
+                verify=lambda *_args: True,
+                controls=controls,
+                uia_session=session,
+            )
+        )
+        run_finished.set()
+
+    thread = threading.Thread(target=run)
+    thread.start()
+    assert cue_finished.wait(1.0)
+    assert run_finished.wait(0.1) is False
+    assert record["dispatched"] == []
+
+    controls.resume()
+    thread.join(timeout=2.0)
+
+    assert result[0].completed is True
+    assert record["dispatched"] == ["n001"]
+
+
 def test_the_pre_cue_baseline_reaches_post_action_verification(tmp_path):
     session, _record = _fake_session()
     seen = []
