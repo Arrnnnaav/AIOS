@@ -5,13 +5,12 @@ they were not given, because a plausible constant is the placeholder that
 measurement exists to replace — and the number every test would silently
 agree with. This is the thing that produces the number.
 
-What it measures is the whole round trip a real frame pays: `set_cue`
-invalidates the window and calls `UpdateWindow`, which runs `WM_PAINT`
-synchronously, which fills the entire virtual-screen client area with the
-colorkey and then draws the ring, the glyph and the label plate. That fill is
-the expensive part and it scales with desktop area, so the number is only
-valid for the monitor topology it was taken on — which is why the report
-records the topology beside it.
+What it measures is the whole checked round trip a real frame pays: one
+coordinate-space agreement check, `set_cue`/synchronous `WM_PAINT`, and the
+second coordinate-space agreement check that proves the space held across the
+paint. Timing only `set_cue` would certify an implementation production no
+longer runs (D116). The full virtual-screen fill still scales with desktop
+area, so the number is valid only for the monitor topology recorded beside it.
 
 Read-only with respect to the user's machine: it creates its own overlay,
 paints into it, and destroys it. It moves no cursor and synthesizes no input.
@@ -30,10 +29,43 @@ import json
 import statistics
 import time
 from dataclasses import dataclass
+from typing import Callable
 
+from ghostcursor import act_overlay
 from ghostcursor.act_protocol import TrustClass
+from ghostcursor.coordinate_space import BracketedGeometry, observe_bracketed
 from ghostcursor.overlay import dpi, window
 from ghostcursor.overlay.cue import CueScene, label_box
+
+
+class PaintMeasurementRefused(RuntimeError):
+    """The frame could not hold one trustworthy coordinate space."""
+
+
+def _paint_checked_frame(
+    hwnd: int,
+    scene: CueScene,
+    geometry: BracketedGeometry,
+    rectangle: tuple[int, int, int, int],
+    *,
+    check: Callable[[int, object, tuple[int, int, int, int]], tuple[str, ...]] = (
+        act_overlay._coordinate_disagreements
+    ),
+    paint: Callable[[int, CueScene], None] = window.set_cue,
+) -> None:
+    """Run the exact pre-check/paint/post-check transaction production pays."""
+
+    reasons = tuple(check(hwnd, geometry, rectangle))
+    if reasons:
+        raise PaintMeasurementRefused(
+            "coordinate space refused before measured paint: " + "; ".join(reasons)
+        )
+    paint(hwnd, scene)
+    reasons = tuple(check(hwnd, geometry, rectangle))
+    if reasons:
+        raise PaintMeasurementRefused(
+            "coordinate space changed during measured paint: " + "; ".join(reasons)
+        )
 
 
 @dataclass(frozen=True)
@@ -115,8 +147,12 @@ def measure(frames: int = 300, *, hold_s: float = 0.0) -> PaintMeasurement:
                     pointer, "New Slide", metrics, bounds=bounds, avoid=target
                 ),
             )
+            # This producer-side bracket is intentionally outside the timed
+            # section. Production receives it with the observation; one frame
+            # pays only the two overlay-side checks around its paint.
+            geometry = observe_bracketed(lambda: [target])
             started = time.perf_counter()
-            window.set_cue(hwnd, scene)
+            _paint_checked_frame(hwnd, scene, geometry, target)
             samples.append((time.perf_counter() - started) * 1000.0)
             window.pump_messages_nonblocking()
         if hold_s:
