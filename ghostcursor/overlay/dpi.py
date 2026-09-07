@@ -19,28 +19,13 @@ inconsistency is what made a working overlay look like a broken one, and it
 is invisible in the code — the same function returns different numbers
 depending on whether anything has grabbed a frame yet.
 
-Note that the modern SetProcessDpiAwarenessContext(PER_MONITOR_AWARE_V2)
-returns 0 (failure) here even as the very first call in the process, so the
-older SetProcessDPIAware() is the one that takes effect and this process runs
-SYSTEM aware, not per-monitor-v2.
-
-That failure was originally attributed to the machine. It is not: the call is
-made with a plain Python int, which ctypes marshals as a 32-bit C int, while
-the parameter is a pointer-sized DPI_AWARENESS_CONTEXT handle. Measured on
-2 September 2026, same machine, first call in a fresh process --
-`SetProcessDpiAwarenessContext(-4)` returns 0 with GetLastError 87
-(ERROR_INVALID_PARAMETER), and `SetProcessDpiAwarenessContext(c_void_p(-4))`
-returns True and leaves the process per-monitor-v2.
-
-The call is left as it is on purpose. Correcting it would change the
-coordinate space every window, UIA rect, hint and capture in this project
-shares, and D010 exists because changing that silently is how a working
-overlay starts reporting confidently wrong numbers. On this desktop -- one
-monitor at 100% -- system and per-monitor-v2 are indistinguishable, so the
-pixel lane here could not validate the change either; it needs a scaled or
-mixed-DPI display. Recorded in docs/superpowers/FOLLOWUPS.md with the
-measurement, to be changed by its own reviewed decision rather than as a side
-effect of adding a contract.
+The process requests PER_MONITOR_AWARE_V2 before any window or UIA client is
+created. This is load-bearing for UI Automation: BoundingRectangle is always
+reported in physical screen pixels, so a system-aware overlay cannot consume
+those integers directly on a mixed-DPI desktop. If the request cannot take
+effect (for example another library declared awareness first), queried
+awareness exposes that and UIA geometry is refused rather than converted or
+painted approximately (D115/D116).
 
 The same trap applies to *observing* from outside: querying GetWindowRect on
 these windows from a separate, DPI-unaware Python process reports 1536x864 for
@@ -70,13 +55,13 @@ def _ensure_dpi_awareness() -> str:
     """Declare DPI awareness. Idempotent, and safe to call late — but calling
     it late defeats the point, so this runs at import."""
     try:
-        # Deliberately called with a plain int, which ctypes marshals 32-bit
-        # against a pointer-sized parameter, so this fails and the process
-        # falls through to system awareness. Passing `c_void_p(-4)` here is
-        # the fix AND the coordinate-space change -- see the module docstring
-        # and FOLLOWUPS.md. Declaring the signature in `_declare_signatures()`
-        # would NOT do it: that runs after this call.
-        if ctypes.windll.user32.SetProcessDpiAwarenessContext(_PER_MONITOR_AWARE_V2):
+        setter = ctypes.windll.user32.SetProcessDpiAwarenessContext
+        # DPI_AWARENESS_CONTEXT is pointer-sized. A plain ``-4`` is marshalled
+        # as a 32-bit int and fails with ERROR_INVALID_PARAMETER on 64-bit
+        # Python, silently dropping the process to system awareness.
+        setter.argtypes = [ctypes.c_void_p]
+        setter.restype = wintypes.BOOL
+        if setter(ctypes.c_void_p(_PER_MONITOR_AWARE_V2)):
             return "per-monitor-v2"
     except AttributeError:
         pass  # pre-Windows 10 1703
@@ -105,8 +90,10 @@ def scale_factor() -> float:
 
 #: What a Win32 desktop coordinate MEANS under each awareness mode. Only a
 #: per-monitor-aware process is handed true physical pixels on every monitor;
-#: a system-aware one is handed the system-DPI space, which coincides with
-#: physical pixels only while every display runs at the system DPI.
+#: a system-aware Win32 window is handed the system-DPI space. UI Automation
+#: is an explicit exception: its BoundingRectangle is always physical pixels,
+#: which is why Act refuses UIA geometry unless producer and overlay are
+#: per-monitor aware.
 _UNITS_FOR_AWARENESS = {
     "per-monitor-v2": "physical_pixels",
     "per-monitor": "physical_pixels",
@@ -140,10 +127,8 @@ def virtual_screen_rect() -> tuple[int, int, int, int]:
 
     In whatever unit this process's awareness makes Win32 report -- see
     `coordinate_units()`. On a per-monitor-aware process that is physical
-    pixels; this process is system-aware (the setter above does not take
-    effect), so it is the system-DPI space, which equals physical pixels only
-    while every display runs at the system DPI. It does on the desktop this
-    was measured on, which is why the distinction went unnoticed."""
+    pixels. Production requests per-monitor-v2 at import; if that request did
+    not take effect, UIA geometry admission refuses before drawing."""
     return (
         win32api.GetSystemMetrics(win32con.SM_XVIRTUALSCREEN),
         win32api.GetSystemMetrics(win32con.SM_YVIRTUALSCREEN),
@@ -179,8 +164,7 @@ def _declare_signatures() -> None:
     ctypes defaults an undeclared function's return type to C `int` -- four
     bytes -- while `DPI_AWARENESS_CONTEXT` is an opaque pointer-sized handle,
     and undeclared integer arguments are marshalled 32-bit wide. That is the
-    same ABI mistake this module already documents in the SETTER, where it
-    makes `SetProcessDpiAwarenessContext` fail outright.
+    same ABI class the setter had before D116 corrected its call site.
 
     It is latent rather than visible here: the thread context handle measured
     in one process on this machine was 0x6010 and in another 0x7811 -- the
@@ -196,20 +180,10 @@ def _declare_signatures() -> None:
     `c_bool` is C `_Bool` -- one byte -- so a return whose low byte is zero and
     whose upper bytes are not would read as False.
 
-    `SetProcessDpiAwarenessContext` is deliberately NOT declared here, but be
-    precise about why, because an earlier version of this comment was wrong.
-
-    Declaring it HERE changes nothing: `_declare_signatures()` runs at import
-    below `AWARENESS = _ensure_dpi_awareness()`, so the setter has already been
-    called by the time any declaration lands. Measured -- adding it to the
-    table above leaves the process `system`. It is left out because the
-    declaration would be misleading, not because it is load-bearing.
-
-    What WOULD flip the coordinate space is passing `c_void_p(-4)` at the CALL
-    SITE in `_ensure_dpi_awareness()`. That is the change deferred to its own
-    reviewed decision with a scaled display, and the only thing guarding it is
-    the subprocess test that measures `ghostcursor.run`'s actual awareness --
-    not an `argtypes is None` assertion, which protects nothing.
+    `SetProcessDpiAwarenessContext` is declared at its earlier call site,
+    before awareness is locked. It is repeated in the table below so later
+    inspection sees a complete signature inventory; repeating the same
+    declaration cannot change an already-selected context.
     """
 
     user32 = ctypes.windll.user32
@@ -232,6 +206,7 @@ def _declare_signatures() -> None:
         ("GetDC", [ctypes.c_void_p], ctypes.c_void_p),
         ("ReleaseDC", [ctypes.c_void_p, ctypes.c_void_p], ctypes.c_int),
         ("SetProcessDPIAware", [], wintypes.BOOL),
+        ("SetProcessDpiAwarenessContext", [ctypes.c_void_p], wintypes.BOOL),
     ):
         function = getattr(user32, name, None)
         if function is not None:

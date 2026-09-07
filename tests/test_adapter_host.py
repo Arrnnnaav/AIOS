@@ -125,6 +125,23 @@ def test_adapter_wrong_handshake_fails_closed_and_is_torn_down(tmp_path):
     assert not host.running
 
 
+def test_changed_adapter_bytes_never_execute_before_the_host_refuses(tmp_path):
+    descriptor = _descriptor(tmp_path)
+    marker = tmp_path / "executed.txt"
+    descriptor.entrypoint.write_text(
+        f"from pathlib import Path\nPath({str(marker)!r}).write_text('ran')\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    host = AdapterHost(descriptor, session_nonce="nonce")
+
+    with pytest.raises(AdapterProtocolError):
+        host.start(timeout_s=1.0)
+
+    assert marker.exists() is False
+    assert host.running is False
+
+
 def test_adapter_timeout_terminates_the_child(tmp_path):
     source = r"""
 import json,sys,time

@@ -25,11 +25,9 @@ else in that gap.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import re
 import sys
-from pathlib import Path
 
 # This must precede comtypes/pywinauto/mss imports: another library declaring
 # DPI awareness first would make the same four rectangle integers mean a
@@ -288,6 +286,8 @@ class UiaSession:
             raise Refusal(f"confirmed coordinate space is invalid: {exc}") from None
         if expected_geometry.rectangles != (tuple(wanted_rect),):
             raise Refusal("confirmed rectangle disagrees with its coordinate space")
+        if expected_geometry.before.units != "physical_pixels":
+            raise Refusal("UIA geometry is not in physical screen pixels")
         if bracket_disagreements(expected_geometry.before, expected_geometry):
             raise Refusal("confirmed coordinate space did not hold during observation")
         element = self.resolve_exactly_one(request["control_type"], request["name"])
@@ -307,7 +307,9 @@ class UiaSession:
 def main():
     if sys.argv[1:] != ["--jsonl"]:
         return 2
-    own_sha = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+    own_sha = globals().get("__ghostcursor_verified_sha256__")
+    if not isinstance(own_sha, str) or _SHA_RE.fullmatch(own_sha) is None:
+        raise Refusal("adapter was not launched from verified bytes")
     hello = json.loads(sys.stdin.readline())
     _exact(
         hello,

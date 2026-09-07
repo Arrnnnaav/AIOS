@@ -242,6 +242,32 @@ def test_a_malformed_coordinate_contract_is_refused(tmp_path):
     assert host.running is False
 
 
+def test_system_dpi_uia_geometry_is_refused_even_when_its_bracket_holds(tmp_path):
+    helper = '''def system_geometry():
+    value = observe_bracketed(lambda: [[100, 200, 260, 245]]).as_record()
+    for side in ("before", "after"):
+        value[side]["process_awareness"] = "system"
+        value[side]["thread_awareness"] = "system"
+        value[side]["units"] = "system_dpi_pixels"
+    return value
+
+def emit(value):'''
+    source = SCRIPT.replace("def emit(value):", helper, 1).replace(
+        'observe_bracketed(\n'
+        '                    lambda: [[100, 200, 260, 245]]\n'
+        '                ).as_record()',
+        "system_geometry()",
+        1,
+    )
+    host = _host(tmp_path, source)
+    host.start()
+
+    with pytest.raises(AdapterProtocolError, match="physical-pixel space"):
+        host.observe_control("Button", "New Slide", timeout_s=5.0)
+
+    assert host.running is False
+
+
 def test_a_rectangle_outside_its_coordinate_contract_is_refused(tmp_path):
     source = SCRIPT.replace(
         '"rectangle": [100, 200, 260, 245],',

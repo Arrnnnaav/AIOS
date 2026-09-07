@@ -104,7 +104,11 @@ class VerifierHost:
             request["baseline"] = _plain(baseline) if baseline is not None else None
             request["postconditions"] = list(postconditions)
         process = subprocess.Popen(
-            [sys.executable, str(self.descriptor.verifier), "--json"],
+            _verified_command(
+                self.descriptor.verifier,
+                self.descriptor.verifier_sha256,
+                "--json",
+            ),
             cwd=str(self.descriptor.payload_root),
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
@@ -112,6 +116,7 @@ class VerifierHost:
             text=True,
             encoding="utf-8",
             errors="strict",
+            env=_adapter_environment(),
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         encoded = json.dumps(request, sort_keys=True, separators=(",", ":")) + "\n"
@@ -211,7 +216,11 @@ class AdapterHost:
         if self.running:
             return self
         process = subprocess.Popen(
-            [sys.executable, str(self.descriptor.entrypoint), "--jsonl"],
+            _verified_command(
+                self.descriptor.entrypoint,
+                self.descriptor.adapter_sha256,
+                "--jsonl",
+            ),
             cwd=str(self.descriptor.payload_root),
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
@@ -375,6 +384,11 @@ class AdapterHost:
             self.stop()
             raise AdapterProtocolError(
                 "adapter observation rectangle disagrees with its coordinate contract"
+            )
+        if not geometry.held or geometry.before.units != "physical_pixels":
+            self.stop()
+            raise AdapterProtocolError(
+                "UIA geometry was not observed in one stable physical-pixel space"
             )
         return UiaObservation(
             request_id=request_id,
@@ -558,7 +572,14 @@ class AdapterHost:
                     process.wait(timeout=2.0)
         for stream in (process.stdin, process.stdout, process.stderr):
             if stream is not None:
-                stream.close()
+                try:
+                    stream.close()
+                except OSError:
+                    # On Windows a reader thread may already have observed a
+                    # child that exited before its handshake and closed the
+                    # underlying handle. Teardown must not replace the real
+                    # protocol/digest refusal with a secondary errno 22.
+                    pass
 
     def _read_stdout(self) -> None:
         assert self._process is not None and self._process.stdout is not None
@@ -670,6 +691,20 @@ def _adapter_environment() -> dict[str, str]:
         package_root + os.pathsep + inherited if inherited else package_root
     )
     return environment
+
+
+def _verified_command(path: Path, sha256: str, *arguments: str) -> list[str]:
+    """Launch trusted core code first; plugin bytes execute only after hash."""
+
+    return [
+        sys.executable,
+        "-m",
+        "ghostcursor.verified_python",
+        "--sha256",
+        sha256,
+        str(path),
+        *arguments,
+    ]
 
 
 __all__ = [

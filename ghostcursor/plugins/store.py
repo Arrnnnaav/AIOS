@@ -554,19 +554,21 @@ class PluginStore:
                 continue
             root = self._verify_payload(bundle)
             entrypoint = root / Path(*PurePosixPath(adapter["entrypoint"]).parts)
-            operations = root / Path(*PurePosixPath(adapter["operations"]).parts)
             verifier = root / Path(*PurePosixPath(adapter["verifier"]).parts)
-            entrypoint_bytes = entrypoint.read_bytes()
-            verifier_bytes = verifier.read_bytes()
+            # Hash and parse the signed in-memory inventory, not a second read
+            # from the mutable extracted path. The trusted launch bootstrap
+            # later requires the path bytes to match these exact digests.
+            entrypoint_bytes = bundle.files[adapter["entrypoint"]]
+            verifier_bytes = bundle.files[adapter["verifier"]]
             adapter_sha256 = hashlib.sha256(entrypoint_bytes).hexdigest()
             registry = load_operation_registry(
-                operations.read_bytes(),
+                bundle.files[adapter["operations"]],
                 plugin_id=plugin_id,
                 plugin_version=bundle.version,
                 adapter_sha256=adapter_sha256,
             )
             plans = load_action_plan_templates(
-                (root / Path(*PurePosixPath(adapter["plans"]).parts)).read_bytes(),
+                bundle.files[adapter["plans"]],
                 bundle.files,
                 plugin_id=plugin_id,
                 plugin_version=bundle.version,
@@ -578,7 +580,7 @@ class PluginStore:
             if uia_declared is not None:
                 uia_entrypoint = root / Path(*PurePosixPath(uia_declared).parts)
                 uia_adapter_sha256 = hashlib.sha256(
-                    uia_entrypoint.read_bytes()
+                    bundle.files[uia_declared]
                 ).hexdigest()
             live_declared = adapter.get("live_verifier")
             live_verifier = None
@@ -586,7 +588,7 @@ class PluginStore:
             if live_declared is not None:
                 live_verifier = root / Path(*PurePosixPath(live_declared).parts)
                 live_verifier_sha256 = hashlib.sha256(
-                    live_verifier.read_bytes()
+                    bundle.files[live_declared]
                 ).hexdigest()
             adapters[plugin_id] = AdapterDescriptor(
                 plugin_id=plugin_id,

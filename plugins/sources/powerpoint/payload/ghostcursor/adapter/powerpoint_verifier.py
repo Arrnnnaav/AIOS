@@ -164,7 +164,9 @@ def main():
     request = json.loads(sys.stdin.readline())
     _exact(request, {"node", "output_path", "plugin_id", "plugin_version", "session_nonce", "target", "type", "validation_sha256", "verifier_sha256"}, "verification request")
     _exact(request["node"], {"node_id", "operation_id", "parameters"}, "verification node")
-    own_sha = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+    own_sha = globals().get("__ghostcursor_verified_sha256__")
+    if not isinstance(own_sha, str) or _SHA_RE.fullmatch(own_sha) is None:
+        raise Refusal("verifier was not launched from verified bytes")
     if request["type"] != "verify" or request["plugin_id"] != PLUGIN_ID or request["plugin_version"] != PLUGIN_VERSION or request["verifier_sha256"] != own_sha or _SHA_RE.fullmatch(request["validation_sha256"]) is None:
         raise Refusal("verifier authority disagrees")
     package = None

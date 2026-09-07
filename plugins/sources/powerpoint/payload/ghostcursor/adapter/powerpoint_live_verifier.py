@@ -33,11 +33,9 @@ same number.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import re
 import sys
-from pathlib import Path
 
 PLUGIN_ID = "ghostcursor.powerpoint"
 PLUGIN_VERSION = "1.0.0"
@@ -205,7 +203,9 @@ def main():
             {"node_id", "operation_id", "parameters"},
             "verification node",
         )
-        own_sha = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+        own_sha = globals().get("__ghostcursor_verified_sha256__")
+        if not isinstance(own_sha, str) or _SHA_RE.fullmatch(own_sha) is None:
+            raise Refusal("verifier was not launched from verified bytes")
         if (
             request["type"] != "verify"
             or request["plugin_id"] != PLUGIN_ID

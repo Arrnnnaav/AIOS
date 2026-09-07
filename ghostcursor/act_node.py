@@ -57,7 +57,7 @@ from ghostcursor.act_protocol import (
     TrustClass,
     trust_for,
 )
-from ghostcursor.coordinate_space import BracketedGeometry
+from ghostcursor.coordinate_space import BracketedGeometry, bracket_disagreements
 from ghostcursor.uia_identity import compare_identity, identity_evidence
 
 
@@ -260,6 +260,21 @@ def execute_node(
             raise NodeRefused(
                 RefusalCode.TARGET_IDENTITY_MISMATCH,
                 "the confirmed target moved away from the displayed cue",
+            )
+        if baseline.geometry is None or confirmed.geometry is None:
+            raise NodeRefused(
+                RefusalCode.TARGET_IDENTITY_MISMATCH,
+                "the displayed and confirmed targets need coordinate provenance",
+            )
+        geometry_reasons = (
+            bracket_disagreements(baseline.geometry.before, baseline.geometry)
+            + bracket_disagreements(baseline.geometry.before, confirmed.geometry)
+        )
+        if geometry_reasons:
+            raise NodeRefused(
+                RefusalCode.TARGET_IDENTITY_MISMATCH,
+                "the target coordinate space changed after the cue: "
+                + "; ".join(dict.fromkeys(geometry_reasons)),
             )
         identity_record = identity_evidence(spec.identity, confirmed.identity)
 

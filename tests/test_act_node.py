@@ -114,10 +114,14 @@ def _identity(**overrides):
 
 
 def _observation(**overrides) -> Observation:
+    from ghostcursor.coordinate_space import observe_bracketed
+
+    rectangle = (10, 20, 110, 60)
     values = {
         "identity": _identity(),
         "match_count": 1,
-        "rectangle": (10, 20, 110, 60),
+        "rectangle": rectangle,
+        "geometry": observe_bracketed(lambda: [rectangle]),
         "semantic": {"slides": 3},
     }
     values.update(overrides)
@@ -319,6 +323,39 @@ def test_a_moved_target_identity_refuses_before_dispatch():
         )
 
     assert raised.value.code is RefusalCode.TARGET_IDENTITY_MISMATCH
+
+
+def test_a_coordinate_space_change_after_the_displayed_cue_refuses_dispatch():
+    from dataclasses import replace
+
+    from ghostcursor.coordinate_space import BracketedGeometry
+
+    baseline = _observation()
+    changed_space = replace(
+        baseline.geometry.before,
+        virtual_bounds=(0, 0, baseline.geometry.before.virtual_bounds[2] + 1, 1),
+    )
+    confirmed = _observation(
+        geometry=BracketedGeometry(
+            changed_space,
+            changed_space,
+            (baseline.rectangle,),
+        )
+    )
+
+    with pytest.raises(NodeRefused, match="coordinate space changed") as raised:
+        _run(observations=[baseline, confirmed])
+
+    assert raised.value.code is RefusalCode.TARGET_IDENTITY_MISMATCH
+
+
+@pytest.mark.parametrize("which", [0, 1])
+def test_a_pointer_observation_without_coordinate_provenance_refuses(which):
+    observations = [_observation(), _observation()]
+    observations[which] = _observation(geometry=None)
+
+    with pytest.raises(NodeRefused, match="coordinate provenance"):
+        _run(observations=observations)
 
 
 def test_a_control_of_the_wrong_type_refuses_even_when_nothing_else_moved():

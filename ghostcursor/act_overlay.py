@@ -160,19 +160,42 @@ def overlay_presenter(
     # rather than teleporting. None until the first cue and after any clear:
     # a pointer arriving from an arbitrary corner would suggest it had been
     # somewhere it was not.
-    state: dict[str, object] = {"position": None, "scene": None}
+    state: dict[str, object] = {
+        "position": None,
+        "scene": None,
+        "geometry": None,
+        "rectangle": None,
+    }
 
     def clear() -> None:
         state["position"] = None
         state["scene"] = None
+        state["geometry"] = None
+        state["rectangle"] = None
         overlay_window.clear_cue(hwnd)
 
     def paint(scene: CueScene | None) -> None:
         if scene is None:
             clear()
             return
-        state["scene"] = scene
+        geometry = state.get("geometry")
+        rectangle = state.get("rectangle")
+        if geometry is None or rectangle is None:
+            raise CueLayoutError("paint has no accepted coordinate contract")
+        reasons = tuple(geometry_check(hwnd, geometry, rectangle))
+        if reasons:
+            clear()
+            raise CueLayoutError(
+                "coordinate space changed before paint: " + "; ".join(reasons)
+            )
         overlay_window.set_cue(hwnd, scene)
+        reasons = tuple(geometry_check(hwnd, geometry, rectangle))
+        if reasons:
+            clear()
+            raise CueLayoutError(
+                "coordinate space changed during paint: " + "; ".join(reasons)
+            )
+        state["scene"] = scene
 
     def poll() -> bool:
         # Pump first. A Stop read from a queue nothing drained is a Stop that
@@ -186,7 +209,12 @@ def overlay_presenter(
             # at a control that is not going to be touched.
             clear()
         elif lifecycle is LifecycleState.VERIFIED:
-            _recolour(hwnd, state, backend_trust)
+            try:
+                _recolour(state, backend_trust, paint)
+            except CueLayoutError:
+                # Verification remains true, but stale geometry is no longer
+                # allowed to stay on screen as a success marker.
+                clear()
         if on_state is not None:
             on_state(node, lifecycle)
 
@@ -252,6 +280,8 @@ def overlay_presenter(
             return receipts_for_scene_error(request, error)
 
         try:
+            state["geometry"] = geometry
+            state["rectangle"] = rectangle
             receipts = present_cue(
                 request,
                 policy,
@@ -261,6 +291,9 @@ def overlay_presenter(
                 poll=poll,
                 on_receipt=report,
             )
+        except (CueLayoutError, PointerPathError) as error:
+            clear()
+            return receipts_for_scene_error(request, error)
         except PresentationAborted as aborted:
             # The user stopped it. The partial receipts are RETURNED rather
             # than raised onward: they contain no completion, so the wait
@@ -293,15 +326,25 @@ def _coordinate_disagreements(
         return ("the producer supplied no valid bracketed coordinate contract",)
     if geometry.rectangles != (rectangle,):
         return ("the producer rectangle disagrees with its coordinate contract",)
+    if not geometry.held or geometry.before.units != "physical_pixels":
+        return (
+            "the producer did not hold one physical-pixel coordinate space",
+        )
 
     observer = observe_bracketed(lambda: [rectangle])
     reasons = list(bracket_disagreements(observer.before, observer))
+    if observer.before.units != "physical_pixels":
+        reasons.append("the overlay is not painting in physical pixels")
     reasons.extend(bracket_disagreements(observer.before, geometry))
     reasons.extend(window_agrees(observer.after, hwnd))
     return tuple(dict.fromkeys(reasons))
 
 
-def _recolour(hwnd: int, state: dict, trust: TrustClass) -> None:
+def _recolour(
+    state: dict,
+    trust: TrustClass,
+    paint: Callable[[CueScene | None], None],
+) -> None:
     """Repaint the standing cue in the class the node actually earned.
 
     This is the whole reason a pointer may outlive its node: a NEUTRAL pointer
@@ -321,8 +364,7 @@ def _recolour(hwnd: int, state: dict, trust: TrustClass) -> None:
         final=True,
         label_rect=scene.label_rect,
     )
-    state["scene"] = updated
-    overlay_window.set_cue(hwnd, updated)
+    paint(updated)
 
 
 def _final_position(plan: CuePlan) -> tuple[int, int]:

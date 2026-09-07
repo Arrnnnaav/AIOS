@@ -382,8 +382,13 @@ def test_a_coordinate_contract_disagreement_is_rejected_before_paint(screen, clo
         geometry_check=lambda _hwnd, _geometry, _rectangle: ("DPI mismatch",),
     )
 
+    receipts = session.present(_request(), _observation())
 
-def _space(*, awareness="system"):
+    assert [r.kind for r in receipts] == [ReceiptKind.RENDER_REJECTED]
+    assert screen.events == []
+
+
+def _space(*, awareness="per-monitor-v2"):
     units = "system_dpi_pixels" if awareness == "system" else "physical_pixels"
     return CoordinateSpace(
         contract_version=2,
@@ -394,12 +399,6 @@ def _space(*, awareness="system"):
         virtual_bounds=(0, 0, 1920, 1080),
         monitors=((0, 0, 1920, 1080),),
     )
-
-    receipts = session.present(_request(), _observation())
-
-    assert [r.kind for r in receipts] == [ReceiptKind.RENDER_REJECTED]
-    assert screen.events == []
-
 
 def test_the_default_check_compares_producer_overlay_thread_and_window(
     screen, clock, monkeypatch
@@ -429,7 +428,7 @@ def test_the_default_check_compares_producer_overlay_thread_and_window(
         ReceiptKind.GEOMETRY_STARTED,
         ReceiptKind.PRESENTATION_COMPLETED,
     ]
-    assert window_checks == [(observer_space, HWND)]
+    assert window_checks == [(observer_space, HWND)] * 3
 
 
 def test_the_default_check_refuses_a_different_producer_awareness(
@@ -437,7 +436,7 @@ def test_the_default_check_refuses_a_different_producer_awareness(
 ):
     rectangle = (400, 300, 520, 340)
     observer_space = _space()
-    producer_space = _space(awareness="per-monitor-v2")
+    producer_space = _space(awareness="system")
     producer = BracketedGeometry(producer_space, producer_space, (rectangle,))
     sampled = BracketedGeometry(observer_space, observer_space, (rectangle,))
     monkeypatch.setattr(act_overlay, "observe_bracketed", lambda _read: sampled)
@@ -448,6 +447,50 @@ def test_the_default_check_refuses_a_different_producer_awareness(
         identity={"control_type": "Button", "name": "New Slide"},
         rectangle=rectangle,
         geometry=producer,
+    )
+
+    receipts = session.present(_request(), observation)
+
+    assert [receipt.kind for receipt in receipts] == [ReceiptKind.RENDER_REJECTED]
+    assert screen.events == []
+
+
+def test_a_coordinate_change_during_the_first_paint_withholds_both_receipts(
+    screen, clock
+):
+    checks = iter(((), (), ("context changed",)))
+    session = _session(
+        screen,
+        clock,
+        geometry_check=lambda _hwnd, _geometry, _rectangle: next(checks),
+    )
+
+    receipts = session.present(_request(), _observation())
+
+    assert [receipt.kind for receipt in receipts] == [ReceiptKind.RENDER_REJECTED]
+    assert screen.kinds[0] == "set"
+    assert screen.kinds[1:] and set(screen.kinds[1:]) == {"clear"}
+
+
+def test_system_dpi_geometry_is_never_admitted_even_when_both_peers_match(
+    screen, clock, monkeypatch
+):
+    rectangle = (400, 300, 520, 340)
+    system = _space(awareness="system")
+    producer = BracketedGeometry(system, system, (rectangle,))
+    monkeypatch.setattr(
+        act_overlay,
+        "observe_bracketed",
+        lambda _read: BracketedGeometry(system, system, (rectangle,)),
+    )
+    monkeypatch.setattr(act_overlay, "window_agrees", lambda _space, _hwnd: ())
+    session = _session(screen, clock, geometry_check=None)
+    observation = Observation(
+        semantic={"slides": 3},
+        identity={"control_type": "Button", "name": "New Slide"},
+        rectangle=rectangle,
+        geometry=producer,
+        match_count=1,
     )
 
     receipts = session.present(_request(), observation)

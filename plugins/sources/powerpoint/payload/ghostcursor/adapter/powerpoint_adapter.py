@@ -644,7 +644,9 @@ def main():
     if sys.argv[1:] != ["--jsonl"]: return 2
     hello = json.loads(sys.stdin.readline())
     _exact(hello, {"adapter_sha256", "plugin_id", "plugin_version", "protocol_version", "session_context", "session_nonce", "type"}, "hello")
-    own_sha = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+    own_sha = globals().get("__ghostcursor_verified_sha256__")
+    if not isinstance(own_sha, str) or _SHA_RE.fullmatch(own_sha) is None:
+        raise Refusal("adapter was not launched from verified bytes")
     if hello["type"] != "hello" or hello["protocol_version"] != 1 or hello["plugin_id"] != PLUGIN_ID or hello["plugin_version"] != PLUGIN_VERSION or hello["adapter_sha256"] != own_sha:
         raise Refusal("adapter handshake authority disagrees")
     validator = PlanValidator(hello["session_context"]); session = PowerPointSession(hello["session_context"]); plan = None; cursor = 0; authorizations = set()

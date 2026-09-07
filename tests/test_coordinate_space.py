@@ -234,9 +234,8 @@ def test_queried_awareness_is_not_the_declared_label():
 
 
 def test_units_come_from_the_awareness_actually_in_force():
-    """An earlier version hardcoded physical_pixels, which was not true of the
-    process writing it: only a per-monitor-aware process is handed physical
-    pixels on every monitor, and this one is system-aware."""
+    """The coordinate contract reports the units its measured awareness earns;
+    it does not copy a desired production label into every process."""
 
     space = capture()
     awareness, _api = dpi.queried_thread_awareness()
@@ -401,25 +400,18 @@ def test_win32_bool_returns_use_the_32_bit_windows_type():
         assert ctypes.sizeof(restype) == 4, name
 
 
-def test_the_awareness_setter_is_deliberately_left_undeclared():
-    """Declaring its signature is what makes the call succeed, which switches
-    this process to per-monitor-v2 and silently changes the coordinate space
-    every rect in the project shares (D010, D106). It waits for its own
-    reviewed decision on a scaled display."""
+def test_the_awareness_setter_uses_its_pointer_sized_windows_signature():
+    """DPI_AWARENESS_CONTEXT is pointer-sized, while an undeclared ctypes
+    argument is a 32-bit C int. The malformed call silently failed on 64-bit
+    Python and left UIA's physical rectangles incompatible with the overlay."""
 
     import ctypes
+    import ctypes.wintypes
 
     setter = ctypes.windll.user32.SetProcessDpiAwarenessContext
 
-    # NOTE: this assertion does NOT protect the coordinate space, and an
-    # earlier comment here claimed it did. `_declare_signatures()` runs after
-    # `AWARENESS = _ensure_dpi_awareness()`, so declaring the setter there
-    # cannot affect a call that already happened -- measured: the process
-    # stays `system`. What guards the space is
-    # `test_the_production_entry_point_still_runs_in_its_measured_space`,
-    # which measures the awareness itself. This only pins that the deferred
-    # change has not been started.
-    assert setter.argtypes is None
+    assert setter.argtypes == [ctypes.c_void_p]
+    assert setter.restype is ctypes.wintypes.BOOL
 
 
 # --- awareness and units may not contradict each other ---------------------
@@ -548,24 +540,14 @@ def _awareness_in(preamble: str) -> tuple[str, str, str]:
 
 
 def test_the_production_entry_point_still_runs_in_its_measured_space():
-    """The flip is the worst outcome in this module and was guarded by
-    `assert ... or True`, which is a tautology.
-
-    Measured in a fresh process, because awareness can only be set once and an
-    in-process check measures whatever the test lane happened to import first.
-
-    D106 defers correcting the malformed setter to its own reviewed decision
-    on a scaled display. Until then `ghostcursor.run` must remain SYSTEM
-    aware: if it silently became per-monitor-v2, every window rect, UIA rect,
-    hint and capture would move at once, and on one monitor at 100% nothing
-    else in the suite could tell.
-    """
+    """Production must claim the physical coordinate space UIA rectangles
+    actually use. Measured in a fresh process because awareness is once-only."""
 
     awareness, declared, units = _awareness_in("import ghostcursor.run")
 
-    assert awareness == "system"
-    assert declared == "system"
-    assert units == "system_dpi_pixels"
+    assert awareness == "per-monitor-v2"
+    assert declared == "per-monitor-v2"
+    assert units == "physical_pixels"
 
 
 def test_importing_pywinauto_first_changes_the_coordinate_space():

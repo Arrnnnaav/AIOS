@@ -206,6 +206,56 @@ def test_composition_reverifies_and_exposes_both_signed_adapter_processes(tmp_pa
     assert descriptor.uia_adapter_sha256 == CANONICAL_UIA_ADAPTER_SHA256
 
 
+def test_descriptor_digests_come_from_signed_bytes_not_a_mutable_second_read(
+    tmp_path, monkeypatch
+):
+    private, trusted = _key()
+    files = _powerpoint_adapter_files()
+    files["ghostcursor/adapter/uia_adapter.py"] = (
+        Path(__file__).resolve().parents[1] / "plugins/shared/uia_adapter.py"
+    ).read_bytes()
+    files["ghostcursor/adapter/powerpoint_live_verifier.py"] = b"# live state"
+    adapter_api = {
+        "entrypoint": "ghostcursor/adapter/powerpoint_adapter.py",
+        "live_verifier": "ghostcursor/adapter/powerpoint_live_verifier.py",
+        "operations": OPERATION_ARTIFACT_PATH,
+        "plans": "ghostcursor/action-plans.json",
+        "protocol_version": 1,
+        "uia_entrypoint": "ghostcursor/adapter/uia_adapter.py",
+        "verifier": "ghostcursor/adapter/powerpoint_verifier.py",
+    }
+    bundle_path = _bundle(
+        tmp_path,
+        private,
+        plugin_id="ghostcursor.powerpoint",
+        executable="powerpnt.exe",
+        files=files,
+        adapter_api=adapter_api,
+    )
+    store = PluginStore(
+        tmp_path / "store", trusted_keys=trusted, core_version="0.1.0"
+    )
+    store.install(bundle_path)
+    store.enable("ghostcursor.powerpoint", "1.0.0")
+    with store._transaction():
+        active = store._load_active_catalog()
+
+    original_verify = store._verify_payload
+
+    def verify_then_replace(bundle):
+        root = original_verify(bundle)
+        (root / adapter_api["entrypoint"]).write_bytes(b"print('replacement ran')\n")
+        return root
+
+    monkeypatch.setattr(store, "_verify_payload", verify_then_replace)
+    descriptors = store._adapter_descriptors(active.plugins)
+
+    expected = hashlib.sha256(files[adapter_api["entrypoint"]]).hexdigest()
+    replacement = hashlib.sha256(b"print('replacement ran')\n").hexdigest()
+    assert descriptors["ghostcursor.powerpoint"].adapter_sha256 == expected
+    assert expected != replacement
+
+
 def test_core_upgrade_preserves_desired_enablement_as_blocked(tmp_path):
     private, trusted = _key()
     bundle = _bundle(tmp_path, private, maximum="0.2.0")

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import hashlib
 import pathlib
 from pathlib import Path
 from types import MappingProxyType, SimpleNamespace
@@ -32,9 +33,34 @@ from ghostcursor.action import (
 
 PLUGIN = "ghostcursor.powerpoint"
 VERSION = "1.0.0"
-ADAPTER = "a" * 64
 MANIFEST = "c" * 64
 ACTIVE = "d" * 64
+
+
+def _adapter_source() -> str:
+    return (
+        "from pathlib import Path\n"
+        "import json, sys\n"
+        + "marker_config = Path(__file__).with_name('marker-path.txt')\n"
+        + "if marker_config.exists():\n"
+        + "    Path(marker_config.read_text(encoding='utf-8')).write_text('started', encoding='utf-8')\n"
+        + "hello = json.loads(sys.stdin.readline())\n"
+        + "print(json.dumps({**hello, 'type': 'ready'}, sort_keys=True), flush=True)\n"
+        + "for line in sys.stdin:\n"
+        + "    value = json.loads(line)\n"
+        + "    if value['type'] == 'stop': break\n"
+        + "    if value['type'] == 'preflight':\n"
+        + "        print(json.dumps({'detail': 'valid', 'outcome': 'accepted', "
+        + "'request_id': value['request_id'], 'session_nonce': value['session_nonce'], "
+        + "'type': 'preflight_result', 'validation_sha256': value['validation_sha256']}, sort_keys=True), flush=True)\n"
+        + "        continue\n"
+        + "    print(json.dumps({'data': {}, 'detail': 'done', 'facts': [], "
+        + "'outcome': 'completed', 'request_id': value['request_id'], "
+        + "'session_nonce': value['session_nonce'], 'type': 'result'}, sort_keys=True), flush=True)\n"
+    )
+
+
+ADAPTER = hashlib.sha256(_adapter_source().encode("utf-8")).hexdigest()
 
 
 def _registry(*, risk=ActionRisk.LOW):
@@ -85,26 +111,13 @@ def _validated(registry=None):
 
 
 def _adapter(path: Path, *, marker: Path | None = None):
-    marker_line = ""
-    if marker is not None:
-        marker_line = f"Path({str(marker)!r}).write_text('started', encoding='utf-8')\n"
+    marker_config = path.with_name("marker-path.txt")
+    if marker is None:
+        marker_config.unlink(missing_ok=True)
+    else:
+        marker_config.write_text(str(marker), encoding="utf-8", newline="\n")
     path.write_text(
-        "from pathlib import Path\n"
-        "import json, sys\n"
-        + marker_line
-        + "hello = json.loads(sys.stdin.readline())\n"
-        + "print(json.dumps({**hello, 'type': 'ready'}, sort_keys=True), flush=True)\n"
-        + "for line in sys.stdin:\n"
-        + "    value = json.loads(line)\n"
-        + "    if value['type'] == 'stop': break\n"
-        + "    if value['type'] == 'preflight':\n"
-        + "        print(json.dumps({'detail': 'valid', 'outcome': 'accepted', "
-        + "'request_id': value['request_id'], 'session_nonce': value['session_nonce'], "
-        + "'type': 'preflight_result', 'validation_sha256': value['validation_sha256']}, sort_keys=True), flush=True)\n"
-        + "        continue\n"
-        + "    print(json.dumps({'data': {}, 'detail': 'done', 'facts': [], "
-        + "'outcome': 'completed', 'request_id': value['request_id'], "
-        + "'session_nonce': value['session_nonce'], 'type': 'result'}, sort_keys=True), flush=True)\n",
+        _adapter_source(),
         encoding="utf-8",
         newline="\n",
     )
@@ -119,7 +132,7 @@ def _descriptor(tmp_path: Path, *, marker: Path | None = None):
         manifest_sha256=MANIFEST,
         payload_root=tmp_path,
         entrypoint=entrypoint,
-        adapter_sha256=ADAPTER,
+        adapter_sha256=hashlib.sha256(entrypoint.read_bytes()).hexdigest(),
     )
 
 
@@ -616,6 +629,7 @@ def _fake_session(*, receipts=True, record=None):
         ReceiptPolicy,
     )
     from ghostcursor.act_runtime import UiaNodeSession
+    from ghostcursor.coordinate_space import observe_bracketed
 
     record = record if record is not None else {}
     record.setdefault("dispatched", [])
@@ -655,6 +669,7 @@ def _fake_session(*, receipts=True, record=None):
             semantic={"slides": 3},
             identity=_identity(),
             rectangle=(10, 20, 110, 60),
+            geometry=observe_bracketed(lambda: [(10, 20, 110, 60)]),
             match_count=1,
         ),
         present=present,
@@ -812,7 +827,7 @@ def test_the_composed_uia_session_receives_the_signed_uia_adapter(tmp_path, monk
     descriptor = SimpleNamespace(
         **vars(descriptor),
         uia_entrypoint=uia_entrypoint,
-        uia_adapter_sha256="e" * 64,
+        uia_adapter_sha256=hashlib.sha256(uia_entrypoint.read_bytes()).hexdigest(),
     )
     captured = []
     session, _record = _fake_session()

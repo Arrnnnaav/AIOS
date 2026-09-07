@@ -15,10 +15,9 @@ spaces. Every value here is QUERIED, and each carries the API that answered so
 a fallback is visible instead of silent.
 
 **Units are measured, not asserted.** An earlier version of this module
-hardcoded `physical_pixels`, which was not true of the process writing it:
-only a per-monitor-aware process is handed physical pixels on every monitor,
-and this one is system-aware. `dpi.units_for_awareness()` derives the unit from
-the awareness this capture just measured -- deliberately NOT
+hardcoded `physical_pixels` before the process was guaranteed per-monitor
+aware. `dpi.units_for_awareness()` derives the unit from the awareness this
+capture just measured -- deliberately NOT
 `dpi.coordinate_units()`, which performs the second query that
 `capture()` was changed to avoid -- so a system-aware process says
 `system_dpi_pixels` and cannot claim a precision it does not have.
