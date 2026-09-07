@@ -21,7 +21,6 @@ from types import SimpleNamespace
 import pytest
 
 from ghostcursor.act_node import Observation
-from ghostcursor.act_overlay import OverlaySession
 from ghostcursor.act_protocol import ReceiptPolicy, RefusalCode
 from ghostcursor.act_uia_session import UiaSessionError, build_uia_session
 from ghostcursor.adapter_host import AdapterHost, AdapterProtocolError
@@ -189,7 +188,7 @@ def _host(tmp_path, outcome="completed"):
 def _overlay():
     calls: list = []
     return (
-        OverlaySession(
+        SimpleNamespace(
             present=lambda request, observation: (
                 calls.append(("present", observation)) or []
             ),

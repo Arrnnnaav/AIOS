@@ -314,7 +314,6 @@ def test_the_surface_creates_and_always_destroys_its_window(monkeypatch):
     on the exception path too."""
 
     from ghostcursor import act_cli
-    from ghostcursor.act_overlay import OverlaySession
     from ghostcursor.act_protocol import ReceiptPolicy
     from ghostcursor.overlay import window as overlay_window
 
@@ -473,7 +472,7 @@ def test_the_run_and_the_cue_share_one_stoppable_controls(monkeypatch):
     took the `lambda: True` fallback its own docstring calls a defect."""
 
     from ghostcursor import act_cli
-    from ghostcursor.act_overlay import OverlaySession
+    from ghostcursor.act_overlay import overlay_presenter as real_presenter
     from ghostcursor.act_protocol import ReceiptPolicy
     from ghostcursor.overlay import window as overlay_window
 
@@ -485,10 +484,12 @@ def test_the_run_and_the_cue_share_one_stoppable_controls(monkeypatch):
 
     def presenter(hwnd, **kwargs):
         captured.update(kwargs)
-        return OverlaySession(
-            present=lambda *a: [],
-            on_node_state=lambda *a: None,
-            release=lambda: None,
+        return real_presenter(
+            hwnd,
+            bounds=(0, 0, 1920, 1080),
+            pump=lambda: None,
+            geometry_check=lambda *_args: (),
+            **kwargs,
         )
 
     monkeypatch.setattr("ghostcursor.act_overlay.overlay_presenter", presenter)

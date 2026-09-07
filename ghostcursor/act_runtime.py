@@ -7,6 +7,7 @@ import json
 import secrets
 import threading
 import time
+import weakref
 from types import SimpleNamespace
 from dataclasses import dataclass, field
 from enum import Enum
@@ -208,9 +209,12 @@ class UiaNodeSession:
 
 
 _PRESENTATION_SURFACE_SEAL = object()
+_TRUSTED_PRESENTATION_SURFACES: "weakref.WeakSet[PresentationSurface]" = (
+    weakref.WeakSet()
+)
 
 
-@dataclass(frozen=True, init=False)
+@dataclass(frozen=True, slots=True, weakref_slot=True, eq=False, init=False)
 class PresentationSurface:
     """Where a control-driving node's cue is shown, and how long it may take.
 
@@ -252,24 +256,46 @@ def _bind_presentation_surface(overlay: object, policy: ReceiptPolicy) -> Presen
     presenter.
     """
 
-    from ghostcursor.act_overlay import OverlaySession
+    from ghostcursor.act_overlay import OverlaySession, _trusted_overlay_session
     from ghostcursor.act_ui_bridge import UiThreadPresentationBridge
 
-    if type(overlay) not in (OverlaySession, UiThreadPresentationBridge):
+    trusted_overlay = (
+        _trusted_overlay_session(overlay)
+        if type(overlay) is OverlaySession
+        else (
+            type(overlay) is UiThreadPresentationBridge
+            and _trusted_overlay_session(getattr(overlay, "_overlay", None))
+        )
+    )
+    if not trusted_overlay:
         raise TypeError("presentation overlay is not a reviewed implementation")
     if not isinstance(policy, ReceiptPolicy):
         raise TypeError("presentation policy must be ReceiptPolicy")
-    return PresentationSurface(
+    surface = PresentationSurface(
         overlay=overlay,
         policy=policy,
         _seal=_PRESENTATION_SURFACE_SEAL,
     )
+    _TRUSTED_PRESENTATION_SURFACES.add(surface)
+    return surface
 
 
 def _trusted_presentation_surface(value: object) -> bool:
-    return (
+    if not (
         type(value) is PresentationSurface
         and getattr(value, "_seal", None) is _PRESENTATION_SURFACE_SEAL
+        and value in _TRUSTED_PRESENTATION_SURFACES
+    ):
+        return False
+    from ghostcursor.act_overlay import OverlaySession, _trusted_overlay_session
+    from ghostcursor.act_ui_bridge import UiThreadPresentationBridge
+
+    overlay = value.overlay
+    if type(overlay) is OverlaySession:
+        return _trusted_overlay_session(overlay)
+    return (
+        type(overlay) is UiThreadPresentationBridge
+        and _trusted_overlay_session(getattr(overlay, "_overlay", None))
     )
 
 

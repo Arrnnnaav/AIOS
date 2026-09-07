@@ -14,6 +14,7 @@ import os
 import re
 import site
 import sys
+import sysconfig
 from pathlib import Path
 
 
@@ -21,6 +22,8 @@ _SHA256 = re.compile(r"[0-9a-f]{64}")
 
 
 def main(argv: list[str] | None = None) -> int:
+    if not sys.flags.isolated or not sys.flags.no_site or not sys.flags.safe_path:
+        raise SystemExit("verified Python requires -I -S startup isolation")
     arguments = list(sys.argv[1:] if argv is None else argv)
     if len(arguments) < 3 or arguments[0] != "--sha256":
         raise SystemExit("usage: verified_python --sha256 HEX PATH [ARG ...]")
@@ -56,7 +59,10 @@ def main(argv: list[str] | None = None) -> int:
     # three import directories and DLL directory explicitly. These are
     # interpreter-owned dependency locations, never the plugin payload root.
     user_site = Path(site.getusersitepackages()).resolve()
+    install_paths = sysconfig.get_paths()
     dependency_paths = [
+        Path(install_paths["purelib"]).resolve(),
+        Path(install_paths["platlib"]).resolve(),
         user_site,
         user_site / "win32",
         user_site / "win32" / "lib",

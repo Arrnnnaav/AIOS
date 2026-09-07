@@ -40,6 +40,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Callable, Sequence
+import weakref
 
 from ghostcursor.act_presenter import (
     CuePlan,
@@ -92,7 +93,11 @@ class CueBudget:
         self.poll_interval_ms = poll_interval_ms
 
 
-@dataclass
+_OVERLAY_SESSION_SEAL = object()
+_TRUSTED_OVERLAY_SESSIONS: "weakref.WeakSet[OverlaySession]" = weakref.WeakSet()
+
+
+@dataclass(frozen=True, slots=True, weakref_slot=True, eq=False, init=False)
 class OverlaySession:
     """The two callables a `UiaNodeSession` needs, sharing one pointer.
 
@@ -106,6 +111,26 @@ class OverlaySession:
     #: Clears whatever is on screen. Call it when the whole run ends: the
     #: per-node lifecycle deliberately leaves a verified pointer up.
     release: Callable[[], None]
+
+    def __init__(
+        self,
+        *,
+        present: Callable[[PresentationRequest, object], Sequence[Receipt]],
+        on_node_state: Callable[[object, LifecycleState], None],
+        release: Callable[[], None],
+        _seal=None,
+    ) -> None:
+        if _seal is not _OVERLAY_SESSION_SEAL:
+            raise TypeError("overlay sessions come from overlay_presenter")
+        object.__setattr__(self, "present", present)
+        object.__setattr__(self, "on_node_state", on_node_state)
+        object.__setattr__(self, "release", release)
+
+
+def _trusted_overlay_session(value: object) -> bool:
+    """True only for an instance registered by ``overlay_presenter``."""
+
+    return type(value) is OverlaySession and value in _TRUSTED_OVERLAY_SESSIONS
 
 
 def overlay_presenter(
@@ -306,7 +331,14 @@ def overlay_presenter(
         state["position"] = _final_position(plan)
         return receipts
 
-    return OverlaySession(present=present, on_node_state=on_node_state, release=clear)
+    session = OverlaySession(
+        present=present,
+        on_node_state=on_node_state,
+        release=clear,
+        _seal=_OVERLAY_SESSION_SEAL,
+    )
+    _TRUSTED_OVERLAY_SESSIONS.add(session)
+    return session
 
 
 def _coordinate_disagreements(

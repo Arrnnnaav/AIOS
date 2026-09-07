@@ -68,17 +68,19 @@ def test_stop_reaches_the_harness_cue(monkeypatch):
     the hardwiring the change under review removed."""
 
     from ghostcursor.devtools import act_acceptance
-    from ghostcursor.act_overlay import OverlaySession
+    from ghostcursor.act_overlay import overlay_presenter as real_presenter
 
     _stub_window(monkeypatch)
     captured = {}
 
     def presenter(hwnd, **kwargs):
         captured.update(kwargs)
-        return OverlaySession(
-            present=lambda *a: [],
-            on_node_state=lambda *a: None,
-            release=lambda: None,
+        return real_presenter(
+            hwnd,
+            bounds=(0, 0, 1920, 1080),
+            pump=lambda: None,
+            geometry_check=lambda *_args: (),
+            **kwargs,
         )
 
     monkeypatch.setattr("ghostcursor.act_overlay.overlay_presenter", presenter)

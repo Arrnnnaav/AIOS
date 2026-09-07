@@ -14,6 +14,7 @@ def _run(path, digest, *arguments):
         [
             sys.executable,
             "-I",
+            "-S",
             str(BOOTSTRAP),
             "--sha256",
             digest,
@@ -91,4 +92,34 @@ def test_a_mutable_sibling_module_is_not_importable_after_main_byte_verification
     completed = _run(source, digest)
 
     assert completed.returncode != 0
+    assert not marker.exists()
+
+
+def test_bootstrap_refuses_when_system_site_startup_was_not_disabled(tmp_path):
+    source = tmp_path / "payload.py"
+    marker = tmp_path / "payload-ran.txt"
+    source.write_text(
+        f"from pathlib import Path\nPath({str(marker)!r}).write_text('ran')\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    digest = hashlib.sha256(source.read_bytes()).hexdigest()
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            str(BOOTSTRAP),
+            "--sha256",
+            digest,
+            str(source),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode != 0
+    assert "requires -I -S" in completed.stderr
     assert not marker.exists()

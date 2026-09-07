@@ -695,6 +695,7 @@ def _verified_command(path: Path, sha256: str, *arguments: str) -> list[str]:
     return [
         sys.executable,
         "-I",
+        "-S",
         str(bootstrap),
         "--sha256",
         sha256,

@@ -71,18 +71,18 @@ def test_manager_factory_binds_the_real_overlay_bridge_and_releases_it(monkeypat
 
     import ghostcursor.act_overlay as act_overlay
     import ghostcursor.act_runtime as act_runtime
-    from ghostcursor.act_overlay import OverlaySession
     from ghostcursor.overlay import window as overlay_window
 
     released = []
     destroyed = []
     captured = []
-    real_overlay = OverlaySession(
-        present=lambda request, observation, sink=None: (),
-        on_node_state=lambda node, state: None,
-        release=lambda: released.append(True),
-    )
+    real_presenter = act_overlay.overlay_presenter
     monkeypatch.setattr(overlay_window, "create_overlay_window", lambda: 4242)
+    monkeypatch.setattr(
+        overlay_window,
+        "clear_cue",
+        lambda hwnd: released.append(hwnd),
+    )
     monkeypatch.setattr(
         overlay_window,
         "destroy_overlay_window",
@@ -91,7 +91,14 @@ def test_manager_factory_binds_the_real_overlay_bridge_and_releases_it(monkeypat
     monkeypatch.setattr(
         act_overlay,
         "overlay_presenter",
-        lambda hwnd, **kwargs: captured.append((hwnd, kwargs)) or real_overlay,
+        lambda hwnd, **kwargs: captured.append((hwnd, kwargs))
+        or real_presenter(
+            hwnd,
+            bounds=(0, 0, 1920, 1080),
+            pump=lambda: None,
+            geometry_check=lambda *_args: (),
+            **kwargs,
+        ),
     )
     controls = SimpleNamespace(stop_event=threading.Event())
 
@@ -106,5 +113,5 @@ def test_manager_factory_binds_the_real_overlay_bridge_and_releases_it(monkeypat
     controls.stop_event.set()
     assert captured[0][1]["keep_running"]() is False
     presentation.close()
-    assert released == [True]
+    assert released == [4242]
     assert destroyed == [4242]

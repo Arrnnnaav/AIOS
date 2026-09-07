@@ -846,7 +846,7 @@ def test_the_composed_uia_session_receives_the_signed_uia_adapter(tmp_path, monk
         revalidate_target=lambda _target: None,
         verify=lambda *_args: True,
         controls=ActControls(),
-        presentation=_surface(),
+        presentation=_surface(monkeypatch),
         live_verifier=SimpleNamespace(),
     )
 
@@ -1036,25 +1036,49 @@ def _policy():
     return ReceiptPolicy(first_paint_deadline_ms=2000, completion_deadline_ms=8000)
 
 
-def _surface(overlay=None):
+def _surface(monkeypatch):
     """A presentation surface whose overlay returns no receipts, so a node
     refuses before any dispatch."""
 
-    from ghostcursor.act_overlay import OverlaySession
+    import ghostcursor.act_overlay as act_overlay
+    from ghostcursor.act_overlay import CueBudget, overlay_presenter
+    from ghostcursor.act_protocol import TrustClass
     from ghostcursor.act_runtime import _bind_presentation_surface
+    from ghostcursor.overlay.cue import LabelMetrics
 
-    return _bind_presentation_surface(
-        overlay
-        or OverlaySession(
-            present=lambda request, observation, sink: [],
-            on_node_state=lambda node, state: None,
-            release=lambda: None,
+    monkeypatch.setattr(act_overlay.overlay_window, "set_cue", lambda *_args: None)
+    monkeypatch.setattr(act_overlay.overlay_window, "clear_cue", lambda *_args: None)
+    monkeypatch.setattr(
+        act_overlay.overlay_window,
+        "measure_label",
+        lambda *_args: LabelMetrics(char_width=8, line_height=16),
+    )
+    overlay = overlay_presenter(
+        4242,
+        budget=CueBudget(
+            traversal_ms=400,
+            settle_ms=250,
+            frame_budget_ms=25,
         ),
+        policy=_policy(),
+        label_for=lambda observation: "New Slide",
+        backend_trust=TrustClass.LIVE_STATE,
+        # Abort immediately after the first real paint. This produces no
+        # completion receipt, which is the refusal this helper needs.
+        keep_running=lambda: False,
+        bounds=(0, 0, 1920, 1080),
+        pump=lambda: None,
+        geometry_check=lambda *_args: (),
+    )
+    return _bind_presentation_surface(
+        overlay,
         _policy(),
     )
 
 
-def _run_with_surface(tmp_path, *, descriptor=None, surface=None, live_verifier=True):
+def _run_with_surface(
+    tmp_path, monkeypatch, *, descriptor=None, surface=None, live_verifier=True
+):
     import time as _time
 
     registry = _uia_registry()
@@ -1070,12 +1094,12 @@ def _run_with_surface(tmp_path, *, descriptor=None, surface=None, live_verifier=
         revalidate_target=lambda _target: None,
         verify=lambda *_args: True,
         controls=ActControls(),
-        presentation=surface if surface is not None else _surface(),
+        presentation=surface if surface is not None else _surface(monkeypatch),
         live_verifier=SimpleNamespace() if live_verifier else None,
     )
 
 
-def test_a_presentation_surface_reaches_the_composition_block(tmp_path):
+def test_a_presentation_surface_reaches_the_composition_block(tmp_path, monkeypatch):
     """The block must actually run.
 
     The first version of this test asserted `"no presentation surface" not in
@@ -1086,7 +1110,7 @@ def test_a_presentation_surface_reaches_the_composition_block(tmp_path):
     run reaches the session and fails on the fake overlay's empty receipts,
     and without one it takes the refusal branch."""
 
-    with_surface = _run_with_surface(tmp_path)
+    with_surface = _run_with_surface(tmp_path, monkeypatch)
     assert with_surface.code is ActRunCode.ADAPTER_FAILED
     assert "requires a presentation surface" not in with_surface.detail
 
@@ -1095,13 +1119,15 @@ def test_a_presentation_surface_reaches_the_composition_block(tmp_path):
     assert with_surface.detail != without.detail
 
 
-def test_a_control_driving_run_refuses_without_the_plugins_live_verifier(tmp_path):
+def test_a_control_driving_run_refuses_without_the_plugins_live_verifier(
+    tmp_path, monkeypatch
+):
     """observe() asks the live verifier what the document currently is, and
     that reading is the semantic the drift check compares. Without one the
     node would compare identity against itself -- the vacuous check
     `act_uia_session` exists to avoid -- so the run refuses instead."""
 
-    result = _run_with_surface(tmp_path, live_verifier=False)
+    result = _run_with_surface(tmp_path, monkeypatch, live_verifier=False)
 
     assert result.code is ActRunCode.ADAPTER_FAILED
     assert "live verifier" in result.detail
@@ -1125,6 +1151,7 @@ def test_an_untrusted_presentation_surface_refuses_before_an_adapter_starts(
     )
     result = _run_with_surface(
         tmp_path,
+        monkeypatch,
         surface=SimpleNamespace(
             overlay=SimpleNamespace(present=lambda *_args: ()),
             policy=_policy(),
@@ -1142,6 +1169,29 @@ def test_presentation_surface_cannot_be_constructed_by_a_caller():
 
     with pytest.raises(TypeError, match="trusted UI factory"):
         PresentationSurface(overlay=object(), policy=_policy())
+
+
+def test_an_exact_but_unregistered_overlay_session_cannot_forge_receipts():
+    """Exact-type admission is insufficient when that type is constructible.
+
+    This reproduces the second D032 review's bypass with the exact production
+    class rather than a duck-typed lookalike. Registration by
+    ``overlay_presenter`` is the additional fact the binder now requires.
+    """
+
+    from ghostcursor.act_overlay import OverlaySession
+    from ghostcursor.act_runtime import _bind_presentation_surface
+
+    with pytest.raises(TypeError, match="overlay_presenter"):
+        OverlaySession(
+            present=lambda request, observation, sink=None: (),
+            on_node_state=lambda node, state: None,
+            release=lambda: None,
+        )
+
+    forged = object.__new__(OverlaySession)
+    with pytest.raises(TypeError, match="reviewed implementation"):
+        _bind_presentation_surface(forged, _policy())
 
 
 def test_a_failure_inside_the_session_becomes_a_result_not_an_exception(tmp_path):
