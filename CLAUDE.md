@@ -306,11 +306,24 @@ staging file. Artifact-producing object-model plans still require a new output
 path; never make that requirement global to all Act plans.
 
 Never launch a signed Python adapter or verifier directly by filesystem path.
-Core must first hash the target and execute those exact in-memory bytes through
-`ghostcursor.verified_python`; the payload must require the injected verified
-digest. Descriptor hashes, operation registries, and action plans come from the
-signed `VerifiedBundle.files`, not a second mutable path read. A payload that
-changed after catalog verification must execute zero plugin statements (D117).
+Core must launch the absolute trusted `ghostcursor/verified_python.py` under
+isolated mode, then hash the target and execute those exact in-memory bytes.
+The payload must require the injected verified digest. Never put the payload
+directory or `PYTHONPATH` back on that child's import path, and never process
+the disabled user-site `.pth` files manually. Executable plugin entrypoints are
+single-file payloads in v1; mutable
+plugin-sibling imports are forbidden. Descriptor hashes, operation registries,
+and action plans come from the signed `VerifiedBundle.files`, not a second
+mutable path read. A payload that changed after catalog verification must
+execute zero plugin statements (D117).
+
+Presentation receipts are authority input. The production Act executor may
+accept only a sealed surface produced around GhostCursor's reviewed overlay or
+UI-thread bridge; never accept a structural/duck-typed `present` callback.
+Pause/Stop is checked again after one-use authorization and immediately before
+dispatch. If it changed, refuse the node and require fresh confirmation; do not
+hold a minted token across Pause. An adapter request already in flight still
+runs through verification and is not claimed to be cancellable (D118).
 
 The signed `ghostcursor.excel` plugin is active only for Excel
 `16.0.20326.20112`. `SELECT_CELL_B2` and `ADD_WORKSHEET` each passed three
@@ -354,8 +367,11 @@ only by calling `PluginStore.list_installed()` and must refresh after focus so
 CLI changes do not leave a stale in-memory status view.
 The manager UI thread is the sole owner and message-pump for an Act overlay.
 Workers request presentation through `UiThreadPresentationBridge` and wait for
-its receipts; they never create or pump a Win32 overlay. Recheck Pause after a
-cue completes and before confirm-before or dispatch (D118).
+its original receipt sink; they never create or pump a Win32 overlay. Recheck
+Pause/Stop after a cue completes, before authorization, and once more after the
+token is minted immediately before dispatch. Refuse a late Pause rather than
+holding the token across it. Do not claim that this cancels a dispatch already
+in flight (D118).
 Complex planning requires an explicitly selected enabled plugin with an active
 capability registry. The first action may only produce and display the complete
 flattened plan; a distinct second `Start plan` action is required before

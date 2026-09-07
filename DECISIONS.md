@@ -4652,6 +4652,17 @@ of mutable extracted paths. The runtime path is still reverified during catalog
 composition, and the bootstrap makes a replacement after that check fail
 before one plugin statement executes.
 
+**Amendment after the first cold review.** Starting the bootstrap with
+`python -m` from the payload working directory still allowed a payload-local
+`ghostcursor/verified_python.py` to shadow the trusted module before the hash.
+The host now starts the bootstrap by absolute trusted path under `-I`. Only
+after the target bytes match does the bootstrap add the trusted project root
+and explicit interpreter dependency directories. It never adds the payload
+directory and never processes user-site `.pth` startup code. Executable plugin
+entrypoints are therefore single-file payloads in v1: importing mutable plugin
+siblings is refused rather than extending authority beyond the signed main
+file.
+
 **Reason.** Self-hashing inside a Python script cannot establish pre-execution
 integrity: Python must execute imports and definitions before `main()` can read
 `__file__`. A path replacement in that interval therefore ran unapproved code
@@ -4662,8 +4673,10 @@ to signed bytes and execution to the same bytes.
 **Evidence.** Tests replace an adapter with top-level marker code after its
 descriptor is created and prove the marker never appears. Another replaces an
 extracted path immediately after payload verification and proves descriptor
-authority remains the signed digest. Both mutations were killed. This is not
-an independent D032 verdict.
+authority remains the signed digest. New tests place a shadow bootstrap and an
+importable sibling beside the payload; neither may execute. Their mutations
+were killed. The amended full hermetic lane passed **2,445 tests**. This is not
+the required independent D032 re-review verdict.
 
 ## D118 — The manager UI thread owns Act presentation
 
@@ -4674,12 +4687,24 @@ an independent D032 verdict.
 manager UI thread creates and pumps the overlay. A worker may request a cue
 through `UiThreadPresentationBridge`, but it waits for receipts produced by
 that owner thread and never creates a Win32 window or pumps its queue itself.
-Pause after a cue is acknowledged returns to the canonical runnable gate before
-confirm-before or dispatch, so a visible paused cue cannot become an effect.
+Presentation values are sealed and can be bound only around the reviewed
+`OverlaySession` or `UiThreadPresentationBridge`; the executor refuses an
+arbitrary duck-typed receipt producer before an adapter starts. The bridge
+preserves the original receipt sink and timestamp across its thread boundary.
+
+Pause/Stop after a cue is acknowledged returns to the canonical runnable gate
+before confirm-before and authorization. A final non-blocking read occurs after
+the one-use token is minted and immediately before dispatch; a changed control
+state refuses the node instead of waiting and resuming with stale confirmation.
+This is an explicit checkpoint boundary. It does not claim to cancel a dispatch
+already handed to the adapter, which must still be independently verified.
 
 **Reason.** Win32 window ownership and message pumping are thread-affine. A
 worker-owned overlay made the normal manager path either unsafe or impossible,
 while a second UI process would split the event model this architecture keeps
 single-process. Tests pin owner-thread creation, receipt handoff, manager
-wiring, and the post-cue pause boundary. Live acceptance waits for D116/D117
-re-review and the invalidated paint budget to be remeasured.
+wiring, the actual manager presentation factory, real receipt/timestamp handoff,
+and Pause arriving during authorization. Mutations removing the presentation
+seal, receipt sink, or final Pause gate were killed. The amended full hermetic
+lane passed **2,445 tests**. Live acceptance waits for D116/D117/D118 re-review
+and the invalidated paint budget to be remeasured.

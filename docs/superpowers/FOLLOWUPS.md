@@ -680,6 +680,16 @@ receipts to the worker. The remaining work is process and live evidence: D032
 re-review of D116-D118, paint-budget remeasurement, and a manager-owned live
 pointer run before activation.
 
+**Boundary correction later 7 September 2026.** The first re-review withheld
+approval: the Python bootstrap could be shadowed from the payload CWD, verified
+main code could import mutable plugin siblings, an arbitrary presentation
+object could forge receipts, Pause could arrive during authorization, and the
+manager tests did not transport a real receipt. Commit `fec9826` closes all
+five implementation gaps with an absolute isolated bootstrap, single-file
+plugin execution, sealed presentation values, a final pre-dispatch Pause/Stop
+gate, and real bridge/factory tests. The fresh D032 verdict, amended paint
+measurement, and live manager run are still open.
+
 ## A hermetic test was reading the real ESC key — CLOSED 4 Sep 2026
 
 `tests/test_run.py::test_run_tour_creates_overlay_only_after_live_revalidation`

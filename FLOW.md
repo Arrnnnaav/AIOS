@@ -291,7 +291,7 @@ run.main()
 | `ghostcursor/selectors.py` | loads the signed selector an operation names and proves its digest; an action selector must be `exactly_one` and agree with the operation's control type |
 | `ghostcursor/act_uia_session.py` | composes one UIA node's session: verifier reading as `semantic`, adapter read-only read as identity/rectangle, overlay as the cue |
 | `ghostcursor/act_ui_bridge.py` | manager UI-thread bridge: the worker requests cue presentation and receives receipts while the manager thread exclusively creates/pumps the Win32 overlay |
-| `ghostcursor/verified_python.py` | trusted executable-payload bootstrap: hash one path read against signed authority, then compile and execute those same in-memory bytes |
+| `ghostcursor/verified_python.py` | absolute isolated executable-payload bootstrap: hash one path read against signed authority, exclude payload/PYTHONPATH and user-site `.pth` imports, then compile and execute those same in-memory bytes |
 | `ghostcursor/devtools/act_campaign.py` | counts consecutive clean Act attempts; fresh store/output per attempt, target re-checked and restored each time, refuses an `interrupt_probe` record, stops at the first unclean run |
 | `ghostcursor/brief.py` | the stored conversation a plan is proposed from (D113); `bind_brief` re-reads the source so a proposal cannot bind a digest that no longer describes the file; appends turns to a Markdown brief, loads it back, digests the exact bytes; a closed type with no field that could carry anything executable |
 | `ghostcursor/act_staging.py` | transactional artifact output used by the CLI/campaign path: runtime-owned same-volume staging, atomic publish after complete verification, digest binding, and an `.incomplete.json` marker cleared only by successful publication |
@@ -1319,16 +1319,28 @@ Artifact plans still require `--output` and retain same-volume staging. Quick
 and Watch pacing now reach the public CLI.
 
 Executable Python payloads are not launched by path. `AdapterHost` and
-`VerifierHost` start trusted `ghostcursor.verified_python`, which hashes the
-target bytes against the signed descriptor before compiling and executing those
-same in-memory bytes. Plugin entrypoints require the injected verified digest;
-a direct launch refuses. `PluginStore` derives descriptor digests and parses
-registries/plans from the signed `VerifiedBundle.files`, so a mutable reread
-cannot redefine the authority the bootstrap checks (D117).
+`VerifierHost` start an absolute trusted `ghostcursor/verified_python.py` under
+Python isolated mode. The bootstrap hashes the target bytes against the signed
+descriptor before compiling and executing those same in-memory bytes. It adds
+the trusted GhostCursor package and explicit interpreter dependency directories
+only after the hash; the plugin payload directory and `PYTHONPATH` never become
+import paths, and the disabled user-site `.pth` files are not processed.
+Executable plugin entrypoints are
+therefore single-file payloads in v1 and may not import mutable plugin siblings.
+They require the injected verified digest; a direct launch refuses.
+`PluginStore` derives descriptor digests and parses registries/plans from the
+signed `VerifiedBundle.files`, so a mutable reread cannot redefine the
+authority the bootstrap checks (D117).
 
 In the native manager, `UiThreadPresentationBridge` hands a worker's cue request
 to the manager UI thread. That thread alone owns and pumps the overlay window;
-the worker blocks on its render receipts. Lifecycle updates return through the
-same bridge, and Pause is rechecked after cue completion and before confirmation
-or dispatch. This preserves the one-process manager/rail architecture while
-respecting Win32 thread affinity (D118).
+the worker blocks on render receipts delivered through the bridge's original
+receipt sink. The production executor accepts only a sealed presentation value
+bound around `OverlaySession` or `UiThreadPresentationBridge`; an arbitrary
+duck-typed object cannot manufacture acknowledgements and make an effect
+eligible. Lifecycle updates return through the same bridge. Pause/Stop is
+checked before confirmation, before authorization, and once more after token
+minting immediately before dispatch. A late check refuses instead of resuming
+with stale confirmation. This is a checkpoint guarantee, not cancellation of
+an adapter call already in flight. The design preserves the one-process
+manager/rail architecture while respecting Win32 thread affinity (D118).

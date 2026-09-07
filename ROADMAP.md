@@ -108,9 +108,9 @@ own internal phases, not the product phases above.
 | A — PowerPoint diagnose-fix-rerun | **Closed.** 255/255 diagnostic run; `docs/evidence/act-phase-a-diagnostic.md` |
 | B — read-only UIA feasibility | **Closed.** Excel passes; `docs/evidence/act-phase-b-uia-feasibility.md` |
 | C — freeze contracts | Partial. Receipt, identity, and coordinate-space contracts have production callers; signed stages remain unfinished |
-| D — runtime implementation | In progress. The public executor routes object-model and UIA operations to separate signed adapters, carries the pre-cue baseline into live verification, and rejects cross-process geometry drift (D114–D115) |
-| E — measure budgets | Partial. Paint and receipt budgets are recorded; confirmation/dispatch budget closure remains |
-| F/H/J — three independent D032 reviews | Not started; each must be done by someone other than the author |
+| D — runtime implementation | In progress. The public executor routes object-model and UIA operations to separate signed adapters, carries the pre-cue baseline into live verification, rejects cross-process geometry drift, seals presentation receipts, and rechecks Pause after authorization (D114–D118) |
+| E — measure budgets | Partial. Receipt budgets are recorded. The old paint budget was invalidated by paint-time geometry checks and must be remeasured after D032 re-review; confirmation/dispatch budget closure remains |
+| F/H/J — three independent D032 reviews | In progress. The first cold review withheld approval; both remediation rounds are committed and await a fresh verdict. Every review must be done by someone other than the author |
 | I — release signing and counted runs | Not started. Needs a non-ephemeral external key |
 
 ### The owner's specification for this phase
@@ -224,7 +224,9 @@ built but not yet exercised by a caller or a live run.
       (`overlay/cue.py` `TRUST_COLOURS`, sourced from `trust_for()`)
 - [x] Presentation receipts wired to the worker (`act_overlay`, `act_uia_session`)
 - [x] Manager UI-thread bridge owns/pumps the overlay and returns receipts to
-      the Act worker (`act_ui_bridge.py`, D118); live manager proof pending
+      the Act worker (`act_ui_bridge.py`, D118). The surface is sealed against
+      forged receipt producers and Pause is rechecked after authorization;
+      live manager proof and fresh D032 verdict remain pending
 - [~] Pause / Stop during a run — MEASURED live 3 Sep 2026:
       Stop 0.094-0.187s (D020 ceiling 0.5s), zero nodes started after,
       in Quick and Watch, during pacing and during execution.
@@ -294,8 +296,11 @@ built but not yet exercised by a caller or a live run.
 - [ ] Local model composes a 10-slide deck from `idea.txt`
 
 **10. Acceptance and release**
-- [x] Three consecutive PowerPoint campaigns — 4 Sep 2026, 255/255 each,
-      on externally signed bytes (`docs/evidence/act-acceptance-campaign.md`)
+- [~] Three consecutive PowerPoint campaigns — historical 4 Sep evidence is
+      255/255 each on externally signed plugin bytes
+      (`docs/evidence/act-acceptance-campaign.md`), but the production core and
+      presentation boundary changed afterward. Re-run after D032 and paint
+      recertification before using them as current activation evidence.
 - [ ] Animation-catalog campaign
 - [ ] All lanes green independently
 - [x] D032 pre-sign review — three independent cold passes; 26 + 4 + 3
