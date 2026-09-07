@@ -193,7 +193,9 @@ built but not yet exercised by a caller or a live run.
 - [x] Identity check before each pattern call — repeated inside the signed UIA adapter against the same element it invokes (D114)
 - [x] UIA observation and overlay call `coordinate_space`; malformed,
       unbracketed, cross-awareness, topology-drifted, and HWND-mismatched
-      geometry is rejected before paint/dispatch (D115)
+      geometry is rejected before paint/dispatch. UIA geometry must be
+      physical pixels, baseline/confirm contracts agree, and the overlay
+      brackets each paint (D115/D116). D032 re-review remains.
 - [~] Before/confirm/after are sequenced and the real baseline reaches live verification; explicit verifier-mode wire vocabulary remains to be closed
 - [x] Per-node authorization minted only after the identity check passes
 
@@ -221,6 +223,8 @@ built but not yet exercised by a caller or a live run.
 - [x] Trust presentation: cyan object-model, violet UIA, neutral in flight
       (`overlay/cue.py` `TRUST_COLOURS`, sourced from `trust_for()`)
 - [x] Presentation receipts wired to the worker (`act_overlay`, `act_uia_session`)
+- [x] Manager UI-thread bridge owns/pumps the overlay and returns receipts to
+      the Act worker (`act_ui_bridge.py`, D118); live manager proof pending
 - [~] Pause / Stop during a run — MEASURED live 3 Sep 2026:
       Stop 0.094-0.187s (D020 ceiling 0.5s), zero nodes started after,
       in Quick and Watch, during pacing and during execution.
@@ -260,9 +264,9 @@ built but not yet exercised by a caller or a live run.
       publishes 94371 bytes atomically with a matching digest.
 
 **7. Measured budgets (Phase E)**
-- [x] Paint cost; derive frame count — `docs/evidence/act-paint-budget.md`
-      (median 0.452ms, p99 0.865-1.077ms over 3x400 frames; budget 2ms;
-      the 12-frame ceiling binds on this machine, not the paint cost)
+- [~] Paint cost was measured in `docs/evidence/act-paint-budget.md`, but D116
+      added pre/post coordinate queries around each paint. The former 2 ms
+      budget is historical and must be remeasured before visual acceptance.
 - [x] Verifier spawn-to-response — max 0.188s, mean ~0.142s over 765
       invocations (`docs/evidence/act-diagnostic-rerun.md`)
 - [ ] Confirmation-to-invoke deadline
@@ -311,11 +315,10 @@ built but not yet exercised by a caller or a live run.
 - [x] Phase A: 255/255 diagnostic run — `docs/evidence/act-phase-a-diagnostic.md`
 - [x] Phase B: UIA feasibility probe — `docs/evidence/act-phase-b-uia-feasibility.md`
 
-**The next integration milestone is the manager UI-thread bridge**: the worker
-requests a cue, the manager-owned UI thread validates and paints it, and the
-receipt returns to the waiting node without creating or pumping a Win32 overlay
-from the worker. Until that bridge exists, the CLI/live harness can exercise
-the pointer path but the normal manager deliberately refuses pointer plans.
+**The next integration milestone is boundary recertification**: independently
+re-review D116/D117/D118, remeasure paint after the new geometry checks, then
+run one live manager-owned pointer action. Only after those gates pass should
+the staged-plan schema or semantic PowerPoint capabilities move forward.
 
 **Act v1 is deliberately not general computer use.** No mouse or keyboard
 synthesis (D006), no VLM-driven clicking, no cross-application graphs, no

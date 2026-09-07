@@ -4591,3 +4591,95 @@ Focused tests independently vary malformed records, rectangle/record
 disagreement, producer/overlay awareness disagreement, a coordinate change
 during the final adapter read, and the pre-effect final comparison. This is
 regression evidence, not a D032 review or live scaled-display acceptance.
+
+**Superseded in part by D116.** The independent review found that UI
+Automation's `BoundingRectangle` is always physical screen pixels, so accepting
+the system-DPI contract described above could still draw a convincing pointer
+at the wrong place on a mixed-DPI desktop. D116 makes physical-pixel awareness
+an admission requirement and extends the bracket through the actual paint.
+
+## D116 — UIA geometry requires a physical-pixel process and paint-time stability
+
+**Date:** 7 September 2026
+**Status:** Candidate implementation; independent D032 re-review required
+before live acceptance, signing, or activation.
+
+**Amends D106 and D115.** D106 remains correct that a contract reports the
+units earned by measured awareness rather than asserting a desired label. Its
+conclusion that production must remain system-aware is superseded. Microsoft
+defines UIA `BoundingRectangle` in physical screen coordinates regardless of
+the client's own DPI awareness. Therefore a system-aware adapter or overlay
+cannot honestly label or consume that rectangle as system-DPI geometry and
+may not participate in Act pointer rendering.
+
+`overlay/dpi.py` now declares the pointer-sized
+`SetProcessDpiAwarenessContext` ABI before its first call and requests
+per-monitor-v2 at import. A fresh-process test requires the production entry
+point to measure `per-monitor-v2` and `physical_pixels`. The signed UIA adapter,
+host, and overlay each independently refuse a UIA rectangle whose bracket does
+not hold in physical pixels. Agreement between two system-aware peers is not a
+substitute.
+
+The overlay no longer checks geometry only before layout. It samples the
+thread/process/window contract immediately before and after every
+`set_cue`/paint request and withholds both render receipts when the space moves.
+The node also compares the baseline and confirm-before geometry contracts;
+matching identity and rectangle integers cannot conceal a coordinate-space
+change during the cue dwell.
+
+**Evidence and limit.** The amended full hermetic lane passed **2,439 tests**.
+Mutations removing per-monitor-v2, physical-unit admission, baseline/confirm
+comparison, or the post-paint check were each killed. This desktop does not
+provide mixed-DPI acceptance evidence. The old 2 ms paint budget predates the
+new pre/post queries and must be remeasured before a counted visual campaign.
+
+## D117 — Signed Python executes only from the bytes core verified
+
+**Date:** 7 September 2026
+**Status:** Candidate implementation; independent D032 re-review required.
+
+**Decision.** An executable plugin path is never launched directly with
+Python. `ghostcursor.verified_python` is trusted core code: it reads the target
+once, compares those in-memory bytes with the signed descriptor digest, and
+only then compiles and executes those same bytes. The child receives the
+verified digest through `__ghostcursor_verified_sha256__`; adapters and
+verifiers refuse a direct launch or a malformed/mismatched handshake rather
+than hashing `__file__` after top-level code has already run.
+
+`PluginStore` derives executable digests and parses operation/plan artifacts
+from `VerifiedBundle.files`, the signed in-memory inventory, not a second read
+of mutable extracted paths. The runtime path is still reverified during catalog
+composition, and the bootstrap makes a replacement after that check fail
+before one plugin statement executes.
+
+**Reason.** Self-hashing inside a Python script cannot establish pre-execution
+integrity: Python must execute imports and definitions before `main()` can read
+`__file__`. A path replacement in that interval therefore ran unapproved code
+before detecting the replacement. A second store read could also bless those
+replacement bytes as the descriptor digest. The two-layer fix binds authority
+to signed bytes and execution to the same bytes.
+
+**Evidence.** Tests replace an adapter with top-level marker code after its
+descriptor is created and prove the marker never appears. Another replaces an
+extracted path immediately after payload verification and proves descriptor
+authority remains the signed digest. Both mutations were killed. This is not
+an independent D032 verdict.
+
+## D118 — The manager UI thread owns Act presentation
+
+**Date:** 7 September 2026
+**Status:** Implemented; live manager run and independent D032 review pending.
+
+**Decision.** The native manager and Act rail remain one process (D088). The
+manager UI thread creates and pumps the overlay. A worker may request a cue
+through `UiThreadPresentationBridge`, but it waits for receipts produced by
+that owner thread and never creates a Win32 window or pumps its queue itself.
+Pause after a cue is acknowledged returns to the canonical runnable gate before
+confirm-before or dispatch, so a visible paused cue cannot become an effect.
+
+**Reason.** Win32 window ownership and message pumping are thread-affine. A
+worker-owned overlay made the normal manager path either unsafe or impossible,
+while a second UI process would split the event model this architecture keeps
+single-process. Tests pin owner-thread creation, receipt handoff, manager
+wiring, and the post-cue pause boundary. Live acceptance waits for D116/D117
+re-review and the invalidated paint budget to be remeasured.

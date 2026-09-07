@@ -290,9 +290,11 @@ run.main()
 | `plugins/sources/powerpoint/payload/ghostcursor/adapter/powerpoint_live_verifier.py` | signed read-only LIVE-state verifier: reads the running deck's slide count and answers a postcondition naming a CHANGE against the pre-cue baseline; AST-scanned to prove it cannot act |
 | `ghostcursor/selectors.py` | loads the signed selector an operation names and proves its digest; an action selector must be `exactly_one` and agree with the operation's control type |
 | `ghostcursor/act_uia_session.py` | composes one UIA node's session: verifier reading as `semantic`, adapter read-only read as identity/rectangle, overlay as the cue |
+| `ghostcursor/act_ui_bridge.py` | manager UI-thread bridge: the worker requests cue presentation and receives receipts while the manager thread exclusively creates/pumps the Win32 overlay |
+| `ghostcursor/verified_python.py` | trusted executable-payload bootstrap: hash one path read against signed authority, then compile and execute those same in-memory bytes |
 | `ghostcursor/devtools/act_campaign.py` | counts consecutive clean Act attempts; fresh store/output per attempt, target re-checked and restored each time, refuses an `interrupt_probe` record, stops at the first unclean run |
 | `ghostcursor/brief.py` | the stored conversation a plan is proposed from (D113); `bind_brief` re-reads the source so a proposal cannot bind a digest that no longer describes the file; appends turns to a Markdown brief, loads it back, digests the exact bytes; a closed type with no field that could carry anything executable |
-| `ghostcursor/act_staging.py` | **campaign harness only — `act_cli` does not stage.** For a harness run, the approved output path holds a complete artifact or nothing: runtime-owned staging file, copy-then-atomic-rename publish, digest bound, `.incomplete.json` marker written at claim and cleared only by a successful publish |
+| `ghostcursor/act_staging.py` | transactional artifact output used by the CLI/campaign path: runtime-owned same-volume staging, atomic publish after complete verification, digest binding, and an `.incomplete.json` marker cleared only by successful publication |
 | `ghostcursor/act_rail.py` | the Stop/Pause safety rail for an Act run; shows the executor-reported `Step N of M` and never counts; the ONLY visible surface for an object-model plan (D109) |
 | `ghostcursor/act_overlay.py` | seam binding the presenter to a real HWND and the run's Stop; supplies `present`/`on_state` to `UiaNodeSession`, recolours a verified pointer (D112), pumps messages inside the Stop poll |
 | `ghostcursor/perception/uia.py` | UIA element/window lookup + raw win32 fallback |
@@ -1268,8 +1270,10 @@ is load-bearing and virtual bounds plus monitor topology corroborate it --
 at 100% on one monitor an unaware and a per-monitor-v2 process report
 identical numbers. Unknown awareness and partial records are refused, never
 defaulted, and units are derived from the measured awareness rather than
-asserted -- a system-aware producer reports `system_dpi_pixels` and cannot
-compare equal to a genuinely per-monitor peer (D106). A rectangle read is
+asserted. UIA itself always returns `BoundingRectangle` in physical screen
+pixels, so production requests per-monitor-v2 before creating UIA/overlay
+objects and the adapter, host, and overlay independently refuse any UIA
+geometry that does not measure `physical_pixels` (D106 as amended by D116). A rectangle read is
 bracketed by two awareness samples: `observe_bracketed` captures the space,
 reads, and captures again, and `BracketedGeometry` refuses every rectangle if
 the space moved between them, because rectangles read across a context change
@@ -1286,7 +1290,8 @@ brackets every rectangle read with queried coordinate-space samples; the host
 strictly parses that record and requires it to carry the same rectangle. The
 overlay independently brackets its UI-thread read and checks process/thread
 awareness, units, virtual bounds, monitor topology, and overlay-HWND awareness
-before painting. The final adapter-side read must still match the confirmed
+before and after every paint request. Baseline and confirm-before geometry must
+also agree after the cue dwell. The final adapter-side read must still match the confirmed
 contract before Invoke/Select/Toggle/Value is called. A missing, malformed, or
 drifted contract refuses the visual/effect rather than drawing at bare numbers.
 Geometry stays ephemeral presentation data: it is absent from authorization
@@ -1312,3 +1317,18 @@ plans materialize and approve with `output_path=None`; the CLI therefore needs
 only `--target-hwnd` for a live-only plan and reports no fictional artifact.
 Artifact plans still require `--output` and retain same-volume staging. Quick
 and Watch pacing now reach the public CLI.
+
+Executable Python payloads are not launched by path. `AdapterHost` and
+`VerifierHost` start trusted `ghostcursor.verified_python`, which hashes the
+target bytes against the signed descriptor before compiling and executing those
+same in-memory bytes. Plugin entrypoints require the injected verified digest;
+a direct launch refuses. `PluginStore` derives descriptor digests and parses
+registries/plans from the signed `VerifiedBundle.files`, so a mutable reread
+cannot redefine the authority the bootstrap checks (D117).
+
+In the native manager, `UiThreadPresentationBridge` hands a worker's cue request
+to the manager UI thread. That thread alone owns and pumps the overlay window;
+the worker blocks on its render receipts. Lifecycle updates return through the
+same bridge, and Pause is rechecked after cue completion and before confirmation
+or dispatch. This preserves the one-process manager/rail architecture while
+respecting Win32 thread affinity (D118).

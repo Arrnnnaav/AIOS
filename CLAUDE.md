@@ -286,9 +286,14 @@ the displayed rectangle against core's confirmation, and require the final
 bracketed coordinate-space read to match the confirmed one. Every rectangle
 crossing from the adapter must carry the strict `coordinate_space.py` contract;
 the host requires that contract to contain the same rectangle, and the overlay
-must independently bracket its UI-thread acceptance and match process/thread
-awareness, units, desktop bounds, monitor topology, and overlay-HWND awareness
-before painting. Bare, malformed, unknown, changed, or mismatched geometry is a
+must independently bracket its UI-thread paint and match process/thread
+awareness, physical-pixel units, desktop bounds, monitor topology, and
+overlay-HWND awareness immediately before and after painting. UIA
+`BoundingRectangle` is physical pixels regardless of client awareness, so
+production must measure per-monitor awareness and system-DPI UIA geometry is a
+refusal even when both peers agree. Baseline and confirm-before coordinate
+contracts must agree across the cue dwell. Bare, malformed, unknown, changed,
+or mismatched geometry is a
 refusal, never a best-effort pointer. Geometry is presentation-only and must not
 enter authorization digests, session snapshots, learned identity, or default
 diagnostics. Recheck window/process ownership, consume the authorization once
@@ -299,6 +304,13 @@ independently signed token. A parameterless UIA plan is materialized with no
 invented artifact parameter, binds `output_path=None`, and does not create a
 staging file. Artifact-producing object-model plans still require a new output
 path; never make that requirement global to all Act plans.
+
+Never launch a signed Python adapter or verifier directly by filesystem path.
+Core must first hash the target and execute those exact in-memory bytes through
+`ghostcursor.verified_python`; the payload must require the injected verified
+digest. Descriptor hashes, operation registries, and action plans come from the
+signed `VerifiedBundle.files`, not a second mutable path read. A payload that
+changed after catalog verification must execute zero plugin statements (D117).
 
 The signed `ghostcursor.excel` plugin is active only for Excel
 `16.0.20326.20112`. `SELECT_CELL_B2` and `ADD_WORKSHEET` each passed three
@@ -340,6 +352,10 @@ safety surface during a tour. Both receive the same `SessionSnapshot` through
 must never affect the live tour. The manager may display plugin lifecycle state
 only by calling `PluginStore.list_installed()` and must refresh after focus so
 CLI changes do not leave a stale in-memory status view.
+The manager UI thread is the sole owner and message-pump for an Act overlay.
+Workers request presentation through `UiThreadPresentationBridge` and wait for
+its receipts; they never create or pump a Win32 overlay. Recheck Pause after a
+cue completes and before confirm-before or dispatch (D118).
 Complex planning requires an explicitly selected enabled plugin with an active
 capability registry. The first action may only produce and display the complete
 flattened plan; a distinct second `Start plan` action is required before

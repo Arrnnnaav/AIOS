@@ -522,7 +522,7 @@ Morph is a later extension whose element shape has not been measured on build
 16.0.20326, and asserting an unmeasured shape is what let `msoTrue` pass a
 contract test while failing in production. Measure first, then tighten.
 
-### GhostCursor runs system-aware while dpi.py intends per-monitor-v2
+### GhostCursor runs system-aware while dpi.py intends per-monitor-v2 — CLOSED 7 Sep 2026
 
 `_ensure_dpi_awareness()` calls `SetProcessDpiAwarenessContext(-4)` with a
 plain Python int. ctypes marshals that as a 32-bit C int while the parameter
@@ -536,7 +536,7 @@ returns True and `GetThreadDpiAwarenessContext` then reports
 `per-monitor-v2`. The module's own docstring previously attributed the
 failure to the machine; that was wrong and has been corrected in place.
 
-**Trigger:** a reviewed decision with a scaled or mixed-DPI display available.
+**Original trigger:** a reviewed decision with a scaled or mixed-DPI display available.
 On one monitor at 100% the two modes are indistinguishable, so neither the
 pixel lane nor any test on this desktop can validate the change -- which is
 also why nothing caught it. Correcting it changes the coordinate space shared
@@ -544,6 +544,14 @@ by every window rect, UIA rect, hint and screen capture (D010), so it must not
 ride along with unrelated work. `AWARENESS` is read nowhere outside
 `ghostcursor/overlay/dpi.py`, so the blast radius is the coordinate space
 itself, not the call sites.
+
+**Closed by D116 after independent review changed the safety premise.** UIA
+`BoundingRectangle` is always physical screen pixels. Remaining system-aware
+was therefore not neutral: it allowed a physical UIA rectangle to be consumed
+as system-DPI geometry. The setter now uses its pointer-sized ABI and production
+must measure per-monitor-v2; adapter, host, and overlay all refuse non-physical
+UIA geometry. Mixed-DPI live acceptance remains required, but the unsafe mode
+is no longer kept as the production default while waiting for that machine.
 
 ### The accepted Excel ADD_WORKSHEET recipe assumes the new sheet is named Sheet2
 
@@ -664,6 +672,13 @@ So what remains is code AND process:
   manager can run a control-driving node at all.
 - **Process, unchanged:** an independent D032 review of these changes, an
   external release key, and a counted acceptance campaign on the signed bytes.
+
+**Closure corrected 7 September 2026.** The public CLI already composes the
+UIA session. The normal manager now does too through
+`UiThreadPresentationBridge`; its UI thread owns/pumps the overlay and returns
+receipts to the worker. The remaining work is process and live evidence: D032
+re-review of D116-D118, paint-budget remeasurement, and a manager-owned live
+pointer run before activation.
 
 ## A hermetic test was reading the real ESC key — CLOSED 4 Sep 2026
 
