@@ -110,7 +110,7 @@ own internal phases, not the product phases above.
 | C — freeze contracts | Partial. Receipt, identity, and coordinate-space contracts have production callers; signed stages remain unfinished |
 | D — runtime implementation | In progress. The public executor routes object-model and UIA operations to separate signed adapters, carries the pre-cue baseline into live verification, rejects cross-process geometry drift, seals presentation receipts, and rechecks Pause after authorization (D114–D118) |
 | E — measure budgets | Partial. Receipt budgets are recorded. The old paint budget was invalidated by paint-time geometry checks and must be remeasured after D032 re-review; confirmation/dispatch budget closure remains |
-| F/H/J — three independent D032 reviews | In progress. The first cold review withheld approval; both remediation rounds are committed and await a fresh verdict. Every review must be done by someone other than the author |
+| F/H/J — three independent D032 reviews | In progress. Two cold reviews withheld approval; three remediation rounds are committed through `a7c1df5` and await a fresh verdict. Every review must be done by someone other than the author |
 | I — release signing and counted runs | Not started. Needs a non-ephemeral external key |
 
 ### The owner's specification for this phase
@@ -225,7 +225,8 @@ built but not yet exercised by a caller or a live run.
 - [x] Presentation receipts wired to the worker (`act_overlay`, `act_uia_session`)
 - [x] Manager UI-thread bridge owns/pumps the overlay and returns receipts to
       the Act worker (`act_ui_bridge.py`, D118). The surface is sealed against
-      forged receipt producers and Pause is rechecked after authorization;
+      forged receipt producers, including unregistered instances of the exact
+      overlay class, and Pause is rechecked after authorization;
       live manager proof and fresh D032 verdict remain pending
 - [~] Pause / Stop during a run — MEASURED live 3 Sep 2026:
       Stop 0.094-0.187s (D020 ceiling 0.5s), zero nodes started after,

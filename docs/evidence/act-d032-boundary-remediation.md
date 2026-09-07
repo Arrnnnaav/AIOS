@@ -97,3 +97,42 @@ green run is cited above.
 This remains authored implementation evidence. D032 still requires a fresh
 independent verdict on `a4a4441..fec9826` and this reconciliation before paint
 remeasurement, release signing, or counted live acceptance.
+
+## Second re-review findings and third remediation
+
+The next independent cold review again returned **NOT READY**, while confirming
+all earlier DPI, geometry, Pause/Stop, bridge, and mutable-payload findings were
+closed. It found two narrower remaining gaps:
+
+1. Exact type was not provenance. `OverlaySession` was publicly constructible,
+   so a caller could build that exact type with receipt-forging callbacks and
+   pass the binder's type check.
+2. `-I` disables the user site but still allows system-site `.pth` startup code
+   before the trusted bootstrap. The documentation had not named the system
+   interpreter as trusted or excluded that code.
+
+Commit `a7c1df5` resolves both without narrowing the visible-effect claim:
+
+- `OverlaySession` is sealed and instances are tracked in a weak identity
+  registry populated only by `overlay_presenter`. Both the surface binder and
+  the final executor check require that registration, including when the
+  session sits inside `UiThreadPresentationBridge`. An exact object created via
+  `object.__new__` is refused. The boundary is explicitly scoped to the trusted
+  in-process GhostCursor core; Python is not treated as a sandbox against
+  malicious code already executing inside that process.
+- Children start with `-I -S`, and the bootstrap checks `sys.flags.isolated`,
+  `no_site`, and `safe_path` before reading payload bytes. Standard and Windows
+  dependencies are added from explicit interpreter directories only after the
+  payload hash, without processing `.pth` files.
+
+Evidence for this remediation:
+
+- Focused boundary lane: **195 passed**.
+- Full hermetic lane: **2,447 passed in 155.71 s**.
+- Two intentional mutations were killed: ignoring `no_site` made the pre-hash
+  marker execute, and replacing registration with exact-type admission made
+  the forged `OverlaySession` reproduction pass.
+
+This is still authored evidence. A final independent re-review of
+`a4a4441..a7c1df5` remains required before the paint benchmark or live manager
+acceptance advances.

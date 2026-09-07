@@ -307,19 +307,23 @@ path; never make that requirement global to all Act plans.
 
 Never launch a signed Python adapter or verifier directly by filesystem path.
 Core must launch the absolute trusted `ghostcursor/verified_python.py` under
-isolated mode, then hash the target and execute those exact in-memory bytes.
+`-I -S`; the bootstrap must refuse weaker flags before reading the payload,
+then hash the target and execute those exact in-memory bytes.
 The payload must require the injected verified digest. Never put the payload
 directory or `PYTHONPATH` back on that child's import path, and never process
-the disabled user-site `.pth` files manually. Executable plugin entrypoints are
-single-file payloads in v1; mutable
+system-site or user-site `.pth` files before the hash. Executable plugin
+entrypoints are single-file payloads in v1; mutable
 plugin-sibling imports are forbidden. Descriptor hashes, operation registries,
 and action plans come from the signed `VerifiedBundle.files`, not a second
 mutable path read. A payload that changed after catalog verification must
 execute zero plugin statements (D117).
 
 Presentation receipts are authority input. The production Act executor may
-accept only a sealed surface produced around GhostCursor's reviewed overlay or
-UI-thread bridge; never accept a structural/duck-typed `present` callback.
+accept only a sealed surface whose underlying `OverlaySession` was registered
+by `overlay_presenter`, directly or through the UI-thread bridge. Exact type is
+not enough; refuse unregistered exact instances as well as structural/duck-typed
+`present` callbacks. This is a trusted in-process core boundary, not a sandbox
+for arbitrary code already executing inside the GhostCursor process.
 Pause/Stop is checked again after one-use authorization and immediately before
 dispatch. If it changed, refuse the node and require fresh confirmation; do not
 hold a minted token across Pause. An adapter request already in flight still

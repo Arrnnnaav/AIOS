@@ -690,6 +690,13 @@ plugin execution, sealed presentation values, a final pre-dispatch Pause/Stop
 gate, and real bridge/factory tests. The fresh D032 verdict, amended paint
 measurement, and live manager run are still open.
 
+**Second-review correction later 7 September 2026.** Exact overlay type was
+still forgeable because callers could construct `OverlaySession` directly, and
+`-I` still permitted system-site `.pth` startup before the hash. Commit
+`a7c1df5` adds presenter-owned identity registration and requires `-I -S`, with
+tests that reproduce both bypasses. The next gate remains a fresh independent
+D032 verdict; no live evidence from these bytes is counted yet.
+
 ## A hermetic test was reading the real ESC key — CLOSED 4 Sep 2026
 
 `tests/test_run.py::test_run_tour_creates_overlay_only_after_live_revalidation`
