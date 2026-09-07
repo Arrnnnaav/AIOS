@@ -109,8 +109,8 @@ own internal phases, not the product phases above.
 | B — read-only UIA feasibility | **Closed.** Excel passes; `docs/evidence/act-phase-b-uia-feasibility.md` |
 | C — freeze contracts | Partial. Receipt, identity, and coordinate-space contracts have production callers; signed stages remain unfinished |
 | D — runtime implementation | In progress. The public executor routes object-model and UIA operations to separate signed adapters, carries the pre-cue baseline into live verification, rejects cross-process geometry drift, seals presentation receipts, and rechecks Pause after authorization (D114–D118) |
-| E — measure budgets | Partial. Receipt budgets are recorded. The old paint budget was invalidated by paint-time geometry checks and must be remeasured after D032 re-review; confirmation/dispatch budget closure remains |
-| F/H/J — three independent D032 reviews | In progress. Two cold reviews withheld approval; three remediation rounds are committed through `a7c1df5` and await a fresh verdict. Every review must be done by someone other than the author |
+| E — measure budgets | Partial. Receipt budgets are recorded. The old paint budget was invalidated by paint-time geometry checks and must now be remeasured; confirmation/dispatch budget closure remains |
+| F/H/J — three independent D032 reviews | Boundary re-review closed. Two cold reviews withheld approval, three remediation rounds landed through `a7c1df5`, and the fresh review returned READY after 120 focused + 2,447 full hermetic tests. Final activation review remains a separate gate |
 | I — release signing and counted runs | Not started. Needs a non-ephemeral external key |
 
 ### The owner's specification for this phase
@@ -195,7 +195,8 @@ built but not yet exercised by a caller or a live run.
       unbracketed, cross-awareness, topology-drifted, and HWND-mismatched
       geometry is rejected before paint/dispatch. UIA geometry must be
       physical pixels, baseline/confirm contracts agree, and the overlay
-      brackets each paint (D115/D116). D032 re-review remains.
+      brackets each paint (D115/D116). Boundary D032 re-review is READY;
+      paint remeasurement remains.
 - [~] Before/confirm/after are sequenced and the real baseline reaches live verification; explicit verifier-mode wire vocabulary remains to be closed
 - [x] Per-node authorization minted only after the identity check passes
 
@@ -227,7 +228,7 @@ built but not yet exercised by a caller or a live run.
       the Act worker (`act_ui_bridge.py`, D118). The surface is sealed against
       forged receipt producers, including unregistered instances of the exact
       overlay class, and Pause is rechecked after authorization;
-      live manager proof and fresh D032 verdict remain pending
+      boundary D032 verdict is READY; live manager proof remains pending
 - [~] Pause / Stop during a run — MEASURED live 3 Sep 2026:
       Stop 0.094-0.187s (D020 ceiling 0.5s), zero nodes started after,
       in Quick and Watch, during pacing and during execution.
@@ -321,10 +322,10 @@ built but not yet exercised by a caller or a live run.
 - [x] Phase A: 255/255 diagnostic run — `docs/evidence/act-phase-a-diagnostic.md`
 - [x] Phase B: UIA feasibility probe — `docs/evidence/act-phase-b-uia-feasibility.md`
 
-**The next integration milestone is boundary recertification**: independently
-re-review D116/D117/D118, remeasure paint after the new geometry checks, then
-run one live manager-owned pointer action. Only after those gates pass should
-the staged-plan schema or semantic PowerPoint capabilities move forward.
+**The next integration milestone is visual recertification**: remeasure paint
+after the new geometry checks, then run one live manager-owned pointer action.
+Only after those gates pass should the staged-plan schema or semantic
+PowerPoint capabilities move forward.
 
 **Act v1 is deliberately not general computer use.** No mouse or keyboard
 synthesis (D006), no VLM-driven clicking, no cross-application graphs, no

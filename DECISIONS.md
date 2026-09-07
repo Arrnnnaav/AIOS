@@ -4601,8 +4601,8 @@ an admission requirement and extends the bracket through the actual paint.
 ## D116 — UIA geometry requires a physical-pixel process and paint-time stability
 
 **Date:** 7 September 2026
-**Status:** Candidate implementation; independent D032 re-review required
-before live acceptance, signing, or activation.
+**Status:** Independently re-reviewed and cleared for paint remeasurement and
+live acceptance; final activation review still required.
 
 **Amends D106 and D115.** D106 remains correct that a contract reports the
 units earned by measured awareness rather than asserting a desired label. Its
@@ -4636,7 +4636,8 @@ new pre/post queries and must be remeasured before a counted visual campaign.
 ## D117 — Signed Python executes only from the bytes core verified
 
 **Date:** 7 September 2026
-**Status:** Candidate implementation; independent D032 re-review required.
+**Status:** Independently re-reviewed and cleared for paint remeasurement and
+live acceptance; final activation review still required.
 
 **Decision.** An executable plugin path is never launched directly with
 Python. `ghostcursor.verified_python` is trusted core code: it reads the target
@@ -4686,7 +4687,8 @@ the required independent D032 re-review verdict.
 ## D118 — The manager UI thread owns Act presentation
 
 **Date:** 7 September 2026
-**Status:** Implemented; live manager run and independent D032 review pending.
+**Status:** Independently re-reviewed; live manager run and final activation
+review pending.
 
 **Decision.** The native manager and Act rail remain one process (D088). The
 manager UI thread creates and pumps the overlay. A worker may request a cue
@@ -4717,5 +4719,8 @@ and Pause arriving during authorization. A second review reproduced receipt
 forgery with the exact public `OverlaySession` class; the class is now sealed
 and unregistered instances fail a dedicated regression test. Mutations removing
 registration, the presentation seal, receipt sink, or final Pause gate were
-killed. The amended full hermetic lane passed **2,447 tests**. Live acceptance waits for D116/D117/D118 re-review
-and the invalidated paint budget to be remeasured.
+killed. The amended full hermetic lane passed **2,447 tests**. A fresh cold
+D032 review then returned **READY** with no blocking findings after independently
+running 120 focused tests and all 2,447 hermetic tests. Live acceptance now
+waits for the invalidated paint budget to be remeasured; this boundary verdict
+does not replace the later activation review.

@@ -136,3 +136,23 @@ Evidence for this remediation:
 This is still authored evidence. A final independent re-review of
 `a4a4441..a7c1df5` remains required before the paint benchmark or live manager
 acceptance advances.
+
+## Final cold re-review verdict — 8 September 2026
+
+An independent reviewer returned **READY** with no blocking findings and made
+no file changes. It rechecked the sealed/registered presentation boundary, the
+absolute `-I -S` verified bootstrap, the post-authorization Pause/Stop gate,
+the real receipt/timestamp bridge, and the manager's production presentation
+factory. It also confirmed that the documentation describes registration as a
+trusted in-process core boundary rather than a Python sandbox.
+
+Independent validation:
+
+- Focused boundary lane: **120 passed**.
+- Full hermetic lane: **2,447 passed**.
+- No desktop or GUI tests were run.
+
+Commits `a7c1df5` and `ef4dbc2` are therefore cleared to proceed to paint
+remeasurement and live acceptance. The historical 2 ms paint budget remains
+invalid until the full checked paint transaction is measured, and this verdict
+does not replace the later D032 activation review.
