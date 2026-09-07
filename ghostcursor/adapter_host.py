@@ -675,31 +675,27 @@ def _plain(value: Any) -> Any:
 
 
 def _adapter_environment() -> dict[str, str]:
-    """Let a signed adapter import the core-owned wire contracts.
+    """Inherit application state without Python path injection.
 
-    The child runs with the plugin payload as its working directory, so the
-    repository/package root is not otherwise importable.  The coordinate
-    contract must remain one implementation shared by producer and consumer;
-    copying its DPI logic into every plugin would recreate the drift this
-    protocol exists to detect.
+    The child starts with ``-I`` and the trusted bootstrap adds the core root
+    only after that bootstrap is running. Keeping PYTHONPATH here would reopen
+    the shadowing gap if isolated mode were ever removed.
     """
 
     environment = dict(os.environ)
-    package_root = str(Path(__file__).resolve().parent.parent)
-    inherited = environment.get("PYTHONPATH")
-    environment["PYTHONPATH"] = (
-        package_root + os.pathsep + inherited if inherited else package_root
-    )
+    for name in ("PYTHONHOME", "PYTHONPATH", "PYTHONSTARTUP"):
+        environment.pop(name, None)
     return environment
 
 
 def _verified_command(path: Path, sha256: str, *arguments: str) -> list[str]:
     """Launch trusted core code first; plugin bytes execute only after hash."""
 
+    bootstrap = Path(__file__).resolve().with_name("verified_python.py")
     return [
         sys.executable,
-        "-m",
-        "ghostcursor.verified_python",
+        "-I",
+        str(bootstrap),
         "--sha256",
         sha256,
         str(path),

@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import time
+import threading
 from types import SimpleNamespace
 
-from ghostcursor.manager import _ActWorker
+from ghostcursor.manager import _ActWorker, _create_manager_act_presentation
 
 
 def _take(worker: _ActWorker):
@@ -63,3 +64,47 @@ def test_pointer_plan_without_a_ui_thread_surface_refuses_before_execution(
     assert isinstance(result, RuntimeError)
     assert "no UI-thread presentation surface" in str(result)
     assert called == []
+
+
+def test_manager_factory_binds_the_real_overlay_bridge_and_releases_it(monkeypatch):
+    """Exercise the production factory, not a lookalike assembled in a test."""
+
+    import ghostcursor.act_overlay as act_overlay
+    import ghostcursor.act_runtime as act_runtime
+    from ghostcursor.act_overlay import OverlaySession
+    from ghostcursor.overlay import window as overlay_window
+
+    released = []
+    destroyed = []
+    captured = []
+    real_overlay = OverlaySession(
+        present=lambda request, observation, sink=None: (),
+        on_node_state=lambda node, state: None,
+        release=lambda: released.append(True),
+    )
+    monkeypatch.setattr(overlay_window, "create_overlay_window", lambda: 4242)
+    monkeypatch.setattr(
+        overlay_window,
+        "destroy_overlay_window",
+        lambda hwnd: destroyed.append(hwnd),
+    )
+    monkeypatch.setattr(
+        act_overlay,
+        "overlay_presenter",
+        lambda hwnd, **kwargs: captured.append((hwnd, kwargs)) or real_overlay,
+    )
+    controls = SimpleNamespace(stop_event=threading.Event())
+
+    presentation = _create_manager_act_presentation(controls)
+
+    assert presentation.hwnd == 4242
+    assert presentation.surface.overlay is presentation.bridge
+    assert act_runtime._trusted_presentation_surface(presentation.surface)
+    assert captured[0][0] == 4242
+    assert captured[0][1]["keep_running"]() is True
+
+    controls.stop_event.set()
+    assert captured[0][1]["keep_running"]() is False
+    presentation.close()
+    assert released == [True]
+    assert destroyed == [4242]

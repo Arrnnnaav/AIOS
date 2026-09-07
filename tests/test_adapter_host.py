@@ -142,6 +142,24 @@ def test_changed_adapter_bytes_never_execute_before_the_host_refuses(tmp_path):
     assert host.running is False
 
 
+def test_payload_cwd_cannot_shadow_the_trusted_bootstrap(tmp_path):
+    descriptor = _descriptor(tmp_path)
+    marker = tmp_path / "shadow-ran.txt"
+    shadow = tmp_path / "ghostcursor"
+    shadow.mkdir()
+    (shadow / "__init__.py").write_text("", encoding="utf-8")
+    (shadow / "verified_python.py").write_text(
+        f"from pathlib import Path\nPath({str(marker)!r}).write_text('ran')\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    with AdapterHost(descriptor, session_nonce="nonce") as host:
+        assert host.running is True
+
+    assert not marker.exists()
+
+
 def test_adapter_timeout_terminates_the_child(tmp_path):
     source = r"""
 import json,sys,time

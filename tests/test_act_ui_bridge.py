@@ -7,7 +7,12 @@ import time
 
 import pytest
 
-from ghostcursor.act_protocol import LifecycleState, PresentationRequest
+from ghostcursor.act_protocol import (
+    LifecycleState,
+    PresentationRequest,
+    Receipt,
+    ReceiptKind,
+)
 from ghostcursor.act_ui_bridge import (
     PresentationBridgeClosed,
     UiThreadPresentationBridge,
@@ -54,6 +59,45 @@ def test_worker_presentation_runs_only_when_the_owner_thread_pumps():
     assert finished.is_set()
     assert result == [()]
     assert overlay.events[0][:3] == ("present", _request(), "observation")
+
+
+def test_real_receipt_and_timestamp_cross_the_bridge_through_the_sink():
+    request = _request()
+    receipt = Receipt(
+        ReceiptKind.GEOMETRY_STARTED,
+        request.session_id,
+        request.cue_id,
+        request.nonce,
+        request.presentation_generation,
+        request.frame_generation,
+    )
+
+    class ReceiptOverlay(FakeOverlay):
+        def present(self, request, observation, sink=None):
+            self.events.append(("present", request, observation, sink))
+            assert sink is not None
+            sink(receipt, 37.5)
+            return (receipt,)
+
+    overlay = ReceiptOverlay()
+    bridge = UiThreadPresentationBridge(overlay)
+    handed_off = []
+    result = []
+
+    thread = threading.Thread(
+        target=lambda: result.append(
+            bridge.present(request, "observed", lambda item, at: handed_off.append((item, at)))
+        )
+    )
+    thread.start()
+    while thread.is_alive():
+        bridge.pump()
+        time.sleep(0.01)
+    thread.join(timeout=1.0)
+
+    assert handed_off == [(receipt, 37.5)]
+    assert result == [(receipt,)]
+    bridge.close()
 
 
 def test_state_repaint_is_ordered_before_the_next_presentation():

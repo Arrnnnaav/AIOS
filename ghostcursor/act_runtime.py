@@ -207,16 +207,22 @@ class UiaNodeSession:
     on_state: Callable[[object, LifecycleState], None] | None = None
 
 
-@dataclass(frozen=True)
+_PRESENTATION_SURFACE_SEAL = object()
+
+
+@dataclass(frozen=True, init=False)
 class PresentationSurface:
     """Where a control-driving node's cue is shown, and how long it may take.
 
-    This is what a production caller supplies instead of a `UiaNodeSession`.
+    This is what a trusted presentation factory supplies instead of a
+    `UiaNodeSession`.
     The difference matters: a session carries `dispatch`, so a caller handing
     one in decides what a node does to the application. A surface can draw a
-    cue and hand back receipts, and there is no path from it to an effect --
-    the runtime composes the session itself, around the adapter host it owns
-    and never exposes.
+    cue and hand back receipts, and there is no path from it to an effect.
+    It is sealed because receipts are authorization input: accepting an open
+    object with a ``present`` method would let a caller manufacture the two
+    acknowledgements without painting anything. The runtime composes the
+    session itself around the adapter host it owns and never exposes.
 
     That is why this is not a factory taking the host. A factory would be
     simpler and would give every caller the live adapter, which is strictly
@@ -227,6 +233,44 @@ class PresentationSurface:
     overlay: object
     #: Receipt deadlines. Data, not behaviour.
     policy: ReceiptPolicy
+    _seal: object
+
+    def __init__(self, *, overlay: object, policy: ReceiptPolicy, _seal=None) -> None:
+        if _seal is not _PRESENTATION_SURFACE_SEAL:
+            raise TypeError("presentation surfaces come from a trusted UI factory")
+        object.__setattr__(self, "overlay", overlay)
+        object.__setattr__(self, "policy", policy)
+        object.__setattr__(self, "_seal", _seal)
+
+
+def _bind_presentation_surface(overlay: object, policy: ReceiptPolicy) -> PresentationSurface:
+    """Bind one of the two reviewed production presentation implementations.
+
+    This private edge is intentionally narrower than accepting any object
+    with matching methods. A structural protocol would make forged render
+    receipts indistinguishable from receipts emitted by GhostCursor's actual
+    presenter.
+    """
+
+    from ghostcursor.act_overlay import OverlaySession
+    from ghostcursor.act_ui_bridge import UiThreadPresentationBridge
+
+    if type(overlay) not in (OverlaySession, UiThreadPresentationBridge):
+        raise TypeError("presentation overlay is not a reviewed implementation")
+    if not isinstance(policy, ReceiptPolicy):
+        raise TypeError("presentation policy must be ReceiptPolicy")
+    return PresentationSurface(
+        overlay=overlay,
+        policy=policy,
+        _seal=_PRESENTATION_SURFACE_SEAL,
+    )
+
+
+def _trusted_presentation_surface(value: object) -> bool:
+    return (
+        type(value) is PresentationSurface
+        and getattr(value, "_seal", None) is _PRESENTATION_SURFACE_SEAL
+    )
 
 
 def approve_action_graph(
@@ -454,6 +498,15 @@ def _execute_approved_graph(
         events.append(event)
         if event_sink is not None:
             event_sink(event)
+
+    if presentation is not None and not _trusted_presentation_surface(presentation):
+        return ActRunResult(
+            ActRunPhase.EXECUTION,
+            ActRunCode.ADAPTER_FAILED,
+            "the presentation surface was not created by a trusted UI factory",
+            validated,
+            output_path=approval.output_path,
+        )
 
     if (
         not _approval_is_exact(approval, validated)
@@ -789,6 +842,15 @@ def _execute_approved_graph(
                         # next node. This waits in ActControls' 50ms slices and
                         # returns False only when Stop wins.
                         should_continue=controls.wait_until_runnable,
+                        # The blocking checkpoint above cannot make Pause
+                        # atomic with authorization. Read the flags once more
+                        # after the token is minted and immediately before the
+                        # adapter receives it. A late Pause refuses this node;
+                        # it never waits and resumes with stale confirmation.
+                        dispatch_permitted=lambda: (
+                            not controls.stop_event.is_set()
+                            and not controls.paused
+                        ),
                         on_state=(
                             None
                             if uia_session.on_state is None
@@ -1150,7 +1212,6 @@ def _plain(value):
 
 __all__ = [
     "ActControls",
-    "PresentationSurface",
     "ActEvent",
     "ActRunCode",
     "ActRunPhase",

@@ -450,13 +450,13 @@ def test_execute_approved_graph_exposes_no_verifier_replacing_parameter():
         "controls",
         "event_sink",
         "verify_observer",
-        # A place to DRAW, not a way to act. `PresentationSurface` carries an
-        # overlay and receipt deadlines and has no dispatch, so a caller
-        # supplying one cannot decide what a node does to the application --
-        # the runtime composes the session itself around the adapter host it
-        # owns and never hands out. The rejected alternative was a factory
-        # taking that host, which would have given every caller the live
-        # adapter.
+        # A place to DRAW, not a way to act. The value is sealed and can only
+        # be bound around one of the reviewed UI implementations; otherwise a
+        # duck-typed caller could forge the receipts that make dispatch
+        # eligible without painting. It still carries no adapter/dispatch --
+        # the runtime composes those around the host it owns and never hands
+        # out. The rejected alternative was a factory taking that host, which
+        # would have given every caller the live adapter.
         #
         # `uia_session` is deliberately NOT here. It carried dispatch, observe
         # AND present, so a caller passing one chose the effect and skipped
@@ -1040,15 +1040,17 @@ def _surface(overlay=None):
     """A presentation surface whose overlay returns no receipts, so a node
     refuses before any dispatch."""
 
-    from ghostcursor.act_runtime import PresentationSurface
+    from ghostcursor.act_overlay import OverlaySession
+    from ghostcursor.act_runtime import _bind_presentation_surface
 
-    return PresentationSurface(
-        overlay=overlay
-        or SimpleNamespace(
+    return _bind_presentation_surface(
+        overlay
+        or OverlaySession(
             present=lambda request, observation, sink: [],
             on_node_state=lambda node, state: None,
+            release=lambda: None,
         ),
-        policy=_policy(),
+        _policy(),
     )
 
 
@@ -1105,25 +1107,41 @@ def test_a_control_driving_run_refuses_without_the_plugins_live_verifier(tmp_pat
     assert "live verifier" in result.detail
 
 
-def test_a_session_that_cannot_be_assembled_fails_closed(tmp_path):
-    """An assembly error becomes a result, not an escaping exception: a run
-    that dies mid-flight loses its events and its output path, and the CLI
-    never reaches its staging cleanup.
+def test_an_untrusted_presentation_surface_refuses_before_an_adapter_starts(
+    tmp_path, monkeypatch
+):
+    """Receipts are authority input, so duck-typed presentation is unsafe.
 
-    The surface is the thing a caller supplies, so it is the thing that can
-    be wrong. One missing the overlay methods the session composes from is
-    refused rather than crashing the run."""
+    The old public dataclass accepted any object with a ``present`` method.
+    Such an object could manufacture matching receipts without painting and
+    make a UIA effect eligible to dispatch. Refusal must happen before even
+    starting the adapter subprocess.
+    """
 
-    from ghostcursor.act_runtime import PresentationSurface
-
+    started = []
+    monkeypatch.setattr(
+        "ghostcursor.act_runtime.AdapterHost.start",
+        lambda self: started.append(self),
+    )
     result = _run_with_surface(
         tmp_path,
-        surface=PresentationSurface(overlay=object(), policy=_policy()),
+        surface=SimpleNamespace(
+            overlay=SimpleNamespace(present=lambda *_args: ()),
+            policy=_policy(),
+        ),
     )
 
     assert result.completed is False
     assert result.code is ActRunCode.ADAPTER_FAILED
-    assert "could not be assembled" in result.detail
+    assert "trusted UI factory" in result.detail
+    assert started == []
+
+
+def test_presentation_surface_cannot_be_constructed_by_a_caller():
+    from ghostcursor.act_runtime import PresentationSurface
+
+    with pytest.raises(TypeError, match="trusted UI factory"):
+        PresentationSurface(overlay=object(), policy=_policy())
 
 
 def test_a_failure_inside_the_session_becomes_a_result_not_an_exception(tmp_path):

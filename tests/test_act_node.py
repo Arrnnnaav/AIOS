@@ -146,6 +146,7 @@ def _run(
     request=None,
     on_state=None,
     should_continue=None,
+    dispatch_permitted=None,
     dispatch_spy=None,
     verify_spy=None,
 ):
@@ -190,6 +191,7 @@ def _run(
         verify=verify,
         clock=clock,
         should_continue=should_continue,
+        dispatch_permitted=dispatch_permitted,
         on_state=on_state,
     )
     return outcome, calls
@@ -485,6 +487,44 @@ def test_a_stop_before_the_dispatch_refuses_after_confirming():
 
     assert raised.value.code is RefusalCode.OPERATOR_STOPPED
     assert "before the dispatch" in raised.value.detail
+    assert dispatched == []
+
+
+def test_a_pause_arriving_during_authorization_refuses_before_dispatch():
+    """The earlier checkpoint cannot cover time spent minting the token.
+
+    This models Pause becoming visible while ``authorize`` runs. The final
+    flag read must consume the token without ever handing it to the adapter.
+    """
+
+    permitted = [True]
+    dispatched = []
+
+    def pause_during_authorization(facts):
+        permitted[0] = False
+        return SimpleNamespace(token="minted-but-unused")
+
+    clock = _Clock()
+    with pytest.raises(NodeRefused) as raised:
+        execute_node(
+            _node(),
+            _spec(),
+            request=_request(),
+            policy=POLICY,
+            observe=lambda _mode: _observation(),
+            present=lambda req, baseline, sink=None: _receipts(
+                req, sink=sink, clock=clock
+            ),
+            authorize=pause_during_authorization,
+            dispatch=lambda token, confirmed: dispatched.append(token),
+            verify=lambda node, baseline: True,
+            clock=clock,
+            should_continue=lambda: True,
+            dispatch_permitted=lambda: permitted[0],
+        )
+
+    assert raised.value.code is RefusalCode.OPERATOR_STOPPED
+    assert "after authorization" in raised.value.detail
     assert dispatched == []
 
 

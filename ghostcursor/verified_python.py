@@ -10,7 +10,9 @@ a replacement after the read is irrelevant to the code being executed.
 from __future__ import annotations
 
 import hashlib
+import os
 import re
+import site
 import sys
 from pathlib import Path
 
@@ -31,6 +33,44 @@ def main(argv: list[str] | None = None) -> int:
     if actual != expected:
         raise SystemExit("verified payload bytes changed before execution")
 
+    # Isolated mode kept the payload working directory and PYTHONPATH out
+    # while THIS trusted bootstrap loaded. Add only the trusted GhostCursor
+    # root before running the approved payload; never add the payload
+    # directory, so a mutable sibling cannot become executable by import.
+    trusted_root = Path(__file__).resolve().parent.parent
+    payload_root = Path.cwd().resolve()
+    safe_paths: list[str] = []
+    for item in sys.path:
+        if not item:
+            continue
+        try:
+            resolved = Path(item).resolve()
+        except OSError:
+            continue
+        if resolved == payload_root or resolved == path.parent:
+            continue
+        safe_paths.append(str(resolved))
+    # ``-I`` intentionally disables the user site. GhostCursor's Windows
+    # dependencies may legitimately be installed there, so add the directory
+    # itself without running its ``.pth`` startup code. PyWin32 also needs its
+    # three import directories and DLL directory explicitly. These are
+    # interpreter-owned dependency locations, never the plugin payload root.
+    user_site = Path(site.getusersitepackages()).resolve()
+    dependency_paths = [
+        user_site,
+        user_site / "win32",
+        user_site / "win32" / "lib",
+        user_site / "Pythonwin",
+    ]
+    for dependency in dependency_paths:
+        if dependency.is_dir() and str(dependency) not in safe_paths:
+            safe_paths.append(str(dependency))
+    dll_directory = user_site / "pywin32_system32"
+    dll_handle = None
+    if dll_directory.is_dir() and hasattr(os, "add_dll_directory"):
+        dll_handle = os.add_dll_directory(str(dll_directory))
+    sys.path[:] = [str(trusted_root), *safe_paths]
+
     child_argv = [str(path), *arguments[3:]]
     namespace = {
         "__builtins__": __builtins__,
@@ -45,6 +85,8 @@ def main(argv: list[str] | None = None) -> int:
         exec(compile(source, str(path), "exec"), namespace, namespace)
     finally:
         sys.argv = previous
+        if dll_handle is not None:
+            dll_handle.close()
     return 0
 
 

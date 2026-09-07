@@ -140,10 +140,12 @@ def execute_node(
     clock: Callable[[], float],
     on_state: Callable[[LifecycleState], None] | None = None,
     should_continue: Callable[[], bool] | None = None,
+    dispatch_permitted: Callable[[], bool] | None = None,
 ) -> NodeOutcome:
     """Run one authorized node, refusing rather than guessing at every gap.
 
-    ``should_continue`` is the operator's Stop, asked at the two phase
+    ``should_continue`` is the operator's Stop/Pause checkpoint, asked at the
+    two phase
     boundaries where stopping is still free: before the confirmation, and
     before the dispatch. It can only ever REDUCE what happens -- there is no
     answer it can give that makes a node succeed -- which is why it is safe
@@ -158,6 +160,12 @@ def execute_node(
     the node ended -- confirmation, authorization, dispatch and verification
     all ran -- which for a UIA node is an unresponsive window measured in
     seconds against D020's half-second ceiling.
+
+    ``dispatch_permitted`` is a final, non-blocking read after authorization
+    and immediately before the adapter receives the token. A Pause arriving
+    while authority is being revalidated must not let the already-confirmed
+    action start invisibly; it refuses this node and requires a fresh run
+    instead of waiting with a stale confirmation.
     """
 
     def stopped_here(phase: str) -> None:
@@ -293,6 +301,12 @@ def execute_node(
             "confirmation_sha256": confirmed.semantic_sha256 if confirmed else None,
         }
     )
+    if dispatch_permitted is not None and not dispatch_permitted():
+        raise NodeRefused(
+            RefusalCode.OPERATOR_STOPPED,
+            "the operator paused or stopped the run after authorization "
+            "and before dispatch",
+        )
     dispatch(token, confirmed)
 
     # --- verify ------------------------------------------------------------

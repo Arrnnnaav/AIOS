@@ -563,7 +563,7 @@ def presentation_for(args, controls, *, overlay_hwnd=None):
     from ghostcursor.act_cli import default_cue_budget
     from ghostcursor.act_overlay import overlay_presenter
     from ghostcursor.act_protocol import ReceiptPolicy, TrustClass
-    from ghostcursor.act_runtime import PresentationSurface
+    from ghostcursor.act_runtime import _bind_presentation_surface
     from ghostcursor.overlay import window as overlay_window
 
     # The POLICY first, then the window. `ReceiptPolicy` refuses a
@@ -580,8 +580,8 @@ def presentation_for(args, controls, *, overlay_hwnd=None):
     # same pixels.
     if overlay_hwnd is None:
         overlay_hwnd = overlay_window.create_overlay_window()
-    surface = PresentationSurface(
-        overlay=overlay_presenter(
+    surface = _bind_presentation_surface(
+        overlay_presenter(
             overlay_hwnd,
             budget=default_cue_budget(),
             policy=policy,
@@ -593,6 +593,6 @@ def presentation_for(args, controls, *, overlay_hwnd=None):
             # the operator asked the run to stop.
             keep_running=lambda: not controls.stop_event.is_set(),
         ),
-        policy=policy,
+        policy,
     )
     return overlay_hwnd, surface

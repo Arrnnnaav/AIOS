@@ -456,7 +456,7 @@ def _pointer_surface(budget, policy, *, keep_running=None):
 
     from ghostcursor.act_overlay import overlay_presenter
     from ghostcursor.act_protocol import TrustClass
-    from ghostcursor.act_runtime import PresentationSurface
+    from ghostcursor.act_runtime import _bind_presentation_surface
     from ghostcursor.overlay import window as overlay_window
 
     hwnd = overlay_window.create_overlay_window()
@@ -480,7 +480,7 @@ def _pointer_surface(budget, policy, *, keep_running=None):
             # and made the cue's own abort poll unable to ever fire.
             keep_running=keep_running or (lambda: True),
         )
-        yield PresentationSurface(overlay=overlay, policy=policy)
+        yield _bind_presentation_surface(overlay, policy)
     finally:
         overlay_window.destroy_overlay_window(hwnd)
 

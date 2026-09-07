@@ -1,16 +1,20 @@
 from __future__ import annotations
 
 import hashlib
+from pathlib import Path
 import subprocess
 import sys
+
+
+BOOTSTRAP = Path(__file__).resolve().parents[1] / "ghostcursor" / "verified_python.py"
 
 
 def _run(path, digest, *arguments):
     return subprocess.run(
         [
             sys.executable,
-            "-m",
-            "ghostcursor.verified_python",
+            "-I",
+            str(BOOTSTRAP),
             "--sha256",
             digest,
             str(path),
@@ -68,3 +72,23 @@ def test_an_invalid_expected_digest_refuses_before_reading_the_payload(tmp_path)
     assert completed.returncode != 0
     assert "digest is invalid" in completed.stderr
     assert "does-not-exist" not in completed.stderr
+
+
+def test_a_mutable_sibling_module_is_not_importable_after_main_byte_verification(
+    tmp_path,
+):
+    source = tmp_path / "payload.py"
+    helper = tmp_path / "helper.py"
+    marker = tmp_path / "helper-ran.txt"
+    source.write_text("import helper\n", encoding="utf-8", newline="\n")
+    helper.write_text(
+        f"from pathlib import Path\nPath({str(marker)!r}).write_text('ran')\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    digest = hashlib.sha256(source.read_bytes()).hexdigest()
+
+    completed = _run(source, digest)
+
+    assert completed.returncode != 0
+    assert not marker.exists()

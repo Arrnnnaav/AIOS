@@ -1289,7 +1289,7 @@ def _create_manager_act_presentation(controls: object) -> _ManagerActPresentatio
     from ghostcursor.act_cli import default_cue_budget, measured_receipt_policy
     from ghostcursor.act_overlay import overlay_presenter
     from ghostcursor.act_protocol import TrustClass
-    from ghostcursor.act_runtime import PresentationSurface
+    from ghostcursor.act_runtime import _bind_presentation_surface
     from ghostcursor.act_ui_bridge import UiThreadPresentationBridge
     from ghostcursor.overlay import window as overlay_window
 
@@ -1310,7 +1310,7 @@ def _create_manager_act_presentation(controls: object) -> _ManagerActPresentatio
         return _ManagerActPresentation(
             hwnd,
             bridge,
-            PresentationSurface(overlay=bridge, policy=policy),
+            _bind_presentation_surface(bridge, policy),
         )
     except BaseException:
         overlay_window.destroy_overlay_window(hwnd)
