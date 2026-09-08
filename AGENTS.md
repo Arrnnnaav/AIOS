@@ -105,7 +105,7 @@ as a document refresh when Markdown, documents, or evidence changed.
 | Perception | `CLAUDE.md` perception rules | `ghostcursor/perception/`, `ghostcursor/reasoning/grounding.py` |
 | Overlay and pointer | D006, D009, D010, D109, D115–D118 | `ghostcursor/overlay/`, `ghostcursor/act_overlay.py` |
 | Planning and local models | `ROADMAP.md` Phase 3 build-order items 7–9 | `idea.txt`, `ghostcursor/brief.py`, `ghostcursor/task_graph.py`, `ghostcursor/inference/ollama.py`, `tests/test_brief.py`, `tests/test_task_graph.py` |
-| Manager/panel | `FLOW.md` manager section; D088, D093, D118 | `ghostcursor/manager.py`, `ghostcursor/act_ui_bridge.py`, `tests/test_manager.py`, `tests/test_manager_window.py`, `tests/test_manager_act_bridge.py`, `tests/test_act_ui_bridge.py` |
+| Manager/panel | `FLOW.md` manager section; D088, D098, D099, D118 | `ghostcursor/manager.py`, `ghostcursor/act_ui_bridge.py`, `tests/test_manager.py`, `tests/test_manager_window.py`, `tests/test_manager_act_bridge.py`, `tests/test_act_ui_bridge.py` |
 | Evidence or release | D032, D034 and release rules | `docs/evidence/`, activation and acceptance tools |
 
 Add a smaller `AGENTS.md` inside a major module only when that module has

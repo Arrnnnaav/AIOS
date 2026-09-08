@@ -4763,3 +4763,7 @@ subsystems through imprecise or overly broad paths. The guide now states the
 full canonical D025/D032 and input rules, names Phase 3 build-order items 7–9,
 distinguishes code extraction from document refresh, and supplies exact narrow
 paths and decision sets. A fresh independent read must confirm those fixes.
+
+The re-review found one remaining low-severity routing error: the manager row
+cited D093, which governs PowerPoint chart-workflow isolation. It now cites
+D098 and D099 for complex manager plans and interaction modes.
