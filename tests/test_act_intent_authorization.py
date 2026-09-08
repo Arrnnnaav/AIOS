@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import inspect
 import shutil
 from dataclasses import replace
 from pathlib import Path
@@ -261,6 +262,30 @@ def test_context_issued_by_one_real_store_is_not_owned_by_another(tmp_path):
 
     assert issuer.owns_composition_context(context)
     assert not other.owns_composition_context(context)
+
+
+def test_act_authority_refuses_a_store_lookalike_even_if_it_claims_ownership(
+    tmp_path,
+):
+    context = _context(tmp_path)
+    lookalike = SimpleNamespace(owns_composition_context=lambda _context: True)
+
+    result = authorize_intent(
+        context.catalog,
+        "add a slide in powerpoint",
+        _candidate(context),
+        action_context=context,
+        action_store=lookalike,
+    )
+
+    assert result.status is PlanStatus.KNOWN_INTENT_ACTION_PLAN_UNAVAILABLE
+    assert result.authorized is None
+
+
+def test_production_prepare_does_not_accept_a_caller_supplied_store():
+    from ghostcursor.act_cli import prepare_act_goal
+
+    assert "store" not in inspect.signature(prepare_act_goal).parameters
 
 
 @pytest.mark.parametrize(
