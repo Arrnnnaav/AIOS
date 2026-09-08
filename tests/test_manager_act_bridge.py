@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 from ghostcursor.manager import (
+    ActExecutionRequest,
     _ActWorker,
     _create_manager_act_presentation,
     _issue_act_execution_request,
@@ -83,6 +84,11 @@ def test_worker_refuses_a_bare_proposal_before_starting_a_thread():
         worker.start(SimpleNamespace(output_path=None))
 
     assert not worker.running
+
+
+def test_callers_cannot_construct_an_act_execution_request():
+    with pytest.raises(TypeError, match="manager approval command"):
+        ActExecutionRequest("build it", SimpleNamespace(output_path=None))
 
 
 def test_manager_execution_request_is_one_use(monkeypatch):
