@@ -1,4 +1,4 @@
-# Live manager-owned PowerPoint pointer proof
+# Live manager-owned-surface PowerPoint pointer diagnostic
 
 **Date:** 8 September 2026  
 **Repository commit:** `27413857333e72ff4652d5fd59b9e7d5aad53529`  
@@ -27,8 +27,10 @@ The run used `prepare_act_goal()` followed by the real `_ActWorker` and
 `_create_manager_act_presentation()` factory. The overlay, bridge, and bound
 presentation surface were created on the main/UI thread; `_ActWorker` invoked
 `execute_act_proposal()` on its worker thread. No diagnostic node executor,
-stubbed approval, injected store, or caller-assembled presentation surface was
-used.
+injected store, or caller-assembled presentation surface was used. The one-off
+probe did, however, call `_ActWorker` directly; it did not cross the native
+manager's separate `Approve & run` command. Therefore this record does not
+prove explicit whole-graph approval.
 
 Dispatch could occur only after the trusted manager-owned surface returned
 the request-bound `geometry_started` and `presentation_completed` receipts.
@@ -69,10 +71,26 @@ not retained because they captured unrelated desktop content.
 
 ## Scope and remaining gates
 
-This is one successful live integration proof, not the final 3/3 acceptance
-campaign. It proves the real production proposal/approval path, manager-owned
-presentation bridge, signed UIA dispatch, and independent live verification
-work together for one PowerPoint action. It does not prove semantic stages,
+This is one successful live integration diagnostic, not the final 3/3
+acceptance campaign. It shows that the manager-owned presentation bridge,
+signed UIA dispatch, and independent live verification can work together for
+one PowerPoint action. It does **not** prove the manager approval event, because
+the probe entered `_ActWorker` directly, and it does not prove semantic stages,
 the 255-node staged deck, repeated UIA acceptance, release activation, or a
-pixel-perfect retained screenshot. A fresh D032 review of this evidence and
-the exact path remains required before the roadmap item is closed.
+pixel-perfect retained screenshot.
+
+## Independent D032 review — NOT READY
+
+The fresh read-only review verified the recorded source hashes and traced the
+production receipt gate, signed UIA dispatch, independent live verifier,
+`slide.count.increased_by_one` relation, and no-input-synthesis controls. It
+also confirmed that an unmodified `completed` result requires both bound
+presentation receipts and successful post-dispatch verification.
+
+It withheld clearance for two reasons: the probe bypassed the manager's
+explicit `Approve & run` event by calling `_ActWorker` directly, and the probe
+source/raw execution transcript had been deleted, leaving the surrounding
+claims unauditable. D121 is the remediation: the worker now consumes only a
+one-use manager-issued execution request. A replacement live run must cross the
+visible approval event and retain a bounded harness/transcript before this gate
+can close.

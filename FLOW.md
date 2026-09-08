@@ -103,7 +103,9 @@ Act proposal
          -> bind catalog + pack + intent + manifest + adapter + plan digests
     -> materialize only the plan named by AuthorizedActionIntent
     -> display the inert complete plan
-    -> separate Approve & run binds the validated graph and live target
+    -> separate Approve & run issues one manager-owned execution request
+    -> _ActWorker consumes that exact request once; bare/replayed requests refuse
+    -> approve_action_graph binds the validated graph and live target
 ```
 
 Production bundles are Ed25519-signed `.ghostplugin` files whose signed

@@ -6,7 +6,13 @@ import time
 import threading
 from types import SimpleNamespace
 
-from ghostcursor.manager import _ActWorker, _create_manager_act_presentation
+import pytest
+
+from ghostcursor.manager import (
+    _ActWorker,
+    _create_manager_act_presentation,
+    _issue_act_execution_request,
+)
 
 
 def _take(worker: _ActWorker):
@@ -36,7 +42,8 @@ def test_pointer_plan_receives_the_ui_thread_surface_and_no_fictional_output_roo
     presentation = object()
     worker = _ActWorker()
 
-    worker.start(proposal, presentation=presentation)
+    request = _issue_act_execution_request("add a slide", proposal)
+    worker.start(request, presentation=presentation)
     result = _take(worker)
 
     assert result is expected
@@ -58,12 +65,47 @@ def test_pointer_plan_without_a_ui_thread_surface_refuses_before_execution(
     )
     worker = _ActWorker()
 
-    worker.start(SimpleNamespace(output_path=None))
+    request = _issue_act_execution_request(
+        "add a slide", SimpleNamespace(output_path=None)
+    )
+    worker.start(request)
     result = _take(worker)
 
     assert isinstance(result, RuntimeError)
     assert "no UI-thread presentation surface" in str(result)
     assert called == []
+
+
+def test_worker_refuses_a_bare_proposal_before_starting_a_thread():
+    worker = _ActWorker()
+
+    with pytest.raises(TypeError, match="manager-issued execution request"):
+        worker.start(SimpleNamespace(output_path=None))
+
+    assert not worker.running
+
+
+def test_manager_execution_request_is_one_use(monkeypatch):
+    import ghostcursor.act_cli as act_cli
+
+    executed = []
+    monkeypatch.setattr(act_cli, "plan_draws_a_pointer", lambda _proposal: False)
+    monkeypatch.setattr(
+        act_cli,
+        "execute_act_proposal",
+        lambda proposal, **_kwargs: executed.append(proposal) or object(),
+    )
+    proposal = SimpleNamespace(output_path=None)
+    request = _issue_act_execution_request("build it", proposal)
+    first = _ActWorker()
+
+    first.start(request)
+    assert _take(first) is not None
+
+    with pytest.raises(RuntimeError, match="already consumed"):
+        _ActWorker().start(request)
+
+    assert executed == [proposal]
 
 
 def test_manager_factory_binds_the_real_overlay_bridge_and_releases_it(monkeypatch):

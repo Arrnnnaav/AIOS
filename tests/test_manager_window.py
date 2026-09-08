@@ -6,6 +6,7 @@ import win32con
 import win32gui
 
 from ghostcursor.manager import (
+    ActExecutionRequest,
     ActProposalRequest,
     ID_DETAILS,
     ID_COMPLEX,
@@ -24,6 +25,7 @@ from ghostcursor.manager import (
     PluginPresentation,
     TaskExecutionRequest,
     TaskProposalRequest,
+    _consume_act_execution_request,
 )
 from ghostcursor.interaction import MODE_ORDER, InteractionMode
 from ghostcursor.session import (
@@ -188,6 +190,31 @@ def test_terminal_act_result_cannot_replay_the_previous_approval():
         assert isinstance(request, ActProposalRequest)
         assert request.goal == "Build an investor deck"
         assert request.output_path.suffix == ".pptx"
+    finally:
+        manager.dispose()
+
+
+def test_approve_and_run_issues_one_exact_request_for_the_displayed_proposal():
+    from types import SimpleNamespace
+
+    proposal = SimpleNamespace(
+        summary="Add one slide",
+        graph=SimpleNamespace(nodes=(object(),)),
+        steps=("Add slide",),
+    )
+    manager = NativeManagerWindow()
+    try:
+        _choose_mode(manager, InteractionMode.ACT)
+        win32gui.SetWindowText(manager._controls[ID_GOAL], "Add a slide")
+        manager.show_act_proposal("Add a slide", proposal)
+
+        manager._on_command(ID_START)
+        request = manager.take_request()
+
+        assert type(request) is ActExecutionRequest
+        assert request.goal == "Add a slide"
+        assert _consume_act_execution_request(request) is proposal
+        assert manager.take_request() is None
     finally:
         manager.dispose()
 

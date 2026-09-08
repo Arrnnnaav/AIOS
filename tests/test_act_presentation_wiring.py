@@ -129,10 +129,7 @@ def test_the_harness_forwards_the_surface_to_the_run():
 
 
 def test_the_manager_refuses_a_control_driving_plan(monkeypatch):
-    """Act runs on a worker thread and a Win32 overlay must be created on the
-    thread that pumps for it, so the manager growing a surface is a design
-    change rather than a bug fix. Refusing is right; refusing SILENTLY is
-    not, and the refusal had no test at all."""
+    """Even an approved request refuses when its UI thread supplied no surface."""
 
     from ghostcursor import manager as manager_module
 
@@ -146,7 +143,8 @@ def test_the_manager_refuses_a_control_driving_plan(monkeypatch):
     )
 
     worker = manager_module._ActWorker()
-    worker.start(SimpleNamespace(output_path=SimpleNamespace(parent="root")))
+    proposal = SimpleNamespace(output_path=SimpleNamespace(parent="root"))
+    worker.start(manager_module._issue_act_execution_request("act", proposal))
     worker._thread.join(timeout=5.0)
 
     results = []

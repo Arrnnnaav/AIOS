@@ -322,7 +322,8 @@ built but not yet exercised by a caller or a live run.
 - [x] Phase A: 255/255 diagnostic run — `docs/evidence/act-phase-a-diagnostic.md`
 - [x] Phase B: UIA feasibility probe — `docs/evidence/act-phase-b-uia-feasibility.md`
 
-**The next integration milestone is the live manager-owned pointer action.**
+**The next integration milestone remains the live manager-approved pointer
+action.**
 Paint recertification and its independent boundary review are complete. The
 first production proposal attempt exposed an integration contradiction: Act
 plans were deliberately recipe-independent, while `prepare_act_goal()` called
@@ -334,12 +335,17 @@ context; production preparation no longer accepts a store argument, and Act
 authority now requires the exact `PluginStore` to have issued the exact
 context from signed on-disk state. Six focused provenance mutations are
 killed, and the fresh D032 re-review returned READY with no findings. One live
-manager-owned production run then completed `ADD_SLIDE`, with PowerPoint moving
-from one slide to two and the signed live verifier confirming the change; its
-authored record is `docs/evidence/act-live-manager-pointer.md`. A fresh D032
-read of that live record remains before the integration gate closes.
-Only after that review passes should staged-plan schema wiring or semantic
-PowerPoint capabilities move forward.
+run using the manager-owned presentation surface completed `ADD_SLIDE`, with
+PowerPoint moving from one slide to two and the signed live verifier confirming
+the change. Its D032 review returned **NOT READY**: the deleted one-off probe
+called `_ActWorker` directly, so it did not prove the explicit manager
+`Approve & run` event and left no independently inspectable transcript. D121
+now makes that event structural: `_ActWorker` consumes only a one-use request
+issued by the manager approval command and rejects bare, forged, or replayed
+values. Re-run through the visible manager approval event with a retained
+bounded harness/transcript, then obtain a fresh D032 verdict. Only after that
+review passes should staged-plan schema wiring or semantic PowerPoint
+capabilities move forward.
 
 **Act v1 is deliberately not general computer use.** No mouse or keyboard
 synthesis (D006), no VLM-driven clicking, no cross-application graphs, no

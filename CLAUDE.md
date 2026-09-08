@@ -334,6 +334,13 @@ by `overlay_presenter`, directly or through the UI-thread bridge. Exact type is
 not enough; refuse unregistered exact instances as well as structural/duck-typed
 `present` callbacks. This is a trusted in-process core boundary, not a sandbox
 for arbitrary code already executing inside the GhostCursor process.
+The manager Act worker may accept only the one-use `ActExecutionRequest`
+issued when the native manager handles the explicit `Approve & run` command.
+It must reject a bare proposal, a caller-constructed request, and replay of a
+consumed request before starting an execution thread. This proves the product
+path crossed the manager approval event; it does not sandbox arbitrary trusted
+Python, so live evidence must also retain the probe/harness and bounded
+execution transcript for D032 review (D121).
 Pause/Stop is checked again after one-use authorization and immediately before
 dispatch. If it changed, refuse the node and require fresh confirmation; do not
 hold a minted token across Pause. An adapter request already in flight still

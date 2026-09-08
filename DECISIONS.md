@@ -4771,8 +4771,8 @@ read returned **READY** with no remaining findings.
 ## D120 — Teach recipes and Act plans share one gate, not one token
 
 **Date:** 8 September 2026
-**Status:** D032-reviewed candidate; authored live manager proof complete and
-awaiting its independent evidence review.
+**Status:** D032-reviewed authority boundary; live manager approval evidence
+remediation in progress.
 
 **Amends D104.** `authorize_intent()` remains the only function that can turn
 a deterministic or model candidate into intent authority. Its default path is
@@ -4852,7 +4852,7 @@ slice for the live manager-owned pointer proof; it does not make that live run
 or any later release/activation review unnecessary. The durable review record
 is `docs/evidence/act-d032-boundary-remediation.md`.
 
-**Live manager-owned proof.** At commit `2741385`, the production preparation
+**Live manager-owned-surface diagnostic.** At commit `2741385`, the production preparation
 path minted the action-plan token from the release-signed enabled PowerPoint
 plugin, the real manager factory created the UI-thread presentation surface,
 and `_ActWorker` executed the one-node plan. PowerPoint changed from one slide
@@ -4861,5 +4861,34 @@ confirmed `slide.count.increased_by_one`. A precursor with in-process
 screenshot capture missed the render deadline and performed no effect, so the
 successful run removed that instrumentation instead of weakening the policy.
 Exact hashes, events, result, and limitations are recorded in
-`docs/evidence/act-live-manager-pointer.md`. This paragraph is authored
-evidence until a fresh D032 reader checks it.
+`docs/evidence/act-live-manager-pointer.md`.
+
+**Live-evidence D032 review — NOT READY.** The runtime controls and recorded
+hashes checked out, but the deleted one-off probe called `_ActWorker` directly.
+It therefore used the manager-owned presentation surface without proving the
+manager's explicit `Approve & run` event, and it left no probe source or raw
+execution transcript for independent audit. D121 records the remediation.
+
+## D121 — Manager Act execution consumes one explicit approval event
+
+**Date:** 9 September 2026
+**Status:** Implemented candidate; mutation audit and independent review pending.
+
+**Decision.** `NativeManagerWindow._on_command(ID_START)` is the only normal
+producer of an `ActExecutionRequest` after an Act proposal has been displayed.
+That request is sealed, registered by identity, and one-use. `_ActWorker.start`
+accepts the request rather than a proposal and consumes it before creating an
+execution thread. A bare proposal, caller-constructed request, or replayed
+request refuses before any adapter or verifier starts.
+
+This is an in-process provenance guard, not a sandbox against arbitrary Python
+already running as trusted core. Consequently, live evidence must retain the
+harness and a bounded execution transcript and must visibly cross the manager
+approval command; the sealed value cannot by itself prove how an arbitrary
+one-off script obtained authority.
+
+**Reason.** The first live manager-owned-surface run correctly exercised the
+receipt-gated overlay and independently verified UIA effect, but its probe
+called `_ActWorker` directly. The old worker signature made a bypassed approval
+look identical to a manager-approved execution. The boundary is now part of the
+type and lifecycle rather than a claim in an evidence document.

@@ -12,6 +12,7 @@ import queue
 import threading
 import time
 import uuid
+import weakref
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -154,10 +155,50 @@ class ActProposalRequest:
     target_hwnd: int | None = None
 
 
-@dataclass(frozen=True)
+_ACT_EXECUTION_REQUEST_SEAL = object()
+_ISSUED_ACT_EXECUTION_REQUESTS: "weakref.WeakSet[ActExecutionRequest]" = (
+    weakref.WeakSet()
+)
+_ACT_EXECUTION_REQUEST_LOCK = threading.Lock()
+
+
+@dataclass(frozen=True, slots=True, weakref_slot=True, eq=False, init=False)
 class ActExecutionRequest:
     goal: str
     proposal: object
+
+    def __init__(self, goal: str, proposal: object, *, _seal=None) -> None:
+        if _seal is not _ACT_EXECUTION_REQUEST_SEAL:
+            raise TypeError(
+                "Act execution requests are issued only by the manager approval command"
+            )
+        object.__setattr__(self, "goal", goal)
+        object.__setattr__(self, "proposal", proposal)
+
+
+def _issue_act_execution_request(goal: str, proposal: object) -> ActExecutionRequest:
+    """Mint the one-use value produced by the explicit Approve & run command."""
+
+    request = ActExecutionRequest(
+        goal,
+        proposal,
+        _seal=_ACT_EXECUTION_REQUEST_SEAL,
+    )
+    with _ACT_EXECUTION_REQUEST_LOCK:
+        _ISSUED_ACT_EXECUTION_REQUESTS.add(request)
+    return request
+
+
+def _consume_act_execution_request(request: object) -> object:
+    """Return the approved proposal once; reject raw, forged, or replayed values."""
+
+    if type(request) is not ActExecutionRequest:
+        raise TypeError("Act worker requires a manager-issued execution request")
+    with _ACT_EXECUTION_REQUEST_LOCK:
+        if request not in _ISSUED_ACT_EXECUTION_REQUESTS:
+            raise RuntimeError("Act execution request was not issued or was already consumed")
+        _ISSUED_ACT_EXECUTION_REQUESTS.remove(request)
+    return request.proposal
 
 
 @dataclass(frozen=True)
@@ -655,7 +696,7 @@ class NativeManagerWindow:
                 return
             if mode_can_start_act(self._mode):
                 if self._act_proposal is not None:
-                    self._pending_request = ActExecutionRequest(
+                    self._pending_request = _issue_act_execution_request(
                         goal, self._act_proposal
                     )
                 else:
@@ -1202,13 +1243,14 @@ class _ActWorker:
 
     def start(
         self,
-        proposal: object,
+        request: ActExecutionRequest,
         *,
         controls: object | None = None,
         presentation: object | None = None,
     ) -> None:
         if self.running:
             raise RuntimeError("Act is already running")
+        proposal = _consume_act_execution_request(request)
         from ghostcursor.act_runtime import ActControls
 
         self.controls = controls or ActControls()
@@ -1365,7 +1407,7 @@ def launch_manager() -> int:
                     if plan_draws_a_pointer(request.proposal):
                         act_presentation = _create_manager_act_presentation(controls)
                     act.start(
-                        request.proposal,
+                        request,
                         controls=controls,
                         presentation=(
                             None
