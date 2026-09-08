@@ -4732,8 +4732,7 @@ does not replace the later activation review.
 ## D119 — Codex work starts from a small repository-backed context
 
 **Date:** 8 September 2026
-**Status:** Candidate correction committed; focused independent re-review
-required.
+**Status:** Active; independently reviewed.
 
 **Decision.** Root `AGENTS.md` is the Codex entry point. Routine implementation
 prefers GPT-5.6 Sol with medium reasoning when model selection is available;
@@ -4766,4 +4765,5 @@ paths and decision sets. A fresh independent read must confirm those fixes.
 
 The re-review found one remaining low-severity routing error: the manager row
 cited D093, which governs PowerPoint chart-workflow isolation. It now cites
-D098 and D099 for complex manager plans and interaction modes.
+D098 and D099 for complex manager plans and interaction modes. The final cold
+read returned **READY** with no remaining findings.
