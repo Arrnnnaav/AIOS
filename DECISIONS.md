@@ -4631,7 +4631,11 @@ change during the cue dwell.
 Mutations removing per-monitor-v2, physical-unit admission, baseline/confirm
 comparison, or the post-paint check were each killed. This desktop does not
 provide mixed-DPI acceptance evidence. The old 2 ms paint budget predates the
-new pre/post queries and must be remeasured before a counted visual campaign.
+new pre/post queries. The checked production paint transaction was remeasured
+on 8 September 2026 at three serial 400-frame runs; p99 was 1.182, 0.999, and
+1.081 ms, with the recommended 2 ms budget recorded in
+`docs/evidence/act-paint-budget.md`. This remains single-monitor evidence and
+does not provide mixed-DPI acceptance evidence.
 
 ## D117 — Signed Python executes only from the bytes core verified
 
