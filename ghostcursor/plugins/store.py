@@ -7,6 +7,7 @@ import json
 import os
 import shutil
 import uuid
+import weakref
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
@@ -154,6 +155,32 @@ class PluginStore:
             "Local\\GhostCursor.PluginStore."
             + hashlib.sha256(root_identity).hexdigest()[:24]
         )
+        # CompositionContext is public data, so shape checks alone cannot
+        # prove that a caller did not assemble one from a caller-selected
+        # adapter map.  Keep an identity registry of contexts this exact
+        # PluginStore loaded from signed on-disk state.  The registry is weak:
+        # it confers no lifetime and an id cannot be reused after collection.
+        self._issued_composition_contexts: dict[
+            int, weakref.ReferenceType[CompositionContext]
+        ] = {}
+
+    def _remember_composition_context(
+        self, context: CompositionContext
+    ) -> CompositionContext:
+        key = id(context)
+
+        def forget(reference, *, expected_key=key) -> None:
+            if self._issued_composition_contexts.get(expected_key) is reference:
+                self._issued_composition_contexts.pop(expected_key, None)
+
+        self._issued_composition_contexts[key] = weakref.ref(context, forget)
+        return context
+
+    def owns_composition_context(self, context: object) -> bool:
+        """Whether this exact store issued this exact atomic context."""
+
+        reference = self._issued_composition_contexts.get(id(context))
+        return reference is not None and reference() is context
 
     @property
     def mutex_name(self) -> str:
@@ -811,8 +838,10 @@ class PluginStore:
                 active_index_sha256=active.active_index_sha256,
             )
             adapters = self._adapter_descriptors(active.plugins)
-            return CompositionContext(
-                catalog=catalog,
-                registries=registries,
-                adapters=adapters,
+            return self._remember_composition_context(
+                CompositionContext(
+                    catalog=catalog,
+                    registries=registries,
+                    adapters=adapters,
+                )
             )

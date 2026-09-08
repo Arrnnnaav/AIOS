@@ -327,9 +327,13 @@ Paint recertification and its independent boundary review are complete. The
 first production proposal attempt exposed an integration contradiction: Act
 plans were deliberately recipe-independent, while `prepare_act_goal()` called
 the recipe-only form of `authorize_intent()` and therefore refused every
-unadopted signed plan. D119 repairs the single gate with distinct,
-non-interchangeable recipe and action-plan tokens. Its implementation is green
-but still needs D032 review, mutation checks, and the live manager-owned run.
+unadopted signed plan. D120 repairs the single gate with distinct,
+non-interchangeable recipe and action-plan tokens. The first D032 review found
+that an injected lookalike store could still supply an exact-type fabricated
+context; production preparation no longer accepts a store argument, and Act
+authority now requires the exact `PluginStore` to have issued the exact
+context from signed on-disk state. The remediation is green but still needs
+its focused mutation check, D032 re-review, and the live manager-owned run.
 Only after those gates pass should staged-plan schema wiring or semantic
 PowerPoint capabilities move forward.
 

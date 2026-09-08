@@ -96,12 +96,11 @@ def prepare_act_goal(
     *,
     output_path: Path | None,
     target_hwnd: int | None,
-    store=None,
     owned_output_root: Path | None = None,
 ) -> ActProposal:
     """Return one inert, fully validated production proposal."""
 
-    store = store or production_store()
+    store = production_store()
     context = store.load_composition_context()
     match = compile_matcher(context.catalog).classify(goal)
     authorization = authorize_intent(
@@ -114,6 +113,7 @@ def prepare_act_goal(
             match.reason,
         ),
         action_context=context,
+        action_store=store,
     )
     if authorization.authorized is None:
         raise RuntimeError(f"{authorization.status.value}: {authorization.explanation}")

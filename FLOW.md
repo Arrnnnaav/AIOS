@@ -80,21 +80,25 @@ request. Mode selection never carries authority.
 Act and Teach share the same intent policy gate without sharing executable
 artifacts. Teach calls `authorize_intent()` against the verified catalog and
 can receive `AuthorizedIntent` only when the intent has an active adopted
-recipe. Act loads one atomic `CompositionContext` and calls that same function
-with the exact context object that owns the catalog. The authorizer derives
-the available Act intents itself from that context's signed adapter plan
-inventory and mints `AuthorizedActionIntent` only when exactly one plan binds
-the catalog intent, plugin/version/manifest, adapter digest, and plan digest.
+recipe. Act obtains one atomic `CompositionContext` from the production
+`PluginStore` and calls that same function with both objects. The authorizer
+requires the exact store to have issued the exact context from signed on-disk
+state; matching a public dataclass shape or catalog object is insufficient.
+It then derives the available Act intents itself from that context's signed
+adapter plan inventory and mints `AuthorizedActionIntent` only when exactly
+one plan binds the catalog intent, plugin/version/manifest, adapter digest,
+and plan digest.
 `bind_workflow()` rejects that token type; conversely, `prepare_act_goal()`
 rejects a recipe token. A mode therefore selects which signed artifact is
 requested, never whether an unadopted or fictional intent becomes trusted.
 
 ```text
 Act proposal
-    -> PluginStore.load_composition_context() once
+    -> production_store().load_composition_context() once
     -> compile_matcher(context.catalog) grounds the goal
-    -> authorize_intent(..., action_context=context)
-         -> require that exact context to own that catalog object
+    -> authorize_intent(..., action_context=context, action_store=store)
+         -> require the exact PluginStore to have issued that exact context
+         -> require that issued context to own that catalog object
          -> require one catalog-owned intent and one unique signed plan
          -> bind catalog + pack + intent + manifest + adapter + plan digests
     -> materialize only the plan named by AuthorizedActionIntent

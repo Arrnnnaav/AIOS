@@ -21,7 +21,11 @@ from ghostcursor.packs.workflow import (
     WorkflowUnavailable,
     bind_workflow,
 )
-from ghostcursor.plugins.store import AdapterDescriptor, CompositionContext
+from ghostcursor.plugins.store import (
+    AdapterDescriptor,
+    CompositionContext,
+    PluginStore,
+)
 from ghostcursor.reasoning.planner import (
     CandidateSource,
     IntentCandidate,
@@ -116,12 +120,27 @@ def _candidate(context, goal="add a slide in powerpoint"):
     )
 
 
-def _authorize_action(context):
+def _issuing_store(tmp_path, context):
+    store = PluginStore(
+        tmp_path / "authority-store",
+        trusted_keys={},
+        core_version="0.1.0",
+    )
+    # Unit tests below exercise downstream provenance combinations with an
+    # already-issued context.  A separate test proves an exact-type context
+    # that this store did not issue is refused.
+    store._remember_composition_context(context)
+    return store
+
+
+def _authorize_action(context, tmp_path):
+    store = _issuing_store(tmp_path, context)
     return authorize_intent(
         context.catalog,
         "add a slide in powerpoint",
         _candidate(context),
         action_context=context,
+        action_store=store,
     )
 
 
@@ -132,7 +151,7 @@ def test_unadopted_recipe_stays_unavailable_while_signed_action_plan_authorizes(
     candidate = _candidate(context)
 
     teach = authorize_intent(context.catalog, "add a slide in powerpoint", candidate)
-    act = _authorize_action(context)
+    act = _authorize_action(context, tmp_path)
 
     assert teach.status is PlanStatus.KNOWN_INTENT_RECIPE_UNAVAILABLE
     assert teach.authorized is None
@@ -158,12 +177,14 @@ def test_act_authority_refuses_a_context_that_does_not_own_the_catalog(tmp_path)
     context = _context(tmp_path)
     other_catalog = replace(context.catalog)
     foreign = replace(context, catalog=other_catalog)
+    store = _issuing_store(tmp_path, foreign)
 
     result = authorize_intent(
         context.catalog,
         "add a slide in powerpoint",
         _candidate(context),
         action_context=foreign,
+        action_store=store,
     )
 
     assert result.status is PlanStatus.KNOWN_INTENT_ACTION_PLAN_UNAVAILABLE
@@ -172,6 +193,7 @@ def test_act_authority_refuses_a_context_that_does_not_own_the_catalog(tmp_path)
 
 def test_act_authority_refuses_a_lookalike_instead_of_the_context_type(tmp_path):
     context = _context(tmp_path)
+    store = _issuing_store(tmp_path, context)
     lookalike = SimpleNamespace(
         catalog=context.catalog,
         adapters=context.adapters,
@@ -182,10 +204,63 @@ def test_act_authority_refuses_a_lookalike_instead_of_the_context_type(tmp_path)
         "add a slide in powerpoint",
         _candidate(context),
         action_context=lookalike,
+        action_store=store,
     )
 
     assert result.status is PlanStatus.KNOWN_INTENT_ACTION_PLAN_UNAVAILABLE
     assert result.authorized is None
+
+
+def test_act_authority_refuses_an_exact_context_not_issued_by_the_store(tmp_path):
+    context = _context(tmp_path)
+    store = PluginStore(
+        tmp_path / "unrelated-store",
+        trusted_keys={},
+        core_version="0.1.0",
+    )
+
+    result = authorize_intent(
+        context.catalog,
+        "add a slide in powerpoint",
+        _candidate(context),
+        action_context=context,
+        action_store=store,
+    )
+
+    assert result.status is PlanStatus.KNOWN_INTENT_ACTION_PLAN_UNAVAILABLE
+    assert result.authorized is None
+
+
+@pytest.mark.parametrize("missing", ("store", "context"))
+def test_act_authority_requires_the_store_and_its_issued_context_together(
+    tmp_path, missing
+):
+    context = _context(tmp_path)
+    store = _issuing_store(tmp_path, context)
+
+    result = authorize_intent(
+        context.catalog,
+        "add a slide in powerpoint",
+        _candidate(context),
+        action_context=None if missing == "context" else context,
+        action_store=None if missing == "store" else store,
+    )
+
+    assert result.status is PlanStatus.KNOWN_INTENT_ACTION_PLAN_UNAVAILABLE
+    assert result.authorized is None
+
+
+def test_context_issued_by_one_real_store_is_not_owned_by_another(tmp_path):
+    context = _context(tmp_path)
+    issuer = _issuing_store(tmp_path / "issuer", context)
+    other = PluginStore(
+        tmp_path / "other",
+        trusted_keys={},
+        core_version="0.1.0",
+    )
+
+    assert issuer.owns_composition_context(context)
+    assert not other.owns_composition_context(context)
 
 
 @pytest.mark.parametrize(
@@ -209,7 +284,7 @@ def test_act_authority_refuses_descriptor_provenance_drift(
         adapters=MappingProxyType({PLUGIN_ID: descriptor}),
     )
 
-    result = _authorize_action(changed)
+    result = _authorize_action(changed, tmp_path)
 
     assert result.status is PlanStatus.KNOWN_INTENT_ACTION_PLAN_UNAVAILABLE
     assert result.authorized is None
@@ -243,7 +318,7 @@ def test_act_authority_refuses_coordinated_descriptor_and_plan_drift(
         adapters=MappingProxyType({PLUGIN_ID: changed_descriptor}),
     )
 
-    result = _authorize_action(changed)
+    result = _authorize_action(changed, tmp_path)
 
     assert result.status is PlanStatus.KNOWN_INTENT_ACTION_PLAN_UNAVAILABLE
     assert result.authorized is None
@@ -274,7 +349,7 @@ def test_act_authority_refuses_plan_provenance_drift(
         adapters=MappingProxyType({PLUGIN_ID: changed_descriptor}),
     )
 
-    result = _authorize_action(changed)
+    result = _authorize_action(changed, tmp_path)
 
     assert result.status is PlanStatus.KNOWN_INTENT_ACTION_PLAN_UNAVAILABLE
     assert result.authorized is None
@@ -297,7 +372,7 @@ def test_act_authority_refuses_two_signed_plans_for_one_intent(tmp_path):
         adapters=MappingProxyType({PLUGIN_ID: ambiguous}),
     )
 
-    result = _authorize_action(changed)
+    result = _authorize_action(changed, tmp_path)
 
     assert result.status is PlanStatus.KNOWN_INTENT_ACTION_PLAN_UNAVAILABLE
     assert result.authorized is None
@@ -316,6 +391,7 @@ def test_fictional_action_intent_never_receives_signed_plan_authority(tmp_path):
             "looks plausible",
         ),
         action_context=context,
+        action_store=_issuing_store(tmp_path, context),
     )
 
     assert result.status is PlanStatus.INVALID_MODEL_OUTPUT
@@ -326,7 +402,7 @@ def test_signed_plan_authority_cannot_be_consumed_as_a_teach_recipe(
     tmp_path, monkeypatch
 ):
     context = _context(tmp_path)
-    result = _authorize_action(context)
+    result = _authorize_action(context, tmp_path)
     monkeypatch.setattr(
         "ghostcursor.plugins.platform.load_runtime_catalog",
         lambda: (_ for _ in ()).throw(AssertionError("catalog loaded")),
@@ -342,6 +418,9 @@ def test_prepare_act_goal_uses_the_recipe_free_signed_plan_authority(
     from ghostcursor.act_cli import prepare_act_goal
 
     context = _context(tmp_path)
+    store = _issuing_store(tmp_path, context)
+    monkeypatch.setattr(store, "load_composition_context", lambda: context)
+    monkeypatch.setattr("ghostcursor.act_cli.production_store", lambda: store)
     monkeypatch.setattr(
         "ghostcursor.act_cli.live_windows_for",
         lambda _pack: [
@@ -352,13 +431,10 @@ def test_prepare_act_goal_uses_the_recipe_free_signed_plan_authority(
             )
         ],
     )
-    store = SimpleNamespace(load_composition_context=lambda: context)
-
     proposal = prepare_act_goal(
         "add a slide in powerpoint",
         output_path=None,
         target_hwnd=101,
-        store=store,
     )
 
     assert proposal.intent_id == "ADD_SLIDE"
@@ -382,7 +458,7 @@ def test_prepare_act_goal_refuses_authority_drift_before_target_resolution(
     from ghostcursor import act_cli
 
     context = _context(tmp_path)
-    authorized = _authorize_action(context)
+    authorized = _authorize_action(context, tmp_path)
     changed = replace(
         authorized,
         authorized=replace(
@@ -396,12 +472,13 @@ def test_prepare_act_goal_refuses_authority_drift_before_target_resolution(
         "live_windows_for",
         lambda _pack: (_ for _ in ()).throw(AssertionError("target resolved")),
     )
-    store = SimpleNamespace(load_composition_context=lambda: context)
+    store = _issuing_store(tmp_path, context)
+    monkeypatch.setattr(store, "load_composition_context", lambda: context)
+    monkeypatch.setattr(act_cli, "production_store", lambda: store)
 
     with pytest.raises(RuntimeError, match="authority changed"):
         act_cli.prepare_act_goal(
             "add a slide in powerpoint",
             output_path=None,
             target_hwnd=101,
-            store=store,
         )

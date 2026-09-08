@@ -161,9 +161,11 @@ the physically separate developer store. Keep `check_core_compatibility()` as
 the single compatibility policy and `authorize_intent()` as the only function
 that can mint intent authority. It mints `AuthorizedIntent` only for an active
 adopted Teach recipe and `AuthorizedActionIntent` only for one unique signed
-Act plan derived from the exact `CompositionContext` that owns the catalog;
-the token types are not interchangeable. `bind_workflow()` accepts only the
-adopted-recipe token and must reload and compare
+Act plan derived from a `CompositionContext` that the exact `PluginStore`
+issued from signed on-disk state; a caller-constructed context is never
+authority, even when its shape and catalog object match. The token types are
+not interchangeable. `bind_workflow()` accepts only the adopted-recipe token
+and must reload and compare
 the current catalog before it reads a window. A running production tour must
 check its active-index epoch every 0.25s and abort within D020's 0.5s ceiling
 when the plugin is disabled, upgraded, blocked, or otherwise withdrawn.

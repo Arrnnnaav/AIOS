@@ -707,13 +707,18 @@ deliberately unadopted, and `tests/test_add_slide_uia_plan.py` already pinned
 that an action plan must not borrow authority from recipe adoption.
 
 D120 repairs the mismatch without adding a second authorizer.
-`authorize_intent()` derives action-plan availability from the exact atomic
-`CompositionContext` and returns a distinct digest-bound token. Teach remains
+`authorize_intent()` derives action-plan availability from an atomic
+`CompositionContext` that the exact `PluginStore` issued from signed on-disk
+state and returns a distinct digest-bound token. Teach remains
 adoption-bound, and each consumer rejects the other domain's token. Focused
 and full hermetic lanes are green, and twelve distinct D018 mutations are
 killed after one survivor exposed a missing coordinated-drift test.
-Independent D032 review and the live manager-owned pointer run remain required
-before this entry can close.
+The first independent D032 review then found that `prepare_act_goal()` accepted
+an injected lookalike store, allowing it to return a caller-assembled exact
+`CompositionContext`. Production preparation no longer accepts a store
+argument, and the authorizer now rejects any context not issued by the exact
+real `PluginStore`. Mutation recheck, D032 re-review, and the live
+manager-owned pointer run remain required before this entry can close.
 
 ## A hermetic test was reading the real ESC key — CLOSED 4 Sep 2026
 

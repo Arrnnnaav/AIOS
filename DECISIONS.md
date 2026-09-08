@@ -4780,8 +4780,9 @@ unchanged: an intent needs an active adopted recipe and the function mints an
 `AuthorizedIntent` carrying the adoption, recipe, and evidence digests.
 
 Act asks that same function for a different signed artifact by supplying the
-exact `CompositionContext` object that owns the catalog. The function derives
-eligible plans from that context; callers cannot supply an allowlist. It
+exact `PluginStore` and the exact `CompositionContext` object that store issued
+from signed on-disk state. The function derives eligible plans from that
+context; callers cannot supply a context-shaped allowlist. It
 requires the catalog intent and plugin provenance to match the descriptor and
 requires exactly one plan whose plugin/version and adapter digest agree. It
 then mints `AuthorizedActionIntent`, binding the catalog, pack, intent,
@@ -4819,3 +4820,16 @@ survived its first test because plan-versus-descriptor agreement caught a
 descriptor-only change. A new coordinated descriptor-and-plan drift case then
 killed it, proving the independent descriptor-versus-pack comparison rather
 than a correlated invariant.
+
+**First D032 review — NOT READY.** The initial implementation accepted a
+caller-supplied `store` in `prepare_act_goal()` and proved only that the
+context had the exact public dataclass type and owned the same catalog object.
+A fake store could therefore return a caller-assembled adapter map and answer
+the later freshness reads itself. Production preparation now always obtains
+`production_store()` internally. Each real `PluginStore` records the identity
+of every atomic context it loads, and the canonical gate requires that exact
+store/context issuance pair in addition to the existing catalog and signed
+artifact checks. Reassembling or `replace()`-ing a context produces a new
+identity and no authority. This is an in-process provenance guard against an
+accidental parallel authority path; it does not claim to sandbox arbitrary
+Python code already executing inside the trusted core process.

@@ -196,7 +196,9 @@ def test_composition_reverifies_and_exposes_both_signed_adapter_processes(tmp_pa
     store.install(bundle)
     store.enable("ghostcursor.powerpoint", "1.0.0")
 
-    descriptor = store.load_composition_context().adapters["ghostcursor.powerpoint"]
+    context = store.load_composition_context()
+    assert store.owns_composition_context(context)
+    descriptor = context.adapters["ghostcursor.powerpoint"]
 
     assert descriptor.entrypoint.name == "powerpoint_adapter.py"
     assert descriptor.verifier.name == "powerpoint_verifier.py"

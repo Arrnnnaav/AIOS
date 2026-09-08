@@ -356,14 +356,17 @@ def authorize_intent(
     candidate: IntentCandidate,
     *,
     action_context=None,
+    action_store=None,
 ) -> AuthorizationResult:
     """The only function that may mint execution authority from an intent name.
 
-    The default authority is an adopted Teach recipe.  Supplying the exact
-    ``CompositionContext`` that owns ``catalog`` asks for a signed Act plan
-    instead.  The two cases produce distinct token types: neither an Act mode
-    nor a registered intent name can turn an unadopted recipe into Teach
-    authority, and an adopted recipe cannot stand in for a signed action plan.
+    The default authority is an adopted Teach recipe.  Supplying an exact
+    ``PluginStore`` together with the exact ``CompositionContext`` it issued
+    from signed on-disk state asks for a signed Act plan instead.  Shape alone
+    is deliberately insufficient.  The two cases produce distinct token
+    types: neither an Act mode nor a registered intent name can turn an
+    unadopted recipe into Teach authority, and an adopted recipe cannot stand
+    in for a signed action plan.
     """
 
     from ghostcursor.packs.compile import compile_matcher, compile_planner
@@ -371,19 +374,26 @@ def authorize_intent(
     specs = compile_planner(catalog)
     registered = frozenset(spec.intent_id for spec in specs)
     action_bindings = {}
-    if action_context is None:
+    action_requested = action_context is not None or action_store is not None
+    if not action_requested:
         available = frozenset(
             spec.intent_id for spec in specs if spec.recipe_path is not None
         )
     else:
-        from ghostcursor.plugins.store import AdapterDescriptor, CompositionContext
+        from ghostcursor.plugins.store import (
+            AdapterDescriptor,
+            CompositionContext,
+            PluginStore,
+        )
 
         # Identity is intentional. A separately loaded or caller-reassembled
         # context could describe a different active-index epoch even when its
         # fields happen to look equal.
         if (
-            type(action_context) is not CompositionContext
+            type(action_store) is not PluginStore
+            or type(action_context) is not CompositionContext
             or action_context.catalog is not catalog
+            or not action_store.owns_composition_context(action_context)
         ):
             return AuthorizationResult(
                 PlanStatus.KNOWN_INTENT_ACTION_PLAN_UNAVAILABLE,
@@ -435,7 +445,7 @@ def authorize_intent(
         available=available,
         unavailable_status=(
             PlanStatus.KNOWN_INTENT_RECIPE_UNAVAILABLE
-            if action_context is None
+            if not action_requested
             else PlanStatus.KNOWN_INTENT_ACTION_PLAN_UNAVAILABLE
         ),
     )
