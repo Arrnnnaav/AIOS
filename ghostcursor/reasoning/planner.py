@@ -17,13 +17,14 @@ from ghostcursor.inference.ollama import (
     GenerateResponse,
     generate_structured,
 )
-from ghostcursor.packs.authority import AuthorizedIntent
+from ghostcursor.packs.authority import AuthorizedActionIntent, AuthorizedIntent
 
 
 class PlanStatus(Enum):
     SUPPORTED = "SUPPORTED"
     UNSUPPORTED_GOAL = "UNSUPPORTED_GOAL"
     KNOWN_INTENT_RECIPE_UNAVAILABLE = "KNOWN_INTENT_RECIPE_UNAVAILABLE"
+    KNOWN_INTENT_ACTION_PLAN_UNAVAILABLE = "KNOWN_INTENT_ACTION_PLAN_UNAVAILABLE"
     INVALID_MODEL_OUTPUT = "INVALID_MODEL_OUTPUT"
     MODEL_UNAVAILABLE_FALLBACK = "MODEL_UNAVAILABLE_FALLBACK"
     MODEL_ABSTAINED_FALLBACK = "MODEL_ABSTAINED_FALLBACK"
@@ -210,9 +211,9 @@ def plan_goal(goal: str, *, endpoint: str = "http://127.0.0.1:11434", model: str
 # ---------------------------------------------------------------------------
 #
 # Classification is pure. It names an intent and says nothing about what may
-# run. Materialization -- an active adoption, a live window, and an exactly
-# equal application identity -- happens in `ghostcursor.packs.workflow`, which
-# is the only thing that can grant execution.
+# run. Teach materialization still requires an active adoption and live target;
+# Act proposal authority instead binds one signed action plan and then crosses
+# its own graph approval, target, per-node, and verification gates (D120).
 
 
 @dataclass(frozen=True)
@@ -233,7 +234,7 @@ class AuthorizationResult:
     intent_id: str | None
     confidence: float
     explanation: str
-    authorized: AuthorizedIntent | None = None
+    authorized: AuthorizedIntent | AuthorizedActionIntent | None = None
 
 
 def _policy_classification(
@@ -243,6 +244,7 @@ def _policy_classification(
     deterministic: Callable[[str], tuple[str | None, float, str]],
     registered: frozenset[str],
     available: frozenset[str],
+    unavailable_status: PlanStatus = PlanStatus.KNOWN_INTENT_RECIPE_UNAVAILABLE,
 ) -> Classification:
     """Classify an untrusted name without granting execution authority."""
 
@@ -303,7 +305,7 @@ def _policy_classification(
 
     if decision.intent_id not in available:
         return Classification(
-            PlanStatus.KNOWN_INTENT_RECIPE_UNAVAILABLE,
+            unavailable_status,
             decision.intent_id,
             decision.confidence,
             decision.explanation,
@@ -326,7 +328,8 @@ def classify_decision(
 ) -> Classification:
     """Apply the authority policy without touching a recipe.
 
-    `available` names the intents that currently have an active adoption. It is
+    `available` names the intents that have authority in the caller's selected
+    domain: adopted recipes for Teach, or unique signed plans for Act. It is
     consulted only to tell an ungrounded *available* intent from an ungrounded
     unavailable one, which is the distinction D058 turns on -- a registered ID
     is an allowlist boundary the model may name, never semantic evidence that
@@ -347,14 +350,77 @@ def classify_decision(
     )
 
 
-def authorize_intent(catalog, goal: str, candidate: IntentCandidate) -> AuthorizationResult:
-    """The only function that may mint execution authority from an intent name."""
+def authorize_intent(
+    catalog,
+    goal: str,
+    candidate: IntentCandidate,
+    *,
+    action_context=None,
+) -> AuthorizationResult:
+    """The only function that may mint execution authority from an intent name.
+
+    The default authority is an adopted Teach recipe.  Supplying the exact
+    ``CompositionContext`` that owns ``catalog`` asks for a signed Act plan
+    instead.  The two cases produce distinct token types: neither an Act mode
+    nor a registered intent name can turn an unadopted recipe into Teach
+    authority, and an adopted recipe cannot stand in for a signed action plan.
+    """
 
     from ghostcursor.packs.compile import compile_matcher, compile_planner
 
     specs = compile_planner(catalog)
     registered = frozenset(spec.intent_id for spec in specs)
-    available = frozenset(spec.intent_id for spec in specs if spec.recipe_path is not None)
+    action_bindings = {}
+    if action_context is None:
+        available = frozenset(
+            spec.intent_id for spec in specs if spec.recipe_path is not None
+        )
+    else:
+        from ghostcursor.plugins.store import AdapterDescriptor, CompositionContext
+
+        # Identity is intentional. A separately loaded or caller-reassembled
+        # context could describe a different active-index epoch even when its
+        # fields happen to look equal.
+        if (
+            type(action_context) is not CompositionContext
+            or action_context.catalog is not catalog
+        ):
+            return AuthorizationResult(
+                PlanStatus.KNOWN_INTENT_ACTION_PLAN_UNAVAILABLE,
+                candidate.intent_id,
+                candidate.confidence,
+                "Act authorization requires the composition context that owns the catalog",
+            )
+        candidates = {}
+        for pack in catalog.packs.values():
+            plugin_id = pack.plugin_id or pack.pack_id
+            descriptor = action_context.adapters.get(plugin_id)
+            if not isinstance(descriptor, AdapterDescriptor):
+                continue
+            if (
+                descriptor.plugin_id != plugin_id
+                or descriptor.plugin_version != (pack.plugin_version or "legacy")
+                or descriptor.manifest_sha256
+                != (pack.plugin_manifest_sha256 or pack.pack.sha256)
+            ):
+                continue
+            for plan in descriptor.plans.values():
+                if (
+                    plan.intent_id not in pack.intents
+                    or plan.plugin_id != descriptor.plugin_id
+                    or plan.plugin_version != descriptor.plugin_version
+                    or plan.adapter_sha256 != descriptor.adapter_sha256
+                ):
+                    continue
+                candidates.setdefault(plan.intent_id, []).append(
+                    (pack, descriptor, plan)
+                )
+        action_bindings = {
+            intent_id: values[0]
+            for intent_id, values in candidates.items()
+            if len(values) == 1
+        }
+        available = frozenset(action_bindings)
     matcher = compile_matcher(catalog)
 
     def deterministic(text: str) -> tuple[str | None, float, str]:
@@ -367,6 +433,11 @@ def authorize_intent(catalog, goal: str, candidate: IntentCandidate) -> Authoriz
         deterministic=deterministic,
         registered=registered,
         available=available,
+        unavailable_status=(
+            PlanStatus.KNOWN_INTENT_RECIPE_UNAVAILABLE
+            if action_context is None
+            else PlanStatus.KNOWN_INTENT_ACTION_PLAN_UNAVAILABLE
+        ),
     )
     status = classification.status
     if candidate.source is CandidateSource.MODEL_UNAVAILABLE and status is PlanStatus.SUPPORTED:
@@ -395,6 +466,40 @@ def authorize_intent(catalog, goal: str, candidate: IntentCandidate) -> Authoriz
             classification.confidence,
             "catalog carries no authority digest",
         )
+    if action_context is not None:
+        binding = action_bindings.get(intent_id)
+        if binding is None:
+            return AuthorizationResult(
+                PlanStatus.KNOWN_INTENT_ACTION_PLAN_UNAVAILABLE,
+                intent_id,
+                classification.confidence,
+                f"intent {intent_id} has no unique signed action plan",
+            )
+        pack, descriptor, plan = binding
+        token = AuthorizedActionIntent(
+            plugin_id=descriptor.plugin_id,
+            plugin_version=descriptor.plugin_version,
+            plugin_manifest_sha256=descriptor.manifest_sha256,
+            pack_id=pack.pack_id,
+            intent_id=intent_id,
+            catalog_sha256=catalog.index_sha256,
+            catalog_generation=catalog.generation,
+            activation_generation=pack.activation_generation,
+            activation_sha256=pack.activation_sha256,
+            pack_sha256=pack.pack.sha256,
+            intent_sha256=pack.intents[intent_id].intent.sha256,
+            plan_id=plan.plan_id,
+            plan_sha256=plan.plan_sha256,
+            adapter_sha256=descriptor.adapter_sha256,
+        )
+        return AuthorizationResult(
+            status,
+            intent_id,
+            classification.confidence,
+            classification.explanation,
+            token,
+        )
+
     for pack in catalog.packs.values():
         intent = pack.intents.get(intent_id)
         if intent is None:

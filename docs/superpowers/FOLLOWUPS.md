@@ -697,6 +697,23 @@ still forgeable because callers could construct `OverlaySession` directly, and
 tests that reproduce both bypasses. The next gate remains a fresh independent
 D032 verdict; no live evidence from these bytes is counted yet.
 
+## Act plan authorization was accidentally recipe-only — REVIEW PENDING 8 Sep 2026
+
+The first real manager-owned pointer proposal reached the production
+`prepare_act_goal()` path and refused `ADD_SLIDE` as
+`KNOWN_INTENT_RECIPE_UNAVAILABLE`. The plugin was enabled, compatible,
+release-signed, and carried exactly one signed action plan. Its Teach recipe is
+deliberately unadopted, and `tests/test_add_slide_uia_plan.py` already pinned
+that an action plan must not borrow authority from recipe adoption.
+
+D120 repairs the mismatch without adding a second authorizer.
+`authorize_intent()` derives action-plan availability from the exact atomic
+`CompositionContext` and returns a distinct digest-bound token. Teach remains
+adoption-bound, and each consumer rejects the other domain's token. Focused
+and full hermetic lanes are green; D018 mutations, independent D032 review,
+and the live manager-owned pointer run remain required before this entry can
+close.
+
 ## A hermetic test was reading the real ESC key — CLOSED 4 Sep 2026
 
 `tests/test_run.py::test_run_tour_creates_overlay_only_after_live_revalidation`

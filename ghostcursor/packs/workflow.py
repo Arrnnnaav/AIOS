@@ -375,6 +375,10 @@ def bind_workflow(
     enumerates them itself; `_bind_workflow_with_windows` is the seam hermetic
     tests drive, and it is private for that reason.
     """
+    if type(authorization) is not AuthorizedIntent:
+        raise WorkflowUnavailable(
+            "bind_workflow requires adopted-recipe intent authority"
+        )
     # Kept inside the public entry point deliberately. Allowing a caller to
     # inject the loader would let that caller supply the authority this gate
     # is meant to verify, the same self-verifying shape D073 removed from live

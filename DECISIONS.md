@@ -4767,3 +4767,45 @@ The re-review found one remaining low-severity routing error: the manager row
 cited D093, which governs PowerPoint chart-workflow isolation. It now cites
 D098 and D099 for complex manager plans and interaction modes. The final cold
 read returned **READY** with no remaining findings.
+
+## D120 — Teach recipes and Act plans share one gate, not one token
+
+**Date:** 8 September 2026
+**Status:** Candidate implementation; D032 review and live manager proof
+pending.
+
+**Amends D104.** `authorize_intent()` remains the only function that can turn
+a deterministic or model candidate into intent authority. Its default path is
+unchanged: an intent needs an active adopted recipe and the function mints an
+`AuthorizedIntent` carrying the adoption, recipe, and evidence digests.
+
+Act asks that same function for a different signed artifact by supplying the
+exact `CompositionContext` object that owns the catalog. The function derives
+eligible plans from that context; callers cannot supply an allowlist. It
+requires the catalog intent and plugin provenance to match the descriptor and
+requires exactly one plan whose plugin/version and adapter digest agree. It
+then mints `AuthorizedActionIntent`, binding the catalog, pack, intent,
+manifest, adapter, plan identity, and plan digest. `prepare_act_goal()` accepts
+only that token and materializes only the named plan. `bind_workflow()` accepts
+only the exact adopted-recipe token, so Act authority cannot be replayed as
+Teach authority and a recipe adoption cannot stand in for an Act plan.
+
+This distinction does not make mode selection a permission. A fictional
+intent, disabled plugin, missing adapter, mismatched context, duplicate plans,
+or signed-plan drift still produces no token. Whole-graph approval, fresh
+catalog/target checks, one-use per-node authorization, and independent
+verification remain later mandatory boundaries.
+
+**Reason.** The first production manager proposal for `ADD_SLIDE` failed at
+the canonical gate. That was not evidence the plugin or plan was absent: the
+release-signed enabled plugin carried one valid action plan, while its Teach
+recipe deliberately remained unadopted. `prepare_act_goal()` nevertheless
+called the recipe-only form of the gate, making every deliberately unadopted
+Act plan unreachable. A test already asserted that action plans do not gain
+authority from recipe adoption; production contradicted it.
+
+**Alternatives rejected.** Bypassing `authorize_intent()` in Act would create
+the second policy path the canonical gate exists to prevent. Adding a fake or
+unearned recipe adoption would authorize Teach and misstate acceptance
+evidence merely to unlock Act. Making adoption fields optional on one token
+would allow a consumer to confuse two authority domains silently.

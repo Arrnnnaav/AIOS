@@ -19,6 +19,7 @@ from ghostcursor.act_runtime import (
 from ghostcursor.act_pacing import QUICK, Pace
 from ghostcursor.action_plans import materialize_action_plan
 from ghostcursor.packs.compile import compile_matcher
+from ghostcursor.packs.authority import AuthorizedActionIntent
 from ghostcursor.packs.workflow import (
     live_window_reader,
     live_windows_for,
@@ -112,20 +113,25 @@ def prepare_act_goal(
             match.confidence,
             match.reason,
         ),
+        action_context=context,
     )
     if authorization.authorized is None:
         raise RuntimeError(f"{authorization.status.value}: {authorization.explanation}")
     token = authorization.authorized
+    if not isinstance(token, AuthorizedActionIntent):
+        raise RuntimeError("canonical authorization returned no signed-plan authority")
     descriptor = context.adapters.get(token.plugin_id)
     if descriptor is None:
         raise RuntimeError("authorized plugin has no signed Act adapter")
-    matching = [
-        plan for plan in descriptor.plans.values() if plan.intent_id == token.intent_id
-    ]
-    if len(matching) != 1:
-        raise RuntimeError(
-            "authorized intent does not map to exactly one signed action plan"
-        )
+    plan = descriptor.plans.get(token.plan_id)
+    if (
+        plan is None
+        or plan.intent_id != token.intent_id
+        or plan.plan_sha256 != token.plan_sha256
+        or descriptor.adapter_sha256 != token.adapter_sha256
+        or descriptor.manifest_sha256 != token.plugin_manifest_sha256
+    ):
+        raise RuntimeError("signed action-plan authority changed after authorization")
     output = None if output_path is None else Path(output_path).resolve()
     # Stage when an owned root is available. The plan is materialized against
     # the STAGING path, so the adapter is never told where the final artifact
@@ -134,7 +140,7 @@ def prepare_act_goal(
     # its final path directly — as every production run did before staging
     # existed.
     staging = None
-    plan_parameters = matching[0].parameters
+    plan_parameters = plan.parameters
     if "output_path" in plan_parameters and output is None:
         raise RuntimeError("this Act plan creates an artifact and requires --output")
     if "output_path" not in plan_parameters:
@@ -150,7 +156,7 @@ def prepare_act_goal(
     parameter_values = (
         {"output_path": str(written)} if written is not None else {}
     )
-    validated = materialize_action_plan(matching[0], parameter_values, descriptor.registry)
+    validated = materialize_action_plan(plan, parameter_values, descriptor.registry)
     packs = [
         pack
         for pack in context.catalog.packs.values()

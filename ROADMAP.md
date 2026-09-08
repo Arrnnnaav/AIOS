@@ -268,9 +268,9 @@ built but not yet exercised by a caller or a live run.
       publishes 94371 bytes atomically with a matching digest.
 
 **7. Measured budgets (Phase E)**
-- [~] Paint cost was measured in `docs/evidence/act-paint-budget.md`, but D116
-      added pre/post coordinate queries around each paint. The former 2 ms
-      budget is historical and must be remeasured before visual acceptance.
+- [x] Checked paint cost remeasured after D116, including coordinate admission
+      before and after every real `WM_PAINT`. Three 400-frame live runs retain
+      the 2 ms budget (`docs/evidence/act-paint-budget.md`).
 - [x] Verifier spawn-to-response — max 0.188s, mean ~0.142s over 765
       invocations (`docs/evidence/act-diagnostic-rerun.md`)
 - [ ] Confirmation-to-invoke deadline
@@ -322,9 +322,15 @@ built but not yet exercised by a caller or a live run.
 - [x] Phase A: 255/255 diagnostic run — `docs/evidence/act-phase-a-diagnostic.md`
 - [x] Phase B: UIA feasibility probe — `docs/evidence/act-phase-b-uia-feasibility.md`
 
-**The next integration milestone is visual recertification**: remeasure paint
-after the new geometry checks, then run one live manager-owned pointer action.
-Only after those gates pass should the staged-plan schema or semantic
+**The next integration milestone is the live manager-owned pointer action.**
+Paint recertification and its independent boundary review are complete. The
+first production proposal attempt exposed an integration contradiction: Act
+plans were deliberately recipe-independent, while `prepare_act_goal()` called
+the recipe-only form of `authorize_intent()` and therefore refused every
+unadopted signed plan. D119 repairs the single gate with distinct,
+non-interchangeable recipe and action-plan tokens. Its implementation is green
+but still needs D032 review, mutation checks, and the live manager-owned run.
+Only after those gates pass should staged-plan schema wiring or semantic
 PowerPoint capabilities move forward.
 
 **Act v1 is deliberately not general computer use.** No mouse or keyboard

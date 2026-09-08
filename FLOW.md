@@ -77,6 +77,31 @@ graph. `Ideate` and `Assist` remain preview modes in this build: selecting them
 disables every launch path and creates no target, overlay, or execution
 request. Mode selection never carries authority.
 
+Act and Teach share the same intent policy gate without sharing executable
+artifacts. Teach calls `authorize_intent()` against the verified catalog and
+can receive `AuthorizedIntent` only when the intent has an active adopted
+recipe. Act loads one atomic `CompositionContext` and calls that same function
+with the exact context object that owns the catalog. The authorizer derives
+the available Act intents itself from that context's signed adapter plan
+inventory and mints `AuthorizedActionIntent` only when exactly one plan binds
+the catalog intent, plugin/version/manifest, adapter digest, and plan digest.
+`bind_workflow()` rejects that token type; conversely, `prepare_act_goal()`
+rejects a recipe token. A mode therefore selects which signed artifact is
+requested, never whether an unadopted or fictional intent becomes trusted.
+
+```text
+Act proposal
+    -> PluginStore.load_composition_context() once
+    -> compile_matcher(context.catalog) grounds the goal
+    -> authorize_intent(..., action_context=context)
+         -> require that exact context to own that catalog object
+         -> require one catalog-owned intent and one unique signed plan
+         -> bind catalog + pack + intent + manifest + adapter + plan digests
+    -> materialize only the plan named by AuthorizedActionIntent
+    -> display the inert complete plan
+    -> separate Approve & run binds the validated graph and live target
+```
+
 Production bundles are Ed25519-signed `.ghostplugin` files whose signed
 manifest contains the complete payload digest inventory. `PluginStore` owns
 install/enable/disable/uninstall and reports `disabled`, `enabled_compatible`,
