@@ -156,3 +156,26 @@ Commits `a7c1df5` and `ef4dbc2` are therefore cleared to proceed to paint
 remeasurement and live acceptance. The historical 2 ms paint budget remains
 invalid until the full checked paint transaction is measured, and this verdict
 does not replace the later D032 activation review.
+
+## D120 authority remediation re-review — 8 September 2026
+
+A separate read-only Codex thread reviewed the D120 authorization work and its
+first-review remediation through commit `553ff20`. It made no file changes and
+returned **READY** with no remaining findings.
+
+The review followed the production call path rather than accepting the diff's
+claims. It checked:
+
+- `prepare_act_goal()` obtains `production_store()` internally and exposes no
+  caller-supplied store parameter;
+- the exact `PluginStore` must have issued the exact `CompositionContext`
+  consumed by the canonical `authorize_intent()` gate;
+- signed plan, adapter, manifest, plugin, catalog, activation, and intent
+  provenance stay bound in the Act token and are checked again by its consumer;
+- Teach and Act tokens cannot be consumed across their authority domains;
+- the empty-catalog and fictional-intent paths produce no executable authority;
+- later execution reloads the same store for current authority checks.
+
+The reviewer ran no desktop or GUI lane and did not treat this verdict as live
+acceptance. The next gate is the manager-owned PowerPoint pointer run through
+the production proposal and approval path.

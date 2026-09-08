@@ -697,7 +697,7 @@ still forgeable because callers could construct `OverlaySession` directly, and
 tests that reproduce both bypasses. The next gate remains a fresh independent
 D032 verdict; no live evidence from these bytes is counted yet.
 
-## Act plan authorization was accidentally recipe-only — REVIEW PENDING 8 Sep 2026
+## Act plan authorization was accidentally recipe-only — LIVE PROOF PENDING 8 Sep 2026
 
 The first real manager-owned pointer proposal reached the production
 `prepare_act_goal()` path and refused `ADD_SLIDE` as
@@ -717,11 +717,12 @@ The first independent D032 review then found that `prepare_act_goal()` accepted
 an injected lookalike store, allowing it to return a caller-assembled exact
 `CompositionContext`. Production preparation no longer accepts a store
 argument, and the authorizer now rejects any context not issued by the exact
-real `PluginStore`. D032 re-review and the live manager-owned pointer run
-remain required before this entry can close. The mutation recheck kills six
-distinct provenance mutations, including removal of the
-store/context ownership test and restoration of the production `store=`
-injection parameter.
+real `PluginStore`. The mutation recheck kills six distinct provenance
+mutations, including removal of the store/context ownership test and
+restoration of the production `store=` injection parameter. A fresh read-only
+D032 re-review of the complete remediation through `553ff20` returned READY
+with no findings. The live manager-owned pointer run remains required before
+this entry can close.
 
 ## A hermetic test was reading the real ESC key — CLOSED 4 Sep 2026
 

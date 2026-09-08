@@ -332,10 +332,10 @@ non-interchangeable recipe and action-plan tokens. The first D032 review found
 that an injected lookalike store could still supply an exact-type fabricated
 context; production preparation no longer accepts a store argument, and Act
 authority now requires the exact `PluginStore` to have issued the exact
-context from signed on-disk state. The remediation is green but still needs
-its D032 re-review and the live manager-owned run; six focused provenance
-mutations are killed.
-Only after those gates pass should staged-plan schema wiring or semantic
+context from signed on-disk state. Six focused provenance mutations are
+killed, and the fresh D032 re-review returned READY with no findings. The live
+manager-owned run is now the remaining integration gate.
+Only after that gate passes should staged-plan schema wiring or semantic
 PowerPoint capabilities move forward.
 
 **Act v1 is deliberately not general computer use.** No mouse or keyboard

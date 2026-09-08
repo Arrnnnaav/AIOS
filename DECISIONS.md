@@ -4771,8 +4771,7 @@ read returned **READY** with no remaining findings.
 ## D120 — Teach recipes and Act plans share one gate, not one token
 
 **Date:** 8 September 2026
-**Status:** Candidate implementation; D032 review and live manager proof
-pending.
+**Status:** D032-reviewed candidate; live manager proof pending.
 
 **Amends D104.** `authorize_intent()` remains the only function that can turn
 a deterministic or model candidate into intent authority. Its default path is
@@ -4841,3 +4840,13 @@ making every store claim every context; restoring the public production
 `store=` injection parameter; and omitting the exact store from the canonical
 Act gate call. The isolated baseline is 26/26 green after all source mutations
 were restored.
+
+**Final D032 re-review — READY.** A fresh read-only Codex thread reviewed the
+complete D120 implementation and remediation range through `553ff20` without
+making file changes. It traced the production preparation path, store-issued
+context ownership, signed-plan provenance, Teach/Act token separation,
+freshness checks, empty-catalog behavior, and fictional-intent refusal. The
+review returned **READY** with no remaining findings. This clears the authority
+slice for the live manager-owned pointer proof; it does not make that live run
+or any later release/activation review unnecessary. The durable review record
+is `docs/evidence/act-d032-boundary-remediation.md`.
