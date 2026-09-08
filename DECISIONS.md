@@ -4872,7 +4872,7 @@ execution transcript for independent audit. D121 records the remediation.
 ## D121 — Manager Act execution consumes one explicit approval event
 
 **Date:** 9 September 2026
-**Status:** Implemented candidate; mutation audit and independent review pending.
+**Status:** Implemented and mutation-audited candidate; independent review pending.
 
 **Decision.** `NativeManagerWindow._on_command(ID_START)` is the only normal
 producer of an `ActExecutionRequest` after an Act proposal has been displayed.
@@ -4892,3 +4892,9 @@ receipt-gated overlay and independently verified UIA effect, but its probe
 called `_ActWorker` directly. The old worker signature made a bypassed approval
 look identical to a manager-approved execution. The boundary is now part of the
 type and lifecycle rather than a claim in an evidence document.
+
+**Mutation audit.** Six deliberate breaks are killed: removing the constructor
+seal; omitting issuance registration; dropping exact request-type admission;
+skipping issued-request membership; preserving a consumed request for replay;
+and making the real `ID_START` command construct a sealed-looking request
+without registering it. The restored isolated baseline is 7/7 green.

@@ -342,7 +342,8 @@ called `_ActWorker` directly, so it did not prove the explicit manager
 `Approve & run` event and left no independently inspectable transcript. D121
 now makes that event structural: `_ActWorker` consumes only a one-use request
 issued by the manager approval command and rejects bare, forged, or replayed
-values. Re-run through the visible manager approval event with a retained
+values. Six D018 mutations of that boundary are killed. Re-run through the
+visible manager approval event with a retained
 bounded harness/transcript, then obtain a fresh D032 verdict. Only after that
 review passes should staged-plan schema wiring or semantic PowerPoint
 capabilities move forward.

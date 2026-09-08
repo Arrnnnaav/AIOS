@@ -732,8 +732,11 @@ execution transcript. The runtime receipt and verifier controls checked out,
 but that evidence cannot prove the manager approval boundary. D121 now seals
 that boundary: only a one-use request issued by the manager approval command
 may enter `_ActWorker`, and bare/caller-constructed/replayed values refuse.
-This item closes only after a visible manager-approved rerun retains its
-harness/transcript and receives a fresh independent D032 READY verdict.
+Six mutations prove the constructor seal, issuance registration, exact-type
+admission, membership check, one-use removal, and real `ID_START` producer are
+all load-bearing. This item closes only after a visible manager-approved rerun
+retains its harness/transcript and receives a fresh independent D032 READY
+verdict.
 
 ## A hermetic test was reading the real ESC key — CLOSED 4 Sep 2026
 
