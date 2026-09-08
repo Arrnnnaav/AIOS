@@ -4809,3 +4809,13 @@ the second policy path the canonical gate exists to prevent. Adding a fake or
 unearned recipe adoption would authorize Teach and misstate acceptance
 evidence merely to unlock Act. Making adoption fields optional on one token
 would allow a consumer to confuse two authority domains silently.
+
+**Mutation audit.** Twelve distinct mutations are killed: accepting a
+lookalike or foreign context; dropping plugin id, plugin version, manifest, or
+plan-adapter provenance; accepting duplicate plans; omitting Act's signed-plan
+gate mode; dropping post-authorization plan, adapter, or manifest checks; and
+letting the Teach binder consume an Act token. The plugin-version mutation
+survived its first test because plan-versus-descriptor agreement caught a
+descriptor-only change. A new coordinated descriptor-and-plan drift case then
+killed it, proving the independent descriptor-versus-pack comparison rather
+than a correlated invariant.

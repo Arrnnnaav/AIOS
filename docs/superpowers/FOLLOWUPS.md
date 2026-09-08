@@ -710,9 +710,10 @@ D120 repairs the mismatch without adding a second authorizer.
 `authorize_intent()` derives action-plan availability from the exact atomic
 `CompositionContext` and returns a distinct digest-bound token. Teach remains
 adoption-bound, and each consumer rejects the other domain's token. Focused
-and full hermetic lanes are green; D018 mutations, independent D032 review,
-and the live manager-owned pointer run remain required before this entry can
-close.
+and full hermetic lanes are green, and twelve distinct D018 mutations are
+killed after one survivor exposed a missing coordinated-drift test.
+Independent D032 review and the live manager-owned pointer run remain required
+before this entry can close.
 
 ## A hermetic test was reading the real ESC key — CLOSED 4 Sep 2026
 
