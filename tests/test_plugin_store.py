@@ -162,6 +162,20 @@ def test_install_enable_disable_and_uninstall_are_distinct(tmp_path):
     assert store.list_installed() == ()
 
 
+def test_empty_store_issues_the_composition_context_it_loads(tmp_path):
+    store = PluginStore(
+        tmp_path / "store",
+        trusted_keys={},
+        core_version="0.1.0",
+    )
+    # Initialize the explicit empty indexes, then exercise the real loader.
+    assert store.list_installed() == ()
+
+    context = store.load_composition_context()
+
+    assert store.owns_composition_context(context)
+
+
 def test_composition_reverifies_and_exposes_both_signed_adapter_processes(tmp_path):
     private, trusted = _key()
     files = _powerpoint_adapter_files()
