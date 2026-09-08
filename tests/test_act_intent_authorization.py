@@ -216,6 +216,40 @@ def test_act_authority_refuses_descriptor_provenance_drift(
 
 
 @pytest.mark.parametrize(
+    ("field", "changed_value"),
+    (
+        ("plugin_id", "ghostcursor.other"),
+        ("plugin_version", "9.0.0"),
+    ),
+)
+def test_act_authority_refuses_coordinated_descriptor_and_plan_drift(
+    tmp_path, field, changed_value
+):
+    """Agreement between two changed plugin artifacts is not pack provenance."""
+
+    context = _context(tmp_path)
+    descriptor = context.adapters[PLUGIN_ID]
+    changed_plans = MappingProxyType({
+        plan_id: replace(plan, **{field: changed_value})
+        for plan_id, plan in descriptor.plans.items()
+    })
+    changed_descriptor = replace(
+        descriptor,
+        **{field: changed_value},
+        plans=changed_plans,
+    )
+    changed = replace(
+        context,
+        adapters=MappingProxyType({PLUGIN_ID: changed_descriptor}),
+    )
+
+    result = _authorize_action(changed)
+
+    assert result.status is PlanStatus.KNOWN_INTENT_ACTION_PLAN_UNAVAILABLE
+    assert result.authorized is None
+
+
+@pytest.mark.parametrize(
     ("plan_field", "changed_value"),
     (
         ("intent_id", "FICTIONAL_INTENT"),
