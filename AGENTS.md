@@ -59,10 +59,11 @@ and speculative follow-up work in one batch.
 
 - **D018:** deliberately mutate every safety-critical property and prove a test
   detects the break.
-- **D025:** never run two desktop/UIA sessions concurrently. Hung-window lanes
-  run alone.
-- **D032:** implementation, documentation, and measured claims need an
-  independent reader before they become release or activation evidence. A
+- **D025:** never run two test sessions at once. Interactive/UIA, pixel, and
+  hung-window lanes are serial, and each hung-window command runs alone.
+- **D032:** nothing an agent authored or asserted—code, documentation, a brief,
+  or a claimed fact—is ground truth until an independent reader checks it.
+  This applies to every task, not only release or activation evidence. A
   reviewer uses a separate worktree, or implementation pauses until review is
   complete.
 - **D034:** every measured number cited as evidence names its durable record in
@@ -70,8 +71,10 @@ and speculative follow-up work in one batch.
 - Production authority flows through signed plugins, the canonical
   compatibility check, `authorize_intent()`, fresh binding, and per-node
   authorization. Do not create a parallel policy path.
-- Keep raw mouse and keyboard synthesis out of the current product unless the
-  owner explicitly approves a new reviewed architecture decision.
+- Teach and acceptance tools may not move the OS pointer, type, or import input
+  synthesis APIs. Act adapters may not use cursor APIs or generic mouse or
+  keyboard automation. Changing either boundary requires an explicit owner
+  decision and reviewed architecture amendment.
 - A pointer shown for an Act operation must identify the control that receives
   that operation. Geometry is presentation evidence and never authorization.
 
@@ -88,11 +91,9 @@ py -3.12 -m pytest tests -m "not interactive and not pixel and not hung" `
 Interactive, pixel, and hung-window lanes must follow the separate commands in
 `CLAUDE.md` and D025. Never call a desktop diagnostic acceptance evidence.
 
-After a finalized build slice, refresh the code graph with:
-
-```powershell
-graphify update .
-```
+After a finalized build slice, follow the Knowledge Graph instructions in
+`CLAUDE.md`. `graphify update .` refreshes code extraction only; do not treat it
+as a document refresh when Markdown, documents, or evidence changed.
 
 ## Subsystem routing
 
@@ -100,11 +101,11 @@ graphify update .
 |---|---|---|
 | Product phase and priorities | `ROADMAP.md` | linked evidence and decisions |
 | Runtime architecture | `FLOW.md` | `ghostcursor/act_*.py`, `ghostcursor/run.py` |
-| Plugin authority | `CLAUDE.md`, D077–D118 | `ghostcursor/plugins/`, `ghostcursor/adapter_host.py` |
+| Plugin authority | `CLAUDE.md` plugin-platform rules; D077–D082, D100, D108 | `ghostcursor/plugins/`, `ghostcursor/adapter_host.py`, `plugins/sources/<app>/`, `tests/test_plugin_*.py` |
 | Perception | `CLAUDE.md` perception rules | `ghostcursor/perception/`, `ghostcursor/reasoning/grounding.py` |
 | Overlay and pointer | D006, D009, D010, D109, D115–D118 | `ghostcursor/overlay/`, `ghostcursor/act_overlay.py` |
-| Planning and local models | roadmap phases 8–9 | `ghostcursor/brief.py`, `ghostcursor/inference/`, plugin capability data |
-| Manager/panel | current manager section in `FLOW.md` | manager modules and UI bridge tests |
+| Planning and local models | `ROADMAP.md` Phase 3 build-order items 7–9 | `idea.txt`, `ghostcursor/brief.py`, `ghostcursor/task_graph.py`, `ghostcursor/inference/ollama.py`, `tests/test_brief.py`, `tests/test_task_graph.py` |
+| Manager/panel | `FLOW.md` manager section; D088, D093, D118 | `ghostcursor/manager.py`, `ghostcursor/act_ui_bridge.py`, `tests/test_manager.py`, `tests/test_manager_window.py`, `tests/test_manager_act_bridge.py`, `tests/test_act_ui_bridge.py` |
 | Evidence or release | D032, D034 and release rules | `docs/evidence/`, activation and acceptance tools |
 
 Add a smaller `AGENTS.md` inside a major module only when that module has

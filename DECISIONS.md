@@ -4732,7 +4732,8 @@ does not replace the later activation review.
 ## D119 — Codex work starts from a small repository-backed context
 
 **Date:** 8 September 2026
-**Status:** Active process decision.
+**Status:** Candidate correction committed; focused independent re-review
+required.
 
 **Decision.** Root `AGENTS.md` is the Codex entry point. Routine implementation
 prefers GPT-5.6 Sol with medium reasoning when model selection is available;
@@ -4752,3 +4753,13 @@ cannot be expressed by those links.
 a reliable source of current state. Small, committed handoffs preserve context
 across threads while reducing irrelevant repository reads and preventing old
 conversation assumptions from outranking the tracked architecture and evidence.
+
+**Independent review correction.** The first cold read returned NOT READY. It
+found that the guide narrowed D032 to release/activation evidence, narrowed
+D025 to desktop sessions, named nonexistent roadmap phases, compressed the
+no-input boundary enough to permit a higher-level misreading, treated a
+code-only Graphify refresh as sufficient for documents, and routed two
+subsystems through imprecise or overly broad paths. The guide now states the
+full canonical D025/D032 and input rules, names Phase 3 build-order items 7–9,
+distinguishes code extraction from document refresh, and supplies exact narrow
+paths and decision sets. A fresh independent read must confirm those fixes.
