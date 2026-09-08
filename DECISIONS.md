@@ -4771,7 +4771,8 @@ read returned **READY** with no remaining findings.
 ## D120 — Teach recipes and Act plans share one gate, not one token
 
 **Date:** 8 September 2026
-**Status:** D032-reviewed candidate; live manager proof pending.
+**Status:** D032-reviewed candidate; authored live manager proof complete and
+awaiting its independent evidence review.
 
 **Amends D104.** `authorize_intent()` remains the only function that can turn
 a deterministic or model candidate into intent authority. Its default path is
@@ -4850,3 +4851,15 @@ review returned **READY** with no remaining findings. This clears the authority
 slice for the live manager-owned pointer proof; it does not make that live run
 or any later release/activation review unnecessary. The durable review record
 is `docs/evidence/act-d032-boundary-remediation.md`.
+
+**Live manager-owned proof.** At commit `2741385`, the production preparation
+path minted the action-plan token from the release-signed enabled PowerPoint
+plugin, the real manager factory created the UI-thread presentation surface,
+and `_ActWorker` executed the one-node plan. PowerPoint changed from one slide
+to two; the node and run completed only after the signed live verifier
+confirmed `slide.count.increased_by_one`. A precursor with in-process
+screenshot capture missed the render deadline and performed no effect, so the
+successful run removed that instrumentation instead of weakening the policy.
+Exact hashes, events, result, and limitations are recorded in
+`docs/evidence/act-live-manager-pointer.md`. This paragraph is authored
+evidence until a fresh D032 reader checks it.

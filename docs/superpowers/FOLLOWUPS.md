@@ -697,7 +697,7 @@ still forgeable because callers could construct `OverlaySession` directly, and
 tests that reproduce both bypasses. The next gate remains a fresh independent
 D032 verdict; no live evidence from these bytes is counted yet.
 
-## Act plan authorization was accidentally recipe-only — LIVE PROOF PENDING 8 Sep 2026
+## Act plan authorization was accidentally recipe-only — LIVE REVIEW PENDING 8 Sep 2026
 
 The first real manager-owned pointer proposal reached the production
 `prepare_act_goal()` path and refused `ADD_SLIDE` as
@@ -721,8 +721,10 @@ real `PluginStore`. The mutation recheck kills six distinct provenance
 mutations, including removal of the store/context ownership test and
 restoration of the production `store=` injection parameter. A fresh read-only
 D032 re-review of the complete remediation through `553ff20` returned READY
-with no findings. The live manager-owned pointer run remains required before
-this entry can close.
+with no findings. A manager-owned production run now completes the one-node
+PowerPoint UIA plan and independently verifies a `1 -> 2` slide-count change;
+see `docs/evidence/act-live-manager-pointer.md`. A fresh D032 review of that
+live record and the path it names remains before this entry can close.
 
 ## A hermetic test was reading the real ESC key — CLOSED 4 Sep 2026
 
