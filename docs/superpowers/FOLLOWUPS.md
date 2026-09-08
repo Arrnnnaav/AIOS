@@ -717,8 +717,11 @@ The first independent D032 review then found that `prepare_act_goal()` accepted
 an injected lookalike store, allowing it to return a caller-assembled exact
 `CompositionContext`. Production preparation no longer accepts a store
 argument, and the authorizer now rejects any context not issued by the exact
-real `PluginStore`. Mutation recheck, D032 re-review, and the live
-manager-owned pointer run remain required before this entry can close.
+real `PluginStore`. D032 re-review and the live manager-owned pointer run
+remain required before this entry can close. The mutation recheck kills six
+distinct provenance mutations, including removal of the
+store/context ownership test and restoration of the production `store=`
+injection parameter.
 
 ## A hermetic test was reading the real ESC key — CLOSED 4 Sep 2026
 

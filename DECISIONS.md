@@ -4833,3 +4833,11 @@ artifact checks. Reassembling or `replace()`-ing a context produces a new
 identity and no authority. This is an in-process provenance guard against an
 accidental parallel authority path; it does not claim to sandbox arbitrary
 Python code already executing inside the trusted core process.
+
+**Remediation mutation audit.** Six additional mutations are killed: dropping
+the issued-context ownership check; accepting a store lookalike that claims
+ownership; returning a context from the real loader without registering it;
+making every store claim every context; restoring the public production
+`store=` injection parameter; and omitting the exact store from the canonical
+Act gate call. The isolated baseline is 26/26 green after all source mutations
+were restored.

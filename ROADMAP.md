@@ -333,7 +333,8 @@ that an injected lookalike store could still supply an exact-type fabricated
 context; production preparation no longer accepts a store argument, and Act
 authority now requires the exact `PluginStore` to have issued the exact
 context from signed on-disk state. The remediation is green but still needs
-its focused mutation check, D032 re-review, and the live manager-owned run.
+its D032 re-review and the live manager-owned run; six focused provenance
+mutations are killed.
 Only after those gates pass should staged-plan schema wiring or semantic
 PowerPoint capabilities move forward.
 
