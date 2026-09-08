@@ -13,6 +13,10 @@ Each tracking document has one job. Put a sentence where it belongs:
 | `docs/evidence/` | durable measured results |
 | `ROADMAP.md` | what we build next and in what order, at phase scale |
 
+`AGENTS.md` is the Codex entry point for model/thread strategy and focused-slice
+workflow. It routes agents into these canonical documents; it does not own a
+second copy of architecture or policy.
+
 `ROADMAP.md` is the phase index, reconciled against the repository rather
 than asserted: a phase marked built cites the evidence or decision that backs
 it. When the owner says what a phase should contain, record it there before

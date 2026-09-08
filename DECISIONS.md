@@ -4728,3 +4728,27 @@ D032 review then returned **READY** with no blocking findings after independentl
 running 120 focused tests and all 2,447 hermetic tests. Live acceptance now
 waits for the invalidated paint budget to be remeasured; this boundary verdict
 does not replace the later activation review.
+
+## D119 — Codex work starts from a small repository-backed context
+
+**Date:** 8 September 2026
+**Status:** Active process decision.
+
+**Decision.** Root `AGENTS.md` is the Codex entry point. Routine implementation
+prefers GPT-5.6 Sol with medium reasoning when model selection is available;
+high reasoning is reserved for architecture, permission/security boundaries,
+concurrency, orchestration, and difficult diagnosis. Work starts in a fresh
+thread per subsystem, reads the project graph and only the relevant paths, and
+lands as focused architecture → implementation → tests → reconciliation →
+commit slices.
+
+`CLAUDE.md` remains the canonical source of current mandatory project rules and
+commands. `AGENTS.md` routes into it, `FLOW.md`, `ROADMAP.md`, cited decisions,
+and follow-ups instead of duplicating their full contents. Smaller module-level
+agent files are added only when a module gains stable local constraints that
+cannot be expressed by those links.
+
+**Reason.** The project history is now too large for one conversation to remain
+a reliable source of current state. Small, committed handoffs preserve context
+across threads while reducing irrelevant repository reads and preventing old
+conversation assumptions from outranking the tracked architecture and evidence.
