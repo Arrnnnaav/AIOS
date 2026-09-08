@@ -116,6 +116,15 @@ def _candidate(context, goal="add a slide in powerpoint"):
     )
 
 
+def _authorize_action(context):
+    return authorize_intent(
+        context.catalog,
+        "add a slide in powerpoint",
+        _candidate(context),
+        action_context=context,
+    )
+
+
 def test_unadopted_recipe_stays_unavailable_while_signed_action_plan_authorizes(
     tmp_path,
 ):
@@ -123,12 +132,7 @@ def test_unadopted_recipe_stays_unavailable_while_signed_action_plan_authorizes(
     candidate = _candidate(context)
 
     teach = authorize_intent(context.catalog, "add a slide in powerpoint", candidate)
-    act = authorize_intent(
-        context.catalog,
-        "add a slide in powerpoint",
-        candidate,
-        action_context=context,
-    )
+    act = _authorize_action(context)
 
     assert teach.status is PlanStatus.KNOWN_INTENT_RECIPE_UNAVAILABLE
     assert teach.authorized is None
@@ -138,6 +142,16 @@ def test_unadopted_recipe_stays_unavailable_while_signed_action_plan_authorizes(
     assert act.authorized.plan_sha256 == context.adapters[PLUGIN_ID].plans[
         "add-slide-uia-v1"
     ].plan_sha256
+    assert act.authorized.plugin_manifest_sha256 == MANIFEST
+    assert act.authorized.adapter_sha256 == context.adapters[PLUGIN_ID].adapter_sha256
+    assert act.authorized.catalog_sha256 == context.catalog.index_sha256
+    assert act.authorized.catalog_generation == context.catalog.generation
+    assert act.authorized.activation_sha256 == context.catalog.packs[
+        "powerpoint"
+    ].activation_sha256
+    assert act.authorized.intent_sha256 == context.catalog.packs[
+        "powerpoint"
+    ].intents["ADD_SLIDE"].intent.sha256
 
 
 def test_act_authority_refuses_a_context_that_does_not_own_the_catalog(tmp_path):
@@ -151,6 +165,82 @@ def test_act_authority_refuses_a_context_that_does_not_own_the_catalog(tmp_path)
         _candidate(context),
         action_context=foreign,
     )
+
+    assert result.status is PlanStatus.KNOWN_INTENT_ACTION_PLAN_UNAVAILABLE
+    assert result.authorized is None
+
+
+def test_act_authority_refuses_a_lookalike_instead_of_the_context_type(tmp_path):
+    context = _context(tmp_path)
+    lookalike = SimpleNamespace(
+        catalog=context.catalog,
+        adapters=context.adapters,
+    )
+
+    result = authorize_intent(
+        context.catalog,
+        "add a slide in powerpoint",
+        _candidate(context),
+        action_context=lookalike,
+    )
+
+    assert result.status is PlanStatus.KNOWN_INTENT_ACTION_PLAN_UNAVAILABLE
+    assert result.authorized is None
+
+
+@pytest.mark.parametrize(
+    ("descriptor_field", "changed_value"),
+    (
+        ("plugin_id", "ghostcursor.other"),
+        ("plugin_version", "9.0.0"),
+        ("manifest_sha256", "9" * 64),
+    ),
+)
+def test_act_authority_refuses_descriptor_provenance_drift(
+    tmp_path, descriptor_field, changed_value
+):
+    context = _context(tmp_path)
+    descriptor = replace(
+        context.adapters[PLUGIN_ID],
+        **{descriptor_field: changed_value},
+    )
+    changed = replace(
+        context,
+        adapters=MappingProxyType({PLUGIN_ID: descriptor}),
+    )
+
+    result = _authorize_action(changed)
+
+    assert result.status is PlanStatus.KNOWN_INTENT_ACTION_PLAN_UNAVAILABLE
+    assert result.authorized is None
+
+
+@pytest.mark.parametrize(
+    ("plan_field", "changed_value"),
+    (
+        ("intent_id", "FICTIONAL_INTENT"),
+        ("plugin_id", "ghostcursor.other"),
+        ("plugin_version", "9.0.0"),
+        ("adapter_sha256", "8" * 64),
+    ),
+)
+def test_act_authority_refuses_plan_provenance_drift(
+    tmp_path, plan_field, changed_value
+):
+    context = _context(tmp_path)
+    descriptor = context.adapters[PLUGIN_ID]
+    plan = descriptor.plans["add-slide-uia-v1"]
+    changed_plan = replace(plan, **{plan_field: changed_value})
+    changed_descriptor = replace(
+        descriptor,
+        plans=MappingProxyType({changed_plan.plan_id: changed_plan}),
+    )
+    changed = replace(
+        context,
+        adapters=MappingProxyType({PLUGIN_ID: changed_descriptor}),
+    )
+
+    result = _authorize_action(changed)
 
     assert result.status is PlanStatus.KNOWN_INTENT_ACTION_PLAN_UNAVAILABLE
     assert result.authorized is None
@@ -173,12 +263,7 @@ def test_act_authority_refuses_two_signed_plans_for_one_intent(tmp_path):
         adapters=MappingProxyType({PLUGIN_ID: ambiguous}),
     )
 
-    result = authorize_intent(
-        changed.catalog,
-        "add a slide in powerpoint",
-        _candidate(changed),
-        action_context=changed,
-    )
+    result = _authorize_action(changed)
 
     assert result.status is PlanStatus.KNOWN_INTENT_ACTION_PLAN_UNAVAILABLE
     assert result.authorized is None
@@ -207,12 +292,7 @@ def test_signed_plan_authority_cannot_be_consumed_as_a_teach_recipe(
     tmp_path, monkeypatch
 ):
     context = _context(tmp_path)
-    result = authorize_intent(
-        context.catalog,
-        "add a slide in powerpoint",
-        _candidate(context),
-        action_context=context,
-    )
+    result = _authorize_action(context)
     monkeypatch.setattr(
         "ghostcursor.plugins.platform.load_runtime_catalog",
         lambda: (_ for _ in ()).throw(AssertionError("catalog loaded")),
@@ -252,3 +332,42 @@ def test_prepare_act_goal_uses_the_recipe_free_signed_plan_authority(
     assert proposal.output_path is None
     assert len(proposal.validated.ordered_nodes) == 1
     assert proposal.validated.ordered_nodes[0].operation_id == "powerpoint.new_slide_uia"
+
+
+@pytest.mark.parametrize(
+    ("token_field", "changed_value"),
+    (
+        ("plan_sha256", "1" * 64),
+        ("adapter_sha256", "2" * 64),
+        ("plugin_manifest_sha256", "3" * 64),
+    ),
+)
+def test_prepare_act_goal_refuses_authority_drift_before_target_resolution(
+    tmp_path, monkeypatch, token_field, changed_value
+):
+    from ghostcursor import act_cli
+
+    context = _context(tmp_path)
+    authorized = _authorize_action(context)
+    changed = replace(
+        authorized,
+        authorized=replace(
+            authorized.authorized,
+            **{token_field: changed_value},
+        ),
+    )
+    monkeypatch.setattr(act_cli, "authorize_intent", lambda *_a, **_k: changed)
+    monkeypatch.setattr(
+        act_cli,
+        "live_windows_for",
+        lambda _pack: (_ for _ in ()).throw(AssertionError("target resolved")),
+    )
+    store = SimpleNamespace(load_composition_context=lambda: context)
+
+    with pytest.raises(RuntimeError, match="authority changed"):
+        act_cli.prepare_act_goal(
+            "add a slide in powerpoint",
+            output_path=None,
+            target_hwnd=101,
+            store=store,
+        )
