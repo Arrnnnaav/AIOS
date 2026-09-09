@@ -4872,7 +4872,8 @@ execution transcript for independent audit. D121 records the remediation.
 ## D121 — Manager Act execution consumes one explicit approval event
 
 **Date:** 9 September 2026
-**Status:** Implemented and mutation-audited candidate; independent review pending.
+**Status:** Independently reviewed authority boundary; retained live manager
+evidence remains pending.
 
 **Decision.** `NativeManagerWindow._on_command(ID_START)` is the only normal
 producer of an `ActExecutionRequest` after an Act proposal has been displayed.
@@ -4898,3 +4899,11 @@ seal; omitting issuance registration; dropping exact request-type admission;
 skipping issued-request membership; preserving a consumed request for replay;
 and making the real `ID_START` command construct a sealed-looking request
 without registering it. The restored isolated baseline is 7/7 green.
+
+**Independent review.** On 9 September 2026 the owner confirmed that the D121
+authority boundary had received its independent D032 review and directed work
+to continue. No machine-generated review transcript was supplied or invented
+here. This clears D121 for sequencing only. It does not clear the separate
+live-evidence gate: the replacement run must still visibly cross the manager
+approval command, retain its harness and bounded transcript, and receive its
+own independent D032 verdict.

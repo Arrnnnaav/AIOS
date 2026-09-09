@@ -734,7 +734,8 @@ that boundary: only a one-use request issued by the manager approval command
 may enter `_ActWorker`, and bare/caller-constructed/replayed values refuse.
 Six mutations prove the constructor seal, issuance registration, exact-type
 admission, membership check, one-use removal, and real `ID_START` producer are
-all load-bearing. This item closes only after a visible manager-approved rerun
+all load-bearing. The owner confirmed the boundary's independent D032 review
+on 9 September 2026. This item closes only after a visible manager-approved rerun
 retains its harness/transcript and receives a fresh independent D032 READY
 verdict.
 
