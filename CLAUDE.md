@@ -341,6 +341,12 @@ consumed request before starting an execution thread. This proves the product
 path crossed the manager approval event; it does not sandbox arbitrary trusted
 Python, so live evidence must also retain the probe/harness and bounded
 execution transcript for D032 review (D121).
+The opt-in live manager audit is observation-only: it records a fixed schema of
+proposal/authority hashes, executor-reported ordinals, lifecycle names, and the
+terminal result. It may not retain goal text, output paths, HWND/PID values,
+rectangles, pointer paths, screenshots, selectors, tokens, or verifier readings,
+and no audit value may flow back into approval, authorization, dispatch, or
+verification (D122).
 Pause/Stop is checked again after one-use authorization and immediately before
 dispatch. If it changed, refuse the node and require fresh confirmation; do not
 hold a minted token across Pause. An adapter request already in flight still

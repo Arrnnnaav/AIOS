@@ -94,3 +94,12 @@ claims unauditable. D121 is the remediation: the worker now consumes only a
 one-use manager-issued execution request. A replacement live run must cross the
 visible approval event and retain a bounded harness/transcript before this gate
 can close.
+
+## Replacement harness
+
+`ghostcursor.devtools.act_live_manager` now launches the production manager loop
+with an opt-in fixed-schema JSONL audit. It records the displayed proposal's
+digest-bound identity, the real `Approve & run` event, request dequeue, worker
+start, executor events, and terminal result. Goal text, paths, raw target values,
+geometry, screenshots, selectors, tokens, and verifier readings are excluded.
+No replacement live run has been claimed in this document yet.

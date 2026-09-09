@@ -108,6 +108,13 @@ Act proposal
     -> approve_action_graph binds the validated graph and live target
 ```
 
+An opt-in developer evidence lane observes that same manager loop. It emits
+fixed-schema JSONL after proposal display, the real `Approve & run` command,
+request dequeue, worker start, executor events, and the terminal result. The
+proposal identity binds the goal, graph, catalog, signed executables, target,
+and output destination by digest. Raw goal/path/window/geometry data is never
+written, and the audit lane has no edge back into execution (D122).
+
 Production bundles are Ed25519-signed `.ghostplugin` files whose signed
 manifest contains the complete payload digest inventory. `PluginStore` owns
 install/enable/disable/uninstall and reports `disabled`, `enabled_compatible`,

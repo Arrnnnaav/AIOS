@@ -207,12 +207,19 @@ def test_approve_and_run_issues_one_exact_request_for_the_displayed_proposal():
         _choose_mode(manager, InteractionMode.ACT)
         win32gui.SetWindowText(manager._controls[ID_GOAL], "Add a slide")
         manager.show_act_proposal("Add a slide", proposal)
+        displayed = manager.take_act_audit_records()
 
         manager._on_command(ID_START)
         request = manager.take_request()
+        approved = manager.take_act_audit_records()
 
         assert type(request) is ActExecutionRequest
         assert request.goal == "Add a slide"
+        assert [record.type for record in displayed] == ["act_proposal_displayed"]
+        assert [record.type for record in approved] == ["approve_and_run_issued"]
+        assert displayed[0].proposal_sha256 == approved[0].proposal_sha256
+        assert displayed[0].validation_sha256 is None
+        assert "Add a slide" not in repr(displayed[0])
         assert _consume_act_execution_request(request) is proposal
         assert manager.take_request() is None
     finally:

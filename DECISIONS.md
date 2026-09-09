@@ -4907,3 +4907,30 @@ here. This clears D121 for sequencing only. It does not clear the separate
 live-evidence gate: the replacement run must still visibly cross the manager
 approval command, retain its harness and bounded transcript, and receive its
 own independent D032 verdict.
+
+## D122 — Retained manager evidence is fixed-schema and observation-only
+
+**Date:** 9 September 2026
+**Status:** Implemented candidate; live run and independent evidence review pending.
+
+**Decision.** The production native manager may optionally append a bounded
+JSONL audit for a developer evidence run. Records are produced only by the
+manager after facts already exist: proposal displayed, `Approve & run` issued,
+the exact request dequeued, worker started, executor event received, and terminal
+result received. The channel has no callback or return edge into proposal
+selection, approval, authorization, presentation receipts, dispatch, or
+verification.
+
+The proposal audit identity binds hashes for the goal, validated graph, active
+catalog, plugin manifest, object-model adapter, UIA adapter, live verifier,
+target identity, and output destination. The transcript stores the resulting
+digests rather than goal text, paths, HWND/PID values, geometry, pointer paths,
+screenshots, selectors, tokens, or verifier readings. Runtime step numbers come
+from `ActEvent`; the audit never counts independently.
+
+**Reason.** The first live manager-owned-surface diagnostic was technically
+successful but unauditable: its one-off source was deleted and it entered the
+worker below the visible approval event. D121 closes the execution boundary;
+this decision preserves enough independent evidence to prove the replacement
+run crossed it without creating a second authority path or collecting private
+desktop layout.

@@ -8,12 +8,15 @@ same-process mailbox.
 
 from __future__ import annotations
 
+import hashlib
+import json
+import os
 import queue
 import threading
 import time
 import uuid
 import weakref
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 import win32api
@@ -153,6 +156,130 @@ class ActProposalRequest:
     goal: str
     output_path: Path
     target_hwnd: int | None = None
+
+
+@dataclass(frozen=True)
+class ManagerActAuditRecord:
+    """One bounded, geometry-free fact observed by the native manager.
+
+    This is evidence only.  It contains no callback, request, proposal, token,
+    selector, rectangle, or other value that could flow back into execution.
+    """
+
+    schema_version: int
+    sequence: int
+    type: str
+    at_ns: int
+    proposal_sha256: str | None = None
+    intent_id: str | None = None
+    plugin_id: str | None = None
+    plugin_version: str | None = None
+    catalog_generation: int | None = None
+    graph_sha256: str | None = None
+    validation_sha256: str | None = None
+    manifest_sha256: str | None = None
+    adapter_sha256: str | None = None
+    uia_adapter_sha256: str | None = None
+    live_verifier_sha256: str | None = None
+    active_index_sha256: str | None = None
+    target_sha256: str | None = None
+    output_path_sha256: str | None = None
+    node_id: str | None = None
+    operation_id: str | None = None
+    ordinal: int = 0
+    total: int = 0
+    code: str | None = None
+    completed: bool | None = None
+    completed_nodes: int = 0
+    detail_sha256: str | None = None
+
+
+def _audit_digest(value: object) -> str:
+    return hashlib.sha256(str(value).encode("utf-8")).hexdigest()
+
+
+def _proposal_audit_facts(goal: str, proposal: object) -> dict[str, object]:
+    validated = getattr(proposal, "validated", None)
+    descriptor = getattr(proposal, "descriptor", None)
+    target = getattr(proposal, "target", None)
+    target_binding = {
+        "executable": str(getattr(target, "executable", "")).casefold(),
+        "executable_version": getattr(target, "executable_version", None),
+        "hwnd": getattr(target, "hwnd", None),
+        "pid": getattr(target, "pid", None),
+    }
+    output_path = getattr(proposal, "output_path", None)
+    facts = {
+        "intent_id": getattr(proposal, "intent_id", None),
+        "plugin_id": getattr(proposal, "plugin_id", None),
+        "plugin_version": getattr(validated, "plugin_version", None),
+        "catalog_generation": getattr(proposal, "catalog_generation", None),
+        "graph_sha256": getattr(validated, "graph_sha256", None),
+        "validation_sha256": getattr(validated, "validation_sha256", None),
+        "manifest_sha256": getattr(descriptor, "manifest_sha256", None),
+        "adapter_sha256": getattr(descriptor, "adapter_sha256", None),
+        "uia_adapter_sha256": getattr(descriptor, "uia_adapter_sha256", None),
+        "live_verifier_sha256": getattr(descriptor, "live_verifier_sha256", None),
+        "active_index_sha256": getattr(proposal, "active_index_sha256", None),
+        "target_sha256": hashlib.sha256(
+            json.dumps(
+                target_binding, sort_keys=True, separators=(",", ":")
+            ).encode("utf-8")
+        ).hexdigest(),
+        "output_path_sha256": (
+            None if output_path is None else _audit_digest(Path(output_path).resolve())
+        ),
+    }
+    binding = {
+        "goal_sha256": _audit_digest(goal),
+        **facts,
+    }
+    facts["proposal_sha256"] = hashlib.sha256(
+        json.dumps(binding, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    return facts
+
+
+def _manager_act_audit_line(record: ManagerActAuditRecord) -> str:
+    if type(record) is not ManagerActAuditRecord:
+        raise TypeError("manager Act audit accepts only fixed-schema records")
+    return json.dumps(asdict(record), sort_keys=True, separators=(",", ":")) + "\n"
+
+
+def _runtime_event_audit_facts(
+    proposal_sha256: str | None, event: object
+) -> dict[str, object]:
+    return {
+        "proposal_sha256": proposal_sha256,
+        "node_id": getattr(event, "node_id"),
+        "operation_id": getattr(event, "operation_id"),
+        "ordinal": getattr(event, "ordinal"),
+        "total": getattr(event, "total"),
+        "code": getattr(event, "type"),
+        "detail_sha256": _audit_digest(getattr(event, "detail")),
+    }
+
+
+def _run_result_audit_facts(
+    proposal_sha256: str | None, result: object
+) -> dict[str, object]:
+    if isinstance(result, BaseException):
+        return {
+            "proposal_sha256": proposal_sha256,
+            "code": type(result).__name__,
+            "completed": False,
+            "detail_sha256": _audit_digest(result),
+        }
+    validated = getattr(result, "validated", None)
+    return {
+        "proposal_sha256": proposal_sha256,
+        "graph_sha256": getattr(validated, "graph_sha256", None),
+        "validation_sha256": getattr(validated, "validation_sha256", None),
+        "code": getattr(getattr(result, "code"), "value"),
+        "completed": getattr(result, "completed"),
+        "completed_nodes": len(getattr(result, "completed_node_ids")),
+        "detail_sha256": _audit_digest(getattr(result, "detail")),
+    }
 
 
 _ACT_EXECUTION_REQUEST_SEAL = object()
@@ -447,6 +574,10 @@ class NativeManagerWindow:
         self._plugins: tuple[PluginPresentation, ...] = ()
         self._plugin_rows: tuple[str, ...] = ()
         self._controls: dict[int, int] = {}
+        self._act_audit_sequence = 0
+        self._act_audit_records: queue.SimpleQueue[ManagerActAuditRecord] = (
+            queue.SimpleQueue()
+        )
         _windows[self.hwnd] = self
         try:
             self._create_children()
@@ -459,6 +590,28 @@ class NativeManagerWindow:
             if win32gui.IsWindow(self.hwnd):
                 win32gui.DestroyWindow(self.hwnd)
             raise
+
+    def _record_act_audit(self, kind: str, **facts: object) -> None:
+        """Append one observation; never return data to the execution path."""
+
+        self._act_audit_sequence += 1
+        self._act_audit_records.put(
+            ManagerActAuditRecord(
+                schema_version=1,
+                sequence=self._act_audit_sequence,
+                type=kind,
+                at_ns=time.time_ns(),
+                **facts,
+            )
+        )
+
+    def take_act_audit_records(self) -> tuple[ManagerActAuditRecord, ...]:
+        records = []
+        while True:
+            try:
+                records.append(self._act_audit_records.get_nowait())
+            except queue.Empty:
+                return tuple(records)
 
     def _child(self, class_name: str, text: str, style: int, control_id: int) -> int:
         child = win32gui.CreateWindowEx(
@@ -698,6 +851,10 @@ class NativeManagerWindow:
                 if self._act_proposal is not None:
                     self._pending_request = _issue_act_execution_request(
                         goal, self._act_proposal
+                    )
+                    self._record_act_audit(
+                        "approve_and_run_issued",
+                        **_proposal_audit_facts(goal, self._act_proposal),
                     )
                 else:
                     target_hwnd = None
@@ -999,6 +1156,9 @@ class NativeManagerWindow:
         win32gui.EnableWindow(self._controls[ID_COMPLEX], False)
         win32gui.EnableWindow(self._controls[ID_GOAL], False)
         win32gui.EnableWindow(self._controls[ID_MODE], False)
+        self._record_act_audit(
+            "act_proposal_displayed", **_proposal_audit_facts(goal, proposal)
+        )
 
     def show_act_target_choices(
         self, goal: str, output_path: Path, candidates: tuple[object, ...]
@@ -1359,15 +1519,45 @@ def _create_manager_act_presentation(controls: object) -> _ManagerActPresentatio
         raise
 
 
-def launch_manager() -> int:
-    """Run the pilot-facing manager and tours in one native UI process."""
+def launch_manager(*, act_audit_path: Path | None = None) -> int:
+    """Run the pilot-facing manager and tours in one native UI process.
+
+    ``act_audit_path`` is an opt-in developer evidence sink.  It receives only
+    fixed-schema observations already emitted by the manager; it cannot supply
+    a proposal, receipt, authorization, verification answer, or command.
+    """
 
     from ghostcursor.run import run_tour_for_workflow
 
-    manager = NativeManagerWindow()
+    audit_file = None
+    if act_audit_path is not None:
+        audit_path = Path(act_audit_path).resolve()
+        if audit_path.suffix.casefold() != ".jsonl" or not audit_path.parent.is_dir():
+            raise ValueError("Act audit path must be a JSONL file in an existing directory")
+        audit_file = audit_path.open("x", encoding="utf-8", newline="\n")
+
+    try:
+        manager = NativeManagerWindow()
+    except BaseException:
+        if audit_file is not None:
+            audit_file.close()
+        raise
     planning = _PlanningWorker()
     act = _ActWorker()
     act_presentation: _ManagerActPresentation | None = None
+    active_act_audit: dict[str, object] | None = None
+
+    def flush_act_audit() -> None:
+        records = manager.take_act_audit_records()
+        if audit_file is None or not records:
+            return
+        for record in records:
+            audit_file.write(_manager_act_audit_line(record))
+        audit_file.flush()
+        os.fsync(audit_file.fileno())
+
+    manager._record_act_audit("manager_opened")
+    flush_act_audit()
     unsubscribe = session_events.subscribe(manager.render_snapshot)
     try:
         while win32gui.IsWindow(manager.hwnd):
@@ -1403,6 +1593,12 @@ def launch_manager() -> int:
                 from ghostcursor.act_runtime import ActControls
 
                 controls = ActControls()
+                active_act_audit = _proposal_audit_facts(
+                    request.goal, request.proposal
+                )
+                manager._record_act_audit(
+                    "execution_request_dequeued", **active_act_audit
+                )
                 try:
                     if plan_draws_a_pointer(request.proposal):
                         act_presentation = _create_manager_act_presentation(controls)
@@ -1416,6 +1612,7 @@ def launch_manager() -> int:
                         ),
                     )
                     manager._act_controls = act.controls
+                    manager._record_act_audit("act_worker_started", **active_act_audit)
                     manager._set(ID_STATUS, "Act starting")
                     manager._set(
                         ID_VERIFICATION,
@@ -1424,6 +1621,14 @@ def launch_manager() -> int:
                     win32gui.EnableWindow(manager._controls[ID_PAUSE], True)
                     win32gui.EnableWindow(manager._controls[ID_STOP], True)
                 except Exception as exc:
+                    manager._record_act_audit(
+                        "act_worker_start_refused",
+                        proposal_sha256=active_act_audit["proposal_sha256"],
+                        code=type(exc).__name__,
+                        completed=False,
+                        detail_sha256=_audit_digest(exc),
+                    )
+                    active_act_audit = None
                     if act_presentation is not None:
                         act_presentation.close()
                         act_presentation = None
@@ -1469,20 +1674,49 @@ def launch_manager() -> int:
                     manager.show_unavailable("", result.explanation)
             for event in act.take_events():
                 manager.show_act_event(event)
+                manager._record_act_audit(
+                    "act_runtime_event",
+                    **_runtime_event_audit_facts(
+                        None
+                        if active_act_audit is None
+                        else active_act_audit["proposal_sha256"],
+                        event,
+                    ),
+                )
             act_result = act.take_result()
             if act_result is not None:
                 if act_presentation is not None:
                     act_presentation.close()
                     act_presentation = None
                 if isinstance(act_result, BaseException):
+                    manager._record_act_audit(
+                        "act_run_result",
+                        **_run_result_audit_facts(
+                            None
+                            if active_act_audit is None
+                            else active_act_audit["proposal_sha256"],
+                            act_result,
+                        ),
+                    )
                     manager.show_unavailable(
                         "",
                         f"Act failed safely: {type(act_result).__name__}: {act_result}",
                     )
                     manager._act_controls = None
                 else:
+                    manager._record_act_audit(
+                        "act_run_result",
+                        **_run_result_audit_facts(
+                            None
+                            if active_act_audit is None
+                            else active_act_audit["proposal_sha256"],
+                            act_result,
+                        ),
+                    )
                     manager.show_act_result(act_result)
+                active_act_audit = None
                 manager.plugin_refresh_requested = True
+            flush_act_audit()
             time.sleep(0.02)
     finally:
         if act.controls is not None:
@@ -1491,6 +1725,10 @@ def launch_manager() -> int:
             act_presentation.close()
         act.stop_and_wait()
         unsubscribe()
+        manager._record_act_audit("manager_closed")
+        flush_act_audit()
+        if audit_file is not None:
+            audit_file.close()
         manager.dispose()
     return 0
 
