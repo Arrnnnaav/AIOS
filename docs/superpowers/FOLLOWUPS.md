@@ -740,16 +740,20 @@ harness now records a bounded, geometry-free transcript from the real manager
 loop; eight D018 mutations of its bindings, truth fields, schema, and production
 wiring are killed. This item closes only after a visible manager-approved
 rerun retains that transcript and receives a fresh independent D032 READY
-verdict.
+verdict. The rerun is now retained as
+`docs/evidence/act-live-manager-d123-r5.jsonl` and completed 1/1; only its
+independent evidence verdict remains open.
 
 The first retained rerun did cross proposal display and `Approve & run`, but
 the exact approved PowerPoint window exposed no `New Slide` control once the
 manager owned foreground. The signed adapter refused and zero nodes completed.
 D123 requires the approval command to hand focus to that exact proposal-bound
 HWND before it issues the one-use request; a failed handoff issues nothing and
-never chooses from foreground. Repeat the retained run after D123 is green,
-then review the replacement transcript independently. The failed run remains a
-diagnostic, not acceptance evidence.
+never chooses from foreground. The corrected run recorded successful handoff,
+approval, dequeue, worker start, action completion, and terminal completion,
+then an independent read-only observation found the expected two-slide state.
+Review the retained transcript and D123 change independently. The earlier
+failed run remains a diagnostic, not acceptance evidence.
 
 ## A hermetic test was reading the real ESC key — CLOSED 4 Sep 2026
 

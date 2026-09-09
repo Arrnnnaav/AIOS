@@ -343,22 +343,24 @@ called `_ActWorker` directly, so it did not prove the explicit manager
 now makes that event structural: `_ActWorker` consumes only a one-use request
 issued by the manager approval command and rejects bare, forged, or replayed
 values. Six D018 mutations of that boundary are killed, and the owner confirmed
-the boundary's independent D032 review on 9 September 2026. Re-run through the
-visible manager approval event with the retained
-`ghostcursor.devtools.act_live_manager` harness and its bounded JSONL transcript,
-whose eight load-bearing D018 mutations are killed, then obtain a fresh D032
-verdict. Only after that
-review passes should staged-plan schema wiring or semantic PowerPoint
-capabilities move forward.
+the boundary's independent D032 review on 9 September 2026. The replacement
+run now crosses the visible approval event, exact-target focus handoff, worker,
+signed UIA adapter, and independent live verifier, ending completed at 1/1.
+Its bounded transcript is retained at
+`docs/evidence/act-live-manager-d123-r5.jsonl`; the D122 audit and D123 handoff
+mutation suites are green. Obtain a fresh D032 review of that code and evidence.
+Only after that review passes should staged-plan schema wiring or semantic
+PowerPoint capabilities move forward.
 
 The first retained native-manager attempt on 9 September crossed proposal
 display and the real approval command, then failed closed at the signed UIA
 adapter with zero completed nodes. A read-only probe reproduced the cause on
 the exact approved `Presentation1` HWND: while the manager retained foreground,
 PowerPoint exposed only title-bar controls and no `New Slide` button. D123 adds
-the missing exact-HWND focus handoff before request issuance. Re-run the same
-retained proof after that focused slice is green; the failed attempt is
-diagnostic and cannot count toward acceptance.
+the missing exact-HWND focus handoff before request issuance. The corrected
+retained run completed and independently verified the one-slide increase. The
+failed attempt remains diagnostic and cannot count toward acceptance; the
+successful replacement remains pending D032 evidence review.
 
 **Act v1 is deliberately not general computer use.** No mouse or keyboard
 synthesis (D006), no VLM-driven clicking, no cross-application graphs, no

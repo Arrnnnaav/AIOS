@@ -4911,7 +4911,8 @@ own independent D032 verdict.
 ## D122 — Retained manager evidence is fixed-schema and observation-only
 
 **Date:** 9 September 2026
-**Status:** Implemented candidate; live run and independent evidence review pending.
+**Status:** Implemented candidate; retained live run complete, independent
+evidence review pending.
 
 **Decision.** The production native manager may optionally append a bounded
 JSONL audit for a developer evidence run. Records are produced only by the
@@ -4945,7 +4946,8 @@ the production manager loop; and renaming the event emitted by the real
 ## D123 — Manager approval hands focus only to the approved Act target
 
 **Date:** 9 September 2026
-**Status:** Implemented candidate; live rerun and independent review pending.
+**Status:** Implemented candidate; live rerun complete, independent review
+pending.
 
 **Decision.** The native manager's real `Approve & run` command performs one
 bounded foreground handoff before issuing `ActExecutionRequest`. It may hand
@@ -4987,3 +4989,12 @@ owner-guard mutation initially survived because its test also supplied an
 invalid target HWND, so the unrelated window-validity guard produced the same
 refusal. Making the target independently valid killed the mutation; the
 restored isolated baseline is 7/7 green.
+
+**Live result.** On 9 September 2026 the retained native-manager run recorded
+the exact-target handoff followed by the real approval event, request dequeue,
+worker start, action completion, terminal completion, and manager close. The
+one-node graph completed 1/1, and a separate read-only PowerPoint observation
+reported the disposable presentation at two slides after it began with one.
+The byte-identical transcript is retained under
+`docs/evidence/act-live-manager-d123-r5.jsonl`; its independent D032 evidence
+review remains open.

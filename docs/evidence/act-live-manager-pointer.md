@@ -102,4 +102,45 @@ with an opt-in fixed-schema JSONL audit. It records the displayed proposal's
 digest-bound identity, the real `Approve & run` event, request dequeue, worker
 start, executor events, and terminal result. Goal text, paths, raw target values,
 geometry, screenshots, selectors, tokens, and verifier readings are excluded.
-No replacement live run has been claimed in this document yet.
+
+## Retained replacement run — 9 September 2026
+
+The production manager proof completed on repository commit
+`b262058f80a70430c455a4c1230d7dc351aaf3b1`. Its byte-identical retained
+transcript is `docs/evidence/act-live-manager-d123-r5.jsonl`, SHA-256
+`2884be3175424db27f865cb2238a271f54d2b3bcda38b51688b57e7f5d16ab55`.
+
+The eleven ordered records show:
+
+```text
+manager_opened
+act_proposal_displayed
+target_focus_handoff_completed
+approve_and_run_issued
+execution_request_dequeued
+act_worker_started
+action_started        n001-new-slide  1/1
+action_completed      n001-new-slide  1/1
+completed             1/1
+act_run_result        completed=true, completed_nodes=1
+manager_closed
+```
+
+The proposal, handoff, approval, dequeue, and worker-start records all carry
+proposal SHA-256
+`acb71ba0ba406f31b97e20f4f93d163b561d9dfa707d60d6cabf5cfbcdfc24e0`.
+The terminal result repeats graph
+`38cd88be632d4aed415f341ba9534a56b5f3727e9826c15dcb912871350b9d3d`
+and validation
+`d4b35437d53b1b3d21caba62785cff54e2c42ae69deb6248026e130b1c9c14fc`
+from the displayed proposal. A separate read-only COM observation after the
+manager closed reported the disposable `Presentation1` with two slides; it had
+been created with one slide before the run. The separate AutoRecovered deck
+remained at one slide.
+
+This closes the missing live-path fact from the prior review: the action crossed
+the visible native manager's explicit approval command before the one-use
+request reached `_ActWorker`. It remains one diagnostic run, not the required
+three-run acceptance campaign. The transcript and D123 focus-handoff change
+still require a fresh independent D032 review before this record may be called
+acceptance evidence.
