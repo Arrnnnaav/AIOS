@@ -5032,3 +5032,10 @@ state preservation, expanded-only control visibility, automatic expansion for
 planning/failure states, collapse only after execution request issuance, and
 manual expansion surviving later progress events. A real-desktop visual check
 and independent D032 review remain separate gates.
+
+**Mutation audit.** Nine deliberate breaks were killed in an isolated
+worktree: starting expanded; exposing expanded-only controls in compact mode;
+clearing the entered goal during a layout transition; suppressing planning or
+failure expansion; suppressing Act or task-execution collapse; letting a
+progress event override manual expansion; and hiding a terminal Act failure in
+the compact shell. The candidate was restored byte-for-byte afterward.
