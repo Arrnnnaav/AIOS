@@ -4998,3 +4998,37 @@ reported the disposable presentation at two slides after it began with one.
 The byte-identical transcript is retained under
 `docs/evidence/act-live-manager-d123-r5.jsonl`; its independent D032 evidence
 review remains open.
+
+## D124 — One manager HWND owns compact and expanded layouts
+
+**Date:** 9 September 2026
+**Status:** Implemented candidate; visual inspection and independent review
+pending.
+
+**Decision.** The native manager has one window identity and one mutable UI
+state owner with two presentation layouts. It opens as a right-side compact
+panel. Ideation/planning work, complete proposal review, target selection, and
+actionable failure recovery expand that same HWND into the centred workspace.
+After the explicit command has successfully issued an execution request, the
+same HWND collapses back to the right side. A user may expand it again while
+execution is active; ordinary executor progress events do not fight that
+choice.
+
+Layout transitions preserve the entered goal, reviewed proposal, selected
+mode, controls, and executor-published progress. They may not create another
+manager window or another event stream. Act Pause and Stop remain available in
+the compact layout. The separately topmost Teach control rail from D088 remains
+the post-revalidation safety surface for guided tours and is not merged into a
+second manager runtime.
+
+**Reason.** Goal clarification and full-plan review need the readable centred
+workspace, but keeping that large window open while software is being changed
+hides the work and abandons the compact right-side operating experience. One
+resizable HWND provides both without IPC, duplicate state, or progress inferred
+by a presentation surface.
+
+**Evidence required.** Focused Win32 tests must prove same-HWND transitions,
+state preservation, expanded-only control visibility, automatic expansion for
+planning/failure states, collapse only after execution request issuance, and
+manual expansion surviving later progress events. A real-desktop visual check
+and independent D032 review remain separate gates.

@@ -352,6 +352,15 @@ mutation suites are green. Obtain a fresh D032 review of that code and evidence.
 Only after that review passes should staged-plan schema wiring or semantic
 PowerPoint capabilities move forward.
 
+**Manager shell refinement (D124): implemented candidate.** The manager now
+starts as a right-side compact panel and expands the same HWND into the centred
+planning/review workspace. Planning, proposals, target recovery, and failures
+expand it; issuing an approved execution request collapses it; executor events
+never override a user's manual expansion during the run. Focused manager and
+input-boundary tests are green. A real-desktop visual inspection and an
+independent D032 review remain before this presentation change is treated as
+accepted evidence.
+
 The first retained native-manager attempt on 9 September crossed proposal
 display and the real approval command, then failed closed at the signed UIA
 adapter with zero completed nodes. A read-only probe reproduced the cause on

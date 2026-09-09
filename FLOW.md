@@ -43,9 +43,14 @@ persisted. Records older than 30 days are purged when a production tour opens
 the store, and diagnostic archives include goals or notes only through
 separate explicit options.
 
-The manager is now a second **window**, not a second process or event model.
-`python -m ghostcursor.run --manager` creates the normal non-topmost manager;
-the compact topmost rail is still created only after workflow revalidation.
+The manager is one resizable **window**, not a second process or event model.
+`python -m ghostcursor.run --manager` creates it in its compact right-side
+layout. The same HWND expands into the centred planning/review workspace and
+preserves the current goal, proposal, controls, and executor-derived progress.
+Planning, complete-plan review, target choice, and actionable failures expand
+it; issuing an approved execution request collapses it, while manual expansion
+during execution remains available. The separate compact topmost Teach rail is
+still created only after guided-workflow revalidation.
 The executor publishes once to `session_events`, which fans the immutable
 snapshot to both surfaces. Stop/Pause commands travel back through an
 edge-triggered mailbox keyed by the active session id and are consumed by the

@@ -391,11 +391,16 @@ observations, and must not persist goals, instructions, HWNDs, screen text, or
 raw failure details by default. Diagnostic inclusion of a goal or note requires
 separate explicit user choices.
 
-The pilot manager and safety rail are two native windows in one process
-(D088), not two runtimes connected by IPC. The manager is a normal non-topmost
-window; the compact topmost rail remains the always-available Stop/Pause
-safety surface during a tour. Both receive the same `SessionSnapshot` through
-`session_events`. Manager Stop/Pause requests must carry the current
+The pilot manager is one resizable native HWND with one state owner (D124).
+It starts as a normal non-topmost right-side panel, expands the same HWND into
+the centred workspace for planning, complete-plan review, target recovery, or
+an actionable failure, and collapses after an approved execution request is
+issued. Manual expansion during execution remains allowed. No transition may
+create a second manager window, lose entered/reviewed state, or invent a second
+progress stream. The compact topmost Teach safety rail remains a separate
+window created only after a guided workflow passes revalidation (D088); it is
+not a second manager or runtime. Both surfaces receive the same
+`SessionSnapshot` through `session_events`. Manager Stop/Pause requests must carry the current
 `session_id` through `session_commands`; an old or different session's command
 must never affect the live tour. The manager may display plugin lifecycle state
 only by calling `PluginStore.list_installed()` and must refresh after focus so

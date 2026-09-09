@@ -47,6 +47,9 @@ MANAGER_CLASS_NAME = "GhostCursorManager"
 MANAGER_TITLE = "GhostCursor"
 MANAGER_WIDTH = 980
 MANAGER_HEIGHT = 680
+MANAGER_COMPACT_WIDTH = 380
+MANAGER_COMPACT_HEIGHT = 620
+MANAGER_EDGE_MARGIN = 24
 
 COLOR_BACKGROUND = win32api.RGB(15, 17, 22)
 COLOR_SURFACE = win32api.RGB(27, 30, 38)
@@ -69,6 +72,7 @@ ID_PRIVACY = 2112
 ID_COMPLEX = 2113
 ID_MODE = 2114
 ID_MODE_NOTE = 2115
+ID_LAYOUT = 2116
 ID_HEADER = 2190
 ID_PLAN_LABEL = 2191
 ID_GUIDANCE_LABEL = 2192
@@ -78,6 +82,30 @@ ID_DETAILS_LABEL = 2195
 ID_MODE_LABEL = 2196
 ID_GOAL_LABEL = 2197
 DEFAULT_GUI_FONT = 17
+
+
+def _manager_bounds(expanded: bool) -> tuple[int, int, int, int]:
+    """Return one centered workspace or right-edge rail rectangle.
+
+    Both are layouts of the same native window. Keeping placement here stops
+    the compact and expanded views from acquiring separate window identity or
+    lifecycle state.
+    """
+
+    screen_width = win32api.GetSystemMetrics(win32con.SM_CXSCREEN)
+    screen_height = win32api.GetSystemMetrics(win32con.SM_CYSCREEN)
+    maximum_width = max(240, screen_width - 2 * MANAGER_EDGE_MARGIN)
+    maximum_height = max(320, screen_height - 2 * MANAGER_EDGE_MARGIN)
+    requested_width = MANAGER_WIDTH if expanded else MANAGER_COMPACT_WIDTH
+    requested_height = MANAGER_HEIGHT if expanded else MANAGER_COMPACT_HEIGHT
+    width = min(requested_width, maximum_width)
+    height = min(requested_height, maximum_height)
+    if expanded:
+        x = max(MANAGER_EDGE_MARGIN, (screen_width - width) // 2)
+    else:
+        x = max(MANAGER_EDGE_MARGIN, screen_width - MANAGER_EDGE_MARGIN - width)
+    y = max(MANAGER_EDGE_MARGIN, (screen_height - height) // 2)
+    return x, y, width, height
 
 _background_brush = None
 _surface_brush = None
@@ -534,12 +562,8 @@ class NativeManagerWindow:
             _surface_brush = win32gui.CreateSolidBrush(COLOR_SURFACE)
         ensure_class(MANAGER_CLASS_NAME, _manager_wnd_proc, _background_brush)
 
-        width = min(MANAGER_WIDTH, win32api.GetSystemMetrics(win32con.SM_CXSCREEN) - 80)
-        height = min(
-            MANAGER_HEIGHT, win32api.GetSystemMetrics(win32con.SM_CYSCREEN) - 80
-        )
-        x = max(24, (win32api.GetSystemMetrics(win32con.SM_CXSCREEN) - width) // 2)
-        y = max(24, (win32api.GetSystemMetrics(win32con.SM_CYSCREEN) - height) // 2)
+        self._expanded = False
+        x, y, width, height = _manager_bounds(self._expanded)
         self.hwnd = win32gui.CreateWindowEx(
             0,
             MANAGER_CLASS_NAME,
@@ -696,16 +720,52 @@ class NativeManagerWindow:
             win32con.SS_LEFT,
             ID_PRIVACY,
         )
+        self._child("BUTTON", "Expand", win32con.BS_PUSHBUTTON, ID_LAYOUT)
 
     def _move(self, control_id: int, x: int, y: int, width: int, height: int) -> None:
         child = self._controls.get(control_id)
         if child:
             win32gui.MoveWindow(child, x, y, max(1, width), max(1, height), True)
 
+    def _show(self, control_id: int, visible: bool) -> None:
+        child = self._controls.get(control_id)
+        if child:
+            win32gui.ShowWindow(child, win32con.SW_SHOW if visible else win32con.SW_HIDE)
+
+    @property
+    def expanded(self) -> bool:
+        return self._expanded
+
+    def _set_layout(self, expanded: bool) -> None:
+        """Resize the one manager window without changing its state owner."""
+
+        self._expanded = bool(expanded)
+        self._set(ID_LAYOUT, "Collapse" if self._expanded else "Expand")
+        x, y, width, height = _manager_bounds(self._expanded)
+        win32gui.SetWindowPos(
+            self.hwnd,
+            None,
+            x,
+            y,
+            width,
+            height,
+            win32con.SWP_NOACTIVATE | win32con.SWP_NOZORDER,
+        )
+        self._layout()
+        win32gui.InvalidateRect(self.hwnd, None, True)
+
     def _layout(self) -> None:
         if not hasattr(self, "_controls"):
             return
+        if not self._expanded:
+            self._layout_compact()
+            return
+        self._layout_expanded()
+
+    def _layout_expanded(self) -> None:
         _, _, width, height = win32gui.GetClientRect(self.hwnd)
+        for control_id in self._controls:
+            self._show(control_id, True)
         margin = 24
         gap = 16
         header_h = 32
@@ -719,8 +779,16 @@ class NativeManagerWindow:
         middle_x = margin + left_w + gap
         right_x = middle_x + middle_w + gap
 
+        layout_w = 96
         self._move(ID_HEADER, margin, 18, 360, header_h)
-        self._move(ID_STATUS, width - margin - 280, 18, 280, header_h)
+        self._move(ID_LAYOUT, width - margin - layout_w, 14, layout_w, 34)
+        self._move(
+            ID_STATUS,
+            width - margin - layout_w - 12 - 280,
+            18,
+            280,
+            header_h,
+        )
         action_w = 116
         mode_w = 150
         field_y = 78
@@ -760,6 +828,51 @@ class NativeManagerWindow:
         self._move(ID_DETAILS_LABEL, right_x, body_y + 198, right_w, 24)
         self._move(ID_DETAILS, right_x, body_y + 230, right_w, body_h - 230)
         self._move(ID_PRIVACY, margin, height - footer_h, width - 2 * margin, 24)
+
+    def _layout_compact(self) -> None:
+        _, _, width, height = win32gui.GetClientRect(self.hwnd)
+        visible = {
+            ID_HEADER,
+            ID_STATUS,
+            ID_MODE_LABEL,
+            ID_MODE,
+            ID_GOAL_LABEL,
+            ID_GOAL,
+            ID_START,
+            ID_PROGRESS,
+            ID_GUIDANCE_LABEL,
+            ID_INSTRUCTION,
+            ID_VERIFICATION_LABEL,
+            ID_VERIFICATION,
+            ID_PAUSE,
+            ID_STOP,
+            ID_PRIVACY,
+            ID_LAYOUT,
+        }
+        for control_id in self._controls:
+            self._show(control_id, control_id in visible)
+
+        margin = 16
+        content_w = width - 2 * margin
+        layout_w = 84
+        self._move(ID_HEADER, margin, 12, content_w - layout_w - 8, 28)
+        self._move(ID_LAYOUT, width - margin - layout_w, 8, layout_w, 34)
+        self._move(ID_STATUS, margin, 46, content_w, 22)
+        self._move(ID_MODE_LABEL, margin, 78, content_w, 18)
+        self._move(ID_MODE, margin, 98, content_w, 220)
+        self._move(ID_GOAL_LABEL, margin, 134, content_w, 18)
+        self._move(ID_GOAL, margin, 154, content_w, 38)
+        self._move(ID_START, margin, 202, content_w, 40)
+        self._move(ID_PROGRESS, margin, 252, content_w, 22)
+        self._move(ID_GUIDANCE_LABEL, margin, 286, content_w, 20)
+        self._move(ID_INSTRUCTION, margin, 310, content_w, 68)
+        self._move(ID_VERIFICATION_LABEL, margin, 390, content_w, 20)
+        self._move(ID_VERIFICATION, margin, 414, content_w, 56)
+        button_y = max(480, height - 76)
+        button_w = (content_w - 8) // 2
+        self._move(ID_PAUSE, margin, button_y, button_w, 38)
+        self._move(ID_STOP, margin + button_w + 8, button_y, button_w, 38)
+        self._move(ID_PRIVACY, margin, height - 28, content_w, 20)
 
     def _select_mode(self, mode: InteractionMode) -> None:
         self._mode = mode
@@ -822,6 +935,9 @@ class NativeManagerWindow:
             )
 
     def _on_command(self, control_id: int, _notification: int = 0) -> None:
+        if control_id == ID_LAYOUT:
+            self._set_layout(not self._expanded)
+            return
         if control_id == ID_MODE:
             if (
                 self._snapshot is not None
@@ -841,6 +957,12 @@ class NativeManagerWindow:
             )
             if selected != win32con.CB_ERR and selected < len(MODE_ORDER):
                 self._select_mode(MODE_ORDER[selected])
+                if self._mode in {
+                    InteractionMode.IDEATE,
+                    InteractionMode.PLAN,
+                    InteractionMode.ASSIST,
+                }:
+                    self._set_layout(True)
                 self.show_idle()
             return
         if control_id == ID_START:
@@ -887,6 +1009,7 @@ class NativeManagerWindow:
                         "approve_and_run_issued",
                         **proposal_facts,
                     )
+                    self._set_layout(False)
                 else:
                     target_hwnd = None
                     if self._target_candidates and self._target_choice_for == "act":
@@ -933,6 +1056,7 @@ class NativeManagerWindow:
             win32gui.EnableWindow(self._controls[ID_START], False)
             win32gui.EnableWindow(self._controls[ID_COMPLEX], False)
             win32gui.EnableWindow(self._controls[ID_MODE], False)
+            self._set_layout(False)
         elif control_id == ID_COMPLEX:
             if not mode_can_propose_plan(self._mode):
                 self._set(ID_STATUS, "Select Plan to create a task plan")
@@ -958,6 +1082,7 @@ class NativeManagerWindow:
                     getattr(self._task_proposal, "graph"),
                     target_hwnd,
                 )
+                self._set_layout(False)
             else:
                 selected = win32gui.SendMessage(
                     self._controls[ID_PLUGINS], win32con.LB_GETCURSEL, 0, 0
@@ -1048,6 +1173,8 @@ class NativeManagerWindow:
             SessionStatus.BLOCKED,
             SessionStatus.FAILED,
         }
+        if snapshot.status in {SessionStatus.BLOCKED, SessionStatus.FAILED}:
+            self._set_layout(True)
         win32gui.EnableWindow(self._controls[ID_START], terminal)
         win32gui.EnableWindow(self._controls[ID_COMPLEX], terminal)
         win32gui.EnableWindow(self._controls[ID_GOAL], terminal)
@@ -1076,6 +1203,7 @@ class NativeManagerWindow:
         self._render_mode_idle()
 
     def show_understanding(self, goal: str) -> None:
+        self._set_layout(True)
         self._target_candidates = ()
         self._target_choice_for = ""
         self._set(ID_STATUS, _STATUS_LABELS[SessionStatus.UNDERSTANDING])
@@ -1089,6 +1217,7 @@ class NativeManagerWindow:
         win32gui.EnableWindow(self._controls[ID_MODE], False)
 
     def show_unavailable(self, goal: str, explanation: str) -> None:
+        self._set_layout(True)
         self._target_candidates = ()
         self._target_choice_for = ""
         self._task_proposal = None
@@ -1106,6 +1235,7 @@ class NativeManagerWindow:
         self._render_mode_idle(update_content=False)
 
     def show_target_not_running(self, goal: str, explanation: str) -> None:
+        self._set_layout(True)
         self._target_candidates = ()
         self._target_choice_for = ""
         complex_retry = self._task_proposal is not None
@@ -1120,6 +1250,7 @@ class NativeManagerWindow:
         win32gui.EnableWindow(self._controls[ID_MODE], False)
 
     def show_target_choices(self, goal: str, candidates: tuple[object, ...]) -> None:
+        self._set_layout(True)
         self._select_mode(InteractionMode.TEACH)
         self._target_candidates = candidates
         self._target_choice_for = "simple"
@@ -1146,6 +1277,7 @@ class NativeManagerWindow:
     def show_task_proposal(self, goal: str, proposal: object) -> None:
         """Present the entire validated graph; a second action must start it."""
 
+        self._set_layout(True)
         self._snapshot = None
         self._select_mode(InteractionMode.PLAN)
         self._target_candidates = ()
@@ -1167,6 +1299,7 @@ class NativeManagerWindow:
     def show_act_proposal(self, goal: str, proposal: object) -> None:
         """Render the complete inert action graph before one approval click."""
 
+        self._set_layout(True)
         self._snapshot = None
         self._select_mode(InteractionMode.ACT)
         self._target_candidates = ()
@@ -1194,6 +1327,7 @@ class NativeManagerWindow:
     def show_act_target_choices(
         self, goal: str, output_path: Path, candidates: tuple[object, ...]
     ) -> None:
+        self._set_layout(True)
         self._select_mode(InteractionMode.ACT)
         self._target_candidates = candidates
         self._target_choice_for = "act"
@@ -1249,10 +1383,13 @@ class NativeManagerWindow:
         win32gui.EnableWindow(self._controls[ID_MODE], True)
         win32gui.EnableWindow(self._controls[ID_PAUSE], False)
         win32gui.EnableWindow(self._controls[ID_STOP], False)
+        if not result.completed:
+            self._set_layout(True)
 
     def show_task_target_choices(self, candidates: tuple[object, ...]) -> None:
         """Keep the reviewed graph while the operator selects its exact HWND."""
 
+        self._set_layout(True)
         if self._task_proposal is None:
             raise RuntimeError("task target choice requires a reviewed proposal")
         self._target_candidates = candidates
@@ -1297,6 +1434,8 @@ class NativeManagerWindow:
         win32gui.EnableWindow(self._controls[ID_GOAL], True)
         win32gui.EnableWindow(self._controls[ID_MODE], True)
         self._render_mode_idle(update_content=False)
+        if not completed:
+            self._set_layout(True)
 
     def set_plugins(self, plugins: tuple[PluginPresentation, ...]) -> None:
         rows = tuple(

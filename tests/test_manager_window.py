@@ -1,6 +1,7 @@
 """Native manager window checks. Run alone under D025."""
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import win32con
 import win32gui
@@ -12,6 +13,7 @@ from ghostcursor.manager import (
     ID_COMPLEX,
     ID_GOAL,
     ID_INSTRUCTION,
+    ID_LAYOUT,
     ID_MODE,
     ID_MODE_NOTE,
     ID_PAUSE,
@@ -26,6 +28,7 @@ from ghostcursor.manager import (
     TaskExecutionRequest,
     TaskProposalRequest,
     _consume_act_execution_request,
+    _manager_bounds,
 )
 from ghostcursor.interaction import MODE_ORDER, InteractionMode
 from ghostcursor.session import (
@@ -62,6 +65,110 @@ def _choose_mode(manager, mode):
         0,
     )
     manager._on_command(ID_MODE)
+
+
+def _window_bounds(hwnd):
+    left, top, right, bottom = win32gui.GetWindowRect(hwnd)
+    return left, top, right - left, bottom - top
+
+
+def test_manager_starts_as_a_right_rail_and_expands_the_same_window():
+    manager = NativeManagerWindow()
+    try:
+        original_hwnd = manager.hwnd
+        goal = "Build a reviewed deck"
+        win32gui.SetWindowText(manager._controls[ID_GOAL], goal)
+
+        assert manager.expanded is False
+        assert _window_bounds(manager.hwnd) == _manager_bounds(False)
+        assert win32gui.GetWindowText(manager._controls[ID_LAYOUT]) == "Expand"
+        assert win32gui.IsWindowVisible(manager._controls[ID_INSTRUCTION])
+        assert not win32gui.IsWindowVisible(manager._controls[ID_TIMELINE])
+        assert not win32gui.IsWindowVisible(manager._controls[ID_PLUGINS])
+
+        manager._on_command(ID_LAYOUT)
+
+        assert manager.hwnd == original_hwnd
+        assert manager.expanded is True
+        assert _window_bounds(manager.hwnd) == _manager_bounds(True)
+        assert win32gui.GetWindowText(manager._controls[ID_LAYOUT]) == "Collapse"
+        assert win32gui.IsWindowVisible(manager._controls[ID_TIMELINE])
+        assert win32gui.IsWindowVisible(manager._controls[ID_PLUGINS])
+        assert win32gui.GetWindowText(manager._controls[ID_GOAL]) == goal
+
+        manager._on_command(ID_LAYOUT)
+
+        assert manager.hwnd == original_hwnd
+        assert manager.expanded is False
+        assert _window_bounds(manager.hwnd) == _manager_bounds(False)
+        assert win32gui.GetWindowText(manager._controls[ID_GOAL]) == goal
+    finally:
+        manager.dispose()
+
+
+def test_manager_expands_for_planning_and_for_an_actionable_failure():
+    manager = NativeManagerWindow()
+    try:
+        assert manager.expanded is False
+
+        manager.show_understanding("Add a slide in PowerPoint")
+        assert manager.expanded is True
+
+        manager._on_command(ID_LAYOUT)
+        assert manager.expanded is False
+        manager.show_unavailable("", "PowerPoint is not running")
+        assert manager.expanded is True
+    finally:
+        manager.dispose()
+
+
+def test_manual_expand_during_execution_is_not_undone_by_progress_events():
+    manager = NativeManagerWindow()
+    try:
+        manager._on_command(ID_LAYOUT)
+        assert manager.expanded is True
+
+        event = SimpleNamespace(
+            ordinal=7,
+            total=12,
+            operation_id="add_text",
+            detail="Adding the headline",
+        )
+        manager.show_act_event(event)
+
+        assert manager.expanded is True
+        assert win32gui.GetWindowText(manager._controls[ID_PROGRESS]) == (
+            "Action 7 of 12"
+        )
+    finally:
+        manager.dispose()
+
+
+def test_failed_act_result_reopens_the_workspace_but_success_stays_compact():
+    manager = NativeManagerWindow()
+    try:
+        failed = SimpleNamespace(
+            completed=False,
+            completed_node_ids=("node-1",),
+            detail="Verification refused",
+            code=SimpleNamespace(value="verification_failed"),
+            output_path=None,
+        )
+        manager.show_act_result(failed)
+        assert manager.expanded is True
+
+        manager._set_layout(False)
+        completed = SimpleNamespace(
+            completed=True,
+            completed_node_ids=("node-1", "node-2"),
+            detail="Completed",
+            code=SimpleNamespace(value="completed"),
+            output_path="D:\\output.pptx",
+        )
+        manager.show_act_result(completed)
+        assert manager.expanded is False
+    finally:
+        manager.dispose()
 
 
 def test_manager_is_a_normal_non_topmost_window_and_renders_snapshot_truth():
@@ -215,6 +322,7 @@ def test_approve_and_run_issues_one_exact_request_for_the_displayed_proposal(
         _choose_mode(manager, InteractionMode.ACT)
         win32gui.SetWindowText(manager._controls[ID_GOAL], "Add a slide")
         manager.show_act_proposal("Add a slide", proposal)
+        assert manager.expanded is True
         displayed = manager.take_act_audit_records()
 
         manager._on_command(ID_START)
@@ -223,6 +331,7 @@ def test_approve_and_run_issues_one_exact_request_for_the_displayed_proposal(
 
         assert type(request) is ActExecutionRequest
         assert request.goal == "Add a slide"
+        assert manager.expanded is False
         assert handed_off == [(manager.hwnd, 654)]
         assert [record.type for record in displayed] == ["act_proposal_displayed"]
         assert [record.type for record in approved] == [
@@ -343,6 +452,7 @@ def test_complex_goal_requires_plugin_selection_then_a_second_explicit_start():
         assert manager.take_request() is None
 
         manager.show_task_proposal("Build an investor deck", proposal)
+        assert manager.expanded is True
         assert win32gui.GetWindowText(manager._controls[ID_COMPLEX]) == "Start plan"
         assert (
             win32gui.SendMessage(
@@ -356,6 +466,7 @@ def test_complex_goal_requires_plugin_selection_then_a_second_explicit_start():
         assert manager.take_request() == TaskExecutionRequest(
             "Build an investor deck", graph
         )
+        assert manager.expanded is False
     finally:
         manager.dispose()
 

@@ -755,6 +755,17 @@ then an independent read-only observation found the expected two-slide state.
 Review the retained transcript and D123 change independently. The earlier
 failed run remains a diagnostic, not acceptance evidence.
 
+## Compact/expanded manager shell needs visual and independent review
+
+D124 makes the native manager one stateful HWND with two layouts: a compact
+right-side panel and a centred planning/review workspace. Focused Win32 tests
+pin same-window identity, state preservation, automatic expansion/collapse,
+manual expansion during a run, and failure recovery. The Windows visual helper
+returned no targetable apps during implementation, so clipping, density, and
+right-edge placement still require a real-desktop screenshot inspection. The
+slice also requires an independent D032 review before its authored layout and
+documentation are treated as ground truth.
+
 ## A hermetic test was reading the real ESC key — CLOSED 4 Sep 2026
 
 `tests/test_run.py::test_run_tour_creates_overlay_only_after_live_revalidation`
