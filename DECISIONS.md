@@ -4976,3 +4976,14 @@ This does not amend D075. D075 forbids using foreground as a target-selection
 tie-break; D123 transfers focus to identity that was already independently
 selected and bound. The same guarded helper used by the existing control-bar
 focus return owns the one-attempt rule.
+
+**Mutation audit.** Eight deliberate breaks were killed in an isolated
+worktree: skipping the handoff; substituting the manager HWND for the approved
+target; removing the manager-foreground ownership guard; trusting
+`SetForegroundWindow` without checking its result; continuing into request
+issuance after refusal; accepting a stale/non-window target; propagating an OS
+foreground refusal; and omitting the retained successful-handoff event. The
+owner-guard mutation initially survived because its test also supplied an
+invalid target HWND, so the unrelated window-validity guard produced the same
+refusal. Making the target independently valid killed the mutation; the
+restored isolated baseline is 7/7 green.

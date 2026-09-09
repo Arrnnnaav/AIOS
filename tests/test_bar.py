@@ -295,6 +295,19 @@ def test_focus_handoff_uses_only_the_exact_target_when_owner_is_foreground(
 def test_focus_handoff_refuses_after_the_user_leaves_the_owner(monkeypatch):
     calls = []
     monkeypatch.setattr(win32gui, "GetForegroundWindow", lambda: 99)
+    monkeypatch.setattr(win32gui, "IsWindow", lambda hwnd: hwnd == 73)
+    monkeypatch.setattr(
+        win32gui, "SetForegroundWindow", lambda hwnd: calls.append(hwnd)
+    )
+
+    assert bar.restore_focus_if_safe(41, 73) is False
+    assert calls == []
+
+
+def test_focus_handoff_refuses_a_stale_target_window(monkeypatch):
+    calls = []
+    monkeypatch.setattr(win32gui, "GetForegroundWindow", lambda: 41)
+    monkeypatch.setattr(win32gui, "IsWindow", lambda _hwnd: False)
     monkeypatch.setattr(
         win32gui, "SetForegroundWindow", lambda hwnd: calls.append(hwnd)
     )
