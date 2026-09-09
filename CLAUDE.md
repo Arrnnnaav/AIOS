@@ -347,6 +347,14 @@ terminal result. It may not retain goal text, output paths, HWND/PID values,
 rectangles, pointer paths, screenshots, selectors, tokens, or verifier readings,
 and no audit value may flow back into approval, authorization, dispatch, or
 verification (D122).
+The real `Approve & run` command must hand foreground ownership from the manager
+to the exact HWND already bound into the displayed Act proposal before issuing
+the one-use execution request. The manager may not read foreground to select or
+replace that target. If the manager no longer owns foreground, the HWND is not a
+live window, Windows refuses the handoff, or the exact HWND is not foreground
+after the call, execution is not issued and the proposal remains available for
+an explicit retry. Do not use retries, `AttachThreadInput`, or another candidate
+as a fallback (D123).
 Pause/Stop is checked again after one-use authorization and immediately before
 dispatch. If it changed, refuse the node and require fresh confirmation; do not
 hold a minted token across Pause. An adapter request already in flight still

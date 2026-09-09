@@ -742,6 +742,15 @@ wiring are killed. This item closes only after a visible manager-approved
 rerun retains that transcript and receives a fresh independent D032 READY
 verdict.
 
+The first retained rerun did cross proposal display and `Approve & run`, but
+the exact approved PowerPoint window exposed no `New Slide` control once the
+manager owned foreground. The signed adapter refused and zero nodes completed.
+D123 requires the approval command to hand focus to that exact proposal-bound
+HWND before it issues the one-use request; a failed handoff issues nothing and
+never chooses from foreground. Repeat the retained run after D123 is green,
+then review the replacement transcript independently. The failed run remains a
+diagnostic, not acceptance evidence.
+
 ## A hermetic test was reading the real ESC key — CLOSED 4 Sep 2026
 
 `tests/test_run.py::test_run_tour_creates_overlay_only_after_live_revalidation`

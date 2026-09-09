@@ -103,10 +103,20 @@ Act proposal
          -> bind catalog + pack + intent + manifest + adapter + plan digests
     -> materialize only the plan named by AuthorizedActionIntent
     -> display the inert complete plan
-    -> separate Approve & run issues one manager-owned execution request
+    -> separate Approve & run hands focus from the manager to the exact
+       proposal-bound HWND; refusal issues no request
+    -> successful exact-HWND handoff issues one manager-owned execution request
     -> _ActWorker consumes that exact request once; bare/replayed requests refuse
     -> approve_action_graph binds the validated graph and live target
 ```
+
+The handoff is presentation readiness, not target authority. It is attempted
+only while the manager still owns foreground after the approval click, and it
+uses the HWND already selected and digest-bound in the displayed proposal.
+Foreground is never consulted as a tie-break or replacement target. The helper
+performs one `SetForegroundWindow` attempt and confirms the exact HWND; a stale
+window, user focus change, OS refusal, or mismatched result leaves the proposal
+inert and retryable (D075, D123).
 
 An opt-in developer evidence lane observes that same manager loop. It emits
 fixed-schema JSONL after proposal display, the real `Approve & run` command,

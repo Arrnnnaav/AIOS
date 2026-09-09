@@ -351,6 +351,15 @@ verdict. Only after that
 review passes should staged-plan schema wiring or semantic PowerPoint
 capabilities move forward.
 
+The first retained native-manager attempt on 9 September crossed proposal
+display and the real approval command, then failed closed at the signed UIA
+adapter with zero completed nodes. A read-only probe reproduced the cause on
+the exact approved `Presentation1` HWND: while the manager retained foreground,
+PowerPoint exposed only title-bar controls and no `New Slide` button. D123 adds
+the missing exact-HWND focus handoff before request issuance. Re-run the same
+retained proof after that focused slice is green; the failed attempt is
+diagnostic and cannot count toward acceptance.
+
 **Act v1 is deliberately not general computer use.** No mouse or keyboard
 synthesis (D006), no VLM-driven clicking, no cross-application graphs, no
 conversationally generated workflows. It acts through a signed object-model

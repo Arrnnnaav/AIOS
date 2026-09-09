@@ -194,13 +194,21 @@ def test_terminal_act_result_cannot_replay_the_previous_approval():
         manager.dispose()
 
 
-def test_approve_and_run_issues_one_exact_request_for_the_displayed_proposal():
+def test_approve_and_run_issues_one_exact_request_for_the_displayed_proposal(
+    monkeypatch,
+):
     from types import SimpleNamespace
 
     proposal = SimpleNamespace(
         summary="Add one slide",
         graph=SimpleNamespace(nodes=(object(),)),
         steps=("Add slide",),
+        target=SimpleNamespace(hwnd=654),
+    )
+    handed_off = []
+    monkeypatch.setattr(
+        "ghostcursor.manager.restore_focus_if_safe",
+        lambda owner, target: handed_off.append((owner, target)) or True,
     )
     manager = NativeManagerWindow()
     try:
@@ -215,13 +223,58 @@ def test_approve_and_run_issues_one_exact_request_for_the_displayed_proposal():
 
         assert type(request) is ActExecutionRequest
         assert request.goal == "Add a slide"
+        assert handed_off == [(manager.hwnd, 654)]
         assert [record.type for record in displayed] == ["act_proposal_displayed"]
-        assert [record.type for record in approved] == ["approve_and_run_issued"]
-        assert displayed[0].proposal_sha256 == approved[0].proposal_sha256
+        assert [record.type for record in approved] == [
+            "target_focus_handoff_completed",
+            "approve_and_run_issued",
+        ]
+        assert all(
+            displayed[0].proposal_sha256 == record.proposal_sha256
+            for record in approved
+        )
         assert displayed[0].validation_sha256 is None
         assert "Add a slide" not in repr(displayed[0])
         assert _consume_act_execution_request(request) is proposal
         assert manager.take_request() is None
+    finally:
+        manager.dispose()
+
+
+def test_refused_target_focus_handoff_issues_no_act_request(monkeypatch):
+    from types import SimpleNamespace
+
+    proposal = SimpleNamespace(
+        summary="Add one slide",
+        graph=SimpleNamespace(nodes=(object(),)),
+        steps=("Add slide",),
+        target=SimpleNamespace(hwnd=654),
+    )
+    handed_off = []
+    monkeypatch.setattr(
+        "ghostcursor.manager.restore_focus_if_safe",
+        lambda owner, target: handed_off.append((owner, target)) or False,
+    )
+    manager = NativeManagerWindow()
+    try:
+        _choose_mode(manager, InteractionMode.ACT)
+        win32gui.SetWindowText(manager._controls[ID_GOAL], "Add a slide")
+        manager.show_act_proposal("Add a slide", proposal)
+        manager.take_act_audit_records()
+
+        manager._on_command(ID_START)
+
+        assert handed_off == [(manager.hwnd, 654)]
+        assert manager.take_request() is None
+        refused = manager.take_act_audit_records()
+        assert [record.type for record in refused] == [
+            "approve_and_run_handoff_refused"
+        ]
+        assert refused[0].code == "target_focus_handoff_refused"
+        assert refused[0].completed is False
+        assert manager._act_proposal is proposal
+        assert win32gui.IsWindowEnabled(manager._controls[ID_START])
+        assert "not activated" in win32gui.GetWindowText(manager._controls[ID_STATUS])
     finally:
         manager.dispose()
 

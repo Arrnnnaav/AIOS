@@ -33,6 +33,7 @@ from ghostcursor.interaction import (
     mode_label,
 )
 from ghostcursor.overlay.window import ensure_class, pump_messages_nonblocking
+from ghostcursor.overlay.bar import restore_focus_if_safe
 from ghostcursor.session import (
     SessionCommand,
     SessionSnapshot,
@@ -849,12 +850,42 @@ class NativeManagerWindow:
                 return
             if mode_can_start_act(self._mode):
                 if self._act_proposal is not None:
+                    proposal_facts = _proposal_audit_facts(goal, self._act_proposal)
+                    target = getattr(self._act_proposal, "target", None)
+                    target_hwnd = getattr(target, "hwnd", None)
+                    if (
+                        type(target_hwnd) is not int
+                        or not restore_focus_if_safe(self.hwnd, target_hwnd)
+                    ):
+                        # The approval click makes the manager the foreground
+                        # owner. Hand that focus to the exact HWND already
+                        # bound into the displayed proposal before the UIA
+                        # worker starts; never consult foreground to choose a
+                        # target. If Windows refuses, issue no execution
+                        # request and leave the proposal available to retry.
+                        self._record_act_audit(
+                            "approve_and_run_handoff_refused",
+                            **proposal_facts,
+                            code="target_focus_handoff_refused",
+                            completed=False,
+                        )
+                        self._set(ID_STATUS, "Approved application was not activated")
+                        self._set(
+                            ID_VERIFICATION,
+                            "Windows refused the exact target-window handoff. "
+                            "Bring this manager forward and approve again.",
+                        )
+                        return
                     self._pending_request = _issue_act_execution_request(
                         goal, self._act_proposal
                     )
                     self._record_act_audit(
+                        "target_focus_handoff_completed",
+                        **proposal_facts,
+                    )
+                    self._record_act_audit(
                         "approve_and_run_issued",
-                        **_proposal_audit_facts(goal, self._act_proposal),
+                        **proposal_facts,
                     )
                 else:
                     target_hwnd = None

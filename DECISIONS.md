@@ -4941,3 +4941,38 @@ digest; replacing the executor's ordinal; replacing terminal completion truth;
 accepting an open lookalike record; disconnecting the runtime-event helper from
 the production manager loop; and renaming the event emitted by the real
 `Approve & run` command. The restored isolated baseline is 8/8 green.
+
+## D123 — Manager approval hands focus only to the approved Act target
+
+**Date:** 9 September 2026
+**Status:** Implemented candidate; live rerun and independent review pending.
+
+**Decision.** The native manager's real `Approve & run` command performs one
+bounded foreground handoff before issuing `ActExecutionRequest`. It may hand
+focus only from the manager HWND that currently owns foreground to the exact
+target HWND already present in the displayed, digest-bound proposal. It does
+not read foreground to choose a target, does not substitute another matching
+window, and does not use retry loops or `AttachThreadInput`. If the owner or
+target check fails, Windows refuses `SetForegroundWindow`, or the exact target
+does not own foreground afterward, no execution request is issued. The inert
+proposal remains available for another explicit approval attempt.
+
+The evidence audit records either `target_focus_handoff_completed` followed by
+`approve_and_run_issued`, or `approve_and_run_handoff_refused`. These records
+observe the command path and cannot make the handoff or authorize execution.
+Fresh target, selector, identity, geometry, and per-node authorization checks
+still run afterward; focus is presentation readiness, never authority.
+
+**Reason.** The first retained manager run selected the correct
+`Presentation1` HWND and crossed the explicit approval event, but the signed
+UIA adapter failed before completing its only node. A read-only probe against
+that exact window found no `New Slide` control while the manager retained
+foreground; only title-bar buttons were exposed. The earlier successful
+manager-owned-surface diagnostic had explicitly activated PowerPoint before
+starting the worker. The production manager had no corresponding handoff, so
+its approval UI made the signed control temporarily unavailable.
+
+This does not amend D075. D075 forbids using foreground as a target-selection
+tie-break; D123 transfers focus to identity that was already independently
+selected and bound. The same guarded helper used by the existing control-bar
+focus return owns the one-attempt rule.
