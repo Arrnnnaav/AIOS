@@ -303,6 +303,30 @@ def test_focus_handoff_refuses_after_the_user_leaves_the_owner(monkeypatch):
     assert calls == []
 
 
+def test_focus_handoff_refuses_when_windows_rejects_the_exact_target(monkeypatch):
+    monkeypatch.setattr(win32gui, "GetForegroundWindow", lambda: 41)
+    monkeypatch.setattr(win32gui, "IsWindow", lambda hwnd: hwnd == 73)
+
+    def refuse(_hwnd):
+        raise win32gui.error(0, "SetForegroundWindow", "denied")
+
+    monkeypatch.setattr(win32gui, "SetForegroundWindow", refuse)
+
+    assert bar.restore_focus_if_safe(41, 73) is False
+
+
+def test_focus_handoff_refuses_a_false_success_from_windows(monkeypatch):
+    calls = []
+    monkeypatch.setattr(win32gui, "GetForegroundWindow", lambda: 41)
+    monkeypatch.setattr(win32gui, "IsWindow", lambda hwnd: hwnd == 73)
+    monkeypatch.setattr(
+        win32gui, "SetForegroundWindow", lambda hwnd: calls.append(hwnd)
+    )
+
+    assert bar.restore_focus_if_safe(41, 73) is False
+    assert calls == [73]
+
+
 def test_opening_the_panel_focuses_it_and_closing_releases(monkeypatch):
     """Windows' foreground lock refuses `SetForegroundWindow` for a process
     that is not already frontmost -- measured repeatedly in this repo (D038,
