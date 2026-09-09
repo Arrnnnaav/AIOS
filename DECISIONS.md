@@ -4934,3 +4934,10 @@ worker below the visible approval event. D121 closes the execution boundary;
 this decision preserves enough independent evidence to prove the replacement
 run crossed it without creating a second authority path or collecting private
 desktop layout.
+
+**Mutation audit.** Eight deliberate breaks were killed in an isolated
+worktree: removing the goal, target, or output binding from the proposal
+digest; replacing the executor's ordinal; replacing terminal completion truth;
+accepting an open lookalike record; disconnecting the runtime-event helper from
+the production manager loop; and renaming the event emitted by the real
+`Approve & run` command. The restored isolated baseline is 8/8 green.

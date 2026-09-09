@@ -346,7 +346,8 @@ values. Six D018 mutations of that boundary are killed, and the owner confirmed
 the boundary's independent D032 review on 9 September 2026. Re-run through the
 visible manager approval event with the retained
 `ghostcursor.devtools.act_live_manager` harness and its bounded JSONL transcript,
-then obtain a fresh D032 verdict. Only after that
+whose eight load-bearing D018 mutations are killed, then obtain a fresh D032
+verdict. Only after that
 review passes should staged-plan schema wiring or semantic PowerPoint
 capabilities move forward.
 

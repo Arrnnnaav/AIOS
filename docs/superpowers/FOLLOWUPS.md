@@ -737,8 +737,9 @@ admission, membership check, one-use removal, and real `ID_START` producer are
 all load-bearing. The owner confirmed the boundary's independent D032 review
 on 9 September 2026. The retained `ghostcursor.devtools.act_live_manager`
 harness now records a bounded, geometry-free transcript from the real manager
-loop. This item closes only after a visible manager-approved rerun retains that
-transcript and receives a fresh independent D032 READY
+loop; eight D018 mutations of its bindings, truth fields, schema, and production
+wiring are killed. This item closes only after a visible manager-approved
+rerun retains that transcript and receives a fresh independent D032 READY
 verdict.
 
 ## A hermetic test was reading the real ESC key — CLOSED 4 Sep 2026
