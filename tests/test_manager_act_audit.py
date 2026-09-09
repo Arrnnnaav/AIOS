@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import ast
+import inspect
 import json
+import textwrap
 from types import SimpleNamespace
 
 import pytest
@@ -13,6 +16,7 @@ from ghostcursor.manager import (
     _proposal_audit_facts,
     _run_result_audit_facts,
     _runtime_event_audit_facts,
+    launch_manager,
 )
 
 
@@ -154,3 +158,25 @@ def test_failed_worker_result_is_recorded_without_exception_text():
     assert facts["code"] == "RuntimeError"
     assert facts["completed"] is False
     assert facts["detail_sha256"] != str(error)
+
+
+def test_production_manager_loop_wires_every_load_bearing_audit_transition():
+    tree = ast.parse(textwrap.dedent(inspect.getsource(launch_manager)))
+    record_kinds = set()
+    helper_calls = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if isinstance(node.func, ast.Attribute) and node.func.attr == "_record_act_audit":
+            if node.args and isinstance(node.args[0], ast.Constant):
+                record_kinds.add(node.args[0].value)
+        if isinstance(node.func, ast.Name):
+            helper_calls.add(node.func.id)
+
+    assert {
+        "execution_request_dequeued",
+        "act_worker_started",
+        "act_runtime_event",
+        "act_run_result",
+    } <= record_kinds
+    assert {"_runtime_event_audit_facts", "_run_result_audit_facts"} <= helper_calls
