@@ -52,6 +52,22 @@ def test_a_before_after_pair_shows_the_change_that_is_being_claimed():
     assert after["presentations"][0]["slide_count"] == 2
 
 
+def test_per_attempt_labels_are_accepted():
+    """A session-bracketing pair cannot attribute an effect to a cycle: the
+    10 September run had two approvals, one refused, and no reading in between
+    (D128/D130). Per-attempt labels are what a later run needs to say more than
+    "the session ended with one additional slide"."""
+
+    for label in ("before", "after", "before-1", "after-2", "before-10"):
+        assert observe(_application(), label=label)["label"] == label
+
+
+@pytest.mark.parametrize("label", ["midway", "before-", "beforex", "1-before", ""])
+def test_a_label_that_is_not_a_side_of_a_run_is_refused(label):
+    with pytest.raises(ValueError):
+        observe(_application(), label=label)
+
+
 def test_an_unlabelled_reading_is_refused():
     """A file that does not say which side of the run it came from is not
     evidence of a change."""

@@ -29,8 +29,20 @@ from __future__ import annotations
 import argparse
 import json
 import platform
+import re
 import time
 from pathlib import Path
+
+
+#: `before` / `after`, optionally per attempt: `before-1`, `after-2`.
+#:
+#: A session-bracketing pair cannot attribute an effect to a cycle. The
+#: 10 September run recorded 1 slide before and 2 after across two approvals,
+#: one of which refused, and no reading existed to say which one moved the
+#: deck -- so the evidence had to be narrowed to "the session ended with one
+#: additional slide" (D128/D130). Per-attempt readings are what let a later run
+#: say more than that.
+_LABEL = re.compile(r"(before|after)(-\d+)?")
 
 
 class DeckObservationError(RuntimeError):
@@ -44,8 +56,11 @@ def observe(application: object, *, label: str, at_ns: int | None = None) -> dic
     reading is exercised by tests without a live desktop.
     """
 
-    if label not in {"before", "after"}:
-        raise ValueError(f"label must be 'before' or 'after', not {label!r}")
+    if not _LABEL.fullmatch(label):
+        raise ValueError(
+            f"label must be 'before'/'after', optionally with an attempt number "
+            f"such as 'before-2', not {label!r}"
+        )
 
     presentations = []
     for presentation in application.Presentations:
@@ -95,7 +110,11 @@ def _running_application():
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, required=True, help="new .json path")
-    parser.add_argument("--label", choices=("before", "after"), required=True)
+    parser.add_argument(
+        "--label",
+        required=True,
+        help="before | after | before-<n> | after-<n>",
+    )
     arguments = parser.parse_args()
 
     if arguments.out.exists():
