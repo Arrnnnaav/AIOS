@@ -38,7 +38,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_a_reference_does_not_contain_the_handle_in_any_obvious_form():
     """The mutation that survived the whole suite: returning `str(hwnd)`."""
 
-    hwnd = 1050680
+    hwnd = 770401
     reference = window_reference(hwnd)
 
     assert str(hwnd) not in reference
