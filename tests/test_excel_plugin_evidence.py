@@ -174,3 +174,23 @@ def test_committed_evidence_matches_the_exact_records() -> None:
         )
         == 0
     )
+
+
+def test_worksheet_runs_must_actually_carry_distinct_bindings() -> None:
+    """The document says the three worksheet runs used three distinct target
+    bindings. Nothing checked it, and across differing scopes distinctness
+    would have held regardless of the handles -- the same tautology D129 was
+    written to remove (D130)."""
+
+    campaigns, excluded = _loaded()
+    shared = campaigns["ADD_WORKSHEET"][0]["target"]["target_ref"]
+    campaigns["ADD_WORKSHEET"][2]["target"]["target_ref"] = shared
+    with pytest.raises(EvidenceRefused, match="distinct target bindings"):
+        check(campaigns, excluded, CANDIDATE)
+
+
+def test_a_campaign_spanning_two_scopes_is_refused() -> None:
+    campaigns, excluded = _loaded()
+    campaigns["SELECT_CELL_B2"][2]["target"]["target_scope"] = "a-different-scope"
+    with pytest.raises(EvidenceRefused, match="campaign scope"):
+        check(campaigns, excluded, CANDIDATE)

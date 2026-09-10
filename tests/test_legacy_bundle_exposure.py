@@ -31,19 +31,11 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 BUNDLED = ROOT / "plugins" / "bundled"
 
-#: Values observed on a live desktop, split so this file does not become the
-#: leak it polices. Mirrors `tests/test_evidence_hygiene.py`.
-_OBSERVED = tuple(
-    "".join(parts)
-    for parts in (
-        ("198", "302"),
-        ("395", "430"),
-        ("105", "0680"),
-        ("657", "022"),
-        ("264", "482"),
-        ("288", "5152"),
-    )
-)
+#: The observed-value list, imported rather than copied. The first version of
+#: this file duplicated six of the twelve values and described itself as a
+#: mirror, so a value added to the real list would silently not be checked here
+#: (D130).
+from tests.test_evidence_hygiene import _OBSERVED  # noqa: E402
 
 
 def _inventory():

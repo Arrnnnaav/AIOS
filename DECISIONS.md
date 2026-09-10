@@ -5111,8 +5111,8 @@ clean-checkout lane is green and a new independent D032 review returns READY.
 ## D126 — The replacement live run, and what it retained
 
 **Date:** 10 September 2026
-**Status:** Run complete and retained; independent D032 review and the 3/3
-campaign still open.
+**Status:** Run complete and retained, then SUPERSEDED by D127 and amended by
+D128. Not current acceptance evidence.
 
 **Decision.** A live Act run's claimed state change is retained as its own
 artifact, written by a read-only probe before and after the run, and kept beside
@@ -5130,8 +5130,13 @@ they differed environmentally and not in authority. Evidence:
 `docs/evidence/act-live-manager-d125-run.md`.
 
 **The failure is retained as a failure.** `Presentation1` read 1 slide before
-the session and 2 after it, so one slide was added across two approvals: the
-refused cycle changed nothing. That is the fail-closed property observed under
+the session and 2 after it, so one slide was added across two approvals.
+
+> **AMENDED by D128 (10 September 2026).** The sentence that followed here --
+> "the refused cycle changed nothing" -- is **withdrawn**. The readings bracket
+> the session, not either cycle, so the session's net effect is one added slide
+> and attribution to a particular attempt is not established. The run's bundle
+> `48e6e4f4` named below is superseded by D127; see D129 for the current one. That is the fail-closed property observed under
 an unplanned failure rather than a constructed one. Its cause is not recorded —
 the audit hashes the detail, `sessions.sqlite` stores no Act detail by default,
 and the operator does not recall the on-screen text. It is written down as
@@ -5352,3 +5357,78 @@ exposed bundle marked clean; an exposed bundle left auto-enabled.
 **Still open.** Key custody. Until `ghostcursor-release-2026-1` and `-2026-2`
 are recovered or rotated, the sanitised payloads cannot be shipped and D128
 remains partially satisfied.
+
+
+## D130 — Scope narrows to PowerPoint, and the scan learns to read JSON
+
+**Date:** 10 September 2026
+**Status:** Implemented; independent review and the replacement live run open.
+
+**Decision.** Production is PowerPoint-only. `ghostcursor.vscode` and
+`ghostcursor.excel` are installed but DISABLED at the owner's direction; the
+active catalog holds `ghostcursor.powerpoint` and `ghostcursor.synthetic` at
+generation 9. Their bundles remain quarantined from first-run auto-enable
+(D129). Re-enabling either is an operator decision, never a convenience taken
+to make a test or a demo pass.
+
+**The scan could not see a handle in JSON, and that is the shape a live run
+writes.** The fourth independent review planted a handle-valued `hwnd` key in a
+committed evidence artifact and the entire 2484-test lane passed. The rule was
+a word-boundary match on `hwnd` or `pid` followed by optional whitespace,
+colon or equals. A word boundary does not fire after an underscore, and neither a
+quote nor a colon was in the separator class, so a quoted JSON key,
+`"target_hwnd": <value>`, `HWND=0x...` and a markdown table cell all
+walked past it. `.json`/`.jsonl` had been added to the scanned suffixes
+*because artifacts leaked*, which makes the miss worse rather than better.
+
+Three rules now, and the first two were verified with values the blocklist has
+never held: a prose pattern with explicit word boundaries, hex, and a five-digit
+floor (every value observed live here is five or more, while `TARGET_HWND =
+4242` in a design document is a fabricated sample); a **structural** walk of
+parsed JSON refusing any `hwnd`/`pid`/`handle` key with a handle-shaped value,
+which cannot be defeated by formatting; and a markdown table rule keyed on the
+column header, because the Excel evidence published six handles under an `HWND`
+heading on lines where the word never appeared beside a number.
+
+**Three handles were published and un-blocklisted.** Three handles sit in the legacy Excel bundle's HWND column; they are named in
+the blocklist rather than here. They were absent from the
+tracked tree, so nothing leaked, but nothing prevented reintroduction either.
+They are blocklisted now, and `test_legacy_bundle_exposure` imports the single
+list rather than copying half of it -- it had six of twelve while describing
+itself as a mirror.
+
+**Two cross-scope guards were unverified, and a third claim was unchecked.**
+Deleting the guard in either `render_add_slide_evidence` or
+`render_open_extensions_evidence` passed the whole lane; the only scope test
+sat on the one renderer that had no such guard. Worse, the Excel document says
+the three worksheet runs carry *distinct* bindings while nothing checked
+distinctness -- and across differing scopes distinctness holds regardless of the
+handles. That is the D129 tautology reappearing on the sentence D129 rewrote.
+Both guards are now tested, the Excel renderer has a per-campaign scope check
+and a real distinctness check, and the scope rule is per campaign rather than
+per document, because the two Excel workflows were separate campaigns with
+separate salts and the document already says equality is only meaningful within
+a column.
+
+**The fifth appearance of the root cause is closed at the class.** `_collect`
+swept the working directory, so any untracked file in a payload tree -- an
+editor backup, a stray probe output -- was signed into the bundle although a
+clean checkout has no such file. The sweep is now intersected with `git
+ls-files`, and a `files` entry naming an untracked path is refused. Rebuilding
+PowerPoint after the change reproduces manifest `28dbaf2d` exactly, so the rule
+costs the real payload nothing.
+
+**Documentation.** `CLAUDE.md`'s build status still announced VS Code and Excel
+as production plugins; it now states the PowerPoint-only scope and the
+quarantine. D126 still asserted "the refused cycle changed nothing" eight lines
+below D128's withdrawal of that exact sentence, with no amendment marker; it
+carries one now and its status records that D127 superseded it.
+
+**History.** The backup branch and `refs/original/...` left from the message
+reword both reached the commit whose message carried the value. Both are
+deleted; all 28 refs rescanned clean.
+
+**Mutation audit.** Killed, each by a named test: the JSON key form with a fresh
+value; the prose JSON form; the hex form; a table column; both cross-scope
+guards; the scope presence check; a non-string reference; a shared worksheet
+binding; an untracked file in a swept tree; an untracked file named in `files`.

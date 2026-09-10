@@ -52,9 +52,19 @@ old decision merely to make the history appear consistent with the new design.
 
 ## Current build status
 
-Production runs signed, data-only plugins for VS Code, Synthetic Export, and
-Excel. Their active workflows, evidence boundaries, and plugin-platform closure
-are recorded in D077-D082 and `docs/evidence/`. The trusted planner, canonical
+**Production is PowerPoint-only right now (D130).** The owner narrowed scope on
+10 September 2026: `ghostcursor.vscode` and `ghostcursor.excel` are installed
+but DISABLED, and the active catalog holds `ghostcursor.powerpoint` and
+`ghostcursor.synthetic` at generation 9. Their legacy signed bundles are also
+quarantined from first-run auto-enable, because the bundled payload evidence
+prints a raw window handle and cannot be re-signed without keys that are not
+available (D129). Do not re-enable either to make a test or a demo pass; an
+operator turns them on deliberately or not at all.
+
+Their signed, data-only workflows, evidence boundaries, and plugin-platform
+closure remain recorded in D077-D082 and `docs/evidence/`, and the VS Code
+rules below still describe how those workflows behave WHEN ENABLED -- they are
+not a statement that the plugin is active. The trusted planner, canonical
 plugin authorization, bounded screen-aware hint inference, foreground watcher,
 perception health instrumentation, executable-bounded grounding, and the
 vertical Ask control rail are implemented.

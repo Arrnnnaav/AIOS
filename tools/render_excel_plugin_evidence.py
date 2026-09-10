@@ -246,6 +246,28 @@ def check(
                 verification_started=WORKFLOWS[intent_id]["verification_started"],
             )
 
+    # Scope is per campaign, not per document: these two workflows were run as
+    # separate campaigns and carry separate salts, which is exactly why the
+    # document says equality is only meaningful within a column. Each campaign
+    # must be internally single-scoped, or its own references are incomparable
+    # with each other and every claim below about them is empty (D129/D130).
+    for intent_id, campaign in campaigns.items():
+        scopes = {item["target"].get("target_scope") for item in campaign}
+        if len(scopes) != 1 or not all(isinstance(s, str) and s for s in scopes):
+            raise EvidenceRefused(
+                f"{intent_id}: records do not share one usable campaign scope, "
+                "so their target references cannot be compared"
+            )
+    # The document says the worksheet runs carry three DISTINCT bindings. That
+    # sentence was printed without anything checking it -- and across differing
+    # scopes distinctness would have been guaranteed regardless of the handles,
+    # which is the same tautology D129 exists to remove (D130).
+    sheet_handles = {item["target"]["target_ref"] for item in campaigns["ADD_WORKSHEET"]}
+    if len(sheet_handles) != len(campaigns["ADD_WORKSHEET"]):
+        raise EvidenceRefused(
+            "ADD_WORKSHEET records do not carry distinct target bindings, but "
+            "the evidence says they do"
+        )
     cell_handles = {
         item["target"]["target_ref"] for item in campaigns["SELECT_CELL_B2"]
     }

@@ -10,6 +10,7 @@ import argparse
 import base64
 import hashlib
 import json
+import subprocess
 import zipfile
 from pathlib import Path, PurePosixPath
 
@@ -43,19 +44,51 @@ def _is_build_product(path: Path) -> bool:
     return path.suffix == ".pyc" or "__pycache__" in path.parts
 
 
+def _tracked_files(repo_root: Path) -> set[Path]:
+    """Every path git actually stores, resolved.
+
+    `rglob` sweeps the WORKING DIRECTORY, so anything sitting in a payload
+    tree gets signed into the bundle whether or not the repository contains
+    it: an editor backup, a stray probe output, a gitignored database. That is
+    the same defect as D125 (a CRLF working copy), D126 (a CRLF artifact) and
+    D127 (a `.pyc`), which is four appearances of one root cause -- bytes that
+    come from the machine rather than from git. Intersecting the sweep with
+    `git ls-files` closes the class rather than the instance (D130).
+    """
+
+    listed = subprocess.run(
+        ["git", "ls-files", "-z"],
+        cwd=repo_root,
+        capture_output=True,
+        check=True,
+    )
+    return {
+        (repo_root / name).resolve()
+        for name in listed.stdout.decode("utf-8").split("\0")
+        if name
+    }
+
+
 def _collect(repo_root: Path, specification: dict) -> dict[str, bytes]:
     files: dict[str, bytes] = {}
+    tracked = _tracked_files(repo_root)
     for item in specification["files"]:
         source = (repo_root / item["source"]).resolve()
         if _is_build_product(source):
             raise ValueError(f"payload names an interpreter build product: {source}")
+        if source not in tracked:
+            raise ValueError(f"payload names an untracked file: {source}")
         destination = PurePosixPath(item["destination"]).as_posix()
         files[destination] = source.read_bytes()
     for item in specification["trees"]:
         source_root = (repo_root / item["source"]).resolve()
         destination_root = PurePosixPath(item["destination"])
         for source in sorted(source_root.rglob("*")):
-            if source.is_file() and not _is_build_product(source):
+            if (
+                source.is_file()
+                and not _is_build_product(source)
+                and source.resolve() in tracked
+            ):
                 destination = (
                     destination_root / source.relative_to(source_root).as_posix()
                 ).as_posix()

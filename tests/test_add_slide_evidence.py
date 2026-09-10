@@ -706,6 +706,32 @@ def test_a_record_from_another_application_is_refused(tmp_path):
     assert "executable" in output
 
 
+def test_records_from_two_campaign_scopes_are_refused(tmp_path):
+    """Deleting this guard survived the whole lane (D130).
+
+    References are salted per campaign, so two from different scopes cannot be
+    compared at all: equal labels would be a coincidence and unequal ones would
+    prove nothing. The renderer must refuse rather than print a claim about
+    them.
+    """
+
+    records = _three()
+    records[2]["target"] = dict(records[2]["target"], target_scope="a-different-scope")
+    code, output = _render(_campaign(tmp_path, records), tmp_path / "o.md")
+    assert code == 2
+    assert "scope" in output
+
+
+def test_a_missing_campaign_scope_is_refused(tmp_path):
+    records = _three()
+    for record in records:
+        record["target"] = dict(record["target"])
+        del record["target"]["target_scope"]
+    code, output = _render(_campaign(tmp_path, records), tmp_path / "o.md")
+    assert code == 2
+    assert "target_scope" in output
+
+
 @pytest.mark.parametrize("target_ref", [0, -1, None, "", 770201])
 def test_a_record_without_a_usable_target_reference_is_refused(tmp_path, target_ref):
     """The reference is what the runs were bound to, pseudonymously (D128).

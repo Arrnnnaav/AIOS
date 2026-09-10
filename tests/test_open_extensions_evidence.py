@@ -251,6 +251,15 @@ def test_property_reads_must_match_the_recipe_selectors(
         check(records, measurement, CANDIDATE_ROOT)
 
 
+def test_records_from_two_campaign_scopes_are_refused(tmp_path) -> None:
+    """Deleting this guard survived the whole lane (D130)."""
+
+    records, measurement = _loaded(tmp_path)
+    records[-1]["target"]["target_scope"] = "a-different-scope"
+    with pytest.raises(EvidenceRefused, match="scope"):
+        check(records, measurement, CANDIDATE_ROOT)
+
+
 def test_three_runs_must_share_one_target_binding(tmp_path) -> None:
     records, measurement = _loaded(tmp_path)
     records[-1]["target"]["target_ref"] = "window-99887766"

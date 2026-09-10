@@ -184,7 +184,9 @@ def _instant(record_or_text, label: str = "") -> "datetime":
 
     from datetime import datetime, timezone
 
-    text = record_or_text if isinstance(record_or_text, str) else _started(record_or_text)
+    text = (
+        record_or_text if isinstance(record_or_text, str) else _started(record_or_text)
+    )
     name = label or (
         record_or_text.get("_source", "?") if isinstance(record_or_text, dict) else "?"
     )
@@ -474,8 +476,7 @@ def _check_records(records: list[dict]) -> None:
     references = {record["target"]["target_ref"] for record in records}
     if len(references) != 1:
         raise EvidenceRefused(
-            "the three runs did not share one target binding: "
-            f"{sorted(references)}"
+            f"the three runs did not share one target binding: {sorted(references)}"
         )
 
 
@@ -596,9 +597,7 @@ def render(records: list[dict], loaded: dict, records_dir: pathlib.Path) -> str:
     rejected, placed = _rejected_runs(records_dir.parent / "excluded")
     span = _elapsed(records[0]["started_at"], records[-1]["started_at"])
     marked, drains, unmarked = _mark_survey(records_dir, records)
-    unmarked_names = (
-        ", ".join(f"`{name}`" for name in unmarked) if unmarked else "none"
-    )
+    unmarked_names = ", ".join(f"`{name}`" for name in unmarked) if unmarked else "none"
     target = records[0]["target"]
     urls = loaded["recipe"]["steps"][0]["provenance"]["source_urls"]
     lines = [
@@ -646,7 +645,7 @@ def render(records: list[dict], loaded: dict, records_dir: pathlib.Path) -> str:
         "accepted run and the last -- what that question could answer here is",
         "stated below rather than assumed.",
         "",
-        f"Runs from non-qualifying attempt sets, committed under",
+        "Runs from non-qualifying attempt sets, committed under",
         f"`{_display_path(records_dir.parent / 'excluded')}`: {rejected}. Of",
         f"those, {placed} carry a start time and can be placed against this",
         f"window; {rejected - placed} predate run-identity stamping and cannot",
@@ -734,7 +733,7 @@ def render(records: list[dict], loaded: dict, records_dir: pathlib.Path) -> str:
         "Precisely: the view indicator did not read",
         f"{VERIFICATION_NAME!r} at the last observation before the",
         "verification clock armed, and read exactly that when the rule fired.",
-        "**Not** \"when the run started\": `reasoning/loop.py` re-assigns the",
+        '**Not** "when the run started": `reasoning/loop.py` re-assigns the',
         "baseline on every `OBSERVING` pass while the clock is unarmed, and",
         "re-enters `OBSERVING` on an unexpected-change interrupt, so the",
         "baseline is the last observation before arming. An earlier draft said",
@@ -797,13 +796,13 @@ def render(records: list[dict], loaded: dict, records_dir: pathlib.Path) -> str:
         "## A recorded anomaly in the earlier attempt sets",
         "",
         f"`verification_started_s` is missing from **{len(unmarked)}** passing",
-        f"runs among every record committed for this candidate, accepted and",
+        "runs among every record committed for this candidate, accepted and",
         f"non-qualifying alike -- {unmarked_names} -- on identical bytes and",
         "one HWND. An earlier draft of this document said one run;",
         "an independent review found the second. These counts are derived from",
         "the committed records, so they cannot go stale as sets are added.",
         "",
-        f"Where the mark is present, `ended_s - verification_started_s` is",
+        "Where the mark is present, `ended_s - verification_started_s` is",
         f"{drains} across all {marked} of those records that carry it. That is",
         "fixed",
         "drain, not a gap between two events: `compiled_tour`'s driver sleeps",

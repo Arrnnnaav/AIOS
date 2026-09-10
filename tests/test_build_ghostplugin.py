@@ -14,6 +14,7 @@ never be taken over something git does not store.
 
 import base64
 import json
+import subprocess
 import sys
 import zipfile
 from pathlib import Path
@@ -36,12 +37,30 @@ def key(tmp_path):
 
 
 def _payload(root: Path) -> Path:
+    """A payload in a real repository, because tracked-ness is now the rule.
+
+    The bundle carries what git stores, not whatever happens to sit in the
+    directory (D130), so this fixture has to be its own git work tree for the
+    exclusion to mean anything. Without `git init` the sweep would resolve to
+    the surrounding AIOS repository and silently exclude everything -- which is
+    exactly what it did on the first attempt.
+    """
+
     adapter = root / "payload" / "ghostcursor" / "adapter"
     adapter.mkdir(parents=True)
     (adapter / "thing_adapter.py").write_bytes(b"# adapter\n")
     cache = adapter / "__pycache__"
     cache.mkdir()
     (cache / "thing_adapter.cpython-312.pyc").write_bytes(b"\x00compiled\x00")
+
+    def git(*args):
+        subprocess.run(["git", *args], cwd=root, capture_output=True, check=True)
+
+    git("init", "-q")
+    git("config", "user.email", "fixture@example.invalid")
+    git("config", "user.name", "fixture")
+    git("add", "payload/ghostcursor/adapter/thing_adapter.py")
+    git("commit", "-q", "-m", "payload")
     return root
 
 
@@ -76,7 +95,6 @@ def test_interpreter_build_products_never_reach_a_signed_bundle(
     tmp_path, key, monkeypatch
 ):
     root = _payload(tmp_path)
-    monkeypatch.setattr(build_ghostplugin.Path, "resolve", lambda self: self)
     monkeypatch.setattr(
         build_ghostplugin, "__file__", str(root / "tools" / "build_ghostplugin.py")
     )
@@ -93,6 +111,33 @@ def test_interpreter_build_products_never_reach_a_signed_bundle(
     assert not [name for name in manifest["files"] if ".pyc" in name]
 
 
+def test_an_untracked_file_in_a_payload_tree_is_never_signed(
+    tmp_path, key, monkeypatch
+):
+    """The fifth appearance of one root cause, closed at the source.
+
+    `rglob` sweeps the working directory, so a stray probe output or editor
+    backup sitting in a payload tree was signed into the bundle even though a
+    clean checkout has no such file -- exactly the shape of D125, D126 and
+    D127. The sweep is now intersected with `git ls-files` (D130).
+    """
+
+    root = _payload(tmp_path)
+    stray = root / "payload" / "ghostcursor" / "adapter" / "scratch-probe.tmp.json"
+    stray.write_bytes(b'{"left": "behind"}' + bytes([10]))
+    monkeypatch.setattr(
+        build_ghostplugin, "__file__", str(root / "tools" / "build_ghostplugin.py")
+    )
+    output = tmp_path / "thing.ghostplugin"
+
+    build_ghostplugin.build(_spec(root), key, output)
+
+    with zipfile.ZipFile(output) as archive:
+        names = archive.namelist()
+    assert "ghostcursor/adapter/thing_adapter.py" in names
+    assert not [name for name in names if "scratch-probe" in name]
+
+
 def test_a_payload_that_names_a_build_product_outright_is_refused(
     tmp_path, key, monkeypatch
 ):
@@ -107,7 +152,6 @@ def test_a_payload_that_names_a_build_product_outright_is_refused(
     """
 
     root = _payload(tmp_path)
-    monkeypatch.setattr(build_ghostplugin.Path, "resolve", lambda self: self)
     monkeypatch.setattr(
         build_ghostplugin, "__file__", str(root / "tools" / "build_ghostplugin.py")
     )
@@ -117,7 +161,10 @@ def test_a_payload_that_names_a_build_product_outright_is_refused(
             {
                 "plugin_id": "ghostcursor.thing",
                 "version": "1.0.0",
-                "core_compatibility": {"minimum": "1.0.0", "maximum_exclusive": "2.0.0"},
+                "core_compatibility": {
+                    "minimum": "1.0.0",
+                    "maximum_exclusive": "2.0.0",
+                },
                 "applications": [{"kind": "executable", "value": "thing.exe"}],
                 "signing_key_id": "test-key",
                 "files": [
@@ -138,6 +185,48 @@ def test_a_payload_that_names_a_build_product_outright_is_refused(
     assert not (tmp_path / "refused.ghostplugin").exists()
 
 
+def test_a_files_entry_naming_an_untracked_file_is_refused(tmp_path, key):
+    """The tree sweep skips untracked files; a `files` entry naming one is a
+    mistake in the specification and must say so.
+
+    Removing this refusal survived the suite once already for the build-product
+    check, because the only test asserted a predicate rather than calling
+    `build()`. Same shape, same fix (D130).
+    """
+
+    root = _payload(tmp_path)
+    stray = root / "payload" / "ghostcursor" / "adapter" / "untracked_helper.py"
+    stray.write_bytes(b"# never committed" + bytes([10]))
+    spec = root / "plugin-source.json"
+    spec.write_text(
+        json.dumps(
+            {
+                "plugin_id": "ghostcursor.thing",
+                "version": "1.0.0",
+                "core_compatibility": {"minimum": "1.0.0", "maximum_exclusive": "2.0.0"},
+                "applications": [{"kind": "executable", "value": "thing.exe"}],
+                "signing_key_id": "test-key",
+                "files": [
+                    {
+                        "source": "payload/ghostcursor/adapter/untracked_helper.py",
+                        "destination": "ghostcursor/adapter/untracked_helper.py",
+                    }
+                ],
+                "trees": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    import build_ghostplugin as module
+
+    module.__file__ = str(root / "tools" / "build_ghostplugin.py")
+    with pytest.raises(ValueError, match="untracked file"):
+        module.build(spec, key, tmp_path / "refused.ghostplugin")
+
+    assert not (tmp_path / "refused.ghostplugin").exists()
+
+
 def test_the_predicate_names_build_products_and_leaves_sources_alone():
     assert build_ghostplugin._is_build_product(Path("a/__pycache__/x.cpython-312.pyc"))
     assert build_ghostplugin._is_build_product(Path("a/x.pyc"))
@@ -150,7 +239,6 @@ def test_the_same_sources_build_the_same_manifest_twice(tmp_path, key, monkeypat
     live run binds would not mean anything."""
 
     root = _payload(tmp_path)
-    monkeypatch.setattr(build_ghostplugin.Path, "resolve", lambda self: self)
     monkeypatch.setattr(
         build_ghostplugin, "__file__", str(root / "tools" / "build_ghostplugin.py")
     )

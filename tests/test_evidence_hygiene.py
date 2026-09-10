@@ -27,6 +27,7 @@ Handles and process ids carry no evidentiary weight once a run is over: the
 window is gone and the id is recycled. Redacting them costs the record nothing.
 """
 
+import json
 import re
 import subprocess
 from pathlib import Path
@@ -39,10 +40,33 @@ ROOT = Path(__file__).resolve().parents[1]
 #: because a test needs *some* integer and an invented one is not a leak.
 _SCANNED_SUFFIXES = {".md", ".json", ".jsonl"}
 
-#: `hwnd 770001`, `hwnd: 770001`, `HWND `770001``, `pid 880002`. Three digits is
-#: the floor: a real handle is never that short, and a small number in prose is
-#: far more likely to be an illustration than a reading.
-_RAW_TARGET = re.compile(r"\b(hwnd|pid)\b[\s:=]*`?(\d{3,})", re.IGNORECASE)
+#: `hwnd 770001`, `hwnd: 770001`, `HWND `770001``, `pid 880002`. Five digits is
+#: the floor: every value ever observed live in this repository is five or
+#: more, while a three- or four-digit number beside `hwnd` in a design document
+#: is a fabricated sample (`TARGET_HWND = 4242`). The blocklist below catches
+#: real values regardless of length, so the floor costs nothing.
+#:
+#: The word boundaries are spelled out rather than `\b`, because `\b` does not
+#: fire after an underscore: `"target_hwnd": <value>` walked straight past the
+#: first version of this rule. So did `"hwnd": 770001` -- the quote and colon
+#: were not in the separator class -- which is how a planted handle survived
+#: the entire lane in `docs/evidence/*.json`, the exact artifact a live run
+#: writes (D130).
+_RAW_TARGET = re.compile(
+    r"(?:^|[^A-Za-z0-9])(?:target_|window_|owning_)?(hwnd|pid|handle)"
+    r"[\s:=\"]*`?(0x[0-9A-Fa-f]{4,}|\d{5,})",
+    re.IGNORECASE,
+)
+
+#: A JSON key naming a window handle or process id, in any spelling this
+#: repository has actually used. Structural, so it does not depend on how the
+#: value happens to be formatted.
+_TARGET_KEY = re.compile(r"(?:^|_)(hwnd|pid|handle)$", re.IGNORECASE)
+
+#: A markdown table column whose header names one. The Excel evidence table
+#: published six handles under an `HWND` heading, where no line contained the
+#: word `hwnd` next to a number at all.
+_TARGET_COLUMN = re.compile(r"^(hwnd|pid|handle|window)$", re.IGNORECASE)
 
 #: Values actually observed on a live desktop and once published in this
 #: repository. They are recorded here so that no file -- prose, fixture, or
@@ -63,6 +87,11 @@ _OBSERVED = tuple(
         ("263", "404"),  # VS Code window, target disappearance
         ("329", "088"),  # Discord updater window, warm-up ledger
         ("163", "8728"),  # its real window
+        # Published in the legacy Excel bundle's HWND column and never
+        # blocklisted until an independent review counted them (D130).
+        ("198", "188"),  # Excel worksheet window, run 1
+        ("525", "102"),  # run 2
+        ("918", "882"),  # run 3
     )
 )
 
@@ -112,6 +141,92 @@ def test_no_tracked_document_publishes_a_raw_handle_or_process_id():
     assert not offenders, "raw target values in tracked documents:\n" + "\n".join(
         offenders
     )
+
+
+def _handle_valued_keys(value, path=""):
+    """Every `hwnd`/`pid`/`handle` key holding something handle-shaped."""
+
+    found = []
+    if isinstance(value, dict):
+        for key, child in value.items():
+            here = f"{path}.{key}" if path else str(key)
+            if _TARGET_KEY.search(str(key)):
+                if isinstance(child, bool):
+                    continue
+                if isinstance(child, int) and abs(child) >= 100:
+                    found.append(f"{here} = {type(child).__name__}")
+                elif isinstance(child, str) and re.fullmatch(
+                    r"(0x[0-9A-Fa-f]{3,}|\d{3,})", child.strip()
+                ):
+                    found.append(f"{here} = {type(child).__name__}")
+            found.extend(_handle_valued_keys(child, here))
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            found.extend(_handle_valued_keys(child, f"{path}[{index}]"))
+    return found
+
+
+def test_no_tracked_json_carries_a_handle_valued_key():
+    """Structural, because the text rule kept missing the JSON encoding.
+
+    A planted `"hwnd": 1442318` in a committed evidence artifact passed the
+    entire 2484-test lane. That file is the shape a live run's before/after
+    probe writes, so the next campaign could have produced a raw handle in a
+    digest-cited file with nothing objecting (D130).
+
+    This does not care how the number is formatted -- it reads the parsed
+    document and refuses the key.
+    """
+
+    offenders = []
+    for name in _tracked({".json", ".jsonl"}):
+        text = _text(name)
+        documents = []
+        if name.endswith(".jsonl"):
+            for line in text.splitlines():
+                if line.strip():
+                    try:
+                        documents.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        pass
+        else:
+            try:
+                documents.append(json.loads(text))
+            except json.JSONDecodeError:
+                pass
+        for document in documents:
+            for hit in _handle_valued_keys(document):
+                offenders.append(f"{name}: {hit}")
+    assert not offenders, "handle-valued keys in tracked JSON:\n" + "\n".join(
+        sorted(set(offenders))
+    )
+
+
+def test_no_markdown_table_publishes_a_handle_column():
+    """The Excel evidence table printed six handles under an `HWND` heading,
+    on lines where the word never appeared beside a number. A rule that reads
+    lines could not see it; this one reads the column."""
+
+    offenders = []
+    for name in _tracked({".md"}):
+        columns: list[int] = []
+        for number, line in enumerate(_text(name).splitlines(), start=1):
+            if not line.strip().startswith("|"):
+                columns = []
+                continue
+            cells = [
+                cell.strip().strip("`*_ ")
+                for cell in line.strip().strip("|").split("|")
+            ]
+            if not columns:
+                columns = [
+                    i for i, cell in enumerate(cells) if _TARGET_COLUMN.match(cell)
+                ]
+                continue
+            for index in columns:
+                if index < len(cells) and re.fullmatch(r"\d{3,}", cells[index]):
+                    offenders.append(f"{name}:{number}: column {index} = handle-shaped")
+    assert not offenders, "handle columns in tracked markdown:\n" + "\n".join(offenders)
 
 
 def test_no_tracked_file_at_all_reuses_an_observed_handle():
