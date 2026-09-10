@@ -91,11 +91,15 @@ Both cycles carry the **same** `proposal_sha256`, `target_sha256`,
 the same signed bytes. The difference between them was environmental, not a
 difference in authority.
 
-**The first attempt refused before any effect.** The retained readings show
-`Presentation1` at **1 slide before** and **2 slides after** the whole session.
-One slide was added across two attempts, so the attempt that ended
-`adapter_failed` changed nothing in the document. That is the fail-closed
-property holding under a real failure rather than a constructed one.
+**The session ended with one additional slide; attribution to a particular
+attempt is not established.** The retained readings bracket the *session*, not
+either cycle: `Presentation1` read 1 slide before and 2 after. Concluding that
+the refused cycle changed nothing requires assuming nothing else altered the
+deck in between, and this document itself records that the operator suspected a
+stray interaction. A failed add plus a stray delete plus a successful add would
+produce identical readings. The reading that would settle it -- one taken
+between the two cycles -- was never taken. Later runs retain a reading per
+attempt for exactly this reason.
 
 **The cause of that refusal is not retained, and is not reconstructed here.**
 The bounded audit carries the run-level `code` (`action_failed` →
@@ -117,8 +121,8 @@ and that it refused without touching the deck.
   affirmative verifier answer.
 - The claimed state change is corroborated by a file, not by an operator's
   memory: 1 → 2 slides.
-- A failure and a success were recorded in one session, and the failure left
-  the document unchanged.
+- A failure and a success were recorded in one session, and the session's net
+  effect was one added slide.
 
 ## What it does not prove
 

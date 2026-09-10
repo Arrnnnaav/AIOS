@@ -93,11 +93,52 @@ def test_interpreter_build_products_never_reach_a_signed_bundle(
     assert not [name for name in manifest["files"] if ".pyc" in name]
 
 
-def test_a_payload_that_names_a_build_product_outright_is_refused():
-    """A tree sweep can skip them, but a file entry naming one is a mistake in
-    the specification and should say so rather than silently produce a bundle
-    without the file it asked for."""
+def test_a_payload_that_names_a_build_product_outright_is_refused(
+    tmp_path, key, monkeypatch
+):
+    """A tree sweep can skip them, but a `files` entry naming one is a mistake
+    in the specification and must say so rather than silently produce a bundle
+    without the file it asked for.
 
+    The first version of this test asserted only the `_is_build_product`
+    predicate, so deleting the refusal in `_collect` survived the whole suite --
+    an independent review caught it. Asserting a helper the caller might not
+    call is D031's correlate-vs-imply failure: this now calls `build()`.
+    """
+
+    root = _payload(tmp_path)
+    monkeypatch.setattr(build_ghostplugin.Path, "resolve", lambda self: self)
+    monkeypatch.setattr(
+        build_ghostplugin, "__file__", str(root / "tools" / "build_ghostplugin.py")
+    )
+    spec = root / "plugin-source.json"
+    spec.write_text(
+        json.dumps(
+            {
+                "plugin_id": "ghostcursor.thing",
+                "version": "1.0.0",
+                "core_compatibility": {"minimum": "1.0.0", "maximum_exclusive": "2.0.0"},
+                "applications": [{"kind": "executable", "value": "thing.exe"}],
+                "signing_key_id": "test-key",
+                "files": [
+                    {
+                        "source": "payload/ghostcursor/adapter/__pycache__/thing_adapter.cpython-312.pyc",
+                        "destination": "ghostcursor/adapter/thing_adapter.pyc",
+                    }
+                ],
+                "trees": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="interpreter build product"):
+        build_ghostplugin.build(spec, key, tmp_path / "refused.ghostplugin")
+
+    assert not (tmp_path / "refused.ghostplugin").exists()
+
+
+def test_the_predicate_names_build_products_and_leaves_sources_alone():
     assert build_ghostplugin._is_build_product(Path("a/__pycache__/x.cpython-312.pyc"))
     assert build_ghostplugin._is_build_product(Path("a/x.pyc"))
     assert not build_ghostplugin._is_build_product(Path("a/x.py"))

@@ -17,7 +17,7 @@ current-state audit record; the human-run source evidence remains in
 - Bundle SHA-256:
   `a5e4e9e9673696ffff459ba69d1dfaf435b56e60d3b55c415401a99f97dcf00e`
 - Evidence SHA-256:
-  `fcedf7188df76e1e4d85b8ccc24134130baa62d1524df772599a3adaac707e7e`
+  `39609e01e49fe1bf323a1d7cf617a942e5e6610710a6bc653f700334cce701d5`
 
 Only the public Ed25519 key is tracked. A scan found no private-key material in
 the current tree or reachable history. The signing procedure reported deleting

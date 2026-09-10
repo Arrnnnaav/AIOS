@@ -34,6 +34,14 @@ SIGNED_GLOBS = (
     "plugins/shared/*.py",
     "plugins/sources/*/payload/**/*",
     "plugins/sources/*/index.json",
+    # Evidence is cited by digest exactly as a payload is: an adoption record
+    # names the sha256 of an evidence file, and a review checks a transcript
+    # against a quoted digest. A CRLF working copy that git stores as LF makes
+    # those digests reproduce only on the machine that wrote them -- the D125
+    # defect, which reached evidence artifacts a day later (D126). Nothing
+    # covered this directory until an independent review pointed it out.
+    "docs/evidence/**/*",
+    "plugins/sources/*/acceptance-records/**/*",
 )
 
 

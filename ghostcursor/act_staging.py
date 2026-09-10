@@ -146,6 +146,7 @@ def open_staging(final: Path, *, owned_root: Path, run_id: str) -> Staging:
             sort_keys=True,
         ),
         encoding="utf-8",
+        newline="\n",
     )
     return Staging(final=final, staging=staging, marker=marker)
 
@@ -237,7 +238,9 @@ def abandon(area: Staging, *, remove: bool = False) -> None:
         "was never delivered. It is not a finished artifact."
     )
     area.marker.write_text(
-        json.dumps(record, indent=2, sort_keys=True), encoding="utf-8"
+        json.dumps(record, indent=2, sort_keys=True),
+        encoding="utf-8",
+        newline="\n",
     )
 
 

@@ -23,14 +23,14 @@ verification, or execution.
 
 ## Accepted runs
 
-| Workflow | Run | HWND | Outcome | Steps | Grounding | First observation | First hint | Verification start | End |
+| Workflow | Run | Target | Outcome | Steps | Grounding | First observation | First hint | Verification start | End |
 |---|---:|---:|---|---:|---|---:|---:|---:|---:|
-| `SELECT_CELL_B2` | 1 | `198302` | passed | 1/1 | UIA | 0.750s | 1.500s | n/a | 7.312s |
-| `SELECT_CELL_B2` | 2 | `198302` | passed | 1/1 | UIA | 0.750s | 1.500s | n/a | 6.297s |
-| `SELECT_CELL_B2` | 3 | `198302` | passed | 1/1 | UIA | 0.750s | 1.516s | n/a | 2.266s |
-| `ADD_WORKSHEET` | 1 | `198188` | passed | 1/1 | UIA | 0.500s | 1.266s | 8.312s | 8.812s |
-| `ADD_WORKSHEET` | 2 | `525102` | passed | 1/1 | UIA | 0.500s | 1.250s | 7.328s | 7.828s |
-| `ADD_WORKSHEET` | 3 | `918882` | passed | 1/1 | UIA | 0.516s | 1.266s | 14.172s | 14.688s |
+| `SELECT_CELL_B2` | 1 | `window-A` | passed | 1/1 | UIA | 0.750s | 1.500s | n/a | 7.312s |
+| `SELECT_CELL_B2` | 2 | `window-A` | passed | 1/1 | UIA | 0.750s | 1.500s | n/a | 6.297s |
+| `SELECT_CELL_B2` | 3 | `window-A` | passed | 1/1 | UIA | 0.750s | 1.516s | n/a | 2.266s |
+| `ADD_WORKSHEET` | 1 | `window-A` | passed | 1/1 | UIA | 0.500s | 1.266s | 8.312s | 8.812s |
+| `ADD_WORKSHEET` | 2 | `window-B` | passed | 1/1 | UIA | 0.500s | 1.250s | 7.328s | 7.828s |
+| `ADD_WORKSHEET` | 3 | `window-C` | passed | 1/1 | UIA | 0.516s | 1.266s | 14.172s | 14.688s |
 
 Results:
 
@@ -41,9 +41,16 @@ Results:
   clicked declaratively selected `Button` `Add Sheet`; completion
   required a newly appearing `TabItem` named `Sheet2`.
 
-The three counted worksheet records carry three distinct captured HWND
-values. The records do not establish why the handles differ, so this
-evidence makes no claim about reset or reopen operations.
+Target references are scoped to one workflow: `window-A` under
+`SELECT_CELL_B2` and `window-A` under `ADD_WORKSHEET` are not a claim
+that the two workflows shared a window. Equality is only meaningful
+within a column.
+
+The three counted worksheet records carry three distinct target
+bindings. The references are pseudonyms: they establish that the runs
+did not share one binding, and nothing about which windows those were.
+The records do not establish why the bindings differ, so this evidence
+makes no claim about reset or reopen operations.
 
 ## Excluded attempts
 

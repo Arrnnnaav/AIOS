@@ -114,7 +114,7 @@ def test_a_splash_window_does_not_consume_the_real_windows_budget():
     tree is ready in 0.92s."""
     clock = FakeClock()
     warm = WarmUp(budget_s=2.0, clock=clock)
-    splash, real = 329088, 1638728
+    splash, real = HWND_UPDATER, HWND_WINDOW
 
     warm.allows_tier2(splash)             # t=0.0, splash opens
     clock.advance(5.0)
@@ -536,7 +536,7 @@ def test_a_cold_window_that_grounds_inside_the_budget_never_asks_for_tier2(
     """The whole point. VS Code grounded 0.57s after its window appeared and
     Discord 0.92s; both are inside a 2.0s budget, so neither should ever have
     reached OCR."""
-    h = warmup_harness(budget_s=2.0, hwnd=1638728)
+    h = warmup_harness(budget_s=2.0, hwnd=HWND_WINDOW)
 
     h.tick()                 # t=0.0  grounding fails, warm-up opens
     h.advance(0.5)
@@ -549,7 +549,7 @@ def test_a_cold_window_that_grounds_inside_the_budget_never_asks_for_tier2(
 
 
 def test_a_window_that_never_grounds_asks_once_the_budget_expires(warmup_harness):
-    h = warmup_harness(budget_s=2.0, hwnd=1638728)
+    h = warmup_harness(budget_s=2.0, hwnd=HWND_WINDOW)
 
     h.tick()                 # t=0.0
     h.advance(1.9)
@@ -566,7 +566,7 @@ def test_a_window_that_never_grounds_asks_once_the_budget_expires(warmup_harness
 def test_warm_up_does_not_reopen_after_a_successful_grounding(warmup_harness):
     """Closes permanently on first success: a LATER step that fails to ground
     must escalate immediately, with no second allowance."""
-    h = warmup_harness(budget_s=2.0, hwnd=1638728)
+    h = warmup_harness(budget_s=2.0, hwnd=HWND_WINDOW)
 
     h.tick()
     h.ground_from_now_on()
@@ -580,14 +580,14 @@ def test_warm_up_does_not_reopen_after_a_successful_grounding(warmup_harness):
 
 
 def test_a_splash_window_does_not_spend_the_real_windows_budget(warmup_harness):
-    """The measured Discord case, end to end: 'Discord Updater' (hwnd 329088)
-    for ~5s, then the real window (hwnd 1638728) whose tree is ready in 0.92s."""
-    h = warmup_harness(budget_s=2.0, hwnd=329088)
+    """The measured Discord case, end to end: 'Discord Updater' (the updater window)
+    for ~5s, then the real window (the real window) whose tree is ready in 0.92s."""
+    h = warmup_harness(budget_s=2.0, hwnd=HWND_UPDATER)
 
     h.tick()                 # t=0.0  splash seen
     h.advance(5.0)
     h.tick()                 # t=5.0  splash budget long expired
-    h.set_hwnd(1638728)      # the real window replaces it
+    h.set_hwnd(HWND_WINDOW)      # the real window replaces it
     h.tier2_requests.clear()
     h.tick()                 # t=5.0  real window, first sight
     h.advance(0.9)

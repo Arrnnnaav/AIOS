@@ -118,7 +118,10 @@ def append_turn(
     existing = path.read_text(encoding="utf-8") if path.exists() else ""
     if not existing:
         block = f"# {topic}\n\n" + block
-    path.write_text(existing + block, encoding="utf-8")
+    # A brief's exact bytes are hashed and bound to every proposal made from
+    # it (D113), so newline translation would make the digest depend on the
+    # platform that appended the turn.
+    path.write_text(existing + block, encoding="utf-8", newline="\n")
     return path
 
 

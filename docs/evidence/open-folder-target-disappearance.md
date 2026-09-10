@@ -32,7 +32,7 @@ The mechanism is directly observable. Probing the same window immediately
 after the action:
 
 ```
-window: 263404 'matcher.py - ai-finance-controller - Visual Studio Code'
+window: [redacted, D128] 'matcher.py - ai-finance-controller - Visual Studio Code'
 after the action: {'open_folder': 0}
 ```
 

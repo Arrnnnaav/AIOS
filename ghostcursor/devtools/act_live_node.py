@@ -29,6 +29,8 @@ import json
 import time
 import uuid
 from pathlib import Path
+
+from ghostcursor.devtools.candidate_acceptance import window_pseudonym
 from types import SimpleNamespace
 
 import win32api
@@ -368,7 +370,10 @@ def main() -> int:
                     "executable": executable,
                     "executable_version": version,
                     "failure": failure,
-                    "hwnd": hwnd,
+                    # The runtime bindings above need the real handle; this
+                    # artifact does not, and a diagnostic file is exactly where
+                    # a raw handle escapes into the repository (D128).
+                    "target_ref": window_pseudonym(hwnd),
                     "identity": dict(outcome.identity_record or {})
                     if outcome
                     else None,
@@ -386,6 +391,7 @@ def main() -> int:
                 sort_keys=True,
             ),
             encoding="utf-8",
+            newline="\n",
         )
         print(f"\nwrote {arguments.json}")
 

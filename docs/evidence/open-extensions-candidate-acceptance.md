@@ -11,7 +11,7 @@ evidence precedes installation and activation (D070).
 
 - Intent: `OPEN_EXTENSIONS`
 - Application identity: `executable_version` = `1.135.0.0`
-- Target: HWND `395430`, `code.exe`, 'Welcome - AIOS - Visual Studio Code'
+- Target: `window-A` (redacted binding), `code.exe`, 'Welcome - AIOS - Visual Studio Code'
 - Official provenance: https://code.visualstudio.com/docs/configure/extensions/extension-marketplace
 - Exact candidate bytes:
 

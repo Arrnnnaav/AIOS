@@ -182,7 +182,9 @@ class Recipe:
 
     def save(self, path: str | Path) -> None:
         Path(path).write_text(
-            json.dumps(self.to_dict(), indent=2, ensure_ascii=False), encoding="utf-8"
+            json.dumps(self.to_dict(), indent=2, ensure_ascii=False),
+            encoding="utf-8",
+            newline="\n",
         )
 
     @classmethod
@@ -323,9 +325,7 @@ def validate_step(step: Step) -> list[str]:
         rule.args.get("accept_if_already_present") is True
         and rule.kind is not VerificationKind.ELEMENT_APPEARS
     ):
-        errors.append(
-            "accept_if_already_present is supported only for element_appears"
-        )
+        errors.append("accept_if_already_present is supported only for element_appears")
 
     if (
         rule.args.get("timeout_from_hint") is True

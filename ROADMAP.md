@@ -326,7 +326,8 @@ built but not yet exercised by a caller or a live run.
 signed payload bytes in the working copy were CRLF while git stored LF, so the
 pin, the built bundle and every digest in the retained r5 transcript named a
 file no clean checkout produced. LF is now canonical, the PowerPoint bundle is
-rebuilt and re-signed (manifest `48e6e4f4`, active generation 5), and the
+rebuilt and re-signed (PowerPoint manifest `28dbaf2d`, active generation 7,
+after two further rebuilds for signed build products and for redaction), and the
 hermetic lane is green from a fresh checkout. The r5 transcript may not be
 cited as current evidence. Required before this phase moves: a replacement live
 manager run on the rebuilt bundle retaining before/after verifier readings as

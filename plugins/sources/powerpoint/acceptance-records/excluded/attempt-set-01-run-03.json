@@ -22,7 +22,7 @@
   },
   "target": {
     "executable": "powerpnt.exe",
-    "hwnd": 1050680,
+    "target_ref": "window-A",
     "title": "live.pptx  -  Last saved by user - PowerPoint"
   },
   "timing": {

@@ -59,7 +59,7 @@ def test_a_splash_window_does_not_consume_the_real_windows_budget():
     tree is ready in 0.92s."""
     clock = FakeClock()
     warm = WarmUp(budget_s=2.0, clock=clock)
-    splash, real = 329088, 1638728
+    splash, real = 770101, 770102
 
     warm.allows_tier2(splash)  # t=0.0, splash opens
     clock.advance(5.0)

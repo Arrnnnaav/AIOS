@@ -145,12 +145,12 @@ wiring actually depends on — not merely asserted in a comment.
 tests/test_warmup_tour.py::test_a_splash_window_does_not_spend_the_real_windows_budget FAILED
 
     def test_a_splash_window_does_not_spend_the_real_windows_budget(warmup_harness):
-        h = warmup_harness(budget_s=2.0, hwnd=329088)
+        h = warmup_harness(budget_s=2.0, hwnd=HWND_UPDATER)
 
         h.tick()                 # t=0.0  splash seen
         h.advance(5.0)
         h.tick()                 # t=5.0  splash budget long expired
-        h.set_hwnd(1638728)      # the real window replaces it
+        h.set_hwnd(HWND_WINDOW)      # the real window replaces it
         h.tier2_requests.clear()
         h.tick()                 # t=5.0  real window, first sight
         h.advance(0.9)
@@ -178,7 +178,7 @@ FAILED tests/test_warmup_tour.py::test_a_splash_window_does_not_spend_the_real_w
 ___________ test_the_budget_parameter_is_what_warm_up_actually_uses ___________
 
     def test_the_budget_parameter_is_what_warm_up_actually_uses(warmup_harness):
-        h = warmup_harness(budget_s=0.5, hwnd=1638728)
+        h = warmup_harness(budget_s=0.5, hwnd=HWND_WINDOW)
 
         h.tick()  # t=0.0  warm-up opens
         h.advance(0.4)
@@ -269,15 +269,15 @@ _________ test_a_splash_window_does_not_spend_the_real_windows_budget _________
 warmup_harness = <function warmup_harness.<locals>.factory at 0x000002E72265C540>
 
     def test_a_splash_window_does_not_spend_the_real_windows_budget(warmup_harness):
-        """The measured Discord case, end to end: 'Discord Updater' (hwnd 329088)
-        for ~5s, then the real window (hwnd 1638728) whose tree is ready in 0.92s."""
-        h = warmup_harness(budget_s=2.0, hwnd=329088)
+        """The measured Discord case, end to end: 'Discord Updater' (the updater window)
+        for ~5s, then the real window (the real window) whose tree is ready in 0.92s."""
+        h = warmup_harness(budget_s=2.0, hwnd=HWND_UPDATER)
 
         h.tick()  # t=0.0  splash seen
         h.advance(5.0)
         h.tick()  # t=5.0  splash budget long expired -- standing request now open
         assert h.service.standing == 0, "splash never got its expected request"
-        h.set_hwnd(1638728)  # the real window replaces it
+        h.set_hwnd(HWND_WINDOW)  # the real window replaces it
         h.tier2_requests.clear()
         h.tick()  # t=5.0  real window, first sight
 >       assert h.service.standing is None, (

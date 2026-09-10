@@ -3526,7 +3526,7 @@ and bundle digest
 `a5e4e9e9673696ffff459ba69d1dfaf435b56e60d3b55c415401a99f97dcf00e`.
 Its public signing key is named `ghostcursor-release-2026-2`; no private key is
 stored in the repository. Both adoption records bind evidence digest
-`fcedf7188df76e1e4d85b8ccc24134130baa62d1524df772599a3adaac707e7e`
+`39609e01e49fe1bf323a1d7cf617a942e5e6610710a6bc653f700334cce701d5`
 and independent review commit
 `381d97f5f376ee586260eb4430595fcff1e2668e`.
 
@@ -5170,7 +5170,7 @@ its source's mtime and size, so two builds need not even agree with each other.
 This is D125's defect a third time — bytes that depend on the machine rather
 than the tracked sources — now in the manifest rather than in a payload file.
 
-The same review found an evidence document printing `hwnd 264482, pid 29768`.
+The same review found an evidence document printing a raw window handle and process id.
 That was a pattern rather than an instance: eight occurrences across six files.
 Publishing those values defeats two controls at once — D122 excludes them from
 the transcript, and D125 keyed the target commitment precisely because they are
@@ -5210,3 +5210,77 @@ an evidence document (the scan's non-vacuity check).
 **Standing.** Auto Act is operationally demonstrated. Release acceptance remains
 invalidated, now for a third reason, and no campaign may run before a formal
 D032 READY.
+
+
+## D128 — Target bindings are pseudonyms, and evidence publishes no handles
+
+**Date:** 10 September 2026
+**Status:** Implemented for PowerPoint; Excel and VS Code bundles blocked on key
+custody. Independent review and a replacement live run remain open.
+
+**Decision.** An acceptance record identifies the window it bound by a
+campaign-scoped pseudonym, `target_ref: "window-A"`, not by a handle. Evidence
+derived from those records says **"All three runs used the same redacted target
+binding"** and never "the same HWND": the pseudonym preserves equality for a
+reviewer and proves nothing about which physical window that was. No tracked
+document publishes a raw handle or process id, and the scan enforcing that has
+no exemption mechanism.
+
+**Why not a keyed digest.** A key shipped beside the digest protects nothing,
+and a key not shipped leaves a reviewer unable to check the equality the record
+exists to show. The pseudonym gives the reviewer exactly the property that
+matters and withholds the rest.
+
+**What the second review found, and it was right three times.**
+- The first scan globbed `docs/evidence/**/*.md`. It missed
+  `plugins/**/payload/docs/evidence/**`, where a raw handle was being *signed
+  into distributable bundles*; it missed `.json`/`.jsonl`; and it exempted two
+  files by basename, which both under-covered and over-claimed — one exempted
+  value sat unredacted in a third file, so nothing was withheld.
+- The builder test asserted the `_is_build_product` predicate without ever
+  calling `_collect`, so deleting the files-list refusal survived all 2455
+  tests. That is D031's correlate-vs-imply failure in a test written while
+  citing D031.
+- Five evidence writers still used `write_text` without `newline=`, including
+  `act_campaign.py` and `act_live_node.py` — the tools a counted campaign runs
+  through. `act_live_node.py` also wrote a raw `hwnd` into its diagnostic JSON.
+
+**Scope of the scan.** Two rules, both path-based over tracked files: a pattern
+rule across `.md`/`.json`/`.jsonl` anywhere in the tree, and a blocklist of
+values actually observed live, checked against every tracked text file
+including `.py`. The second rule exists because a fixture that reuses a real
+handle republishes it as effectively as prose does — which is what two of this
+session's own tests were doing.
+
+**History is not retroactively clean.** The repository is public. The VS Code
+handles and the Chromium/Discord pair are already in pushed history on `main`
+and five other branches, including frozen submission branches; the PowerPoint,
+Excel and manager-run values are not, and are being redacted before they ever
+reach a remote. Rewriting six branches to remove a stale window handle would be
+a larger integrity problem than the one it solves, so this control is
+**forward-looking**: no raw handle in the working tree, some remain in history.
+
+**Key custody is the blocker, and it is a finding in itself.** Excel is signed
+by `ghostcursor-release-2026-2` and VS Code by `-2026-1`; only `-2026-3` is
+present on this machine. Their redacted payloads therefore cannot be re-signed,
+so the repository's Excel and VS Code payloads no longer match their installed
+signed bundles, and will not until those keys are produced. PowerPoint is
+rebuilt and active: manifest `28dbaf2d`, active generation 7.
+
+Re-keying them onto `-2026-3` was considered and refused. It would collapse
+three signing identities into one as a side effect of a redaction, with no
+revocation list, no rotation path and no publisher registry. The planned
+marketplace makes a deliberate signing-identity decision necessary anyway --
+per-publisher keys, revocation, version pinning -- and these payloads should be
+redacted as part of that re-signing, not as an accident of this slice.
+
+**Mutation audit.** Killed, each by exactly one test: removing the files-list
+build-product refusal (the previously surviving mutation); removing the tree
+sweep exclusion; unkeying `_audit_digest`; unkeying `_audit_commitment`; a CRLF
+render in the deck probe; a planted handle in a non-exempt evidence file.
+
+**Superseded.** `act-live-manager-d125-r1.jsonl` remains superseded by D127.
+The claim that its refused cycle "had no effect" is withdrawn: the retained
+readings bracket the session, not either cycle, so the session's net effect is
+one added slide and attribution to an attempt is not established. Future runs
+retain a reading per attempt.

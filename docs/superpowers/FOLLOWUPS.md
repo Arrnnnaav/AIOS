@@ -788,6 +788,35 @@ Note for whoever runs it: the audit commitments are now keyed per process, so
 digests correlate only within one transcript. Two runs cannot be linked by
 comparing them, and that is deliberate.
 
+## Excel and VS Code bundles cannot be re-signed — OPEN 10 Sep 2026
+
+Their payload evidence is redacted in the repository (D128), but Excel is signed
+by `ghostcursor-release-2026-2` and VS Code by `-2026-1`, and neither private
+key is on this machine. Until they are produced, the repository payloads for
+those two plugins do not match their installed signed bundles, and the installed
+bundles still contain the raw handles.
+
+Trigger: whichever comes first -- the keys are located, or the marketplace
+signing-identity decision is taken.
+
+1. Establish whether `-2026-1` and `-2026-2` still exist. A plugin whose signing
+   key is lost can never be updated, only withdrawn; in a marketplace that is
+   fatal, and it is worth knowing now rather than at publication.
+2. Do not re-key onto `-2026-3` as a workaround. Per-publisher keys, revocation
+   and version pinning are one decision, and these payloads should be redacted
+   as part of that re-signing.
+3. Until then, treat the Excel and VS Code installed bundles as known-stale
+   relative to the repository, and say so in any evidence that cites them.
+
+## Two accepted evidence files still print raw handles — CLOSED 10 Sep 2026
+
+Both were redacted and re-adopted under D128: ADD_SLIDE re-rendered from
+pseudonymised records, OPEN_EXTENSIONS redacted in place because its harness
+inputs were never committed, with the activation digest updated in the same
+slice. The scan's exemption mechanism was removed entirely.
+
+## SUPERSEDED — original entry follows
+
 ## Two accepted evidence files still print raw handles — OPEN 10 Sep 2026
 
 `add-slide-candidate-acceptance.md` and `open-extensions-candidate-acceptance.md`

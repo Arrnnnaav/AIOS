@@ -7,7 +7,7 @@ Application: Microsoft PowerPoint
 Executable: `powerpnt.exe`
 
 Executable version: `16.0.20326.20112`
-Window measured: `Presentation2 - PowerPoint`, HWND `657022`
+Window measured: `Presentation2 - PowerPoint`, HWND [redacted, D128]
 
 This is feasibility evidence, not adoption evidence. All interaction was
 performed manually by the user. GhostCursor only enumerated the bound window's
@@ -29,7 +29,7 @@ After the user clicked **New Slide** once:
 | Text | View Indicator Slide 2 of 2 | 1 | empty |
 
 A second visible PowerPoint HWND remained at `View Indicator Slide 1 of 1`.
-The changed state was observed only on HWND `657022`, which proves the query
+The changed state was observed only on HWND [redacted, D128], which proves the query
 was scoped to the selected presentation rather than the process or desktop.
 
 ## Other exact pre-action controls observed
@@ -43,7 +43,7 @@ post-action states are measured.
 
 The user manually selected **Insert**, **Chart...**, **Bar**, and **OK**. The
 bound presentation exposed each intermediate state as descendants of HWND
-`657022`, including the modal `Insert Chart` surface.
+[redacted, D128], including the modal `Insert Chart` surface.
 
 | State | Control type | Exact name | Provider count | AutomationId |
 |---|---|---|---:|---|
@@ -68,7 +68,7 @@ original PowerPoint HWND.
 ## Open a comment editor
 
 After the user closed the chart-data window, selected **Insert**, and clicked
-**Comment**, HWND `657022` exposed:
+**Comment**, HWND [redacted, D128] exposed:
 
 | Control type | Exact name | Count | AutomationId |
 |---|---|---:|---|
@@ -85,7 +85,7 @@ open editor completes without creating a second draft.
 
 After discarding the empty comment draft, the user manually clicked **Slide
 Sorter**. The first attempt was excluded because a comment-discard confirmation
-modal still covered the presentation. In the clean state, HWND `657022`
+modal still covered the presentation. In the clean state, HWND [redacted, D128]
 exposed:
 
 | Control type | Exact name | Count | AutomationId |

@@ -148,8 +148,8 @@ Both runs showed 10 elements / 3 content sitting flat for ~7 s before jumping to
 
 | HWND | title | first seen | last seen |
 |---|---|---|---|
-| 329088 | `'Discord Updater'` | 1.51 s | 6.58 s |
-| 1638728 | `'Discord'` | 6.58 s | 24.51 s |
+| HWND_UPDATER | `'Discord Updater'` | 1.51 s | 6.58 s |
+| HWND_WINDOW | `'Discord'` | 6.58 s | 24.51 s |
 
 **Two distinct top-level windows.** The flat period was the updater splash,
 which matches `.*Discord.*`, is visible, non-minimised and on-screen, and so

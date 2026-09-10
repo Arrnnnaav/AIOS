@@ -78,16 +78,16 @@ def test_timing_landmarks_must_be_complete_and_ordered() -> None:
         check(campaigns, excluded, CANDIDATE)
 
 
-def test_cell_campaign_must_remain_on_one_captured_window() -> None:
+def test_cell_campaign_must_remain_on_one_target_binding() -> None:
     campaigns, excluded = _loaded()
-    campaigns["SELECT_CELL_B2"][2]["target"]["hwnd"] = 999
-    with pytest.raises(EvidenceRefused, match="one workbook HWND"):
+    campaigns["SELECT_CELL_B2"][2]["target"]["target_ref"] = "window-Z"
+    with pytest.raises(EvidenceRefused, match="one redacted target binding"):
         check(campaigns, excluded, CANDIDATE)
 
 
-def test_each_record_requires_a_positive_captured_hwnd() -> None:
+def test_each_record_requires_a_usable_target_reference() -> None:
     campaigns, excluded = _loaded()
-    campaigns["ADD_WORKSHEET"][2]["target"]["hwnd"] = 0
+    campaigns["ADD_WORKSHEET"][2]["target"]["target_ref"] = ""
     with pytest.raises(EvidenceRefused, match="target differs"):
         check(campaigns, excluded, CANDIDATE)
 

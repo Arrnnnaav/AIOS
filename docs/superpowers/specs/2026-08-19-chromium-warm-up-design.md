@@ -82,7 +82,7 @@ Measured on Discord, recorded in the probe findings §6.3. A cold Discord launch
 puts up a window titled `Discord Updater` — visible, non-minimised, on-screen,
 and therefore a full match for `windows_matching(".*Discord.*")` — which lives
 about five seconds before the real window exists. The two are **different
-HWNDs**: 329088 for the updater, 1638728 for the application.
+HWNDs**: HWND_UPDATER for the updater, HWND_WINDOW for the application.
 
 A warm-up keyed to the title regex opens on the updater, spends its entire
 budget on a window that will be destroyed, and has already expired when the real

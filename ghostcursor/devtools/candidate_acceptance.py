@@ -83,6 +83,29 @@ class CandidateRejected(Exception):
     """The named candidate graph cannot be accepted as given."""
 
 
+
+#: A campaign binds one window, and the record has to show that all of its runs
+#: bound the *same* one. It does not have to publish which. A raw HWND in a
+#: committed record is a value D122 keeps out of the transcript and D125 keyed
+#: out of the audit, so recording it here would reintroduce by the back door
+#: what those decisions removed at the front (D128).
+#:
+#: The pseudonym is process-local and assigned in first-seen order, so equality
+#: across a campaign's records is preserved and nothing else is. It is not a
+#: digest: a keyed digest whose key ships beside it protects nothing, and one
+#: whose key does not ship cannot be checked by a reviewer at all.
+_WINDOW_PSEUDONYMS: dict[int, str] = {}
+
+
+def window_pseudonym(hwnd: int) -> str:
+    """A stable per-campaign label for one window handle."""
+
+    if hwnd not in _WINDOW_PSEUDONYMS:
+        index = len(_WINDOW_PSEUDONYMS)
+        _WINDOW_PSEUDONYMS[hwnd] = f"window-{chr(ord('A') + index)}"
+    return _WINDOW_PSEUDONYMS[hwnd]
+
+
 @dataclass(frozen=True)
 class CandidateRequest:
     """Exactly how a candidate was named, kept so it can be named again.
@@ -156,7 +179,10 @@ class PreparationRecord:
                     "kind": self.application_identity_kind,
                     "value": self.application_identity_value,
                 },
-                "target": {"hwnd": self.target_hwnd, "title": self.target_title},
+                "target": {
+                    "target_ref": window_pseudonym(self.target_hwnd),
+                    "title": self.target_title,
+                },
             },
             indent=2,
             sort_keys=True,
@@ -229,7 +255,7 @@ class RunRecord:
                     "value": self.application_identity_value,
                 },
                 "target": {
-                    "hwnd": self.target_hwnd,
+                    "target_ref": window_pseudonym(self.target_hwnd),
                     "title": self.target_title,
                     "executable": self.target_executable,
                 },

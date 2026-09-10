@@ -3,6 +3,7 @@
 This module observes and evaluates.  It never imports the tour runner, sends
 input, or dispatches application commands.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -12,7 +13,6 @@ import subprocess
 import sys
 import time
 import urllib.request
-from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -29,7 +29,11 @@ from ghostcursor.evaluation.dataset import EvaluationDataset, load_dataset
 from ghostcursor.evaluation.fixture import assert_live_parity, load_fixture
 from ghostcursor.evaluation.safety import assert_evaluation_is_read_only
 from ghostcursor.inference.screen_hint import _eligible_candidates, infer_hint
-from ghostcursor.perception.uia import Element, iter_elements, window_bbox, windows_matching
+from ghostcursor.perception.uia import (
+    iter_elements,
+    window_bbox,
+    windows_matching,
+)
 from ghostcursor.reasoning.planner import (
     IntentDecision,
     PlanStatus,
@@ -57,7 +61,9 @@ class RuntimeNoActionGuard:
 
     def __enter__(self) -> "RuntimeNoActionGuard":
         if "ghostcursor.run" in sys.modules:
-            raise AssertionError("ghostcursor.run was loaded before interactive evaluation")
+            raise AssertionError(
+                "ghostcursor.run was loaded before interactive evaluation"
+            )
         return self
 
     def __exit__(self, exc_type, exc, traceback) -> None:
@@ -133,7 +139,8 @@ def run_local_model(
                 # v2 classification deliberately has no plan object: live
                 # workflow materialization requires a target window. This is
                 # classification eligibility, not proof that a launch occurred.
-                "launch_eligible": result.status in {
+                "launch_eligible": result.status
+                in {
                     PlanStatus.SUPPORTED,
                     PlanStatus.MODEL_UNAVAILABLE_FALLBACK,
                     PlanStatus.INVALID_MODEL_OUTPUT,
@@ -205,7 +212,8 @@ def run_local_model(
                 "ollama": "unavailable",
                 "status": unavailable.status.value,
                 "intent": unavailable.intent_id,
-                "launch_eligible": unavailable.status in {
+                "launch_eligible": unavailable.status
+                in {
                     PlanStatus.SUPPORTED,
                     PlanStatus.MODEL_UNAVAILABLE_FALLBACK,
                     PlanStatus.INVALID_MODEL_OUTPUT,
@@ -248,11 +256,7 @@ def run_local_model(
         "synthetic_hint_exact_control": hint_ok,
         "exact_supported_length_truncations_zero": not unexplained_exact_lengths,
     }
-    latencies = [
-        float(row["request_elapsed_ms"])
-        for row in rows
-        if "error" not in row
-    ]
+    latencies = [float(row["request_elapsed_ms"]) for row in rows if "error" not in row]
     return {
         "passed": all(hard_gates.values()),
         "model": model,
@@ -285,9 +289,7 @@ def run_local_model(
     }
 
 
-def run_interactive(
-    *, endpoint: str, model: str, timeout: float
-) -> dict[str, object]:
+def run_interactive(*, endpoint: str, model: str, timeout: float) -> dict[str, object]:
     if windows_matching(f"^{APP_TITLE}$"):
         raise RuntimeError("close existing Synthetic Export windows before this lane")
     process = subprocess.Popen(
@@ -325,7 +327,9 @@ def run_interactive(
             )
             after_status = win32gui.GetWindowText(win32gui.GetDlgItem(hwnd, STATUS_ID))
             if before_status != "Ready to export" or after_status != before_status:
-                raise AssertionError("interactive evaluation changed the status sentinel")
+                raise AssertionError(
+                    "interactive evaluation changed the status sentinel"
+                )
             if inference.decision.automation_id != str(EXPORT_ID):
                 raise AssertionError("live hint did not select Export")
         return {
@@ -396,11 +400,11 @@ def build_report(args: argparse.Namespace) -> dict[str, object]:
             "reason": "requires --interactive and a normal Windows desktop",
         }
     report["passed"] = all(
-        lane.get("passed") is True
-        for lane in lanes.values()
-        if not lane.get("skipped")
+        lane.get("passed") is True for lane in lanes.values() if not lane.get("skipped")
     ) and (not args.interactive or lanes["interactive"].get("passed") is True)
-    report["final_milestone_eligible"] = bool(report["passed"] and args.interactive and not args.draft)
+    report["final_milestone_eligible"] = bool(
+        report["passed"] and args.interactive and not args.draft
+    )
     return report
 
 
@@ -411,7 +415,11 @@ def _write_report(report: dict[str, object], path: str | None) -> Path:
         stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         output = REPORT_DIR / f"model-gate-{stamp}.json"
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    output.write_text(
+        json.dumps(report, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
     return output
 
 
@@ -419,7 +427,9 @@ def _ollama_metadata(endpoint: str, model: str, timeout: float) -> dict[str, obj
     metadata: dict[str, object] = {}
     try:
         version = _read_json(endpoint.rstrip("/") + "/api/version", timeout)
-        metadata["version"] = version.get("version") if isinstance(version, dict) else None
+        metadata["version"] = (
+            version.get("version") if isinstance(version, dict) else None
+        )
         tags = _read_json(endpoint.rstrip("/") + "/api/tags", timeout)
         models = tags.get("models", []) if isinstance(tags, dict) else []
         match = next(
@@ -480,7 +490,11 @@ def main(argv: list[str] | None = None) -> int:
         }
     output = _write_report(report, args.report)
     print(f"Model gate report: {output}")
-    print(json.dumps({"passed": report.get("passed"), "error": report.get("error")}, indent=2))
+    print(
+        json.dumps(
+            {"passed": report.get("passed"), "error": report.get("error")}, indent=2
+        )
+    )
     return 0 if report.get("passed") is True else 1
 
 

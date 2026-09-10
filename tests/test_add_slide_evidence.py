@@ -65,7 +65,7 @@ def _record(**overrides) -> dict:
             "value": "16.0.20326.20112",
         },
         "target": {
-            "hwnd": 1050680,
+            "target_ref": "window-A",
             "title": "live.pptx - PowerPoint",
             "executable": "powerpnt.exe",
         },
@@ -307,15 +307,15 @@ def test_a_record_that_does_not_substantiate_the_claim_is_refused(
     assert expected in output
 
 
-def test_runs_bound_to_different_windows_are_refused(tmp_path):
+def test_runs_with_different_target_bindings_are_refused(tmp_path):
     """One captured HWND across the campaign, or the runs were not driving
     the same application window."""
 
     records = _three()
-    records[2]["target"] = dict(records[2]["target"], hwnd=999999)
+    records[2]["target"] = dict(records[2]["target"], target_ref="window-Z")
     code, output = _render(_campaign(tmp_path, records), tmp_path / "o.md")
     assert code == 2
-    assert "HWND" in output
+    assert "one target binding" in output
 
 
 def test_a_record_naming_different_candidate_bytes_is_refused(tmp_path):
@@ -705,18 +705,19 @@ def test_a_record_from_another_application_is_refused(tmp_path):
     assert "executable" in output
 
 
-@pytest.mark.parametrize("hwnd", [0, -1, None, "1050680"])
-def test_a_record_without_a_usable_window_handle_is_refused(tmp_path, hwnd):
-    """A handle is what the runs were bound to. Zero, negative, absent or a
-    string is not one, and the one-HWND check would happily agree three
-    records shared the same non-handle."""
+@pytest.mark.parametrize("target_ref", [0, -1, None, "", 770201])
+def test_a_record_without_a_usable_target_reference_is_refused(tmp_path, target_ref):
+    """The reference is what the runs were bound to, pseudonymously (D128).
+    An empty string, a number, or an absent field is not one, and the
+    one-binding check would happily agree three records shared the same
+    non-reference."""
 
     records = _three()
     for record in records:
-        record["target"] = dict(record["target"], hwnd=hwnd)
+        record["target"] = dict(record["target"], target_ref=target_ref)
     code, output = _render(_campaign(tmp_path, records), tmp_path / "o.md")
     assert code == 2
-    assert "HWND" in output or "hwnd" in output
+    assert "binding reference" in output
 
 
 # --- instants, not strings (D032 review, round 4) --------------------------

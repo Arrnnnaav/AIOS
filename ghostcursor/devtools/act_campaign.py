@@ -278,7 +278,9 @@ def main() -> int:  # pragma: no cover - thin CLI over run_campaign
     print(json.dumps(summary, indent=2, sort_keys=True))
     if arguments.report is not None:
         arguments.report.write_text(
-            json.dumps(summary, indent=2, sort_keys=True), encoding="utf-8"
+            json.dumps(summary, indent=2, sort_keys=True),
+            encoding="utf-8",
+            newline="\n",
         )
     return 0
 

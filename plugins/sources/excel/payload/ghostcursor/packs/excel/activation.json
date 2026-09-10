@@ -20,7 +20,7 @@
           "adopted_at": "2026-08-30T12:44:05Z",
           "evidence": {
             "path": "docs/evidence/excel-plugin-acceptance.md",
-            "sha256": "fcedf7188df76e1e4d85b8ccc24134130baa62d1524df772599a3adaac707e7e"
+            "sha256": "39609e01e49fe1bf323a1d7cf617a942e5e6610710a6bc653f700334cce701d5"
           },
           "recipe": {
             "path": "recipes/add_worksheet.json",
@@ -56,7 +56,7 @@
           "adopted_at": "2026-08-30T12:44:05Z",
           "evidence": {
             "path": "docs/evidence/excel-plugin-acceptance.md",
-            "sha256": "fcedf7188df76e1e4d85b8ccc24134130baa62d1524df772599a3adaac707e7e"
+            "sha256": "39609e01e49fe1bf323a1d7cf617a942e5e6610710a6bc653f700334cce701d5"
           },
           "recipe": {
             "path": "recipes/select_cell_b2.json",

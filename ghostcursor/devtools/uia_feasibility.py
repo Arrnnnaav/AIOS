@@ -577,7 +577,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         from pathlib import Path
 
         Path(args.out).parent.mkdir(parents=True, exist_ok=True)
-        Path(args.out).write_text(text + "\n", encoding="utf-8")
+        Path(args.out).write_text(text + "\n", encoding="utf-8", newline="\n")
     return 0
 
 

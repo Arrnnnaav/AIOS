@@ -38,7 +38,7 @@ The committed evidence contains exactly the required successful campaigns:
   `5222a3cb4fc8635fa92df98df754032b6574c1f1d5f1c2f21801a263cec4b937`.
 - Open Extensions evidence:
   `docs/evidence/open-extensions-candidate-acceptance.md`, SHA-256
-  `18710dc4500c8b372e2a28142b3daa5f6ca112e68f96140eb77a7ca504998a51`.
+  `b9c25b6ef7ce40f5a16b8cf71867635b49c7c0b37af9670427fb15f99b608aa3`.
 
 Both renderers reproduced their committed documents exactly from the local run
 records with `--check`. Activation tests re-read installed artifacts and prove

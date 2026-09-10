@@ -287,6 +287,23 @@ repository source, payload copy, built bundle, installed catalog and the pin all
 read one byte sequence. Never pin a digest computed from a working copy that git
 does not store.
 
+An acceptance record identifies its window by a campaign-scoped pseudonym
+(`target_ref: "window-A"`), never a handle, and derived evidence says "the same
+redacted target binding" rather than "the same HWND" (D128). No tracked
+document publishes a raw HWND or PID; the scan covers every tracked
+`.md`/`.json`/`.jsonl` by path plus a blocklist of observed values across all
+tracked files, and it has no exemption mechanism. Any file whose bytes are
+cited by digest -- payload, evidence, transcript -- is written with explicit LF
+bytes, never through a platform-translating text API.
+
+**Excel and VS Code payloads are redacted in the repository but their installed
+bundles are not (D128).** Excel is signed by `ghostcursor-release-2026-2` and VS
+Code by `-2026-1`; neither private key is available here, so those two cannot be
+re-signed. Do not re-key them onto `-2026-3` to work around it: that collapses
+three signing identities with no revocation or rotation design, and belongs to
+the marketplace signing decision. PowerPoint is rebuilt and active at manifest
+`28dbaf2d`, generation 7.
+
 A signed bundle carries tracked sources only (D127). `__pycache__` and `.pyc`
 are excluded from every tree sweep and refused if named outright: they are
 untracked, so including them makes the manifest unreproducible from a clean

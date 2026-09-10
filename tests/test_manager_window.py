@@ -497,8 +497,8 @@ def test_exported_audit_commitments_are_keyed_not_bare_hashes():
     target = SimpleNamespace(
         executable="POWERPNT.EXE",
         executable_version="16.0.20326.20112",
-        hwnd=264482,
-        pid=29768,
+        hwnd=770001,
+        pid=880002,
     )
     proposal = SimpleNamespace(
         summary="Add one slide",
@@ -514,8 +514,8 @@ def test_exported_audit_commitments_are_keyed_not_bare_hashes():
             {
                 "executable": "powerpnt.exe",
                 "executable_version": "16.0.20326.20112",
-                "hwnd": 264482,
-                "pid": 29768,
+                "hwnd": 770001,
+                "pid": 880002,
             },
             sort_keys=True,
             separators=(",", ":"),
@@ -537,8 +537,8 @@ def test_exported_audit_commitments_are_keyed_not_bare_hashes():
         target=SimpleNamespace(
             executable="POWERPNT.EXE",
             executable_version="16.0.20326.20112",
-            hwnd=264483,
-            pid=29768,
+            hwnd=770002,
+            pid=880002,
         ),
         intent_id="ADD_SLIDE",
     )
@@ -574,7 +574,7 @@ def test_the_two_digest_helpers_do_not_share_an_unkeyed_fallback():
     import hashlib
     import json
 
-    binding = {"executable": "powerpnt.exe", "hwnd": 264482}
+    binding = {"executable": "powerpnt.exe", "hwnd": 770001}
     bare = hashlib.sha256(
         json.dumps(binding, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()

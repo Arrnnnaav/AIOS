@@ -1,7 +1,7 @@
 # Excel plugin UIA feasibility
 
 Measured locally on 2026-08-30 against Microsoft Excel
-`16.0.20326.20112`, workbook window HWND `198302`, using the committed core
+`16.0.20326.20112`, workbook window HWND [redacted, D128], using the committed core
 observation adapters.
 
 ## Traversal decision

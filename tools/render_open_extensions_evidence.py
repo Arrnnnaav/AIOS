@@ -104,9 +104,11 @@ def _check_records(records: list[dict]) -> None:
         ):
             raise EvidenceRefused(f"{source}: timing landmarks are incomplete or unordered")
 
-    handles = {record["target"]["hwnd"] for record in records}
+    handles = {record["target"]["target_ref"] for record in records}
     if len(handles) != 1:
-        raise EvidenceRefused("the three runs did not bind one captured HWND")
+        raise EvidenceRefused(
+            "the three runs did not share one redacted target binding"
+        )
 
 
 def _check_artifacts(measurement: dict, candidate_root: pathlib.Path) -> dict:
@@ -244,7 +246,7 @@ def render(records: list[dict], measurement: dict) -> str:
         "",
         f"- Intent: `{INTENT_ID}`",
         f"- Application identity: `{identity['kind']}` = `{identity['value']}`",
-        f"- Target: HWND `{measurement['target']['hwnd']}`, "
+        f"- Target: `{measurement['target']['target_ref']}` (redacted binding), "
         f"`{measurement['target']['executable']}`, "
         f"{measurement['target']['title']!r}",
         f"- Official provenance: {measurement['source_url']}",

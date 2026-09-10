@@ -3,7 +3,7 @@
 Three runs, 4 September 2026, all three `outcome: passed`, `1/1` steps,
 `grounded_by_uia_only: true`, `record_kind: "run"`, identical pack/intent/recipe
 digests, identical application identity `16.0.20326.20112`, and one shared
-HWND `1050680` across all three.
+HWND [redacted, D128] across all three.
 
 | Record | End | verification_started_s |
 |---|---|---|

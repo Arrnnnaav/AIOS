@@ -452,14 +452,17 @@ def _check_records(records: list[dict]) -> None:
         target = record.get("target", {})
         if target.get("executable") != EXECUTABLE:
             raise EvidenceRefused(f"{source}: target executable is not {EXECUTABLE}")
-        if not isinstance(target.get("hwnd"), int) or target["hwnd"] <= 0:
-            raise EvidenceRefused(f"{source}: target has no usable HWND")
+        if not isinstance(target.get("target_ref"), str) or not target["target_ref"]:
+            raise EvidenceRefused(f"{source}: target has no redacted binding reference")
         _check_timing(record)
 
-    handles = {record["target"]["hwnd"] for record in records}
-    if len(handles) != 1:
+    # The pseudonym proves the runs shared one binding; it does not identify
+    # the window, and the wording below must not claim that it does (D128).
+    references = {record["target"]["target_ref"] for record in records}
+    if len(references) != 1:
         raise EvidenceRefused(
-            f"the three runs did not bind one captured HWND: {sorted(handles)}"
+            "the three runs did not share one target binding: "
+            f"{sorted(references)}"
         )
 
 
@@ -601,8 +604,8 @@ def render(records: list[dict], loaded: dict, records_dir: pathlib.Path) -> str:
         f"- Intent: `{INTENT_ID}` in pack `{PACK_ID}`",
         f"- Application identity: `{APPLICATION_IDENTITY['kind']}` = "
         f"`{APPLICATION_IDENTITY['value']}`",
-        f"- Target: HWND `{target['hwnd']}`, `{target['executable']}`, "
-        f"{target['title']!r}",
+        f"- Target: `{target['target_ref']}` (redacted binding), "
+        f"`{target['executable']}`, {target['title']!r}",
         f"- Official provenance: {', '.join(urls)}",
         "- Exact candidate bytes, re-hashed from disk at render time:",
         "",
@@ -698,8 +701,11 @@ def render(records: list[dict], loaded: dict, records_dir: pathlib.Path) -> str:
         "",
         "Result: **3/3 passed**, each `1/1` step and UIA-only.",
         "",
-        f"All three are also bound to one captured HWND (`{target['hwnd']}`)",
-        "with identical artifact digests and one application build. Those are",
+        "All three runs used the same redacted target binding",
+        f"(`{target['target_ref']}`), with identical artifact digests and one",
+        "application build. The reference shows the runs shared a binding; it",
+        "is a pseudonym, and is not evidence of which physical window that was.",
+        "Those are",
         "required gates, not evidence of a campaign: each is true of every",
         "record for this candidate by construction, since it is one plugin on",
         "one machine.",

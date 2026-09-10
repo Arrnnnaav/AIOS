@@ -202,8 +202,8 @@ def _check_common(record: dict, intent_id: str, *, outcome: str) -> None:
     if (
         target.get("executable") != "excel.exe"
         or target.get("title") != TARGET_TITLE
-        or not isinstance(target.get("hwnd"), int)
-        or target["hwnd"] <= 0
+        or not isinstance(target.get("target_ref"), str)
+        or not target["target_ref"]
     ):
         raise EvidenceRefused(f"{source}: target differs from the proof workbook")
 
@@ -244,9 +244,13 @@ def check(
                 verification_started=WORKFLOWS[intent_id]["verification_started"],
             )
 
-    cell_handles = {item["target"]["hwnd"] for item in campaigns["SELECT_CELL_B2"]}
+    cell_handles = {
+        item["target"]["target_ref"] for item in campaigns["SELECT_CELL_B2"]
+    }
     if len(cell_handles) != 1:
-        raise EvidenceRefused("SELECT_CELL_B2 did not remain bound to one workbook HWND")
+        raise EvidenceRefused(
+            "SELECT_CELL_B2 did not remain bound to one redacted target binding"
+        )
     if len(excluded) != 2:
         raise EvidenceRefused("exactly two excluded worksheet attempts are required")
     for record in excluded:
@@ -289,7 +293,7 @@ def render(campaigns: dict[str, list[dict]], excluded: list[dict]) -> str:
         "",
         "## Accepted runs",
         "",
-        "| Workflow | Run | HWND | Outcome | Steps | Grounding | First observation | First hint | Verification start | End |",
+        "| Workflow | Run | Target | Outcome | Steps | Grounding | First observation | First hint | Verification start | End |",
         "|---|---:|---:|---|---:|---|---:|---:|---:|---:|",
     ]
     for intent_id in ("SELECT_CELL_B2", "ADD_WORKSHEET"):
@@ -297,7 +301,7 @@ def render(campaigns: dict[str, list[dict]], excluded: list[dict]) -> str:
             timing = record["timing"]
             verification = timing.get("verification_started_s")
             lines.append(
-                f"| `{intent_id}` | {run} | `{record['target']['hwnd']}` | passed | "
+                f"| `{intent_id}` | {run} | `{record['target']['target_ref']}` | passed | "
                 f"1/1 | UIA | {timing['first_observation_s']:.3f}s | "
                 f"{timing['first_hint_s']:.3f}s | "
                 f"{f'{verification:.3f}s' if verification is not None else 'n/a'} | "
@@ -315,9 +319,16 @@ def render(campaigns: dict[str, list[dict]], excluded: list[dict]) -> str:
         "  clicked declaratively selected `Button` `Add Sheet`; completion",
         "  required a newly appearing `TabItem` named `Sheet2`.",
         "",
-        "The three counted worksheet records carry three distinct captured HWND",
-        "values. The records do not establish why the handles differ, so this",
-        "evidence makes no claim about reset or reopen operations.",
+        "Target references are scoped to one workflow: `window-A` under",
+        "`SELECT_CELL_B2` and `window-A` under `ADD_WORKSHEET` are not a claim",
+        "that the two workflows shared a window. Equality is only meaningful",
+        "within a column.",
+        "",
+        "The three counted worksheet records carry three distinct target",
+        "bindings. The references are pseudonyms: they establish that the runs",
+        "did not share one binding, and nothing about which windows those were.",
+        "The records do not establish why the bindings differ, so this evidence",
+        "makes no claim about reset or reopen operations.",
         "",
         "## Excluded attempts",
         "",

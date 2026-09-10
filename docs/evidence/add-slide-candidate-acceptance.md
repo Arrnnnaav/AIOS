@@ -12,7 +12,7 @@ separate, human-gated step (D070).
 
 - Intent: `ADD_SLIDE` in pack `powerpoint`
 - Application identity: `executable_version` = `16.0.20326.20112`
-- Target: HWND `1050680`, `powerpnt.exe`, 'live.pptx  -  Last saved by user - PowerPoint'
+- Target: `window-A` (redacted binding), `powerpnt.exe`, 'live.pptx  -  Last saved by user - PowerPoint'
 - Official provenance: https://support.microsoft.com/en-us/office/add-rearrange-duplicate-and-delete-slides-in-powerpoint-e35a232d-3fd0-4ee1-abee-d7d4d6da92fc
 - Exact candidate bytes, re-hashed from disk at render time:
 
@@ -82,8 +82,11 @@ apart rendered a document indistinguishable from this one.
 
 Result: **3/3 passed**, each `1/1` step and UIA-only.
 
-All three are also bound to one captured HWND (`1050680`)
-with identical artifact digests and one application build. Those are
+All three runs used the same redacted target binding
+(`window-A`), with identical artifact digests and one
+application build. The reference shows the runs shared a binding; it
+is a pseudonym, and is not evidence of which physical window that was.
+Those are
 required gates, not evidence of a campaign: each is true of every
 record for this candidate by construction, since it is one plugin on
 one machine.
