@@ -6,6 +6,8 @@ from types import SimpleNamespace
 import win32con
 import win32gui
 
+from ghostcursor import manager as manager_module
+
 from ghostcursor.manager import (
     ActExecutionRequest,
     ActProposalRequest,
@@ -385,6 +387,165 @@ def test_refused_target_focus_handoff_issues_no_act_request(monkeypatch):
         assert "not activated" in win32gui.GetWindowText(manager._controls[ID_STATUS])
     finally:
         manager.dispose()
+
+
+def test_a_non_integer_hwnd_is_refused_before_any_win32_call(monkeypatch):
+    """The `type(hwnd) is int` guard, pinned on its own.
+
+    Relaxing it to `hwnd is None` survived a mutation audit because no test
+    supplied anything else. A string handle then reaches `win32gui.IsWindow`
+    and raises `TypeError` inside `WM_COMMAND` -- a crash in the message
+    pump, not the clean refusal D123 requires.
+    """
+
+    from types import SimpleNamespace
+
+    proposal = SimpleNamespace(
+        summary="Add one slide",
+        graph=SimpleNamespace(nodes=(object(),)),
+        steps=("Add slide",),
+        target=SimpleNamespace(hwnd="654"),
+    )
+    attempts = []
+    monkeypatch.setattr(
+        "ghostcursor.manager.restore_focus_if_safe",
+        lambda owner, target: attempts.append((owner, target)) or True,
+    )
+    manager = NativeManagerWindow()
+    try:
+        _choose_mode(manager, InteractionMode.ACT)
+        win32gui.SetWindowText(manager._controls[ID_GOAL], "Add a slide")
+        manager.show_act_proposal("Add a slide", proposal)
+        manager.take_act_audit_records()
+
+        manager._on_command(ID_START)
+
+        assert attempts == []
+        assert manager.take_request() is None
+        refused = manager.take_act_audit_records()
+        assert [record.type for record in refused] == [
+            "approve_and_run_handoff_refused"
+        ]
+        assert manager._act_proposal is proposal
+    finally:
+        manager.dispose()
+
+
+def test_the_handoff_is_recorded_before_the_request_is_minted(monkeypatch):
+    """Ordering the retained transcript can actually evidence.
+
+    The handoff happens before issuance either way, but a reviewer reads the
+    JSONL, not the source. With the record emitted after `_issue_...`, the
+    transcript looks the same whether or not the handoff came first, so the
+    ordering claim rested on reading code. Recording the sequence counter as
+    issuance begins makes the artifact carry the fact.
+    """
+
+    from types import SimpleNamespace
+
+    proposal = SimpleNamespace(
+        summary="Add one slide",
+        graph=SimpleNamespace(nodes=(object(),)),
+        steps=("Add slide",),
+        target=SimpleNamespace(hwnd=654),
+    )
+    monkeypatch.setattr(
+        "ghostcursor.manager.restore_focus_if_safe", lambda owner, target: True
+    )
+    manager = NativeManagerWindow()
+    original = manager_module._issue_act_execution_request
+    at_issue = []
+
+    def watched(goal, value):
+        at_issue.append(manager._act_audit_sequence)
+        return original(goal, value)
+
+    monkeypatch.setattr("ghostcursor.manager._issue_act_execution_request", watched)
+    try:
+        _choose_mode(manager, InteractionMode.ACT)
+        win32gui.SetWindowText(manager._controls[ID_GOAL], "Add a slide")
+        manager.show_act_proposal("Add a slide", proposal)
+        manager.take_act_audit_records()
+
+        manager._on_command(ID_START)
+
+        records = {r.type: r for r in manager.take_act_audit_records()}
+        assert at_issue, "the execution request was never issued"
+        handoff = records["target_focus_handoff_completed"]
+        issued = records["approve_and_run_issued"]
+        # The handoff record already existed when issuance began; the
+        # issuance record did not.
+        assert handoff.sequence <= at_issue[0]
+        assert issued.sequence > at_issue[0]
+    finally:
+        manager.dispose()
+
+
+def test_exported_audit_commitments_are_keyed_not_bare_hashes():
+    """A bare SHA-256 over a target binding is reversible in practice.
+
+    The binding is an executable name, a version, an HWND and a PID, and the
+    evidence documents publish the first two. Roughly 2**39 candidates remain,
+    which is minutes of GPU work -- so an unkeyed digest hands back exactly
+    the HWND and PID D122 keeps out of the record.
+    """
+
+    import hashlib
+    import json
+    from types import SimpleNamespace
+
+    target = SimpleNamespace(
+        executable="POWERPNT.EXE",
+        executable_version="16.0.20326.20112",
+        hwnd=264482,
+        pid=29768,
+    )
+    proposal = SimpleNamespace(
+        summary="Add one slide",
+        graph=SimpleNamespace(nodes=(object(),)),
+        steps=("Add slide",),
+        target=target,
+        intent_id="ADD_SLIDE",
+    )
+    facts = manager_module._proposal_audit_facts("Add a slide", proposal)
+
+    bare = hashlib.sha256(
+        json.dumps(
+            {
+                "executable": "powerpnt.exe",
+                "executable_version": "16.0.20326.20112",
+                "hwnd": 264482,
+                "pid": 29768,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+
+    assert facts["target_sha256"] != bare
+    assert facts["proposal_sha256"] != bare
+    # Still a commitment: the same binding correlates inside one transcript.
+    assert (
+        manager_module._proposal_audit_facts("Add a slide", proposal)["target_sha256"]
+        == facts["target_sha256"]
+    )
+    # ...and a different handle does not collide with it.
+    other = SimpleNamespace(
+        summary="Add one slide",
+        graph=SimpleNamespace(nodes=(object(),)),
+        steps=("Add slide",),
+        target=SimpleNamespace(
+            executable="POWERPNT.EXE",
+            executable_version="16.0.20326.20112",
+            hwnd=264483,
+            pid=29768,
+        ),
+        intent_id="ADD_SLIDE",
+    )
+    assert (
+        manager_module._proposal_audit_facts("Add a slide", other)["target_sha256"]
+        != facts["target_sha256"]
+    )
 
 
 def test_identical_titles_are_chosen_by_handle_and_returned_only_as_narrowing():

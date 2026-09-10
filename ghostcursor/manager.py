@@ -9,9 +9,11 @@ same-process mailbox.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import os
 import queue
+import secrets
 import threading
 import time
 import uuid
@@ -106,6 +108,7 @@ def _manager_bounds(expanded: bool) -> tuple[int, int, int, int]:
         x = max(MANAGER_EDGE_MARGIN, screen_width - MANAGER_EDGE_MARGIN - width)
     y = max(MANAGER_EDGE_MARGIN, (screen_height - height) // 2)
     return x, y, width, height
+
 
 _background_brush = None
 _surface_brush = None
@@ -223,8 +226,33 @@ class ManagerActAuditRecord:
     detail_sha256: str | None = None
 
 
+#: Per-process key for every exported audit commitment (D122).
+#:
+#: A bare SHA-256 is a commitment only when its input is unguessable, and
+#: these inputs are not: a target binding is an executable name, a version, an
+#: HWND and a PID, and the evidence documents publish the first two in
+#: cleartext. That leaves roughly 2**39 candidates over the remaining two --
+#: minutes of GPU work -- so an exported `target_sha256` would hand back the
+#: HWND and PID that D122 exists to keep out of the record. The same argument
+#: applies to a goal, which is short natural-language text.
+#:
+#: Keying with a random per-process value removes the guessing attack without
+#: changing what the audit is for: digests still correlate records inside one
+#: transcript, which is all any reviewer reads them for. They deliberately do
+#: not correlate across runs, and the key is never written down, so a
+#: transcript cannot be re-linked to live handles after the fact.
+_AUDIT_KEY = secrets.token_bytes(32)
+
+
 def _audit_digest(value: object) -> str:
-    return hashlib.sha256(str(value).encode("utf-8")).hexdigest()
+    return hmac.new(_AUDIT_KEY, str(value).encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def _audit_commitment(value: object) -> str:
+    """Keyed commitment over a canonical JSON structure."""
+
+    raw = json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hmac.new(_AUDIT_KEY, raw, hashlib.sha256).hexdigest()
 
 
 def _proposal_audit_facts(goal: str, proposal: object) -> dict[str, object]:
@@ -250,11 +278,7 @@ def _proposal_audit_facts(goal: str, proposal: object) -> dict[str, object]:
         "uia_adapter_sha256": getattr(descriptor, "uia_adapter_sha256", None),
         "live_verifier_sha256": getattr(descriptor, "live_verifier_sha256", None),
         "active_index_sha256": getattr(proposal, "active_index_sha256", None),
-        "target_sha256": hashlib.sha256(
-            json.dumps(
-                target_binding, sort_keys=True, separators=(",", ":")
-            ).encode("utf-8")
-        ).hexdigest(),
+        "target_sha256": _audit_commitment(target_binding),
         "output_path_sha256": (
             None if output_path is None else _audit_digest(Path(output_path).resolve())
         ),
@@ -263,9 +287,7 @@ def _proposal_audit_facts(goal: str, proposal: object) -> dict[str, object]:
         "goal_sha256": _audit_digest(goal),
         **facts,
     }
-    facts["proposal_sha256"] = hashlib.sha256(
-        json.dumps(binding, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    ).hexdigest()
+    facts["proposal_sha256"] = _audit_commitment(binding)
     return facts
 
 
@@ -352,7 +374,9 @@ def _consume_act_execution_request(request: object) -> object:
         raise TypeError("Act worker requires a manager-issued execution request")
     with _ACT_EXECUTION_REQUEST_LOCK:
         if request not in _ISSUED_ACT_EXECUTION_REQUESTS:
-            raise RuntimeError("Act execution request was not issued or was already consumed")
+            raise RuntimeError(
+                "Act execution request was not issued or was already consumed"
+            )
         _ISSUED_ACT_EXECUTION_REQUESTS.remove(request)
     return request.proposal
 
@@ -730,7 +754,9 @@ class NativeManagerWindow:
     def _show(self, control_id: int, visible: bool) -> None:
         child = self._controls.get(control_id)
         if child:
-            win32gui.ShowWindow(child, win32con.SW_SHOW if visible else win32con.SW_HIDE)
+            win32gui.ShowWindow(
+                child, win32con.SW_SHOW if visible else win32con.SW_HIDE
+            )
 
     @property
     def expanded(self) -> bool:
@@ -975,9 +1001,8 @@ class NativeManagerWindow:
                     proposal_facts = _proposal_audit_facts(goal, self._act_proposal)
                     target = getattr(self._act_proposal, "target", None)
                     target_hwnd = getattr(target, "hwnd", None)
-                    if (
-                        type(target_hwnd) is not int
-                        or not restore_focus_if_safe(self.hwnd, target_hwnd)
+                    if type(target_hwnd) is not int or not restore_focus_if_safe(
+                        self.hwnd, target_hwnd
                     ):
                         # The approval click makes the manager the foreground
                         # owner. Hand that focus to the exact HWND already
@@ -998,12 +1023,18 @@ class NativeManagerWindow:
                             "Bring this manager forward and approve again.",
                         )
                         return
-                    self._pending_request = _issue_act_execution_request(
-                        goal, self._act_proposal
-                    )
+                    # Recorded before the request is minted, not after. The
+                    # handoff already happened above either way, but the
+                    # retained transcript is the artifact a reviewer reads,
+                    # and with the emission after issuance its record order
+                    # would look identical whether or not the handoff
+                    # preceded the request (D123).
                     self._record_act_audit(
                         "target_focus_handoff_completed",
                         **proposal_facts,
+                    )
+                    self._pending_request = _issue_act_execution_request(
+                        goal, self._act_proposal
                     )
                     self._record_act_audit(
                         "approve_and_run_issued",
@@ -1591,7 +1622,10 @@ class _ActWorker:
 
         def execute() -> None:
             try:
-                from ghostcursor.act_cli import execute_act_proposal, plan_draws_a_pointer
+                from ghostcursor.act_cli import (
+                    execute_act_proposal,
+                    plan_draws_a_pointer,
+                )
 
                 if plan_draws_a_pointer(proposal) and presentation is None:
                     raise RuntimeError(
@@ -1707,7 +1741,9 @@ def launch_manager(*, act_audit_path: Path | None = None) -> int:
     if act_audit_path is not None:
         audit_path = Path(act_audit_path).resolve()
         if audit_path.suffix.casefold() != ".jsonl" or not audit_path.parent.is_dir():
-            raise ValueError("Act audit path must be a JSONL file in an existing directory")
+            raise ValueError(
+                "Act audit path must be a JSONL file in an existing directory"
+            )
         audit_file = audit_path.open("x", encoding="utf-8", newline="\n")
 
     try:
@@ -1767,9 +1803,7 @@ def launch_manager(*, act_audit_path: Path | None = None) -> int:
                 from ghostcursor.act_runtime import ActControls
 
                 controls = ActControls()
-                active_act_audit = _proposal_audit_facts(
-                    request.goal, request.proposal
-                )
+                active_act_audit = _proposal_audit_facts(request.goal, request.proposal)
                 manager._record_act_audit(
                     "execution_request_dequeued", **active_act_audit
                 )
