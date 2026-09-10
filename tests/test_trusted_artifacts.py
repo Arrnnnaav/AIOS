@@ -784,6 +784,8 @@ def test_gitattributes_pins_every_attested_text_class_to_lf():
         "docs/superpowers/candidates/**/*.json text eol=lf",
         "tests/data/*.json text eol=lf",
         "docs/evidence/**/*.md text eol=lf",
+        "docs/evidence/**/*.json text eol=lf",
+        "docs/evidence/**/*.jsonl text eol=lf",
         "ghostcursor/demo/synthetic_export_app.py text eol=lf",
         "plugins/**/*.py text eol=lf",
         "plugins/**/*.json text eol=lf",

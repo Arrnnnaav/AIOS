@@ -72,6 +72,12 @@ def observe(application: object, *, label: str, at_ns: int | None = None) -> dic
     }
 
 
+def render(reading: dict) -> bytes:
+    """The exact bytes retained for a reading: UTF-8, LF, trailing newline."""
+
+    return (json.dumps(reading, indent=2, sort_keys=True) + "\n").encode("utf-8")
+
+
 def _running_application():
     """Attach to a running PowerPoint. Never start one."""
 
@@ -102,9 +108,10 @@ def main() -> int:
         print(str(exc))
         return 1
 
-    arguments.out.write_text(
-        json.dumps(reading, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
+    # write_bytes, not write_text: on Windows the text path translates "\n"
+    # to "\r\n", and this artifact is cited by SHA-256. An evidence file whose
+    # bytes depend on the platform that wrote it is the D125 defect again.
+    arguments.out.write_bytes(render(reading))
     print(f"{arguments.label}: {arguments.out.resolve()}")
     for row in reading["presentations"]:
         print(f"  {row['slide_count']:>3} slides  {row['name']}")

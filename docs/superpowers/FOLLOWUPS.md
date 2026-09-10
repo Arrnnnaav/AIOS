@@ -775,17 +775,31 @@ operationally demonstrated; release acceptance is not.
 Trigger: before any semantic PowerPoint capability, staged-plan schema wiring,
 or new feature phase.
 
-1. A replacement live manager run on the rebuilt bundle (manifest `48e6e4f4`,
-   active generation 5), crossing the real `Approve & run`, retaining its JSONL.
-2. Before/after verifier readings retained as artifacts — the 9 September slide
-   count was an operator observation that reached no file, which D034 does not
-   accept as measured evidence.
+1. DONE 10 Sep 2026 — `docs/evidence/act-live-manager-d125-run.md`, transcript
+   `act-live-manager-d125-r1.jsonl`, completed 1/1 on the rebuilt bundle.
+2. DONE 10 Sep 2026 — before/after readings retained
+   (`act-live-deck-2026-09-10-{before,after}.json`): 1 slide -> 2 slides.
 3. A fresh independent D032 review of the remediation commits and that run.
 4. The 3/3 acceptance campaigns re-run against the rebuilt bytes.
 
 Note for whoever runs it: the audit commitments are now keyed per process, so
 digests correlate only within one transcript. Two runs cannot be linked by
 comparing them, and that is deliberate.
+
+## An adapter refusal cannot be explained from retained evidence — OPEN 10 Sep 2026
+
+The 10 September run's first approval cycle ended `adapter_failed` and changed
+nothing, which is correct behaviour, but nothing retained says why. The bounded
+audit carries the run-level `code` and hashes the detail; `sessions.sqlite`
+keeps no Act detail by default.
+
+Trigger: before the 3/3 acceptance campaign, where an unexplained refusal would
+cost a whole run.
+
+A closed refusal-reason vocabulary — a fixed set of names such as
+`selector_no_match`, `identity_mismatch`, `geometry_refused` — fits D122,
+because a name from a closed set is not content. Do not widen it to free text,
+and do not let any value flow back into approval or dispatch.
 
 ## A hermetic test was reading the real ESC key — CLOSED 4 Sep 2026
 

@@ -5106,3 +5106,46 @@ issuance; and replacing the keyed commitment with a bare SHA-256.
 invalidated by reproducibility, privacy, and evidence-integrity findings. Do
 not proceed to semantic PowerPoint planning or new feature phases until the
 clean-checkout lane is green and a new independent D032 review returns READY.
+
+
+## D126 — The replacement live run, and what it retained
+
+**Date:** 10 September 2026
+**Status:** Run complete and retained; independent D032 review and the 3/3
+campaign still open.
+
+**Decision.** A live Act run's claimed state change is retained as its own
+artifact, written by a read-only probe before and after the run, and kept beside
+the bounded transcript. The D122 audit does not carry it: verifier readings are
+excluded from that record by design, and widening it to hold state would turn an
+observation-only transcript into something a reader could mistake for authority.
+
+**The run.** 10 September 2026, repository commit `f44a0e3`, on the rebuilt LF
+bundle (manifest `48e6e4f4`, active generation 5, adapter `eb7a0c68`, live
+verifier `ccbf395e`). The operator crossed the real `Approve & run` twice in one
+session. The first cycle ended `adapter_failed` with zero completed nodes; the
+second completed 1/1 and the signed live verifier confirmed the declared change.
+Both cycles carried identical proposal, target, graph and validation digests, so
+they differed environmentally and not in authority. Evidence:
+`docs/evidence/act-live-manager-d125-run.md`.
+
+**The failure is retained as a failure.** `Presentation1` read 1 slide before
+the session and 2 after it, so one slide was added across two approvals: the
+refused cycle changed nothing. That is the fail-closed property observed under
+an unplanned failure rather than a constructed one. Its cause is not recorded —
+the audit hashes the detail, `sessions.sqlite` stores no Act detail by default,
+and the operator does not recall the on-screen text. It is written down as
+unexplained rather than reconstructed (D032).
+
+**A defect found while retaining the readings.** The probe first wrote both
+files with `Path.write_text`, which translates newlines on Windows, so the
+artifacts were CRLF — the D125 defect again, in a file cited by digest. The
+probe now renders bytes explicitly, a test pins it, and
+`docs/evidence/**/*.json` and `*.jsonl` join the LF-pinned classes. Three
+mutations killed: a planted `Dispatch` launch, dropping the before/after label
+guard, and emitting CRLF.
+
+**Open.** An adapter refusal cannot be explained from retained evidence, because
+the reason inside the bounded `code` is hashed. A closed refusal-reason
+vocabulary would fit D122 without carrying content, and is recorded as a
+follow-up rather than built inside this slice.

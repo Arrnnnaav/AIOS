@@ -1,0 +1,21 @@
+{
+  "application": {
+    "build": "20326",
+    "name": "Microsoft PowerPoint",
+    "version": "16.0"
+  },
+  "at_ns": 1789026396545497300,
+  "host": {
+    "os": "Windows-11"
+  },
+  "label": "after",
+  "presentation_count": 1,
+  "presentations": [
+    {
+      "name": "Presentation1",
+      "saved": false,
+      "slide_count": 2
+    }
+  ],
+  "schema_version": 1
+}

@@ -8,7 +8,11 @@ from types import SimpleNamespace
 import pytest
 
 from ghostcursor.devtools import act_deck_observation
-from ghostcursor.devtools.act_deck_observation import DeckObservationError, observe
+from ghostcursor.devtools.act_deck_observation import (
+    DeckObservationError,
+    observe,
+    render,
+)
 
 
 def _presentation(name, slides, saved=False):
@@ -44,14 +48,8 @@ def test_a_before_after_pair_shows_the_change_that_is_being_claimed():
     before = observe(_application(_presentation("Presentation1", 1)), label="before")
     after = observe(_application(_presentation("Presentation1", 2)), label="after")
 
-    counts = {
-        row["name"]: row["slide_count"]
-        for reading in (before, after)
-        for row in reading["presentations"]
-    }
     assert before["presentations"][0]["slide_count"] == 1
     assert after["presentations"][0]["slide_count"] == 2
-    assert counts["Presentation1"] == 2
 
 
 def test_an_unlabelled_reading_is_refused():
@@ -86,6 +84,23 @@ def test_a_missing_powerpoint_is_an_error_not_a_launch(monkeypatch):
 
     with pytest.raises(DeckObservationError, match="not running"):
         act_deck_observation._running_application()
+
+
+def test_retained_bytes_are_lf_on_every_platform():
+    r"""The artifact is cited by SHA-256, so its bytes may not depend on the
+    machine that wrote it. `write_text` translates "\n" to "\r\n" on Windows,
+    which is the D125 defect in miniature: a digest that reproduces only on
+    the operating system that produced it. Found by writing the first real
+    pair of readings and seeing CRLF in both.
+    """
+
+    raw = render(
+        observe(_application(_presentation("Presentation1", 1)), label="after")
+    )
+
+    assert b"\r\n" not in raw
+    assert raw.endswith(b"\n")
+    assert json.loads(raw.decode("utf-8"))["label"] == "after"
 
 
 # --- the read-only guarantee ----------------------------------------------
