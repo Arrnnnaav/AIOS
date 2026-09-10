@@ -25,7 +25,8 @@ from tools.render_open_extensions_evidence import (  # noqa: E402
 ROOT = Path(__file__).resolve().parents[1]
 CANDIDATE_ROOT = ROOT / "docs/superpowers/candidates/declarative-workflow-compiler"
 TARGET = {
-    "target_ref": "window-A",
+    "target_ref": "window-a1b2c3d4",
+    "target_scope": "scope-1",
     "title": "Welcome - AIOS - Visual Studio Code",
     "executable": "code.exe",
 }
@@ -227,7 +228,7 @@ def test_readiness_counts_cannot_be_rewritten(tmp_path) -> None:
 
 def test_provider_measurement_must_name_the_same_target(tmp_path) -> None:
     records, measurement = _loaded(tmp_path)
-    measurement["target"]["target_ref"] = "window-Z"
+    measurement["target"]["target_ref"] = "window-99887766"
     with pytest.raises(EvidenceRefused, match="target differs"):
         check(records, measurement, CANDIDATE_ROOT)
 
@@ -252,7 +253,7 @@ def test_property_reads_must_match_the_recipe_selectors(
 
 def test_three_runs_must_share_one_target_binding(tmp_path) -> None:
     records, measurement = _loaded(tmp_path)
-    records[-1]["target"]["target_ref"] = "window-Z"
+    records[-1]["target"]["target_ref"] = "window-99887766"
     with pytest.raises(EvidenceRefused, match="one redacted target binding"):
         check(records, measurement, CANDIDATE_ROOT)
 

@@ -24,7 +24,8 @@
   },
   "target": {
     "executable": "excel.exe",
-    "target_ref": "window-B",
+    "target_ref": "window-53e1b442",
+    "target_scope": "520c394745f7",
     "title": "plugin-excel-proof.xlsx - Excel"
   },
   "timing": {

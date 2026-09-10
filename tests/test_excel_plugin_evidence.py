@@ -85,6 +85,25 @@ def test_cell_campaign_must_remain_on_one_target_binding() -> None:
         check(campaigns, excluded, CANDIDATE)
 
 
+def test_a_non_string_target_reference_is_refused() -> None:
+    """The only negative case used to be `""`, which the truthiness check
+    caught, so dropping the isinstance check survived the whole suite. A raw
+    integer handle in `target_ref` is exactly what that check exists to
+    refuse (D129)."""
+
+    campaigns, excluded = _loaded()
+    campaigns["ADD_WORKSHEET"][2]["target"]["target_ref"] = 770301
+    with pytest.raises(EvidenceRefused, match="target differs"):
+        check(campaigns, excluded, CANDIDATE)
+
+
+def test_a_missing_campaign_scope_is_refused() -> None:
+    campaigns, excluded = _loaded()
+    del campaigns["ADD_WORKSHEET"][2]["target"]["target_scope"]
+    with pytest.raises(EvidenceRefused, match="target differs"):
+        check(campaigns, excluded, CANDIDATE)
+
+
 def test_each_record_requires_a_usable_target_reference() -> None:
     campaigns, excluded = _loaded()
     campaigns["ADD_WORKSHEET"][2]["target"]["target_ref"] = ""

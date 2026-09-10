@@ -104,7 +104,15 @@ def _check_records(records: list[dict]) -> None:
         ):
             raise EvidenceRefused(f"{source}: timing landmarks are incomplete or unordered")
 
+    scopes = {record["target"].get("target_scope") for record in records}
+    if len(scopes) != 1 or not all(isinstance(s, str) and s for s in scopes):
+        raise EvidenceRefused(
+            "the runs do not share one usable campaign scope, so their target "
+            "references cannot be compared"
+        )
     handles = {record["target"]["target_ref"] for record in records}
+    if not all(isinstance(h, str) and h for h in handles):
+        raise EvidenceRefused("a target reference is not a non-empty string")
     if len(handles) != 1:
         raise EvidenceRefused(
             "the three runs did not share one redacted target binding"

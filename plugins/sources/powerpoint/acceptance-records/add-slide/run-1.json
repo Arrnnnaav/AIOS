@@ -26,7 +26,8 @@
   },
   "target": {
     "executable": "powerpnt.exe",
-    "target_ref": "window-A",
+    "target_ref": "window-b3d79355",
+    "target_scope": "5d2c4f0987eb",
     "title": "live.pptx  -  Last saved by user - PowerPoint"
   },
   "timing": {

@@ -36,6 +36,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import secrets
 import subprocess
 import sys
 import time
@@ -171,6 +173,16 @@ def run_campaign(
     workspace.mkdir(parents=True, exist_ok=True)
     runner = subprocess.run if launch is None else launch
 
+    # One scope and one salt for the whole campaign, inherited by every
+    # attempt. Each attempt runs in its own process, so a label derived from a
+    # process-local counter would be identical in all of them regardless of
+    # which window they bound -- which is how the equality check the evidence
+    # rests on became a tautology (D129). The salt is never written down: it
+    # lives in this process and its children, and dies with the campaign.
+    scope_environment = dict(os.environ)
+    scope_environment["GHOSTCURSOR_CAMPAIGN_SCOPE"] = uuid.uuid4().hex[:12]
+    scope_environment["GHOSTCURSOR_CAMPAIGN_SALT"] = secrets.token_bytes(32).hex()
+
     completed: list[Attempt] = []
     for index in range(1, attempts + 1):
         windows = restore(window_class)
@@ -193,6 +205,7 @@ def run_campaign(
             capture_output=True,
             text=True,
             timeout=1800,
+            env=scope_environment,
         )
         seconds = time.monotonic() - started
 

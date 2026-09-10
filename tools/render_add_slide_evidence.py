@@ -452,12 +452,25 @@ def _check_records(records: list[dict]) -> None:
         target = record.get("target", {})
         if target.get("executable") != EXECUTABLE:
             raise EvidenceRefused(f"{source}: target executable is not {EXECUTABLE}")
-        if not isinstance(target.get("target_ref"), str) or not target["target_ref"]:
-            raise EvidenceRefused(f"{source}: target has no redacted binding reference")
+        for field in ("target_ref", "target_scope"):
+            if not isinstance(target.get(field), str) or not target[field]:
+                raise EvidenceRefused(
+                    f"{source}: target has no usable {field} (a reference that is "
+                    "not a non-empty string is not a binding reference)"
+                )
         _check_timing(record)
 
     # The pseudonym proves the runs shared one binding; it does not identify
     # the window, and the wording below must not claim that it does (D128).
+    # Scope first: labels are salted per campaign, so two labels from
+    # different scopes are not comparable at all and equality between them
+    # would be meaningless rather than merely unproven (D129).
+    scopes = {record["target"]["target_scope"] for record in records}
+    if len(scopes) != 1:
+        raise EvidenceRefused(
+            f"the runs came from {len(scopes)} campaign scopes, so their target "
+            "references cannot be compared"
+        )
     references = {record["target"]["target_ref"] for record in records}
     if len(references) != 1:
         raise EvidenceRefused(

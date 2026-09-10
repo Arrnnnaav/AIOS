@@ -50,6 +50,21 @@ def isolated_plugin_runtime(tmp_path_factory: pytest.TempPathFactory, request):
         else:
             os.environ[name] = previous
 
+    # D129 quarantines the Excel and VS Code bundles: they install on first
+    # run but do not auto-enable, because their signed payload evidence still
+    # prints a raw window handle and they cannot be re-signed. Most tests here
+    # are about what the runtime does once a plugin IS active, so this fixture
+    # stands in for the operator who enabled it. Tests that assert bootstrap
+    # behaviour itself build their own store root and are unaffected.
+    try:
+        from ghostcursor.plugins.platform import production_store
+
+        store = production_store()
+        for installed in store.list_installed():
+            store.enable(installed.plugin_id, installed.version)
+    except Exception:  # noqa: BLE001 - a store-less test lane must still run
+        pass
+
     request.addfinalizer(restore)
 
 

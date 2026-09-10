@@ -33,21 +33,24 @@ def test_every_bundled_plugin_matches_the_pinned_index_and_release_key():
 def test_bootstrap_happens_once_and_never_reenables_an_operator_choice(
     monkeypatch, tmp_path
 ):
+    """Only the clean bundle auto-enables. The Excel and VS Code bundles are
+    installed but quarantined -- their payload evidence prints a raw handle
+    and they cannot be re-signed, so D129 keeps them out of first-run enable
+    while leaving them installable."""
+
     monkeypatch.setenv(platform.ENV_PLUGIN_ROOT, str(tmp_path / "plugins"))
     store = platform.production_store()
-    assert set(store.load_active_catalog().plugins) == {
+    assert set(store.load_active_catalog().plugins) == {"ghostcursor.synthetic"}
+    assert {p.plugin_id for p in store.list_installed()} == {
         "ghostcursor.excel",
         "ghostcursor.synthetic",
         "ghostcursor.vscode",
     }
-    store.disable("ghostcursor.vscode")
+    store.disable("ghostcursor.synthetic")
 
     restarted = platform.production_store()
 
-    assert tuple(restarted.load_active_catalog().plugins) == (
-        "ghostcursor.excel",
-        "ghostcursor.synthetic",
-    )
+    assert tuple(restarted.load_active_catalog().plugins) == ()
 
 
 def test_an_initialized_store_with_no_plugins_has_zero_executable_knowledge(tmp_path):
@@ -122,7 +125,7 @@ def test_disabling_a_plugin_invalidates_the_running_authority_epoch(
     workflow = SimpleNamespace(index_sha256=store.current_active_index_sha256())
 
     assert platform.runtime_authority_status(workflow) is None
-    store.disable("ghostcursor.vscode")
+    store.disable("ghostcursor.synthetic")
     assert (
         platform.runtime_authority_status(workflow)
         == "active plugin authority changed during the tour"

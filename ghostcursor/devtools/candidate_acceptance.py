@@ -35,7 +35,10 @@ from __future__ import annotations
 import argparse
 import contextlib
 import hashlib
+import hmac
 import json
+import os
+import secrets
 import uuid
 from datetime import datetime, timezone
 import sys
@@ -64,7 +67,6 @@ from ghostcursor.packs.trusted import (
     load_trusted_artifact,
 )
 from ghostcursor.packs.workflow import (
-    AppSnapshot,
     TargetContext,
     WindowCandidate,
     WorkflowUnavailable,
@@ -83,27 +85,65 @@ class CandidateRejected(Exception):
     """The named candidate graph cannot be accepted as given."""
 
 
-
 #: A campaign binds one window, and the record has to show that all of its runs
 #: bound the *same* one. It does not have to publish which. A raw HWND in a
 #: committed record is a value D122 keeps out of the transcript and D125 keyed
 #: out of the audit, so recording it here would reintroduce by the back door
 #: what those decisions removed at the front (D128).
 #:
-#: The pseudonym is process-local and assigned in first-seen order, so equality
-#: across a campaign's records is preserved and nothing else is. It is not a
-#: digest: a keyed digest whose key ships beside it protects nothing, and one
-#: whose key does not ship cannot be checked by a reviewer at all.
-_WINDOW_PSEUDONYMS: dict[int, str] = {}
+#: The FIRST version of this assigned labels from a process-local counter, so
+#: the first handle a process saw became `window-A`. A campaign runs each
+#: attempt in its own subprocess, which meant every run wrote `window-A`
+#: whatever it bound: the renderer's "all three references are equal" check
+#: could no longer fail, and the sentence it gates was printed on the strength
+#: of a constant. That is a true check replaced by a tautology -- the exact
+#: D031 failure this project keeps finding, introduced by a fix for it (D129).
+#:
+#: The label is now derived from the handle under a per-campaign salt. Equal
+#: handles give equal labels and different handles give different ones, across
+#: process boundaries, because every attempt in a campaign inherits the same
+#: salt. The salt is generated once per campaign, passed to children through
+#: the environment, and never written down -- so after the campaign ends no
+#: one, including us, can invert a label. A salt stored beside the labels would
+#: protect nothing; a salt nobody shares would make equality uncheckable.
+#:
+#: Labels are only comparable inside one scope, so the scope id travels with
+#: them and a reader is never invited to compare across campaigns.
+_SCOPE_VARIABLE = "GHOSTCURSOR_CAMPAIGN_SCOPE"
+_SALT_VARIABLE = "GHOSTCURSOR_CAMPAIGN_SALT"
 
 
-def window_pseudonym(hwnd: int) -> str:
-    """A stable per-campaign label for one window handle."""
+def campaign_scope() -> tuple[str, bytes]:
+    """This campaign's scope id and salt, from the environment or fresh.
 
-    if hwnd not in _WINDOW_PSEUDONYMS:
-        index = len(_WINDOW_PSEUDONYMS)
-        _WINDOW_PSEUDONYMS[hwnd] = f"window-{chr(ord('A') + index)}"
-    return _WINDOW_PSEUDONYMS[hwnd]
+    A campaign runner exports both before spawning attempts. A standalone run
+    that inherits neither gets its own scope, which is what makes its records
+    *incomparable* with another process's rather than falsely equal to them.
+    """
+
+    scope = os.environ.get(_SCOPE_VARIABLE)
+    salt = os.environ.get(_SALT_VARIABLE)
+    if scope and salt:
+        return scope, bytes.fromhex(salt)
+    return uuid.uuid4().hex[:12], secrets.token_bytes(32)
+
+
+_SCOPE_ID, _SCOPE_SALT = campaign_scope()
+
+
+def window_reference(hwnd: int, *, scope: str = "", salt: bytes = b"") -> str:
+    """A salted, campaign-scoped label for one window handle."""
+
+    salt = salt or _SCOPE_SALT
+    scope = scope or _SCOPE_ID
+    digest = hmac.new(salt, f"{scope}:{int(hwnd)}".encode("utf-8"), hashlib.sha256)
+    return f"window-{digest.hexdigest()[:8]}"
+
+
+def window_scope() -> str:
+    """The scope these labels belong to. Recorded beside every reference."""
+
+    return _SCOPE_ID
 
 
 @dataclass(frozen=True)
@@ -180,7 +220,8 @@ class PreparationRecord:
                     "value": self.application_identity_value,
                 },
                 "target": {
-                    "target_ref": window_pseudonym(self.target_hwnd),
+                    "target_ref": window_reference(self.target_hwnd),
+                    "target_scope": window_scope(),
                     "title": self.target_title,
                 },
             },
@@ -255,7 +296,8 @@ class RunRecord:
                     "value": self.application_identity_value,
                 },
                 "target": {
-                    "target_ref": window_pseudonym(self.target_hwnd),
+                    "target_ref": window_reference(self.target_hwnd),
+                    "target_scope": window_scope(),
                     "title": self.target_title,
                     "executable": self.target_executable,
                 },
@@ -670,9 +712,7 @@ def accept_candidate(
 
         def _should_abort():
             requested = should_abort is not None and should_abort()
-            return requested or (
-                controls is not None and controls.should_abort()
-            )
+            return requested or (controls is not None and controls.should_abort())
 
         kwargs = {
             "observe": observe,

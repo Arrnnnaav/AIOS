@@ -204,6 +204,8 @@ def _check_common(record: dict, intent_id: str, *, outcome: str) -> None:
         or target.get("title") != TARGET_TITLE
         or not isinstance(target.get("target_ref"), str)
         or not target["target_ref"]
+        or not isinstance(target.get("target_scope"), str)
+        or not target["target_scope"]
     ):
         raise EvidenceRefused(f"{source}: target differs from the proof workbook")
 

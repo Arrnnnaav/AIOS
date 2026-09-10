@@ -30,7 +30,7 @@ import time
 import uuid
 from pathlib import Path
 
-from ghostcursor.devtools.candidate_acceptance import window_pseudonym
+from ghostcursor.devtools.candidate_acceptance import window_reference, window_scope
 from types import SimpleNamespace
 
 import win32api
@@ -373,7 +373,8 @@ def main() -> int:
                     # The runtime bindings above need the real handle; this
                     # artifact does not, and a diagnostic file is exactly where
                     # a raw handle escapes into the repository (D128).
-                    "target_ref": window_pseudonym(hwnd),
+                    "target_ref": window_reference(hwnd),
+                    "target_scope": window_scope(),
                     "identity": dict(outcome.identity_record or {})
                     if outcome
                     else None,

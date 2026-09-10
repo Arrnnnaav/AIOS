@@ -25,12 +25,12 @@ verification, or execution.
 
 | Workflow | Run | Target | Outcome | Steps | Grounding | First observation | First hint | Verification start | End |
 |---|---:|---:|---|---:|---|---:|---:|---:|---:|
-| `SELECT_CELL_B2` | 1 | `window-A` | passed | 1/1 | UIA | 0.750s | 1.500s | n/a | 7.312s |
-| `SELECT_CELL_B2` | 2 | `window-A` | passed | 1/1 | UIA | 0.750s | 1.500s | n/a | 6.297s |
-| `SELECT_CELL_B2` | 3 | `window-A` | passed | 1/1 | UIA | 0.750s | 1.516s | n/a | 2.266s |
-| `ADD_WORKSHEET` | 1 | `window-A` | passed | 1/1 | UIA | 0.500s | 1.266s | 8.312s | 8.812s |
-| `ADD_WORKSHEET` | 2 | `window-B` | passed | 1/1 | UIA | 0.500s | 1.250s | 7.328s | 7.828s |
-| `ADD_WORKSHEET` | 3 | `window-C` | passed | 1/1 | UIA | 0.516s | 1.266s | 14.172s | 14.688s |
+| `SELECT_CELL_B2` | 1 | `window-11e7dbc6` | passed | 1/1 | UIA | 0.750s | 1.500s | n/a | 7.312s |
+| `SELECT_CELL_B2` | 2 | `window-11e7dbc6` | passed | 1/1 | UIA | 0.750s | 1.500s | n/a | 6.297s |
+| `SELECT_CELL_B2` | 3 | `window-11e7dbc6` | passed | 1/1 | UIA | 0.750s | 1.516s | n/a | 2.266s |
+| `ADD_WORKSHEET` | 1 | `window-ed9e7f73` | passed | 1/1 | UIA | 0.500s | 1.266s | 8.312s | 8.812s |
+| `ADD_WORKSHEET` | 2 | `window-53e1b442` | passed | 1/1 | UIA | 0.500s | 1.250s | 7.328s | 7.828s |
+| `ADD_WORKSHEET` | 3 | `window-8972c5bf` | passed | 1/1 | UIA | 0.516s | 1.266s | 14.172s | 14.688s |
 
 Results:
 

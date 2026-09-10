@@ -16,8 +16,19 @@ current-state audit record; the human-run source evidence remains in
   `53122d6d37e99f1e18a5e236d8a2409bea9769c7e53d1e1be2a6eeefffacf3e2`
 - Bundle SHA-256:
   `a5e4e9e9673696ffff459ba69d1dfaf435b56e60d3b55c415401a99f97dcf00e`
-- Evidence SHA-256:
-  `39609e01e49fe1bf323a1d7cf617a942e5e6610710a6bc653f700334cce701d5`
+- Evidence SHA-256 **in the signed bundle**:
+  `fcedf7188df76e1e4d85b8ccc24134130baa62d1524df772599a3adaac707e7e`
+- Evidence SHA-256 **in the repository today**:
+  `cce87d752f3fd5a4c2518a8874a2acff41ccc1057521c5d9552885554f0b0472`
+
+These differ, and the difference is the point. The repository copy was
+redacted and its target bindings pseudonymised under D128/D129; the signed
+bundle still carries the pre-redaction bytes, because
+`ghostcursor-release-2026-2` is not available and the bundle cannot be
+re-signed. The bundle is inventoried in `plugins/bundled/legacy-exposure.json`
+as `legacy_exposed` and is excluded from first-run enable. Treat the signed
+artifact described here as **legacy**: it is not sanitised, and it is not
+acceptance evidence for anything after 10 September 2026.
 
 Only the public Ed25519 key is tracked. A scan found no private-key material in
 the current tree or reachable history. The signing procedure reported deleting
@@ -27,8 +38,9 @@ no executable Python is present in the plugin.
 
 The active merged catalog contains the signed Excel, Synthetic, and VS Code
 plugins. Both Excel intents authorize from that catalog and carry active
-adoptions. A fresh-store bootstrap reports all three plugins as
-`enabled_compatible`.
+adoptions. A fresh-store bootstrap installs all three plugins, but enables
+only `ghostcursor.synthetic`: the Excel and VS Code bundles are quarantined
+under D129 until sanitised bundles replace them.
 
 ## Human desktop acceptance
 

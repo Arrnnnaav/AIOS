@@ -65,7 +65,8 @@ def _record(**overrides) -> dict:
             "value": "16.0.20326.20112",
         },
         "target": {
-            "target_ref": "window-A",
+            "target_ref": "window-a1b2c3d4",
+            "target_scope": "scope-1",
             "title": "live.pptx - PowerPoint",
             "executable": "powerpnt.exe",
         },
@@ -312,7 +313,7 @@ def test_runs_with_different_target_bindings_are_refused(tmp_path):
     the same application window."""
 
     records = _three()
-    records[2]["target"] = dict(records[2]["target"], target_ref="window-Z")
+    records[2]["target"] = dict(records[2]["target"], target_ref="window-99887766")
     code, output = _render(_campaign(tmp_path, records), tmp_path / "o.md")
     assert code == 2
     assert "one target binding" in output

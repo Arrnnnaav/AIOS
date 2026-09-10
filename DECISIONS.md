@@ -3526,7 +3526,7 @@ and bundle digest
 `a5e4e9e9673696ffff459ba69d1dfaf435b56e60d3b55c415401a99f97dcf00e`.
 Its public signing key is named `ghostcursor-release-2026-2`; no private key is
 stored in the repository. Both adoption records bind evidence digest
-`39609e01e49fe1bf323a1d7cf617a942e5e6610710a6bc653f700334cce701d5`
+`cce87d752f3fd5a4c2518a8874a2acff41ccc1057521c5d9552885554f0b0472`
 and independent review commit
 `381d97f5f376ee586260eb4430595fcff1e2668e`.
 
@@ -5284,3 +5284,71 @@ The claim that its refused cycle "had no effect" is withdrawn: the retained
 readings bracket the session, not either cycle, so the session's net effect is
 one added slide and attribution to an attempt is not established. Future runs
 retain a reading per attempt.
+
+
+## D129 — A target reference must survive a process boundary
+
+**Date:** 10 September 2026
+**Status:** Implemented. D128 is **partially satisfied** until the legacy
+bundles are replaced.
+
+**Decision.** A target reference is derived from the window handle under a
+per-campaign salt: `HMAC(salt, "<scope>:<hwnd>")`, truncated. One scope and one
+salt are generated per campaign and exported to every attempt, so equal handles
+give equal references and different handles give different ones **across
+processes**. The salt is never written down, so a reference cannot be inverted
+after the campaign. The scope id travels with every reference, and a renderer
+refuses to compare references from different scopes.
+
+**What was wrong, and it was my own fix.** D128 assigned labels from a
+process-local counter. A campaign runs each attempt in its own subprocess, so
+the first handle each process saw became `window-A` — every run would have
+recorded `window-A` whatever it bound. The renderer's check that all three
+references are equal could then never fail, and the evidence sentence resting
+on it would print on the strength of a constant. Before D128 the record held
+the real handle and that check was genuine evidence: **the remediation replaced
+a true check with a tautology**, which is precisely the D031 failure this
+project keeps rediscovering.
+
+It was also untested. Making `window_pseudonym` return `str(hwnd)` — reverting
+the entire privacy control — passed all 2461 tests. A second mutation survived
+too: the Excel renderer's `isinstance(target_ref, str)` check had only `""` as
+a negative case, so a raw integer handle would have been accepted and rendered.
+
+**One correction to the review that found it.** It reported that PowerPoint's
+excluded attempt-sets "were not the same window" and had collided on one label.
+The original records say otherwise: all nine excluded runs and the three counted
+runs bound one handle. The committed labels were truthful; what was missing was
+any mechanism guaranteeing that for the next run.
+
+**Migration.** Committed records were regenerated from the original handles
+recovered from `11d8b85`, under a per-campaign salt discarded afterwards. Excel's
+worksheet campaign now carries three distinct references and its cell campaign
+one, matching what those runs actually bound.
+
+**Legacy bundle containment (finding 4).** Three `.ghostplugin` files are
+tracked; two carry payload evidence printing a raw handle and cannot be
+re-signed. Deleting them would break first-run bootstrap, so they are contained
+instead: `plugins/bundled/legacy-exposure.json` records each by path, plugin id,
+version, manifest digest, bundle digest, signing key and exposed files; the
+scanner fails on any unlisted bundle or drifted digest; exposed bundles are
+marked `legacy_exposed` and no longer auto-enable. The cost is real and is
+stated here rather than hidden: **a fresh install now has no VS Code or Excel
+capability until an operator enables it.** These bundles are excluded from
+acceptance evidence and from any marketplace claim.
+
+**Closure documents regenerated (finding 8).** `plugin-platform-v1-closure.md`
+and `schema-v2-final-milestone.md` had asserted digest sets that could not both
+hold. They now state both digests explicitly — what the signed bundle carries
+and what the repository carries — and why they differ, rather than patching one
+number to match the other.
+
+**Mutation audit.** Killed, each by a named test: the raw-handle return; the
+process-local counter (caught by the cross-process test, which the previous
+scheme could not have passed); a non-string reference in the Excel renderer; a
+missing campaign scope; an unlisted legacy bundle; a drifted bundle digest; an
+exposed bundle marked clean; an exposed bundle left auto-enabled.
+
+**Still open.** Key custody. Until `ghostcursor-release-2026-1` and `-2026-2`
+are recovered or rotated, the sanitised payloads cannot be shipped and D128
+remains partially satisfied.

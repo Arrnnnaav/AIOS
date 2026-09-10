@@ -321,8 +321,7 @@ evidences the D123 ordering rather than merely being consistent with it.
 `act-live-manager-d123-r5.jsonl` is invalidated (D125) — it names adapter,
 verifier and manifest digests that no longer exist. `act-live-manager-d125-r1.jsonl`
 is superseded (D127) — its catalog manifest `48e6e4f4` contained signed build
-products and was never reproducible. The current bundle is `61b39b65` at active
-generation 6. Auto Act is
+products and was never reproducible. The current PowerPoint bundle is `28dbaf2d` at active generation 7. Auto Act is
 operationally demonstrated, but release acceptance is invalidated by
 reproducibility, privacy, and evidence-integrity findings. Do not proceed to
 semantic PowerPoint planning or new feature phases until the clean-checkout lane

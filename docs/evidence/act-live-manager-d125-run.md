@@ -106,8 +106,9 @@ The bounded audit carries the run-level `code` (`action_failed` →
 `adapter_failed`) but hashes the detail, `sessions.sqlite` stores no Act detail
 by default, and the operator does not recall the on-screen text and believes a
 stray interaction may have caused it. Under D032 an unremembered cause is not
-written down as a finding. What the artifacts do establish is that it refused,
-and that it refused without touching the deck.
+written down as a finding. What the artifacts establish is that it refused. Whether that
+cycle left the deck untouched is not established: see the attribution
+note above.
 
 ## What this run proves
 

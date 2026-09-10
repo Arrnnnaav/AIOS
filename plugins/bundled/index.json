@@ -2,7 +2,7 @@
   "bundles": [
     {
       "bundle_sha256": "381b025cf582672a48ebe490fe6ff8addb212270373fd51e828bf509c588c6a3",
-      "enable_on_first_run": true,
+      "enable_on_first_run": false,
       "manifest_sha256": "e8a300560f19637f1074ff06e60d80ef553d5c0c53e503c111703250a2d88d3a",
       "path": "ghostcursor.vscode-1.0.0.ghostplugin",
       "plugin_id": "ghostcursor.vscode",
@@ -18,7 +18,7 @@
     },
     {
       "bundle_sha256": "a5e4e9e9673696ffff459ba69d1dfaf435b56e60d3b55c415401a99f97dcf00e",
-      "enable_on_first_run": true,
+      "enable_on_first_run": false,
       "manifest_sha256": "53122d6d37e99f1e18a5e236d8a2409bea9769c7e53d1e1be2a6eeefffacf3e2",
       "path": "ghostcursor.excel-1.0.0.ghostplugin",
       "plugin_id": "ghostcursor.excel",

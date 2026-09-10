@@ -44,14 +44,24 @@ def _launcher(*payloads):
     argv it was given, so 'fresh paths per attempt' can be asserted."""
 
     calls = []
+    environments = []
     remaining = list(payloads)
 
-    def launch(command, capture_output=True, text=True, timeout=None):
+    def launch(command, capture_output=True, text=True, timeout=None, env=None):
         calls.append(list(command))
+        # Every attempt must inherit ONE campaign scope and salt, or the
+        # target references in its records stop meaning anything (D129).
+        environments.append(
+            (
+                (env or {}).get("GHOSTCURSOR_CAMPAIGN_SCOPE"),
+                (env or {}).get("GHOSTCURSOR_CAMPAIGN_SALT"),
+            )
+        )
         payload = remaining.pop(0) if remaining else _stdout(_result())
         return SimpleNamespace(stdout=payload, stderr="", returncode=0)
 
     launch.calls = calls
+    launch.environments = environments
     return launch
 
 
@@ -294,3 +304,51 @@ def test_the_runner_offers_no_parallel_mode():
 
     assert "parallel" not in source.lower()
     assert "thread" not in source.lower()
+
+
+def test_every_attempt_inherits_one_campaign_scope_and_salt(tmp_path):
+    """A campaign runs each attempt in its own process. If each derived its
+    own scope, two runs that bound different windows would still write the
+    same label, and the evidence sentence resting on that equality would be
+    printed on the strength of a constant (D129).
+    """
+
+    launch = _launcher(*[_stdout(_result()) for _ in range(3)])
+    run_campaign(
+        attempts=3,
+        build_command=lambda index, store, output: ["py", str(index)],
+        workspace=tmp_path,
+        window_class="PPTFrameClass",
+        restore=_one_window,
+        launch=launch,
+        settle_s=0,
+    )
+
+    assert len(launch.environments) == 3
+    scopes = {scope for scope, _ in launch.environments}
+    salts = {salt for _, salt in launch.environments}
+    assert len(scopes) == 1 and next(iter(scopes)), launch.environments
+    assert len(salts) == 1 and next(iter(salts)), launch.environments
+    # The salt is a real secret, not a placeholder.
+    assert len(next(iter(salts))) == 64
+
+
+def test_two_campaigns_do_not_share_a_scope(tmp_path):
+    """Labels from different campaigns must be incomparable rather than
+    accidentally equal."""
+
+    first = _launcher(_stdout(_result()))
+    second = _launcher(_stdout(_result()))
+    for launcher in (first, second):
+        run_campaign(
+            attempts=1,
+            build_command=lambda index, store, output: ["py", str(index)],
+            workspace=tmp_path / str(id(launcher)),
+            window_class="PPTFrameClass",
+            restore=_one_window,
+            launch=launcher,
+            settle_s=0,
+        )
+
+    assert first.environments[0][0] != second.environments[0][0]
+    assert first.environments[0][1] != second.environments[0][1]

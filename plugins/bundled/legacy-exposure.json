@@ -1,0 +1,48 @@
+{
+  "bundles": [
+    {
+      "bundle_sha256": "a5e4e9e9673696ffff459ba69d1dfaf435b56e60d3b55c415401a99f97dcf00e",
+      "exposed_fields": [
+        "window handle"
+      ],
+      "exposed_files": [
+        "docs/evidence/excel-plugin-acceptance.md",
+        "docs/evidence/excel-uia-feasibility.md"
+      ],
+      "manifest_sha256": "53122d6d37e99f1e18a5e236d8a2409bea9769c7e53d1e1be2a6eeefffacf3e2",
+      "path": "ghostcursor.excel-1.0.0.ghostplugin",
+      "plugin_id": "ghostcursor.excel",
+      "signing_key_id": "ghostcursor-release-2026-2",
+      "status": "legacy_exposed",
+      "version": "1.0.0"
+    },
+    {
+      "bundle_sha256": "4d0065e56df6d5e0e0484684c009ff184f6db051f1f17430ce5711801739a99b",
+      "exposed_fields": [],
+      "exposed_files": [],
+      "manifest_sha256": "66f493da5ce642f33867d3e2847e0695e02f3f349b16bc99a974f47c0a621075",
+      "path": "ghostcursor.synthetic-1.0.0.ghostplugin",
+      "plugin_id": "ghostcursor.synthetic",
+      "signing_key_id": "ghostcursor-release-2026-1",
+      "status": "clean",
+      "version": "1.0.0"
+    },
+    {
+      "bundle_sha256": "381b025cf582672a48ebe490fe6ff8addb212270373fd51e828bf509c588c6a3",
+      "exposed_fields": [
+        "window handle"
+      ],
+      "exposed_files": [
+        "docs/evidence/open-extensions-candidate-acceptance.md"
+      ],
+      "manifest_sha256": "e8a300560f19637f1074ff06e60d80ef553d5c0c53e503c111703250a2d88d3a",
+      "path": "ghostcursor.vscode-1.0.0.ghostplugin",
+      "plugin_id": "ghostcursor.vscode",
+      "signing_key_id": "ghostcursor-release-2026-1",
+      "status": "legacy_exposed",
+      "version": "1.0.0"
+    }
+  ],
+  "note": "Legacy signed bundles predating D128. Their payload evidence prints a raw window handle and they cannot be re-signed: the private keys for ghostcursor-release-2026-1 and -2026-2 are not available. They are quarantined rather than deleted -- deleting them breaks first-run bootstrap -- and are excluded from auto-enable, from acceptance evidence, and from any marketplace claim, until sanitised bundles replace them (D129).",
+  "schema_version": 1
+}
