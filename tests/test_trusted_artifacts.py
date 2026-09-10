@@ -37,9 +37,7 @@ def _pack(**overrides) -> dict:
         "title_patterns": [".*Visual Studio Code.*", ".* - Code$"],
         "tier2_capture": "executable_bounded",
         "version_identity": {"kind": "executable_version"},
-        "aliases": {
-            "vscode_names": ["vs code", "vscode", "visual studio code"]
-        },
+        "aliases": {"vscode_names": ["vs code", "vscode", "visual studio code"]},
     }
     value.update(overrides)
     return value
@@ -164,21 +162,24 @@ def test_valid_documents_load_as_immutable_values(tmp_path):
         loaded.value["aliases"]["vscode_names"] = ("changed",)
 
 
-@pytest.mark.parametrize("schema,value", [
-    (
-        ArtifactSchema.INDEX,
-        {
-            "schema_version": 2,
-            "packs": [
-                {"pack_id": "vscode", "path": "vscode"},
-                {"pack_id": "synthetic", "path": "synthetic"},
-            ],
-        },
-    ),
-    (ArtifactSchema.PACK, _pack()),
-    (ArtifactSchema.INTENT, _intent()),
-    (ArtifactSchema.RECIPE, _recipe()),
-])
+@pytest.mark.parametrize(
+    "schema,value",
+    [
+        (
+            ArtifactSchema.INDEX,
+            {
+                "schema_version": 2,
+                "packs": [
+                    {"pack_id": "vscode", "path": "vscode"},
+                    {"pack_id": "synthetic", "path": "synthetic"},
+                ],
+            },
+        ),
+        (ArtifactSchema.PACK, _pack()),
+        (ArtifactSchema.INTENT, _intent()),
+        (ArtifactSchema.RECIPE, _recipe()),
+    ],
+)
 def test_every_json_contract_has_a_valid_minimum(tmp_path, schema, value):
     assert _load_json(tmp_path, value, schema).schema is schema
 
@@ -218,10 +219,14 @@ def test_digest_is_full_authority_not_the_filename_prefix(tmp_path):
     wrong = ArtifactRef(ref.path, "a" * 64)
 
     with pytest.raises(ValueError, match="digest"):
-        load_trusted_artifact(tmp_path, wrong, ArtifactSchema.PACK, project_root=tmp_path)
+        load_trusted_artifact(
+            tmp_path, wrong, ArtifactSchema.PACK, project_root=tmp_path
+        )
 
 
-def test_bytes_are_read_once_then_the_same_bytes_are_hashed_and_parsed(tmp_path, monkeypatch):
+def test_bytes_are_read_once_then_the_same_bytes_are_hashed_and_parsed(
+    tmp_path, monkeypatch
+):
     ref = _write_json(tmp_path, "pack.json", _pack())
     original = Path.read_bytes
     reads = 0
@@ -250,7 +255,9 @@ def test_bom_and_invalid_utf8_fail_instead_of_being_repaired(tmp_path):
         path.write_bytes(raw)
         ref = ArtifactRef(name, _digest(raw))
         with pytest.raises(ValueError, match="UTF-8|BOM"):
-            load_trusted_artifact(tmp_path, ref, ArtifactSchema.PACK, project_root=tmp_path)
+            load_trusted_artifact(
+                tmp_path, ref, ArtifactSchema.PACK, project_root=tmp_path
+            )
 
 
 def test_duplicate_json_key_is_rejected_before_last_write_wins(tmp_path):
@@ -268,14 +275,19 @@ def test_nonfinite_json_number_is_rejected(tmp_path):
     ref = ArtifactRef("nonfinite.json", _digest(raw))
 
     with pytest.raises(ValueError, match="non-finite"):
-        load_trusted_artifact(tmp_path, ref, ArtifactSchema.RECIPE, project_root=tmp_path)
+        load_trusted_artifact(
+            tmp_path, ref, ArtifactSchema.RECIPE, project_root=tmp_path
+        )
 
 
-@pytest.mark.parametrize("mutation,match", [
-    (lambda p: {**p, "future": True}, "unknown"),
-    (lambda p: {k: v for k, v in p.items() if k != "aliases"}, "missing"),
-    (lambda p: {**p, "schema_version": 1}, "schema_version"),
-])
+@pytest.mark.parametrize(
+    "mutation,match",
+    [
+        (lambda p: {**p, "future": True}, "unknown"),
+        (lambda p: {k: v for k, v in p.items() if k != "aliases"}, "missing"),
+        (lambda p: {**p, "schema_version": 1}, "schema_version"),
+    ],
+)
 def test_top_level_schema_is_exact(tmp_path, mutation, match):
     with pytest.raises(ValueError, match=match):
         _load_json(tmp_path, mutation(_pack()), ArtifactSchema.PACK)
@@ -337,16 +349,19 @@ def test_index_rejects_casefold_duplicate_ids_and_paths(tmp_path):
             )
 
 
-@pytest.mark.parametrize("field,value", [
-    ("pack_id", "VSCode"),
-    ("display_name", " Visual Studio Code"),
-    ("executable_names", ["Code.exe"]),
-    ("executable_names", ["bin/code.exe"]),
-    ("title_patterns", ["["]),
-    ("tier2_capture", "auto"),
-    ("aliases", {"vscode_names": ["VS Code"]}),
-    ("aliases", {"vscode_names": ["vs  code"]}),
-])
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("pack_id", "VSCode"),
+        ("display_name", " Visual Studio Code"),
+        ("executable_names", ["Code.exe"]),
+        ("executable_names", ["bin/code.exe"]),
+        ("title_patterns", ["["]),
+        ("tier2_capture", "auto"),
+        ("aliases", {"vscode_names": ["VS Code"]}),
+        ("aliases", {"vscode_names": ["vs  code"]}),
+    ],
+)
 def test_pack_rejects_noncanonical_or_invalid_fields(tmp_path, field, value):
     with pytest.raises(ValueError):
         _load_json(tmp_path, _pack(**{field: value}), ArtifactSchema.PACK)
@@ -363,10 +378,15 @@ def test_pack_kind_constraints_are_explicit(tmp_path):
         version_identity=None,
         aliases={},
     )
-    assert _load_json(tmp_path, planner, ArtifactSchema.PACK).value["pack_kind"] == "planner_only"
+    assert (
+        _load_json(tmp_path, planner, ArtifactSchema.PACK).value["pack_kind"]
+        == "planner_only"
+    )
 
     with pytest.raises(ValueError, match="planner_only"):
-        _load_json(tmp_path, {**planner, "executable_names": ["host.exe"]}, ArtifactSchema.PACK)
+        _load_json(
+            tmp_path, {**planner, "executable_names": ["host.exe"]}, ArtifactSchema.PACK
+        )
     with pytest.raises(ValueError, match="planner_only"):
         _load_json(
             tmp_path,
@@ -377,10 +397,14 @@ def test_pack_kind_constraints_are_explicit(tmp_path):
         _load_json(tmp_path, _pack(executable_names=[]), ArtifactSchema.PACK)
 
 
-def test_content_identity_is_allowlisted_and_checked_without_hashing_python_version(tmp_path, monkeypatch):
+def test_content_identity_is_allowlisted_and_checked_without_hashing_python_version(
+    tmp_path, monkeypatch
+):
     source = tmp_path / "ghostcursor" / "demo" / "synthetic_export_app.py"
     source.parent.mkdir(parents=True)
-    source.write_text("APP_TITLE = 'Synthetic Export'\n", encoding="utf-8", newline="\n")
+    source.write_text(
+        "APP_TITLE = 'Synthetic Export'\n", encoding="utf-8", newline="\n"
+    )
     synthetic = _pack(
         pack_id="synthetic",
         display_name="Synthetic Export",
@@ -411,13 +435,18 @@ def test_content_identity_is_allowlisted_and_checked_without_hashing_python_vers
         with pytest.raises(ValueError):
             _load_json(
                 tmp_path / ("bad-" + hashlib.sha1(bad.encode()).hexdigest()),
-                {**synthetic, "version_identity": {"kind": "content_sha256", "path": bad}},
+                {
+                    **synthetic,
+                    "version_identity": {"kind": "content_sha256", "path": bad},
+                },
                 ArtifactSchema.PACK,
                 project_root=tmp_path,
             )
 
     original = Path.is_symlink
-    monkeypatch.setattr(Path, "is_symlink", lambda path: path == source or original(path))
+    monkeypatch.setattr(
+        Path, "is_symlink", lambda path: path == source or original(path)
+    )
     with pytest.raises(ValueError, match="symlink"):
         _load_json(
             tmp_path / "symlink-source",
@@ -427,15 +456,18 @@ def test_content_identity_is_allowlisted_and_checked_without_hashing_python_vers
         )
 
 
-@pytest.mark.parametrize("rules", [
-    [{"tier": "exact", "phrases": []}],
-    [{"tier": "exact", "phrases": ["Open Folder"]}],
-    [{"tier": "heuristic", "all_of": []}],
-    [{"tier": "heuristic", "all_of": [{"any_of": []}]}],
-    [{"tier": "heuristic", "all_of": [{"any_of": [{"token": ""}]}]}],
-    [{"tier": "heuristic", "all_of": [{"any_of": [{"path": False}]}]}],
-    [{"tier": "heuristic", "all_of": [{"any_of": [{"plugin": "x"}]}]}],
-])
+@pytest.mark.parametrize(
+    "rules",
+    [
+        [{"tier": "exact", "phrases": []}],
+        [{"tier": "exact", "phrases": ["Open Folder"]}],
+        [{"tier": "heuristic", "all_of": []}],
+        [{"tier": "heuristic", "all_of": [{"any_of": []}]}],
+        [{"tier": "heuristic", "all_of": [{"any_of": [{"token": ""}]}]}],
+        [{"tier": "heuristic", "all_of": [{"any_of": [{"path": False}]}]}],
+        [{"tier": "heuristic", "all_of": [{"any_of": [{"plugin": "x"}]}]}],
+    ],
+)
 def test_intent_rejects_matcher_extensions_and_vacuous_rules(tmp_path, rules):
     with pytest.raises(ValueError):
         _load_json(tmp_path, _intent(rules=rules), ArtifactSchema.INTENT)
@@ -450,17 +482,25 @@ def test_intent_allows_no_rules_for_model_visible_inactive_intent(tmp_path):
     assert loaded.value["rules"] == ()
 
 
-@pytest.mark.parametrize("selector", [
-    _selector(strategy="plugin"),
-    _selector(result_limit=0),
-    _selector(result_limit=True),
-    _selector(names=[]),
-    _selector(names=["One", "Two"]),
-    _selector(normalise="strip_leading_private_use"),
-    _selector(cardinality="first"),
-])
+@pytest.mark.parametrize(
+    "selector",
+    [
+        _selector(strategy="plugin"),
+        _selector(result_limit=0),
+        _selector(result_limit=True),
+        _selector(names=[]),
+        _selector(names=["One", "Two"]),
+        _selector(normalise="strip_leading_private_use"),
+        _selector(cardinality="first"),
+    ],
+)
 def test_provider_selector_contract_is_closed(tmp_path, selector):
-    recipe = _recipe(selectors={"export_button": selector, "export_status": _selector(names=["Done"], cardinality="at_least_one")})
+    recipe = _recipe(
+        selectors={
+            "export_button": selector,
+            "export_status": _selector(names=["Done"], cardinality="at_least_one"),
+        }
+    )
     with pytest.raises(ValueError):
         _load_json(tmp_path, recipe, ArtifactSchema.RECIPE)
 
@@ -471,11 +511,23 @@ def test_bounded_selector_may_have_multiple_names_and_normalise(tmp_path):
         names=["Open Folder...", "Open Folder…"],
         normalise="strip_leading_private_use",
     )
-    recipe = _recipe(selectors={"export_button": bounded, "export_status": _selector(names=["Done"], cardinality="at_least_one")})
-    assert _load_json(tmp_path, recipe, ArtifactSchema.RECIPE).value["selectors"]["export_button"]["strategy"] == "bounded_descendants"
+    recipe = _recipe(
+        selectors={
+            "export_button": bounded,
+            "export_status": _selector(names=["Done"], cardinality="at_least_one"),
+        }
+    )
+    assert (
+        _load_json(tmp_path, recipe, ArtifactSchema.RECIPE).value["selectors"][
+            "export_button"
+        ]["strategy"]
+        == "bounded_descendants"
+    )
 
 
-def test_recipe_rejects_unknown_missing_unused_or_wrong_cardinality_references(tmp_path):
+def test_recipe_rejects_unknown_missing_unused_or_wrong_cardinality_references(
+    tmp_path,
+):
     cases = []
     cases.append(_recipe(steps=[_step(target_selector="missing")]))
     cases.append(_recipe(context_selectors=["missing"]))
@@ -504,7 +556,9 @@ def test_recipe_requires_target_selector_for_targeted_action(tmp_path):
         )
 
 
-def test_confirmed_observations_and_coordinates_are_forbidden_in_trusted_recipe(tmp_path):
+def test_confirmed_observations_and_coordinates_are_forbidden_in_trusted_recipe(
+    tmp_path,
+):
     confirmed = _step()
     confirmed["target_descriptor"] = {
         "claimed": _claimed(),
@@ -531,11 +585,18 @@ def test_step_and_provenance_contracts_reject_unknown_or_empty_data(tmp_path):
 @pytest.mark.parametrize("action", ["type_text", "execute", ""])
 def test_recipe_rejects_actions_outside_the_frozen_step_contract(tmp_path, action):
     with pytest.raises(ValueError):
-        _load_json(tmp_path, _recipe(steps=[_step(user_action=action)]), ArtifactSchema.RECIPE)
+        _load_json(
+            tmp_path, _recipe(steps=[_step(user_action=action)]), ArtifactSchema.RECIPE
+        )
 
 
 def test_targeted_action_requires_a_claimed_identity(tmp_path):
-    empty_claim = {"name": None, "name_synonyms": [], "ocr_text": None, "visual_description": "button"}
+    empty_claim = {
+        "name": None,
+        "name_synonyms": [],
+        "ocr_text": None,
+        "visual_description": "button",
+    }
     step = _step(target_descriptor={"claimed": empty_claim, "confirmed": []})
     with pytest.raises(ValueError, match="nothing to identify"):
         _load_json(tmp_path, _recipe(steps=[step]), ArtifactSchema.RECIPE)
@@ -664,7 +725,9 @@ def test_any_meaningful_change_requires_context_selector(tmp_path):
         selectors={"world_state": _selector(cardinality="at_least_one")},
         steps=[step],
     )
-    assert _load_json(tmp_path, recipe, ArtifactSchema.RECIPE).value["context_selectors"] == ("world_state",)
+    assert _load_json(tmp_path, recipe, ArtifactSchema.RECIPE).value[
+        "context_selectors"
+    ] == ("world_state",)
 
 
 def test_window_title_contract_has_no_regex_escape_hatch(tmp_path):
@@ -689,7 +752,12 @@ def test_window_title_contract_has_no_regex_escape_hatch(tmp_path):
         selectors={"export_button": _selector()},
         steps=[step],
     )
-    assert _load_json(tmp_path, recipe, ArtifactSchema.RECIPE).value["steps"][0]["verification_rule"]["kind"] == "window_title_matches"
+    assert (
+        _load_json(tmp_path, recipe, ArtifactSchema.RECIPE).value["steps"][0][
+            "verification_rule"
+        ]["kind"]
+        == "window_title_matches"
+    )
 
     title_rule["args"]["pattern"] = ".+"
     with pytest.raises(ValueError, match="unknown"):
@@ -697,13 +765,28 @@ def test_window_title_contract_has_no_regex_escape_hatch(tmp_path):
 
 
 def test_gitattributes_pins_every_attested_text_class_to_lf():
-    attributes = (Path(__file__).parents[1] / ".gitattributes").read_text(encoding="utf-8")
-    assert set(attributes.splitlines()) == {
+    attributes = (Path(__file__).parents[1] / ".gitattributes").read_text(
+        encoding="utf-8"
+    )
+    rules = {
+        line.strip()
+        for line in attributes.splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    }
+    # Two classes, and the set stays exact so an unreviewed rule still fails.
+    # `text eol=lf` normalises a class whose content is compared as text.
+    # `-text` stores bytes verbatim, which is required wherever a digest is
+    # taken of the file itself: a signed plugin payload reaches a fresh clone
+    # as the bytes that were signed, reviewed and executed (D108).
+    assert rules == {
         "ghostcursor/packs/**/*.json text eol=lf",
         "docs/superpowers/candidates/**/*.json text eol=lf",
         "tests/data/*.json text eol=lf",
         "docs/evidence/**/*.md text eol=lf",
         "ghostcursor/demo/synthetic_export_app.py text eol=lf",
+        "plugins/shared/*.py -text",
+        "plugins/sources/*/payload/** -text",
+        "plugins/sources/*/index.json -text",
     }
 
 

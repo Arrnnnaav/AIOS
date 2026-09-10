@@ -3,3 +3,12 @@ docs/superpowers/candidates/**/*.json text eol=lf
 tests/data/*.json text eol=lf
 docs/evidence/**/*.md text eol=lf
 ghostcursor/demo/synthetic_export_app.py text eol=lf
+
+# Signed plugin payloads are hashed byte-for-byte into a signed manifest and
+# pinned in `bundle.py`; the retained Act evidence names those same digests.
+# Line-ending normalisation would hand a fresh clone different bytes from the
+# ones that were reviewed, signed and executed, so these paths are stored
+# verbatim (D108).
+plugins/shared/*.py -text
+plugins/sources/*/payload/** -text
+plugins/sources/*/index.json -text
