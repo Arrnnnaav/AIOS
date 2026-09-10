@@ -111,7 +111,9 @@ geometry, screenshots, selectors, tokens, and verifier readings are excluded.
 > were a CRLF working copy that git never stored: the tracked source hashed
 > `d97216d3…`, `eb7a0c68…` and `ccbf395e…`, so a clean checkout could not
 > reproduce the artifacts this run executed. LF is now canonical and the bundle
-> has been rebuilt and re-signed (manifest `48e6e4f4…`, active generation 5).
+> has been rebuilt and re-signed twice since: `48e6e4f4…` still carried signed
+> build products (D127), and the CURRENT PowerPoint manifest is `28dbaf2d…`
+> (D129/D130).
 > The manager-approval path recorded below did happen, and the finding is about
 > the artifacts' reproducibility rather than the events; but it may not stand as
 > acceptance evidence. A replacement run on the rebuilt bundle is required, and

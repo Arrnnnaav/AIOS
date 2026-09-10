@@ -776,7 +776,8 @@ Trigger: before any semantic PowerPoint capability, staged-plan schema wiring,
 or new feature phase.
 
 1. SUPERSEDED 10 Sep 2026 — the run happened and completed 1/1
-   (`act-live-manager-d125-run.md`), but it bound manifest `48e6e4f4`, which
+   (`act-live-manager-d125-run.md`), but it bound manifest `48e6e4f4` — two
+   rebuilds behind the current `28dbaf2d` — which
    contained signed build products and was never reproducible. Rerun on the CURRENT PowerPoint bundle.
 2. DONE 10 Sep 2026 — before/after readings retained
    (`act-live-deck-2026-09-10-{before,after}.json`): 1 slide -> 2 slides.
