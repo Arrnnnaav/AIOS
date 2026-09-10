@@ -395,7 +395,9 @@ The pilot manager is one resizable native HWND with one state owner (D124).
 It starts as a normal non-topmost right-side panel, expands the same HWND into
 the centred workspace for planning, complete-plan review, target recovery, or
 an actionable failure, and collapses after an approved execution request is
-issued. Manual expansion during execution remains allowed. No transition may
+issued or a run completes successfully. Stop and failure reopen the workspace
+for recovery. Manual expansion during execution remains allowed, and ordinary
+progress events may not override it. No transition may
 create a second manager window, lose entered/reviewed state, or invent a second
 progress stream. The compact topmost Teach safety rail remains a separate
 window created only after a guided workflow passes revalidation (D088); it is

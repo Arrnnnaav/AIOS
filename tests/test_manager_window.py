@@ -157,7 +157,6 @@ def test_failed_act_result_reopens_the_workspace_but_success_stays_compact():
         manager.show_act_result(failed)
         assert manager.expanded is True
 
-        manager._set_layout(False)
         completed = SimpleNamespace(
             completed=True,
             completed_node_ids=("node-1", "node-2"),

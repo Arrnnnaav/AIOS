@@ -5009,8 +5009,9 @@ pending.
 state owner with two presentation layouts. It opens as a right-side compact
 panel. Ideation/planning work, complete proposal review, target selection, and
 actionable failure recovery expand that same HWND into the centred workspace.
-After the explicit command has successfully issued an execution request, the
-same HWND collapses back to the right side. A user may expand it again while
+After the explicit command has successfully issued an execution request, or a
+run reaches successful completion, the same HWND collapses back to the right
+side. Stop or failure expands it for recovery. A user may expand it again while
 execution is active; ordinary executor progress events do not fight that
 choice.
 

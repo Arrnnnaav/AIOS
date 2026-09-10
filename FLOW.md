@@ -48,9 +48,11 @@ The manager is one resizable **window**, not a second process or event model.
 layout. The same HWND expands into the centred planning/review workspace and
 preserves the current goal, proposal, controls, and executor-derived progress.
 Planning, complete-plan review, target choice, and actionable failures expand
-it; issuing an approved execution request collapses it, while manual expansion
-during execution remains available. The separate compact topmost Teach rail is
-still created only after guided-workflow revalidation.
+it; issuing an approved execution request or reaching successful completion
+collapses it, while Stop/failure reopens it for recovery. Manual expansion
+during execution remains available and ordinary progress does not override it.
+The separate compact topmost Teach rail is still created only after guided-
+workflow revalidation.
 The executor publishes once to `session_events`, which fans the immutable
 snapshot to both surfaces. Stop/Pause commands travel back through an
 edge-triggered mailbox keyed by the active session id and are consumed by the

@@ -1173,8 +1173,14 @@ class NativeManagerWindow:
             SessionStatus.BLOCKED,
             SessionStatus.FAILED,
         }
-        if snapshot.status in {SessionStatus.BLOCKED, SessionStatus.FAILED}:
+        if snapshot.status in {
+            SessionStatus.BLOCKED,
+            SessionStatus.STOPPED,
+            SessionStatus.FAILED,
+        }:
             self._set_layout(True)
+        elif snapshot.status is SessionStatus.COMPLETED:
+            self._set_layout(False)
         win32gui.EnableWindow(self._controls[ID_START], terminal)
         win32gui.EnableWindow(self._controls[ID_COMPLEX], terminal)
         win32gui.EnableWindow(self._controls[ID_GOAL], terminal)
@@ -1383,8 +1389,7 @@ class NativeManagerWindow:
         win32gui.EnableWindow(self._controls[ID_MODE], True)
         win32gui.EnableWindow(self._controls[ID_PAUSE], False)
         win32gui.EnableWindow(self._controls[ID_STOP], False)
-        if not result.completed:
-            self._set_layout(True)
+        self._set_layout(not bool(result.completed))
 
     def show_task_target_choices(self, candidates: tuple[object, ...]) -> None:
         """Keep the reviewed graph while the operator selects its exact HWND."""
@@ -1434,8 +1439,7 @@ class NativeManagerWindow:
         win32gui.EnableWindow(self._controls[ID_GOAL], True)
         win32gui.EnableWindow(self._controls[ID_MODE], True)
         self._render_mode_idle(update_content=False)
-        if not completed:
-            self._set_layout(True)
+        self._set_layout(not completed)
 
     def set_plugins(self, plugins: tuple[PluginPresentation, ...]) -> None:
         rows = tuple(

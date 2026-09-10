@@ -355,8 +355,9 @@ PowerPoint capabilities move forward.
 **Manager shell refinement (D124): implemented candidate.** The manager now
 starts as a right-side compact panel and expands the same HWND into the centred
 planning/review workspace. Planning, proposals, target recovery, and failures
-expand it; issuing an approved execution request collapses it; executor events
-never override a user's manual expansion during the run. Focused manager and
+expand it; issuing an approved execution request or completing successfully
+collapses it; Stop/failure reopens it; ordinary executor events never override
+a user's manual expansion during the run. Focused manager and
 input-boundary tests are green. A real-desktop visual inspection and an
 independent D032 review remain before this presentation change is treated as
 accepted evidence.
