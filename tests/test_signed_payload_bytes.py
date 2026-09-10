@@ -75,6 +75,17 @@ def test_there_are_signed_payload_paths_to_check():
     assert len(paths) >= 10, paths
     assert "plugins/shared/uia_adapter.py" in paths
 
+    # Coverage, not merely non-emptiness. Reverting the directory pathspecs to
+    # `docs/evidence/**/*` drops evidence from 49 files to 6 while every other
+    # assertion here still passes, because the payload globs supply them --
+    # round six's own fix, unguarded (D133).
+    evidence = [n for n in paths if n.startswith("docs/evidence/")]
+    sources = [n for n in paths if n.startswith("plugins/sources/")]
+    assert len(evidence) >= 45, f"evidence coverage collapsed to {len(evidence)}"
+    assert len(sources) >= 60, f"plugin source coverage collapsed to {len(sources)}"
+    assert any(n.endswith(".jsonl") for n in evidence), "no retained transcript covered"
+    assert "docs/evidence/act-live-manager-d131-r1.jsonl" in evidence
+
 
 def test_committed_bytes_are_the_bytes_on_disk():
     """A fresh clone must execute the bytes that were signed and reviewed."""

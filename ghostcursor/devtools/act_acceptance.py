@@ -163,6 +163,10 @@ def run(args) -> int:
     event_sink = emit_event
     verify_observer = None
     if args.diagnostics is not None:
+        refusal = campaign_scope_refusal()
+        if refusal is not None:
+            print(refusal)
+            return 2
         path = args.diagnostics.resolve()
         path.parent.mkdir(parents=True, exist_ok=True)
         # newline="\n" is not optional here. Text mode on Windows translates
@@ -461,6 +465,39 @@ def run(args) -> int:
             ),
         )
     return 0 if result.completed else 3
+
+
+
+#: A counted campaign is three separate invocations of this tool, and a target
+#: reference is only comparable inside one campaign scope. With no scope
+#: exported, each run derives its own, the three records disagree, and
+#: `render_add_slide_evidence` refuses them as coming from three campaigns --
+#: AFTER all three runs have been performed on a real desktop with a human
+#: clicking approvals. The refusal belongs before the first run (D133).
+CAMPAIGN_SCOPE_VARIABLE = "GHOSTCURSOR_CAMPAIGN_SCOPE"
+CAMPAIGN_SALT_VARIABLE = "GHOSTCURSOR_CAMPAIGN_SALT"
+
+
+def campaign_scope_refusal(environment=None) -> str | None:
+    """The reason diagnostics may not be written, or None if they may."""
+
+    import os
+
+    environment = os.environ if environment is None else environment
+    if environment.get(CAMPAIGN_SCOPE_VARIABLE) and environment.get(
+        CAMPAIGN_SALT_VARIABLE
+    ):
+        return None
+    return (
+        "refusing to write diagnostics without a campaign scope.\n"
+        "A counted campaign's runs must share one scope and salt, or their "
+        "target references cannot be compared and the evidence renderer will "
+        "reject all three after the fact. Export both before the first run, "
+        "and discard the salt when the campaign ends -- it is never "
+        "written down:\n"
+        f"  $env:{CAMPAIGN_SCOPE_VARIABLE} = ...\n"
+        f"  $env:{CAMPAIGN_SALT_VARIABLE}  = ..."
+    )
 
 
 def main() -> int:

@@ -59,7 +59,8 @@ _SCANNED_SUFFIXES = {".md", ".json", ".jsonl", ".txt", ".log", ".csv"}
 #: the entire lane in `docs/evidence/*.json`, the exact artifact a live run
 #: writes (D130).
 _RAW_TARGET = re.compile(
-    r"(?:^|[^A-Za-z0-9])[A-Za-z_]*(hwnd|pid|handle)"
+    r"(?:^|[^A-Za-z0-9])[A-Za-z_]*"
+    r"(hwnd|pid|handle|target|bound|session|approved|binding|instance|owner|process)"
     r"[\s:=\"]*`?(0x[0-9A-Fa-f]{3,}|\d{4,})",
     re.IGNORECASE,
 )
@@ -75,7 +76,9 @@ _RAW_TARGET = re.compile(
 #: `"target": <handle>` and `"owner_process": <pid>` both walked through. The
 #: fix is the reasoning applied consistently, not another spelling (D132).
 _TARGET_KEY = re.compile(
-    r"(hwnd|pid|handle|window|target|owner|process|_ref$|^ref$)", re.IGNORECASE
+    r"(hwnd|pid|handle|window|target|owner|process|bound|session|approved"
+    r"|binding|instance|_ref$|^ref$)",
+    re.IGNORECASE,
 )
 
 #: A markdown table column whose header names one. Also a substring, and it
@@ -83,7 +86,9 @@ _TARGET_KEY = re.compile(
 #: heads its binding column `Target`, so the previous rule covered a heading
 #: that no longer exists and missed the one in use (D131).
 _TARGET_COLUMN = re.compile(
-    r"(hwnd|pid|handle|window|target|process|owner)", re.IGNORECASE
+    r"(hwnd|pid|handle|window|target|process|owner|bound|session|approved"
+    r"|binding|instance)",
+    re.IGNORECASE,
 )
 
 #: Values actually observed on a live desktop and once published in this
@@ -161,6 +166,9 @@ def test_the_blocklist_still_holds_every_value_ever_published():
 _MUST_MATCH_COLUMNS = (
     "HWND",
     "Target",
+    "Bound",
+    "Approved",
+    "Session",
     "Bound target",
     "Approved window",
     "Session target",
@@ -170,6 +178,11 @@ _MUST_MATCH_COLUMNS = (
 
 _MUST_MATCH_KEYS = (
     "hwnd",
+    "bound",
+    "session",
+    "approved",
+    "binding",
+    "instance",
     "windowHandle",
     "target_hwnd",
     "target",
@@ -223,6 +236,11 @@ def test_ordinary_keys_are_not_matched(key):
         "HWND=0x000BC1F8",
         "pid 4242",
         "owning_pid: 44121",
+        # The shape of this repository's OWN authority blocks, which the rule
+        # did not catch until a review pointed at them (D133).
+        "target: 4460192",
+        "bound target 4460192",
+        "session: 4460192",
     ],
 )
 def test_every_known_prose_form_is_matched(line):

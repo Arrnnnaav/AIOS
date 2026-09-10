@@ -5578,3 +5578,81 @@ acted. Both belong in the redone review's scope.
 rule; dropping `target` from either rule; raising the floor to five digits;
 removing a blocklist value; a local copy of the shared list; an unpinned
 `newline=` in any of fourteen writers; a byte changed in a retained artifact.
+
+
+## D133 — Close the class, and say what the evidence does not say
+
+**Date:** 11 September 2026
+**Status:** Implemented. Round 6b's blockers are addressed; the review must be
+redone against this commit before the campaign.
+
+**The sixth review reached a verdict and resolved the fifth's loose end.** The
+first attempt died mid-verification with an unverified note, "K — found a
+regression". The relaunched review answered it: **no regression exists.** The
+diff from `3c17373` is additive across three test files and one devtool, and
+mutations of the keyed audit commitments, D123 handoff and refusal,
+`window_reference` salting, build-product exclusion, bundle inventory, manifest
+pin and LF pinning were all caught. It also **corrected the earlier reviewer**:
+"82% of the bracket had no manager session running" was wrong; the session is
+74.9% of it. The figure that matters is different and worse — see below.
+
+**The campaign would have produced unusable artifacts.** `act_campaign.py`
+exports `GHOSTCURSOR_CAMPAIGN_SCOPE`/`_SALT`, but CLAUDE.md names
+`act_acceptance --diagnostics` as the campaign tool and that one never set
+them. Three invocations would derive three scopes, and
+`render_add_slide_evidence` refuses records from more than one — *after* three
+runs on a real desktop with a human clicking approvals. `act_acceptance` now
+refuses to write diagnostics without a complete scope, before the first run, and
+names both variables in the refusal. Found by reading two tools against each
+other, which nothing in the test suite was doing.
+
+**The scan was evaded again, by this repository's own format.** `target: <n>`
+in prose passed every rule, and the run document's own authority block is
+exactly that shape. So did JSON keys `bound`, `session`, `approved`, `binding`,
+`instance`, and columns headed `Bound`, `Approved`, `Session`. All are now
+matched and pinned as unit cases.
+
+**Three fixes from round six were themselves unguarded.** Reverting the
+byte-equality globs dropped evidence coverage from 49 files to 6 and the lane
+stayed green; shrinking the hand-maintained writer list survived; and the
+superseded-manifest set was a literal nobody was forced to update. Coverage is
+now asserted by count and by named artifact, the writer set is derived from
+`git ls-files` rather than listed, and the manifest test fails if the decision
+history cites a PowerPoint manifest that is neither current nor recorded as
+superseded. That pattern — patching the instance and leaving the guard
+unguarded — is the one this chain keeps reproducing, and it is why these three
+are pinned rather than simply corrected.
+
+**What the run document now says, and does not.** Four corrections, all in the
+direction of claiming less:
+
+- The authority block publishes the **UIA adapter** `d97216d3…`, which is the
+  code that drove the control. It previously published only the object adapter,
+  which did not act on this node. `d97216d3…` equals the canonical pin, so the
+  shipped copy is the reviewed one — but a reviewer could not see that.
+- `catalog generation: 9`, the active-index digest, and the enabled-plugin set
+  are labelled **unrecorded operator observations**. No retained artifact lets a
+  reader check them, and D034 does not accept an observation as a measurement.
+- The bracket is published: **155.894 s**, of which the Act execution is
+  **4.390 s — 2.8%**. The document previously said "however short it is", which
+  is the kind of phrase a number replaces.
+- The handoff/issuance ordering rests on the **emission counter**, because both
+  records carry the same `at_ns` (`1789060727130799800`). It is the source's
+  claim serialised into a file, not an independent measurement, and the earlier
+  wording "evidenced by the artifact" overstated it.
+
+**Exclusion, confirmed adequate.** The review judged the excluded attempt's
+disclosure methodological rather than outcome-based, and specifically noted that
+`excluded/README.md` now states that attempt's first-cycle outcome — the datum
+the run document's own argument depends on. It called this the strongest part of
+the submission.
+
+**Mutation audit.** Killed, each by a named test: prefix-matching the column
+rule; dropping any of `target`/`process`/`owner`/`bound`/`session` from either
+rule; a five-digit floor; removing the campaign-scope gate; shrinking the writer
+set; reverting the evidence globs; a wrong `DOCUMENTED` digest; a changed byte in
+a retained artifact.
+
+**Still open.** `NamedTemporaryFile`, `io.open` and `json.dump` to a text handle
+are now recognised by the writer scan, but the idiom list is still a list. The
+class is narrower, not closed.

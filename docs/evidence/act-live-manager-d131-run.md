@@ -28,7 +28,9 @@ plugin:              ghostcursor.powerpoint 1.0.0
 intent:              ADD_SLIDE
 catalog generation:  9
 manifest:            28dbaf2d372c55144e289316a1b92dd25185281351cd685a8e735ee9d759a836
+UIA adapter (ACTED): d97216d3e84d1b689bdd2ab52d30b3a6da535381951ecd88f4275829a64795ac
 object adapter:      eb7a0c687de2f702a1cb52ef6e438a9e7d32cecfd70a1f036e8fdba2716db4cd
+                     (present in the bundle; did NOT act on this node)
 live verifier:       ccbf395eba0de2cefa1a86b8da68d2d84c90f9045c0e8b7a7c0ba09b8ab22a76
 active index:        8866822ecc2fea1111662359afcc7513bd9c7ead2780115ab09094d0bbf45069
 graph:               2b0a7629240e35659f4c66c78800ada296e485d45d18576dc1fa2d309f7719d4
@@ -36,13 +38,32 @@ validation:          721d3995a53983a3507a9eb1bf59e8a3a7782c5c82aa532ec6aeb4358a7
 proposal:            893ea66e326d2a7c16fca96123bdeea6a88de4e2443e2be523c39fd6e99b7a00
 ```
 
+The operation is `powerpoint.new_slide_uia`, so the bytes that drove the control
+are the **UIA** adapter, `d97216d3…`. An earlier version of this document
+published only the object adapter and omitted the acting one, which left a
+reviewer of a UIA run unable to see the digest of the code that touched the
+application -- material, given that no `uia_pattern` operation may be adopted
+without independent review of its bytes. `d97216d3…` equals
+`CANONICAL_UIA_ADAPTER_SHA256` in `ghostcursor/plugins/bundle.py`, so the shipped
+copy is the reviewed one.
+
 The manifest is the one every tracking document names, and since `f5f2f97` it is
 recomputed from tracked sources by `tests/test_powerpoint_manifest_pin.py`, so
 the digest quoted here cannot drift from the bundle without a test failing.
 
-**Scope at run time was PowerPoint-only.** The manager's own plugin list showed
-`ghostcursor.powerpoint` and `ghostcursor.synthetic` enabled, `ghostcursor.excel`
-and `ghostcursor.vscode` disabled (D130). The active index above is that catalog.
+**Three of the values above are unrecorded operator observations, not
+measurements.** `catalog generation: 9`, the active-index digest, and the
+enabled-plugin set were read from the running store and the manager window at
+the time; no retained artifact in this repository lets a reader check them,
+because there is no PowerPoint bundle in `plugins/bundled/` and no index
+snapshot is kept. Under D034 they are reported here as observations and must not
+be cited as measured evidence. Everything else in the block comes from the
+transcript's own fields.
+
+Read that way: the manager's plugin list showed `ghostcursor.powerpoint` and
+`ghostcursor.synthetic` enabled with `ghostcursor.excel` and `ghostcursor.vscode`
+disabled (D130), which is consistent with the transcript's `plugin_id` and with
+the PowerPoint-only scope, but is not independently checkable from the files.
 
 ## What happened
 
@@ -62,9 +83,13 @@ Eleven records, one approval cycle, contiguous `sequence` 1–11:
 11  manager_closed
 ```
 
-The handoff record precedes the issuance record (sequence 3 before 4), which is
-the D123 ordering evidenced by the artifact rather than by reading source — the
-emission order was corrected for exactly this reason.
+The handoff record precedes the issuance record at `sequence` 3 and 4. Both
+carry the **same** `at_ns` (`1789060727130799800`), so the ordering rests on the
+emitter's own sequence counter, not on a clock: it is the source's claim
+serialised into a file rather than an independent measurement. The emission
+order was corrected (D129) so that the counter reflects the real order, and the
+transcript is consistent with D123 — but "evidenced by the artifact" would
+overstate it, and an earlier draft of this document did.
 
 ## The change was observed after the authorized cycle
 
@@ -74,11 +99,19 @@ emission order was corrected for exactly this reason.
 | `after-1` | `Presentation1` | 2 |
 
 **One approval cycle sits between those two readings.** The wording stops
-there, deliberately. What the artifacts establish is that the deck held one
-slide before the authorized cycle and two after it, and that the signed live
-verifier answered affirmatively for the declared change in between. They do not
-establish *causation*: the readings bracket an interval, not the cycle itself,
-and an interval is a weaker thing than an action however short it is. Whether
+there, deliberately, and the interval is worth stating rather than waving at:
+
+| Span | Seconds | Share of bracket |
+|---|---:|---:|
+| `before-1` to `after-1` | 155.894 | 100% |
+| manager session open | 116.791 | 74.9% |
+| Act execution (`act_worker_started` to `act_run_result`) | 4.390 | **2.8%** |
+
+So 97.2% of the bracketed interval has no execution running in it. What the
+artifacts establish is that the deck held one slide before the authorized cycle
+and two after it, and that the signed live verifier answered affirmatively for
+the declared change in between. They do not establish *causation*: the readings
+bracket an interval, not the cycle itself. Whether
 this run may claim "Act caused the change" rather than "the change was observed
 after the authorized cycle" is a question for independent review, and until
 that review says otherwise the weaker sentence is the claim.

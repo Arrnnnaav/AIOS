@@ -25,23 +25,41 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 
-#: Modules that write an artifact somebody later hashes or commits.
-_WRITERS = (
-    "ghostcursor/devtools/act_acceptance.py",
-    "ghostcursor/devtools/act_campaign.py",
-    "ghostcursor/devtools/act_live_node.py",
-    "ghostcursor/devtools/act_deck_observation.py",
-    "ghostcursor/devtools/uia_feasibility.py",
-    "ghostcursor/evaluation/model_gate.py",
+#: Every tracked module under `tools/` or `ghostcursor/devtools/`, plus the
+#: production modules that write a hashed artifact. DERIVED, not listed: a
+#: hand-maintained tuple behind a `len >= 10` floor could silently shrink, and
+#: removing an entry passed the whole lane (D133). A new writer is covered the
+#: moment it is committed, without anyone remembering to add it.
+_EXTRA_WRITERS = (
     "ghostcursor/act_staging.py",
     "ghostcursor/brief.py",
     "ghostcursor/reasoning/schema.py",
-    "tools/render_add_slide_evidence.py",
-    "tools/render_excel_plugin_evidence.py",
-    "tools/render_open_extensions_evidence.py",
-    "tools/render_acceptance_evidence.py",
-    "tools/render_receipt_budget.py",
+    "ghostcursor/evaluation/model_gate.py",
 )
+
+
+def _writer_modules():
+    listed = subprocess.run(
+        ["git", "ls-files", "-z", "tools", "ghostcursor/devtools"],
+        cwd=ROOT,
+        capture_output=True,
+        check=False,
+    )
+    if listed.returncode != 0:
+        pytest.skip("not a git work tree")
+    names = [
+        n
+        for n in listed.stdout.decode("utf-8").split(chr(0))
+        if n.endswith(".py") and not Path(n).name.startswith("__")
+    ]
+    return sorted(set(names) | set(_EXTRA_WRITERS))
+
+
+#: Text-writing idioms. The first version knew only `open` and `write_text`, so
+#: `NamedTemporaryFile(mode="w")`, `io.open` and a `json.dump` to a text handle
+#: all evaded it -- the class enumerated rather than closed, which is the shape
+#: this chain keeps reproducing (D133).
+_TEXT_OPENERS = {"open", "write_text", "NamedTemporaryFile", "TemporaryFile", "fdopen"}
 
 
 def _text_writes_without_newline(source: str):
@@ -53,12 +71,12 @@ def _text_writes_without_newline(source: str):
         if not isinstance(node, ast.Call):
             continue
         name = getattr(node.func, "attr", None) or getattr(node.func, "id", None)
-        if name not in {"open", "write_text"}:
+        if name not in _TEXT_OPENERS:
             continue
         keywords = {kw.arg for kw in node.keywords}
         if "newline" in keywords:
             continue
-        if name == "open":
+        if name != "write_text":
             modes = [
                 a.value
                 for a in node.args
@@ -78,15 +96,26 @@ def _text_writes_without_newline(source: str):
     return offenders
 
 
-def test_the_writer_list_still_describes_real_files():
-    """Non-vacuity: a renamed module would silently drop out of the check."""
+def test_the_writer_set_is_derived_and_covers_the_known_tools():
+    """Non-vacuity, and specifically about derivation: the set comes from git,
+    so a new devtool is covered the moment it is committed."""
 
-    missing = [name for name in _WRITERS if not (ROOT / name).is_file()]
+    modules = _writer_modules()
+
+    missing = [name for name in modules if not (ROOT / name).is_file()]
     assert not missing, missing
-    assert len(_WRITERS) >= 10
+    assert len(modules) >= 20, len(modules)
+    for required in (
+        "ghostcursor/devtools/act_acceptance.py",
+        "ghostcursor/devtools/act_campaign.py",
+        "ghostcursor/devtools/act_deck_observation.py",
+        "tools/render_add_slide_evidence.py",
+        "ghostcursor/brief.py",
+    ):
+        assert required in modules, required
 
 
-@pytest.mark.parametrize("name", _WRITERS)
+@pytest.mark.parametrize("name", _writer_modules())
 def test_every_artifact_writer_pins_its_newline(name):
     source = (ROOT / name).read_text(encoding="utf-8")
 
