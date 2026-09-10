@@ -40,8 +40,12 @@ SIGNED_GLOBS = (
     # those digests reproduce only on the machine that wrote them -- the D125
     # defect, which reached evidence artifacts a day later (D126). Nothing
     # covered this directory until an independent review pointed it out.
-    "docs/evidence/**/*",
-    "plugins/sources/*/acceptance-records/**/*",
+    # Directory pathspecs, not `**/*`: git's `**/*` requires at least one
+    # intermediate directory, so `docs/evidence/**/*` matched 6 of 49 files and
+    # `docs/evidence/*.md` matched none of them. The glob claimed in D130 to
+    # cover evidence covered almost nothing (D132).
+    "docs/evidence",
+    "plugins/sources",
 )
 
 

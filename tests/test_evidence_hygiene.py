@@ -68,13 +68,23 @@ _RAW_TARGET = re.compile(
 #: spelling: `"windowHandle": <value>` passed every rule because the pattern
 #: anchored on `(?:^|_)(hwnd|pid|handle)$`. Enumerating spellings is how this
 #: scan has now been evaded twice; matching the shape is the fix (D131).
-_TARGET_KEY = re.compile(r"(hwnd|pid|handle|window_?id)", re.IGNORECASE)
+#:
+#: D131 gave the reason the COLUMN rule must include `target` -- every evidence
+#: table heads its binding column `Target` -- and then failed to apply the same
+#: reasoning here, though the artifacts use `target_ref` and `target_sha256`.
+#: `"target": <handle>` and `"owner_process": <pid>` both walked through. The
+#: fix is the reasoning applied consistently, not another spelling (D132).
+_TARGET_KEY = re.compile(
+    r"(hwnd|pid|handle|window|target|owner|process|_ref$|^ref$)", re.IGNORECASE
+)
 
 #: A markdown table column whose header names one. Also a substring, and it
 #: must include `target`: every evidence table this repository actually emits
 #: heads its binding column `Target`, so the previous rule covered a heading
 #: that no longer exists and missed the one in use (D131).
-_TARGET_COLUMN = re.compile(r"(hwnd|pid|handle|window|target)", re.IGNORECASE)
+_TARGET_COLUMN = re.compile(
+    r"(hwnd|pid|handle|window|target|process|owner)", re.IGNORECASE
+)
 
 #: Values actually observed on a live desktop and once published in this
 #: repository. They are recorded here so that no file -- prose, fixture, or
@@ -142,6 +152,84 @@ def test_the_blocklist_still_holds_every_value_ever_published():
     assert (
         digest == "69b29ae12b70b7435a110c1ad44ab5ccba803c6279ede38e25940da70a734e66"
     ), digest
+
+
+#: Header spellings and key spellings that evaded a previous version of these
+#: rules. Each is a real evasion someone demonstrated against this scan, not a
+#: hypothetical: they are pinned as unit cases so NARROWING a rule fails a test
+#: rather than passing quietly until the next review plants one by hand (D132).
+_MUST_MATCH_COLUMNS = (
+    "HWND",
+    "Target",
+    "Bound target",
+    "Approved window",
+    "Session target",
+    "PID",
+    "Owning process",
+)
+
+_MUST_MATCH_KEYS = (
+    "hwnd",
+    "windowHandle",
+    "target_hwnd",
+    "target",
+    "target_ref",
+    "owner_process",
+    "pids",
+    "handle",
+)
+
+_MUST_NOT_MATCH_KEYS = (
+    "slide_count",
+    "presentation_count",
+    "schema_version",
+    "at_ns",
+    "name",
+    "label",
+)
+
+
+@pytest.mark.parametrize("header", _MUST_MATCH_COLUMNS)
+def test_every_known_binding_column_spelling_is_matched(header):
+    """`_TARGET_COLUMN` used `re.match`, a PREFIX test, while its own docstring
+    and D131 both said substring. `Bound target` evaded it, and a planted value
+    under that heading passed the entire 2504-test lane (D132)."""
+
+    assert _TARGET_COLUMN.search(header), header
+
+
+@pytest.mark.parametrize("key", _MUST_MATCH_KEYS)
+def test_every_known_binding_key_spelling_is_matched(key):
+    """`"target": <handle>` and `"owner_process": <pid>` both passed the whole
+    lane. Narrowing the key rule now fails here."""
+
+    assert _TARGET_KEY.search(key), key
+
+
+@pytest.mark.parametrize("key", _MUST_NOT_MATCH_KEYS)
+def test_ordinary_keys_are_not_matched(key):
+    """A rule that fires on `slide_count` gets suppressed, and a suppressed rule
+    guards nothing."""
+
+    assert not _TARGET_KEY.search(key), key
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "hwnd 4460192",
+        '"hwnd": 4460192',
+        '"target_hwnd": 4460192',
+        "HWND=0x000BC1F8",
+        "pid 4242",
+        "owning_pid: 44121",
+    ],
+)
+def test_every_known_prose_form_is_matched(line):
+    """Including the four-digit PID: the five-digit floor was raised to silence
+    my own false positives, which a review called self-serving (D131)."""
+
+    assert _RAW_TARGET.search(line), line
 
 
 def test_the_scan_covers_the_places_handles_have_actually_leaked():
@@ -249,7 +337,7 @@ def test_no_markdown_table_publishes_a_handle_column():
             ]
             if not columns:
                 columns = [
-                    i for i, cell in enumerate(cells) if _TARGET_COLUMN.match(cell)
+                    i for i, cell in enumerate(cells) if _TARGET_COLUMN.search(cell)
                 ]
                 continue
             for index in columns:

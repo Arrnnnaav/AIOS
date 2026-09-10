@@ -5501,3 +5501,80 @@ test. Both blocklist mutations die.
 `hwnd=<value> pid=<value>` to its console transcript. That transcript is
 retained by hand for D121, so its redaction stays manual until the run that
 needs it is scripted.
+
+
+## D132 — Apply the reasoning, not the patch
+
+**Date:** 11 September 2026
+**Status:** Implemented. The sixth review did not finish; its verified partial
+findings are addressed here and the review must be redone.
+
+**What happened.** The sixth independent D032 review hit a capacity limit
+mid-verification. It had written incremental notes throughout — the practice
+this project adopted after losing five agents in one milestone — so its work
+survived. Every finding below was reproduced here before being fixed; nothing
+was accepted on the strength of the note alone, and its one unverified claim
+("K — found a regression") is **not** treated as a finding.
+
+**The column rule said substring and did prefix.** D131 states that table
+columns are matched "by substring including `target`". The code used
+`re.match`, which anchors at the start, so `Bound target`, `Approved window`
+and `Session target` all evaded it. A value planted under `Bound target` passed
+the entire 2504-test lane.
+
+**The key rule never received D131's own reasoning.** D131 argued the column
+rule must include `target` because every evidence table heads that column
+`Target`. The identical argument applies to JSON keys — the artifacts use
+`target_ref` and `target_sha256` — and was not applied. `"target": <handle>`
+and `"owner_process": <pid>` both passed the whole lane.
+
+That is the failure mode this decision is named for: three rounds running, the
+fix has been the specific patch rather than the reasoning. The evasions are now
+pinned as **unit cases** over the patterns themselves, so narrowing a rule fails
+a test instead of passing until someone plants one by hand.
+
+**Nothing checked the evidence digests.** `act-live-manager-d131-run.md`
+publishes a SHA-256 for each retained artifact and no test read them. Editing an
+artifact to plant a leak invalidated the published digest, and the lane passed —
+the document would have gone on asserting a digest describing no file in the
+repository. Digests are now parsed out of the documents and recomputed, so the
+test cannot drift from what a reader sees.
+
+**The byte-equality glob covered almost nothing.** D130 claimed the check "now
+covers docs/evidence and acceptance records". Git's `**/*` requires an
+intermediate directory, so `docs/evidence/**/*` matched 6 of 49 files — and
+before the `excluded/` directory existed, zero. The globs are directory
+pathspecs now, and six stale CRLF working copies surfaced immediately; their
+committed bytes were already LF, so nothing shipped wrong, but the check that
+was supposed to notice had never looked.
+
+**Sixth instance of machine-dependent bytes.** `act_acceptance.py` opened its
+diagnostics file in text mode with no `newline=`, so on Windows it wrote CRLF.
+Every peer writer pins it; this one did not — and CLAUDE.md names it as *the*
+tool for the instrumented acceptance campaign, so its output is exactly what a
+counted campaign retains. Fixed, and the class is now asserted across all
+fourteen artifact writers at once rather than one instance at a time.
+
+**Two claims in the run document were too strong, corrected before review.** The
+owner directed the weaker wording as the default: the artifacts show that the
+change was *observed after* the authorized cycle, not that Act caused it. The
+readings bracket a 155.9-second interval of which, by the review's timeline,
+82% has no manager session running at all. The document says so now.
+
+**The excluded attempt is retained, not omitted.** An earlier run the same day
+lacked its `before-1` reading and does not count. It reached `completed 1/1`, so
+it is not a discarded failure, and a completed run dropped silently while a
+later one is kept is indistinguishable from selecting for outcome. Both its
+artifacts and the reason are under `docs/evidence/excluded/`.
+
+**Still open from the partial review.** Two findings are recorded but not yet
+acted on: the transcript's handoff/issuance ordering rests on the sequence
+counter rather than on time (both records share one `at_ns`), so "evidenced by
+the artifact" overstates what a timestamp could show; and the run document's
+authority block omits the UIA adapter digest, which is the adapter that actually
+acted. Both belong in the redone review's scope.
+
+**Mutation audit.** Killed, each by a named test: prefix-matching the column
+rule; dropping `target` from either rule; raising the floor to five digits;
+removing a blocklist value; a local copy of the shared list; an unpinned
+`newline=` in any of fourteen writers; a byte changed in a retained artifact.

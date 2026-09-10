@@ -165,7 +165,13 @@ def run(args) -> int:
     if args.diagnostics is not None:
         path = args.diagnostics.resolve()
         path.parent.mkdir(parents=True, exist_ok=True)
-        diagnostics = path.open("w", encoding="utf-8")
+        # newline="\n" is not optional here. Text mode on Windows translates
+        # "\n" to "\r\n", and this file is the instrumented campaign's record:
+        # a digest taken over it would reproduce only on the platform that
+        # wrote it. Every peer writer in this repository passes it; this one
+        # did not, and it is the tool CLAUDE.md names for the campaign -- the
+        # sixth appearance of the same root cause (D125-D127, D130, D132).
+        diagnostics = path.open("w", encoding="utf-8", newline="\n")
 
         def write_record(record) -> None:
             diagnostics.write(
@@ -267,6 +273,7 @@ def run(args) -> int:
                 )
                 if interrupt["kind"] == "pause":
                     controls.pause()
+
                     # Resumed from a separate thread after a fixed hold, so
                     # the run really does sit paused rather than the pause
                     # being a no-op the main thread lifts immediately.
@@ -339,7 +346,6 @@ def run(args) -> int:
             args, controls, overlay_hwnd=overlay_hwnd
         )
         _emit("presentation_ready", hwnd=overlay_hwnd)
-
 
     run_started = time.monotonic()
     try:
@@ -490,9 +496,7 @@ def main() -> int:
         "counted as acceptance evidence.",
     )
     parser.add_argument("--interrupt-after-node", type=int, default=1)
-    parser.add_argument(
-        "--interrupt-kind", choices=("stop", "pause"), default="stop"
-    )
+    parser.add_argument("--interrupt-kind", choices=("stop", "pause"), default="stop")
     parser.add_argument("--pause-hold-s", type=float, default=3.0)
     parser.add_argument(
         "--mode",
