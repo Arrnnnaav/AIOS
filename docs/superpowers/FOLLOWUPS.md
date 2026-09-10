@@ -775,8 +775,10 @@ operationally demonstrated; release acceptance is not.
 Trigger: before any semantic PowerPoint capability, staged-plan schema wiring,
 or new feature phase.
 
-1. DONE 10 Sep 2026 — `docs/evidence/act-live-manager-d125-run.md`, transcript
-   `act-live-manager-d125-r1.jsonl`, completed 1/1 on the rebuilt bundle.
+1. SUPERSEDED 10 Sep 2026 — the run happened and completed 1/1
+   (`act-live-manager-d125-run.md`), but it bound manifest `48e6e4f4`, which
+   contained signed build products and was never reproducible. Rerun on
+   `61b39b65` (active generation 6).
 2. DONE 10 Sep 2026 — before/after readings retained
    (`act-live-deck-2026-09-10-{before,after}.json`): 1 slide -> 2 slides.
 3. A fresh independent D032 review of the remediation commits and that run.
@@ -785,6 +787,20 @@ or new feature phase.
 Note for whoever runs it: the audit commitments are now keyed per process, so
 digests correlate only within one transcript. Two runs cannot be linked by
 comparing them, and that is deliberate.
+
+## Two accepted evidence files still print raw handles — OPEN 10 Sep 2026
+
+`add-slide-candidate-acceptance.md` and `open-extensions-candidate-acceptance.md`
+each print a raw HWND. Their bytes are bound by digest into adoption records, so
+they cannot be edited in place: doing so breaks the installed-bytes-equal-
+accepted-candidate chain, and six tests refuse it. `tests/test_evidence_hygiene.py`
+exempts exactly these two, by name and with the reason.
+
+Trigger: the next time either workflow is re-adopted for any reason.
+
+Redact the handle in the candidate, run the adoption path, and remove the name
+from the exemption list in the same slice. Do not edit an accepted artifact to
+make a scan pass.
 
 ## An adapter refusal cannot be explained from retained evidence — OPEN 10 Sep 2026
 

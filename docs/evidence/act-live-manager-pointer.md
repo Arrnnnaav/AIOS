@@ -3,7 +3,7 @@
 **Date:** 8 September 2026  
 **Repository commit:** `27413857333e72ff4652d5fd59b9e7d5aad53529`  
 **Application:** Microsoft PowerPoint `16.0.20326.20132`  
-**Target:** `powerpnt.exe`, hwnd `264482`, pid `29768`  
+**Target:** `powerpnt.exe` (handle and process id redacted 10 Sep 2026 — D122 keeps raw target values out of the record, and an evidence file publishing them defeats the keyed commitment that replaced them)  
 **Intent:** `ADD_SLIDE`  
 **Plan:** `add-slide-uia-v1`, one node
 

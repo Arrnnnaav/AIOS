@@ -1,7 +1,7 @@
 # Open Folder: the action removes its own target
 
 Measured 2026-08-28 on VS Code **1.135.0.0**, window `Welcome - Visual Studio
-Code` (hwnd 263404), through the acceptance harness with the new timing
+Code` (hwnd [redacted 10 Sep 2026, D122]), through the acceptance harness with the new timing
 landmarks (D075). Two runs, same setup, opposite outcomes.
 
 ## The two timelines

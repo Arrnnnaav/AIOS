@@ -548,6 +548,40 @@ def test_exported_audit_commitments_are_keyed_not_bare_hashes():
     )
 
 
+def test_every_exported_audit_digest_is_keyed_including_the_scalar_helper():
+    """`_audit_commitment` covers the structural digests; `_audit_digest`
+    covers the scalar ones -- an output path, a goal, an executor detail --
+    and those are guessable too. An independent review pointed out that the
+    earlier mutation audit had broken the helper the production commitments do
+    not use, so the scalar path was never actually pinned.
+    """
+
+    import hashlib
+
+    value = r"D:\decks\investor.pptx"
+    bare = hashlib.sha256(str(value).encode("utf-8")).hexdigest()
+
+    assert manager_module._audit_digest(value) != bare
+    # Same input, same digest inside one process: still a commitment.
+    assert manager_module._audit_digest(value) == manager_module._audit_digest(value)
+    assert manager_module._audit_digest(value + "x") != manager_module._audit_digest(value)
+
+
+def test_the_two_digest_helpers_do_not_share_an_unkeyed_fallback():
+    """Both helpers must key. A single unkeyed one is enough to expose the
+    binding, because the fields flow into the same records."""
+
+    import hashlib
+    import json
+
+    binding = {"executable": "powerpnt.exe", "hwnd": 264482}
+    bare = hashlib.sha256(
+        json.dumps(binding, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+    assert manager_module._audit_commitment(binding) != bare
+
+
 def test_identical_titles_are_chosen_by_handle_and_returned_only_as_narrowing():
     from types import SimpleNamespace
 

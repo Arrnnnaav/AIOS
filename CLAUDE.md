@@ -287,14 +287,25 @@ repository source, payload copy, built bundle, installed catalog and the pin all
 read one byte sequence. Never pin a digest computed from a working copy that git
 does not store.
 
+A signed bundle carries tracked sources only (D127). `__pycache__` and `.pyc`
+are excluded from every tree sweep and refused if named outright: they are
+untracked, so including them makes the manifest unreproducible from a clean
+checkout, and a `.pyc` embeds its source's mtime and size. No file in
+`docs/evidence/` may print a raw HWND or PID -- that publishes the plaintext
+behind the keyed target commitment and the values D122 withholds.
+
 Exported manager-audit commitments are keyed (HMAC-SHA256, random per process,
 never exported). A bare digest over a target binding is reversible, because the
 executable and version are published in cleartext. `target_focus_handoff_completed`
 is recorded before the execution request is minted, so the retained transcript
 evidences the D123 ordering rather than merely being consistent with it.
 
-**`docs/evidence/act-live-manager-d123-r5.jsonl` is invalidated (D125)** — it
-names adapter, verifier and manifest digests that no longer exist. Auto Act is
+**Both retained live runs are unusable as acceptance evidence.**
+`act-live-manager-d123-r5.jsonl` is invalidated (D125) — it names adapter,
+verifier and manifest digests that no longer exist. `act-live-manager-d125-r1.jsonl`
+is superseded (D127) — its catalog manifest `48e6e4f4` contained signed build
+products and was never reproducible. The current bundle is `61b39b65` at active
+generation 6. Auto Act is
 operationally demonstrated, but release acceptance is invalidated by
 reproducibility, privacy, and evidence-integrity findings. Do not proceed to
 semantic PowerPoint planning or new feature phases until the clean-checkout lane

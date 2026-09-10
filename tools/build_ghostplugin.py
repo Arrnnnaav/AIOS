@@ -31,17 +31,31 @@ def _entry(name: str, raw: bytes) -> tuple[zipfile.ZipInfo, bytes]:
     return info, raw
 
 
+#: Interpreter build products. They are untracked, so a clean checkout does
+#: not have them and a rebuild there produces a different manifest -- the
+#: bundle stops being reproducible from source, which is D125's defect wearing
+#: a different hat. A `.pyc` also embeds the source's mtime and size, so two
+#: builds from identical sources need not even agree with each other.
+#:
+#: They are excluded rather than refused because their presence says nothing
+#: about the payload: any local test run that imports an adapter creates them.
+def _is_build_product(path: Path) -> bool:
+    return path.suffix == ".pyc" or "__pycache__" in path.parts
+
+
 def _collect(repo_root: Path, specification: dict) -> dict[str, bytes]:
     files: dict[str, bytes] = {}
     for item in specification["files"]:
         source = (repo_root / item["source"]).resolve()
+        if _is_build_product(source):
+            raise ValueError(f"payload names an interpreter build product: {source}")
         destination = PurePosixPath(item["destination"]).as_posix()
         files[destination] = source.read_bytes()
     for item in specification["trees"]:
         source_root = (repo_root / item["source"]).resolve()
         destination_root = PurePosixPath(item["destination"])
         for source in sorted(source_root.rglob("*")):
-            if source.is_file():
+            if source.is_file() and not _is_build_product(source):
                 destination = (
                     destination_root / source.relative_to(source_root).as_posix()
                 ).as_posix()

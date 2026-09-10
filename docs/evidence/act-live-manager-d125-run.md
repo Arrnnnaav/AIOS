@@ -1,5 +1,15 @@
 # Live manager-approved PowerPoint Act run on the rebuilt LF bundle
 
+> **SUPERSEDED 10 September 2026 (D127).** This run bound catalog manifest
+> `48e6e4f4`, which contained two signed `__pycache__/*.pyc` entries. Those come
+> from untracked directories, so a clean checkout rebuilds a different manifest
+> and this run's authority binding cannot be reproduced from source. The
+> executed adapter and verifier bytes (`eb7a0c68`, `ccbf395e`) are unaffected
+> and remain reproducible; it is the catalog binding that is not. The bundle has
+> been rebuilt without build products (manifest `61b39b65`, active generation 6)
+> and a replacement run is required. The observations below stand as a record of
+> what happened; they are not current acceptance evidence.
+
 **Date:** 10 September 2026
 **Repository commit at run time:** `f44a0e3` (`feat: retain the deck reading a live Act run claims`)
 **Application:** Microsoft PowerPoint, version `16.0`, build `20326`

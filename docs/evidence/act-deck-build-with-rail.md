@@ -5,7 +5,7 @@
 `84e39d0d2987e153923c537587380e9eeecccfae0a50ede5be586e0238e4fe79`
 **Bundle:** `d68be5498446b14bfd031d0cf95c059738bae52f0564df19bed62674ee0fcd49`
 (rebuilt from current source; manifest `b0deb920…`)
-**Application:** PowerPoint `16.0.20326.20112`, hwnd 2885152
+**Application:** PowerPoint `16.0.20326.20112`, hwnd [redacted 10 Sep 2026, D122]
 **Harness:** `ghostcursor.devtools.act_acceptance --rail`
 
 ## Why the rail matters here, specifically
@@ -31,7 +31,7 @@ Not the diagnostic harness. `act_acceptance` runs the production path:
 6. `execute_approved_graph()`
 
 Approval `b54e99a446d854cc…`, graph `0a3f57b5f9dc7f05…`, 255 nodes,
-target hwnd 2885152.
+target hwnd [redacted 10 Sep 2026, D122].
 
 ## Runs
 

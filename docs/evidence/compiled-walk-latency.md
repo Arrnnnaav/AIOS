@@ -2,7 +2,7 @@
 
 Measured 2026-08-28 on VS Code **1.135.0.0**, window
 `Mermaid Diagram - enterprice agent ecommerce - Visual Studio Code`
-(hwnd 1706624), via `.artifacts/walk-cost-probe.py`, which alternates the two
+(hwnd [redacted 10 Sep 2026, D122]), via `.artifacts/walk-cost-probe.py`, which alternates the two
 shapes on the same window so a warming tree cannot be read as a faster call.
 
 | Round | `descendants()` | controls | `descendants(control_type="Button")` | controls |

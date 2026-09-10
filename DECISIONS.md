@@ -5149,3 +5149,64 @@ guard, and emitting CRLF.
 the reason inside the bounded `code` is hashed. A closed refusal-reason
 vocabulary would fit D122 without carrying content, and is recorded as a
 follow-up rather than built inside this slice.
+
+
+## D127 — A signed bundle carries sources, and evidence carries no raw handles
+
+**Date:** 10 September 2026
+**Status:** Implemented; replacement live run and independent review open.
+
+**Decision.** A signed bundle contains tracked sources and nothing an
+interpreter produced. `__pycache__` directories and `.pyc` files are excluded
+from every tree sweep, and a `files` entry naming one is refused outright.
+Separately, no document in `docs/evidence/` may print a raw window handle or
+process id.
+
+**What was wrong.** An independent D032 review found the 10 September PowerPoint
+bundle shipping two signed `__pycache__/*.pyc` entries. `__pycache__` is
+untracked, so a clean checkout has none and rebuilding there yields a different
+manifest: `48e6e4f4` could not be reproduced from source, and a `.pyc` embeds
+its source's mtime and size, so two builds need not even agree with each other.
+This is D125's defect a third time — bytes that depend on the machine rather
+than the tracked sources — now in the manifest rather than in a payload file.
+
+The same review found an evidence document printing `hwnd 264482, pid 29768`.
+That was a pattern rather than an instance: eight occurrences across six files.
+Publishing those values defeats two controls at once — D122 excludes them from
+the transcript, and D125 keyed the target commitment precisely because they are
+guessable, so printing the plaintext makes the commitment checkable by anyone
+holding the document. They also carry no evidentiary weight once a run is over.
+Six of the eight are redacted in place, marked as redactions rather than
+removed silently, and a scan keeps new ones out. **Two are not, and must not
+be:** `add-slide-candidate-acceptance.md` and
+`open-extensions-candidate-acceptance.md` are bound by digest into adoption
+records, so editing their bytes breaks the content-addressed chain that makes
+an adoption trustworthy -- attempting it failed six tests immediately, which is
+that mechanism working. They are exempted from the scan by name, with the
+reason, and redacting them properly requires a new adoption rather than a
+rewrite of an accepted artifact.
+
+**The review's third finding was correct and my earlier audit was not.** The
+D125 mutation audit reported killing a mutation of `_audit_digest`, but the
+structural commitments run through `_audit_commitment`; the scalar helper — an
+output path, a goal, an executor detail, all guessable — was never pinned. It is
+now, and unkeying it fails exactly one test.
+
+**Measurements.** Rebuilding without build products moved the PowerPoint
+manifest `48e6e4f4` → `61b39b65` (26 archive entries, down from 28) and
+republished the active index at generation 6. The adapter and live-verifier
+digests are unchanged: `eb7a0c68` and `ccbf395e`.
+
+**Evidence consequence.** `act-live-manager-d125-r1.jsonl` bound manifest
+`48e6e4f4`. That manifest no longer exists and was never reproducible, so the
+run is **superseded**: its executed bytes were sound, its catalog binding was
+not. A third live run on `61b39b65` is required. The retained before/after deck
+readings remain valid as a record of what the run did.
+
+**Mutation audit.** Three killed, each by exactly one test: including build
+products in a tree sweep; unkeying `_audit_digest`; and a planted raw handle in
+an evidence document (the scan's non-vacuity check).
+
+**Standing.** Auto Act is operationally demonstrated. Release acceptance remains
+invalidated, now for a third reason, and no campaign may run before a formal
+D032 READY.

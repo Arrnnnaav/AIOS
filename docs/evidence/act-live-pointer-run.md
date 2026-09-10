@@ -3,7 +3,7 @@
 **Date:** 3 September 2026
 **Application:** Microsoft PowerPoint 16.0.20326.20112,
 `C:\Program Files\Microsoft Office\root\Office16\POWERPNT.EXE`
-**Window:** hwnd 2885152, pid 17856, `live.pptx - PowerPoint`
+**Window:** hwnd [redacted 10 Sep 2026, D122], pid [redacted 10 Sep 2026, D122], `live.pptx - PowerPoint`
 **Harness:** `py -3.12 -m ghostcursor.devtools.act_live_node --frame-budget-ms 2`
 **Operation:** `powerpoint.new_slide_uia`, backend `uia_pattern`, pattern `Invoke`
 **Selector:** `powerpoint.new-slide`, `Button` named `New Slide`,
