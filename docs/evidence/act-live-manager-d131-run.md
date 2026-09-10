@@ -8,8 +8,8 @@
 
 This replaces the two earlier retained runs. `act-live-manager-d123-r5.jsonl` is
 invalidated (D125) and `act-live-manager-d125-r1.jsonl` superseded (D127); the
-latter also could not attribute its effect to an attempt, which is the gap this
-run closes.
+latter could not separate its two approval cycles at all, which is the gap this
+run narrows.
 
 ## Retained artifacts
 
@@ -66,20 +66,29 @@ The handoff record precedes the issuance record (sequence 3 before 4), which is
 the D123 ordering evidenced by the artifact rather than by reading source — the
 emission order was corrected for exactly this reason.
 
-## The effect is attributable this time
+## The change was observed after the authorized cycle
 
 | Reading | Deck | Slides |
 |---|---|---|
 | `before-1` | `Presentation1` | 1 |
 | `after-1` | `Presentation1` | 2 |
 
-**One approval cycle sits between those two readings**, so the added slide is
-attributable to it. The 10 September run could not say this: it held two
-approvals with a single session-bracketing pair, so a refused cycle and a
-successful one shared one interval and the evidence had to be narrowed to "the
+**One approval cycle sits between those two readings.** The wording stops
+there, deliberately. What the artifacts establish is that the deck held one
+slide before the authorized cycle and two after it, and that the signed live
+verifier answered affirmatively for the declared change in between. They do not
+establish *causation*: the readings bracket an interval, not the cycle itself,
+and an interval is a weaker thing than an action however short it is. Whether
+this run may claim "Act caused the change" rather than "the change was observed
+after the authorized cycle" is a question for independent review, and until
+that review says otherwise the weaker sentence is the claim.
+
+This is still stronger than the 10 September run, which held two approvals --
+one of them refused -- inside a single session-bracketing pair, so no attempt
+could be separated from any other and the evidence had to be narrowed to "the
 session ended with one additional slide" (D128/D130). Per-attempt labels
-(`d65184e`) are what make the stronger claim available here, and this is the
-first run to use them.
+(`d65184e`) shorten the interval to one cycle; they do not turn correlation
+into causation, and the first draft of this document overstated exactly that.
 
 The readings were taken by `ghostcursor.devtools.act_deck_observation`, which
 attaches read-only to a running PowerPoint and never launches one.
@@ -95,6 +104,8 @@ attaches read-only to a running PowerPoint and never launches one.
   verifier answer.
 - The claimed state change is corroborated by two files bracketing one cycle,
   not by an operator's memory and not by an interval containing two attempts.
+  That is an observation ordered around the cycle, not a demonstration that the
+  cycle caused it.
 - It ran on the current, reproducible bundle under a PowerPoint-only catalog.
 
 ## What it does not prove
@@ -115,6 +126,9 @@ imagined, and because the retained evidence still cannot say why they happened:
 the refusal reason is hashed, which is the open follow-up for a bounded
 refusal-reason vocabulary.
 
-An earlier attempt at this run on the same day is deliberately not retained:
-the manager was launched before its `before-1` reading was taken, so it had no
-starting bracket. Its transcript remains under `.artifacts/` and is not evidence.
+An earlier attempt on the same day is **retained as an excluded attempt**, not
+omitted: `docs/evidence/excluded/act-live-manager-2026-09-11-attempt-1.jsonl`,
+with its reason recorded in `docs/evidence/excluded/README.md`. It was launched
+before its `before-1` reading was taken and so has no starting bracket. It
+reached `completed 1/1` on its second cycle, so this is not a discarded failure,
+and keeping it is what lets a reader check the exclusion instead of trusting it.
