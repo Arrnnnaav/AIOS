@@ -775,18 +775,19 @@ def test_gitattributes_pins_every_attested_text_class_to_lf():
     }
     # Two classes, and the set stays exact so an unreviewed rule still fails.
     # `text eol=lf` normalises a class whose content is compared as text.
-    # `-text` stores bytes verbatim, which is required wherever a digest is
-    # taken of the file itself: a signed plugin payload reaches a fresh clone
-    # as the bytes that were signed, reviewed and executed (D108).
+    # Signed plugin payloads are pinned to LF for the same reason, and it is
+    # the tracked LF form that the pin, the built bundle and the installed
+    # bundle must all agree on: a fresh clone has to reproduce the bytes that
+    # were reviewed, signed and executed (D108).
     assert rules == {
         "ghostcursor/packs/**/*.json text eol=lf",
         "docs/superpowers/candidates/**/*.json text eol=lf",
         "tests/data/*.json text eol=lf",
         "docs/evidence/**/*.md text eol=lf",
         "ghostcursor/demo/synthetic_export_app.py text eol=lf",
-        "plugins/shared/*.py -text",
-        "plugins/sources/*/payload/** -text",
-        "plugins/sources/*/index.json -text",
+        "plugins/**/*.py text eol=lf",
+        "plugins/**/*.json text eol=lf",
+        "plugins/**/*.md text eol=lf",
     }
 
 

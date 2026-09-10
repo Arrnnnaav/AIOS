@@ -85,23 +85,23 @@ def test_committed_bytes_are_the_bytes_on_disk():
     )
 
 
-def test_signed_payload_paths_are_exempt_from_eol_normalisation():
+def test_signed_payload_paths_are_pinned_to_lf():
     """The mechanism that keeps the bytes equal, checked directly.
 
     Byte equality above is the property; this is the setting that holds it
-    true for the *next* file someone adds on a Windows editor. Without it the
-    two can drift apart again silently, and the drift only shows up on a
-    machine that clones fresh.
+    true for the *next* file someone adds from a Windows editor. The tracked
+    LF form is canonical, so the working copy is normalised to it: a fresh
+    clone, this working copy, the built bundle and the pin then all read the
+    same bytes. Without it they drift apart silently, and the drift only
+    surfaces on a machine that clones fresh.
     """
 
-    unprotected = []
+    unpinned = []
     for name in _tracked_signed_paths():
-        attrs = _git("check-attr", "text", "--", name).stdout.decode("utf-8").strip()
-        # `text: unset` is what `-text` produces: no conversion in either
-        # direction, so the object store holds the bytes verbatim.
-        if not attrs.endswith(": unset"):
-            unprotected.append(attrs or name)
-    assert not unprotected, (
-        "these signed payload paths would be line-ending normalised:\n"
-        + "\n".join(unprotected)
+        text = _git("check-attr", "text", "--", name).stdout.decode("utf-8").strip()
+        eol = _git("check-attr", "eol", "--", name).stdout.decode("utf-8").strip()
+        if not text.endswith(": set") or not eol.endswith(": lf"):
+            unpinned.append(f"{text} | {eol}")
+    assert not unpinned, (
+        "these signed payload paths are not pinned to LF:\n" + "\n".join(unpinned)
     )

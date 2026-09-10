@@ -217,11 +217,13 @@ def _validate_manifest(value: dict[str, Any]) -> None:
 
 
 
-#: sha256 of the canonical reviewed generic UIA adapter source
+#: sha256 of the canonical reviewed generic UIA adapter source, taken from
+#: the TRACKED bytes. It was previously pinned to a CRLF working copy that
+#: git never stored, so the digest named a file no clean checkout produced.
 #: (`plugins/shared/uia_adapter.py`). A plugin carries a byte-identical copy,
 #: so one review covers every copy -- and a copy that has drifted from the
 #: reviewed bytes is refused rather than executed (D108).
-CANONICAL_UIA_ADAPTER_SHA256 = "5c20779cb895b798b549b1e720b6df56f618761083c81c749dc1f075be162ae6"
+CANONICAL_UIA_ADAPTER_SHA256 = "d97216d3e84d1b689bdd2ab52d30b3a6da535381951ecd88f4275829a64795ac"
 
 
 def verify_adapter_shape(adapter):
