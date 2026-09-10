@@ -46,7 +46,9 @@ def test_compiled_controls_make_stop_pause_and_ask_real_actions():
     api = _BarApi()
     pumps = []
     controls = CompiledTourControls(
-        42, bar_api=api, pump_messages=lambda: pumps.append("pump"),
+        42,
+        bar_api=api,
+        pump_messages=lambda: pumps.append("pump"),
         escape_source=lambda: False,
     )
 
@@ -202,9 +204,7 @@ def test_ask_panel_expands_the_bar_and_keeps_the_input_visible():
         label = bar._panel_label_hwnd[bar_hwnd]
         edit_rect = win32gui.GetWindowRect(edit)
         label_rect = win32gui.GetWindowRect(label)
-        ask_rect = win32gui.GetWindowRect(
-            bar._bar_button_hwnd[bar_hwnd][bar.ID_ASK]
-        )
+        ask_rect = win32gui.GetWindowRect(bar._bar_button_hwnd[bar_hwnd][bar.ID_ASK])
         edit_style = win32gui.GetWindowLong(edit, win32con.GWL_STYLE)
 
         assert expanded[2] - expanded[0] == bar._BAR_EXPANDED_WIDTH
@@ -226,7 +226,10 @@ def test_ask_panel_expands_the_bar_and_keeps_the_input_visible():
         assert restored[2] - restored[0] == bar._BAR_WIDTH
         assert restored[3] - restored[1] == bar._BAR_HEIGHT
         assert restored[2] == compact[2] == expanded[2]
-        assert abs(((restored[1] + restored[3]) // 2) - ((compact[1] + compact[3]) // 2)) <= 1
+        assert (
+            abs(((restored[1] + restored[3]) // 2) - ((compact[1] + compact[3]) // 2))
+            <= 1
+        )
     finally:
         bar.destroy_bar_window(bar_hwnd)
 
@@ -338,6 +341,32 @@ def test_focus_handoff_refuses_a_false_success_from_windows(monkeypatch):
 
     assert bar.restore_focus_if_safe(41, 73) is False
     assert calls == [73]
+
+
+def test_an_os_refusal_is_refused_even_when_the_target_ends_up_foreground():
+    """The `win32gui.error` guard, pinned on its own.
+
+    Every other test reaches the same verdict through the post-call
+    foreground check, so removing this `except` clause survived a mutation
+    audit. It diverges in exactly one state: Windows raises, and the target
+    is nevertheless foreground when we look. Without the guard that reads as
+    success, and the manager would issue an execution request off the back
+    of a call the OS refused.
+    """
+
+    import pytest
+
+    reads = iter([41, 73])
+
+    def refuse(_hwnd):
+        raise win32gui.error(5, "SetForegroundWindow", "Access is denied.")
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(win32gui, "GetForegroundWindow", lambda: next(reads))
+        patch.setattr(win32gui, "IsWindow", lambda hwnd: hwnd == 73)
+        patch.setattr(win32gui, "SetForegroundWindow", refuse)
+
+        assert bar.restore_focus_if_safe(41, 73) is False
 
 
 def test_opening_the_panel_focuses_it_and_closing_releases(monkeypatch):

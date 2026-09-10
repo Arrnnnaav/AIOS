@@ -105,15 +105,12 @@ def _layout_children(hwnd: int, *, expanded: bool) -> None:
             )
     status = _bar_status_hwnd.get(hwnd)
     if status:
-        status_y = (
-            _BUTTON_MARGIN
-            + 3 * _BUTTON_HEIGHT
-            + 2 * _BUTTON_GAP
-            + _STATUS_GAP
-        )
+        status_y = _BUTTON_MARGIN + 3 * _BUTTON_HEIGHT + 2 * _BUTTON_GAP + _STATUS_GAP
         status_height = (
-            _BAR_EXPANDED_HEIGHT if expanded else _BAR_HEIGHT
-        ) - status_y - _BUTTON_MARGIN
+            (_BAR_EXPANDED_HEIGHT if expanded else _BAR_HEIGHT)
+            - status_y
+            - _BUTTON_MARGIN
+        )
         win32gui.MoveWindow(
             status,
             rail_x,
@@ -267,10 +264,20 @@ def close_panel(hwnd: int) -> None:
 
 
 def restore_focus_if_safe(bar_hwnd: int, target_hwnd: int) -> bool:
-    """Restore the target only if the bar still owns foreground focus.
+    """Hand foreground focus to exactly one already-chosen window.
 
-    If the user switched applications while Ask was open, leave focus alone.
-    This guard prevents the assistant from unexpectedly pulling focus back.
+    Two callers, one rule. The control bar returns focus to the window a
+    tour was running against after Ask closes; the manager hands it to the
+    exact HWND already bound into an approved Act proposal before it issues
+    the execution request (D123). Neither may *choose* a target here --
+    `target_hwnd` is supplied identity, and this function never reads the
+    foreground to pick one (D075).
+
+    Every refusal is silent and final: if the caller no longer owns the
+    foreground (the user switched applications), if the target is stale, if
+    Windows refuses the call, or if the target is not foreground afterwards,
+    it returns False and the caller does not proceed. One attempt only -- no
+    retry, no `AttachThreadInput`, no second candidate.
     """
     if win32gui.GetForegroundWindow() != bar_hwnd:
         return False

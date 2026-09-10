@@ -110,21 +110,26 @@ The production manager proof completed on repository commit
 transcript is `docs/evidence/act-live-manager-d123-r5.jsonl`, SHA-256
 `2884be3175424db27f865cb2238a271f54d2b3bcda38b51688b57e7f5d16ab55`.
 
-The eleven ordered records show:
+The eleven ordered records show, by `type` and — where the record is an
+`act_runtime_event` — the executor `code` it carries:
 
 ```text
-manager_opened
-act_proposal_displayed
-target_focus_handoff_completed
-approve_and_run_issued
-execution_request_dequeued
-act_worker_started
-action_started        n001-new-slide  1/1
-action_completed      n001-new-slide  1/1
-completed             1/1
-act_run_result        completed=true, completed_nodes=1
-manager_closed
+type=manager_opened
+type=act_proposal_displayed
+type=target_focus_handoff_completed
+type=approve_and_run_issued
+type=execution_request_dequeued
+type=act_worker_started
+type=act_runtime_event  code=action_started    n001-new-slide  1/1
+type=act_runtime_event  code=action_completed  n001-new-slide  1/1
+type=act_runtime_event  code=completed         1/1
+type=act_run_result     code=completed  completed=true, completed_nodes=1
+type=manager_closed
 ```
+
+Record order is established by the contiguous `sequence` field, not by
+`at_ns`: records 3, 4 and 5 share one timestamp, because the clock behind
+them is coarser than the interval between them.
 
 The proposal, handoff, approval, dequeue, and worker-start records all carry
 proposal SHA-256
@@ -133,10 +138,20 @@ The terminal result repeats graph
 `38cd88be632d4aed415f341ba9534a56b5f3727e9826c15dcb912871350b9d3d`
 and validation
 `d4b35437d53b1b3d21caba62785cff54e2c42ae69deb6248026e130b1c9c14fc`
-from the displayed proposal. A separate read-only COM observation after the
-manager closed reported the disposable `Presentation1` with two slides; it had
-been created with one slide before the run. The separate AutoRecovered deck
-remained at one slide.
+from the displayed proposal.
+
+**The slide count is an operator report, not retained evidence.** A separate
+read-only COM observation after the manager closed reported the disposable
+`Presentation1` with two slides, having been created with one before the run,
+and the separate AutoRecovered deck unchanged at one slide. That reading was
+not written to a file, and the D122 audit deliberately excludes verifier
+readings, so nothing in this repository corroborates it: under D034 it may not
+be presented as measured evidence, and a reviewer cannot check it after the
+fact. What the retained transcript does establish independently is that the
+signed live verifier was asked for the declared change and answered
+affirmatively — `action_completed` is emitted only on that answer. A future
+counted campaign must retain the before/after readings as artifacts rather
+than relying on an operator's observation.
 
 This closes the missing live-path fact from the prior review: the action crossed
 the visible native manager's explicit approval command before the one-use
