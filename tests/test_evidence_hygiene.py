@@ -38,13 +38,19 @@ ROOT = Path(__file__).resolve().parents[1]
 
 #: Documents and data. Source files are covered by the blocklist below instead,
 #: because a test needs *some* integer and an invented one is not a leak.
-_SCANNED_SUFFIXES = {".md", ".json", ".jsonl"}
+_SCANNED_SUFFIXES = {".md", ".json", ".jsonl", ".txt", ".log", ".csv"}
 
-#: `hwnd 770001`, `hwnd: 770001`, `HWND `770001``, `pid 880002`. Five digits is
-#: the floor: every value ever observed live in this repository is five or
-#: more, while a three- or four-digit number beside `hwnd` in a design document
-#: is a fabricated sample (`TARGET_HWND = 4242`). The blocklist below catches
-#: real values regardless of length, so the floor costs nothing.
+#: `hwnd 770001`, `hwnd: 770001`, `HWND `770001``, `pid 880002`. FOUR digits is
+#: the floor, not five: a Windows PID is frequently four digits, and the
+#: five-digit floor written in D130 was justified by what had been observed
+#: rather than by what the next campaign will write -- a fifth review called
+#: that reasoning self-serving, correctly. Design documents that used a
+#: fabricated four-digit sample now use a named placeholder instead, so the
+#: floor costs no false positives.
+#:
+#: The prefix is any word characters, not a fixed list: `target_hwnd` was
+#: covered while `windowHandle` was not, which is the same defect one spelling
+#: over (D131).
 #:
 #: The word boundaries are spelled out rather than `\b`, because `\b` does not
 #: fire after an underscore: `"target_hwnd": <value>` walked straight past the
@@ -53,20 +59,22 @@ _SCANNED_SUFFIXES = {".md", ".json", ".jsonl"}
 #: the entire lane in `docs/evidence/*.json`, the exact artifact a live run
 #: writes (D130).
 _RAW_TARGET = re.compile(
-    r"(?:^|[^A-Za-z0-9])(?:target_|window_|owning_)?(hwnd|pid|handle)"
-    r"[\s:=\"]*`?(0x[0-9A-Fa-f]{4,}|\d{5,})",
+    r"(?:^|[^A-Za-z0-9])[A-Za-z_]*(hwnd|pid|handle)"
+    r"[\s:=\"]*`?(0x[0-9A-Fa-f]{3,}|\d{4,})",
     re.IGNORECASE,
 )
 
-#: A JSON key naming a window handle or process id, in any spelling this
-#: repository has actually used. Structural, so it does not depend on how the
-#: value happens to be formatted.
-_TARGET_KEY = re.compile(r"(?:^|_)(hwnd|pid|handle)$", re.IGNORECASE)
+#: A JSON key naming a window handle or process id. SUBSTRING, not an exact
+#: spelling: `"windowHandle": <value>` passed every rule because the pattern
+#: anchored on `(?:^|_)(hwnd|pid|handle)$`. Enumerating spellings is how this
+#: scan has now been evaded twice; matching the shape is the fix (D131).
+_TARGET_KEY = re.compile(r"(hwnd|pid|handle|window_?id)", re.IGNORECASE)
 
-#: A markdown table column whose header names one. The Excel evidence table
-#: published six handles under an `HWND` heading, where no line contained the
-#: word `hwnd` next to a number at all.
-_TARGET_COLUMN = re.compile(r"^(hwnd|pid|handle|window)$", re.IGNORECASE)
+#: A markdown table column whose header names one. Also a substring, and it
+#: must include `target`: every evidence table this repository actually emits
+#: heads its binding column `Target`, so the previous rule covered a heading
+#: that no longer exists and missed the one in use (D131).
+_TARGET_COLUMN = re.compile(r"(hwnd|pid|handle|window|target)", re.IGNORECASE)
 
 #: Values actually observed on a live desktop and once published in this
 #: repository. They are recorded here so that no file -- prose, fixture, or
@@ -113,6 +121,27 @@ def _text(name):
         return (ROOT / name).read_text(encoding="utf-8", errors="ignore")
     except (OSError, UnicodeDecodeError):
         return ""
+
+
+def test_the_blocklist_still_holds_every_value_ever_published():
+    """The list itself was unprotected: deleting the three values this slice
+    added passed both files, so the headline remediation could be reverted
+    invisibly (D131).
+
+    Membership is asserted by digest rather than by literal, so this test does
+    not become the leak it guards. A value removed, or the tuple shortened,
+    fails here.
+    """
+
+    import hashlib
+
+    assert len(_OBSERVED) == 15
+    assert len(set(_OBSERVED)) == 15
+    assert all(value.isdigit() and len(value) >= 4 for value in _OBSERVED)
+    digest = hashlib.sha256("|".join(sorted(_OBSERVED)).encode("utf-8")).hexdigest()
+    assert (
+        digest == "69b29ae12b70b7435a110c1ad44ab5ccba803c6279ede38e25940da70a734e66"
+    ), digest
 
 
 def test_the_scan_covers_the_places_handles_have_actually_leaked():
@@ -224,7 +253,9 @@ def test_no_markdown_table_publishes_a_handle_column():
                 ]
                 continue
             for index in columns:
-                if index < len(cells) and re.fullmatch(r"\d{3,}", cells[index]):
+                if index < len(cells) and re.fullmatch(
+                    r"(0x[0-9A-Fa-f]{3,}|\d{4,})", cells[index]
+                ):
                     offenders.append(f"{name}:{number}: column {index} = handle-shaped")
     assert not offenders, "handle columns in tracked markdown:\n" + "\n".join(offenders)
 

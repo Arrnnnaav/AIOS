@@ -5136,11 +5136,12 @@ the session and 2 after it, so one slide was added across two approvals.
 > "the refused cycle changed nothing" -- is **withdrawn**. The readings bracket
 > the session, not either cycle, so the session's net effect is one added slide
 > and attribution to a particular attempt is not established. The run's bundle
-> `48e6e4f4` named below is superseded by D127; see D129 for the current one. That is the fail-closed property observed under
-an unplanned failure rather than a constructed one. Its cause is not recorded —
-the audit hashes the detail, `sessions.sqlite` stores no Act detail by default,
-and the operator does not recall the on-screen text. It is written down as
-unexplained rather than reconstructed (D032).
+> `48e6e4f4` named below is superseded by D127, and the current PowerPoint
+> manifest is `28dbaf2d` (D129/D130).
+
+Its cause is not recorded — the audit hashes the detail, `sessions.sqlite`
+stores no Act detail by default, and the operator does not recall the on-screen
+text. It is written down as unexplained rather than reconstructed (D032).
 
 **A defect found while retaining the readings.** The probe first wrote both
 files with `Path.write_text`, which translates newlines on Windows, so the
@@ -5270,7 +5271,8 @@ by `ghostcursor-release-2026-2` and VS Code by `-2026-1`; only `-2026-3` is
 present on this machine. Their redacted payloads therefore cannot be re-signed,
 so the repository's Excel and VS Code payloads no longer match their installed
 signed bundles, and will not until those keys are produced. PowerPoint is
-rebuilt and active: manifest `28dbaf2d`, active generation 7.
+rebuilt and active: manifest `28dbaf2d` (the generation at the time was 7;
+it advances with every publish, so the manifest is the durable identifier).
 
 Re-keying them onto `-2026-3` was considered and refused. It would collapse
 three signing identities into one as a side effect of a redaction, with no
@@ -5391,8 +5393,15 @@ column header, because the Excel evidence published six handles under an `HWND`
 heading on lines where the word never appeared beside a number.
 
 **Three handles were published and un-blocklisted.** Three handles sit in the legacy Excel bundle's HWND column; they are named in
-the blocklist rather than here. They were absent from the
-tracked tree, so nothing leaked, but nothing prevented reintroduction either.
+the blocklist rather than here.
+
+**Correction (D131).** This decision originally said these values "were absent
+from the tracked tree, so nothing leaked". That is false: the bundle carrying
+them is a tracked, distributable, signed artifact, which is exactly the exposure
+`legacy-exposure.json` exists to contain. They are published, they cannot be
+re-signed away without the keys, and the blocklist prevents *reintroduction
+elsewhere* rather than undoing the publication.
+
 They are blocklisted now, and `test_legacy_bundle_exposure` imports the single
 list rather than copying half of it -- it had six of twelve while describing
 itself as a mirror.
@@ -5432,3 +5441,63 @@ deleted; all 28 refs rescanned clean.
 value; the prose JSON form; the hex form; a table column; both cross-scope
 guards; the scope presence check; a non-string reference; a shared worksheet
 binding; an untracked file in a swept tree; an untracked file named in `files`.
+
+
+## D131 — Match the shape, not the spelling
+
+**Date:** 10 September 2026
+**Status:** Implemented; the fifth review's remaining item is the live run.
+
+**Decision.** The handle scan matches the *shape* a leak takes, not the exact
+spelling of the last one. JSON keys are matched by substring
+(`hwnd|pid|handle|window_id`, anywhere, any case), table columns by substring
+including `target`, prose by any word-character prefix, and the numeric floor is
+four digits rather than five.
+
+**Why, and it is the third time.** Round three found the process-local
+pseudonym; round four found the JSON blind spot; round five found that the fix
+for round four was keyed to round four's spelling. Each rule I wrote covered
+the exact form of the leak in front of me:
+
+- `_TARGET_KEY` was `(?:^|_)(hwnd|pid|handle)$`, so `"windowHandle": <value>`
+  passed every rule. Verified by planting it in a tracked evidence artifact:
+  the whole lane passed.
+- `_TARGET_COLUMN` was `^(hwnd|pid|handle|window)$` — the heading the Excel
+  evidence used **before** it was re-rendered. Every evidence table this
+  repository now emits heads that column `Target`, so the rule covered a
+  heading that no longer exists and missed the one in use.
+- The five-digit floor was justified by "every value ever observed here is five
+  or more", which is a statement about the past, not about what the next
+  campaign writes. A Windows PID is frequently four digits. The review called
+  that reasoning self-serving and was right: I raised the floor to make my own
+  false positives disappear. The two fabricated four-digit samples in design
+  documents now use named placeholders, so the floor costs nothing.
+- `.txt` was not scanned at all, and `idea.txt` is tracked.
+
+**The list itself was unprotected.** Deleting the three values added the day
+before passed both test files, and replacing the shared `_OBSERVED` with a
+two-value local copy passed all ten legacy-bundle tests — the "mirror" defect
+D130 claimed to have fixed, still undetectable. Membership is now pinned by
+digest (so the guard does not become the leak) and by object identity, so a
+local copy fails even when its contents happen to match.
+
+**Two documentation defects of my own.** D130 stated the three Excel handles
+"were absent from the tracked tree, so nothing leaked" — false; they sit in a
+tracked, distributable, signed bundle, which is the exposure
+`legacy-exposure.json` exists to contain. And the D126 amendment blockquote
+absorbed the tail of the sentence it replaced, leaving an orphaned clause. Both
+corrected.
+
+**Generation numbers are no longer restated.** Four places asserted generation 7
+while two asserted 9, because the figure advances on every publish. The manifest
+digest is the durable identifier; the generation is read from the store.
+
+**Mutation audit.** Five evasions planted with values the blocklist has never
+held — camelCase JSON key, decimal and hex in a `Target` column cell, a
+four-digit PID in prose, a handle in a tracked `.txt` — each now fails a named
+test. Both blocklist mutations die.
+
+**Known and accepted.** The `act_live_node` diagnostic still prints
+`hwnd=<value> pid=<value>` to its console transcript. That transcript is
+retained by hand for D121, so its redaction stays manual until the run that
+needs it is scripted.

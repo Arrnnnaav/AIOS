@@ -311,8 +311,9 @@ bundles are not (D128).** Excel is signed by `ghostcursor-release-2026-2` and VS
 Code by `-2026-1`; neither private key is available here, so those two cannot be
 re-signed. Do not re-key them onto `-2026-3` to work around it: that collapses
 three signing identities with no revocation or rotation design, and belongs to
-the marketplace signing decision. PowerPoint is rebuilt and active at manifest
-`28dbaf2d`, generation 7.
+the marketplace signing decision. PowerPoint is rebuilt and active at manifest `28dbaf2d`. The active
+generation advances with every publish and is deliberately not restated here;
+read it from the store.
 
 A signed bundle carries tracked sources only (D127). `__pycache__` and `.pyc`
 are excluded from every tree sweep and refused if named outright: they are
@@ -331,7 +332,7 @@ evidences the D123 ordering rather than merely being consistent with it.
 `act-live-manager-d123-r5.jsonl` is invalidated (D125) — it names adapter,
 verifier and manifest digests that no longer exist. `act-live-manager-d125-r1.jsonl`
 is superseded (D127) — its catalog manifest `48e6e4f4` contained signed build
-products and was never reproducible. The current PowerPoint bundle is `28dbaf2d` at active generation 7. Auto Act is
+products and was never reproducible. The current PowerPoint bundle is `28dbaf2d`. Auto Act is
 operationally demonstrated, but release acceptance is invalidated by
 reproducibility, privacy, and evidence-integrity findings. Do not proceed to
 semantic PowerPoint planning or new feature phases until the clean-checkout lane

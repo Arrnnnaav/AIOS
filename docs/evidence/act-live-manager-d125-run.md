@@ -6,8 +6,9 @@
 > and this run's authority binding cannot be reproduced from source. The
 > executed adapter and verifier bytes (`eb7a0c68`, `ccbf395e`) are unaffected
 > and remain reproducible; it is the catalog binding that is not. The bundle has
-> been rebuilt without build products (manifest `61b39b65`, active generation 6)
-> and a replacement run is required. The observations below stand as a record of
+> been rebuilt without build products. That rebuild was itself superseded:
+> the current PowerPoint manifest is `28dbaf2d` (D129/D130), and a replacement
+> run is required against it. The observations below stand as a record of
 > what happened; they are not current acceptance evidence.
 
 **Date:** 10 September 2026

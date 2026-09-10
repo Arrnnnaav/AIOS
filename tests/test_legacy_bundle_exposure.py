@@ -136,3 +136,14 @@ def test_a_clean_bundle_is_still_allowed_to_bootstrap():
 def test_the_inventory_records_the_fields_a_reader_needs(field):
     for row in _inventory().values():
         assert isinstance(row.get(field), str) and row[field], (field, row["path"])
+
+
+def test_the_observed_list_here_is_the_shared_one():
+    """Replacing the import with a shorter local copy passed all ten tests,
+    which is the "mirror" defect D130 claimed to have fixed still being
+    undetectable (D131). Identity, not just content: a local copy that happens
+    to match today would drift tomorrow."""
+
+    from tests import test_evidence_hygiene
+
+    assert _OBSERVED is test_evidence_hygiene._OBSERVED

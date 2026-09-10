@@ -86,8 +86,8 @@ from ghostcursor.perception import focus as focus_module
 from ghostcursor.perception.focus import read_focused_automation_id
 from tests.uia_app import BTN_EXPORT, SyntheticApp
 
-TARGET_HWND = 4242
-TARGET_PID = 777
+TARGET_HWND = SAMPLE_HWND
+TARGET_PID = SAMPLE_PID
 
 
 class _FakeElement:

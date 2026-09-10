@@ -333,7 +333,7 @@ def test_worker_publishes_the_target_window_handle():
         observation = _wait_for_observation(service)
     finally:
         service.stop()
-    assert observation.target_hwnd == 4242
+    assert observation.target_hwnd == SAMPLE_HWND
 
 
 def test_absent_window_publishes_handle_zero():
