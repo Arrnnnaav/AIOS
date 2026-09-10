@@ -5040,3 +5040,69 @@ clearing the entered goal during a layout transition; suppressing planning or
 failure expansion; suppressing Act or task-execution collapse; letting a
 progress event override manual expansion; and hiding a terminal Act failure in
 the compact shell. The candidate was restored byte-for-byte afterward.
+
+## D125 — Signed payload bytes are LF, and the r5 evidence is invalidated
+
+**Date:** 10 September 2026
+**Status:** Implemented; live re-run and independent review pending.
+
+**Decision.** The tracked LF form of a signed plugin payload is canonical.
+`.gitattributes` pins `plugins/**/*.py`, `plugins/**/*.json` and
+`plugins/**/*.md` to LF, `CANONICAL_UIA_ADAPTER_SHA256` is taken from those
+tracked bytes, and the shipped bundle is built and signed from them. Repository
+source, payload copy, built bundle, installed catalog and the pin must all read
+one byte sequence.
+
+**What was wrong.** `core.autocrlf=input` normalises CRLF to LF on the way into
+the object store, but leaves an existing working copy alone. Four signed files
+had been created with CRLF and had kept it: `plugins/shared/uia_adapter.py`,
+the PowerPoint copy of it, `powerpoint_adapter.py` and
+`powerpoint_live_verifier.py`. Git stored 17176/37746/10787 bytes; the working
+copy, the built bundle and the installed catalog held 17479/38429/11043. Every
+digest anyone had recorded — the pin `5c20779c…`, the object adapter
+`c8fd3cce…`, the live verifier `2af9da2a…`, the manifest `c048e47b…` — named
+the CRLF form. A clean checkout therefore failed nine tests, and, more
+seriously, D108's premise did not hold: the bytes a reviewer read out of git
+were not the bytes production executed.
+
+An independent D032 review found this in the shared UIA adapter. Surveying all
+69 tracked files under `plugins/` found three more, including both remaining
+executable digests bound into the retained evidence.
+
+**Measurements.** After conversion the tracked bytes are `d97216d3…` (shared
+adapter and its copy), `eb7a0c68…` (object adapter) and `ccbf395e…` (live
+verifier). Rebuilding and re-signing with `ghostcursor-release-2026-3` moved the
+PowerPoint manifest `c048e47b…` → `48e6e4f4…`, and activation republished the
+active index at generation 5. The fail-closed path was observed in passing:
+with the pin moved and the old bundle still installed, `list_installed()`
+refused it rather than loading a mismatched adapter. Hermetic lane 2427 passed.
+
+**Evidence consequence.** `docs/evidence/act-live-manager-d123-r5.jsonl` names
+`uia_adapter_sha256=5c20779c…`, `adapter_sha256=c8fd3cce…`,
+`live_verifier_sha256=2af9da2a…` and `manifest_sha256=c048e47b…`. None of those
+bytes now exists in the repository or the store. The run happened, and its
+manager-approval path is still the thing that was demonstrated, but it was
+performed against artifacts that cannot be reproduced from a clean checkout.
+**It is not acceptance evidence and may not be cited as the current live
+proof.** A replacement run on the rebuilt bundle is required, and it must retain
+the before/after verifier readings as artifacts rather than relying on an
+operator's observation of the slide count (D034).
+
+**Two boundary fixes landed with it, both from the same review.** Exported audit
+commitments are now HMAC-SHA256 under a random per-process key: a bare digest
+over {executable, version, hwnd, pid} is reversible in practice, because the
+first two are published in cleartext and roughly 2**39 candidates remain over
+the rest. And `target_focus_handoff_completed` is emitted before the execution
+request is minted, so the retained transcript's record order evidences the
+D123 ordering instead of merely being consistent with it.
+
+**Mutation audit.** Six deliberate breaks were killed, each by exactly one
+test: removing the LF attributes; letting a working copy drift without
+restaging; a glob typo that would have made the byte check vacuous; relaxing
+`type(hwnd) is not int` to `is None`; moving the handoff record back after
+issuance; and replacing the keyed commitment with a bare SHA-256.
+
+**Status.** Auto Act is operationally demonstrated, but release acceptance is
+invalidated by reproducibility, privacy, and evidence-integrity findings. Do
+not proceed to semantic PowerPoint planning or new feature phases until the
+clean-checkout lane is green and a new independent D032 review returns READY.

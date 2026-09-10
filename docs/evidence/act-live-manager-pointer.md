@@ -103,7 +103,19 @@ digest-bound identity, the real `Approve & run` event, request dequeue, worker
 start, executor events, and terminal result. Goal text, paths, raw target values,
 geometry, screenshots, selectors, tokens, and verifier readings are excluded.
 
-## Retained replacement run — 9 September 2026
+## Retained replacement run — 9 September 2026 — **INVALIDATED 10 Sep (D125)**
+
+> **This run is no longer citable evidence.** Its records name
+> `uia_adapter_sha256=5c20779c…`, `adapter_sha256=c8fd3cce…`,
+> `live_verifier_sha256=2af9da2a…` and `manifest_sha256=c048e47b…`. Those bytes
+> were a CRLF working copy that git never stored: the tracked source hashed
+> `d97216d3…`, `eb7a0c68…` and `ccbf395e…`, so a clean checkout could not
+> reproduce the artifacts this run executed. LF is now canonical and the bundle
+> has been rebuilt and re-signed (manifest `48e6e4f4…`, active generation 5).
+> The manager-approval path recorded below did happen, and the finding is about
+> the artifacts' reproducibility rather than the events; but it may not stand as
+> acceptance evidence. A replacement run on the rebuilt bundle is required, and
+> it must retain the before/after verifier readings as files.
 
 The production manager proof completed on repository commit
 `b262058f80a70430c455a4c1230d7dc351aaf3b1`. Its byte-identical retained

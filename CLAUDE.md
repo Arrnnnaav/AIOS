@@ -280,6 +280,26 @@ per-node authorization, and never reconstruct it after dispatch. Recheck the
 approval, catalog epoch, and exact target after the cue and immediately before
 minting that authorization.
 
+The tracked LF bytes of a signed payload are canonical (D125). `.gitattributes`
+pins `plugins/**/*.py`, `*.json` and `*.md` to LF; `CANONICAL_UIA_ADAPTER_SHA256`
+is taken from those bytes; and a bundle is built and signed from them, so
+repository source, payload copy, built bundle, installed catalog and the pin all
+read one byte sequence. Never pin a digest computed from a working copy that git
+does not store.
+
+Exported manager-audit commitments are keyed (HMAC-SHA256, random per process,
+never exported). A bare digest over a target binding is reversible, because the
+executable and version are published in cleartext. `target_focus_handoff_completed`
+is recorded before the execution request is minted, so the retained transcript
+evidences the D123 ordering rather than merely being consistent with it.
+
+**`docs/evidence/act-live-manager-d123-r5.jsonl` is invalidated (D125)** — it
+names adapter, verifier and manifest digests that no longer exist. Auto Act is
+operationally demonstrated, but release acceptance is invalidated by
+reproducibility, privacy, and evidence-integrity findings. Do not proceed to
+semantic PowerPoint planning or new feature phases until the clean-checkout lane
+is green and a new independent D032 review returns READY.
+
 Act's generic UIA backend is one canonical adapter source
 (`plugins/shared/uia_adapter.py`) that each plugin copies into its own payload
 and signs as its own adapter (D108). Copies are byte-identical, so one review

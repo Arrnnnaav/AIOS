@@ -322,6 +322,18 @@ built but not yet exercised by a caller or a live run.
 - [x] Phase A: 255/255 diagnostic run — `docs/evidence/act-phase-a-diagnostic.md`
 - [x] Phase B: UIA feasibility probe — `docs/evidence/act-phase-b-uia-feasibility.md`
 
+**Act acceptance is invalidated pending a rebuilt live run (D125).** The
+signed payload bytes in the working copy were CRLF while git stored LF, so the
+pin, the built bundle and every digest in the retained r5 transcript named a
+file no clean checkout produced. LF is now canonical, the PowerPoint bundle is
+rebuilt and re-signed (manifest `48e6e4f4`, active generation 5), and the
+hermetic lane is green from a fresh checkout. The r5 transcript may not be
+cited as current evidence. Required before this phase moves: a replacement live
+manager run on the rebuilt bundle retaining before/after verifier readings as
+artifacts, a fresh independent D032 review, then the 3/3 acceptance campaigns
+re-run. Semantic PowerPoint capabilities and any new feature phase stay closed
+until that review returns READY.
+
 **The next integration milestone remains the live manager-approved pointer
 action.**
 Paint recertification and its independent boundary review are complete. The

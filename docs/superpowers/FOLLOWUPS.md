@@ -766,6 +766,27 @@ right-edge placement still require a real-desktop screenshot inspection. The
 slice also requires an independent D032 review before its authored layout and
 documentation are treated as ground truth.
 
+## Act acceptance must be rebuilt on the LF bundle — OPEN 10 Sep 2026
+
+D125 made the tracked LF bytes canonical and rebuilt the PowerPoint bundle, so
+the retained r5 transcript names artifacts that no longer exist. Auto Act is
+operationally demonstrated; release acceptance is not.
+
+Trigger: before any semantic PowerPoint capability, staged-plan schema wiring,
+or new feature phase.
+
+1. A replacement live manager run on the rebuilt bundle (manifest `48e6e4f4`,
+   active generation 5), crossing the real `Approve & run`, retaining its JSONL.
+2. Before/after verifier readings retained as artifacts — the 9 September slide
+   count was an operator observation that reached no file, which D034 does not
+   accept as measured evidence.
+3. A fresh independent D032 review of the remediation commits and that run.
+4. The 3/3 acceptance campaigns re-run against the rebuilt bytes.
+
+Note for whoever runs it: the audit commitments are now keyed per process, so
+digests correlate only within one transcript. Two runs cannot be linked by
+comparing them, and that is deliberate.
+
 ## A hermetic test was reading the real ESC key — CLOSED 4 Sep 2026
 
 `tests/test_run.py::test_run_tour_creates_overlay_only_after_live_revalidation`
