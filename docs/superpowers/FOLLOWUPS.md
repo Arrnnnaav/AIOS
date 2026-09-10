@@ -779,8 +779,11 @@ or new feature phase.
    (`act-live-manager-d125-run.md`), but it bound manifest `48e6e4f4` — two
    rebuilds behind the current `28dbaf2d` — which
    contained signed build products and was never reproducible. Rerun on the CURRENT PowerPoint bundle.
-2. DONE 10 Sep 2026 — before/after readings retained
-   (`act-live-deck-2026-09-10-{before,after}.json`): 1 slide -> 2 slides.
+2. DONE 11 Sep 2026 — readings retained PER ATTEMPT
+   (`act-live-deck-2026-09-11-{before-1,after-1}.json`): 1 -> 2 slides across a
+   single approval cycle, so the effect is attributable to that cycle. The
+   10 September pair bracketed a whole session containing two approvals and
+   could not attribute anything (D128/D130).
 3. A fresh independent D032 review of the remediation commits and that run.
 4. The 3/3 acceptance campaigns re-run against the rebuilt bytes.
 
