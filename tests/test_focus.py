@@ -64,14 +64,14 @@ def wired(monkeypatch):
 
 
 def test_reports_the_id_when_focus_is_in_the_target_process(wired):
-    wired(_FakeElement(TARGET_PID, "1001"))
-    assert read_focused_automation_id(TARGET_HWND) == "1001"
+    wired(_FakeElement(TARGET_PID, "tree-item"))
+    assert read_focused_automation_id(TARGET_HWND) == "tree-item"
 
 
 def test_silent_when_focus_is_in_another_process(wired):
     """Alt-tabbing to Slack is not a mis-click and must never be reported as
     one."""
-    wired(_FakeElement(TARGET_PID + 1, "1001"))
+    wired(_FakeElement(TARGET_PID + 1, "tree-item"))
     assert read_focused_automation_id(TARGET_HWND) == ""
 
 
@@ -121,7 +121,7 @@ def test_the_hwnd_guard_holds_even_if_the_process_lookup_succeeds(monkeypatch):
     monkeypatch.setattr(
         focus_module,
         "_automation",
-        lambda: _FakeAutomation(_FakeElement(TARGET_PID, "1001")),
+        lambda: _FakeAutomation(_FakeElement(TARGET_PID, "tree-item")),
     )
     assert read_focused_automation_id(0) == ""
     assert read_focused_automation_id(-1) == ""

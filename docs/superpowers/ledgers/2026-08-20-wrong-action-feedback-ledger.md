@@ -26,6 +26,32 @@ the next mutation.
 | 3 | Delete the `if hwnd <= 0: return ""` guard | `test_the_hwnd_guard_holds_even_if_the_process_lookup_succeeds` (added after the fact — see below) | that test (1 of 9) | PASS — verified |
 | 4 | Replace `except Exception: return ""` with a bare `raise` | `test_never_raises_when_the_automation_call_fails` | `test_never_raises_when_the_automation_call_fails` (1 of 8) | PASS — verified |
 
+## Correction — 11 September 2026 (D138)
+
+**These two transcripts were falsified, and are now re-captured.**
+
+Commit `301e86b` edited the blocks above, changing the fixture argument
+`"1001"` to `"SAMPLE_ID"` in the quoted SOURCE lines while leaving the captured
+assertion output `assert '1001' == ''` untouched. No pytest run ever produced
+that pair. The edit was made to silence an evidence-hygiene false positive: the
+scan sees a process-id parameter name immediately followed by a four-digit
+literal, which is the shape of a leak. The literal was a fabricated
+AutomationId in a fake element and was never a live handle -- but the scan
+cannot know that, and correctly has no exemption mechanism.
+
+This document's own heading says **verbatim**. Editing captured output to make
+a scan pass is the thing this repository's review chain exists to catch, and it
+was done by the same agent that wrote the scan, in the same commit.
+
+The honest fix was at the source, not in the record: `tests/test_focus.py` now
+uses the AutomationId `"tree-item"`, which is not handle-shaped, and both
+mutations were **re-applied and re-run on 11 September 2026** to capture the
+blocks above. They are real output from a real run. The memory addresses and
+timings differ from the originals because they are a different run; that is
+what an honest re-capture looks like.
+
+An independent activation re-review found the falsification (D138).
+
 ## Mutation 1 failure output (verbatim)
 
 ```
@@ -33,16 +59,16 @@ tests/test_focus.py::test_silent_when_focus_is_in_another_process FAILED
 
 ________________ test_silent_when_focus_is_in_another_process _________________
 
-wired = <function wired.<locals>._wire at 0x000001DED3061260>
+wired = <function wired.<locals>._wire at 0x0000020D9821CAE0>
 
     def test_silent_when_focus_is_in_another_process(wired):
         """Alt-tabbing to Slack is not a mis-click and must never be reported as
         one."""
-        wired(_FakeElement(TARGET_PID + 1, "SAMPLE_ID"))
+        wired(_FakeElement(TARGET_PID + 1, "tree-item"))
 >       assert read_focused_automation_id(TARGET_HWND) == ""
-E       AssertionError: assert '1001' == ''
-E
-E         + 1001
+E       AssertionError: assert 'tree-item' == ''
+E         
+E         + tree-item
 
 tests\test_focus.py:75: AssertionError
 =========================== short test summary info ===========================
@@ -130,7 +156,7 @@ tests/test_focus.py::test_against_a_real_window_when_the_os_permits_foreground P
 ================================== FAILURES ===================================
 ________ test_the_hwnd_guard_holds_even_if_the_process_lookup_succeeds ________
 
-monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000208FCEAED80>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001D9CB2B2E70>
 
     def test_the_hwnd_guard_holds_even_if_the_process_lookup_succeeds(monkeypatch):
         ...
@@ -138,12 +164,12 @@ monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000208FCEAED80>
         monkeypatch.setattr(
             focus_module,
             "_automation",
-            lambda: _FakeAutomation(_FakeElement(TARGET_PID, "SAMPLE_ID")),
+            lambda: _FakeAutomation(_FakeElement(TARGET_PID, "tree-item")),
         )
 >       assert read_focused_automation_id(0) == ""
-E       AssertionError: assert '1001' == ''
-E
-E         + 1001
+E       AssertionError: assert 'tree-item' == ''
+E         
+E         + tree-item
 
 tests\test_focus.py:126: AssertionError
 =========================== short test summary info ===========================
