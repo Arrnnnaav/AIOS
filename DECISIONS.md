@@ -5778,6 +5778,16 @@ next sentence — "Auto Act is done" — is the one this decision refuses to wri
 consecutive attempts and three distinct published artifacts. That is one
 capability on one plugin.
 
+> **Correction, 11 September 2026 (D137).** The clause "through the manager
+> `Approve & run` path" is **false** and is corrected in D137, not deleted here.
+> The counted campaign ran through `ghostcursor.devtools.act_acceptance`, which
+> calls `approve_action_graph`/`execute_approved_graph` directly and never mints
+> the one-use `ActExecutionRequest`. Its own docstring says "This is not a
+> production install path." The sentence was written by the same agent that ran
+> the campaign, was read by nobody, and asserted the one property the campaign
+> did not establish. An independent activation review found it. The rest of the
+> paragraph stands.
+
 **What was not, and what gates each.** The owner identified the reconciliation
 gap directly: the tracking documents still asserted that acceptance was
 invalidated, which was true when written (D125) and false after D135. Left
@@ -5812,3 +5822,103 @@ distributes signed bundles with key rotation still deferred).
 **What this decision does not claim.** It does not revalidate anything. No test
 changed, no bundle was rebuilt, no evidence was re-measured. It reconciles prose
 against results that D134 and D135 already established.
+
+---
+
+## D137 — The activation review, and the claim it caught
+
+**Date:** 11 September 2026
+**Verdict: NOT READY** at `a1739aa`, from an independent reviewer in its own
+detached worktree. Seven of nine adversarial mutations were killed; two
+survived. Findings retained at `.tmp/d032-activation/REVIEW.md` (untracked, as
+diagnostic output).
+
+This is the last of D105's three gating reviews to be attempted, and the first
+one to review a documentation commit rather than code. That turned out to be
+the point.
+
+### The blocker that mattered
+
+D136, written hours earlier by the agent that ran the campaign, said the
+acceptance was obtained "through the manager `Approve & run` path". It was not.
+`act_campaign` shells out to `act_acceptance`, which imports
+`approve_action_graph` and `execute_approved_graph` from `act_runtime` and calls
+them directly; the string `ActExecutionRequest` appears in `manager.py` and
+nowhere else in the package.
+
+So the three counted attempts crossed the authority core and did not cross the
+manager layer: the one-use execution request (D121), the foreground handoff and
+its four refusals (D123), the worker's rejection of bare/forged/replayed
+requests (D121), and the UI-thread presentation bridge (D124). Every one of
+those has hermetic tests, and the reviewer killed mutations of all four. None
+has a counted live campaign. The only run that has ever crossed the real
+`Approve & run` drove `powerpoint.new_slide_uia` — from the unadopted UIA slice.
+
+**What was wrong was not the campaign. It was the sentence describing it.** The
+campaign evidence never claimed the manager path; it named
+`act_campaign --attempts 3 --mode quick` and let a reader follow it. D136
+summarised that into a stronger claim, and a summary written by the author of
+the thing summarised is exactly what D032 says is not ground truth.
+
+Resolution: the claim is corrected in place in D136 rather than deleted, the
+campaign evidence now states which layers it did and did not exercise, and a
+**manager-path counted campaign** is recorded as an open gate with the others.
+
+### Two surviving mutations, one class
+
+**Renderings of a number.** `4 460 192` defeated the entire evidence-hygiene
+scan — pattern rule, proximity rule, column rule and blocklist at once — because
+every rule requires a run of four or more digits and spaced thousands produce no
+such run. The same for `000BC1F8`, a handle as the Windows debuggers print it,
+because the hex branch demanded an `0x`.
+
+Seven rounds of widening had all widened *which words* name a binding and
+*which punctuation* may separate a word from a number. None asked whether the
+number was written as a number. And the evasion is not contrived: this
+repository's own newest evidence document already writes "94 400 / 94 367 /
+94 366 bytes", so the house style is the attack.
+
+Fixed by normalising renderings before any rule runs, which closes it for all
+four rules simultaneously instead of for whichever one the next reviewer probes.
+D031: the invariant "no handle-shaped token sits near a binding word" only
+*implies* the property "no document publishes a raw handle" once the shape of
+a number stops being the author's free choice.
+
+**Citation layouts.** `test_retained_evidence_digests.py` matched one table
+shape and therefore covered eight triples — none of them the counted campaign's
+own report, which writes name and digest in the same cell. A staged edit of
+`"nodes": 255` to `111` passed all 2587 tests while the document went on
+publishing a digest describing no file. Same class, one layer up: a rule keyed
+to the author's formatting choice. Now paired per line, with a named-coverage
+test so deleting a citation fails rather than passes.
+
+### A blocker that was not one, and why it still cost something
+
+The reviewer reported that two of D105's three reviews were open and that the
+receipt deadlines were invented. The second half is false: `receipt_budget` has
+run three times, `docs/evidence/act-receipt-budget.md` records the
+distributions, and `act_cli.py` carries the derived `22` / `1121`. What is
+genuinely open is the independent review *of* those derived budgets.
+
+The reviewer reached a false conclusion honestly, from two stale documents: a
+`ROADMAP.md` checkbox left unticked after the measurement landed, and a
+`FOLLOWUPS.md` entry still saying the tool "has never run". A stale document
+does not merely fail to inform — it actively misinforms a reviewer who is doing
+exactly what D032 asks. Both are corrected.
+
+### What this decision does not do
+
+It does not make the object-model path activatable. Blockers B1-B4 are closed
+here; **B5 is not** — the READY verdict at `45d1323` was issued against a tree
+that `301e86b` then changed, including a ground-up rewrite of the hygiene
+scanner, and the campaign ran on `301e86b`. Nobody has read that diff. The
+surviving mutation defeated precisely that unread rewrite. A further independent
+review covering `301e86b` and the fixes recorded here is required before
+activation.
+
+### The rule
+
+A decision record may not upgrade the claim its evidence makes. If the evidence
+says "harness path", the decision says "harness path". Summarising upward is the
+specific move D032 exists to catch, and it is invisible to every test in the
+repository, because no test reads prose for claims it cannot check.

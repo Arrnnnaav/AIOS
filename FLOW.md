@@ -1405,3 +1405,52 @@ minting immediately before dispatch. A late check refuses instead of resuming
 with stale confirmation. This is a checkpoint guarantee, not cancellation of
 an adapter call already in flight. The design preserves the one-process
 manager/rail architecture while respecting Win32 thread affinity (D118).
+
+## Verification routing — which verifier answers which question
+
+`choose_verifier()` routes by the operation's signed `backend`, and the two
+verifiers answer genuinely different questions. This was described in
+`CLAUDE.md`, implemented, and tested, but appeared nowhere in the architecture
+of record until an activation review pointed at the gap (D137).
+
+```text
+execute_approved_graph() -> per node:
+    choose_verifier(operation.backend)
+        |
+        +-- object_model  -> artifact verifier (signed, read-only)
+        |       reads the saved file; sent NO baseline and NO postconditions,
+        |       because it validates its request fields exactly
+        |
+        +-- uia_pattern / other control-driving backend
+                -> live verifier (separately signed, read-only)
+                   reads LIVE state; sent the frozen `observe_before` baseline
+                   and postconditions naming a CHANGE
+                -> if the bundle ships no live verifier: REFUSED
+```
+
+The refusal is the load-bearing part. A UIA effect reaches no file until
+someone saves, so asking the artifact verifier about it returns "unverifiable"
+— which reads as a broken effect when it is a misrouted question. A silent
+fallback to the artifact verifier is therefore forbidden, and bundle
+verification refuses either half of the `uia_entrypoint` / `live_verifier`
+pairing alone, exactly as it does for the adapter pairing.
+
+A postcondition naming a STATE rather than a CHANGE (`slide.exists`) is
+satisfied by a node that did nothing, which is why the baseline is frozen at
+the observation boundary, its digest bound into the per-node authorization, and
+never reconstructed after dispatch. Core passes the baseline through and never
+interprets it; the comparison stays in signed plugin code.
+
+## You are here — 11 September 2026
+
+| Area | State |
+|---|---|
+| Object-model Act, PowerPoint deck build | counted 3/3 through the `act_acceptance` harness (D135) |
+| Manager `Approve & run` layer | implemented, hermetically tested, mutations killed — **one diagnostic live run, no counted campaign** |
+| UIA slice `add-slide-uia-v1` | implemented, one diagnostic run, **unadopted** |
+| Activation | **NOT READY** (D137); four of five blockers closed |
+| Semantic planning, agent/marketplace program | not started, gated on activation |
+
+The marker is what this file's preamble promises and had stopped carrying.
+Update it when the call graph moves, not at milestone boundaries.
+

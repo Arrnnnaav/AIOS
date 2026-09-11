@@ -36,10 +36,23 @@ reader with a clean checkout can rebuild the artifact this campaign ran against
 | 2 | `completed` | 255/255 | 69.516 | `59b655901dde81ef…` |
 | 3 | `completed` | 255/255 | 69.281 | `d4d7be4a293b41de…` |
 
-Three **distinct** published digests, 94 400 / 94 367 / 94 366 bytes. Distinct
-is what a counted campaign should produce: each attempt gets a fresh store root
-and a fresh output path, so an identical digest would mean one attempt's state
-had decided another's outcome.
+One published artifact per attempt, at three separate output paths, and their
+digests differ.
+
+**Their difference is not evidence of anything**, and an earlier revision of
+this document wrongly presented it as evidence of attempt independence. A
+`.pptx` is a ZIP of XML carrying creation and modification timestamps, so three
+runs of the same plan produce different bytes whether or not they are
+independent; the sizes here differ by 33 and 1 bytes, which is metadata noise.
+Had the build been byte-deterministic, three identical digests would have been
+the correct result, and the rule as written would have condemned a clean
+campaign. The activation review caught the inversion (D137).
+
+What actually isolates the attempts is enforced in `run_campaign()`: each gets
+its own store root (`store-{index}-{token}`) and its own output path
+(`out/attempt-{index}-{token}.pptx`), passed into the command rather than left
+to the caller. That invariant implies isolation. The digests merely correlate
+with it, and here for an unrelated reason.
 
 A separate validation attempt was run first, into its own workspace, to check
 the wiring on the rebuilt bundle: `completed`, 255/255, 72.547 s. It is **not**
@@ -67,10 +80,43 @@ tools against each other; no test was comparing them (D133).
 
 This campaign ran under one exported scope for all three attempts.
 
+## Which path these runs crossed
+
+**The harness path, not the manager path.** `act_campaign` shells out to
+`ghostcursor.devtools.act_acceptance`, which imports `approve_action_graph` and
+`execute_approved_graph` from `ghostcursor.act_runtime` and calls them directly.
+Its own first paragraph says "This is not a production install path."
+
+So these three attempts exercised the whole-graph validation, per-node
+authorization, fresh target binding, presentation receipts and independent
+verification — the authority core — and did **not** exercise the layer above it:
+
+| Not crossed by these runs | Recorded in |
+|---|---|
+| The one-use `ActExecutionRequest` minted only by the manager's `Approve & run` | D121 |
+| Foreground handoff to the exact proposal-bound HWND, and its four refusals | D123 |
+| The manager worker's rejection of a bare, forged or replayed request | D121 |
+| `UiThreadPresentationBridge` and the manager-owned overlay pump | D124 |
+
+Each of those has hermetic tests, and an activation review killed mutations of
+all four. None has a counted live campaign. The only run that has crossed the
+real `Approve & run` is the single diagnostic in
+`act-live-manager-d131-run.md`, and that one drove `powerpoint.new_slide_uia` —
+an operation from the unadopted UIA slice.
+
+Stated as D031 asks: the property acceptance wants is "the path a real operator
+uses produces three clean consecutive runs". The invariant established is "a
+harness sharing the authority core produces three clean consecutive runs". The
+second does not imply the first. It omits exactly the layer that was added last
+and is least exercised live.
+
+**A manager-path counted campaign is therefore an open gate**, listed in
+`ROADMAP.md` with the others.
+
 ## Scope and standing
 
-This is the counted campaign for the **object-model** deck build. It does not
-establish the UIA slice: `add-slide-uia-v1` has one live diagnostic run
+This is the counted campaign for the **object-model** deck build, through the
+harness path described above. It does not establish the UIA slice: `add-slide-uia-v1` has one live diagnostic run
 (`act-live-manager-d131-run.md`) and no counted campaign, and CLAUDE.md still
 requires an independent D032 review, externally signed bytes and a counted
 campaign before any `uia_pattern` operation is adopted.

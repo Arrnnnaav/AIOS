@@ -178,6 +178,49 @@ _OBSERVED = tuple(
 )
 
 
+#: Digit-group separators, and the padded bare-hex rendering.
+#:
+#: Every rule below requires a run of four or more digits. `4 460 192` has no
+#: such run -- the longest token is three digits -- so the pattern rule, the
+#: proximity rule, the column rule AND the blocklist all miss it at once. The
+#: activation review demonstrated exactly that, and the evasion is not
+#: contrived: `act-acceptance-campaign-2026-09-11.md` already writes
+#: "94 400 / 94 367 / 94 366 bytes", so this is the repository's own house
+#: style. An honest author could leak a handle this way by accident.
+#:
+#: Seven rounds of widening all widened which WORDS name a binding and which
+#: PUNCTUATION may sit between a word and a number. None addressed which
+#: RENDERINGS of the number count as the number. That is the class, and
+#: normalising before matching closes it for every rule at once rather than
+#: for whichever rule the next reviewer happens to probe (D137).
+_GROUPED = re.compile(r"(?<=[0-9])[    ,_'’](?=[0-9]{3}(?![0-9]))")
+
+#: `000BC1F8` -- a handle as Spy++ and the Windows debuggers print it, with no
+#: `0x`. The hex branch required the prefix, and a bare run of hex digits
+#: contains no four-digit DECIMAL run, so it evaded the same four rules. The
+#: leading zeros are what distinguish it from a commit or digest prefix, which
+#: is why only the padded form is rewritten: `28dbaf2d` stays what it is.
+_PADDED_HEX = re.compile(r"(?<![0-9A-Za-z_])(00[0-9A-Fa-f]{4,8})(?![0-9A-Za-z_])")
+
+
+def _normalise(text: str) -> str:
+    """One rendering of a number, so the rules below need only one shape.
+
+    D031: the PROPERTY is "no tracked document publishes a raw handle or
+    process id". The INVARIANT the rules enforce is "no handle-shaped token
+    sits near a binding word". Normalising is what makes the invariant imply
+    the property rather than merely correlate with it -- without it, the
+    invariant is a statement about formatting, and the formatting is the
+    author's free choice.
+    """
+
+    previous = None
+    while previous != text:
+        previous = text
+        text = _GROUPED.sub("", text)
+    return _PADDED_HEX.sub(lambda m: "0x" + m.group(1), text)
+
+
 def _tracked(suffixes=None):
     listed = subprocess.run(
         ["git", "ls-files", "-z"], cwd=ROOT, capture_output=True, check=False
@@ -316,6 +359,65 @@ def test_every_known_prose_form_is_matched(line):
     assert _RAW_TARGET.search(line) or _NEAR_TARGET.search(line), line
 
 
+@pytest.mark.parametrize(
+    "line",
+    [
+        # The activation review's evasion, in every separator this repository
+        # or a plausible author could produce.
+        # Synthetic values: 7 734 512 and 5 120 are not in `_OBSERVED`. The
+        # first draft of this list wrote a real blocklisted pid in grouped
+        # form, and the blocklist test below caught it -- the fifth time a test
+        # written for this scan republished a value the scan exists to
+        # suppress. The normalised blocklist is why it was caught this time.
+        "The approved PowerPoint window (7 734 512) was bound.",
+        "hwnd 7,734,512",
+        "target: 7_734_512",
+        "window 7 734 512",
+        "pid 5 120",
+        # The padded bare-hex rendering, as Spy++ prints it.
+        "hwnd 000BC1F8",
+        "bound window (000BC1F8)",
+    ],
+)
+def test_every_known_rendering_of_a_handle_is_matched(line):
+    """Renderings, not spellings. Seven rounds widened which words name a
+    binding and which punctuation may separate them; none asked whether the
+    number was written as a number. `4 460 192` contains no four-digit run, so
+    it defeated all four rules simultaneously (D137)."""
+
+    normalised = _normalise(line)
+
+    assert _RAW_TARGET.search(normalised) or _NEAR_TARGET.search(normalised), normalised
+
+
+def test_the_normaliser_leaves_real_numbers_and_digests_alone():
+    """A normaliser that rewrote everything would make every rule fire on every
+    measured figure, and a rule that fires constantly gets switched off."""
+
+    # Separators only join a group of exactly three digits.
+    assert _normalise("39-66s") == "39-66s"
+    assert _normalise("16.0.20326.20112") == "16.0.20326.20112"
+    assert _normalise("2026-08-25") == "2026-08-25"
+    assert _normalise("976x1028") == "976x1028"
+    # Two words that merely sit beside each other are not a grouped number.
+    assert _normalise("Phase 2 runs") == "Phase 2 runs"
+    # A digest or commit prefix is not a padded handle.
+    assert _normalise("manifest 28dbaf2d") == "manifest 28dbaf2d"
+    assert _normalise("READY at 45d1323") == "READY at 45d1323"
+    # But the leading-zero form is.
+    assert _normalise("000BC1F8") == "0x000BC1F8"
+
+
+def test_the_blocklist_is_checked_against_the_normalised_text():
+    """A blocklisted value written `2 644 82` would otherwise pass: the list
+    stores bare digits and the comparison was a raw substring test."""
+
+    spaced = " ".join((_OBSERVED[0][:3], _OBSERVED[0][3:]))
+
+    assert _OBSERVED[0] not in spaced
+    assert _OBSERVED[0] in _normalise(spaced)
+
+
 def test_the_scan_covers_the_places_handles_have_actually_leaked():
     """Non-vacuity, and specifically about scope: every directory that has
     leaked a handle in this repository must be inside the scanned set. A scan
@@ -336,7 +438,7 @@ def test_the_scan_covers_the_places_handles_have_actually_leaked():
 def test_no_tracked_document_publishes_a_raw_handle_or_process_id():
     offenders = []
     for name in _tracked(_SCANNED_SUFFIXES):
-        for number, line in enumerate(_text(name).splitlines(), start=1):
+        for number, line in enumerate(_normalise(_text(name)).splitlines(), start=1):
             if _RAW_TARGET.search(line) or _NEAR_TARGET.search(line):
                 offenders.append(f"{name}:{number}: {line.strip()[:100]}")
     assert not offenders, "raw target values in tracked documents:\n" + "\n".join(
@@ -426,7 +528,9 @@ def test_no_markdown_table_publishes_a_handle_column():
     offenders = []
     for name in _tracked({".md"}):
         columns: list[int] = []
-        for number, line in enumerate(_text(name).splitlines(), start=1):
+        for number, line in enumerate(
+            _normalise(_text(name)).splitlines(), start=1
+        ):
             if not line.strip().startswith("|"):
                 columns = []
                 continue
@@ -462,7 +566,9 @@ def test_no_tracked_file_at_all_reuses_an_observed_handle():
             ".ghostplugin",
         }:
             continue
-        text = _text(name)
+        # Normalised, so a blocklisted value rendered `4 460 192` is still
+        # found. The list stores bare digits; the text is what varies.
+        text = _normalise(_text(name))
         for value in _OBSERVED:
             if value in text:
                 offenders.append(f"{name}: contains observed value ending {value[-3:]}")

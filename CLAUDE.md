@@ -55,7 +55,8 @@ old decision merely to make the history appear consistent with the new design.
 **Production is PowerPoint-only right now (D130).** The owner narrowed scope on
 10 September 2026: `ghostcursor.vscode` and `ghostcursor.excel` are installed
 but DISABLED, and the active catalog holds `ghostcursor.powerpoint` and
-`ghostcursor.synthetic` at generation 9. Their legacy signed bundles are also
+`ghostcursor.synthetic`; read the generation from the store rather than from
+here. Their legacy signed bundles are also
 quarantined from first-run auto-enable, because the bundled payload evidence
 prints a raw window handle and cannot be re-signed without keys that are not
 available (D129). Do not re-enable either to make a test or a demo pass; an
@@ -328,10 +329,14 @@ executable and version are published in cleartext. `target_focus_handoff_complet
 is recorded before the execution request is minted, so the retained transcript
 evidences the D123 ordering rather than merely being consistent with it.
 
-**The object-model deck build has current acceptance: 3/3 clean on 11 September
-2026** against manifest `28dbaf2d`, gated by a READY D032 review (D134). The UIA
-slice does not: `add-slide-uia-v1` has one live diagnostic run and no counted
-campaign, so it remains unadopted.
+**The object-model deck build has a counted 3/3 acceptance on 11 September 2026**
+against manifest `28dbaf2d`, gated by a READY D032 review (D134). Those three
+attempts ran through the `act_acceptance` harness, which calls the authority
+core directly: they did **not** cross the manager `Approve & run` layer — the
+one-use `ActExecutionRequest`, the D123 foreground handoff, or the UI-thread
+presentation bridge. Do not describe that campaign as a manager-path run; D136
+did, and it was false (D137). The UIA slice is separately unadopted:
+`add-slide-uia-v1` has one live diagnostic run and no counted campaign.
 
 **Two earlier live runs remain uncitable.** `act-live-manager-d123-r5.jsonl`
 is invalidated (D125) — it names adapter, verifier and manifest digests that no
@@ -340,14 +345,24 @@ catalog manifest `48e6e4f4` contained signed build products and was never
 reproducible. Neither may be cited as current evidence. The live run that stands
 is `act-live-manager-d131-run.md` on the rebuilt bundle.
 
-**What the closed acceptance does and does not open.** The object-model deck
-build is accepted and its boundary is closed, so work inside that boundary may
-proceed. Three things stay closed and each names its own gate: the UIA slice
-until it has an independent D032 review, externally signed bytes and its own
-counted campaign; the animation catalog until its campaign runs; and the D032
-activation review, which has no non-author reviewer yet. Semantic PowerPoint
-planning and the agent/marketplace program are sequenced behind the activation
-review, not behind acceptance.
+**Activation has not been granted.** The independent activation review returned
+**NOT READY** at `a1739aa` (D137). Work inside the accepted object-model
+boundary may proceed; nothing downstream of activation may start. The open set
+is six items, each with its own gate, and this list is the same one `ROADMAP.md`
+carries:
+
+| Open | Gate |
+|---|---|
+| Manager-path counted campaign | 3/3 through the real `Approve & run` |
+| UIA slice `add-slide-uia-v1` | independent D032 review, externally signed bytes, own counted campaign |
+| Animation-catalog campaign | it has never been counted |
+| Independent lane runs | interactive, pixel and hung lanes green alone, per D025 |
+| D032 review of the derived budgets | the budgets are measured; the review of them is not done |
+| D032 activation review | re-review covering `301e86b` and the D137 fixes |
+
+Do not shorten this list in one document and not another: an agent reads this
+file first, and a reviewer who read a stale `ROADMAP.md` checkbox reached a
+false conclusion about the receipt budgets for exactly that reason (D137).
 
 Act's generic UIA backend is one canonical adapter source
 (`plugins/shared/uia_adapter.py`) that each plugin copies into its own payload
@@ -744,6 +759,9 @@ knowledge base entirely; the system simply re-learns from scratch on the
 next run, exactly as it would on a first run.
 
 ## Tests
+
+`pytest`'s `--basetemp` parent is not created for you: on a clean checkout the
+commands below error on every test until `.tmp/` exists. Run `mkdir .tmp` once.
 
 ```powershell
 # Fast, hermetic lane: no real desktop, pixels, or deliberately hung windows.

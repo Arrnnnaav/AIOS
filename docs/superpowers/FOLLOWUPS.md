@@ -1049,28 +1049,42 @@ verbatim the constants removed from `act_cli` and never added to
 It is a declared diagnostic that bypasses `execute_approved_graph` and mints
 no real approval, so it is off the reviewed authority paths. But it does
 dispatch a real UIA effect, and it does so under deadlines nobody derived.
-Once `ghostcursor.devtools.receipt_budget` has run, this should take the
-measured numbers as arguments like every other caller; until then its report
-should say the deadlines are invented rather than leaving a reader to assume
-Phase E produced them.
+`ghostcursor.devtools.receipt_budget` **has now run** — three 60-cue runs,
+`docs/evidence/act-receipt-budget.md`, deadlines `22` / `1121`, which
+production carries as the `MEASURED_*` constants in `act_cli.py`. This entry
+previously said it had not, and an activation reviewer took that at face value
+and reported invented deadlines as a blocker (D137).
+
+What remains true: `act_live_node` still hardcodes `2000` / `8000` and should
+take the measured numbers as arguments like every other caller. Until it does,
+its report must say its deadlines are invented rather than letting a reader
+assume Phase E produced them.
 
 
 ## The D032 activation review has no reviewer, and it now gates everything
 
-Acceptance closed for the object-model deck build on 11 September (D135), so
-the activation review is the last of D105's three independent reviews still
-open — and it is the gate that stands between here and semantic PowerPoint
-capabilities and the whole agent/skills/marketplace program (D136).
+**Performed 11 September 2026: NOT READY** at `a1739aa` (D137). This entry
+stays open for the re-review.
 
-It cannot be performed by the author of what it reviews, and this session
-authored effectively all of it. That is the actual blocker: not a missing
-finding, a missing person.
+An earlier version of this entry called it "the last of D105's three
+independent reviews still open". That was wrong twice over, and the reviewer
+read it: the review of the derived budgets is also open, and the same
+reviewer concluded from a stale `ROADMAP.md` checkbox that the receipt
+deadlines were invented. They are not — `receipt_budget` has run three times
+and `act_cli.py` carries the derived `22` / `1121`. Both documents are fixed.
+
+Four of the five blockers are closed in the D137 slice. The fifth is not: the
+READY verdict that gated the campaign was issued at `45d1323`, and `301e86b`
+then rewrote the evidence-hygiene scanner (+99 lines), changed the manifest-pin
+test, redacted a real published handle and corrected three evidence claims —
+author-written, unread. The campaign ran on `301e86b`, and the activation
+review's surviving mutation defeated precisely that unread rewrite.
 
 **Trigger:** before any work on semantic PowerPoint planning, the manager
-planning flow, or stage 1 of the agent program. Dispatch it into its own clean
-detached worktree with the commit hash recorded before inspection — seven
-prior reviews were delivered against a stale commit until that step was made
-explicit.
+planning flow, or stage 1 of the agent program. The re-review must cover
+`301e86b`'s diff and the D137 fixes. Dispatch it into its own clean detached
+worktree with the commit hash recorded before inspection — seven prior reviews
+were delivered against a stale commit until that step was made explicit.
 
 ## Three conflicts the agent/marketplace program inherits rather than creates
 
@@ -1089,3 +1103,34 @@ task:
   both are quarantined (D128).
 
 **Trigger:** each one before its own stage, not all at once.
+
+## A counted campaign through the manager `Approve & run` path
+
+The 11 September campaign ran the `act_acceptance` harness, which reaches
+`execute_approved_graph` directly and never mints an `ActExecutionRequest`. So
+the manager layer — one-use execution request (D121), foreground handoff and its
+four refusals (D123), rejection of bare/forged/replayed requests, the UI-thread
+presentation bridge (D124) — has hermetic tests and killed mutations, but no
+counted live campaign. One diagnostic run has crossed it, and that one drove the
+unadopted UIA slice.
+
+This is the gap between "the authority core produces three clean runs" and "the
+path a real operator uses produces three clean runs" (D137).
+
+**Trigger:** before activation. It needs a live desktop, a human at the manager
+clicking `Approve & run` three times, and D025 respected — no other UIA session
+on the machine while it runs.
+
+## `_OBSERVED` is a growing list with no retirement rule
+
+The evidence-hygiene blocklist now holds sixteen real values and gains entries
+every time a review finds one. Nothing says when a value may leave it, and its
+digest pin means removing one is a deliberate act — correctly. But a list that
+only grows will eventually be the largest concentration of real handles in the
+repository, which is the shape of the thing it prevents.
+
+It is safe today: the values are split across string literals and the list is
+compared, never printed. Worth a decision before it doubles again.
+
+**Trigger:** when `_OBSERVED` passes roughly thirty entries, or when a value in
+it can be shown to be unreachable from any tracked file's history.

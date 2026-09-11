@@ -276,9 +276,17 @@ built but not yet exercised by a caller or a live run.
       the 2 ms budget (`docs/evidence/act-paint-budget.md`).
 - [x] Verifier spawn-to-response — max 0.188s, mean ~0.142s over 765
       invocations (`docs/evidence/act-diagnostic-rerun.md`)
-- [ ] Confirmation-to-invoke deadline
-- [ ] Interruption latency matrix
-- [ ] Independent D032 review of the derived budgets
+- [x] Receipt deadlines — `first_paint_deadline_ms = 22`,
+      `completion_deadline_ms = 1121`, derived from three 60-cue runs
+      (`docs/evidence/act-receipt-budget.md`, records under
+      `docs/evidence/receipt-budget/`). Production carries them as
+      `MEASURED_*` constants in `ghostcursor/act_cli.py`. This line was
+      missing while the measurement existed, and an activation reviewer
+      concluded from its absence that the deadlines were invented (D137).
+- [ ] Confirmation-to-invoke deadline — **not measured**
+- [ ] Interruption latency matrix — **not measured**
+- [ ] Independent D032 review of the derived budgets — the numbers exist;
+      nobody independent has read how they were derived
 
 **8. The brief and the local planning loop** (D113 — a brief is the
    stored conversation; `idea.txt` is one, and is not special-cased)
@@ -342,16 +350,20 @@ deck build only:
 
 | Open item | Gate before it moves |
 |---|---|
+| Manager-path counted campaign | 3/3 through the real `Approve & run`; the 11 Sep campaign ran the `act_acceptance` harness, which never mints an `ActExecutionRequest` (D137) |
 | UIA slice `add-slide-uia-v1` | independent D032 review, externally signed bytes, its own counted campaign |
 | Animation-catalog campaign | run it; it has never been counted |
 | Independent lane runs | each lane green on its own, per D025 |
-| D032 activation review | a non-author reviewer, not yet assigned |
+| D032 review of the derived budgets | the receipt deadlines are measured; the review of the derivation is not done |
+| D032 activation review | returned **NOT READY** at `a1739aa`; needs a re-review covering `301e86b` and the D137 fixes |
 | Semantic PowerPoint capabilities | activation review READY |
 | Agent / skills / marketplace program | activation review READY, then its own phase entries here |
 
 Do not read "acceptance closed" as permission to start semantic planning or the
-agent program. Those sit behind the activation review, which is the one gate on
-this list with no owner.
+agent program. **The activation review has been performed and returned NOT
+READY** (D137). Four of its five blockers are closed; the fifth — an independent
+read of `301e86b`, the commit that rewrote the evidence-hygiene scanner after
+the READY verdict and before the campaign — is not.
 
 **The next integration milestone remains the live manager-approved pointer
 action.**
@@ -441,7 +453,7 @@ capability-scoped graph → complete flattened plan → one approval → Act. Un
 D113 the brief is planning context and never authority, and its exact bytes are
 bound to any proposal made from it.
 
-**Three conflicts this program must resolve rather than inherit quietly:**
+**Five conflicts this program must resolve rather than inherit quietly:**
 
 1. **Stage 3's general agent versus D087/D090.** A graph composes capabilities
    of one plugin. "General Windows agent" here means routing an intent to the
@@ -455,6 +467,21 @@ bound to any proposal made from it.
    withdrawn one. The Excel and VS Code bundles already demonstrate the cost of
    not having this: both are signed by keys that are unavailable here, so
    neither can be re-signed and both are quarantined (D128).
+4. **Stage 2's application-named agent versus the no-application-code rule.**
+   D087/D089: "Never add application names or capability-specific branches to
+   the core validator or executor", and core "must never import an adapter
+   module or learn an application's object model". A first-party agent *named
+   for an application* is the likeliest place that rule breaks, and the
+   program's own safeguard — the Orchestrator is not an execution-authority
+   shortcut — does not cover it, because it is about authority and this is
+   about where application knowledge may live. Named by the activation review;
+   it was missing from the first three (D137).
+5. **The whole program versus the freeze and D083's branch scope.** Release
+   policy is locked, and D083's post-freeze exception is limited to
+   `feature/product-shell-task-graphs` and grants feature-development scope
+   only. This program is recorded with no branch, no exception and no statement
+   of which protected lines it may not touch. A program with no authorized line
+   to build on cannot start regardless of the activation review.
 
 Stage 0's closure covers the object-model deck build only. The UIA slice, the
 animation catalog and the activation review are open above, and stage 1 does
