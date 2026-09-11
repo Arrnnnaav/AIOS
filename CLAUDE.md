@@ -328,6 +328,11 @@ executable and version are published in cleartext. `target_focus_handoff_complet
 is recorded before the execution request is minted, so the retained transcript
 evidences the D123 ordering rather than merely being consistent with it.
 
+**The object-model deck build has current acceptance: 3/3 clean on 11 September
+2026** against manifest `28dbaf2d`, gated by a READY D032 review (D134). The UIA
+slice does not: `add-slide-uia-v1` has one live diagnostic run and no counted
+campaign, so it remains unadopted.
+
 **Both retained live runs are unusable as acceptance evidence.**
 `act-live-manager-d123-r5.jsonl` is invalidated (D125) — it names adapter,
 verifier and manifest digests that no longer exist. `act-live-manager-d125-r1.jsonl`

@@ -298,11 +298,11 @@ built but not yet exercised by a caller or a live run.
 - [ ] Local model composes a 10-slide deck from `idea.txt`
 
 **10. Acceptance and release**
-- [~] Three consecutive PowerPoint campaigns — historical 4 Sep evidence is
-      255/255 each on externally signed plugin bytes
-      (`docs/evidence/act-acceptance-campaign.md`), but the production core and
-      presentation boundary changed afterward. Re-run after D032 and paint
-      recertification before using them as current activation evidence.
+- [x] Three consecutive PowerPoint campaigns — **3/3 clean on 11 Sep 2026**
+      against the rebuilt bundle (manifest `28dbaf2d`, plan `84e39d0d`),
+      255/255 nodes each, three distinct published artifacts
+      (`docs/evidence/act-acceptance-campaign-2026-09-11.md`). The 4 Sep runs
+      are superseded: their bundle is no longer reproducible.
 - [ ] Animation-catalog campaign
 - [ ] All lanes green independently
 - [x] D032 pre-sign review — three independent cold passes; 26 + 4 + 3

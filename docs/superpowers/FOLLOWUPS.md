@@ -785,7 +785,9 @@ or new feature phase.
    10 September pair bracketed a whole session containing two approvals and
    could not attribute anything (D128/D130).
 3. A fresh independent D032 review of the remediation commits and that run.
-4. The 3/3 acceptance campaigns re-run against the rebuilt bytes.
+4. DONE 11 Sep 2026 — 3/3 clean against the rebuilt bytes, 255/255 nodes each
+   (`docs/evidence/act-acceptance-campaign-2026-09-11.md`). The seventh D032
+   review returned READY at `45d1323` (D134) and gates it.
 
 Note for whoever runs it: the audit commitments are now keyed per process, so
 digests correlate only within one transcript. Two runs cannot be linked by

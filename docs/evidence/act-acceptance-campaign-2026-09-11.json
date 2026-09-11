@@ -1,0 +1,27 @@
+{
+  "attempts": [
+    {
+      "code": "completed",
+      "index": 1,
+      "nodes": 255,
+      "published_sha256": "23020b0f1e43a586abd1bb580337122769d79bc0e1b218b3b503cc6790aa22c8",
+      "seconds": 69.687
+    },
+    {
+      "code": "completed",
+      "index": 2,
+      "nodes": 255,
+      "published_sha256": "59b655901dde81ef42c9fb0cb5d40927659fa0cb1951a10c786b0ea952d6ee89",
+      "seconds": 69.516
+    },
+    {
+      "code": "completed",
+      "index": 3,
+      "nodes": 255,
+      "published_sha256": "d4d7be4a293b41deec489fca3cd9296a703ba1dae9d99895d3a22554691852b4",
+      "seconds": 69.281
+    }
+  ],
+  "campaign": "clean",
+  "count": 3
+}

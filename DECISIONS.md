@@ -5712,3 +5712,53 @@ the D123 OS-refusal guard is caught only in the interactive lane; and
 `test_the_gate_guards_only_the_diagnostics_branch` dies on a substring lookup
 rather than an assertion, so a call moved textually after the branch would
 pass. None gates the campaign.
+
+
+## D135 — The counted campaign, on a bundle a clean checkout can rebuild
+
+**Date:** 11 September 2026
+**Status:** 3/3 clean. The object-model deck build has current acceptance.
+
+**Result.** Three consecutive clean attempts against the rebuilt PowerPoint
+bundle: 255/255 nodes each, 69.687 / 69.516 / 69.281 seconds, three distinct
+published artifacts. Report retained as
+`docs/evidence/act-acceptance-campaign-2026-09-11.json`
+(`a652a7c4c738b842…`), written up in the matching `.md`.
+
+**What makes this campaign different from the one it replaces.** The plan bytes
+are identical to 4 September (`84e39d0d…`). The bundle is not: `28dbaf2d` is the
+manifest `tests/test_powerpoint_manifest_pin.py` recomputes from tracked
+sources, so a reader with a clean checkout can rebuild the artifact the campaign
+ran against. No earlier campaign in this repository had that property — which is
+exactly why the 4 September runs, clean as they were, could not remain
+acceptance evidence.
+
+**The gate that preceded it.** Seven independent D032 rounds. Rounds three,
+four, five and six each found that the previous round's *fix* had introduced a
+new weakness — a true check replaced by a tautology, a scan widened in name but
+not substance, rules keyed to the last leak's spelling, guards left unguarded.
+Round seven returned READY at `45d1323` with 15/15 mutations killed and every
+published figure independently recomputed (D134).
+
+**A hazard this campaign would otherwise have hit.** Three invocations of
+`act_acceptance` would each have derived their own campaign scope, and the
+evidence renderer refuses records from more than one — a rejection that would
+have arrived after all three runs. The refusal now sits before the first run
+(D133). This campaign exported one scope for all three attempts.
+
+**A validation attempt ran first**, into its own workspace, to check the wiring
+on the rebuilt bundle: clean, 255/255, 72.547 s. It is not part of the count and
+its artifacts are not retained. Recording it because a reader comparing
+timestamps would otherwise find a fourth run and wonder what it was.
+
+**Scope.** This establishes the **object-model** deck build only. The UIA slice
+`add-slide-uia-v1` has one live diagnostic run and no counted campaign, so it
+stays unadopted: CLAUDE.md requires an independent review, externally signed
+bytes and a counted campaign before any `uia_pattern` operation is adopted, and
+only the first of those is now satisfied.
+
+**Guards not exercised, stated as such.** All three attempts were clean, so the
+runner's refusals — interrupt-probe detection, missing-result refusal,
+stop-at-first-unclean — did not fire. They are tested hermetically; this
+campaign is not evidence that they work live, and a reader should not read three
+clean attempts as having tested them.
