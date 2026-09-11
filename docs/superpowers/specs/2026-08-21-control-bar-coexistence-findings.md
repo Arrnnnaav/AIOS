@@ -59,7 +59,7 @@ Check 3 as first recorded said the bar "can take foreground". A later run under
 pytest measured the same call being **REFUSED**:
 
 ```
-foreground before SetForegroundWindow: 65902 is_ours: False
+foreground before SetForegroundWindow: [redacted, D122] is_ours: False
 SetForegroundWindow: REFUSED -> error: (0, 'SetForegroundWindow', ...)
 ```
 

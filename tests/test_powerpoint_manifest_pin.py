@@ -35,6 +35,17 @@ SPEC = ROOT / "plugins" / "sources" / "powerpoint" / "plugin-source.json"
 #: The digest every tracking document names as the current PowerPoint bundle.
 DOCUMENTED = "28dbaf2d372c55144e289316a1b92dd25185281351cd685a8e735ee9d759a836"
 
+#: Every PowerPoint manifest this repository has published and replaced. ONE
+#: source of truth for both tests below: D133 guarded the copy used by the
+#: history check and left the copy used by the citation check unguarded, so
+#: shrinking the second one silently passed -- the "guard is itself unguarded"
+#: pattern, fixed for one of two sets (D134).
+SUPERSEDED = (
+    "c048e47b2ec066ae23aa62d1aa18471a1f0118c47a1320a086859731cd63925e",
+    "48e6e4f4d67dade069d8bcac5ce621b5eb1dc330c66e2550ed0e323cb177baea",
+    "61b39b653eba7991c563e9dbcd2564cdd3cdc93bffc0263e1549e9eec46ab424",
+)
+
 
 def _manifest_digest() -> tuple[str, int]:
     """Rebuild the manifest from tracked sources; return its digest and size."""
@@ -80,15 +91,7 @@ def test_every_document_naming_a_powerpoint_manifest_names_this_one():
     present in any file that mentions the plugin's manifest at all.
     """
 
-    # Derived, not remembered: whoever moves DOCUMENTED must add the value it
-    # replaced here, and this test is what makes them. Without it the set is a
-    # hardcoded literal that silently stops covering the digest it supersedes,
-    # and every stale document citing it alone goes unflagged (D133).
-    superseded = {
-        "c048e47b2ec066ae23aa62d1aa18471a1f0118c47a1320a086859731cd63925e",
-        "48e6e4f4d67dade069d8bcac5ce621b5eb1dc330c66e2550ed0e323cb177baea",
-        "61b39b653eba7991c563e9dbcd2564cdd3cdc93bffc0263e1549e9eec46ab424",
-    }
+    superseded = set(SUPERSEDED)
     listed = subprocess.run(
         ["git", "ls-files", "-z", "*.md"], cwd=ROOT, capture_output=True, check=False
     )
@@ -130,11 +133,7 @@ def test_the_superseded_set_grows_when_the_documented_digest_moves():
     import re
 
     history = (ROOT / "DECISIONS.md").read_text(encoding="utf-8")
-    known = {DOCUMENTED} | {
-        "c048e47b2ec066ae23aa62d1aa18471a1f0118c47a1320a086859731cd63925e",
-        "48e6e4f4d67dade069d8bcac5ce621b5eb1dc330c66e2550ed0e323cb177baea",
-        "61b39b653eba7991c563e9dbcd2564cdd3cdc93bffc0263e1549e9eec46ab424",
-    }
+    known = {DOCUMENTED} | set(SUPERSEDED)
     # Every 8-hex prefix DECISIONS.md presents as a PowerPoint manifest.
     pattern = "manifest[^" + chr(92) + "n]{0,40}?`([0-9a-f]{8})"
     cited = set(re.findall(pattern, history))
@@ -144,3 +143,14 @@ def test_the_superseded_set_grows_when_the_documented_digest_moves():
         f"DECISIONS.md cites PowerPoint manifest prefixes {sorted(unknown)} that are "
         "neither DOCUMENTED nor listed as superseded"
     )
+
+
+def test_the_superseded_list_is_not_silently_shrinkable():
+    """Both checks above read `SUPERSEDED`, so removing an entry must fail
+    somewhere. A review shrank the second literal and nothing noticed."""
+
+    assert len(SUPERSEDED) >= 3
+    assert len(set(SUPERSEDED)) == len(SUPERSEDED)
+    assert DOCUMENTED not in SUPERSEDED
+    for digest in SUPERSEDED:
+        assert re.fullmatch(r"[0-9a-f]{64}", digest), digest

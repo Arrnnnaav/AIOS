@@ -1457,7 +1457,7 @@ def _step(kind=VerificationKind.ELEMENT_APPEARS, text="Click Export."):
 
 
 STILL = Snapshot("App", ())
-CHANGED = Snapshot("App", (Element("Dialog", "Window", "9001", (0, 0, 50, 50)),))
+CHANGED = Snapshot("App", (Element("Dialog", "Window", "SAMPLE_ID", (0, 0, 50, 50)),))
 
 
 def _tour(steps=None, grounder=None, verifier=None, clock=None, snapshotter=None):

@@ -38,7 +38,21 @@ ROOT = Path(__file__).resolve().parents[1]
 
 #: Documents and data. Source files are covered by the blocklist below instead,
 #: because a test needs *some* integer and an invented one is not a leak.
-_SCANNED_SUFFIXES = {".md", ".json", ".jsonl", ".txt", ".log", ".csv"}
+_SCANNED_SUFFIXES = {
+    ".md",
+    ".json",
+    ".jsonl",
+    ".txt",
+    ".log",
+    ".csv",
+    ".ini",
+    ".cfg",
+    ".yaml",
+    ".yml",
+    ".toml",
+    ".xml",
+    ".html",
+}
 
 #: `hwnd 770001`, `hwnd: 770001`, `HWND `770001``, `pid 880002`. FOUR digits is
 #: the floor, not five: a Windows PID is frequently four digits, and the
@@ -65,6 +79,12 @@ _RAW_TARGET = re.compile(
     re.IGNORECASE,
 )
 
+#: Geometry, not identity: `window.captured_bbox` is four coordinates, and a
+#: rule that flags them is a rule someone switches off (D134).
+_GEOMETRY_KEY = re.compile(
+    r"(bbox|bounds|rect|region|geometry|size|width|height|coord)", re.IGNORECASE
+)
+
 #: A JSON key naming a window handle or process id. SUBSTRING, not an exact
 #: spelling: `"windowHandle": <value>` passed every rule because the pattern
 #: anchored on `(?:^|_)(hwnd|pid|handle)$`. Enumerating spellings is how this
@@ -85,6 +105,42 @@ _TARGET_KEY = re.compile(
 #: must include `target`: every evidence table this repository actually emits
 #: heads its binding column `Target`, so the previous rule covered a heading
 #: that no longer exists and missed the one in use (D131).
+#: Binding vocabulary. One list, used by all three rules, so widening the
+#: vocabulary widens every rule at once instead of one of them (D134).
+_BINDING_WORDS = (
+    r"hwnd|pid|handle|window|target|bound|session|approved|binding|instance"
+    r"|owner|process|winid"
+)
+
+#: A binding word and a handle-shaped number within 40 characters, in EITHER
+#: order, whatever sits between them. The previous rule enumerated separators
+#: (`[\s:="]*`), so `window (7734512)`, `hwnd [7734512]`, `hwnd **7734512**`
+#: and `owner, 7734512` all walked through -- the seventh review evaded the
+#: scan twice more that way. This is a proximity rule rather than a punctuation
+#: rule: it cannot be defeated by inventing new punctuation, only by moving the
+#: number far from any word that names a binding (D134).
+#:
+#: Known limit, stated rather than discovered later: the reverse direction
+#: (`<number> ... <word>`) allows punctuation between them, not prose. "7734512
+#: was the bound window" is not caught, because widening that branch to span
+#: words makes every four-digit measurement in a sentence containing "window"
+#: a hit. The blocklist covers real values regardless of phrasing; this rule
+#: covers shape.
+#: The number must stand alone: not part of a version (`16.0.20326.20112`), a
+#: dimension (`976x1028`), a date (`2026-08-25`), a range (`39-66s`) or a
+#: longer identifier. Without that the proximity rule fires on every measured
+#: figure in the repository, and a rule that fires constantly is a rule someone
+#: switches off.
+_STANDALONE = (
+    r"(?<![\w.\-×x])(?:0x[0-9A-Fa-f]{3,}|\d{4,})(?![\w.\-×x])"
+)
+
+_NEAR_TARGET = re.compile(
+    rf"(?:{_BINDING_WORDS})[^A-Za-z0-9\n]{{0,24}}?{_STANDALONE}"
+    rf"|{_STANDALONE}[^A-Za-z0-9\n]{{0,12}}?(?:{_BINDING_WORDS})",
+    re.IGNORECASE,
+)
+
 _TARGET_COLUMN = re.compile(
     r"(hwnd|pid|handle|window|target|process|owner|bound|session|approved"
     r"|binding|instance)",
@@ -115,6 +171,9 @@ _OBSERVED = tuple(
         ("198", "188"),  # Excel worksheet window, run 1
         ("525", "102"),  # run 2
         ("918", "882"),  # run 3
+        # Found by the proximity rule itself, in a spec no earlier rule read
+        # (D134).
+        ("659", "02"),  # foreground window, control-bar coexistence spike
     )
 )
 
@@ -150,12 +209,12 @@ def test_the_blocklist_still_holds_every_value_ever_published():
 
     import hashlib
 
-    assert len(_OBSERVED) == 15
-    assert len(set(_OBSERVED)) == 15
+    assert len(_OBSERVED) == 16
+    assert len(set(_OBSERVED)) == 16
     assert all(value.isdigit() and len(value) >= 4 for value in _OBSERVED)
     digest = hashlib.sha256("|".join(sorted(_OBSERVED)).encode("utf-8")).hexdigest()
     assert (
-        digest == "69b29ae12b70b7435a110c1ad44ab5ccba803c6279ede38e25940da70a734e66"
+        digest == "2088e11befa43924512a2f82a5018348b648df4178b1ef78255b332293caec61"
     ), digest
 
 
@@ -241,13 +300,20 @@ def test_ordinary_keys_are_not_matched(key):
         "target: 4460192",
         "bound target 4460192",
         "session: 4460192",
+        # The seventh review's evasions: punctuation the separator class did
+        # not enumerate, which is why the rule is now proximity-based (D134).
+        "The approved PowerPoint window (7734512) was owned",
+        "hwnd [7734512]",
+        "hwnd **7734512**",
+        "owner, 7734512",
+        "7734512 (bound window)",
     ],
 )
 def test_every_known_prose_form_is_matched(line):
     """Including the four-digit PID: the five-digit floor was raised to silence
     my own false positives, which a review called self-serving (D131)."""
 
-    assert _RAW_TARGET.search(line), line
+    assert _RAW_TARGET.search(line) or _NEAR_TARGET.search(line), line
 
 
 def test_the_scan_covers_the_places_handles_have_actually_leaked():
@@ -271,7 +337,7 @@ def test_no_tracked_document_publishes_a_raw_handle_or_process_id():
     offenders = []
     for name in _tracked(_SCANNED_SUFFIXES):
         for number, line in enumerate(_text(name).splitlines(), start=1):
-            if _RAW_TARGET.search(line):
+            if _RAW_TARGET.search(line) or _NEAR_TARGET.search(line):
                 offenders.append(f"{name}:{number}: {line.strip()[:100]}")
     assert not offenders, "raw target values in tracked documents:\n" + "\n".join(
         offenders
@@ -285,10 +351,10 @@ def _handle_valued_keys(value, path=""):
     if isinstance(value, dict):
         for key, child in value.items():
             here = f"{path}.{key}" if path else str(key)
-            if _TARGET_KEY.search(str(key)):
+            if _TARGET_KEY.search(str(key)) and not _GEOMETRY_KEY.search(str(key)):
                 if isinstance(child, bool):
                     continue
-                if isinstance(child, int) and abs(child) >= 100:
+                if isinstance(child, (int, float)) and abs(child) >= 100:
                     found.append(f"{here} = {type(child).__name__}")
                 elif isinstance(child, str) and re.fullmatch(
                     r"(0x[0-9A-Fa-f]{3,}|\d{3,})", child.strip()
@@ -297,7 +363,22 @@ def _handle_valued_keys(value, path=""):
             found.extend(_handle_valued_keys(child, here))
     elif isinstance(value, list):
         for index, child in enumerate(value):
-            found.extend(_handle_valued_keys(child, f"{path}[{index}]"))
+            here = f"{path}[{index}]"
+            # A list under a binding key hides its scalars from the dict branch
+            # above: `"bound_windows": [7734512]` passed every rule until the
+            # seventh review planted it (D134).
+            if (
+                _TARGET_KEY.search(path)
+                and not _GEOMETRY_KEY.search(path)
+                and not isinstance(child, bool)
+            ):
+                if isinstance(child, (int, float)) and abs(child) >= 100:
+                    found.append(f"{here} = {type(child).__name__}")
+                elif isinstance(child, str) and re.fullmatch(
+                    r"(0x[0-9A-Fa-f]{3,}|\d{3,})", child.strip()
+                ):
+                    found.append(f"{here} = {type(child).__name__}")
+            found.extend(_handle_valued_keys(child, here))
     return found
 
 

@@ -5656,3 +5656,59 @@ a retained artifact.
 **Still open.** `NamedTemporaryFile`, `io.open` and `json.dump` to a text handle
 are now recognised by the writer scan, but the idiom list is still a list. The
 class is narrower, not closed.
+
+
+## D134 — READY, and the scan stops enumerating
+
+**Date:** 11 September 2026
+**Status:** The seventh independent D032 review returned **READY** at `45d1323`.
+The 3/3 acceptance campaign may proceed. This decision records the verdict and
+the non-blocking work done on top of it.
+
+**The verdict.** Round seven closed all eight of round 6b's blockers, killed
+15/15 assigned mutations, and recomputed every published figure independently:
+the UIA adapter digest that actually acted, the 155.894 s bracket, the 4.390 s
+execution share, the identical `at_ns` on records 3 and 4. It stated that no
+finding of its own blocks the campaign, because the campaign's artifacts are
+written by pseudonymising schema-fixed writers rather than by the prose scan.
+
+**It evaded the scan twice more, and that is why the rule changed shape.**
+A parenthesised handle after the word `window` passed every rule, because `(`
+was not in the enumerated separator class; a handle inside a JSON array under a
+binding key passed,
+because the structural walker never inspected a list's scalar elements. Four
+rounds of widening a separator class or a spelling list is enough evidence that
+enumeration is the wrong mechanism.
+
+The prose rule is now a **proximity** rule: a binding word and a standalone
+handle-shaped number within a short distance, whatever sits between them. It
+cannot be defeated by inventing punctuation, only by moving the number away
+from any word naming a binding. The JSON walker recurses into arrays and
+accepts floats; the suffix set covers `.ini`, `.cfg`, `.yaml`, `.toml`, `.xml`,
+`.html`; and geometry keys are excluded, because a bbox is four coordinates and
+a rule that flags them is a rule someone switches off.
+
+**It found a real leak on its first run.** `2026-08-21-control-bar-coexistence-findings.md`
+published a live foreground handle in a measured transcript. No previous rule
+read that file's phrasing. It is redacted and blocklisted.
+
+**A known limit, stated rather than left to be discovered.** The reverse
+direction — number first, binding word later — spans punctuation but not prose,
+so "7734512 was the bound window" is not caught. Widening it to span words
+makes every four-digit measurement in a sentence containing "window" a hit. The
+blocklist covers real values regardless of phrasing; this rule covers shape.
+
+**Three other non-blocking items from the review.** The run document claimed
+"under a PowerPoint-only catalog" while its own observation records Synthetic
+Export enabled alongside PowerPoint — corrected to say exactly that. The
+`superseded` manifest list existed in two copies and only one was guarded, so
+shrinking the other passed; both now read one tuple, and shrinking it fails.
+And the excluded attempt left the deck at two slides while `before-1` reads
+one: the operator reset it off the record, now stated, because an unexplained
+2 -> 1 otherwise reads as a gap.
+
+**Not fixed, recorded.** The campaign must retain the probe/harness for D121;
+the D123 OS-refusal guard is caught only in the interactive lane; and
+`test_the_gate_guards_only_the_diagnostics_branch` dies on a substring lookup
+rather than an assertion, so a call moved textually after the branch would
+pass. None gates the campaign.

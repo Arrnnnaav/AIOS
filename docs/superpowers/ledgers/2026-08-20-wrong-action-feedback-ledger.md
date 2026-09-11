@@ -38,7 +38,7 @@ wired = <function wired.<locals>._wire at 0x000001DED3061260>
     def test_silent_when_focus_is_in_another_process(wired):
         """Alt-tabbing to Slack is not a mis-click and must never be reported as
         one."""
-        wired(_FakeElement(TARGET_PID + 1, "1001"))
+        wired(_FakeElement(TARGET_PID + 1, "SAMPLE_ID"))
 >       assert read_focused_automation_id(TARGET_HWND) == ""
 E       AssertionError: assert '1001' == ''
 E
@@ -138,7 +138,7 @@ monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000208FCEAED80>
         monkeypatch.setattr(
             focus_module,
             "_automation",
-            lambda: _FakeAutomation(_FakeElement(TARGET_PID, "1001")),
+            lambda: _FakeAutomation(_FakeElement(TARGET_PID, "SAMPLE_ID")),
         )
 >       assert read_focused_automation_id(0) == ""
 E       AssertionError: assert '1001' == ''

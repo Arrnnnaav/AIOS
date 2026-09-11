@@ -139,7 +139,10 @@ attaches read-only to a running PowerPoint and never launches one.
   not by an operator's memory and not by an interval containing two attempts.
   That is an observation ordered around the cycle, not a demonstration that the
   cycle caused it.
-- It ran on the current, reproducible bundle under a PowerPoint-only catalog.
+- It ran on the current, reproducible bundle. The catalog was **not**
+  PowerPoint-only: `ghostcursor.synthetic` was enabled alongside it, as the
+  observation above records. Only PowerPoint and Synthetic Export were
+  enabled, and the acting plugin was PowerPoint.
 
 ## What it does not prove
 
@@ -165,3 +168,9 @@ with its reason recorded in `docs/evidence/excluded/README.md`. It was launched
 before its `before-1` reading was taken and so has no starting bracket. It
 reached `completed 1/1` on its second cycle, so this is not a discarded failure,
 and keeping it is what lets a reader check the exclusion instead of trusting it.
+
+For completeness, since a reader comparing timestamps will notice it: that
+attempt ended with the deck at two slides, and `before-1` reads one slide
+afterwards. The deck was reset between the two runs, by the operator, off the
+record. Nothing here depends on that -- this document claims no causation
+either way -- but an unexplained 2 -> 1 would otherwise look like a gap.

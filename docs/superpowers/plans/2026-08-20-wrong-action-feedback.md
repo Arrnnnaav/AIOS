@@ -120,14 +120,14 @@ def wired(monkeypatch):
 
 
 def test_reports_the_id_when_focus_is_in_the_target_process(wired):
-    wired(_FakeElement(TARGET_PID, "1001"))
-    assert read_focused_automation_id(TARGET_HWND) == "1001"
+    wired(_FakeElement(TARGET_PID, "SAMPLE_ID"))
+    assert read_focused_automation_id(TARGET_HWND) == "SAMPLE_ID"
 
 
 def test_silent_when_focus_is_in_another_process(wired):
     """Alt-tabbing to Slack is not a mis-click and must never be reported as
     one."""
-    wired(_FakeElement(TARGET_PID + 1, "1001"))
+    wired(_FakeElement(TARGET_PID + 1, "SAMPLE_ID"))
     assert read_focused_automation_id(TARGET_HWND) == ""
 
 
@@ -705,28 +705,28 @@ from ghostcursor.reasoning.loop import GuidedTour, State
 
 
 def test_fires_when_focus_visited_a_non_target_control(wrong_action_tour):
-    h = wrong_action_tour(target_id="1001")
+    h = wrong_action_tour(target_id="SAMPLE_ID")
     h.arrive_at_awaiting()
 
     h.set_focus_visited(("1002",))
     h.tick()
 
-    assert h.wrong_actions == [("1002", "1001")]
+    assert h.wrong_actions == [("1002", "SAMPLE_ID")]
     assert h.tour.state is State.OBSERVING
 
 
 def test_silent_when_focus_visited_only_the_target(wrong_action_tour):
-    h = wrong_action_tour(target_id="1001")
+    h = wrong_action_tour(target_id="SAMPLE_ID")
     h.arrive_at_awaiting()
 
-    h.set_focus_visited(("1001",))
+    h.set_focus_visited(("SAMPLE_ID",))
     h.tick()
 
     assert h.wrong_actions == []
 
 
 def test_silent_when_nothing_was_focused(wrong_action_tour):
-    h = wrong_action_tour(target_id="1001")
+    h = wrong_action_tour(target_id="SAMPLE_ID")
     h.arrive_at_awaiting()
 
     h.set_focus_visited(())
@@ -739,7 +739,7 @@ def test_satisfied_wins_over_a_detour(wrong_action_tour):
     """The user touched the wrong control and then did the right thing. The
     step succeeded; interrupting a success to criticise it is the Clippy
     failure this loop is built to avoid."""
-    h = wrong_action_tour(target_id="1001")
+    h = wrong_action_tour(target_id="SAMPLE_ID")
     h.arrive_at_awaiting()
 
     h.set_focus_visited(("1002",))
@@ -766,7 +766,7 @@ def test_rehints_are_capped_at_three_but_messages_are_not(wrong_action_tour):
     """The cap counts RE-HINTS, not messages. Going quiet entirely would tell
     a user who keeps trying and failing less the harder they struggle, which
     is backwards for a teaching system."""
-    h = wrong_action_tour(target_id="1001")
+    h = wrong_action_tour(target_id="SAMPLE_ID")
     seen = []
     for _ in range(5):
         h.arrive_at_awaiting()
@@ -779,7 +779,7 @@ def test_rehints_are_capped_at_three_but_messages_are_not(wrong_action_tour):
 
 
 def test_the_counter_resets_on_a_new_step(wrong_action_tour):
-    h = wrong_action_tour(target_id="1001")
+    h = wrong_action_tour(target_id="SAMPLE_ID")
     h.arrive_at_awaiting()
     h.set_focus_visited(("1002",))
     h.tick()
@@ -934,7 +934,7 @@ reuse its driver rather than writing a second one.
 
 
 def test_a_wrong_action_prints_once_and_re_asserts_the_hint(tour_harness):
-    h = tour_harness(target_id="1001")
+    h = tour_harness(target_id="SAMPLE_ID")
     h.publish_observation(focus_visited=("1002",))
     h.tick()
 
@@ -944,8 +944,8 @@ def test_a_wrong_action_prints_once_and_re_asserts_the_hint(tour_harness):
 
 
 def test_no_line_when_focus_stayed_on_the_target(tour_harness):
-    h = tour_harness(target_id="1001")
-    h.publish_observation(focus_visited=("1001",))
+    h = tour_harness(target_id="SAMPLE_ID")
+    h.publish_observation(focus_visited=("SAMPLE_ID",))
     h.tick()
 
     assert not any("1002" in line for line in h.printed)
@@ -1022,7 +1022,7 @@ def test_focus_moves_to_passes_when_focus_lands_on_the_named_control():
     rule = VerificationRule(
         kind=VerificationKind.FOCUS_MOVES_TO, args={"automation_id": "1004"}
     )
-    before = Snapshot(title="t", elements=(), focused_automation_id="1001")
+    before = Snapshot(title="t", elements=(), focused_automation_id="SAMPLE_ID")
     after = Snapshot(title="t", elements=(), focused_automation_id="1004")
     assert verify(rule, before, after) is True
 
@@ -1042,7 +1042,7 @@ def test_focus_moves_to_fails_when_focus_landed_elsewhere():
     rule = VerificationRule(
         kind=VerificationKind.FOCUS_MOVES_TO, args={"automation_id": "1004"}
     )
-    before = Snapshot(title="t", elements=(), focused_automation_id="1001")
+    before = Snapshot(title="t", elements=(), focused_automation_id="SAMPLE_ID")
     after = Snapshot(title="t", elements=(), focused_automation_id="1002")
     assert verify(rule, before, after) is False
 
@@ -1053,7 +1053,7 @@ def test_focus_moves_to_fails_when_focus_is_unknown():
     rule = VerificationRule(
         kind=VerificationKind.FOCUS_MOVES_TO, args={"automation_id": ""}
     )
-    before = Snapshot(title="t", elements=(), focused_automation_id="1001")
+    before = Snapshot(title="t", elements=(), focused_automation_id="SAMPLE_ID")
     after = Snapshot(title="t", elements=(), focused_automation_id="")
     assert verify(rule, before, after) is False
 ```
