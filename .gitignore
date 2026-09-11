@@ -10,8 +10,13 @@ venv/
 .pytest_cache/
 pytest-cache-files-*/
 
-# Local agent/editor settings
-.claude/settings.local.json
+# Local agent/editor settings. `.claude/worktrees/` holds real git worktrees
+# checked out inside the repo -- committing them would nest a checkout in the
+# tree. `.agents/` and `skills-lock.json` are local tool configuration, not
+# project content.
+.claude/
+.agents/
+skills-lock.json
 
 # User data — the knowledge base lives in %LOCALAPPDATA%, never in the repo,
 # but guard against a stray local copy.
@@ -41,13 +46,3 @@ kb.sqlite*
 # in the tracked Word document and repository documentation.
 /My_idea.md
 /build_doc.txt
-/.tmp/
-/pytest-temp-*/
-/pytest-plan-*/
-/pytest_tmp/
-/tmp*/
-
-# Local diagnostic and generated-analysis output. Sanitized findings belong
-# in DECISIONS.md; raw stacks and regenerated graphs stay off the public tree.
-/.artifacts/
-/graphify-out/
