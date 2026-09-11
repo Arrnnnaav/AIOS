@@ -312,7 +312,13 @@ built but not yet exercised by a caller or a live run.
 - [ ] Local model composes a 10-slide deck from `idea.txt`
 
 **10. Acceptance and release**
-- [x] Three consecutive PowerPoint campaigns — **3/3 clean on 11 Sep 2026**
+- [ ] Three consecutive PowerPoint campaigns — two 3/3 clean campaigns ran on
+      11 Sep 2026 (harness, and manager-path through the real `Approve & run`).
+      **Both are reclassified diagnostic (D139)** and retained under
+      `docs/evidence/diagnostic/`: three transcripts elsewhere were found edited
+      after capture, and evidence produced during that repair cannot close the
+      gate. A fresh campaign runs after a READY verdict. Prior wording: **3/3
+      clean on 11 Sep 2026**
       against the rebuilt bundle (manifest `28dbaf2d`, plan `84e39d0d`),
       255/255 nodes each, three distinct published artifacts
       (`docs/evidence/act-acceptance-campaign-2026-09-11.md`). The 4 Sep runs
@@ -353,12 +359,12 @@ deck build only:
 
 | Open item | Gate before it moves |
 |---|---|
-| Manager-path counted campaign | 3/3 through the real `Approve & run`; the 11 Sep campaign ran the `act_acceptance` harness, which never mints an `ActExecutionRequest` (D137) |
+| Fresh counted campaign | an independent READY verdict first. Both 11 Sep campaigns — harness and manager-path — are diagnostic, not acceptance (D139) |
 | UIA slice `add-slide-uia-v1` | independent D032 review, externally signed bytes, its own counted campaign |
 | Animation-catalog campaign | run it; it has never been counted |
 | Independent lane runs | each lane green on its own, per D025 |
 | D032 review of the derived budgets | the receipt deadlines are measured; the review of the derivation is not done |
-| D032 activation review | **NOT READY** twice: at `a1739aa` (D137) and again at `f19eaaf` (D138). Seven blockers from the second round are closed; it needs a third round |
+| D032 activation review | **NOT READY** three times: `a1739aa` (D137), `f19eaaf` (D138), `0eee4ab` (D139). Each round found the previous round's fix defective; round three found a repair that reproduced the defect it repaired |
 | Semantic PowerPoint capabilities | activation review READY |
 | Agent / skills / marketplace program | activation review READY, then its own phase entries here |
 

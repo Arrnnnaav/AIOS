@@ -1104,7 +1104,24 @@ task:
 
 **Trigger:** each one before its own stage, not all at once.
 
-## A counted campaign through the manager `Approve & run` path
+## A fresh counted campaign, after a READY verdict
+
+Both 11 September campaigns are diagnostic, not acceptance (D139). The
+manager-path one is the stronger of the two -- 255/255 three times through the
+real `Approve & run`, with the D123 handoff recorded before the one-use request
+was minted -- and it still may not close the gate, because it was produced on
+the day three falsified transcripts were found and while their repair was
+underway.
+
+Everything needed to repeat it is retained: transcripts, digests, the harness,
+and two preserved excluded attempts, under `docs/evidence/diagnostic/`.
+
+**Trigger:** an independent activation review returning READY. Then a live
+desktop, a human approving three times, D025 respected, and the PowerPoint
+window **not minimized** -- `_collect()` skips iconic windows, which is what
+refused two attempts on 11 September.
+
+## The original gap this replaced: a counted campaign through the manager path
 
 The 11 September campaign ran the `act_acceptance` harness, which reaches
 `execute_approved_graph` directly and never mints an `ActExecutionRequest`. So

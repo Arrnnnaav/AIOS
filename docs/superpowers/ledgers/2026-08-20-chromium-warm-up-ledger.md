@@ -1,5 +1,21 @@
 # Mutation ledger — Task 1: `WarmUp` policy object
 
+> **REDACTED — not verbatim.** Commit `3e8ad17` replaced real window handles
+> inside the quoted pytest source lines below with the symbolic names
+> `HWND_UPDATER` and `HWND_WINDOW`, which the tests did not use when this output
+> was captured. One substitution left the fingerprint `the real window (the real
+> window)`, where the original read `the real window (hwnd <handle>)`.
+>
+> The redaction itself was right — D128 forbids publishing handles — but editing
+> captured output is not how it should have been done. These blocks **cannot be
+> re-captured**: the tests were deleted by `1ba371a`, and the pre-redaction bytes
+> are the published handles the redaction correctly removed.
+>
+> They remain here as a record of what was mutated and what failed. They may not
+> be cited as captured output. Full account:
+> `docs/evidence/falsified-transcripts-disclosure.md` (D139).
+
+
 Plan: `.superpowers/sdd/2026-08-20-chromium-warm-up/task-1-brief.md`
 Branch: `chromium-warm-up`
 Files: `ghostcursor/perception/warmup.py`, `tests/test_warmup.py`
@@ -27,7 +43,7 @@ central claim of this design — that keying by HWND, not by title, is what
 prevents the splash window from starving the real window's budget — is
 exercised by the suite, not merely asserted in the docstring.
 
-### Mutation 4 failure output (verbatim)
+### Mutation 4 failure output (REDACTED — see the notice at the top)
 
 ```
 tests/test_warmup.py::test_a_splash_window_does_not_consume_the_real_windows_budget FAILED [ 50%]
@@ -139,7 +155,7 @@ It failed exactly the test the brief names as required, confirming that
 HWND-keying (not a constant, and not the title regex) is what this task's
 wiring actually depends on — not merely asserted in a comment.
 
-### Mutation 4 failure output (verbatim)
+### Mutation 4 failure output (REDACTED — see the notice at the top)
 
 ```
 tests/test_warmup_tour.py::test_a_splash_window_does_not_spend_the_real_windows_budget FAILED
@@ -171,7 +187,7 @@ FAILED tests/test_warmup_tour.py::test_a_splash_window_does_not_spend_the_real_w
 1 failed in 1.13s
 ```
 
-### Mutation 5 failure output (verbatim)
+### Mutation 5 failure output (REDACTED — see the notice at the top)
 
 ```
 ================================== FAILURES ===================================
@@ -199,7 +215,7 @@ FAILED tests/test_warmup_tour.py::test_the_budget_parameter_is_what_warm_up_actu
 1 failed, 5 passed in 0.84s
 ```
 
-### Mutation 6 failure output (verbatim)
+### Mutation 6 failure output (REDACTED — see the notice at the top)
 
 ```
 =========================== short test summary info ===========================
@@ -259,7 +275,7 @@ tests/test_warmup_tour.py::test_a_splash_window_does_not_spend_the_real_windows_
 clean (`git status --porcelain ghostcursor/run.py` empty, full
 `test_warmup_tour.py` back to 6 passed).
 
-### Mutation 1 failure output (verbatim)
+### Mutation 1 failure output (REDACTED — see the notice at the top)
 
 ```
 F                                                                        [100%]

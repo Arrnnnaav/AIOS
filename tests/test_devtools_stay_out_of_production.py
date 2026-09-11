@@ -101,17 +101,58 @@ def _dynamic_devtool_references(source: str):
     return found
 
 
-def test_the_production_module_set_is_derived_and_not_empty():
-    """Non-vacuity: a check over an empty set passes while checking nothing."""
+#: The production package as MEASURED at this commit, per directory. Not a
+#: floor: a reviewer narrowed `_production_modules()` to top-level modules only
+#: -- 32 of 85 -- and the `>= 30` floor passed while a planted devtool import in
+#: `reasoning/loop.py` went unseen, whole lane green (D139).
+#:
+#: A floor comfortably below reality guards nothing; it only records that
+#: somebody once counted. These numbers are the count, so shrinking the scanned
+#: set fails here and names the directory that vanished. They change when the
+#: package changes, deliberately and visibly in a diff.
+_MEASURED_INVENTORY = {
+    "ghostcursor": 32,
+    "ghostcursor/demo": 2,
+    "ghostcursor/evaluation": 5,
+    "ghostcursor/inference": 3,
+    "ghostcursor/memory": 2,
+    "ghostcursor/overlay": 5,
+    "ghostcursor/packs": 7,
+    "ghostcursor/perception": 11,
+    "ghostcursor/plugins": 7,
+    "ghostcursor/reasoning": 11,
+}
+
+
+def test_the_production_module_set_matches_the_measured_inventory():
+    """Non-vacuity, by measurement rather than by floor.
+
+    Every subpackage is named with its count, so a scan narrowed to any subset
+    of the tree fails and says which part it stopped looking at.
+    """
 
     modules = _production_modules()
 
-    assert len(modules) >= 30, len(modules)
+    counted = {}
+    for name in modules:
+        parent = str(Path(name).parent).replace(chr(92), "/")
+        counted[parent] = counted.get(parent, 0) + 1
+
+    assert counted == _MEASURED_INVENTORY, (
+        "the scanned production set no longer matches the measured inventory. "
+        f"missing/changed: {set(_MEASURED_INVENTORY.items()) ^ set(counted.items())}"
+    )
+    assert sum(_MEASURED_INVENTORY.values()) == len(modules) == 85
+
     for required in (
         "ghostcursor/act_runtime.py",
         "ghostcursor/manager.py",
         "ghostcursor/act_cli.py",
         "ghostcursor/run.py",
+        # One from a subpackage, because the narrowing that survived kept every
+        # top-level module and dropped every nested one.
+        "ghostcursor/reasoning/loop.py",
+        "ghostcursor/plugins/store.py",
     ):
         assert required in modules, required
     assert not any(m.startswith("ghostcursor/devtools/") for m in modules)

@@ -5960,6 +5960,14 @@ and re-run to capture real transcripts. The memory addresses and timings in the
 ledger now differ from the originals, because it is a different run. That is
 what an honest re-capture looks like, and the ledger says so.
 
+> **Correction, 12 September 2026 (D139).** The last two sentences are **false**
+> and are corrected in D139, not deleted here. The re-capture replaced the
+> traceback BODIES and left the summary tally lines untouched, so a September
+> traceback sat under an August tally, and the timings were byte-identical
+> across four commits rather than different. The repair for a falsified record
+> was itself falsified, and this paragraph asserted otherwise. A third
+> independent reviewer found it.
+
 ### The hygiene rewrite narrowed a rule while appearing to widen it
 
 `301e86b`'s message correctly declared enumeration bankrupt and replaced the
@@ -6033,3 +6041,114 @@ A check that objects to a record is a claim that the record is wrong OR that
 the check is. Deciding it is the record, and editing the record, is available
 to the author of both — and is invisible to every test, because no test reads a
 document for whether it describes a run that happened.
+
+---
+
+## D139 — Three falsifications, and the rule that follows
+
+**Date:** 12 September 2026
+**Verdict: NOT READY** at `0eee4ab`, from a third independent reviewer. Nineteen
+mutations, fourteen killed. Findings at `.tmp/d032-activation-3/REVIEW3.md`.
+
+Three separate times, a document in this repository was edited so that a check
+would pass, and each time the document was one that published captured output
+under a heading saying **verbatim**.
+
+### What was found
+
+**`301e86b`** changed the fixture argument in two quoted pytest SOURCE lines and
+left the captured assertion output naming the original literal. D138 recorded
+this.
+
+**`0ba67c8` — the repair — did the same thing.** It re-captured the traceback
+bodies and left the summary tallies, so a September traceback sat under an
+August tally. D138 then asserted "the memory addresses and timings differ
+because it is a different run"; all five tally lines were byte-identical across
+`301e86b^`, `301e86b`, `0ba67c8` and `HEAD`. The claim was false when written.
+
+**`3e8ad17` — found by nobody until round three — did it in two more files.** It
+replaced real window handles inside quoted source lines with symbolic names the
+tests never used, leaving the fingerprint `the real window (the real window)`
+where the original read `the real window (hwnd <handle>)`. Those tests were
+deleted by `1ba371a`, so that output cannot be re-captured at all.
+
+### Why it kept happening, which is the part worth keeping
+
+Every instance had a defensible motive. `tests/test_evidence_hygiene.py` refuses
+raw handles and process ids in tracked documents (D122, D128), and it has no
+exemption mechanism, deliberately. Three times it objected to a value inside a
+quoted transcript. Three times the response was to edit the transcript.
+
+**A scan objecting to a record is a claim that the record is wrong OR that the
+scan is.** Deciding it is the record, and editing the record, is available to
+whoever owns both — and it is invisible to every test here, because no test
+reads a document for whether it describes a run that happened. Two of the three
+instances were committed by the author of the scan, in the commit that wrote it.
+
+### The rule
+
+**Never edit captured output.** If a check objects to a transcript, either
+re-capture the WHOLE block from a real run — tallies, timings, addresses,
+everything — or fix the check. There is no third option, and "redact the handle
+in place" is not one: fix the fixture at the source and re-capture, or disclose
+that the block cannot be re-captured and mark it REDACTED.
+
+### What was done
+
+All three instances are disclosed in
+`docs/evidence/falsified-transcripts-disclosure.md`, which names every commit.
+Nothing was deleted and no history was rewritten.
+
+The two repairable blocks are re-captured whole: the fixture AutomationId is now
+`"tree-item"`, the file holds nine tests, and the real tallies read
+`1 failed, 8 passed` — which is how a reader can tell them from the August ones.
+The four unrepairable blocks are relabelled **REDACTED — not verbatim** in place,
+with a notice saying what was changed and why no run can regenerate it.
+
+`tests/test_evidence_provenance.py` now detects the two fingerprints these
+instances actually left: a value reported by a run that appears nowhere in its
+own quoted source, and a substitution that duplicates surrounding text. **Both
+were verified against the real historical bytes** — replaying `301e86b` flags
+its spliced literal in two blocks, replaying `3e8ad17` flags its duplicated
+phrase. It is a narrowing, not a closure: a careful splice with consistent
+literals and plausible tallies passes, and the disclosure exists in prose
+because a human read is the only complete instrument.
+
+### Two other blockers, one shape
+
+**Floors below reality.** `_production_modules()` returned 85 modules behind a
+`>= 30` guard, so narrowing it to the 32 top-level ones hid a planted devtool
+import in `reasoning/loop.py` with the lane green. The same pattern sat in two
+other guards. A floor comfortably below reality records that somebody once
+counted; it does not guard. The inventory is now measured per directory and
+compared for equality, so a narrowed scan fails and names the part it stopped
+looking at.
+
+**A check nobody ran.** `render_receipt_budget.py --check` existed and was
+invoked by nothing, so loosening the deadlines in both `act_cli.py` and the
+evidence document together passed. Two documents agreeing is not evidence when
+one edit changed both. D138's claim that the digest table made the derivation
+tamper-evident was an overclaim — it pins the records. There are now three
+independent links: the records hash to what the document publishes, the document
+re-renders from them byte for byte, and production's constants equal what the
+records derive. Breaking any one fails.
+
+### The campaigns are reclassified as diagnostic
+
+On 11 September a human ran three consecutive clean manager-path attempts —
+255/255 each, through the real `Approve & run`, with the D123 handoff recorded
+before the one-use request was minted. It is the path D137 found the
+`act_acceptance` campaign had never crossed, and it worked.
+
+**It is not acceptance evidence, and neither is the harness campaign.** Both are
+frozen under `docs/evidence/diagnostic/` with their transcripts, digests, harness
+and two preserved excluded attempts. Evidence produced while the discipline that
+governs evidence is under repair cannot be the thing that closes the gate. A
+fresh campaign runs after an independent reviewer returns READY, and these
+become the thing it is compared against.
+
+### What this decision does not claim
+
+That the class is closed. Three rounds have each found the previous round's fix
+defective, and this round found that a repair had reproduced the defect it
+repaired. Nothing in this slice has been read by anyone but its author.

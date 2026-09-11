@@ -329,14 +329,25 @@ executable and version are published in cleartext. `target_focus_handoff_complet
 is recorded before the execution request is minted, so the retained transcript
 evidences the D123 ordering rather than merely being consistent with it.
 
-**The object-model deck build has a counted 3/3 acceptance on 11 September 2026**
-against manifest `28dbaf2d`, gated by a READY D032 review (D134). Those three
-attempts ran through the `act_acceptance` harness, which calls the authority
-core directly: they did **not** cross the manager `Approve & run` layer — the
-one-use `ActExecutionRequest`, the D123 foreground handoff, or the UI-thread
-presentation bridge. Do not describe that campaign as a manager-path run; D136
-did, and it was false (D137). The UIA slice is separately unadopted:
-`add-slide-uia-v1` has one live diagnostic run and no counted campaign.
+**There is no current acceptance evidence for Act. Both campaigns are
+diagnostic (D139).** The 11 September harness campaign and the 11 September
+manager-path campaign are frozen under `docs/evidence/diagnostic/`; neither may
+be cited as acceptance, and no phase may be marked closed on either. Three
+transcripts in this repository were found edited after capture, and the first
+repair of two of them was itself falsified — evidence produced while the
+evidence discipline is under repair cannot close a gate.
+
+Both campaigns ran clean and demonstrate working functionality. The manager-path
+one crossed the real `Approve & run`, the D123 handoff and the one-use
+`ActExecutionRequest`, 255/255 three times; the harness one never touched that
+layer. A fresh campaign runs only after an independent reviewer returns READY.
+
+**Never edit captured output (D139).** If a check objects to a transcript,
+re-capture the WHOLE block from a real run — tallies, timings and all — or fix
+the check. Redacting a value in place is not a third option: fix the fixture at
+the source and re-capture, or mark the block REDACTED and disclose why it cannot
+be regenerated. `tests/test_evidence_provenance.py` detects two fingerprints of
+this and closes neither the class nor the need to read documents.
 
 **Two earlier live runs remain uncitable.** `act-live-manager-d123-r5.jsonl`
 is invalidated (D125) — it names adapter, verifier and manifest digests that no
@@ -353,7 +364,7 @@ carries:
 
 | Open | Gate |
 |---|---|
-| Manager-path counted campaign | 3/3 through the real `Approve & run` |
+| Fresh counted campaign, both paths | an independent READY verdict first; the 11 Sep campaigns are diagnostic (D139) |
 | UIA slice `add-slide-uia-v1` | independent D032 review, externally signed bytes, own counted campaign |
 | Animation-catalog campaign | it has never been counted |
 | Independent lane runs | interactive, pixel and hung lanes green alone, per D025 |

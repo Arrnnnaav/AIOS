@@ -1,5 +1,21 @@
 # Chromium Warm-Up Implementation Plan
 
+> **REDACTED — not verbatim.** Commit `3e8ad17` replaced real window handles
+> inside the quoted pytest source lines below with the symbolic names
+> `HWND_UPDATER` and `HWND_WINDOW`, which the tests did not use when this output
+> was captured. One substitution left the fingerprint `the real window (the real
+> window)`, where the original read `the real window (hwnd <handle>)`.
+>
+> The redaction itself was right — D128 forbids publishing handles — but editing
+> captured output is not how it should have been done. These blocks **cannot be
+> re-captured**: the tests were deleted by `1ba371a`, and the pre-redaction bytes
+> are the published handles the redaction correctly removed.
+>
+> They remain here as a record of what was mutated and what failed. They may not
+> be cited as captured output. Full account:
+> `docs/evidence/falsified-transcripts-disclosure.md` (D139).
+
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Stop a cold, UIA-capable application being escalated to OCR while its accessibility tree is still being built, by giving each newly-seen target window a short grace period before tier 2 may be requested.
