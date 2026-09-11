@@ -81,9 +81,41 @@ _RAW_TARGET = re.compile(
 
 #: Geometry, not identity: `window.captured_bbox` is four coordinates, and a
 #: rule that flags them is a rule someone switches off (D134).
-_GEOMETRY_KEY = re.compile(
-    r"(bbox|bounds|rect|region|geometry|size|width|height|coord)", re.IGNORECASE
+#:
+#: EXACT segment match, not substring. Measured across every tracked JSON, the
+#: substring form rescued exactly four values -- one `captured_bbox` in one
+#: fixture -- while opening `{"bound_window_size_hint": <handle>}`, which passed
+#: every rule in this file. An exclusion whose reach exceeds its purpose is a
+#: hole shaped like a feature (D138).
+_GEOMETRY_WORDS = frozenset(
+    (
+        "bbox",
+        "bounds",
+        "rect",
+        "region",
+        "geometry",
+        "size",
+        "width",
+        "height",
+        "coord",
+        "coords",
+    )
 )
+
+
+def _is_geometry(key) -> bool:
+    """True when the key's HEAD NOUN -- its last segment -- is a geometry word.
+
+    Segment membership alone is not enough, and the fix caught its own first
+    draft: `bound_window_size_hint` splits to `bound|window|size|hint`, so
+    "contains a geometry segment" still rescued the hole this was meant to
+    close. In these key names the last segment IS the thing and the earlier
+    ones qualify it, so `captured_bbox` and `window.bounds` are geometry while
+    `bound_window_size_hint` and `sizeable_window_handle` are not.
+    """
+
+    segments = [s for s in re.split(r"[^A-Za-z]+", str(key).lower()) if s]
+    return bool(segments) and segments[-1] in _GEOMETRY_WORDS
 
 #: A JSON key naming a window handle or process id. SUBSTRING, not an exact
 #: spelling: `"windowHandle": <value>` passed every rule because the pattern
@@ -204,14 +236,29 @@ _PADDED_HEX = re.compile(r"(?<![0-9A-Za-z_])(00[0-9A-Fa-f]{4,8})(?![0-9A-Za-z_])
 
 
 def _normalise(text: str) -> str:
-    """One rendering of a number, so the rules below need only one shape.
+    """One rendering of a number, for the SHAPE rules below.
 
-    D031: the PROPERTY is "no tracked document publishes a raw handle or
-    process id". The INVARIANT the rules enforce is "no handle-shaped token
-    sits near a binding word". Normalising is what makes the invariant imply
-    the property rather than merely correlate with it -- without it, the
-    invariant is a statement about formatting, and the formatting is the
-    author's free choice.
+    A best-effort normaliser, and stated as one. An activation re-review
+    defeated its first version with `2,64,482` -- lakh grouping, entirely
+    natural on an IST-anchored project -- and with figure spaces, group sizes
+    other than three, line-break splits and HTML entities. Each could be added
+    to the separator class, and that is the enumeration treadmill this scan has
+    already ridden for seven rounds.
+
+    So the two rules are now split by what each can honestly claim (D138):
+
+    * `_blocklisted(..., prose=True)` is TOTAL for known values. It compares
+      digits to digits with every other character removed, so no rendering of a
+      real observed handle can hide from it. That invariant IMPLIES the
+      property, for those values.
+    * This normaliser plus the proximity rules is a heuristic for values nobody
+      has observed yet. It CORRELATES with the property and cannot imply it: an
+      unknown number in an unanticipated rendering is indistinguishable from
+      prose. Widening it is worth doing and is not worth calling complete.
+
+    Stating the weaker claim is the point. The previous version asserted that
+    normalising "makes the invariant imply the property", which stopped being
+    true the moment someone chose a different separator.
     """
 
     previous = None
@@ -219,6 +266,58 @@ def _normalise(text: str) -> str:
         previous = text
         text = _GROUPED.sub("", text)
     return _PADDED_HEX.sub(lambda m: "0x" + m.group(1), text)
+
+
+def _digits_only(text: str) -> str:
+    """Every digit, in order, with everything else discarded.
+
+    Rendering-independent by construction rather than by enumeration: spaces,
+    commas, thin spaces, line breaks, markup and named entities all vanish
+    because nothing but a digit survives.
+
+    The cost is matches spanning two adjacent numbers, which is the right trade
+    for sixteen values that must never reappear in a document, and the wrong one
+    for a shape rule.
+    """
+
+    return "".join(c for c in text if c.isdigit())
+
+
+def _blocklisted(text: str, *, prose: bool):
+    """Observed values present in `text`.
+
+    Two modes, because the two kinds of file differ in what an author can
+    write, and one rule would be either leaky or unusable:
+
+    * `prose=True` (documents) compares DIGITS ONLY -- total against any
+      rendering that adds no digits of its own.
+    * `prose=False` (source, fixtures, anything else) compares the normalised
+      text. A Python literal cannot contain a space, `4_460_192` can and is
+      covered, and digits-only here would flag THIS file: `_OBSERVED` splits
+      each value across two string literals so the blocklist is not itself the
+      leak, and concatenating every digit in the file puts them back together.
+      A rule that always fails on its own source teaches nothing (D138).
+    """
+
+    haystack = _digits_only(text) if prose else _normalise(text)
+    return [value for value in _OBSERVED if value in haystack]
+
+
+def _document_offenders(text: str):
+    """Every line a shape rule objects to, as (line number, line).
+
+    ONE function, used by the file scan below AND by the unit tests that pin the
+    rules. The re-review found that the tests asserted on the regex OBJECTS
+    while the scan applied them separately, so deleting `_NEAR_TARGET` from the
+    scan left all 70 tests green -- the guard itself unguarded, one level above
+    where that was last fixed (D138).
+    """
+
+    offenders = []
+    for number, line in enumerate(_normalise(text).splitlines(), start=1):
+        if _RAW_TARGET.search(line) or _NEAR_TARGET.search(line):
+            offenders.append((number, line))
+    return offenders
 
 
 def _tracked(suffixes=None):
@@ -408,14 +507,93 @@ def test_the_normaliser_leaves_real_numbers_and_digests_alone():
     assert _normalise("000BC1F8") == "0x000BC1F8"
 
 
-def test_the_blocklist_is_checked_against_the_normalised_text():
-    """A blocklisted value written `2 644 82` would otherwise pass: the list
-    stores bare digits and the comparison was a raw substring test."""
+def test_no_rendering_of_a_blocklisted_value_survives_the_prose_check():
+    """TOTAL for known values -- the one claim in this file that is an
+    implication rather than a correlation.
 
-    spaced = " ".join((_OBSERVED[0][:3], _OBSERVED[0][3:]))
+    The enumerated normaliser was defeated by every rendering below. Comparing
+    digits to digits cannot be defeated by any of them, because none of them
+    changes which digits are present or their order (D138).
+    """
 
-    assert _OBSERVED[0] not in spaced
-    assert _OBSERVED[0] in _normalise(spaced)
+    value = _OBSERVED[0]
+    for rendering in (
+        " ".join((value[:3], value[3:])),
+        ",".join((value[:1], value[1:3], value[3:])),  # lakh grouping
+        chr(0x2007).join((value[:2], value[2:])),  # FIGURE SPACE
+        chr(10).join((value[:4], value[4:])),  # split across a line break
+        "&nbsp;".join((value[:2], value[2:])),  # named HTML entity
+        ".".join((value[:3], value[3:])),
+        "**".join((value[:2], value[2:])),  # markdown emphasis mid-number
+    ):
+        assert value not in rendering, rendering
+        assert _blocklisted(rendering, prose=True) == [value], rendering
+
+    # The honest limit, found while writing this case rather than by the next
+    # reviewer: a NUMERIC character reference injects digits of its own, so
+    # `&#32;` both splits the value and adds `32` between the halves.
+    # Digits-only is total against renderings that add no digits; it is not
+    # total against an encoding that does. Nothing here emits numeric entities,
+    # and the shape rules still see the surrounding binding word.
+    assert _blocklisted("&#32;".join((value[:2], value[2:])), prose=True) == []
+
+
+def test_the_document_scan_uses_both_shape_rules():
+    """The unit tests pinned the REGEX OBJECTS while the file scan applied them
+    separately, so deleting `_NEAR_TARGET` from the scan left all 70 tests
+    green. Both now go through `_document_offenders`, and each case below is
+    matched by exactly one rule -- so removing either from the shared function
+    fails here (D138)."""
+
+    # `_RAW_TARGET` only. The proximity rule requires the number to STAND
+    # ALONE, so a trailing `x` -- the dimension guard that stops it firing on
+    # `976x1028` -- takes it out while the enumerated rule still matches.
+    raw_only = "hwnd: 7734512x"
+    # `_NEAR_TARGET` only: punctuation the separator class does not enumerate.
+    near_only = "hwnd **7734512**"
+
+    assert _RAW_TARGET.search(raw_only) and not _NEAR_TARGET.search(raw_only)
+    assert _NEAR_TARGET.search(near_only) and not _RAW_TARGET.search(near_only)
+
+    assert _document_offenders(raw_only) == [(1, raw_only)]
+    assert _document_offenders(near_only) == [(1, near_only)]
+
+
+def test_the_document_scan_normalises_before_matching():
+    """And that `_normalise` is applied INSIDE the shared function rather than
+    by each caller: a caller that forgot it would scan raw text and miss every
+    grouped rendering while every unit test here still passed."""
+
+    grouped = "hwnd 7 734 512"
+
+    assert not _RAW_TARGET.search(grouped) and not _NEAR_TARGET.search(grouped)
+    assert _document_offenders(grouped)
+
+
+def test_the_blocklist_scan_uses_the_shared_helper():
+    """Same defect, same fix: the comparison lived inline in the file scan, so
+    dropping rendering-independence there would have passed every unit test
+    written about it."""
+
+    value = _OBSERVED[0]
+    grouped = " ".join((value[:2], value[2:]))
+
+    assert _blocklisted(grouped, prose=True) == [value]
+    # Source files keep the literal comparison, or this very file would fail.
+    assert _blocklisted(grouped, prose=False) == []
+
+
+def test_a_geometry_word_inside_a_binding_key_is_not_an_exclusion():
+    """`bound_window_size_hint` contains `size`, so the substring exclusion
+    rescued it and a handle under that key passed every rule. Segment equality
+    keeps the real geometry keys excluded and closes the hole (D138)."""
+
+    assert _is_geometry("captured_bbox")
+    assert _is_geometry("window.bounds")
+    assert _is_geometry("displayed_rect")
+    assert not _is_geometry("bound_window_size_hint")
+    assert not _is_geometry("target_hwnd")
+    assert not _is_geometry("sizeable_window_handle")
 
 
 def test_the_scan_covers_the_places_handles_have_actually_leaked():
@@ -438,9 +616,8 @@ def test_the_scan_covers_the_places_handles_have_actually_leaked():
 def test_no_tracked_document_publishes_a_raw_handle_or_process_id():
     offenders = []
     for name in _tracked(_SCANNED_SUFFIXES):
-        for number, line in enumerate(_normalise(_text(name)).splitlines(), start=1):
-            if _RAW_TARGET.search(line) or _NEAR_TARGET.search(line):
-                offenders.append(f"{name}:{number}: {line.strip()[:100]}")
+        for number, line in _document_offenders(_text(name)):
+            offenders.append(f"{name}:{number}: {line.strip()[:100]}")
     assert not offenders, "raw target values in tracked documents:\n" + "\n".join(
         offenders
     )
@@ -453,7 +630,7 @@ def _handle_valued_keys(value, path=""):
     if isinstance(value, dict):
         for key, child in value.items():
             here = f"{path}.{key}" if path else str(key)
-            if _TARGET_KEY.search(str(key)) and not _GEOMETRY_KEY.search(str(key)):
+            if _TARGET_KEY.search(str(key)) and not _is_geometry(key):
                 if isinstance(child, bool):
                     continue
                 if isinstance(child, (int, float)) and abs(child) >= 100:
@@ -471,7 +648,7 @@ def _handle_valued_keys(value, path=""):
             # seventh review planted it (D134).
             if (
                 _TARGET_KEY.search(path)
-                and not _GEOMETRY_KEY.search(path)
+                and not _is_geometry(path)
                 and not isinstance(child, bool)
             ):
                 if isinstance(child, (int, float)) and abs(child) >= 100:
@@ -566,12 +743,9 @@ def test_no_tracked_file_at_all_reuses_an_observed_handle():
             ".ghostplugin",
         }:
             continue
-        # Normalised, so a blocklisted value rendered `4 460 192` is still
-        # found. The list stores bare digits; the text is what varies.
-        text = _normalise(_text(name))
-        for value in _OBSERVED:
-            if value in text:
-                offenders.append(f"{name}: contains observed value ending {value[-3:]}")
+        prose = Path(name).suffix.lower() in _SCANNED_SUFFIXES
+        for value in _blocklisted(_text(name), prose=prose):
+            offenders.append(f"{name}: contains observed value ending {value[-3:]}")
     assert not offenders, "observed handles reused:\n" + "\n".join(
         sorted(set(offenders))
     )
