@@ -43,16 +43,54 @@ EVIDENCE = ROOT / "docs" / "evidence"
 #: table row, one cell holding `name`, `digest`, and a prose sentence. The
 #: layout is the author's free choice, so a rule keyed to one layout is a rule
 #: the next document walks past.
-_ARTIFACT = re.compile(r"`([\w.\-]+\.(?:jsonl|json))`")
+#: The BASENAME, with any directory prefix consumed: documents cite both
+#: `run-1.json` and `docs/evidence/act-live-manager-d123-r5.jsonl`, and the
+#: first version matched only the bare form -- so the one artifact whose
+#: citation both spans two lines AND carries a path was missed twice over.
+_ARTIFACT = re.compile(r"`(?:[\w.\-]+/)*([\w.\-]+\.(?:jsonl|json))`")
 _DIGEST = re.compile(r"\b([0-9a-f]{64})\b")
 
 #: Artifacts whose citation must exist. Without this, deleting a citation makes
 #: the check below pass -- "the guard is itself unguarded" (D133) -- and the
 #: campaign report is precisely the artifact whose absence was the defect.
-_MUST_BE_CITED = (
-    "act-acceptance-campaign-2026-09-11.json",
-    "act-live-manager-d131-r1.jsonl",
-)
+#: DERIVED, not listed: every tracked `.json`/`.jsonl` under `docs/evidence/`
+#: must be cited by some document. A hand-kept tuple protected two artifacts
+#: and left seven unprotected, and for those seven an ambiguous citation line
+#: (two digests, say) silently dropped the artifact from the check even as its
+#: bytes changed -- pass by omission, which is the shape this test exists to
+#: refuse (D138).
+_EXPECTED_UNCITED = frozenset()
+
+
+def _tracked_paths():
+    listed = subprocess.run(
+        ["git", "ls-files", "-z"], cwd=ROOT, capture_output=True, check=False
+    )
+    if listed.returncode != 0:
+        pytest.skip("not a git work tree")
+    return [n for n in listed.stdout.decode("utf-8").split(chr(0)) if n]
+
+
+def _retained_artifacts():
+    listed = subprocess.run(
+        [
+            "git",
+            "ls-files",
+            "-z",
+            "docs/evidence/*.json",
+            "docs/evidence/**/*.json",
+            "docs/evidence/*.jsonl",
+            "docs/evidence/**/*.jsonl",
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        check=False,
+    )
+    if listed.returncode != 0:
+        pytest.skip("not a git work tree")
+    return sorted(
+        {Path(n).name for n in listed.stdout.decode("utf-8").split(chr(0)) if n}
+    )
 
 
 def _cited_digests():
@@ -69,15 +107,31 @@ def _cited_digests():
     triples = []
     for name in [n for n in listed.stdout.decode("utf-8").split("\0") if n]:
         text = (ROOT / name).read_text(encoding="utf-8", errors="ignore")
-        for line in text.splitlines():
-            artifacts = _ARTIFACT.findall(line)
-            digests = _DIGEST.findall(line)
-            # One of each on a line is an unambiguous pairing. Several of
-            # either is a layout nothing here uses, and pairing them
-            # positionally would invent a claim the document never made.
-            if len(artifacts) == 1 and len(digests) == 1:
-                triples.append((name, artifacts[0], digests[0]))
-    return triples
+        # Lines first -- table rows and single-cell citations -- then
+        # paragraphs, because prose wraps: `act-live-manager-pointer.md` puts
+        # the filename on one line and its SHA-256 two lines later, and a
+        # line-only rule silently dropped it. A paragraph with exactly one of
+        # each is still an unambiguous pairing; a table (many of both in one
+        # block) is already covered line by line.
+        paragraphs = re.split(chr(10) + r"[ " + chr(92) + r"t]*" + chr(10), text)
+        blocks = [(line, False) for line in text.splitlines()]
+        blocks += [(para, True) for para in paragraphs]
+        for block, paragraph in blocks:
+            artifacts = _ARTIFACT.findall(block)
+            digests = _DIGEST.findall(block)
+            # Several of either states no single claim, and pairing them
+            # positionally would invent one the document never made.
+            if len(artifacts) != 1 or len(digests) != 1:
+                continue
+            # A paragraph is a looser container than a line, so it pairs only
+            # names that are actually retained artifacts. Without that, a
+            # paragraph naming the frozen dataset `model_durability_v1.json`
+            # near an unrelated digest manufactured a citation nobody wrote --
+            # found by this test failing on its own first draft.
+            if paragraph and artifacts[0] not in _retained_artifacts():
+                continue
+            triples.append((name, artifacts[0], digests[0]))
+    return sorted(set(triples))
 
 
 def test_there_are_cited_digests_to_check():
@@ -94,33 +148,46 @@ def test_every_cited_artifact_exists_and_matches_its_published_digest():
 
     problems = []
     for document, artifact, digest in _cited_digests():
-        candidates = sorted(EVIDENCE.rglob(artifact))
+        # Under `docs/evidence/` first, then anywhere tracked: the candidate
+        # acceptance documents legitimately cite signed payload members such as
+        # `add_slide.json`, which live under `plugins/`. Restricting the search
+        # to the evidence tree reported those as "not retained" -- a false
+        # accusation, found by this test failing on real citations.
+        candidates = sorted(EVIDENCE.rglob(artifact)) or [
+            ROOT / n for n in _tracked_paths() if Path(n).name == artifact
+        ]
         if not candidates:
             problems.append(f"{document}: cites {artifact}, which is not retained")
             continue
-        for path in candidates:
-            actual = hashlib.sha256(path.read_bytes()).hexdigest()
-            if actual != digest:
-                problems.append(
-                    f"{document}: cites {artifact} as {digest[:12]}, "
-                    f"but {path.relative_to(ROOT)} hashes {actual[:12]}"
-                )
+        # A document names ONE file. Several tracked files may share a
+        # basename, so the claim holds if any of them has those bytes.
+        digests = {hashlib.sha256(path.read_bytes()).hexdigest() for path in candidates}
+        if digest not in digests:
+            problems.append(
+                f"{document}: cites {artifact} as {digest[:12]}, but the "
+                f"{len(candidates)} tracked file(s) of that name hash "
+                + ", ".join(sorted(d[:12] for d in digests))
+            )
     assert not problems, "evidence digests do not match their artifacts:\n" + "\n".join(
         problems
     )
 
 
-def test_the_load_bearing_artifacts_are_actually_cited():
-    """Coverage, by name. The counted acceptance campaign's machine-readable
-    record was protected by nothing until an activation review staged an edit
-    to it and watched the full 2587-test lane pass."""
+def test_every_retained_artifact_is_cited_by_some_document():
+    """Coverage, DERIVED. The counted campaign's machine-readable record was
+    protected by nothing until a review staged an edit to it and watched the
+    full lane pass; a hand-kept list then protected that one and left the
+    receipt-budget records unpinned. A retained artifact nobody cites is an
+    artifact nobody can check, and adding one must not be silent (D138)."""
 
+    retained = _retained_artifacts()
     cited = {artifact for _, artifact, _ in _cited_digests()}
 
-    missing = [name for name in _MUST_BE_CITED if name not in cited]
+    assert len(retained) >= 10, retained
+    missing = [n for n in retained if n not in cited and n not in _EXPECTED_UNCITED]
     assert not missing, (
-        f"no evidence document publishes a digest for {missing}. A retained "
-        "artifact nobody cites is an artifact nobody can check."
+        f"no evidence document publishes a digest for {missing}. Cite each in "
+        "the document that relies on it, as `name` and digest on one line."
     )
 
 

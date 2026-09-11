@@ -360,9 +360,14 @@ carries:
 | D032 review of the derived budgets | the budgets are measured; the review of them is not done |
 | D032 activation review | re-review covering `301e86b` and the D137 fixes |
 
-Do not shorten this list in one document and not another: an agent reads this
-file first, and a reviewer who read a stale `ROADMAP.md` checkbox reached a
-false conclusion about the receipt budgets for exactly that reason (D137).
+`ROADMAP.md` carries the same gates plus the two downstream phases they block
+(semantic PowerPoint capabilities, and the agent/marketplace program), because
+sequencing is its job and not this file's. An earlier version of this paragraph
+said the two lists were identical; they were six rows and eight, and the claim
+was made three lines below a rule against exactly that drift (D138). Do not
+shorten either list without the other: an agent reads this file first, and a
+reviewer who read a stale `ROADMAP.md` checkbox reached a false conclusion
+about the receipt budgets for the same reason (D137).
 
 Act's generic UIA backend is one canonical adapter source
 (`plugins/shared/uia_adapter.py`) that each plugin copies into its own payload

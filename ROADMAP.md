@@ -285,8 +285,11 @@ built but not yet exercised by a caller or a live run.
       concluded from its absence that the deadlines were invented (D137).
 - [ ] Confirmation-to-invoke deadline — **not measured**
 - [ ] Interruption latency matrix — **not measured**
-- [ ] Independent D032 review of the derived budgets — the numbers exist;
-      nobody independent has read how they were derived
+- [ ] Independent D032 review of the derived budgets — an activation
+      re-reviewer recomputed them (p99 x 2.0, ceiling, floored at the 15 ms
+      tick, highest of three runs -> 22 and 1121) and called the derivation
+      document an unusually careful D034 record. That is a spot check inside
+      another review, not the gating review, and it says so (D138).
 
 **8. The brief and the local planning loop** (D113 — a brief is the
    stored conversation; `idea.txt` is one, and is not special-cased)
@@ -355,15 +358,16 @@ deck build only:
 | Animation-catalog campaign | run it; it has never been counted |
 | Independent lane runs | each lane green on its own, per D025 |
 | D032 review of the derived budgets | the receipt deadlines are measured; the review of the derivation is not done |
-| D032 activation review | returned **NOT READY** at `a1739aa`; needs a re-review covering `301e86b` and the D137 fixes |
+| D032 activation review | **NOT READY** twice: at `a1739aa` (D137) and again at `f19eaaf` (D138). Seven blockers from the second round are closed; it needs a third round |
 | Semantic PowerPoint capabilities | activation review READY |
 | Agent / skills / marketplace program | activation review READY, then its own phase entries here |
 
 Do not read "acceptance closed" as permission to start semantic planning or the
-agent program. **The activation review has been performed and returned NOT
-READY** (D137). Four of its five blockers are closed; the fifth — an independent
-read of `301e86b`, the commit that rewrote the evidence-hygiene scanner after
-the READY verdict and before the campaign — is not.
+agent program. **Activation has been reviewed twice and refused twice** — at
+`a1739aa` (D137) and at `f19eaaf` (D138). The second round read `301e86b`, the
+unread commit the first round flagged, and found that it had narrowed a rule
+while appearing to widen it and had falsified two retained pytest transcripts.
+Both rounds' blockers are now closed, and a third round has not yet run.
 
 **The next integration milestone remains the live manager-approved pointer
 action.**

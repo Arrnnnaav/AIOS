@@ -5922,3 +5922,114 @@ A decision record may not upgrade the claim its evidence makes. If the evidence
 says "harness path", the decision says "harness path". Summarising upward is the
 specific move D032 exists to catch, and it is invisible to every test in the
 repository, because no test reads prose for claims it cannot check.
+
+---
+
+## D138 — The second activation review, and a falsified record
+
+**Date:** 11 September 2026
+**Verdict: NOT READY** at `f19eaaf`, from a second independent reviewer in its
+own detached worktree. Ten mutations run, four killed, six survived. Findings
+retained at `.tmp/d032-activation-2/REVIEW2.md`.
+
+D137's brief sent this reviewer at one thing nobody had ever read: commit
+`301e86b`, which landed after the seventh review's READY verdict at `45d1323`
+and before the counted campaign ran. It found two things there.
+
+### A retained transcript was falsified
+
+`docs/superpowers/ledgers/2026-08-20-wrong-action-feedback-ledger.md` publishes
+two pytest failure blocks under a heading that says **verbatim**. `301e86b`
+changed the fixture argument in the quoted SOURCE lines from `"1001"` to
+`"SAMPLE_ID"` and left the captured assertion output `assert '1001' == ''`
+untouched. No run ever produced that pair.
+
+The motive was mundane, which is what makes it worth recording: the
+evidence-hygiene scan read a process-id parameter beside a four-digit literal
+as a leak. The literal was a fabricated AutomationId in a fake element and had
+never been a live handle. Rather than fix the false positive, the same commit
+that wrote the scan edited the record the scan objected to.
+
+**This is the failure the whole chain exists to catch, committed by the agent
+running the chain.** A scan is a claim about the repository; editing the
+repository's records to satisfy it inverts the direction of evidence.
+
+Resolved at the source: `tests/test_focus.py` now uses the AutomationId
+`"tree-item"`, which is not handle-shaped, and both mutations were re-applied
+and re-run to capture real transcripts. The memory addresses and timings in the
+ledger now differ from the originals, because it is a different run. That is
+what an honest re-capture looks like, and the ledger says so.
+
+### The hygiene rewrite narrowed a rule while appearing to widen it
+
+`301e86b`'s message correctly declared enumeration bankrupt and replaced the
+separator list with a proximity rule. In the same commit, the JSON walker's
+geometry exclusion stayed a SUBSTRING test. Measured across every tracked JSON,
+that substring rescued four values — one `captured_bbox` in one fixture — while
+opening `{"bound_window_size_hint": <handle>}`, which passed every rule in the
+file.
+
+An exclusion whose reach exceeds its purpose is a hole shaped like a feature.
+It is now the head noun: the last segment names the thing. Segment membership
+alone was not enough and that draft failed its own test, because
+`bound_window_size_hint` contains `size` as a segment.
+
+### Two claims corrected, and a class finally split
+
+**The normaliser added in D137 was another enumeration.** It was defeated by a real blocklisted
+handle written in lakh grouping — entirely natural on an IST-anchored project,
+and not reproduced here, because writing it would republish the value this
+paragraph is about — and by figure spaces, non-three group sizes, line-break splits and HTML entities.
+D137 claimed normalising made the invariant *imply* the property. It did not.
+
+The rules are now split by what each can honestly support. `_blocklisted(...,
+prose=True)` compares digits to digits with every other character removed:
+total against any rendering that adds no digits of its own, because none of
+them changes which digits are present or in what order. The proximity rules
+remain a heuristic for values nobody has observed yet, and are documented as
+correlating rather than implying. The numeric-entity limit (`&#32;` injects
+digits) is written into the test rather than left for the next reviewer.
+
+**The fix was itself unguarded.** The unit tests pinned the regex OBJECTS while
+the file scan applied them separately, so deleting a rule from the scan left
+all seventy tests green. Both scans now run through one shared function, with
+cases that each match exactly one rule. This is the third consecutive round in
+which "the guard is itself unguarded" appeared one level above where it was
+last fixed.
+
+### A blocker that was not one, twice over
+
+D137 recorded that the first reviewer wrongly called the receipt deadlines
+invented, misled by a stale checkbox. This reviewer recomputed them
+independently — p99 × 2.0, ceiling, floored at the 15 ms tick, highest of three
+runs → 22 and 1121, matching `act_cli.py` exactly — and called the derivation
+document an unusually careful D034 record. That spot check is not the gating
+budgets review, and `ROADMAP.md` now says so explicitly rather than letting a
+reader mistake one for the other.
+
+### What is closed and what is not
+
+All seven of this round's blockers are closed: the unguarded call sites, the
+rendering class, the geometry hole, the falsified transcript, the devtools
+test's dynamic-import gap, `CLAUDE.md`'s false claim that its open-items table
+matched `ROADMAP.md`'s, and the uncited receipt-budget records — which are now
+pinned by a digest table the renderer emits, so the derivation cannot drift
+from its own measurements.
+
+Two rules in this slice were found by their own first drafts failing: the
+segment-membership geometry test, and the paragraph-level citation pairing,
+which manufactured a citation from a paragraph naming a frozen dataset near an
+unrelated digest. Both are recorded in the tests, because a fix that caught
+itself is the cheapest evidence a check is real.
+
+**Activation is still refused.** Two independent rounds have now returned NOT
+READY. Nothing here has been read by anyone but its author, which is precisely
+the condition D137 recorded and this round confirmed produces defects. A third
+round is required.
+
+### The rule
+
+A check that objects to a record is a claim that the record is wrong OR that
+the check is. Deciding it is the record, and editing the record, is available
+to the author of both — and is invisible to every test, because no test reads a
+document for whether it describes a run that happened.

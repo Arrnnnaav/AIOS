@@ -14,9 +14,15 @@ review checked by hand, found it clean, and pointed out that a single
 product with no test objecting.
 
 So the separation is now a property of the repository rather than of whoever
-edits it next. This is the D031 distinction: "no production module happens to
-import a devtool today" correlates with the boundary holding; "no production
-module CAN import a devtool without failing a test" implies it.
+edits it next. D031: "no production module happens to import a devtool today"
+correlates with the boundary holding. What the checks below actually enforce is
+"no production module NAMES the devtools package", which implies it for every
+import mechanism, because every mechanism needs the name. The first version
+enforced only the AST import forms and claimed the implication anyway -- a
+deferred `importlib.import_module` call inside a function defeated it, and a
+re-review said so (D138). A name assembled from fragments at runtime is the
+stated residual gap; it cannot happen by accident, which is the failure this
+guards.
 
 The dependency runs one way only. A devtool importing production code is the
 entire point of a devtool.
@@ -74,6 +80,27 @@ def _devtool_imports(source: str):
     return found
 
 
+def _dynamic_devtool_references(source: str):
+    """Any string naming the devtools package, anywhere in the module.
+
+    The AST forms above are defeated by
+    `importlib.import_module("ghostcursor.devtools.act_acceptance")` inside a
+    function, and by `__import__` with the same string.
+
+    Rather than enumerate the dynamic-import APIs -- the treadmill this
+    repository has ridden for eight rounds on a different scan -- this matches
+    the NAME. A module that never names the package cannot import it by any
+    mechanism, because every mechanism needs the name.
+    """
+
+    found = []
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            if _DEVTOOLS in node.value:
+                found.append(f"line {node.lineno}: string naming {_DEVTOOLS!r}")
+    return found
+
+
 def test_the_production_module_set_is_derived_and_not_empty():
     """Non-vacuity: a check over an empty set passes while checking nothing."""
 
@@ -96,7 +123,7 @@ def test_no_production_module_imports_a_devtool():
     offenders = []
     for name in _production_modules():
         source = (ROOT / name).read_text(encoding="utf-8")
-        for hit in _devtool_imports(source):
+        for hit in _devtool_imports(source) + _dynamic_devtool_references(source):
             offenders.append(f"{name}: {hit}")
 
     assert not offenders, (
@@ -116,3 +143,18 @@ def test_the_scan_catches_every_import_form():
     # The one-way direction stays legal, and ordinary imports are untouched.
     assert not _devtool_imports("from ghostcursor.act_runtime import approve")
     assert not _devtool_imports("import ghostcursor.act_protocol")
+
+
+def test_the_scan_catches_a_dynamic_import():
+    """The AST forms alone enforce a correlation, not the boundary: a deferred
+    `importlib` call inside a function reaches the same module and creates no
+    import node at all (D138)."""
+
+    deferred = "def go():\n    importlib.import_module('ghostcursor.devtools.act_cli')"
+
+    assert _dynamic_devtool_references(deferred)
+    assert _dynamic_devtool_references('__import__("ghostcursor.devtools")')
+    assert _dynamic_devtool_references('MODULE = "ghostcursor.devtools.act_campaign"')
+    # And it says nothing about modules that never name the package.
+    assert not _dynamic_devtool_references("import ghostcursor.act_runtime")
+    assert not _dynamic_devtool_references('X = "ghostcursor.manager"')

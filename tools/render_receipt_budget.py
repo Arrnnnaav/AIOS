@@ -16,6 +16,7 @@ anything it cannot substantiate.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import pathlib
@@ -60,6 +61,12 @@ def load_records(directory: pathlib.Path) -> list[dict]:
     for path in paths:
         record = _canonical_json(path)
         record["_source"] = path.name
+        # The digest of the bytes on disk, so the rendered table states a claim
+        # a reader can recompute. Without it the records were named but not
+        # pinned, and `test_retained_evidence_digests.py` had nothing to check:
+        # the derivation could drift from the measurements it cites with the
+        # whole lane green (D138).
+        record["_digest"] = hashlib.sha256(path.read_bytes()).hexdigest()
         records.append(record)
     return records
 
@@ -173,6 +180,21 @@ def render(records: list[dict], records_dir: pathlib.Path) -> str:
             f"| `{record['_source']}` | {fp['mean']:.3f}ms | {fp['median']:.3f}ms | "
             f"{fp['p99']:.3f}ms | {cp['mean']:.3f}ms | {cp['p99']:.3f}ms |"
         )
+
+    lines += [
+        "",
+        "## The records these numbers come from",
+        "",
+        "One artifact per line with its digest, which is the layout",
+        "`tests/test_retained_evidence_digests.py` pairs. Until this table",
+        "existed the records were named and not pinned, so the derivation could",
+        "drift from its own measurements unnoticed (D138).",
+        "",
+        "| Record | SHA-256 |",
+        "|---|---|",
+    ]
+    for record in records:
+        lines.append(f"| `{record['_source']}` | `{record['_digest']}` |")
 
     lines += [
         "",
