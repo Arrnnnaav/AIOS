@@ -1053,3 +1053,39 @@ Once `ghostcursor.devtools.receipt_budget` has run, this should take the
 measured numbers as arguments like every other caller; until then its report
 should say the deadlines are invented rather than leaving a reader to assume
 Phase E produced them.
+
+
+## The D032 activation review has no reviewer, and it now gates everything
+
+Acceptance closed for the object-model deck build on 11 September (D135), so
+the activation review is the last of D105's three independent reviews still
+open — and it is the gate that stands between here and semantic PowerPoint
+capabilities and the whole agent/skills/marketplace program (D136).
+
+It cannot be performed by the author of what it reviews, and this session
+authored effectively all of it. That is the actual blocker: not a missing
+finding, a missing person.
+
+**Trigger:** before any work on semantic PowerPoint planning, the manager
+planning flow, or stage 1 of the agent program. Dispatch it into its own clean
+detached worktree with the commit hash recorded before inspection — seven
+prior reviews were delivered against a stale commit until that step was made
+explicit.
+
+## Three conflicts the agent/marketplace program inherits rather than creates
+
+Recorded with the program in `ROADMAP.md`; repeated here because each needs a
+reviewed decision before the stage that depends on it, and none is a coding
+task:
+
+- **General Windows agent versus D087/D090.** A graph composes capabilities of
+  one plugin. If "general" ever means composing across plugins, that boundary
+  reopens by decision, not by an orchestrator that happens to call twice.
+- **Opt-in cloud reasoning versus D017.** D017 is local-only. Escalation is an
+  amendment to it and must say what changed.
+- **A marketplace versus deferred key rotation.** Even a first-party catalog
+  must be able to withdraw a bundle. Excel and VS Code already show the cost:
+  both are signed by keys unavailable here, so neither can be re-signed, and
+  both are quarantined (D128).
+
+**Trigger:** each one before its own stage, not all at once.

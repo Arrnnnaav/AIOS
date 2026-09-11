@@ -5762,3 +5762,53 @@ runner's refusals — interrupt-probe detection, missing-result refusal,
 stop-at-first-unclean — did not fire. They are tested hermetically; this
 campaign is not evidence that they work live, and a reader should not read three
 clean attempts as having tested them.
+
+---
+
+## D136 — A closed boundary is not a closed phase
+
+**Date:** 11 September 2026
+
+D135 recorded a 3/3 counted campaign on the rebuilt PowerPoint bundle, and the
+seventh independent D032 review returned READY at `45d1323` (D134). The natural
+next sentence — "Auto Act is done" — is the one this decision refuses to write.
+
+**What was actually accepted.** The object-model deck build, on manifest
+`28dbaf2d`, through the manager `Approve & run` path, with three clean
+consecutive attempts and three distinct published artifacts. That is one
+capability on one plugin.
+
+**What was not, and what gates each.** The owner identified the reconciliation
+gap directly: the tracking documents still asserted that acceptance was
+invalidated, which was true when written (D125) and false after D135. Left
+alone, a reader would have found a document saying the phase was blocked and a
+campaign record saying it had passed, with nothing saying which was current.
+Four items stay open, each named with its own gate rather than with a general
+"not yet":
+
+| Open | Gate |
+|---|---|
+| UIA slice `add-slide-uia-v1` | independent D032 review, externally signed bytes, its own counted campaign |
+| Animation-catalog campaign | it has never been counted |
+| Independent lane runs | each lane green alone, per D025 |
+| D032 activation review | a non-author reviewer, unassigned |
+
+**The rule this sets.** When acceptance closes for a scoped capability, the
+status documents must say what closed and what did not, in the same slice.
+Recording only the success is how a boundary silently widens into a phase: the
+campaign evidence itself said "object-model only" in its scope section, but
+CLAUDE.md and ROADMAP.md were the files an agent reads first, and neither said
+it. Both now do.
+
+**Consequence for sequencing.** Semantic PowerPoint capabilities and the
+agent/skills/marketplace program sit behind the **activation review**, not
+behind acceptance. That distinction matters because acceptance is now closed
+and the activation review is not, so "acceptance passed" would otherwise read
+as permission to start. The program is recorded in `ROADMAP.md` with its seven
+stages and three inherited conflicts (single-plugin graphs versus a general
+agent, D017 local-only versus cloud escalation, and a marketplace that
+distributes signed bundles with key rotation still deferred).
+
+**What this decision does not claim.** It does not revalidate anything. No test
+changed, no bundle was rebuilt, no evidence was re-measured. It reconciles prose
+against results that D134 and D135 already established.

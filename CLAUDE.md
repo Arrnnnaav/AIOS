@@ -333,15 +333,21 @@ evidences the D123 ordering rather than merely being consistent with it.
 slice does not: `add-slide-uia-v1` has one live diagnostic run and no counted
 campaign, so it remains unadopted.
 
-**Both retained live runs are unusable as acceptance evidence.**
-`act-live-manager-d123-r5.jsonl` is invalidated (D125) — it names adapter,
-verifier and manifest digests that no longer exist. `act-live-manager-d125-r1.jsonl`
-is superseded (D127) — its catalog manifest `48e6e4f4` contained signed build
-products and was never reproducible. The current PowerPoint bundle is `28dbaf2d`. Auto Act is
-operationally demonstrated, but release acceptance is invalidated by
-reproducibility, privacy, and evidence-integrity findings. Do not proceed to
-semantic PowerPoint planning or new feature phases until the clean-checkout lane
-is green and a new independent D032 review returns READY.
+**Two earlier live runs remain uncitable.** `act-live-manager-d123-r5.jsonl`
+is invalidated (D125) — it names adapter, verifier and manifest digests that no
+longer exist. `act-live-manager-d125-r1.jsonl` is superseded (D127) — its
+catalog manifest `48e6e4f4` contained signed build products and was never
+reproducible. Neither may be cited as current evidence. The live run that stands
+is `act-live-manager-d131-run.md` on the rebuilt bundle.
+
+**What the closed acceptance does and does not open.** The object-model deck
+build is accepted and its boundary is closed, so work inside that boundary may
+proceed. Three things stay closed and each names its own gate: the UIA slice
+until it has an independent D032 review, externally signed bytes and its own
+counted campaign; the animation catalog until its campaign runs; and the D032
+activation review, which has no non-author reviewer yet. Semantic PowerPoint
+planning and the agent/marketplace program are sequenced behind the activation
+review, not behind acceptance.
 
 Act's generic UIA backend is one canonical adapter source
 (`plugins/shared/uia_adapter.py`) that each plugin copies into its own payload

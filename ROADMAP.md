@@ -21,9 +21,12 @@ reconciled against what the repository actually contains.
 
 ## Where we are
 
-**Phase 1 is substantially complete. Phase 3's "limited Act" is the work in
-flight.** Phase 2 is partly built and partly blocked by a standing decision
-(see the conflict noted under it).
+**Phase 1 is substantially complete. Phase 3's "limited Act" has its
+object-model boundary accepted (3/3 on 11 Sep 2026) and three named gates still
+open: the UIA slice, the animation catalog, and the D032 activation review.**
+Phase 2 is partly built and partly blocked by a standing decision (see the
+conflict noted under it). The agent/skills/marketplace program is recorded
+below, before Phase 4, and starts only after the activation review.
 
 Interaction modes are canonical contracts in `ghostcursor/interaction.py`.
 Of the seven modes the planning docs name, the repo implements a narrower
@@ -322,18 +325,33 @@ built but not yet exercised by a caller or a live run.
 - [x] Phase A: 255/255 diagnostic run — `docs/evidence/act-phase-a-diagnostic.md`
 - [x] Phase B: UIA feasibility probe — `docs/evidence/act-phase-b-uia-feasibility.md`
 
-**Act acceptance is invalidated pending a rebuilt live run (D125).** The
+**Object-model Act acceptance is closed; the rest of Act is not.** The
+invalidation recorded here on 6 September is discharged. Its cause was real: the
 signed payload bytes in the working copy were CRLF while git stored LF, so the
 pin, the built bundle and every digest in the retained r5 transcript named a
-file no clean checkout produced. LF is now canonical, the PowerPoint bundle is
-rebuilt and re-signed (PowerPoint manifest `28dbaf2d`,
-after two further rebuilds for signed build products and for redaction), and the
-hermetic lane is green from a fresh checkout. The r5 transcript may not be
-cited as current evidence. Required before this phase moves: a replacement live
-manager run on the rebuilt bundle retaining before/after verifier readings as
-artifacts, a fresh independent D032 review, then the 3/3 acceptance campaigns
-re-run. Semantic PowerPoint capabilities and any new feature phase stay closed
-until that review returns READY.
+file no clean checkout produced. LF is now canonical (D125), the PowerPoint
+bundle is rebuilt and re-signed at manifest `28dbaf2d` after two further
+rebuilds for signed build products (D127) and for redaction (D128), and
+`tests/test_powerpoint_manifest_pin.py` recomputes that manifest from tracked
+sources so the figure cannot drift unnoticed. The seventh independent D032
+review returned READY at `45d1323` (D134), and the 3/3 campaign ran on 11
+September (D135). The r5 and r1 transcripts stay uncitable.
+
+**What is still open, with its own gate.** This closure covers the object-model
+deck build only:
+
+| Open item | Gate before it moves |
+|---|---|
+| UIA slice `add-slide-uia-v1` | independent D032 review, externally signed bytes, its own counted campaign |
+| Animation-catalog campaign | run it; it has never been counted |
+| Independent lane runs | each lane green on its own, per D025 |
+| D032 activation review | a non-author reviewer, not yet assigned |
+| Semantic PowerPoint capabilities | activation review READY |
+| Agent / skills / marketplace program | activation review READY, then its own phase entries here |
+
+Do not read "acceptance closed" as permission to start semantic planning or the
+agent program. Those sit behind the activation review, which is the one gate on
+this list with no owner.
 
 **The next integration milestone remains the live manager-approved pointer
 action.**
@@ -392,6 +410,58 @@ adapter or a signed generic UIA adapter (D108), on approved applications.
 
 ---
 
+## Agent, skills, and first-party marketplace program
+
+**Source:** the owner's plan of 11 September 2026
+(`ghostcursor_agent_skills_marketplace_plan.md`, kept outside the repo).
+Recorded here because a phase that exists only in conversation is not a phase.
+**Status: stage 0 done, stage 1 not started.** Nothing below is built.
+
+The program's own ordering principle is that the Agent Orchestrator coordinates
+work and never becomes an execution-authority shortcut — every effect still
+goes through `authorize_intent()`, signed components, per-node authorization
+and independent verification. That is a restatement of D087/D090/D100-D104, not
+a new boundary, and it is the reason the program can be sequenced at all.
+
+| Stage | What it is | State |
+|---|---|---|
+| 0 | Close Act v1 acceptance | **Done** — 3/3 on 11 Sep, READY at `45d1323` (D134, D135) |
+| 1 | Activate the existing planning foundation in the manager | Not started; gated on the D032 activation review |
+| 2 | First-party PowerPoint Deck Agent | Not started |
+| 3 | General Windows task agent (capability router, not free computer use) | Not started |
+| 4 | Package model: plugin / skill / agent package / connector / workflow | Not started |
+| 5 | First-party-only marketplace | Not started |
+| 6 | Local-first, opt-in cloud reasoning | Not started; conflicts with D017 today |
+| 7 | Third-party publishing | Deferred; needs signing, revocation, sandboxing, review |
+
+**Stage 1 reuses what exists** — `task_planner.py`, `planning_session.py`,
+`task_graph.py`, `inference/ollama.py`, brief persistence, the manager proposal
+UI — and adds the missing flow: goal → clarification → persistent brief →
+capability-scoped graph → complete flattened plan → one approval → Act. Under
+D113 the brief is planning context and never authority, and its exact bytes are
+bound to any proposal made from it.
+
+**Three conflicts this program must resolve rather than inherit quietly:**
+
+1. **Stage 3's general agent versus D087/D090.** A graph composes capabilities
+   of one plugin. "General Windows agent" here means routing an intent to the
+   right supported plugin, not composing across plugins. Cross-application
+   graphs stay deferred under the row in the table below.
+2. **Stage 6's cloud reasoning versus D017.** D017 is local-only. Opt-in cloud
+   escalation is an amendment to it, and needs a reviewed decision that states
+   what changed — not a new module that routes around it.
+3. **Stage 5's marketplace versus deferred key rotation.** Even a first-party
+   catalog distributes signed bundles to machines that must be able to reject a
+   withdrawn one. The Excel and VS Code bundles already demonstrate the cost of
+   not having this: both are signed by keys that are unavailable here, so
+   neither can be re-signed and both are quarantined (D128).
+
+Stage 0's closure covers the object-model deck build only. The UIA slice, the
+animation catalog and the activation review are open above, and stage 1 does
+not start before the activation review returns READY.
+
+---
+
 ## Phase 4 — B2B
 
 > Company workflow packs, tenant separation, roles/permissions, shared
@@ -422,7 +492,9 @@ screen-derived `kb.sqlite`, and neither is execution authority.
 compose only capabilities of **one** enabled plugin (D087/D090), so cross-app
 workflows need that boundary reopened by a reviewed decision; and a
 marketplace implies third-party signing, key rotation and revocation, all of
-which are explicitly deferred today.
+which are explicitly deferred today. The first-party-only catalog that comes
+before this is stage 5 of the agent/skills/marketplace program above; this
+phase is the third-party opening, which is that program's stage 7.
 
 ---
 
