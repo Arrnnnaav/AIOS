@@ -461,10 +461,11 @@ dispatch. If it changed, refuse the node and require fresh confirmation; do not
 hold a minted token across Pause. An adapter request already in flight still
 runs through verification and is not claimed to be cancellable (D118).
 
-The signed `ghostcursor.excel` plugin is active only for Excel
-`16.0.20326.20112`. `SELECT_CELL_B2` and `ADD_WORKSHEET` each passed three
-human desktop runs on the reviewed bytes with UIA-only grounding; their
-adoptions bind the rendered evidence and independent D032 review commit.
+The signed `ghostcursor.excel` plugin has historical feasibility evidence only
+for Excel `16.0.20326.20112`. `SELECT_CELL_B2` and `ADD_WORKSHEET` each passed
+three human desktop runs on earlier reviewed bytes with UIA-only grounding;
+those records do not constitute current adoption because the repository
+payloads are redacted and the installed bundles cannot be re-signed here.
 Do not widen the accepted application identity, selectors, or postconditions
 without new acceptance evidence and review. Excel support remains data-only:
 application-specific production Python is prohibited.
