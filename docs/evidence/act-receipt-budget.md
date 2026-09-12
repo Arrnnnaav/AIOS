@@ -32,11 +32,11 @@ would derive the wrong number.
 
 ## Results
 
-| Run | First paint mean | median | p99 | Completion mean | p99 |
-|---|---|---|---|---|---|
-| `run-1.json` | 3.366ms | 2.903ms | 10.778ms | 548.686ms | 560.060ms |
-| `run-2.json` | 2.357ms | 2.343ms | 5.354ms | 548.819ms | 560.140ms |
-| `run-3.json` | 2.342ms | 2.225ms | 7.055ms | 549.006ms | 559.469ms |
+| Run | Travelled first-paint mean | median | p99 | First cue | Completion mean | p99 |
+|---|---|---|---|---|---|---|
+| `run-1.json` | 3.366ms | 2.903ms | 10.778ms | 10.721ms | 548.686ms | 560.060ms |
+| `run-2.json` | 2.357ms | 2.343ms | 5.354ms | 10.058ms | 548.819ms | 560.140ms |
+| `run-3.json` | 2.342ms | 2.225ms | 7.055ms | 14.234ms | 549.006ms | 559.469ms |
 
 ## The records these numbers come from
 
@@ -51,9 +51,10 @@ drift from its own measurements unnoticed (D138).
 | `run-2.json` | `2687c8ecc893d8809def9a235aa6313393ba2c607f8c9eba5860ea78c3251f06` |
 | `run-3.json` | `1d396936d3b05cc7b9e454c0a38a905e7cd06ab3343fa929e23bc5b991e8cd92` |
 
-**Derived: `first_paint_deadline_ms = 22`, `completion_deadline_ms = 1121`.**
+**Derived: `first_paint_deadline_ms = 29`, `completion_deadline_ms = 1121`.**
 
-The p99 with a margin, rounded up, and the HIGHEST of the runs rather
+The p99 with a margin, rounded up, and the HIGHEST applicable sample
+across all runs rather
 than their average — a deadline built from the kinder of two
 measurements is one the other would miss. The margin (2.0×) is a
 CHOICE and is reported as one; what is measured is the distribution.
@@ -90,8 +91,10 @@ would have refused.
 - **Nothing about a real application.** The cues were presented
   against synthetic rectangles. No UIA read, no adapter, no dispatch —
   this measures the overlay, which is what the deadlines bound.
-- **Nothing about the first cue of a run.** It has no previous
-  position and so does not travel; it is measured and reported
-  separately in each record rather than folded into the distribution.
+- **The first cue follows a different visual path.** It has no previous
+  position and so does not travel. Its first-paint sample is reported
+  separately, but is included when deriving the shared production
+  first-paint deadline because production applies that deadline to
+  every cue.
 - **The margin is not measured.** It is a choice about headroom over
   a measured p99.

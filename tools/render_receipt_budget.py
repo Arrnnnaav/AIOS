@@ -119,20 +119,39 @@ def _check(records: list[dict]) -> None:
         raise EvidenceRefused("the runs were taken on different screen topologies")
 
 
-def _highest(records: list[dict], key: str) -> int:
-    values = [record["derived"][key] for record in records]
-    if any(not isinstance(v, int) or v <= 0 for v in values):
-        raise EvidenceRefused(f"{key}: a derived deadline is not a positive integer")
-    return max(values)
+def _deadline_from_p99(values: list[float], margin: float, granularity: float) -> int:
+    """Derive one enforceable deadline from every applicable observation."""
+
+    return max(int(math.ceil(max(values) * margin)), int(math.ceil(granularity)))
 
 
 def render(records: list[dict], records_dir: pathlib.Path) -> str:
     budget = records[0]["budget"]
     screen = records[0]["virtual_screen"]
     granularity = records[0]["enforcement_clock_granularity_ms"]
-    first_paint = _highest(records, "first_paint_deadline_ms")
-    completion = _highest(records, "completion_deadline_ms")
     margins = {record.get("margin_over_p99") for record in records}
+    if len(margins) != 1:
+        raise EvidenceRefused("the runs used different derivation margins")
+    margin = next(iter(margins))
+    if not isinstance(margin, (int, float)) or isinstance(margin, bool) or margin <= 0:
+        raise EvidenceRefused("the derivation margin is not a positive number")
+    first_paint = _deadline_from_p99(
+        [
+            value
+            for record in records
+            for value in (
+                record["first_paint_ms"]["p99"],
+                record["settled_first_cue"]["first_paint_ms"]["p99"],
+            )
+        ],
+        margin,
+        granularity,
+    )
+    completion = _deadline_from_p99(
+        [record["completion_ms"]["p99"] for record in records],
+        margin,
+        granularity,
+    )
 
     lines = [
         "# Receipt deadlines — measured",
@@ -171,14 +190,16 @@ def render(records: list[dict], records_dir: pathlib.Path) -> str:
         "",
         "## Results",
         "",
-        "| Run | First paint mean | median | p99 | Completion mean | p99 |",
-        "|---|---|---|---|---|---|",
+        "| Run | Travelled first-paint mean | median | p99 | First cue | Completion mean | p99 |",
+        "|---|---|---|---|---|---|---|",
     ]
     for record in records:
         fp, cp = record["first_paint_ms"], record["completion_ms"]
+        first = record["settled_first_cue"]["first_paint_ms"]
         lines.append(
             f"| `{record['_source']}` | {fp['mean']:.3f}ms | {fp['median']:.3f}ms | "
-            f"{fp['p99']:.3f}ms | {cp['mean']:.3f}ms | {cp['p99']:.3f}ms |"
+            f"{fp['p99']:.3f}ms | {first['p99']:.3f}ms | {cp['mean']:.3f}ms | "
+            f"{cp['p99']:.3f}ms |"
         )
 
     lines += [
@@ -201,7 +222,8 @@ def render(records: list[dict], records_dir: pathlib.Path) -> str:
         f"**Derived: `first_paint_deadline_ms = {first_paint}`, "
         f"`completion_deadline_ms = {completion}`.**",
         "",
-        "The p99 with a margin, rounded up, and the HIGHEST of the runs rather",
+        "The p99 with a margin, rounded up, and the HIGHEST applicable sample",
+        "across all runs rather",
         "than their average — a deadline built from the kinder of two",
         f"measurements is one the other would miss. The margin ({', '.join(str(m) for m in sorted(margins))}×) is a",
         "CHOICE and is reported as one; what is measured is the distribution.",
@@ -240,9 +262,11 @@ def render(records: list[dict], records_dir: pathlib.Path) -> str:
         "- **Nothing about a real application.** The cues were presented",
         "  against synthetic rectangles. No UIA read, no adapter, no dispatch —",
         "  this measures the overlay, which is what the deadlines bound.",
-        "- **Nothing about the first cue of a run.** It has no previous",
-        "  position and so does not travel; it is measured and reported",
-        "  separately in each record rather than folded into the distribution.",
+        "- **The first cue follows a different visual path.** It has no previous",
+        "  position and so does not travel. Its first-paint sample is reported",
+        "  separately, but is included when deriving the shared production",
+        "  first-paint deadline because production applies that deadline to",
+        "  every cue.",
         "- **The margin is not measured.** It is a choice about headroom over",
         "  a measured p99.",
         "",

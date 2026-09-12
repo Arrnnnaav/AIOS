@@ -186,6 +186,22 @@ def test_a_measured_deadline_clears_the_enforcement_clock():
     assert policy.completion_deadline_ms >= granularity
 
 
+def test_the_first_cue_is_load_bearing_in_the_shared_first_paint_deadline():
+    """Production applies one deadline to travelled and first-cue paints."""
+
+    report = {
+        "first_paint_ms": {"samples": 59, "p99": 5.0},
+        "settled_first_cue": {
+            "first_paint_ms": {"samples": 1, "p99": 14.234}
+        },
+    }
+
+    basis = receipt_budget._first_paint_basis(report)
+
+    assert basis["p99"] == 14.234
+    assert receipt_budget._derived(basis, 2.0, 15.0) == 29
+
+
 def test_the_measured_policy_is_never_a_default():
     """An operator on another machine has not measured these -- the paint
     cost scales with desktop area. It is a value to pass, not one that

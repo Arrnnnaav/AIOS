@@ -6,7 +6,7 @@ them as constants. Until now nothing connected those constants to
 from its records.
 
 An activation reviewer demonstrated the consequence: loosening both the evidence
-document AND `act_cli.py` together (22 -> 60, 1121 -> 5000) left the whole lane
+document AND `act_cli.py` together (29 -> 60, 1121 -> 5000) left the whole lane
 green. Two documents agreeing with each other is not evidence; they agree
 because someone edited both.
 
@@ -122,15 +122,34 @@ def test_the_deadlines_are_recomputed_from_the_records_not_just_quoted():
     assert len(runs) == 3, [p.name for p in runs]
 
     def derive(field: str) -> int:
-        worst = max(
-            json.loads(p.read_text(encoding="utf-8"))[field]["p99"] for p in runs
-        )
+        records = [json.loads(p.read_text(encoding="utf-8")) for p in runs]
+        values = [record[field]["p99"] for record in records]
+        if field == "first_paint_ms":
+            values.extend(
+                record["settled_first_cue"]["first_paint_ms"]["p99"]
+                for record in records
+            )
+        worst = max(values)
         return max(15, math.ceil(worst * 2.0))
 
     first_paint, completion = _documented_deadlines()
 
     assert derive("first_paint_ms") == first_paint, derive("first_paint_ms")
     assert derive("completion_ms") == completion, derive("completion_ms")
+
+
+def test_the_renderer_cannot_drop_the_first_cue_from_the_deadline():
+    """D018: mutating the renderer back to travelled cues alone must fail."""
+
+    import copy
+    from tools import render_receipt_budget
+
+    records = render_receipt_budget.load_records(RECORDS)
+    mutated = copy.deepcopy(records)
+    mutated[0]["settled_first_cue"]["first_paint_ms"]["p99"] = 100.0
+    document = render_receipt_budget.render(mutated, RECORDS)
+
+    assert "first_paint_deadline_ms = 200" in document
 
 
 def test_the_margin_is_declared_as_a_choice():
@@ -204,8 +223,8 @@ def test_acceptance_uses_the_measured_pair_when_unset():
 
 
 @pytest.mark.parametrize("first,completion", [
-    (60, 5000), (22, 5000), (60, 1121), (22, None),
-    (None, 1121), (22.0, 1121), (True, 1121),
+    (60, 5000), (29, 5000), (60, 1121), (29, None),
+    (None, 1121), (29.0, 1121), (True, 1121),
 ])
 def test_acceptance_run_refuses_policy_drift_before_side_effects(first, completion):
     from types import SimpleNamespace

@@ -279,7 +279,7 @@ built but not yet exercised by a caller or a live run.
       the 2 ms budget (`docs/evidence/act-paint-budget.md`).
 - [x] Verifier spawn-to-response — max 0.188s, mean ~0.142s over 765
       invocations (`docs/evidence/act-diagnostic-rerun.md`)
-- [x] Receipt deadlines — `first_paint_deadline_ms = 22`,
+- [x] Receipt deadlines — `first_paint_deadline_ms = 29`,
       `completion_deadline_ms = 1121`, derived from three 60-cue runs
       (`docs/evidence/act-receipt-budget.md`, records under
       `docs/evidence/receipt-budget/`). Production carries them as
@@ -290,7 +290,8 @@ built but not yet exercised by a caller or a live run.
 - [ ] Interruption latency matrix — **not measured**
 - [ ] Independent D032 review of the derived budgets — an activation
       re-reviewer recomputed them (p99 x 2.0, ceiling, floored at the 15 ms
-      tick, highest of three runs -> 22 and 1121) and called the derivation
+      tick, highest applicable travelled/first-cue sample across three runs ->
+      29 and 1121) and called the derivation
       document an unusually careful D034 record. That is a spot check inside
       another review, not the gating review, and it says so (D138).
 

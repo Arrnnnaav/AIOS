@@ -232,6 +232,17 @@ def _derived(summary: dict, margin: float, granularity: float = 0.0) -> "int | N
     return max(derived, int(math.ceil(granularity)))
 
 
+def _first_paint_basis(report: dict) -> dict:
+    """Combine both presentation paths governed by the shared deadline."""
+
+    basis = dict(report["first_paint_ms"])
+    first_cue = report["settled_first_cue"]["first_paint_ms"]
+    if not first_cue.get("samples"):
+        raise ValueError("the first cue has no first-paint measurement")
+    basis["p99"] = max(basis["p99"], first_cue["p99"])
+    return basis
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cues", type=int, default=60)
@@ -264,9 +275,10 @@ def main(argv=None) -> int:
     )
     granularity = report["enforcement_clock_granularity_ms"]
     report["margin_over_p99"] = args.margin
+    first_paint_basis = _first_paint_basis(report)
     report["derived"] = {
         "first_paint_deadline_ms": _derived(
-            report["first_paint_ms"], args.margin, granularity
+            first_paint_basis, args.margin, granularity
         ),
         "completion_deadline_ms": _derived(
             report["completion_ms"], args.margin, granularity

@@ -500,7 +500,7 @@ def _pointer_surface(budget, policy, *, keep_running=None):
 #: until they were measured both production paths refused every
 #: control-driving plan -- correctly, and that refusal was the binding
 #: constraint on the whole Act vertical.
-MEASURED_FIRST_PAINT_DEADLINE_MS = 22
+MEASURED_FIRST_PAINT_DEADLINE_MS = 29
 MEASURED_COMPLETION_DEADLINE_MS = 1121
 
 
