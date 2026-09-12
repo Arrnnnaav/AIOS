@@ -240,7 +240,9 @@ def render(records: list[dict], records_dir: pathlib.Path) -> str:
         "An earlier draft of the tool's own docstring said first paint covered",
         "the traversal. It does not: the first receipt fires when the first",
         "frame is painted, and the cue animates afterwards. First paint is",
-        "single-digit milliseconds; completion is the whole animation.",
+        "single-digit milliseconds for most travelled cues; the separately",
+        "measured first cue is slower and participates in the shared deadline.",
+        "Completion is the whole animation.",
         "",
         f"**Production times receipts on a clock whose granularity is "
         f"{granularity}ms.**",

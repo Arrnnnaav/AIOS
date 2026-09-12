@@ -1051,7 +1051,7 @@ It is a declared diagnostic that bypasses `execute_approved_graph` and mints
 no real approval, so it is off the reviewed authority paths. But it does
 dispatch a real UIA effect, and it does so under deadlines nobody derived.
 `ghostcursor.devtools.receipt_budget` **has now run** — three 60-cue runs,
-`docs/evidence/act-receipt-budget.md`, deadlines `22` / `1121`, which
+`docs/evidence/act-receipt-budget.md`, deadlines `29` / `1121`, which
 production carries as the `MEASURED_*` constants in `act_cli.py`. This entry
 previously said it had not, and an activation reviewer took that at face value
 and reported invented deadlines as a blocker (D137).

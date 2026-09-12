@@ -70,7 +70,9 @@ harness is timing the thing it claims to time.
 An earlier draft of the tool's own docstring said first paint covered
 the traversal. It does not: the first receipt fires when the first
 frame is painted, and the cue animates afterwards. First paint is
-single-digit milliseconds; completion is the whole animation.
+single-digit milliseconds for most travelled cues; the separately
+measured first cue is slower and participates in the shared deadline.
+Completion is the whole animation.
 
 **Production times receipts on a clock whose granularity is 15.0ms.**
 `act_overlay` defaults to `time.monotonic`, measured here rather than
