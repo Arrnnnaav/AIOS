@@ -24,11 +24,13 @@ the real cursor is never moved and no input is synthesized.
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 import hashlib
 import json
 import time
 import uuid
 from pathlib import Path
+from typing import Callable
 
 from ghostcursor.devtools.candidate_acceptance import window_reference, window_scope
 from types import SimpleNamespace
@@ -39,10 +41,10 @@ import win32gui
 import win32process
 
 from ghostcursor.act_node import NodeRefused, execute_node
+from ghostcursor.act_cli import measured_receipt_policy
 from ghostcursor.act_overlay import CueBudget, overlay_presenter
 from ghostcursor.act_protocol import (
     PresentationRequest,
-    ReceiptPolicy,
     TrustClass,
 )
 from ghostcursor.act_uia_session import UiaSessionError, build_uia_session
@@ -54,6 +56,74 @@ from ghostcursor.selectors import load_action_selector
 PAYLOAD = Path(__file__).resolve().parents[2] / "plugins/sources/powerpoint/payload"
 PLUGIN_ID = "ghostcursor.powerpoint"
 PLUGIN_VERSION = "1.0.0"
+
+
+@dataclass
+class _ConfirmationTiming:
+    """Measure the freshness window without becoming part of authority.
+
+    The two marks bracket exactly the interval the future production policy
+    must bound: the signed verifier/control confirmation has returned, then
+    the adapter's UIA ``execute`` frame is written to its private pipe. Raw
+    monotonic timestamps are deliberately not persisted; only durations are.
+    """
+
+    clock_ns: Callable[[], int] = time.monotonic_ns
+    confirmation_started_ns: int | None = None
+    confirmation_completed_ns: int | None = None
+    execute_written_ns: int | None = None
+
+    def confirmation_started(self) -> None:
+        if self.confirmation_started_ns is not None:
+            raise RuntimeError("confirmation timing was started twice")
+        self.confirmation_started_ns = self.clock_ns()
+
+    def confirmation_completed(self) -> None:
+        if self.confirmation_started_ns is None:
+            raise RuntimeError("confirmation timing completed before it started")
+        if self.confirmation_completed_ns is not None:
+            raise RuntimeError("confirmation timing completed twice")
+        self.confirmation_completed_ns = self.clock_ns()
+
+    def request_written(self, frame) -> None:
+        if not (
+            isinstance(frame, dict)
+            and frame.get("type") == "execute"
+            and "pattern" in frame
+        ):
+            return
+        if self.confirmation_completed_ns is None:
+            raise RuntimeError("UIA request was written before confirmation completed")
+        if self.execute_written_ns is not None:
+            raise RuntimeError("more than one UIA request was written for one node")
+        self.execute_written_ns = self.clock_ns()
+
+    def record(self) -> dict[str, float]:
+        if (
+            self.confirmation_started_ns is None
+            or self.confirmation_completed_ns is None
+            or self.execute_written_ns is None
+        ):
+            raise RuntimeError("confirmation timing is incomplete")
+        return {
+            "confirmation_round_trip_ms": round(
+                (self.confirmation_completed_ns - self.confirmation_started_ns)
+                / 1_000_000.0,
+                3,
+            ),
+            "confirmation_to_request_write_ms": round(
+                (self.execute_written_ns - self.confirmation_completed_ns)
+                / 1_000_000.0,
+                3,
+            ),
+        }
+
+
+def _measured_write(timing: _ConfirmationTiming, write, frame) -> None:
+    """Observe a successful protocol write; never replace its behavior."""
+
+    write(frame)
+    timing.request_written(frame)
 
 
 def find_window(class_name: str):
@@ -240,6 +310,8 @@ def main() -> int:
 
     receipts: list[tuple[str, float]] = []
     lifecycle: list[str] = []
+    confirmation_timing = _ConfirmationTiming()
+    receipt_policy = measured_receipt_policy()
 
     overlay = overlay_presenter(
         overlay_hwnd,
@@ -248,7 +320,7 @@ def main() -> int:
             settle_ms=arguments.settle_ms,
             frame_budget_ms=arguments.frame_budget_ms,
         ),
-        policy=ReceiptPolicy(first_paint_deadline_ms=2000, completion_deadline_ms=8000),
+        policy=receipt_policy,
         label_for=lambda _observation: selector.name,
         backend_trust=TrustClass.LIVE_STATE,
         keep_running=keep_running,
@@ -268,14 +340,20 @@ def main() -> int:
             session_context=session_context,
         ) as host:
             note("adapter", "started")
+            original_write = host._write
+
+            def measured_write(frame) -> None:
+                # Diagnostic observation only. The original write remains the
+                # sole protocol path and its return value is not replaced.
+                _measured_write(confirmation_timing, original_write, frame)
+
+            host._write = measured_write
             session = build_uia_session(
                 host=host,
                 verifier=VerifierHost(verifier_descriptor),
                 payload_root=PAYLOAD,
                 overlay=overlay,
-                policy=ReceiptPolicy(
-                    first_paint_deadline_ms=2000, completion_deadline_ms=8000
-                ),
+                policy=receipt_policy,
                 session_id=session_id,
                 operation_for=lambda _n: spec,
                 target={
@@ -298,12 +376,21 @@ def main() -> int:
             )
 
             print("--- node ---")
+
+            def observe(mode):
+                if mode == "confirm_before":
+                    confirmation_timing.confirmation_started()
+                observation = session.observe(node, mode)
+                if mode == "confirm_before":
+                    confirmation_timing.confirmation_completed()
+                return observation
+
             outcome = execute_node(
                 node,
                 spec,
                 request=request,
                 policy=session.policy,
-                observe=lambda mode: session.observe(node, mode),
+                observe=observe,
                 present=session.present,
                 # This diagnostic mints no real approval. It stands in for
                 # the `AuthorizedAction` core would mint, carrying only the
@@ -358,6 +445,14 @@ def main() -> int:
         note("trust", outcome.trust.value)
         note("detail", outcome.detail)
         note("identity", json.dumps(outcome.identity_record or {}))
+        timing_record = confirmation_timing.record()
+        note(
+            "confirmation timing",
+            f"read={timing_record['confirmation_round_trip_ms']:.3f}ms "
+            f"to-write={timing_record['confirmation_to_request_write_ms']:.3f}ms",
+        )
+    else:
+        timing_record = None
     note("lifecycle", " -> ".join(lifecycle))
     note("receipts", ", ".join(f"{k}@{at:.0f}ms" for k, at in receipts))
     note("elapsed", f"{elapsed:.2f}s")
@@ -387,6 +482,7 @@ def main() -> int:
                         "sha256": selector.sha256,
                     },
                     "verified": bool(outcome.verified) if outcome else False,
+                    "confirmation_timing": timing_record,
                 },
                 indent=2,
                 sort_keys=True,

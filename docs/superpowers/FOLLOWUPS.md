@@ -1040,9 +1040,9 @@ the user sees during a paced run, so this wants a decision rather than a patch.
 Not urgent: the combination needs `--regions` AND a control-driving plan, and
 no `uia_pattern` operation is adopted.
 
-## `act_live_node` still dispatches under invented receipt deadlines
+## `act_live_node` now uses the retained receipt deadlines
 
-`ghostcursor/devtools/act_live_node.py` hardcodes
+Resolved 12 September 2026. `ghostcursor/devtools/act_live_node.py` used to hardcode
 `ReceiptPolicy(first_paint_deadline_ms=2000, completion_deadline_ms=8000)` --
 verbatim the constants removed from `act_cli` and never added to
 `act_acceptance`, for having nothing measured behind them (D034).
@@ -1056,10 +1056,13 @@ production carries as the `MEASURED_*` constants in `act_cli.py`. This entry
 previously said it had not, and an activation reviewer took that at face value
 and reported invented deadlines as a blocker (D137).
 
-What remains true: `act_live_node` still hardcodes `2000` / `8000` and should
-take the measured numbers as arguments like every other caller. Until it does,
-its report must say its deadlines are invented rather than letting a reader
-assume Phase E produced them.
+It now calls the same `measured_receipt_policy()` as production, so a live
+diagnostic cannot pass under the old permissive `2000` / `8000` values while
+production would refuse it. What remains open is the confirmation-to-request
+budget: the diagnostic now records the verifier/control round trip and the
+interval from confirmation return to the actual successful UIA request write.
+Those records are diagnostic until repeated live measurement, derivation,
+signed-policy wiring, and independent D032 review are complete.
 
 
 ## The D032 activation review remains open, and it gates everything

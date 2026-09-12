@@ -287,7 +287,11 @@ built but not yet exercised by a caller or a live run.
       `MEASURED_*` constants in `ghostcursor/act_cli.py`. This line was
       missing while the measurement existed, and an activation reviewer
       concluded from its absence that the deadlines were invented (D137).
-- [ ] Confirmation-to-invoke deadline — **not measured**
+- [~] Confirmation-to-invoke deadline — the live UIA diagnostic now records
+      both the full `confirm_before` round trip and the interval from its
+      return to the successful UIA execute-frame write. No retained sample
+      set, derived deadline, signed policy, or production refusal exists yet;
+      therefore this remains an open Phase E gate.
 - [ ] Interruption latency matrix — **not measured**
 - [ ] Independent D032 review of the derived budgets — an activation
       re-reviewer recomputed them (p99 x 2.0, ceiling, floored at the 15 ms
