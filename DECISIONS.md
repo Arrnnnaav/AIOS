@@ -6198,3 +6198,8 @@ operations, selectors, coordinates, verification rules, or executable code.
 Every effect continues through signed capability data, canonical authorization,
 fresh binding, one-use per-node authority, independent verification, and the
 existing interruption boundary.
+
+The owner authorized this ordered program on
+`feature/product-shell-task-graphs`. That amends the branch-scope uncertainty
+recorded against D083; it does not waive protected release, signing, evidence,
+privacy, D018, D025, D032, or D034 gates.

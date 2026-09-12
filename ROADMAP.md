@@ -156,14 +156,15 @@ below.
 
 1. Finish the deterministic Act execution path.
 2. Shared signed generic UIA adapter (D108).
-3. Excel `Add Sheet` end-to-end vertical slice.
+3. PowerPoint `New Slide` UIA end-to-end vertical slice; Excel remains the
+   historical feasibility vehicle and is non-gating under D140.
 4. Visual receipts, verifier modes, interruption.
 5. Unattended deterministic campaign runner.
-6. Repeated PowerPoint and Excel campaigns.
-7. `idea.txt` and the local clarification/planning loop.
-8. Semantic PowerPoint capabilities.
-9. Local model composes and validates a complex PowerPoint plan.
-10. Later: VLM and restricted raw-input for inaccessible surfaces.
+6. Repeated PowerPoint object-model and UIA campaigns.
+7. After activation: `idea.txt` and the local clarification/planning loop.
+8. Then semantic PowerPoint capabilities and model-composed plans.
+9. Then resume, recovery, and edited-plan reapproval.
+10. Much later: VLM and restricted raw input under a reviewed D006 amendment.
 
 **Test task for the phase:** a 10-slide investor deck for this product,
 covering Problem, Value Proposition, Founders, Business Model, Traction,
@@ -470,16 +471,16 @@ capability-scoped graph → complete flattened plan → one approval → Act. Un
 D113 the brief is planning context and never authority, and its exact bytes are
 bound to any proposal made from it.
 
-**Five conflicts this program must resolve rather than inherit quietly:**
+**Four conflicts this program must resolve rather than inherit quietly:**
 
-1. **Stage 3's general agent versus D087/D090.** A graph composes capabilities
+1. **Stage 8's cross-application agent versus D087/D090.** A graph composes capabilities
    of one plugin. "General Windows agent" here means routing an intent to the
    right supported plugin, not composing across plugins. Cross-application
    graphs stay deferred under the row in the table below.
 2. **Stage 6's cloud reasoning versus D017.** D017 is local-only. Opt-in cloud
    escalation is an amendment to it, and needs a reviewed decision that states
    what changed — not a new module that routes around it.
-3. **Stage 5's marketplace versus deferred key rotation.** Even a first-party
+3. **Stage 7's marketplace versus deferred key rotation.** Even a first-party
    catalog distributes signed bundles to machines that must be able to reject a
    withdrawn one. The Excel and VS Code bundles already demonstrate the cost of
    not having this: both are signed by keys that are unavailable here, so
@@ -493,13 +494,6 @@ bound to any proposal made from it.
    shortcut — does not cover it, because it is about authority and this is
    about where application knowledge may live. Named by the activation review;
    it was missing from the first three (D137).
-5. **The whole program versus the freeze and D083's branch scope.** Release
-   policy is locked, and D083's post-freeze exception is limited to
-   `feature/product-shell-task-graphs` and grants feature-development scope
-   only. This program is recorded with no branch, no exception and no statement
-   of which protected lines it may not touch. A program with no authorized line
-   to build on cannot start regardless of the activation review.
-
 Stage 0 covers PowerPoint object-model execution plus the PowerPoint `New Slide`
 UIA slice. Excel and VS Code are outside this release boundary under D140. The
 animation catalog, independent lanes, counted campaigns, budget review, and
@@ -538,9 +532,9 @@ screen-derived `kb.sqlite`, and neither is execution authority.
 compose only capabilities of **one** enabled plugin (D087/D090), so cross-app
 workflows need that boundary reopened by a reviewed decision; and a
 marketplace implies third-party signing, key rotation and revocation, all of
-which are explicitly deferred today. The first-party-only catalog that comes
-before this is stage 5 of the agent/skills/marketplace program above; this
-phase is the third-party opening, which is that program's stage 7.
+which are explicitly deferred today. The first-party marketplace is stage 7;
+third-party publishing remains deferred beyond the numbered program until its
+signing, revocation, sandboxing, and review model is separately approved.
 
 ---
 
