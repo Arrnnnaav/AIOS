@@ -43,6 +43,32 @@ def _sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _validated_measured_deadlines(args) -> tuple[int, int]:
+    """Return production's measured constants; reject explicit policy drift.
+
+    The constants are checked against measurement records by the hermetic
+    budget lane. This helper does not itself certify those records or topology.
+    """
+
+    from ghostcursor.act_cli import (
+        MEASURED_COMPLETION_DEADLINE_MS,
+        MEASURED_FIRST_PAINT_DEADLINE_MS,
+    )
+
+    derived = (MEASURED_FIRST_PAINT_DEADLINE_MS, MEASURED_COMPLETION_DEADLINE_MS)
+    supplied = (
+        getattr(args, "first_paint_deadline_ms", None),
+        getattr(args, "completion_deadline_ms", None),
+    )
+    if any(value is not None and type(value) is not int for value in supplied):
+        raise ValueError("receipt deadline types disagree with the measured policy")
+    if any(value is not None for value in supplied) and supplied != derived:
+        raise ValueError(
+            "caller-supplied receipt deadlines disagree with the measured policy"
+        )
+    return derived
+
+
 def _live_target(target: ActTarget) -> None:
     current = live_window_reader()(target.hwnd)
     if current is None:
@@ -56,6 +82,14 @@ def _live_target(target: ActTarget) -> None:
 
 
 def run(args) -> int:
+    # Reject explicit policy drift before staging, store setup or desktop work.
+    # A pointer plan additionally requires the explicit measured-policy opt-in
+    # after the signed operation registry establishes which backend it uses.
+    try:
+        derived_deadlines = _validated_measured_deadlines(args)
+    except ValueError as exc:
+        _emit("refused", detail=str(exc))
+        return 2
     bundle = args.bundle.resolve()
     final_output = args.output.resolve()
     owned_root = args.owned_root.resolve()
@@ -219,7 +253,7 @@ def run(args) -> int:
         for node in validated.ordered_nodes
     )
     if draws_pointer:
-        if args.first_paint_deadline_ms is None or args.completion_deadline_ms is None:
+        if not getattr(args, "measured_deadlines", False):
             # Not defaulted. `ReceiptPolicy` says it itself: Phase E derives
             # these from measurement, and a plausible constant here is the
             # placeholder derivation exists to replace (D034).
@@ -227,12 +261,13 @@ def run(args) -> int:
                 "refused",
                 detail=(
                     "this plan contains a control-driving operation, so it "
-                    "needs receipt deadlines; pass "
-                    "--first-paint-deadline-ms and --completion-deadline-ms "
+                    "needs the measured receipt policy; pass "
+                    "--measured-deadlines "
                     "citing where they are recorded"
                 ),
             )
             return 2
+        args.first_paint_deadline_ms, args.completion_deadline_ms = derived_deadlines
 
     # --- interruption probe ------------------------------------------------
     #
@@ -552,6 +587,11 @@ def main() -> int:
         "--rail",
         action="store_true",
         help="show the Stop/Pause safety rail and the executor-reported step",
+    )
+    parser.add_argument(
+        "--measured-deadlines",
+        action="store_true",
+        help="use the measured receipt policy for control-driving plans",
     )
     parser.add_argument(
         "--first-paint-deadline-ms",

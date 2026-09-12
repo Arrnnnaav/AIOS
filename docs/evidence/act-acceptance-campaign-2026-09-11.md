@@ -1,4 +1,9 @@
-# Counted acceptance campaign — PowerPoint investor deck, on the rebuilt bundle
+# Historical campaign record — PowerPoint investor deck, rebuilt bundle
+
+> **RECLASSIFIED — diagnostic only.** This historical campaign is retained for
+> audit context, but it is not current acceptance evidence and must not be
+> used to close Act. It was reclassified under D139 while the evidence
+> discipline was repaired.
 
 **Date:** 11 September 2026
 **Repository commit:** `301e86b`
@@ -113,10 +118,11 @@ and is least exercised live.
 **A manager-path counted campaign is therefore an open gate**, listed in
 `ROADMAP.md` with the others.
 
-## Scope and standing
+## Historical scope and standing
 
-This is the counted campaign for the **object-model** deck build, through the
-harness path described above. It does not establish the UIA slice: `add-slide-uia-v1` has one live diagnostic run
+This was a campaign for the **object-model** deck build, through the harness
+path described above. Under D139 it is diagnostic only and is not current
+acceptance evidence. It does not establish the UIA slice: `add-slide-uia-v1` has one live diagnostic run
 (`act-live-manager-d131-run.md`) and no counted campaign, and CLAUDE.md still
 requires an independent D032 review, externally signed bytes and a counted
 campaign before any `uia_pattern` operation is adopted.

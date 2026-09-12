@@ -28,6 +28,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[1]
 EVIDENCE = ROOT / "docs" / "evidence" / "act-receipt-budget.md"
@@ -164,3 +166,73 @@ def test_the_check_actually_fails_on_a_drifted_document(tmp_path):
     )
 
     assert result.returncode != 0, "--check accepted a document that does not match"
+
+
+def test_acceptance_rejects_a_deadline_override():
+    """The acceptance harness cannot widen the reviewed receipt window."""
+
+    from types import SimpleNamespace
+
+    from ghostcursor.devtools.act_acceptance import _validated_measured_deadlines
+    from ghostcursor.act_cli import (
+        MEASURED_COMPLETION_DEADLINE_MS,
+        MEASURED_FIRST_PAINT_DEADLINE_MS,
+    )
+
+    with pytest.raises(ValueError, match="disagree"):
+        _validated_measured_deadlines(
+            SimpleNamespace(
+                first_paint_deadline_ms=MEASURED_FIRST_PAINT_DEADLINE_MS + 1,
+                completion_deadline_ms=MEASURED_COMPLETION_DEADLINE_MS,
+            )
+        )
+
+
+def test_acceptance_uses_the_measured_pair_when_unset():
+    from types import SimpleNamespace
+
+    from ghostcursor.devtools.act_acceptance import _validated_measured_deadlines
+    from ghostcursor.act_cli import (
+        MEASURED_COMPLETION_DEADLINE_MS,
+        MEASURED_FIRST_PAINT_DEADLINE_MS,
+    )
+
+    assert _validated_measured_deadlines(SimpleNamespace()) == (
+        MEASURED_FIRST_PAINT_DEADLINE_MS,
+        MEASURED_COMPLETION_DEADLINE_MS,
+    )
+
+
+@pytest.mark.parametrize("first,completion", [
+    (60, 5000), (22, 5000), (60, 1121), (22, None),
+    (None, 1121), (22.0, 1121), (True, 1121),
+])
+def test_acceptance_run_refuses_policy_drift_before_side_effects(first, completion):
+    from types import SimpleNamespace
+    from ghostcursor.devtools.act_acceptance import run
+
+    class UnreachableBundle:
+        def resolve(self):
+            pytest.fail("run reached bundle setup despite invalid receipt policy")
+
+    assert run(SimpleNamespace(
+        measured_deadlines=True,
+        first_paint_deadline_ms=first,
+        completion_deadline_ms=completion,
+        bundle=UnreachableBundle(),
+    )) == 2
+
+
+def test_acceptance_run_continues_with_measured_policy():
+    from types import SimpleNamespace
+    from ghostcursor.devtools.act_acceptance import run
+
+    class ReachedBundle(Exception):
+        pass
+
+    class Bundle:
+        def resolve(self):
+            raise ReachedBundle
+
+    with pytest.raises(ReachedBundle):
+        run(SimpleNamespace(measured_deadlines=True, bundle=Bundle()))

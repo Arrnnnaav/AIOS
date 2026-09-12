@@ -342,8 +342,8 @@ built but not yet exercised by a caller or a live run.
 - [x] Phase A: 255/255 diagnostic run — `docs/evidence/act-phase-a-diagnostic.md`
 - [x] Phase B: UIA feasibility probe — `docs/evidence/act-phase-b-uia-feasibility.md`
 
-**Object-model Act acceptance is closed; the rest of Act is not.** The
-invalidation recorded here on 6 September is discharged. Its cause was real: the
+**Act acceptance remains open under D139.** The reproducibility defect
+recorded here on 6 September was repaired. Its cause was real: the
 signed payload bytes in the working copy were CRLF while git stored LF, so the
 pin, the built bundle and every digest in the retained r5 transcript named a
 file no clean checkout produced. LF is now canonical (D125), the PowerPoint
@@ -352,10 +352,10 @@ rebuilds for signed build products (D127) and for redaction (D128), and
 `tests/test_powerpoint_manifest_pin.py` recomputes that manifest from tracked
 sources so the figure cannot drift unnoticed. The seventh independent D032
 review returned READY at `45d1323` (D134), and the 3/3 campaign ran on 11
-September (D135). The r5 and r1 transcripts stay uncitable.
+September (D135), but D139 subsequently reclassified both harness and manager
+campaigns as diagnostic. The r5 and r1 transcripts stay uncitable.
 
-**What is still open, with its own gate.** This closure covers the object-model
-deck build only:
+**What is still open, with its own gate.** Completion requires the following:
 
 | Open item | Gate before it moves |
 |---|---|
@@ -437,7 +437,7 @@ adapter or a signed generic UIA adapter (D108), on approved applications.
 **Source:** the owner's plan of 11 September 2026
 (`ghostcursor_agent_skills_marketplace_plan.md`, kept outside the repo).
 Recorded here because a phase that exists only in conversation is not a phase.
-**Status: stage 0 done, stage 1 not started.** Nothing below is built.
+**Status: stage 0 in progress, stage 1 not started.** Later stages are not built.
 
 The program's own ordering principle is that the Agent Orchestrator coordinates
 work and never becomes an execution-authority shortcut — every effect still
@@ -447,7 +447,7 @@ a new boundary, and it is the reason the program can be sequenced at all.
 
 | Stage | What it is | State |
 |---|---|---|
-| 0 | Close Act v1 acceptance | **Done** — 3/3 on 11 Sep, READY at `45d1323` (D134, D135) |
+| 0 | Close Act v1 acceptance | **In progress** — the 11 Sep campaigns are diagnostic under D139; requires a fresh independent READY review and counted campaign |
 | 1 | Activate the existing planning foundation in the manager | Not started; gated on the D032 activation review |
 | 2 | First-party PowerPoint Deck Agent | Not started |
 | 3 | General Windows task agent (capability router, not free computer use) | Not started |

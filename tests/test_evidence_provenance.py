@@ -35,6 +35,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
+_DISCLOSURE = "docs/evidence/falsified-transcripts-disclosure.md"
 
 #: A fenced block that looks like pytest output.
 _FENCE = re.compile(r"```[^\n]*\n(.*?)```", re.DOTALL)
@@ -61,6 +62,28 @@ def _tracked_markdown():
     if listed.returncode != 0:
         pytest.skip("not a git work tree")
     return [n for n in listed.stdout.decode("utf-8").split(chr(0)) if n]
+
+
+def _tracked_evidence_text():
+    """Return every tracked text evidence file, including JSONL transcripts.
+
+    The pytest-splice detector below has a more precise parser, but limiting
+    the hygiene lane to Markdown would leave a second evidence format outside
+    the review surface. JSONL is checked for the same known hand-edit
+    fingerprint and for valid line structure; provenance still requires a
+    human review of a captured run (D032/D139).
+    """
+
+    listed = subprocess.run(
+        ["git", "ls-files", "-z", "*.md", "*.jsonl"],
+        cwd=ROOT,
+        capture_output=True,
+        check=False,
+    )
+    if listed.returncode != 0:
+        pytest.skip("not a git work tree")
+    names = [n for n in listed.stdout.decode("utf-8").split(chr(0)) if n]
+    return [(name, _read(name)) for name in names]
 
 
 def _pytest_blocks(text: str):
@@ -161,7 +184,7 @@ def test_no_transcript_reports_a_value_absent_from_its_own_source():
 
     offenders = []
     for name in _tracked_markdown():
-        if name in _known_unrepairable():
+        if name in _known_unrepairable() or name == _DISCLOSURE:
             continue
         document = _read(name)
         for index, block in enumerate(_pytest_blocks(document)):
@@ -175,14 +198,15 @@ def test_no_transcript_reports_a_value_absent_from_its_own_source():
 
 
 def test_no_transcript_carries_a_duplicated_substitution():
-    """The `3e8ad17` fingerprint, checked everywhere including the disclosed
-    files -- those are allowed to KEEP the fingerprint, so this asserts they
-    still have it rather than that they do not. A disclosure whose evidence
-    quietly disappeared would be worse than the original defect."""
+    """Ordinary transcripts cannot carry the disclosed hand-edit fingerprint.
+
+    The disclosure itself is checked separately and must retain the fingerprint
+    as an honest account of what happened.
+    """
 
     offenders = []
     for name in _tracked_markdown():
-        if name in _known_unrepairable():
+        if name in _known_unrepairable() or name == _DISCLOSURE:
             continue
         for index, block in enumerate(_FENCE.findall(_read(name))):
             for hit in duplicated_substitutions(block):
@@ -190,6 +214,43 @@ def test_no_transcript_carries_a_duplicated_substitution():
     assert not offenders, "hand-edited substitution in a transcript:\n" + "\n".join(
         offenders
     )
+
+
+def test_known_transcript_fingerprint_is_absent_from_jsonl_records():
+    """The known hand-edit fingerprint is not allowed to hide in JSONL.
+
+    This does not claim that a spelling scan proves provenance. It closes the
+    narrower coverage hole where the same disclosed substitution could be
+    moved out of Markdown and remain invisible to the hygiene lane.
+    """
+
+    offenders = []
+    for name, text in _tracked_evidence_text():
+        if not name.casefold().endswith(".jsonl"):
+            continue
+        if "the real window (the real window)" in text.casefold():
+            offenders.append(name)
+    assert not offenders, "known edited-transcript fingerprint found in: " + ", ".join(
+        offenders
+    )
+
+
+def test_tracked_jsonl_evidence_is_line_valid():
+    """Every tracked JSONL evidence file is independently parseable per line."""
+
+    import json
+
+    for name, text in _tracked_evidence_text():
+        if not name.casefold().endswith(".jsonl"):
+            continue
+        for line_number, line in enumerate(text.splitlines(), 1):
+            if not line.strip():
+                continue
+            try:
+                value = json.loads(line)
+            except json.JSONDecodeError as exc:
+                pytest.fail(f"{name}:{line_number} is not JSONL: {exc}")
+            assert isinstance(value, dict), f"{name}:{line_number} is not a JSON object"
 
 
 def test_the_disclosed_files_still_show_what_was_disclosed():

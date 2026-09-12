@@ -1,4 +1,9 @@
-# Counted acceptance campaign — PowerPoint investor deck
+# Historical campaign record — PowerPoint investor deck
+
+> **SUPERSEDED — diagnostic only.** This historical campaign is retained for
+> audit context, but it is not current acceptance evidence and must not be
+> used to close Act. It was superseded by later evidence-integrity findings
+> recorded in D139.
 
 **Date:** 4 September 2026
 **Result: 3 of 3 clean, consecutive.**
@@ -81,5 +86,5 @@ approval → execution → independent per-node verification → atomic publish.
   `uia_pattern` operation is unadopted and outside this campaign.
 - **Nothing about unattended operation** beyond three supervised attempts on
   one machine, one application build, one monitor topology.
-- This is a *product* acceptance of one plan. It is not a claim that any
-  other plan, application, or backend behaves the same way.
+- This was a historical product acceptance record for one plan. Under D139 it
+  is diagnostic only and is not current acceptance evidence.

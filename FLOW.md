@@ -1445,12 +1445,11 @@ interprets it; the comparison stays in signed plugin code.
 
 | Area | State |
 |---|---|
-| Object-model Act, PowerPoint deck build | counted 3/3 through the `act_acceptance` harness (D135) |
+| Object-model Act, PowerPoint deck build | implemented; the 11 Sep 3/3 campaign is diagnostic under D139 and no current counted evidence exists |
 | Manager `Approve & run` layer | implemented, hermetically tested, mutations killed — **one diagnostic live run, no counted campaign** |
 | UIA slice `add-slide-uia-v1` | implemented, one diagnostic run, **unadopted** |
-| Activation | **NOT READY** (D137); four of five blockers closed |
+| Activation | **NOT READY** (D139); fresh independent review and counted campaigns remain |
 | Semantic planning, agent/marketplace program | not started, gated on activation |
 
 The marker is what this file's preamble promises and had stopped carrying.
 Update it when the call graph moves, not at milestone boundaries.
-

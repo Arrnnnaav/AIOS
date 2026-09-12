@@ -23,11 +23,18 @@ This is the path the 11 September `act_acceptance` campaign never touched. That
 one calls `approve_action_graph`/`execute_approved_graph` directly and never
 mints an `ActExecutionRequest` (D137).
 
-| Attempt | Result | Nodes | Execution | Transcript SHA-256 |
+| Attempt | Artifact | Result | Nodes | Execution | Transcript SHA-256 |
 |---|---|---:|---:|---|
-| 1 | `completed` | 255/255 | 102.145 s | `19db97f8d861c207a09dabf8502f5c33a26d4dfe6c1ac6a4c968383f5db75705` |
-| 2 | `completed` | 255/255 | 149.811 s | `ab5a443ef89cbff8296dc94048e437218ad0474f833434ec1beb4eb21e28863e` |
-| 3 | `completed` | 255/255 | 161.253 s | `dc05f538b7e5f75220d015d0817ba39173b48c00238ff8dea034922e163bba54` |
+| 1 | `act-live-manager-campaign-attempt-1.jsonl` | `completed` | 255/255 | 102.145 s | `19db97f8d861c207a09dabf8502f5c33a26d4dfe6c1ac6a4c968383f5db75705` |
+| 2 | `act-live-manager-campaign-attempt-2.jsonl` | `completed` | 255/255 | 149.811 s | `ab5a443ef89cbff8296dc94048e437218ad0474f833434ec1beb4eb21e28863e` |
+| 3 | `act-live-manager-campaign-attempt-3.jsonl` | `completed` | 255/255 | 161.253 s | `dc05f538b7e5f75220d015d0817ba39173b48c00238ff8dea034922e163bba54` |
+
+The excluded transcripts are also retained and digest-bound here:
+
+| Artifact | SHA-256 |
+|---|---|
+| `excluded-attempt-2a-target-not-running.jsonl` | `6cd20084f743a64cc0191060638ded4ff9c46b731721e6903414b062b15d7c0e` |
+| `excluded-attempt-2b-target-minimized.jsonl` | `d525ca171362b2e8e1947471673407bd6afd954aab6e741d374b77d4be2696cd` |
 
 Every attempt recorded this ordering, which is what makes them interesting:
 

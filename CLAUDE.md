@@ -357,7 +357,7 @@ reproducible. Neither may be cited as current evidence. The live run that stands
 is `act-live-manager-d131-run.md` on the rebuilt bundle.
 
 **Activation has not been granted.** The independent activation review returned
-**NOT READY** at `a1739aa` (D137). Work inside the accepted object-model
+**NOT READY** at `a1739aa` (D137). Work inside the implemented object-model
 boundary may proceed; nothing downstream of activation may start. The open set
 is six items, each with its own gate, and this list is the same one `ROADMAP.md`
 carries:
