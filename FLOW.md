@@ -183,13 +183,12 @@ only the authorization token, goal, and operator narrowing; selectors and
 verification remain the signed recipe. Session history deliberately omits the
 guidance payload because slide copy and customer content are private text.
 
-The installed catalog currently exposes six active workflows: Synthetic
-Export; Open Folder, Open Terminal, and Open Extensions in VS Code; and
-Select Cell B2 and Add Worksheet in Excel. They arrive from signed Synthetic,
-VS Code, and Excel bundles. The Excel workflows use the generic explicit
-`window_descendants` strategy, passed 3/3 + 3/3 human desktop acceptance on
-Excel `16.0.20326.20112`, and were activated only after independent review of
-the exact rendered evidence. No Excel-specific production Python participates
+The currently adopted catalog exposes four active workflows: Synthetic Export,
+Open Folder, Open Terminal, and Open Extensions in VS Code. Excel's Select Cell
+B2 and Add Worksheet records remain historical feasibility/data artifacts only:
+their repository payloads are redacted while the installed bundles are stale
+and cannot be re-signed with the unavailable publisher keys (D128). They are
+not active adopted Act surfaces. No Excel-specific production Python participates
 in planning, perception, grounding, verification, or execution.
 
 How execution actually travels between files, functions, and modules — what calls
