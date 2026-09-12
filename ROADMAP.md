@@ -21,9 +21,11 @@ reconciled against what the repository actually contains.
 
 ## Where we are
 
-**Phase 1 is substantially complete. Phase 3's "limited Act" has its
-object-model boundary accepted (3/3 on 11 Sep 2026) and three named gates still
-open: the UIA slice, the animation catalog, and the D032 activation review.**
+**Phase 1 is substantially complete. Phase 3's "limited Act" has an implemented
+object-model boundary, but its 11 September 3/3 runs are diagnostic under D139.
+Act acceptance remains open: the UIA slice, animation catalog, fresh counted
+runs, independent desktop lanes, budget review, and D032 activation review
+still gate closure.**
 Phase 2 is partly built and partly blocked by a standing decision (see the
 conflict noted under it). The agent/skills/marketplace program is recorded
 below, before Phase 4, and starts only after the activation review.
@@ -114,7 +116,7 @@ own internal phases, not the product phases above.
 | D — runtime implementation | In progress. The public executor routes object-model and UIA operations to separate signed adapters, carries the pre-cue baseline into live verification, rejects cross-process geometry drift, seals presentation receipts, and rechecks Pause after authorization (D114–D118) |
 | E — measure budgets | Partial. Receipt budgets and the checked paint path are recorded in `docs/evidence/act-paint-budget.md`; confirmation/dispatch and interruption budget closure remains |
 | F/H/J — three independent D032 reviews | Boundary re-review closed. Two cold reviews withheld approval, three remediation rounds landed through `a7c1df5`, and the fresh review returned READY after 120 focused + 2,447 full hermetic tests. Final activation review remains a separate gate |
-| I — release signing and counted runs | Not started. Needs a non-ephemeral external key |
+| I — release signing and counted runs | Partial. PowerPoint has a non-ephemeral key; current counted runs are still pending under D139 |
 
 ### The owner's specification for this phase
 
@@ -331,7 +333,8 @@ built but not yet exercised by a caller or a live run.
 - [x] External non-ephemeral signing key — `ghostcursor-release-2026-3`,
       generated outside the repo, public half committed, pair verified
       through the production PluginStore path
-- [ ] D032 activation review — *needs a non-author reviewer*
+- [ ] D032 activation review — remediation review of `63cd2b5` is READY;
+      activation review is NOT READY pending the gates listed below
 
 **Already built, awaiting a caller**
 - [~] `ghostcursor/stages.py` — stage and cue validation
@@ -364,7 +367,7 @@ campaigns as diagnostic. The r5 and r1 transcripts stay uncitable.
 | Animation-catalog campaign | run it; it has never been counted |
 | Independent lane runs | each lane green on its own, per D025 |
 | D032 review of the derived budgets | the receipt deadlines are measured; the review of the derivation is not done |
-| D032 activation review | **NOT READY** three times: `a1739aa` (D137), `f19eaaf` (D138), `0eee4ab` (D139). Each round found the previous round's fix defective; round three found a repair that reproduced the defect it repaired |
+| D032 activation review | **NOT READY** at the current independent review of `63cd2b5`: fresh counted evidence and the remaining release/desktop gates are still absent |
 | Semantic PowerPoint capabilities | activation review READY |
 | Agent / skills / marketplace program | activation review READY, then its own phase entries here |
 

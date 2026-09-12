@@ -1062,10 +1062,12 @@ its report must say its deadlines are invented rather than letting a reader
 assume Phase E produced them.
 
 
-## The D032 activation review has no reviewer, and it now gates everything
+## The D032 activation review remains open, and it gates everything
 
-**Performed 11 September 2026: NOT READY** at `a1739aa` (D137). This entry
-stays open for the re-review.
+The independent remediation review of `63cd2b5` is **READY**, but the separate
+activation review returned **NOT READY** because current counted acceptance,
+independent desktop lanes, the UIA slice, animation campaign, and the budget
+review are still absent. This entry stays open until those gates are complete.
 
 An earlier version of this entry called it "the last of D105's three
 independent reviews still open". That was wrong twice over, and the reviewer
@@ -1082,10 +1084,9 @@ author-written, unread. The campaign ran on `301e86b`, and the activation
 review's surviving mutation defeated precisely that unread rewrite.
 
 **Trigger:** before any work on semantic PowerPoint planning, the manager
-planning flow, or stage 1 of the agent program. The re-review must cover
-`301e86b`'s diff and the D137 fixes. Dispatch it into its own clean detached
-worktree with the commit hash recorded before inspection — seven prior reviews
-were delivered against a stale commit until that step was made explicit.
+planning flow, or stage 1 of the agent program. After the remaining gates are
+closed, dispatch the final activation review into its own clean detached
+worktree with the exact candidate commit recorded before inspection.
 
 ## Three conflicts the agent/marketplace program inherits rather than creates
 

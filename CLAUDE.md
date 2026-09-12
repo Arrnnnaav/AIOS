@@ -312,9 +312,11 @@ bundles are not (D128).** Excel is signed by `ghostcursor-release-2026-2` and VS
 Code by `-2026-1`; neither private key is available here, so those two cannot be
 re-signed. Do not re-key them onto `-2026-3` to work around it: that collapses
 three signing identities with no revocation or rotation design, and belongs to
-the marketplace signing decision. PowerPoint is rebuilt and active at manifest `28dbaf2d`. The active
-generation advances with every publish and is deliberately not restated here;
-read it from the store.
+the marketplace signing decision. Excel therefore remains a feasibility/data
+artifact only, not an active adopted Act surface; its prior live runs do not
+close acceptance. PowerPoint is rebuilt at manifest `28dbaf2d`, but its current
+counted acceptance is open under D139. The active generation advances with
+every publish and is deliberately not restated here; read it from the store.
 
 A signed bundle carries tracked sources only (D127). `__pycache__` and `.pyc`
 are excluded from every tree sweep and refused if named outright: they are
@@ -356,11 +358,10 @@ catalog manifest `48e6e4f4` contained signed build products and was never
 reproducible. Neither may be cited as current evidence. The live run that stands
 is `act-live-manager-d131-run.md` on the rebuilt bundle.
 
-**Activation has not been granted.** The independent activation review returned
-**NOT READY** at `a1739aa` (D137). Work inside the implemented object-model
+**Activation has not been granted.** The independent activation review of
+`63cd2b5` returned **NOT READY**. Work inside the implemented object-model
 boundary may proceed; nothing downstream of activation may start. The open set
-is six items, each with its own gate, and this list is the same one `ROADMAP.md`
-carries:
+is the following, and this list is kept aligned with `ROADMAP.md`:
 
 | Open | Gate |
 |---|---|
@@ -369,7 +370,7 @@ carries:
 | Animation-catalog campaign | it has never been counted |
 | Independent lane runs | interactive, pixel and hung lanes green alone, per D025 |
 | D032 review of the derived budgets | the budgets are measured; the review of them is not done |
-| D032 activation review | re-review covering `301e86b` and the D137 fixes |
+| D032 activation review | a fresh activation verdict after the counted, UIA, animation, budget, and independent-lane gates |
 
 `ROADMAP.md` carries the same gates plus the two downstream phases they block
 (semantic PowerPoint capabilities, and the agent/marketplace program), because
