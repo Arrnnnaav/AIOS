@@ -120,14 +120,15 @@ own internal phases, not the product phases above.
 
 ### The owner's specification for this phase
 
-Recorded 2 September 2026. This is what Act v1 must actually deliver, and it
-supersedes any narrower reading of the completion plan.
+Recorded 2 September 2026 and narrowed by **D140 on 12 September 2026**. The
+PowerPoint Limited Act v1 release closes the deterministic execution boundary
+first. Ideate/Plan, semantic deck composition, and resume-with-edit remain
+product requirements, but no longer block this release; they are stages 1–3
+below.
 
-- The panel offers **Ideate / Plan / Act**, plus Teach, and behaves according
-  to the mode chosen. Ideate is currently `available=False` and must become
-  real.
-- In Act, the model may **ask clarifying questions** before proposing, and
-  keeps asking until the required fields are resolved.
+- The current panel must support the complete reviewed PowerPoint Act proposal
+  and the compact execution surface. Full Ideate/Plan activation follows in
+  stage 1.
 - After one approval, the runtime **decomposes into steps and performs them
   one at a time**, showing `Step N of M` on the bar.
 - It must **work in front of the user, live**. A result assembled invisibly
@@ -136,12 +137,12 @@ supersedes any narrower reading of the completion plan.
   control is clicked, the pointer travels there, the label appears, the dwell
   elapses, and the click lands where the pointer is. Where no control is
   clicked, no pointer is drawn.
-- The user may **interrupt mid-run and resume with an edited plan** (D110).
-- The PowerPoint plugin gains **semantic slide capabilities** rather than more
-  raw shape operations (D111).
+- Pause and Stop are in v1. Resume with an edited plan follows in stage 3
+  (D110).
+- Semantic PowerPoint capabilities follow in stage 2 (D111).
 - Planning context lives in **`idea.txt`**, hashed and bound to each proposal,
-  never execution authority.
-- The local planner is **`qwen3:4b-instruct`** over the Ollama REST API.
+  never execution authority; its manager activation follows in stage 1.
+- The stage-1 local planner is **`qwen3:4b-instruct`** over the Ollama REST API.
   Measured on this laptop: RTX 3050 with 4 GB VRAM, 15.7 GB RAM. An 8B at q4
   (~5.2 GB) does not fit VRAM and is unsuitable as a responsive planner here.
   A 7B may be benchmarked later as a slower deep-planning mode, and adopted
@@ -450,14 +451,16 @@ a new boundary, and it is the reason the program can be sequenced at all.
 
 | Stage | What it is | State |
 |---|---|---|
-| 0 | Close Act v1 acceptance | **In progress** — the 11 Sep campaigns are diagnostic under D139; requires a fresh independent READY review and counted campaign |
-| 1 | Activate the existing planning foundation in the manager | Not started; gated on the D032 activation review |
-| 2 | First-party PowerPoint Deck Agent | Not started |
-| 3 | General Windows task agent (capability router, not free computer use) | Not started |
-| 4 | Package model: plugin / skill / agent package / connector / workflow | Not started |
-| 5 | First-party-only marketplace | Not started |
-| 6 | Local-first, opt-in cloud reasoning | Not started; conflicts with D017 today |
-| 7 | Third-party publishing | Deferred; needs signing, revocation, sandboxing, review |
+| 0 | Close PowerPoint Limited Act v1 | **In progress** — exact scope in D140; requires current budget/release reviews, counted campaigns, animation and independent lanes |
+| 1 | Ideate and Plan in the manager | Not started; gated on PowerPoint Limited Act activation |
+| 2 | Semantic PowerPoint capabilities and Deck Agent | Not started |
+| 3 | Resume, recovery, and edited-plan reapproval | Not started |
+| 4 | Skills and expert modules | Not started |
+| 5 | Structured agent executor | Not started |
+| 6 | MCP connectors and local-first, opt-in cloud reasoning | Not started; cloud use requires a reviewed D017 amendment |
+| 7 | First-party marketplace | Not started; requires key rotation and revocation |
+| 8 | Cross-application agents | Deferred; requires a reviewed D087/D090 amendment |
+| 9 | Restricted general computer use | Deferred; requires a reviewed D006 amendment |
 
 **Stage 1 reuses what exists** — `task_planner.py`, `planning_session.py`,
 `task_graph.py`, `inference/ollama.py`, brief persistence, the manager proposal
@@ -496,9 +499,11 @@ bound to any proposal made from it.
    of which protected lines it may not touch. A program with no authorized line
    to build on cannot start regardless of the activation review.
 
-Stage 0's closure covers the object-model deck build only. The UIA slice, the
-animation catalog and the activation review are open above, and stage 1 does
-not start before the activation review returns READY.
+Stage 0 covers PowerPoint object-model execution plus the PowerPoint `New Slide`
+UIA slice. Excel and VS Code are outside this release boundary under D140. The
+animation catalog, independent lanes, counted campaigns, budget review, and
+activation review remain open above; stage 1 does not start before the final
+activation review returns READY.
 
 ---
 

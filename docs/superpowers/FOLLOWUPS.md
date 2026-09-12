@@ -1123,6 +1123,10 @@ desktop, a human approving three times, D025 respected, and the PowerPoint
 window **not minimized** -- `_collect()` skips iconic windows, which is what
 refused two attempts on 11 September.
 
+Scope note (D140): this campaign closes the PowerPoint Limited Act v1 boundary.
+Excel and VS Code key custody, Ideate/Plan, semantic capabilities, and
+resume-with-edit are later stages and do not block this PowerPoint release.
+
 ## The original gap this replaced: a counted campaign through the manager path
 
 The 11 September campaign ran the `act_acceptance` harness, which reaches

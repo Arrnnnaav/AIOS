@@ -344,6 +344,15 @@ one crossed the real `Approve & run`, the D123 handoff and the one-use
 `ActExecutionRequest`, 255/255 three times; the harness one never touched that
 layer. A fresh campaign runs only after an independent reviewer returns READY.
 
+**The current release boundary is PowerPoint Limited Act v1 (D140).** It
+includes PowerPoint object-model execution and the PowerPoint `New Slide` UIA
+operation, Quick/Watch pacing, reviewed-plan approval, visible progress,
+truthful pointer presentation, Pause/Stop, verification, and transactional
+publication. Excel/VS Code, Ideate/Plan activation, semantic deck capabilities,
+resume-with-edit, MCP/cloud connectors, marketplace work, cross-app graphs, and
+general computer use do not block this release and may not be smuggled into its
+acceptance claim.
+
 **Never edit captured output (D139).** If a check objects to a transcript,
 re-capture the WHOLE block from a real run — tallies, timings and all — or fix
 the check. Redacting a value in place is not a third option: fix the fixture at

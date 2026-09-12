@@ -6152,3 +6152,49 @@ become the thing it is compared against.
 That the class is closed. Three rounds have each found the previous round's fix
 defective, and this round found that a repair had reproduced the defect it
 repaired. Nothing in this slice has been read by anyone but its author.
+
+---
+
+## D140 — Close PowerPoint Limited Act before building the agent platform
+
+**Date:** 12 September 2026
+
+The owner explicitly narrowed the next release boundary. **PowerPoint Limited
+Act v1** closes first; it is not required to absorb Ideate/Plan, semantic deck
+composition, resume-with-edit, MCP connectors, a marketplace, cross-application
+graphs, or general visual computer use.
+
+The v1 closure scope is:
+
+- PowerPoint only;
+- signed object-model operations and the signed PowerPoint `New Slide` UIA
+  operation;
+- Quick Build and Watch Build;
+- one complete reviewed plan and one explicit approval;
+- visible progress, truthful pointer presentation where a UIA control is acted
+  on, Pause/Stop, independent verification, and transactional publication;
+- fresh counted campaigns and all independent release lanes on the exact
+  candidate bytes.
+
+Excel and VS Code are not part of this release boundary. Their unavailable old
+signing keys therefore do not block PowerPoint Limited Act, but their bundles
+remain quarantined and may not be represented as adopted Act surfaces.
+
+After v1 activation, product work proceeds in this order:
+
+1. Ideate and Plan;
+2. semantic PowerPoint capabilities;
+3. resume, recovery, and edited-plan reapproval;
+4. skills and expert modules;
+5. structured agent execution;
+6. MCP connectors and opt-in cloud reasoning;
+7. first-party marketplace, after key rotation and revocation exist;
+8. cross-application agents under a separately reviewed authority amendment;
+9. restricted general computer use, last, under a separately reviewed D006
+   amendment.
+
+This changes phase scope, not runtime authority. Models still cannot invent
+operations, selectors, coordinates, verification rules, or executable code.
+Every effect continues through signed capability data, canonical authorization,
+fresh binding, one-use per-node authority, independent verification, and the
+existing interruption boundary.
