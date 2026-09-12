@@ -5906,6 +5906,12 @@ The reviewer reached a false conclusion honestly, from two stale documents: a
 does not merely fail to inform — it actively misinforms a reviewer who is doing
 exactly what D032 asks. Both are corrected.
 
+> **Correction, 12 September 2026 (post-D140 receipt review).** The historical
+> `22` value above excluded the first cue even though production applies one
+> deadline to every cue. Including its separately retained first-paint sample
+> derives `29`; completion remains `1121`. D137's review history is preserved,
+> but `29 / 1121` is the current policy.
+
 ### What this decision does not do
 
 It does not make the object-model path activatable. Blockers B1-B4 are closed
@@ -6014,6 +6020,13 @@ runs → 22 and 1121, matching `act_cli.py` exactly — and called the derivatio
 document an unusually careful D034 record. That spot check is not the gating
 budgets review, and `ROADMAP.md` now says so explicitly rather than letting a
 reader mistake one for the other.
+
+> **Correction, 12 September 2026 (post-D140 receipt review).** This
+> re-derivation repeated the same omission as D137: it considered travelled
+> first-paint samples but not the first cue. The complete retained basis gives
+> `29 / 1121`. A later fresh reviewer also found that first-cue completion was
+> absent from the derivation; current records do not change `1121`, but the
+> derivation and mutation tests now include that path.
 
 ### What is closed and what is not
 

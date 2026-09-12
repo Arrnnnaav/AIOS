@@ -10,8 +10,9 @@ different instants:
 
 - **first paint** — from the presentation REQUEST to the first receipt
   (`geometry_started`). This is the overlay proving it drew trustworthy
-  geometry, so it covers the traversal the cue animates plus the paint that
-  ends it.
+  geometry. A travelled cue emits it on its first traversal frame; the first
+  cue has no previous rectangle and emits it on its settled paint. Both paths
+  are measured because production gives them one shared deadline.
 - **completion** — from that START receipt to `presentation_completed`, which
   is the settle. It does NOT run from the first-paint deadline; the protocol
   is explicit that the two are unordered relative to each other.
@@ -51,9 +52,9 @@ from ghostcursor.overlay import window as overlay_window
 def _observation(index: int, width: int, height: int):
     """A synthetic control rectangle that moves every cue.
 
-    Moving matters: a cue that travels the same path every time measures one
-    traversal repeatedly, and the traversal is part of what the first-paint
-    deadline has to cover.
+    Moving matters: after the first settled cue, later cues take the traversal
+    path. Both that path and the first cue's settled path are governed by the
+    same receipt deadlines.
     """
 
     left = 80 + (index * 137) % max(width - 400, 1)
@@ -93,8 +94,8 @@ def measure(cues: int, budget: CueBudget) -> dict:
     # 300ms traversal nowhere in the numbers.
     #
     # The first cue of a real run has nothing to travel from either, so it is
-    # measured and reported SEPARATELY rather than discarded: it is a real
-    # case, it is just not the one a deadline has to cover.
+    # measured and reported SEPARATELY rather than averaged into a different
+    # path. It still contributes to both shared production deadlines.
     #
     # Timed on `perf_counter`, NOT on the presenter's default clock. That
     # default is `time.monotonic`, whose granularity on this platform is
@@ -235,10 +236,22 @@ def _derived(summary: dict, margin: float, granularity: float = 0.0) -> "int | N
 def _first_paint_basis(report: dict) -> dict:
     """Combine both presentation paths governed by the shared deadline."""
 
-    basis = dict(report["first_paint_ms"])
-    first_cue = report["settled_first_cue"]["first_paint_ms"]
+    return _combined_basis(report, "first_paint_ms")
+
+
+def _completion_basis(report: dict) -> dict:
+    """Combine completion samples from travelled and first-cue paths."""
+
+    return _combined_basis(report, "completion_ms")
+
+
+def _combined_basis(report: dict, field: str) -> dict:
+    """Return one p99 basis for a deadline production applies to every cue."""
+
+    basis = dict(report[field])
+    first_cue = report["settled_first_cue"][field]
     if not first_cue.get("samples"):
-        raise ValueError("the first cue has no first-paint measurement")
+        raise ValueError(f"the first cue has no {field} measurement")
     basis["p99"] = max(basis["p99"], first_cue["p99"])
     return basis
 
@@ -281,7 +294,7 @@ def main(argv=None) -> int:
             first_paint_basis, args.margin, granularity
         ),
         "completion_deadline_ms": _derived(
-            report["completion_ms"], args.margin, granularity
+            _completion_basis(report), args.margin, granularity
         ),
     }
     print(json.dumps(report, indent=2, sort_keys=True))

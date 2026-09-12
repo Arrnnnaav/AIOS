@@ -74,6 +74,24 @@ def load_records(directory: pathlib.Path) -> list[dict]:
 def _check(records: list[dict]) -> None:
     budgets = set()
     screens = set()
+    granularities = set()
+
+    def validate_summary(summary, *, source: str, label: str) -> None:
+        expected = {"samples", "mean", "median", "p99", "max"}
+        if not isinstance(summary, dict) or set(summary) != expected:
+            raise EvidenceRefused(f"{source}: {label} fields are invalid")
+        samples = summary["samples"]
+        if not isinstance(samples, int) or isinstance(samples, bool) or samples < 1:
+            raise EvidenceRefused(f"{source}: {label} has no samples")
+        for field in ("mean", "median", "p99", "max"):
+            value = summary[field]
+            if not isinstance(value, (int, float)) or isinstance(value, bool):
+                raise EvidenceRefused(f"{source}: {label}.{field} is not a number")
+            if not math.isfinite(value) or value < 0:
+                raise EvidenceRefused(f"{source}: {label}.{field} is {value!r}")
+        if summary["p99"] > summary["max"]:
+            raise EvidenceRefused(f"{source}: {label} p99 exceeds its own max")
+
     for record in records:
         source = record["_source"]
         if record.get("cues_without_both_receipts"):
@@ -85,29 +103,30 @@ def _check(records: list[dict]) -> None:
             )
         for key in ("first_paint_ms", "completion_ms"):
             summary = record.get(key) or {}
-            if not summary.get("samples"):
-                raise EvidenceRefused(f"{source}: {key} has no samples")
-            for field in ("mean", "median", "p99", "max"):
-                value = summary.get(field)
-                if not isinstance(value, (int, float)) or isinstance(value, bool):
-                    raise EvidenceRefused(f"{source}: {key}.{field} is not a number")
-                if not math.isfinite(value) or value < 0:
-                    raise EvidenceRefused(f"{source}: {key}.{field} is {value!r}")
-            if summary["p99"] > summary["max"]:
-                raise EvidenceRefused(f"{source}: {key} p99 exceeds its own max")
+            validate_summary(summary, source=source, label=key)
         # The first cue of a run does not travel, so it is measured apart. A
         # record that folded it in would report a first-paint distribution
         # covering two different things.
         settled = record.get("settled_first_cue") or {}
-        if not (settled.get("first_paint_ms") or {}).get("samples"):
-            raise EvidenceRefused(
-                f"{source}: the untravelled first cue was not measured"
+        if not isinstance(settled, dict) or set(settled) != {
+            "first_paint_ms", "completion_ms"
+        }:
+            raise EvidenceRefused(f"{source}: first-cue fields are invalid")
+        for key in ("first_paint_ms", "completion_ms"):
+            validate_summary(
+                settled[key], source=source, label=f"settled_first_cue.{key}"
             )
         granularity = record.get("enforcement_clock_granularity_ms")
-        if not isinstance(granularity, (int, float)) or granularity <= 0:
+        if (
+            not isinstance(granularity, (int, float))
+            or isinstance(granularity, bool)
+            or not math.isfinite(granularity)
+            or granularity <= 0
+        ):
             raise EvidenceRefused(
                 f"{source}: no measured enforcement clock granularity"
             )
+        granularities.add(granularity)
         budgets.add(json.dumps(record.get("budget"), sort_keys=True))
         screens.add(json.dumps(record.get("virtual_screen"), sort_keys=True))
 
@@ -117,6 +136,8 @@ def _check(records: list[dict]) -> None:
         # The paint cost scales with desktop area, so a deadline derived
         # across two topologies describes neither.
         raise EvidenceRefused("the runs were taken on different screen topologies")
+    if len(granularities) != 1:
+        raise EvidenceRefused("the runs used different enforcement clocks")
 
 
 def _deadline_from_p99(values: list[float], margin: float, granularity: float) -> int:
@@ -126,6 +147,11 @@ def _deadline_from_p99(values: list[float], margin: float, granularity: float) -
 
 
 def render(records: list[dict], records_dir: pathlib.Path) -> str:
+    # Validation belongs at the derivation boundary, not only in ``main``.
+    # Tests and other tools call ``render`` directly; letting that path skip
+    # checks made a contradictory first-cue summary produce authoritative-
+    # looking output while the CLI correctly refused it.
+    _check(records)
     budget = records[0]["budget"]
     screen = records[0]["virtual_screen"]
     granularity = records[0]["enforcement_clock_granularity_ms"]
@@ -148,7 +174,14 @@ def render(records: list[dict], records_dir: pathlib.Path) -> str:
         granularity,
     )
     completion = _deadline_from_p99(
-        [record["completion_ms"]["p99"] for record in records],
+        [
+            value
+            for record in records
+            for value in (
+                record["completion_ms"]["p99"],
+                record["settled_first_cue"]["completion_ms"]["p99"],
+            )
+        ],
         margin,
         granularity,
     )

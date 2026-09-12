@@ -1077,7 +1077,8 @@ independent reviews still open". That was wrong twice over, and the reviewer
 read it: the review of the derived budgets is also open, and the same
 reviewer concluded from a stale `ROADMAP.md` checkbox that the receipt
 deadlines were invented. They are not — `receipt_budget` has run three times
-and `act_cli.py` carries the derived `22` / `1121`. Both documents are fixed.
+and `act_cli.py` carries the derived `29` / `1121`. The first-paint value was
+later corrected to include the first cue; both current documents are fixed.
 
 Four of the five blockers are closed in the D137 slice. The fifth is not: the
 READY verdict that gated the campaign was issued at `45d1323`, and `301e86b`
@@ -1091,7 +1092,7 @@ planning flow, or stage 1 of the agent program. After the remaining gates are
 closed, dispatch the final activation review into its own clean detached
 worktree with the exact candidate commit recorded before inspection.
 
-## Three conflicts the agent/marketplace program inherits rather than creates
+## Four conflicts the agent/marketplace program inherits rather than creates
 
 Recorded with the program in `ROADMAP.md`; repeated here because each needs a
 reviewed decision before the stage that depends on it, and none is a coding
@@ -1106,6 +1107,10 @@ task:
   must be able to withdraw a bundle. Excel and VS Code already show the cost:
   both are signed by keys unavailable here, so neither can be re-signed, and
   both are quarantined (D128).
+- **Semantic PowerPoint versus the no-application-code rule.** Stage 2 may add
+  PowerPoint knowledge only inside signed plugin capabilities and deterministic
+  expansions. Core may not gain PowerPoint branches or learn its object model
+  (D087/D089); any different boundary needs a reviewed amendment first.
 
 **Trigger:** each one before its own stage, not all at once.
 

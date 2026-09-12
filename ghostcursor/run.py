@@ -1044,9 +1044,10 @@ def _receipt_policy(parser, args):
     rather than about what the operator forgot.
 
     None is returned when neither was given, and `run_act_goal` then refuses
-    a control-driving plan and says why. That refusal is the honest state
-    while Phase E has not derived the numbers -- but it must be reachable
-    with them, or the flag exists and the path does not.
+    a control-driving plan and says why. Phase E has derived values for the
+    measured acceptance desktop, but they remain explicit inputs: silently
+    applying one machine's policy elsewhere would turn evidence into a
+    universal default. The path must be reachable when they are supplied.
     """
 
     first = getattr(args, "first_paint_deadline_ms", None)

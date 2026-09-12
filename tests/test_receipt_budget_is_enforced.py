@@ -124,11 +124,9 @@ def test_the_deadlines_are_recomputed_from_the_records_not_just_quoted():
     def derive(field: str) -> int:
         records = [json.loads(p.read_text(encoding="utf-8")) for p in runs]
         values = [record[field]["p99"] for record in records]
-        if field == "first_paint_ms":
-            values.extend(
-                record["settled_first_cue"]["first_paint_ms"]["p99"]
-                for record in records
-            )
+        values.extend(
+            record["settled_first_cue"][field]["p99"] for record in records
+        )
         worst = max(values)
         return max(15, math.ceil(worst * 2.0))
 
@@ -146,10 +144,48 @@ def test_the_renderer_cannot_drop_the_first_cue_from_the_deadline():
 
     records = render_receipt_budget.load_records(RECORDS)
     mutated = copy.deepcopy(records)
-    mutated[0]["settled_first_cue"]["first_paint_ms"]["p99"] = 100.0
+    summary = mutated[0]["settled_first_cue"]["first_paint_ms"]
+    summary["p99"] = summary["max"] = 100.0
     document = render_receipt_budget.render(mutated, RECORDS)
 
     assert "first_paint_deadline_ms = 200" in document
+
+
+def test_the_renderer_cannot_drop_first_cue_completion_from_the_deadline():
+    import copy
+    from tools import render_receipt_budget
+
+    records = render_receipt_budget.load_records(RECORDS)
+    mutated = copy.deepcopy(records)
+    summary = mutated[0]["settled_first_cue"]["completion_ms"]
+    summary["p99"] = summary["max"] = 1000.0
+    document = render_receipt_budget.render(mutated, RECORDS)
+
+    assert "completion_deadline_ms = 2000" in document
+
+
+def test_a_contradictory_first_cue_summary_is_refused():
+    import copy
+    from tools import render_receipt_budget
+
+    records = render_receipt_budget.load_records(RECORDS)
+    mutated = copy.deepcopy(records)
+    mutated[0]["settled_first_cue"]["first_paint_ms"]["p99"] = 100.0
+
+    with pytest.raises(render_receipt_budget.EvidenceRefused, match="exceeds"):
+        render_receipt_budget.render(mutated, RECORDS)
+
+
+def test_different_enforcement_clocks_cannot_be_combined():
+    import copy
+    from tools import render_receipt_budget
+
+    records = render_receipt_budget.load_records(RECORDS)
+    mutated = copy.deepcopy(records)
+    mutated[1]["enforcement_clock_granularity_ms"] *= 2
+
+    with pytest.raises(render_receipt_budget.EvidenceRefused, match="different"):
+        render_receipt_budget.render(mutated, RECORDS)
 
 
 def test_the_margin_is_declared_as_a_choice():

@@ -202,6 +202,20 @@ def test_the_first_cue_is_load_bearing_in_the_shared_first_paint_deadline():
     assert receipt_budget._derived(basis, 2.0, 15.0) == 29
 
 
+def test_the_first_cue_is_load_bearing_in_the_shared_completion_deadline():
+    report = {
+        "completion_ms": {"samples": 59, "p99": 500.0},
+        "settled_first_cue": {
+            "completion_ms": {"samples": 1, "p99": 1000.0}
+        },
+    }
+
+    basis = receipt_budget._completion_basis(report)
+
+    assert basis["p99"] == 1000.0
+    assert receipt_budget._derived(basis, 2.0, 15.0) == 2000
+
+
 def test_the_measured_policy_is_never_a_default():
     """An operator on another machine has not measured these -- the paint
     cost scales with desktop area. It is a value to pass, not one that

@@ -371,9 +371,9 @@ def run_act_goal(
                 "refused",
                 detail=(
                     "this plan contains a control-driving operation, which "
-                    "needs receipt deadlines; Phase E has not derived them, "
-                    "and inventing them here would be a number nobody "
-                    "measured (D034)"
+                    "needs machine-applicable receipt deadlines; none were "
+                    "supplied, and inventing them here would be a number "
+                    "nobody measured (D034)"
                 ),
             )
             if watcher is not None:
