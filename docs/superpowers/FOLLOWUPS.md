@@ -1058,7 +1058,10 @@ and reported invented deadlines as a blocker (D137).
 
 It now calls the same `measured_receipt_policy()` as production, so a live
 diagnostic cannot pass under the old permissive `2000` / `8000` values while
-production would refuse it. What remains open is the confirmation-to-request
+production would refuse it. Its default traversal and settle now also come
+from `default_cue_budget()`; an explicit slower override is allowed to refuse
+rather than silently inheriting a deadline measured for different pacing.
+What remains open is the confirmation-to-request
 budget: the diagnostic now records the verifier/control round trip and the
 interval from confirmation return to the actual successful UIA request write.
 Those records are diagnostic until repeated live measurement, derivation,

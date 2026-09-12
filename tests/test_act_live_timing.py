@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import pytest
 
-from ghostcursor.devtools.act_live_node import _ConfirmationTiming, _measured_write
+from ghostcursor.devtools.act_live_node import (
+    _ConfirmationTiming,
+    _default_visual_durations,
+    _measured_write,
+)
 
 
 class _Clock:
@@ -109,3 +113,11 @@ def test_the_live_diagnostic_uses_the_measured_receipt_policy():
     assert "receipt_policy = measured_receipt_policy()" in source
     assert "first_paint_deadline_ms=2000" not in source
     assert "completion_deadline_ms=8000" not in source
+
+
+def test_the_live_diagnostic_defaults_to_the_budget_that_policy_measured():
+    from ghostcursor.act_cli import default_cue_budget
+
+    budget = default_cue_budget()
+
+    assert _default_visual_durations() == (budget.traversal_ms, budget.settle_ms)

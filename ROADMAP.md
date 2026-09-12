@@ -287,6 +287,9 @@ built but not yet exercised by a caller or a live run.
       `MEASURED_*` constants in `ghostcursor/act_cli.py`. This line was
       missing while the measurement existed, and an activation reviewer
       concluded from its absence that the deadlines were invented (D137).
+      The live benchmark was repaired after D115/D116: its synthetic rectangle
+      now carries a real bracketed coordinate contract, so it measures cues
+      instead of receiving `render_rejected` for every one.
 - [~] Confirmation-to-invoke deadline — the live UIA diagnostic now records
       both the full `confirm_before` round trip and the interval from its
       return to the successful UIA execute-frame write. No retained sample

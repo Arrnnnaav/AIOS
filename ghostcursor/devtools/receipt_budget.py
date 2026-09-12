@@ -45,11 +45,18 @@ from ghostcursor.act_protocol import (
     ReceiptPolicy,
     TrustClass,
 )
+from ghostcursor.coordinate_space import observe_bracketed
 from ghostcursor.overlay import dpi  # noqa: F401 - declares DPI awareness (D010)
 from ghostcursor.overlay import window as overlay_window
 
 
-def _observation(index: int, width: int, height: int):
+def _observation(
+    index: int,
+    width: int,
+    height: int,
+    *,
+    bracket=observe_bracketed,
+):
     """A synthetic control rectangle that moves every cue.
 
     Moving matters: after the first settled cue, later cues take the traversal
@@ -59,8 +66,14 @@ def _observation(index: int, width: int, height: int):
 
     left = 80 + (index * 137) % max(width - 400, 1)
     top = 80 + (index * 89) % max(height - 300, 1)
+    rectangle = (left, top, left + 160, top + 40)
     return SimpleNamespace(
-        rectangle=(left, top, left + 160, top + 40),
+        rectangle=rectangle,
+        # The production overlay refuses an unproven rectangle. This tool
+        # used to pass only four integers, so after D115/D116 every cue was a
+        # RENDER_REJECTED receipt and the benchmark measured 0/N cues. A
+        # synthetic rectangle still needs a real bracket around the read.
+        geometry=bracket(lambda: (rectangle,)),
         identity={"name": "New Slide", "control_type": "Button"},
         semantic=(),
         match_count=1,

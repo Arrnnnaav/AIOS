@@ -41,7 +41,7 @@ import win32gui
 import win32process
 
 from ghostcursor.act_node import NodeRefused, execute_node
-from ghostcursor.act_cli import measured_receipt_policy
+from ghostcursor.act_cli import default_cue_budget, measured_receipt_policy
 from ghostcursor.act_overlay import CueBudget, overlay_presenter
 from ghostcursor.act_protocol import (
     PresentationRequest,
@@ -126,6 +126,13 @@ def _measured_write(timing: _ConfirmationTiming, write, frame) -> None:
     timing.request_written(frame)
 
 
+def _default_visual_durations() -> tuple[int, int]:
+    """Use the durations for which the production receipt policy was measured."""
+
+    budget = default_cue_budget()
+    return budget.traversal_ms, budget.settle_ms
+
+
 def find_window(class_name: str):
     """The one visible window of that class, or refuse.
 
@@ -170,6 +177,7 @@ def executable_of(pid: int) -> tuple[str, str]:
 
 
 def main() -> int:
+    default_traversal_ms, default_settle_ms = _default_visual_durations()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--operation", default="powerpoint.new_slide_uia")
     parser.add_argument("--window-class", default="PPTFrameClass")
@@ -192,8 +200,8 @@ def main() -> int:
         default=None,
         help="DIAGNOSTIC. Stop at a phase boundary rather than on a clock.",
     )
-    parser.add_argument("--traversal-ms", type=int, default=700)
-    parser.add_argument("--settle-ms", type=int, default=900)
+    parser.add_argument("--traversal-ms", type=int, default=default_traversal_ms)
+    parser.add_argument("--settle-ms", type=int, default=default_settle_ms)
     parser.add_argument("--json", type=Path, default=None)
     arguments = parser.parse_args()
 

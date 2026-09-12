@@ -16,6 +16,21 @@ import pytest
 from ghostcursor.devtools import receipt_budget
 
 
+def test_the_synthetic_rectangle_has_real_bracketed_coordinate_provenance():
+    sentinel = object()
+    reads = []
+
+    def bracket(read):
+        rectangles = tuple(read())
+        reads.append(rectangles)
+        return sentinel
+
+    observation = receipt_budget._observation(0, 1920, 1080, bracket=bracket)
+
+    assert reads == [(observation.rectangle,)]
+    assert observation.geometry is sentinel
+
+
 def test_the_measurement_inputs_are_all_required():
     """A budget nobody supplied is a budget nobody measured. `--frame-budget-ms`
     especially: it is a measured paint cost with its own evidence file."""
