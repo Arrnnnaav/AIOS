@@ -237,16 +237,17 @@ def measure_independent_first_cues(
 
     for index in range(count):
         hwnd = create_overlay()
-        presenter = presenter_factory(
-            hwnd,
-            budget=budget,
-            policy=_permissive_policy(),
-            label_for=lambda _observation: "New Slide",
-            backend_trust=TrustClass.LIVE_STATE,
-            keep_running=lambda: True,
-            clock=clock_ms,
-        )
+        presenter = None
         try:
+            presenter = presenter_factory(
+                hwnd,
+                budget=budget,
+                policy=_permissive_policy(),
+                label_for=lambda _observation: "New Slide",
+                backend_trust=TrustClass.LIVE_STATE,
+                keep_running=lambda: True,
+                clock=clock_ms,
+            )
             marks: dict[str, float] = {}
 
             def sink(receipt, at_ms):
@@ -277,8 +278,13 @@ def measure_independent_first_cues(
             first_paint.append(started - requested_ms)
             completion.append(finished - started)
         finally:
-            presenter.release()
-            destroy_overlay(hwnd)
+            try:
+                if presenter is not None:
+                    presenter.release()
+            finally:
+                # A full-virtual-desktop overlay must not survive a failed
+                # presenter constructor or release path.
+                destroy_overlay(hwnd)
 
     return {
         "cues_requested": count,

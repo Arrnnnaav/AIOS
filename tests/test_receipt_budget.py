@@ -275,21 +275,29 @@ def test_rejected_or_incomplete_first_cues_are_not_counted_as_samples(mode):
 
     class Presenter:
         def present(self, request, _observation, sink):
-            kind = (
-                ReceiptKind.RENDER_REJECTED
+            kinds = (
+                (
+                    ReceiptKind.RENDER_REJECTED,
+                    ReceiptKind.GEOMETRY_STARTED,
+                    ReceiptKind.PRESENTATION_COMPLETED,
+                )
                 if mode == "rejected"
-                else ReceiptKind.GEOMETRY_STARTED
+                else (ReceiptKind.GEOMETRY_STARTED,)
             )
-            receipt = Receipt(
-                kind,
-                request.session_id,
-                request.cue_id,
-                request.nonce,
-                request.presentation_generation,
-                request.frame_generation,
+            receipts = tuple(
+                Receipt(
+                    kind,
+                    request.session_id,
+                    request.cue_id,
+                    request.nonce,
+                    request.presentation_generation,
+                    request.frame_generation,
+                )
+                for kind in kinds
             )
-            sink(receipt, 15.0)
-            return (receipt,)
+            for offset, receipt in enumerate(receipts, start=1):
+                sink(receipt, 10.0 + offset * 5.0)
+            return receipts
 
         def release(self):
             pass
@@ -309,6 +317,53 @@ def test_rejected_or_incomplete_first_cues_are_not_counted_as_samples(mode):
     assert report["cues_without_both_receipts"] == 1
     assert report["first_paint_ms"] == {"samples": 0}
     assert report["completion_ms"] == {"samples": 0}
+
+
+def test_presenter_construction_failure_still_destroys_the_overlay():
+    from ghostcursor.act_overlay import CueBudget
+
+    destroyed = []
+
+    def fail(_hwnd, **_kwargs):
+        raise RuntimeError("presenter failed")
+
+    with pytest.raises(RuntimeError, match="presenter failed"):
+        receipt_budget.measure_independent_first_cues(
+            1,
+            CueBudget(traversal_ms=300, settle_ms=250, frame_budget_ms=2),
+            create_overlay=lambda: 100,
+            destroy_overlay=lambda hwnd: destroyed.append(hwnd),
+            presenter_factory=fail,
+            screen=lambda: (0, 0, 1920, 1080),
+        )
+
+    assert destroyed == [100]
+
+
+def test_release_failure_cannot_prevent_overlay_destruction():
+    from ghostcursor.act_overlay import CueBudget
+
+    destroyed = []
+
+    class Presenter:
+        def present(self, *_args):
+            raise RuntimeError("presentation failed")
+
+        def release(self):
+            raise RuntimeError("release failed")
+
+    with pytest.raises(RuntimeError, match="release failed"):
+        receipt_budget.measure_independent_first_cues(
+            1,
+            CueBudget(traversal_ms=300, settle_ms=250, frame_budget_ms=2),
+            create_overlay=lambda: 100,
+            destroy_overlay=lambda hwnd: destroyed.append(hwnd),
+            presenter_factory=lambda _hwnd, **_kwargs: Presenter(),
+            observation_factory=lambda *_args: object(),
+            screen=lambda: (0, 0, 1920, 1080),
+        )
+
+    assert destroyed == [100]
 
 
 def test_the_tool_synthesizes_no_input():
