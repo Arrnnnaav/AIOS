@@ -133,6 +133,48 @@ def _default_visual_durations() -> tuple[int, int]:
     return budget.traversal_ms, budget.settle_ms
 
 
+def _parse_arguments(argv=None):
+    """Build the diagnostic CLI once, so its real defaults are testable."""
+
+    default_traversal_ms, default_settle_ms = _default_visual_durations()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--operation", default="powerpoint.new_slide_uia")
+    parser.add_argument("--window-class", default="PPTFrameClass")
+    parser.add_argument(
+        "--frame-budget-ms",
+        type=int,
+        required=True,
+        help="measured paint cost; see docs/evidence/act-paint-budget.md",
+    )
+    parser.add_argument(
+        "--stop-after-ms",
+        type=int,
+        default=None,
+        help="DIAGNOSTIC. Stop the run this many ms after the first paint, "
+        "so a Stop can be landed inside the traversal or the settle.",
+    )
+    parser.add_argument(
+        "--stop-before",
+        choices=("confirmation", "dispatch"),
+        default=None,
+        help="DIAGNOSTIC. Stop at a phase boundary rather than on a clock.",
+    )
+    parser.add_argument("--traversal-ms", type=int, default=default_traversal_ms)
+    parser.add_argument("--settle-ms", type=int, default=default_settle_ms)
+    parser.add_argument("--json", type=Path, default=None)
+    return parser.parse_args(argv)
+
+
+def _cue_budget(arguments) -> CueBudget:
+    """Construct exactly the budget parsed by the diagnostic CLI."""
+
+    return CueBudget(
+        traversal_ms=arguments.traversal_ms,
+        settle_ms=arguments.settle_ms,
+        frame_budget_ms=arguments.frame_budget_ms,
+    )
+
+
 def find_window(class_name: str):
     """The one visible window of that class, or refuse.
 
@@ -177,33 +219,7 @@ def executable_of(pid: int) -> tuple[str, str]:
 
 
 def main() -> int:
-    default_traversal_ms, default_settle_ms = _default_visual_durations()
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--operation", default="powerpoint.new_slide_uia")
-    parser.add_argument("--window-class", default="PPTFrameClass")
-    parser.add_argument(
-        "--frame-budget-ms",
-        type=int,
-        required=True,
-        help="measured paint cost; see docs/evidence/act-paint-budget.md",
-    )
-    parser.add_argument(
-        "--stop-after-ms",
-        type=int,
-        default=None,
-        help="DIAGNOSTIC. Stop the run this many ms after the first paint, "
-        "so a Stop can be landed inside the traversal or the settle.",
-    )
-    parser.add_argument(
-        "--stop-before",
-        choices=("confirmation", "dispatch"),
-        default=None,
-        help="DIAGNOSTIC. Stop at a phase boundary rather than on a clock.",
-    )
-    parser.add_argument("--traversal-ms", type=int, default=default_traversal_ms)
-    parser.add_argument("--settle-ms", type=int, default=default_settle_ms)
-    parser.add_argument("--json", type=Path, default=None)
-    arguments = parser.parse_args()
+    arguments = _parse_arguments()
 
     stages: list[tuple[str, str]] = []
 
@@ -323,11 +339,7 @@ def main() -> int:
 
     overlay = overlay_presenter(
         overlay_hwnd,
-        budget=CueBudget(
-            traversal_ms=arguments.traversal_ms,
-            settle_ms=arguments.settle_ms,
-            frame_budget_ms=arguments.frame_budget_ms,
-        ),
+        budget=_cue_budget(arguments),
         policy=receipt_policy,
         label_for=lambda _observation: selector.name,
         backend_trust=TrustClass.LIVE_STATE,

@@ -4,8 +4,10 @@ import pytest
 
 from ghostcursor.devtools.act_live_node import (
     _ConfirmationTiming,
+    _cue_budget,
     _default_visual_durations,
     _measured_write,
+    _parse_arguments,
 )
 
 
@@ -121,3 +123,29 @@ def test_the_live_diagnostic_defaults_to_the_budget_that_policy_measured():
     budget = default_cue_budget()
 
     assert _default_visual_durations() == (budget.traversal_ms, budget.settle_ms)
+
+    arguments = _parse_arguments(["--frame-budget-ms", "2"])
+    parsed = _cue_budget(arguments)
+    assert (parsed.traversal_ms, parsed.settle_ms) == (
+        budget.traversal_ms,
+        budget.settle_ms,
+    )
+
+
+def test_explicit_visual_duration_overrides_reach_the_presenter_budget():
+    arguments = _parse_arguments(
+        [
+            "--frame-budget-ms",
+            "3",
+            "--traversal-ms",
+            "701",
+            "--settle-ms",
+            "902",
+        ]
+    )
+
+    budget = _cue_budget(arguments)
+
+    assert budget.traversal_ms == 701
+    assert budget.settle_ms == 902
+    assert budget.frame_budget_ms == 3

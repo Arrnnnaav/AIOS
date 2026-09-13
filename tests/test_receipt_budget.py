@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import pytest
 
+from ghostcursor.coordinate_space import BracketedGeometry
 from ghostcursor.devtools import receipt_budget
 
 
@@ -29,6 +30,14 @@ def test_the_synthetic_rectangle_has_real_bracketed_coordinate_provenance():
 
     assert reads == [(observation.rectangle,)]
     assert observation.geometry is sentinel
+
+
+def test_the_real_default_produces_a_bracket_the_overlay_can_validate():
+    observation = receipt_budget._observation(0, 1920, 1080)
+
+    assert isinstance(observation.geometry, BracketedGeometry)
+    assert observation.geometry.held
+    assert observation.geometry.rectangles == (observation.rectangle,)
 
 
 def test_the_measurement_inputs_are_all_required():
