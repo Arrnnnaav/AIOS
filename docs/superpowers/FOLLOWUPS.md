@@ -1062,11 +1062,10 @@ production would refuse it. Its default traversal and settle now also come
 from `default_cue_budget()`; an explicit slower override is allowed to refuse
 rather than silently inheriting a deadline measured for different pacing.
 
-A live cold presentation subsequently refused under the retained first-paint
-deadline while a warmed presentation completed. The retained three-by-sixty
-records have 177 travelled-cue samples but only three independently created
-first cues, because each run keeps one presenter for all sixty cues. That is
-not enough evidence for the cold path governed by the same deadline.
+The retained three-by-sixty records have 177 travelled-cue samples but only
+three independently created first cues, because each run keeps one presenter
+for all sixty cues. That is not enough evidence for the cold path governed by
+the same deadline.
 `receipt_budget` now requires `--independent-first-cues` and creates a fresh
 overlay and presenter for every such sample. This is measurement machinery,
 not new evidence: the three records, rendered document, production constants

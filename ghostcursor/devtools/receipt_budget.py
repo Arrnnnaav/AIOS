@@ -391,8 +391,8 @@ def main(argv=None) -> int:
     )
     args = parser.parse_args(argv)
 
-    if args.cues < 1:
-        parser.error("a measurement needs at least one cue")
+    if args.cues < 2:
+        parser.error("a measurement needs a first cue and at least one travelled cue")
     if args.independent_first_cues < 1:
         parser.error("a measurement needs at least one independent first cue")
 

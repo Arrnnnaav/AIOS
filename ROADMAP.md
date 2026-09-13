@@ -291,11 +291,11 @@ built but not yet exercised by a caller or a live run.
       The live benchmark was repaired after D115/D116: its synthetic rectangle
       now carries a real bracketed coordinate contract, so it measures cues
       instead of receiving `render_rejected` for every one.
-      A later live cold cue exposed that those runs contain only three
-      independent first-cue samples in total. The benchmark now requires a
-      separately requested set of independently created overlay/presenter
-      sessions; three fresh records, re-derivation, production alignment and
-      D032 review remain before this gate returns to complete.
+      Those runs contain only three independent first-cue samples in total.
+      The benchmark now requires a separately requested set of independently
+      created overlay/presenter sessions; three fresh records, re-derivation,
+      production alignment and D032 review remain before this gate returns to
+      complete.
 - [~] Confirmation-to-invoke deadline — the live UIA diagnostic now records
       both the full `confirm_before` round trip and the interval from its
       return to the successful UIA execute-frame write. No retained sample

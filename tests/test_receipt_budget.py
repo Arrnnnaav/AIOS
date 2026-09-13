@@ -102,6 +102,24 @@ def test_a_run_of_no_independent_first_cues_is_refused():
         )
 
 
+def test_a_run_with_no_travelled_cue_is_refused_cleanly():
+    with pytest.raises(SystemExit):
+        receipt_budget.main(
+            [
+                "--cues",
+                "1",
+                "--independent-first-cues",
+                "60",
+                "--traversal-ms",
+                "300",
+                "--settle-ms",
+                "250",
+                "--frame-budget-ms",
+                "2",
+            ]
+        )
+
+
 def test_no_samples_derives_no_deadline():
     """Returning a number here would be inventing one from nothing, which is
     the exact failure this tool exists to prevent."""
@@ -167,6 +185,7 @@ def test_independent_first_cues_each_get_a_fresh_overlay_and_presenter():
     created = []
     destroyed = []
     presenters = []
+    policies = []
 
     def create():
         hwnd = 100 + len(created)
@@ -203,12 +222,16 @@ def test_independent_first_cues_each_get_a_fresh_overlay_and_presenter():
         def release(self):
             self.released = True
 
+    def presenter_factory(hwnd, **kwargs):
+        policies.append(kwargs["policy"])
+        return Presenter(hwnd)
+
     report = receipt_budget.measure_independent_first_cues(
         3,
         CueBudget(traversal_ms=300, settle_ms=250, frame_budget_ms=2),
         create_overlay=create,
         destroy_overlay=lambda hwnd: destroyed.append(hwnd),
-        presenter_factory=lambda hwnd, **_kwargs: Presenter(hwnd),
+        presenter_factory=presenter_factory,
         observation_factory=lambda *_args: object(),
         screen=lambda: (0, 0, 1920, 1080),
         clock_ms=lambda: 10.0,
@@ -218,11 +241,74 @@ def test_independent_first_cues_each_get_a_fresh_overlay_and_presenter():
     assert destroyed == created
     assert [presenter.hwnd for presenter in presenters] == created
     assert all(presenter.released for presenter in presenters)
+    assert [policy.first_paint_deadline_ms for policy in policies] == [
+        600_000,
+        600_000,
+        600_000,
+    ]
+    assert [policy.completion_deadline_ms for policy in policies] == [
+        600_000,
+        600_000,
+        600_000,
+    ]
     assert report["cues_requested"] == 3
     assert report["cues_measured"] == 3
     assert report["cues_without_both_receipts"] == 0
     assert report["first_paint_ms"]["p99"] == 5.0
     assert report["completion_ms"]["p99"] == 10.0
+
+
+def test_the_independent_measurement_refuses_a_zero_count_at_its_own_boundary():
+    from ghostcursor.act_overlay import CueBudget
+
+    with pytest.raises(ValueError, match="at least one"):
+        receipt_budget.measure_independent_first_cues(
+            0,
+            CueBudget(traversal_ms=300, settle_ms=250, frame_budget_ms=2),
+        )
+
+
+@pytest.mark.parametrize("mode", ["rejected", "missing_completion"])
+def test_rejected_or_incomplete_first_cues_are_not_counted_as_samples(mode):
+    from ghostcursor.act_overlay import CueBudget
+    from ghostcursor.act_protocol import Receipt, ReceiptKind
+
+    class Presenter:
+        def present(self, request, _observation, sink):
+            kind = (
+                ReceiptKind.RENDER_REJECTED
+                if mode == "rejected"
+                else ReceiptKind.GEOMETRY_STARTED
+            )
+            receipt = Receipt(
+                kind,
+                request.session_id,
+                request.cue_id,
+                request.nonce,
+                request.presentation_generation,
+                request.frame_generation,
+            )
+            sink(receipt, 15.0)
+            return (receipt,)
+
+        def release(self):
+            pass
+
+    report = receipt_budget.measure_independent_first_cues(
+        1,
+        CueBudget(traversal_ms=300, settle_ms=250, frame_budget_ms=2),
+        create_overlay=lambda: 100,
+        destroy_overlay=lambda _hwnd: None,
+        presenter_factory=lambda _hwnd, **_kwargs: Presenter(),
+        observation_factory=lambda *_args: object(),
+        screen=lambda: (0, 0, 1920, 1080),
+        clock_ms=lambda: 10.0,
+    )
+
+    assert report["cues_measured"] == 0
+    assert report["cues_without_both_receipts"] == 1
+    assert report["first_paint_ms"] == {"samples": 0}
+    assert report["completion_ms"] == {"samples": 0}
 
 
 def test_the_tool_synthesizes_no_input():
@@ -335,6 +421,26 @@ def test_independent_first_cues_are_load_bearing_in_the_shared_deadline():
 
     assert basis["p99"] == 40.0
     assert receipt_budget._derived(basis, 2.0, 15.0) == 80
+
+
+def test_independent_first_cue_completion_is_load_bearing_too():
+    report = {
+        "completion_ms": {"samples": 59, "p99": 550.0},
+        "settled_first_cue": {
+            "completion_ms": {"samples": 1, "p99": 250.0}
+        },
+        "independent_first_cues": {
+            "cues_requested": 60,
+            "cues_measured": 60,
+            "cues_without_both_receipts": 0,
+            "completion_ms": {"samples": 60, "p99": 700.0},
+        },
+    }
+
+    basis = receipt_budget._completion_basis(report)
+
+    assert basis["p99"] == 700.0
+    assert receipt_budget._derived(basis, 2.0, 15.0) == 1400
 
 
 def test_the_first_cue_is_load_bearing_in_the_shared_completion_deadline():
