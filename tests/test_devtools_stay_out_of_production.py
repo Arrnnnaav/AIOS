@@ -4,8 +4,8 @@
 bypassing the reviewed product path. `act_acceptance.py` says so in its first
 paragraph -- it calls `approve_action_graph` and `execute_approved_graph`
 directly and never mints the one-use `ActExecutionRequest` that D121 requires of
-the manager. `act_live_node.py` dispatches a real UIA effect under deadlines it
-hardcodes rather than taking the measured ones.
+the manager. `act_live_node.py` dispatches a real UIA effect while using the
+measured deadlines, but still stubs the production approval authority.
 
 That is legitimate for a diagnostic and fatal for production. The separation was
 real at every commit so far, and it was held by nothing but habit: an activation

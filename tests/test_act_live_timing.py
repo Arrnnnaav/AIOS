@@ -149,3 +149,52 @@ def test_explicit_visual_duration_overrides_reach_the_presenter_budget():
     assert budget.traversal_ms == 701
     assert budget.settle_ms == 902
     assert budget.frame_budget_ms == 3
+
+
+def test_main_passes_explicit_visual_overrides_to_the_actual_presenter_boundary(
+    monkeypatch,
+):
+    """Protect the call site, not merely the helper that computes its value."""
+
+    from argparse import Namespace
+
+    from ghostcursor.devtools import act_live_node
+
+    arguments = Namespace(
+        operation="powerpoint.new_slide_uia",
+        window_class="PPTFrameClass",
+        frame_budget_ms=3,
+        stop_after_ms=None,
+        stop_before=None,
+        traversal_ms=701,
+        settle_ms=902,
+        json=None,
+    )
+    captured = {}
+
+    class PresenterReached(RuntimeError):
+        pass
+
+    def presenter(_hwnd, **kwargs):
+        captured.update(kwargs)
+        raise PresenterReached
+
+    monkeypatch.setattr(act_live_node, "_parse_arguments", lambda: arguments)
+    monkeypatch.setattr(act_live_node, "find_window", lambda _class: (101, 202))
+    monkeypatch.setattr(
+        act_live_node,
+        "executable_of",
+        lambda _pid: ("POWERPNT.EXE", "16.0"),
+    )
+    monkeypatch.setattr(
+        act_live_node.overlay_window, "create_overlay_window", lambda: 303
+    )
+    monkeypatch.setattr(act_live_node, "overlay_presenter", presenter)
+
+    with pytest.raises(PresenterReached):
+        act_live_node.main()
+
+    budget = captured["budget"]
+    assert budget.traversal_ms == 701
+    assert budget.settle_ms == 902
+    assert budget.frame_budget_ms == 3
