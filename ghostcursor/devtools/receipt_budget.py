@@ -22,7 +22,8 @@ its own overlay, presents into it, and destroys it. It moves no cursor and
 synthesizes no input, exactly like `paint_budget`. A Phase A/B measuring tool
 may never change what a run would have done (D105).
 
-    py -3.12 -m ghostcursor.devtools.receipt_budget --cues 60
+    py -3.12 -m ghostcursor.devtools.receipt_budget --cues 60 \
+      --independent-first-cues 60
 
 The reported deadline is the p99 rounded up with a stated margin, not the
 mean. A deadline is the thing a slow presentation misses, and the mean is
@@ -48,6 +49,14 @@ from ghostcursor.act_protocol import (
 from ghostcursor.coordinate_space import observe_bracketed
 from ghostcursor.overlay import dpi  # noqa: F401 - declares DPI awareness (D010)
 from ghostcursor.overlay import window as overlay_window
+
+
+def _permissive_policy() -> ReceiptPolicy:
+    """A policy too large to censor the measurement it exists to enable."""
+
+    return ReceiptPolicy(
+        first_paint_deadline_ms=600_000, completion_deadline_ms=600_000
+    )
 
 
 def _observation(
@@ -87,9 +96,7 @@ def measure(cues: int, budget: CueBudget) -> dict:
     #: Deliberately enormous, so the MEASUREMENT is never truncated by the
     #: deadline it exists to derive. Presenting under a policy that could
     #: refuse would measure the policy instead of the machine.
-    permissive = ReceiptPolicy(
-        first_paint_deadline_ms=600_000, completion_deadline_ms=600_000
-    )
+    permissive = _permissive_policy()
 
     first_paint: list[float] = []
     completion: list[float] = []
@@ -197,6 +204,91 @@ def measure(cues: int, budget: CueBudget) -> dict:
     }
 
 
+def measure_independent_first_cues(
+    count: int,
+    budget: CueBudget,
+    *,
+    create_overlay=overlay_window.create_overlay_window,
+    destroy_overlay=overlay_window.destroy_overlay_window,
+    presenter_factory=overlay_presenter,
+    observation_factory=_observation,
+    screen=dpi.virtual_screen_rect,
+    clock_ms=lambda: time.perf_counter() * 1000.0,
+) -> dict:
+    """Measure first cues across independently created overlay sessions.
+
+    A 60-cue run contains 59 travelled cues but only one first cue. Three
+    retained runs therefore supplied only three samples for the shared
+    first-paint deadline. This path creates a fresh overlay and presenter for
+    every sample, matching the cold path a new Act run takes instead of
+    repeatedly measuring a presenter whose GDI resources are already warm.
+
+    The collaborators are injectable so hermetic tests can prove that every
+    sample really receives a distinct session without opening desktop windows.
+    """
+
+    if isinstance(count, bool) or not isinstance(count, int) or count < 1:
+        raise ValueError("independent first-cue measurement needs at least one cue")
+
+    _left, _top, width, height = screen()
+    first_paint: list[float] = []
+    completion: list[float] = []
+    rejected = 0
+
+    for index in range(count):
+        hwnd = create_overlay()
+        presenter = presenter_factory(
+            hwnd,
+            budget=budget,
+            policy=_permissive_policy(),
+            label_for=lambda _observation: "New Slide",
+            backend_trust=TrustClass.LIVE_STATE,
+            keep_running=lambda: True,
+            clock=clock_ms,
+        )
+        try:
+            marks: dict[str, float] = {}
+
+            def sink(receipt, at_ms):
+                marks.setdefault(receipt.kind.value, at_ms)
+
+            request = PresentationRequest(
+                session_id="receipt-budget-independent-first-cue",
+                cue_id=f"first:{index}",
+                nonce=f"{index:032x}",
+                presentation_generation=1,
+                frame_generation=1,
+                geometry_required=True,
+            )
+            requested_ms = clock_ms()
+            receipts = presenter.present(
+                request, observation_factory(index, width, height), sink
+            )
+            kinds = {receipt.kind for receipt in receipts}
+            started = marks.get(ReceiptKind.GEOMETRY_STARTED.value)
+            finished = marks.get(ReceiptKind.PRESENTATION_COMPLETED.value)
+            if (
+                ReceiptKind.RENDER_REJECTED in kinds
+                or started is None
+                or finished is None
+            ):
+                rejected += 1
+                continue
+            first_paint.append(started - requested_ms)
+            completion.append(finished - started)
+        finally:
+            presenter.release()
+            destroy_overlay(hwnd)
+
+    return {
+        "cues_requested": count,
+        "cues_measured": len(first_paint),
+        "cues_without_both_receipts": rejected,
+        "first_paint_ms": _summary(first_paint),
+        "completion_ms": _summary(completion),
+    }
+
+
 def _clock_granularity(samples: int = 200) -> float:
     """The smallest change `time.monotonic` can report, measured.
 
@@ -266,12 +358,23 @@ def _combined_basis(report: dict, field: str) -> dict:
     if not first_cue.get("samples"):
         raise ValueError(f"the first cue has no {field} measurement")
     basis["p99"] = max(basis["p99"], first_cue["p99"])
+    independent = report.get("independent_first_cues")
+    if independent is not None:
+        summary = independent[field]
+        if not summary.get("samples"):
+            raise ValueError(f"the independent first cues have no {field} measurement")
+        if independent["cues_measured"] != independent["cues_requested"]:
+            raise ValueError("not every independent first cue was measured")
+        if independent["cues_without_both_receipts"]:
+            raise ValueError("an independent first cue was rejected")
+        basis["p99"] = max(basis["p99"], summary["p99"])
     return basis
 
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cues", type=int, default=60)
+    parser.add_argument("--independent-first-cues", type=int, required=True)
     parser.add_argument("--traversal-ms", type=int, required=True)
     parser.add_argument("--settle-ms", type=int, required=True)
     parser.add_argument(
@@ -290,9 +393,19 @@ def main(argv=None) -> int:
 
     if args.cues < 1:
         parser.error("a measurement needs at least one cue")
+    if args.independent_first_cues < 1:
+        parser.error("a measurement needs at least one independent first cue")
 
     report = measure(
         args.cues,
+        CueBudget(
+            traversal_ms=args.traversal_ms,
+            settle_ms=args.settle_ms,
+            frame_budget_ms=args.frame_budget_ms,
+        ),
+    )
+    report["independent_first_cues"] = measure_independent_first_cues(
+        args.independent_first_cues,
         CueBudget(
             traversal_ms=args.traversal_ms,
             settle_ms=args.settle_ms,
@@ -311,7 +424,12 @@ def main(argv=None) -> int:
         ),
     }
     print(json.dumps(report, indent=2, sort_keys=True))
-    return 0 if report["cues_measured"] else 2
+    independent = report["independent_first_cues"]
+    independent_clean = (
+        independent["cues_measured"] == independent["cues_requested"]
+        and not independent["cues_without_both_receipts"]
+    )
+    return 0 if report["cues_measured"] and independent_clean else 2
 
 
 if __name__ == "__main__":

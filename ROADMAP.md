@@ -280,7 +280,8 @@ built but not yet exercised by a caller or a live run.
       the 2 ms budget (`docs/evidence/act-paint-budget.md`).
 - [x] Verifier spawn-to-response — max 0.188s, mean ~0.142s over 765
       invocations (`docs/evidence/act-diagnostic-rerun.md`)
-- [x] Receipt deadlines — `first_paint_deadline_ms = 29`,
+- [~] Receipt deadlines — the retained records currently derive
+      `first_paint_deadline_ms = 29`,
       `completion_deadline_ms = 1121`, derived from three 60-cue runs
       (`docs/evidence/act-receipt-budget.md`, records under
       `docs/evidence/receipt-budget/`). Production carries them as
@@ -290,6 +291,11 @@ built but not yet exercised by a caller or a live run.
       The live benchmark was repaired after D115/D116: its synthetic rectangle
       now carries a real bracketed coordinate contract, so it measures cues
       instead of receiving `render_rejected` for every one.
+      A later live cold cue exposed that those runs contain only three
+      independent first-cue samples in total. The benchmark now requires a
+      separately requested set of independently created overlay/presenter
+      sessions; three fresh records, re-derivation, production alignment and
+      D032 review remain before this gate returns to complete.
 - [~] Confirmation-to-invoke deadline — the live UIA diagnostic now records
       both the full `confirm_before` round trip and the interval from its
       return to the successful UIA execute-frame write. No retained sample
