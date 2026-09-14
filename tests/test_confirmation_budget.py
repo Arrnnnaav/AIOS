@@ -54,6 +54,7 @@ def test_every_sample_is_a_fresh_child_but_one_campaign_scope():
 
     assert record["samples_completed"] == 3
     assert record["failure"] is None
+    assert record["sample_timeout_s"] == 60
     assert len(seen) == 3
     assert len({call[0][-1] for call in seen}) == 3
     assert {call[1]["env"]["GHOSTCURSOR_CAMPAIGN_SCOPE"] for call in seen} == {
@@ -130,7 +131,7 @@ def test_target_or_applicability_drift_refuses_the_whole_record():
         environment={},
     )
 
-    assert record["samples_completed"] == 2
+    assert record["samples_completed"] == 1
     assert record["failure"]["failure_class"] == "applicability_drifted"
     assert len(seen) == 2
 

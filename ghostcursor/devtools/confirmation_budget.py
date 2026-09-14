@@ -107,6 +107,7 @@ def collect(
     target_scopes: set[str] = set()
     versions: set[str] = set()
     selector_digests: set[str] = set()
+    expected_context: tuple[str, str, str, str] | None = None
     failure = None
 
     with tempfile.TemporaryDirectory(prefix="ghostcursor-confirmation-budget-") as raw:
@@ -175,17 +176,10 @@ def collect(
             except MeasurementRefused:
                 failure = _failure(index, completed, child_record)
                 break
-            timings.append(timing)
-            target_refs.add(target_ref)
-            target_scopes.add(target_scope)
-            versions.add(version)
-            selector_digests.add(selector_sha)
-            if (
-                len(target_refs) != 1
-                or len(target_scopes) != 1
-                or len(versions) != 1
-                or len(selector_digests) != 1
-            ):
+            context = (target_ref, target_scope, version, selector_sha)
+            if expected_context is None:
+                expected_context = context
+            elif context != expected_context:
                 failure = {
                     "sample": index,
                     "returncode": 0,
@@ -193,6 +187,11 @@ def collect(
                     "failure_class": "applicability_drifted",
                 }
                 break
+            timings.append(timing)
+            target_refs.add(target_ref)
+            target_scopes.add(target_scope)
+            versions.add(version)
+            selector_digests.add(selector_sha)
 
     return {
         "schema_version": 1,
@@ -202,6 +201,7 @@ def collect(
         "samples_requested": samples,
         "samples_completed": len(timings),
         "failure": failure,
+        "sample_timeout_s": sample_timeout_s,
         "visual_budget": {
             "frame_budget_ms": frame_budget_ms,
             "traversal_ms": traversal_ms,
