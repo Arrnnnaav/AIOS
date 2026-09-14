@@ -280,7 +280,7 @@ built but not yet exercised by a caller or a live run.
       the 2 ms budget (`docs/evidence/act-paint-budget.md`).
 - [x] Verifier spawn-to-response — max 0.188s, mean ~0.142s over 765
       invocations (`docs/evidence/act-diagnostic-rerun.md`)
-- [~] Receipt deadlines — the retained records currently derive
+- [x] Receipt deadlines — the retained records derive
       `first_paint_deadline_ms = 28`,
       `completion_deadline_ms = 1100`, derived from three runs with 60
       sequential cues and 60 independently created first cues each
@@ -295,15 +295,21 @@ built but not yet exercised by a caller or a live run.
       The earlier records contained only three independent first-cue samples
       in total. The replacement records contain 180/180 independently created
       first cues and 177/177 travelled cues with zero rejected samples;
-      production is aligned. Independent D032 review of the derived evidence
-      remains before this gate returns to complete.
+      production is aligned. A fresh independent D032 review at `63c5ca5`
+      re-hashed the records, reproduced the render and arithmetic, killed both
+      derivation omissions, and returned READY: this receipt gate is complete.
 - [~] Confirmation-to-invoke deadline — the live UIA diagnostic now records
       both the full `confirm_before` round trip and the interval from its
       return to the successful UIA execute-frame write. No retained sample
       set, derived deadline, signed policy, or production refusal exists yet;
-      therefore this remains an open Phase E gate.
+      therefore this remains an open Phase E gate. The diagnostic-only
+      `ghostcursor.devtools.confirmation_budget` collector now exists to run
+      serial verified live effects and retain the first failed sample rather
+      than selecting it out; it must be reviewed before producing records.
 - [ ] Interruption latency matrix — **not measured**
-- [ ] Independent D032 review of the derived budgets — an activation
+- [~] Independent D032 review of the derived budgets — the receipt budget is
+      READY at `63c5ca5`; confirmation-to-invoke has no retained records yet.
+      An activation
       re-reviewer recomputed them (p99 x 2.0, ceiling, floored at the 15 ms
       tick, highest applicable travelled/first-cue sample across three runs ->
       the superseded 29 and 1121) and called the earlier derivation

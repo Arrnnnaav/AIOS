@@ -1068,14 +1068,19 @@ created first cues, because each run kept one presenter for all sixty cues.
 `receipt_budget` now requires `--independent-first-cues` and creates a fresh
 overlay and presenter for every such sample. The replacement records contain
 180/180 independent first cues and 177/177 travelled cues with zero rejected
-samples. The rendered document and production constants are aligned; the
-independent D032 budget review remains pending.
+samples. The rendered document and production constants are aligned. A fresh
+D032 review at `63c5ca5` independently reproduced the hashes, counts, render,
+arithmetic and runtime wiring, killed both omission mutations, and returned
+READY. The receipt-deadline gate is closed; that verdict did not close Act.
 
 What remains open is the confirmation-to-request
 budget: the diagnostic now records the verifier/control round trip and the
 interval from confirmation return to the actual successful UIA request write.
-Those records are diagnostic until repeated live measurement, derivation,
-signed-policy wiring, and independent D032 review are complete.
+`ghostcursor.devtools.confirmation_budget` now orchestrates serial fresh
+processes of that diagnostic under one campaign scope, requires explicit
+acknowledgement that every successful sample adds a real slide, and retains the
+first failure rather than dropping it. It is measurement machinery only until
+independently reviewed; no retained sample set or production policy exists yet.
 
 
 ## The D032 activation review remains open, and it gates everything
