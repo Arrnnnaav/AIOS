@@ -21,7 +21,7 @@ whole Act vertical.
 
 - Cue budget: traversal 300ms, settle 250ms, frame 2ms, poll 50ms
 - Virtual screen: `[0, 0, 1920, 1080]`
-- Runs: 3, each of 60 cues
+- Runs: 3, each with 60 sequential cues and 60 independently created first cues
 
 Two independent deadlines, from their own instants. **First paint**
 runs from the presentation request to the `geometry_started` receipt.
@@ -32,11 +32,11 @@ would derive the wrong number.
 
 ## Results
 
-| Run | Travelled first-paint mean | median | p99 | First cue | Completion mean | p99 |
-|---|---|---|---|---|---|---|
-| `run-1.json` | 3.366ms | 2.903ms | 10.778ms | 10.721ms | 548.686ms | 560.060ms |
-| `run-2.json` | 2.357ms | 2.343ms | 5.354ms | 10.058ms | 548.819ms | 560.140ms |
-| `run-3.json` | 2.342ms | 2.225ms | 7.055ms | 14.234ms | 549.006ms | 559.469ms |
+| Run | Travelled first-paint p99 | Sequence first cue | Independent first-cue p99 | Travelled completion p99 | Independent completion p99 |
+|---|---|---|---|---|---|
+| `run-1.json` | 5.599ms | 9.443ms | 13.899ms | 549.726ms | 249.566ms |
+| `run-2.json` | 10.112ms | 6.943ms | 8.896ms | 549.656ms | 249.785ms |
+| `run-3.json` | 5.236ms | 7.236ms | 6.695ms | 549.845ms | 253.052ms |
 
 ## The records these numbers come from
 
@@ -47,11 +47,11 @@ drift from its own measurements unnoticed (D138).
 
 | Record | SHA-256 |
 |---|---|
-| `run-1.json` | `39bb68125e14ffe3158808b9b1c77de2cca0a0dfbd79e463bc548652296a792b` |
-| `run-2.json` | `2687c8ecc893d8809def9a235aa6313393ba2c607f8c9eba5860ea78c3251f06` |
-| `run-3.json` | `1d396936d3b05cc7b9e454c0a38a905e7cd06ab3343fa929e23bc5b991e8cd92` |
+| `run-1.json` | `ad9d27760929134e1e10e287261799e17d43d7313b05567844a3aecf07905868` |
+| `run-2.json` | `93d1851b18f1fbee4ef622c80ca7c0a10f6101519ca0d913de66d12b946ca961` |
+| `run-3.json` | `28899c1c9652176e06a7c24e976f3a114bae1c47466ed468766a47b415d4296a` |
 
-**Derived: `first_paint_deadline_ms = 29`, `completion_deadline_ms = 1121`.**
+**Derived: `first_paint_deadline_ms = 28`, `completion_deadline_ms = 1100`.**
 
 The p99 with a margin, rounded up, and the HIGHEST applicable sample
 across all runs rather
@@ -70,8 +70,9 @@ harness is timing the thing it claims to time.
 An earlier draft of the tool's own docstring said first paint covered
 the traversal. It does not: the first receipt fires when the first
 frame is painted, and the cue animates afterwards. First paint is
-single-digit milliseconds for most travelled cues; the separately
-measured first cue is slower and participates in the shared deadline.
+single-digit milliseconds for most travelled cues; both the first
+cue in each sequence and sixty independently created first-cue
+sessions per run participate in the shared deadline.
 Completion is the whole animation.
 
 **Production times receipts on a clock whose granularity is 15.0ms.**
@@ -94,9 +95,9 @@ would have refused.
   against synthetic rectangles. No UIA read, no adapter, no dispatch —
   this measures the overlay, which is what the deadlines bound.
 - **The first cue follows a different visual path.** It has no previous
-  position and so does not travel. Its first-paint sample is reported
-  separately, but is included when deriving the shared production
-  first-paint deadline because production applies that deadline to
+  position and so does not travel. The sequence's first cue and the
+  independently recreated first-cue sessions are reported separately,
+  and both are included because production applies one deadline to
   every cue.
 - **The margin is not measured.** It is a choice about headroom over
   a measured p99.

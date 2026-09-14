@@ -281,8 +281,9 @@ built but not yet exercised by a caller or a live run.
 - [x] Verifier spawn-to-response — max 0.188s, mean ~0.142s over 765
       invocations (`docs/evidence/act-diagnostic-rerun.md`)
 - [~] Receipt deadlines — the retained records currently derive
-      `first_paint_deadline_ms = 29`,
-      `completion_deadline_ms = 1121`, derived from three 60-cue runs
+      `first_paint_deadline_ms = 28`,
+      `completion_deadline_ms = 1100`, derived from three runs with 60
+      sequential cues and 60 independently created first cues each
       (`docs/evidence/act-receipt-budget.md`, records under
       `docs/evidence/receipt-budget/`). Production carries them as
       `MEASURED_*` constants in `ghostcursor/act_cli.py`. This line was
@@ -291,11 +292,11 @@ built but not yet exercised by a caller or a live run.
       The live benchmark was repaired after D115/D116: its synthetic rectangle
       now carries a real bracketed coordinate contract, so it measures cues
       instead of receiving `render_rejected` for every one.
-      Those runs contain only three independent first-cue samples in total.
-      The benchmark now requires a separately requested set of independently
-      created overlay/presenter sessions; three fresh records, re-derivation,
-      production alignment and D032 review remain before this gate returns to
-      complete.
+      The earlier records contained only three independent first-cue samples
+      in total. The replacement records contain 180/180 independently created
+      first cues and 177/177 travelled cues with zero rejected samples;
+      production is aligned. Independent D032 review of the derived evidence
+      remains before this gate returns to complete.
 - [~] Confirmation-to-invoke deadline — the live UIA diagnostic now records
       both the full `confirm_before` round trip and the interval from its
       return to the successful UIA execute-frame write. No retained sample
@@ -305,7 +306,7 @@ built but not yet exercised by a caller or a live run.
 - [ ] Independent D032 review of the derived budgets — an activation
       re-reviewer recomputed them (p99 x 2.0, ceiling, floored at the 15 ms
       tick, highest applicable travelled/first-cue sample across three runs ->
-      29 and 1121) and called the derivation
+      the superseded 29 and 1121) and called the earlier derivation
       document an unusually careful D034 record. That is a spot check inside
       another review, not the gating review, and it says so (D138).
 

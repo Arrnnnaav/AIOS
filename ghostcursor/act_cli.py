@@ -492,16 +492,17 @@ def _pointer_surface(budget, policy, *, keep_running=None):
 
 
 #: The measured receipt deadlines for this machine's topology, from
-#: `docs/evidence/act-receipt-budget.md` (three 60-cue runs; the p99 with a
-#: stated margin, taking the highest of the three, floored at the enforcement
-#: clock's measured 15ms tick).
+#: `docs/evidence/act-receipt-budget.md` (three runs, each with 60 sequential
+#: cues and 60 independently created first cues; the p99 with a stated margin,
+#: taking the highest applicable value, floored at the enforcement clock's
+#: measured 15ms tick).
 #:
 #: Cited rather than chosen. `ReceiptPolicy` refuses to default them, and
 #: until they were measured both production paths refused every
 #: control-driving plan -- correctly, and that refusal was the binding
 #: constraint on the whole Act vertical.
-MEASURED_FIRST_PAINT_DEADLINE_MS = 29
-MEASURED_COMPLETION_DEADLINE_MS = 1121
+MEASURED_FIRST_PAINT_DEADLINE_MS = 28
+MEASURED_COMPLETION_DEADLINE_MS = 1100
 
 
 def measured_receipt_policy():

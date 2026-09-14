@@ -116,6 +116,45 @@ def _check(records: list[dict]) -> None:
             validate_summary(
                 settled[key], source=source, label=f"settled_first_cue.{key}"
             )
+        independent = record.get("independent_first_cues") or {}
+        expected_independent = {
+            "completion_ms",
+            "cues_measured",
+            "cues_requested",
+            "cues_without_both_receipts",
+            "first_paint_ms",
+        }
+        if not isinstance(independent, dict) or set(independent) != expected_independent:
+            raise EvidenceRefused(
+                f"{source}: independent first-cue fields are invalid"
+            )
+        requested = independent["cues_requested"]
+        measured = independent["cues_measured"]
+        rejected = independent["cues_without_both_receipts"]
+        for value, label in (
+            (requested, "cues_requested"),
+            (measured, "cues_measured"),
+            (rejected, "cues_without_both_receipts"),
+        ):
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise EvidenceRefused(
+                    f"{source}: independent_first_cues.{label} is invalid"
+                )
+        if requested < 1 or measured != requested or rejected:
+            raise EvidenceRefused(
+                f"{source}: not every independent first cue produced both receipts"
+            )
+        for key in ("first_paint_ms", "completion_ms"):
+            validate_summary(
+                independent[key],
+                source=source,
+                label=f"independent_first_cues.{key}",
+            )
+            if independent[key]["samples"] != measured:
+                raise EvidenceRefused(
+                    f"{source}: independent_first_cues.{key} sample count "
+                    "does not match cues_measured"
+                )
         granularity = record.get("enforcement_clock_granularity_ms")
         if (
             not isinstance(granularity, (int, float))
@@ -168,6 +207,7 @@ def render(records: list[dict], records_dir: pathlib.Path) -> str:
             for value in (
                 record["first_paint_ms"]["p99"],
                 record["settled_first_cue"]["first_paint_ms"]["p99"],
+                record["independent_first_cues"]["first_paint_ms"]["p99"],
             )
         ],
         margin,
@@ -180,6 +220,7 @@ def render(records: list[dict], records_dir: pathlib.Path) -> str:
             for value in (
                 record["completion_ms"]["p99"],
                 record["settled_first_cue"]["completion_ms"]["p99"],
+                record["independent_first_cues"]["completion_ms"]["p99"],
             )
         ],
         margin,
@@ -212,7 +253,10 @@ def render(records: list[dict], records_dir: pathlib.Path) -> str:
         f"{budget['settle_ms']}ms, frame {budget['frame_budget_ms']}ms, poll "
         f"{budget['poll_interval_ms']}ms",
         f"- Virtual screen: `{screen}`",
-        f"- Runs: {len(records)}, each of {records[0]['cues_requested']} cues",
+        f"- Runs: {len(records)}, each with {records[0]['cues_requested']} "
+        "sequential cues and "
+        f"{records[0]['independent_first_cues']['cues_requested']} independently "
+        "created first cues",
         "",
         "Two independent deadlines, from their own instants. **First paint**",
         "runs from the presentation request to the `geometry_started` receipt.",
@@ -223,16 +267,19 @@ def render(records: list[dict], records_dir: pathlib.Path) -> str:
         "",
         "## Results",
         "",
-        "| Run | Travelled first-paint mean | median | p99 | First cue | Completion mean | p99 |",
-        "|---|---|---|---|---|---|---|",
+        "| Run | Travelled first-paint p99 | Sequence first cue | Independent first-cue p99 | Travelled completion p99 | Independent completion p99 |",
+        "|---|---|---|---|---|---|",
     ]
     for record in records:
         fp, cp = record["first_paint_ms"], record["completion_ms"]
         first = record["settled_first_cue"]["first_paint_ms"]
+        independent = record["independent_first_cues"]
         lines.append(
-            f"| `{record['_source']}` | {fp['mean']:.3f}ms | {fp['median']:.3f}ms | "
-            f"{fp['p99']:.3f}ms | {first['p99']:.3f}ms | {cp['mean']:.3f}ms | "
-            f"{cp['p99']:.3f}ms |"
+            f"| `{record['_source']}` | {fp['p99']:.3f}ms | "
+            f"{first['p99']:.3f}ms | "
+            f"{independent['first_paint_ms']['p99']:.3f}ms | "
+            f"{cp['p99']:.3f}ms | "
+            f"{independent['completion_ms']['p99']:.3f}ms |"
         )
 
     lines += [
@@ -273,8 +320,9 @@ def render(records: list[dict], records_dir: pathlib.Path) -> str:
         "An earlier draft of the tool's own docstring said first paint covered",
         "the traversal. It does not: the first receipt fires when the first",
         "frame is painted, and the cue animates afterwards. First paint is",
-        "single-digit milliseconds for most travelled cues; the separately",
-        "measured first cue is slower and participates in the shared deadline.",
+        "single-digit milliseconds for most travelled cues; both the first",
+        "cue in each sequence and sixty independently created first-cue",
+        "sessions per run participate in the shared deadline.",
         "Completion is the whole animation.",
         "",
         f"**Production times receipts on a clock whose granularity is "
@@ -298,9 +346,9 @@ def render(records: list[dict], records_dir: pathlib.Path) -> str:
         "  against synthetic rectangles. No UIA read, no adapter, no dispatch —",
         "  this measures the overlay, which is what the deadlines bound.",
         "- **The first cue follows a different visual path.** It has no previous",
-        "  position and so does not travel. Its first-paint sample is reported",
-        "  separately, but is included when deriving the shared production",
-        "  first-paint deadline because production applies that deadline to",
+        "  position and so does not travel. The sequence's first cue and the",
+        "  independently recreated first-cue sessions are reported separately,",
+        "  and both are included because production applies one deadline to",
         "  every cue.",
         "- **The margin is not measured.** It is a choice about headroom over",
         "  a measured p99.",

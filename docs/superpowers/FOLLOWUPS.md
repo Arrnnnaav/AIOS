@@ -1050,11 +1050,12 @@ verbatim the constants removed from `act_cli` and never added to
 It is a declared diagnostic that bypasses `execute_approved_graph` and mints
 no real approval, so it is off the reviewed authority paths. But it does
 dispatch a real UIA effect, and it does so under deadlines nobody derived.
-`ghostcursor.devtools.receipt_budget` **has now run** — three 60-cue runs,
-`docs/evidence/act-receipt-budget.md`, deadlines `29` / `1121`, which
-production carries as the `MEASURED_*` constants in `act_cli.py`. This entry
-previously said it had not, and an activation reviewer took that at face value
-and reported invented deadlines as a blocker (D137).
+`ghostcursor.devtools.receipt_budget` first ran as three 60-cue sequences and
+derived `29` / `1121`. That evidence was later superseded because it contained
+only three independently created first cues. The current record contains three
+runs with 60 sequential cues and 60 independently created first cues each.
+`docs/evidence/act-receipt-budget.md` derives `28` / `1100`, which production
+carries as the `MEASURED_*` constants in `act_cli.py`.
 
 It now calls the same `measured_receipt_policy()` as production, so a live
 diagnostic cannot pass under the old permissive `2000` / `8000` values while
@@ -1062,14 +1063,13 @@ production would refuse it. Its default traversal and settle now also come
 from `default_cue_budget()`; an explicit slower override is allowed to refuse
 rather than silently inheriting a deadline measured for different pacing.
 
-The retained three-by-sixty records have 177 travelled-cue samples but only
-three independently created first cues, because each run keeps one presenter
-for all sixty cues. That is not enough evidence for the cold path governed by
-the same deadline.
+The earlier records had 177 travelled-cue samples but only three independently
+created first cues, because each run kept one presenter for all sixty cues.
 `receipt_budget` now requires `--independent-first-cues` and creates a fresh
-overlay and presenter for every such sample. This is measurement machinery,
-not new evidence: the three records, rendered document, production constants
-and D032 budget review are still pending.
+overlay and presenter for every such sample. The replacement records contain
+180/180 independent first cues and 177/177 travelled cues with zero rejected
+samples. The rendered document and production constants are aligned; the
+independent D032 budget review remains pending.
 
 What remains open is the confirmation-to-request
 budget: the diagnostic now records the verifier/control round trip and the
@@ -1089,9 +1089,10 @@ An earlier version of this entry called it "the last of D105's three
 independent reviews still open". That was wrong twice over, and the reviewer
 read it: the review of the derived budgets is also open, and the same
 reviewer concluded from a stale `ROADMAP.md` checkbox that the receipt
-deadlines were invented. They are not — `receipt_budget` has run three times
-and `act_cli.py` carries the derived `29` / `1121`. The first-paint value was
-later corrected to include the first cue; both current documents are fixed.
+deadlines were invented. They are not — the current receipt records derive
+`28` / `1100`, and `act_cli.py` carries that pair. The superseded evidence
+derived `29` / `1121`; both values remain named here as history, not current
+policy.
 
 Four of the five blockers are closed in the D137 slice. The fifth is not: the
 READY verdict that gated the campaign was issued at `45d1323`, and `301e86b`

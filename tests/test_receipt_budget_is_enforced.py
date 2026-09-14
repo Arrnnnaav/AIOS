@@ -127,6 +127,9 @@ def test_the_deadlines_are_recomputed_from_the_records_not_just_quoted():
         values.extend(
             record["settled_first_cue"][field]["p99"] for record in records
         )
+        values.extend(
+            record["independent_first_cues"][field]["p99"] for record in records
+        )
         worst = max(values)
         return max(15, math.ceil(worst * 2.0))
 
@@ -162,6 +165,53 @@ def test_the_renderer_cannot_drop_first_cue_completion_from_the_deadline():
     document = render_receipt_budget.render(mutated, RECORDS)
 
     assert "completion_deadline_ms = 2000" in document
+
+
+def test_the_renderer_cannot_drop_independent_first_paint_from_the_deadline():
+    import copy
+    from tools import render_receipt_budget
+
+    records = render_receipt_budget.load_records(RECORDS)
+    mutated = copy.deepcopy(records)
+    summary = mutated[0]["independent_first_cues"]["first_paint_ms"]
+    summary["p99"] = summary["max"] = 100.0
+    document = render_receipt_budget.render(mutated, RECORDS)
+
+    assert "first_paint_deadline_ms = 200" in document
+
+
+def test_the_renderer_cannot_drop_independent_completion_from_the_deadline():
+    import copy
+    from tools import render_receipt_budget
+
+    records = render_receipt_budget.load_records(RECORDS)
+    mutated = copy.deepcopy(records)
+    summary = mutated[0]["independent_first_cues"]["completion_ms"]
+    summary["p99"] = summary["max"] = 1000.0
+    document = render_receipt_budget.render(mutated, RECORDS)
+
+    assert "completion_deadline_ms = 2000" in document
+
+
+def test_missing_or_partial_independent_first_cues_are_refused():
+    import copy
+    from tools import render_receipt_budget
+
+    records = render_receipt_budget.load_records(RECORDS)
+    missing = copy.deepcopy(records)
+    del missing[0]["independent_first_cues"]
+    with pytest.raises(render_receipt_budget.EvidenceRefused, match="independent"):
+        render_receipt_budget.render(missing, RECORDS)
+
+    partial = copy.deepcopy(records)
+    partial[0]["independent_first_cues"]["cues_measured"] -= 1
+    with pytest.raises(render_receipt_budget.EvidenceRefused, match="not every"):
+        render_receipt_budget.render(partial, RECORDS)
+
+    rejected = copy.deepcopy(records)
+    rejected[0]["independent_first_cues"]["cues_without_both_receipts"] = 1
+    with pytest.raises(render_receipt_budget.EvidenceRefused, match="not every"):
+        render_receipt_budget.render(rejected, RECORDS)
 
 
 def test_a_contradictory_first_cue_summary_is_refused():
@@ -259,8 +309,8 @@ def test_acceptance_uses_the_measured_pair_when_unset():
 
 
 @pytest.mark.parametrize("first,completion", [
-    (60, 5000), (29, 5000), (60, 1121), (29, None),
-    (None, 1121), (29.0, 1121), (True, 1121),
+    (60, 5000), (28, 5000), (60, 1100), (28, None),
+    (None, 1100), (28.0, 1100), (True, 1100),
 ])
 def test_acceptance_run_refuses_policy_drift_before_side_effects(first, completion):
     from types import SimpleNamespace
