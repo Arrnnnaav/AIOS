@@ -26,8 +26,8 @@ object-model boundary, but its 11 September 3/3 runs are diagnostic under D139.
 Act acceptance remains open: the UIA slice, animation catalog, fresh counted
 runs, independent desktop lanes, budget review, and D032 activation review
 still gate closure.**
-Phase 2 is partly built and partly blocked by a standing decision (see the
-conflict noted under it). The agent/skills/marketplace program is recorded
+Phase 2 is partly built; its telemetry/sync conflict is resolved by D141 and
+moved to stage 6 (see the note under it). The agent/skills/marketplace program is recorded
 below, before Phase 4, and starts only after the activation review.
 
 Interaction modes are canonical contracts in `ghostcursor/interaction.py`.
@@ -67,22 +67,21 @@ see `docs/superpowers/FOLLOWUPS.md`.
 > Improved UI, inline Ask, friction reporting, telemetry, sync, basic memory,
 > more VS Code workflows, second plugin.
 
-**Status: partly built, and partly in conflict with a standing decision.**
+**Status: partly built; the D017 conflict is resolved by D141, not yet built.**
 
 Built: inline Ask, the vertical control rail, entity-scoped memory
 (`ghostcursor/memory/store.py`), additional workflows, and more than a second
 plugin — Excel, Synthetic Export and VS Code ship signed and data-only, with
 PowerPoint a quarantined candidate.
 
-**Conflict to resolve before this phase can be called complete.** Telemetry
-and sync are central to Phase 2 and again to Phase 4, and **D017 forbids
-them**: GhostCursor is local-only, with no telemetry, no network and no cloud
-sync. That is not an oversight in either direction — the planning documents
-assume a platform, and D017 was adopted for the product as it exists.
-
-One of the two has to move, explicitly. Either D017 is amended under the
-`CLAUDE.md` "decisions may evolve" rule with a reviewed privacy design, or
-these items leave the roadmap. **They must not be built while D017 stands.**
+**Conflict resolved by D141 (16 September 2026).** Telemetry and sync are
+central to Phase 2 and again to Phase 4, and D017 forbade them. D141 amends
+D017 additively: the local-only default is unchanged, and three opt-in,
+separately consented capabilities — per-App connectors, policy-gated cloud
+escalation, events-not-content telemetry — may be built in a reviewed slice at
+the capability-platform stage (stage 6 below). `kb.sqlite` and
+`sessions.sqlite` never sync. **Nothing is built yet**; this phase's telemetry
+and sync rows move to stage 6 rather than leaving the roadmap.
 
 ---
 
@@ -479,8 +478,8 @@ a new boundary, and it is the reason the program can be sequenced at all.
 | 3 | Resume, recovery, and edited-plan reapproval | Not started |
 | 4 | Skills and expert modules | Not started |
 | 5 | Structured agent executor | Not started |
-| 6 | MCP connectors and local-first, opt-in cloud reasoning | Not started; cloud use requires a reviewed D017 amendment |
-| 7 | First-party marketplace | Not started; requires key rotation and revocation |
+| 6 | MCP connectors and local-first, opt-in cloud reasoning | Not started; boundary recorded by D141 (additive to D017); build requires its own reviewed slice |
+| 7 | First-party marketplace | Not started; requires the D144 signing-identity design (key manifest, revocation, re-sign provenance) |
 | 8 | Cross-application agents | Deferred; requires a reviewed D087/D090 amendment |
 | 9 | Restricted general computer use | Deferred; requires a reviewed D006 amendment |
 
@@ -491,29 +490,32 @@ capability-scoped graph → complete flattened plan → one approval → Act. Un
 D113 the brief is planning context and never authority, and its exact bytes are
 bound to any proposal made from it.
 
-**Four conflicts this program must resolve rather than inherit quietly:**
+**Four conflicts this program had to resolve rather than inherit quietly.
+Three are resolved by recorded decisions on 16 September 2026; one remains
+deferred:**
 
-1. **Stage 8's cross-application agent versus D087/D090.** A graph composes capabilities
-   of one plugin. "General Windows agent" here means routing an intent to the
-   right supported plugin, not composing across plugins. Cross-application
-   graphs stay deferred under the row in the table below.
-2. **Stage 6's cloud reasoning versus D017.** D017 is local-only. Opt-in cloud
-   escalation is an amendment to it, and needs a reviewed decision that states
-   what changed — not a new module that routes around it.
-3. **Stage 7's marketplace versus deferred key rotation.** Even a first-party
-   catalog distributes signed bundles to machines that must be able to reject a
-   withdrawn one. The Excel and VS Code bundles already demonstrate the cost of
-   not having this: both are signed by keys that are unavailable here, so
-   neither can be re-signed and both are quarantined (D128).
-4. **Stage 2's application-named agent versus the no-application-code rule.**
-   D087/D089: "Never add application names or capability-specific branches to
-   the core validator or executor", and core "must never import an adapter
-   module or learn an application's object model". A first-party agent *named
-   for an application* is the likeliest place that rule breaks, and the
-   program's own safeguard — the Orchestrator is not an execution-authority
-   shortcut — does not cover it, because it is about authority and this is
-   about where application knowledge may live. Named by the activation review;
-   it was missing from the first three (D137).
+1. **Stage 8's cross-application agent versus D087/D090 — still deferred.** A
+   graph composes capabilities of one plugin. "General Windows agent" here
+   means routing an intent to the right supported plugin, not composing across
+   plugins. Cross-application graphs stay deferred under the row in the table
+   below until a reviewed cross-plugin authority design exists.
+2. **Stage 6's cloud reasoning versus D017 — resolved by D141.** D017 stays
+   the default; connectors, policy-gated cloud escalation and events-only
+   telemetry are an additive, opt-in tier, built only in a reviewed slice.
+3. **Stage 7's marketplace versus deferred key rotation — resolved by D144.**
+   A signed key manifest, a revocation list checked on every catalog load and
+   within D020's ceiling by the authority monitor, and a re-sign procedure
+   with provenance must exist before any bundle is re-keyed. Excel and VS Code
+   stay quarantined until then (D128).
+4. **Stage 2's application-named agent versus the no-application-code rule —
+   resolved by D142.** Agents and Skills are signed, plugin-scoped data; core
+   ships one generic agent executor and no application-named Python. Named by
+   the activation review; it was missing from the first three (D137).
+
+**Added to stage 1 by D143:** Spatial Context v1 — a `SpatialContextReference`
+appended to the brief as bytes, resolved inside the signed plugin, never a
+selector or authority. It is the first item after activation, not part of
+Limited Act v1.
 Stage 0 covers PowerPoint object-model execution plus the PowerPoint `New Slide`
 UIA slice. Excel and VS Code are outside this release boundary under D140. The
 animation catalog, independent lanes, counted campaigns, budget review, and
@@ -527,8 +529,8 @@ activation review returns READY.
 > Company workflow packs, tenant separation, roles/permissions, shared
 > WorkflowSessions, handoff, pre-diagnosed support, private telemetry.
 
-**Status: not started.** Inherits Phase 2's D017 conflict for "private
-telemetry". Tenant separation and roles have no design yet.
+**Status: not started.** "Private telemetry" falls under D141's opt-in
+tier. Tenant separation and roles have no design yet.
 
 ---
 
@@ -581,7 +583,9 @@ compiler), Artifact Intelligence (verification of saved artifacts).
 Multiplayer, Handoff, Dynamic UI, Learning/Skill Tracking, Analytics,
 Enterprise Policy, Agent Orchestration, Critic/Evaluation.
 
-**Blocked by a standing decision:** Telemetry, Sync (D017).
+**Gated by an additive amendment:** Telemetry, Sync, connectors, cloud
+escalation — D141 records the boundary; build only in a reviewed slice at
+stage 6.
 
 ---
 
@@ -592,7 +596,7 @@ Enterprise Policy, Agent Orchestration, Critic/Evaluation.
 | Mouse/keyboard synthesis | D006 — needs its own reviewed amendment |
 | VLM perception tier 3 | Teach-only when it lands; never action authority |
 | Cross-application task graphs | D087/D090 single-plugin boundary |
-| Telemetry, sync, cloud models | D017 local-only |
-| Key rotation and revocation | Deferred until external plugin distribution |
+| Telemetry, sync, cloud models | D017 local-only default; D141 opt-in tier, not yet built |
+| Key rotation and revocation | D144 design required before any re-key or marketplace stage |
 | In-place editing of user files | Needs backup/rollback/recovery decision |
 | Installer, tray, startup, web retrieval | `docs/superpowers/FOLLOWUPS.md` |

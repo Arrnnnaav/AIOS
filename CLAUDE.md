@@ -261,6 +261,16 @@ to any proposal made from it — not its parsed turns and not a normalised
 form. A `Brief` carries no field that could hold a selector, capability,
 parameter or plan; that is a property of the type, not a rule to remember.
 
+A **spatial reference is brief content, never authority (D143).** When
+Spatial Context is built — first item of the phase after activation, not part
+of Limited Act v1 — a `SpatialContextReference` is appended to the brief as
+bytes and hashed with it. It may inform which registered capability and
+which bounded scalars the planner proposes; it is never a selector, target
+identity, coordinate, or action. Resolving a mark to an application object
+runs inside the signed plugin, not core. Circling a control never authorises
+acting on it. Mark pixels stay on the machine unless D141(b) permits
+otherwise.
+
 A `uia_pattern` operation must be verified from LIVE state, never from a
 saved artifact. The artifact verifier reads a file and a UIA effect reaches
 no file until someone saves, so a plugin declaring a UIA backend must also
@@ -311,8 +321,12 @@ bytes, never through a platform-translating text API.
 bundles are not (D128).** Excel is signed by `ghostcursor-release-2026-2` and VS
 Code by `-2026-1`; neither private key is available here, so those two cannot be
 re-signed. Do not re-key them onto `-2026-3` to work around it: that collapses
-three signing identities with no revocation or rotation design, and belongs to
-the marketplace signing decision. Excel therefore remains a feasibility/data
+three signing identities with no revocation or rotation design. **D144 names
+what must exist first:** a signed key manifest, a revocation list that
+`PluginStore` checks on every catalog load and the authority monitor rechecks
+within D020's ceiling, and a re-sign procedure that records the prior key id
+and manifest digest in bundle provenance. Until those are built and reviewed,
+no bundle is re-keyed. Excel therefore remains a feasibility/data
 artifact only, not an active adopted Act surface; its prior live runs do not
 close acceptance. PowerPoint is rebuilt at manifest `28dbaf2d`, but its current
 counted acceptance is open under D139. The active generation advances with
@@ -599,6 +613,12 @@ Re-run `/graphify .` after completing each major build step to keep the graph cu
 
 ## What this project is
 
+**Naming (recorded with D141–D144):** the product is called **Orbyn** from the
+phase after activation, in documents and UI strings. The package, payload
+paths, signed bundle contents and every retained digest stay `ghostcursor`;
+renaming them invalidates the D125 pins and all retained evidence. GhostCursor
+is the historical and code name.
+
 This repo is building **Ghost Cursor**: a real-time, on-screen guide agent for Windows —
 a lightweight always-on desktop app that watches what's on the user's screen, figures out
 the next action toward a stated goal, and shows the user where to click/type via a
@@ -779,7 +799,14 @@ next adopted workflow run against the same app hydrates its compiled steps
 from what was learned before. It is
 written by `ghostcursor/memory/store.py`'s `ObservationStore` to
 `%LOCALAPPDATA%\GhostCursor\kb.sqlite`, and only ever there — no telemetry,
-no network, no cloud sync (D017 in DECISIONS.md). `GHOSTCURSOR_KB_PATH`
+no network, no cloud sync (D017 in DECISIONS.md). **D141 amends D017
+additively:** the local-only default is unchanged and every current test runs
+offline, but a later phase may add three opt-in, separately consented
+capabilities — per-App connectors with a local credential vault, policy-gated
+cloud model escalation with redaction and no screenshots by default, and
+events-not-content telemetry off by default. None is built; none may be built
+outside a reviewed slice at the capability-platform phase; `kb.sqlite` and
+`sessions.sqlite` never sync under any of them. `GHOSTCURSOR_KB_PATH`
 overrides the path, which is how tests and multi-process verification use a
 scratch database instead of the real one. Deleting the file erases the
 knowledge base entirely; the system simply re-learns from scratch on the
@@ -988,6 +1015,16 @@ task graph still grant no permission to execute: every node must pass the
 canonical `authorize_intent()` and fresh `bind_workflow()` boundary immediately
 before it runs. Never add application names or capability-specific branches to
 the core validator or executor.
+
+**Agents and Skills are signed, plugin-scoped data (D142).** An Agent is a
+signed data file naming a goal shape, the Skills it may use, capability IDs
+from one plugin's registry, and requested permissions; a Skill is a signed
+declarative procedure with preconditions, tools, verification and escalation.
+Both are verified through `PluginStore` and scoped to `(plugin_id,
+plugin_version)`. Core ships one generic agent executor and no
+application-named Python; "Deck Agent" is a filename and metadata. Every node
+an agent proposes still passes `authorize_intent()`, fresh binding, per-node
+authorization and independent verification.
 
 **A validated task graph is one frozen proposal epoch, not a renewable lease
 (D090).** `execute_task_graph()` validates every node and edge before the first

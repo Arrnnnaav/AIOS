@@ -6216,3 +6216,191 @@ The owner authorized this ordered program on
 `feature/product-shell-task-graphs`. That amends the branch-scope uncertainty
 recorded against D083; it does not waive protected release, signing, evidence,
 privacy, D018, D025, D032, or D034 gates.
+
+---
+
+## D141 — A consented network tier, additive to D017
+
+**Date:** 16 September 2026
+**Amends:** D017 (local-only: no telemetry, no network, no cloud sync).
+**Status:** owner-directed; recorded before independent D032 read. Nothing in
+this decision is built.
+
+### What D017 was for
+
+D017 was adopted for a single-machine Teach product whose entire value was
+that nothing left the desk. Every rule that cites it — the hermetic lane, the
+evaluation package's read-only construction, the sessions/kb stores never
+syncing — was correct for that product and remains correct for its default.
+
+### What changes
+
+D017's default is unchanged. A fresh install makes no network call; the
+hermetic lane runs offline; Teach and Act authority never depend on a network
+being present. Three capabilities are added, each behind its own explicit,
+revocable, locally stored consent, and each absent until a later phase builds
+it:
+
+1. **App connectors** (API / OAuth / MCP), scoped per App to its declared
+   Observe / Act / Verify / Events / Permissions surface. Credentials live in a
+   local vault and are never placed in a model prompt or a plugin payload.
+2. **Cloud model escalation**, only where a policy permits it: secrets, paths
+   and credentials redacted; screenshots excluded unless separately permitted;
+   context minimised; provider, model and version recorded with the decision.
+   `resolve_model_decision()` and the three-lane model gate still govern any
+   model, local or remote.
+3. **Telemetry**, off by default, events not content. Never a goal, screen
+   text, HWND, PID, path, credential, source, document, clipboard or
+   screenshot. `sessions.sqlite` and `kb.sqlite` never sync.
+
+Enterprise deployment modes this tier must support when built: local-only,
+private cloud, air-gapped, hybrid.
+
+### Why
+
+Connected Apps, the Self-Maintaining APIs product category, a shared Company
+Brain and Multiplayer cannot exist without a network path. Keeping D017 as an
+absolute would mean those phases leave the roadmap; amending it as an additive
+tier keeps the local-only product intact for everyone who wants it.
+
+### What stays
+
+Everything D017 forbids stays forbidden by default. The rule in `CLAUDE.md`
+that the evaluation package never imports the runtime, and D063's
+`resolve_model_decision()` rule, are untouched. The prohibition on
+input-synthesis (D006) is unrelated and unchanged.
+
+### Why this breaks nothing now
+
+No existing code path changes behaviour. Every current test runs offline. The
+tier is gated at the entry to the capability-platform phase in `ROADMAP.md`;
+until a reviewed slice builds one of the three capabilities, this decision is a
+recorded intent and a boundary, not a feature.
+
+---
+
+## D142 — Agents and Skills are signed, plugin-scoped data
+
+**Date:** 16 September 2026
+**Clarifies:** D087, D089 (no application names or capability-specific
+branches in the core validator or executor; core never imports an adapter or
+learns an object model).
+
+### The gap this closes
+
+The activation review at `a1739aa` (D137) named an application-named agent —
+"Deck Agent", "Presentation Agent" — as the likeliest place the
+no-application-code rule breaks, and observed that the agent program's own
+safeguard (the orchestrator is not an execution-authority shortcut) covers
+authority, not where application knowledge may live. `ROADMAP.md` records it
+as conflict 4. This decision resolves it before stage 2 starts.
+
+### The rule
+
+An **Agent** is a signed data file: a goal shape, the Skills it may use,
+references to capability IDs in one plugin's registry, and the permissions it
+requests. A **Skill** is a signed data file: declarative expertise or an
+approved procedure with preconditions, required data, tools, verification
+criteria and escalation conditions. Both live inside a signed plugin bundle or
+a separately signed skill bundle, verified through the same `PluginStore`
+path, and are scoped to `(plugin_id, plugin_version)` like learned
+observations.
+
+Core ships one generic agent executor. It composes only capabilities that are
+registered and active, and every node it proposes still passes
+`authorize_intent()`, a fresh `bind_workflow()`, per-node authorization and
+independent verification. "Deck Agent" is a filename and a metadata string. No
+core module may contain an application name as a branch condition; the
+existing input-synthesis and application-name scans extend to the agent
+executor when it exists.
+
+### What this does not change
+
+Nothing about authority. D087/D090's single-plugin graph boundary stands;
+cross-application agents remain deferred under their own future amendment.
+
+---
+
+## D143 — A spatial reference is brief content, never authority
+
+**Date:** 16 September 2026
+**Clarifies:** D113 (a brief is planning context; its exact bytes are hashed
+and bound to any proposal; it carries no field that could hold a selector,
+capability, parameter or plan).
+
+### What is added
+
+A `SpatialContextReference` — the user's marks (polygon, line, circle, point,
+arrow), the screen region, references to a full-frame and a crop capture,
+plugin-resolved candidate objects with confidence, the accompanying utterance
+and a sensitivity class — is appended to the brief as bytes and hashed with
+it, exactly as a typed turn is. Two marks may carry SOURCE and TARGET roles.
+
+It may inform which registered capability and which bounded scalar parameters
+the planner proposes. It may never be a selector, a target identity, a
+coordinate handed to an adapter, or an action. Resolving a mark to an
+application object ("Slide 4, Shape 12, Chart") runs inside the signed plugin
+that owns the application, not in core, and the resolved object is itself
+context. Circling a control never authorises acting on it; the ordinary chain
+— capability exists, permission, risk, approval, execute, verify — applies
+unchanged.
+
+The reverse direction already exists: D109/D112 govern every pointer the
+runtime draws, and a verification highlight is a presentation, not a claim.
+
+### Privacy
+
+Pixel data captured for a mark stays on the machine. It leaves only under
+D141(b), where screenshots are excluded unless separately permitted; the
+enterprise preference is UIA and plugin semantics over pixels.
+
+### Scheduling
+
+The planning file places this immediately after the core loop. The core loop
+is not activated (D137–D140), so it is the first item of the phase after
+activation, not part of PowerPoint Limited Act v1.
+
+---
+
+## D144 — Signing identity: rotation and revocation before any re-key
+
+**Date:** 16 September 2026
+**Unblocks:** D128 (Excel and VS Code bundles signed by unavailable keys;
+re-keying onto `ghostcursor-release-2026-3` refused because it collapses
+three signing identities with no rotation or revocation design).
+
+### The rule
+
+Before the first-party marketplace stage, and before any bundle is re-signed
+under a different key, the following must exist and be reviewed:
+
+- a signed **key manifest** listing key ids, validity windows and successor
+  keys;
+- a **revocation list** that `PluginStore` checks on every catalog load and
+  that the runtime authority monitor rechecks within D020's 0.5 s ceiling, so
+  a withdrawn key withdraws its bundles from a running tour the way a disabled
+  plugin does;
+- a **re-sign procedure** that records the previous key id and the previous
+  manifest digest in the bundle's provenance, so the lineage of a re-keyed
+  bundle is readable from the bundle alone.
+
+Only then may Excel and VS Code be re-keyed, deliberately, each with a fresh
+D032 review of its candidate bytes and its own counted campaign. Until then
+they remain installed, disabled and unrepresented as Act surfaces (D128,
+D130, D140).
+
+### Why now
+
+A first-party catalog distributes signed bundles to machines that must be able
+to reject a withdrawn one. The Excel and VS Code quarantine is the measured
+cost of not having this: two working plugins that cannot be touched.
+
+---
+
+## Note recorded with D141–D144 — the product name
+
+The product is called **Orbyn** from the phase after activation onward, in
+documents and UI strings. The package, payload paths, signed bundle contents and
+every retained digest remain `ghostcursor`: renaming them would invalidate the
+LF-canonical pins (D125), the rebuilt manifest and every retained evidence
+record. GhostCursor is the historical and code name; Orbyn is the product name.
