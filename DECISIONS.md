@@ -6251,7 +6251,10 @@ it:
    model, local or remote.
 3. **Telemetry**, off by default, events not content. Never a goal, screen
    text, HWND, PID, path, credential, source, document, clipboard or
-   screenshot. `sessions.sqlite` and `kb.sqlite` never sync.
+   screenshot. `sessions.sqlite` and `kb.sqlite` never sync. **Telemetry
+   remains blocked by D017 until a reviewed slice at the capability-platform
+   phase enacts the opt-in, default-off, events-only form**; this decision
+   records the boundary, not permission to emit anything today.
 
 Enterprise deployment modes this tier must support when built: local-only,
 private cloud, air-gapped, hybrid.
@@ -6404,3 +6407,21 @@ documents and UI strings. The package, payload paths, signed bundle contents and
 every retained digest remain `ghostcursor`: renaming them would invalidate the
 LF-canonical pins (D125), the rebuilt manifest and every retained evidence
 record. GhostCursor is the historical and code name; Orbyn is the product name.
+
+### Review record, 16 September 2026
+
+An owner-side read of D141–D144 returned READY, with one clarification to
+D141 (the telemetry sentence above, now incorporated). Two limits of that read
+are recorded so nobody later mistakes it for more than it was:
+
+- It judged D143 and D144 "already codified in `CLAUDE.md`". Those `CLAUDE.md`
+  paragraphs were written by the same author in the same commit (`3bdeb97`),
+  so the match is the draft agreeing with itself, not an independent source.
+- It cited a `CLAUDE.md` line saying telemetry is "blocked by D017" that does
+  not exist in `CLAUDE.md`; the phrase is from the author's planning notes.
+
+The substantive checks — D141 additive to D017 with no code path changed,
+D142 consistent with D087/D089 and the task-decomposition schema, D143
+consistent with the `Brief` type property, D144 consistent with D128/D129/D130
+— stand. A cold reader who did not participate in this conversation has not
+yet read these four decisions.
