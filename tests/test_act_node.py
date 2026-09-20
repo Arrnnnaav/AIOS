@@ -50,6 +50,8 @@ def _spec(backend="uia_pattern", **overrides):
         "draws_a_pointer": backend != "object_model",
         "identity": _identity_policy() if backend != "object_model" else None,
         "uia_pattern": "Invoke" if backend != "object_model" else None,
+        "confirmation_round_trip_deadline_ms": 1280 if backend != "object_model" else None,
+        "confirmation_to_request_deadline_ms": 32 if backend != "object_model" else None,
     }
     values.update(overrides)
     return SimpleNamespace(**values)
@@ -168,7 +170,7 @@ def _run(
         calls["authorized"].append(facts)
         return SimpleNamespace(token="t")
 
-    def dispatch(token, confirmed):
+    def dispatch(token, confirmed, _confirmed_at=None):
         calls["dispatched"].append((token, confirmed))
         if dispatch_spy is not None:
             dispatch_spy.append(token)
@@ -276,7 +278,7 @@ def test_a_receipt_for_another_request_does_not_authorize_this_node():
             observe=lambda mode: _observation(),
             present=present,
             authorize=lambda facts: None,
-            dispatch=lambda token, confirmed: pytest.fail("must not dispatch"),
+            dispatch=lambda token, confirmed, confirmed_at: pytest.fail("must not dispatch"),
             verify=lambda node, baseline: True,
             clock=clock,
         )
@@ -325,6 +327,31 @@ def test_a_moved_target_identity_refuses_before_dispatch():
         )
 
     assert raised.value.code is RefusalCode.TARGET_IDENTITY_MISMATCH
+
+
+def test_confirmation_to_request_deadline_refuses_before_dispatch():
+    dispatched = []
+    spec = _spec(
+        confirmation_to_request_deadline_ms=1,
+        confirmation_round_trip_deadline_ms=500,
+    )
+
+    with pytest.raises(NodeRefused) as raised:
+        _run(spec, dispatch_spy=dispatched)
+
+    assert raised.value.code is RefusalCode.PRECONDITION_STALE
+    assert dispatched == []
+
+
+def test_uia_node_without_signed_timing_policy_refuses_before_observation():
+    spec = _spec()
+    del spec.confirmation_round_trip_deadline_ms
+    del spec.confirmation_to_request_deadline_ms
+
+    with pytest.raises(NodeRefused) as raised:
+        _run(spec)
+
+    assert raised.value.code is RefusalCode.PRECONDITION_CONFIRMATION_TIMEOUT
 
 
 def test_a_coordinate_space_change_after_the_displayed_cue_refuses_dispatch():
@@ -416,7 +443,7 @@ def test_the_token_is_minted_only_after_the_identity_check_passes():
                 req, sink=sink, clock=clock
             ),
             authorize=authorize,
-            dispatch=lambda token, confirmed: pytest.fail("must not dispatch"),
+            dispatch=lambda token, confirmed, confirmed_at: pytest.fail("must not dispatch"),
             verify=lambda node, baseline: True,
             clock=clock,
         )
@@ -516,7 +543,7 @@ def test_a_pause_arriving_during_authorization_refuses_before_dispatch():
                 req, sink=sink, clock=clock
             ),
             authorize=pause_during_authorization,
-            dispatch=lambda token, confirmed: dispatched.append(token),
+            dispatch=lambda token, confirmed, confirmed_at: dispatched.append(token),
             verify=lambda node, baseline: True,
             clock=clock,
             should_continue=lambda: True,

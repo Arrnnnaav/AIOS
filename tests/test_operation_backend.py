@@ -34,6 +34,11 @@ def _uia(**overrides):
         "selector_sha256": SELECTOR,
     }
     block.update(overrides)
+    if block["pattern"] != "DoDefaultAction":
+        block.update(
+            confirmation_round_trip_deadline_ms=1280,
+            confirmation_to_request_deadline_ms=32,
+        )
     return block
 
 

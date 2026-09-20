@@ -88,6 +88,7 @@ class FakeVerifier:
         self._drift_on = drift_on
         self._fails = fails
         self.seen: list[str] = []
+        self.timeouts: list[float] = []
 
     def verify(
         self,
@@ -102,6 +103,7 @@ class FakeVerifier:
         postconditions=None,
     ):
         self.calls += 1
+        self.timeouts.append(timeout_s)
         if self._empty_on is not None and self.calls >= self._empty_on:
             # How a real verifier reports a failed read: exit 0, outcome
             # "refused", nothing observed. It does NOT raise.
@@ -165,6 +167,8 @@ def _spec(digest, *, control_type="Button", pattern="Invoke", identity=True):
         identity=policy,
         draws_a_pointer=True,
         postconditions=("slide.count.increased_by_one",),
+        confirmation_round_trip_deadline_ms=1280,
+        confirmation_to_request_deadline_ms=32,
     )
 
 
@@ -450,6 +454,33 @@ def test_the_dispatch_goes_to_the_selector_named_control(tmp_path):
         session.dispatch(_node(), _token(), _confirmed())
     # No exception means the adapter reported completed for that name; the
     # name itself is asserted through the observe path above.
+
+
+def test_confirm_before_uses_the_signed_round_trip_deadline(tmp_path):
+    digest = _payload(tmp_path)
+    verifier = FakeVerifier()
+    spec = _spec(digest)
+    with _host(tmp_path) as host:
+        session = _session(
+            tmp_path,
+            host,
+            verifier=verifier,
+            spec=spec,
+            verify_timeout_s=10.0,
+        )
+        session.observe(_node(), "confirm_before")
+
+    assert verifier.timeouts == [1.28]
+
+
+def test_dispatch_refuses_when_request_window_expires_before_adapter_write(tmp_path):
+    digest = _payload(tmp_path)
+    with _host(tmp_path) as host:
+        times = iter((0.0, 100.0))
+        session = _session(tmp_path, host, digest=digest, clock=lambda: next(times))
+        with pytest.raises(UiaSessionError, match="stale"):
+            session.dispatch(_node(), _token(), _confirmed(), 0.0)
+        assert not getattr(host, "dispatched", [])
 
 
 def test_a_dispatch_without_a_confirmation_is_refused(tmp_path):

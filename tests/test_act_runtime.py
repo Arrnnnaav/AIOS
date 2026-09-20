@@ -673,7 +673,7 @@ def _fake_session(*, receipts=True, record=None):
             match_count=1,
         ),
         present=present,
-        dispatch=lambda node, token, confirmed: record["dispatched"].append(
+        dispatch=lambda node, token, confirmed, confirmed_at=None: record["dispatched"].append(
             node.node_id
         ),
         policy=ReceiptPolicy(first_paint_deadline_ms=500, completion_deadline_ms=800),

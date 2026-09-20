@@ -6425,3 +6425,23 @@ D142 consistent with D087/D089 and the task-decomposition schema, D143
 consistent with the `Brief` type property, D144 consistent with D128/D129/D130
 — stand. A cold reader who did not participate in this conversation has not
 yet read these four decisions.
+
+## D145 — Confirmation timing is signed policy, measured and enforced
+
+**Date:** 21 September 2026
+
+The confirmation-budget slice is independently reviewed and its focused test
+lane is green. The measured PowerPoint UIA evidence derives a 1280 ms
+confirmation round-trip deadline and a 32 ms confirmation-to-request deadline.
+Those values are now signed operation-policy fields, not host defaults.
+
+The runtime refuses a UIA node with missing timing policy, bounds the
+confirm-before verifier and control read by the signed round-trip deadline,
+and checks the confirmation-to-request interval both before dispatch and again
+immediately before the adapter request write. LegacyIAccessible keeps its
+separate `DoDefaultAction` contract and does not inherit UIA timing fields.
+
+This closes only the derived-budget review gate. It does not make the current
+bundle or the retained diagnostic campaigns acceptance evidence: the changed
+operation bytes require a fresh signed bundle, fresh counted manager campaign,
+and the remaining animation, desktop-lane, UIA-slice, and activation reviews.

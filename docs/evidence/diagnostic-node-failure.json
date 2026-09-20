@@ -1,0 +1,57 @@
+{
+  "confirmation_timing": {
+    "confirmation_round_trip_ms": 547.0,
+    "confirmation_to_request_write_ms": 0.0
+  },
+  "elapsed_s": 2.188,
+  "executable": "C:\\Program Files\\Microsoft Office\\root\\Office16\\POWERPNT.EXE",
+  "executable_version": "16.0.20326.20132",
+  "failure": null,
+  "identity": {
+    "evidence": {
+      "automation_id": "",
+      "native_window_handle": null
+    },
+    "identity_mode": "runtime_id_required",
+    "required": {
+      "control_type": "Button",
+      "name": "New Slide",
+      "runtime_id": [
+        42,
+        7605190,
+        4,
+        1271456352,
+        510
+      ]
+    },
+    "selector_id": "powerpoint.new-slide",
+    "selector_sha256": "0721bf8cb76fa343bdccf3c13a8dca5364fc4d2a62f7b3e9a6a73178bd78445f"
+  },
+  "lifecycle": [
+    "preparing",
+    "presenting",
+    "confirming",
+    "executing",
+    "verifying",
+    "verified"
+  ],
+  "operation": "powerpoint.new_slide_uia",
+  "receipts": [
+    [
+      "geometry_started",
+      319684125.0
+    ],
+    [
+      "presentation_completed",
+      319684359.0
+    ]
+  ],
+  "selector": {
+    "control_type": "Button",
+    "name": "New Slide",
+    "sha256": "0721bf8cb76fa343bdccf3c13a8dca5364fc4d2a62f7b3e9a6a73178bd78445f"
+  },
+  "target_ref": "window-453d6613",
+  "target_scope": "dd276dd4f951",
+  "verified": true
+}

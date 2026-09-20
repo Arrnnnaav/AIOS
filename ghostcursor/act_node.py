@@ -135,7 +135,7 @@ def execute_node(
         Sequence[Receipt],
     ],
     authorize: Callable[[Mapping[str, Any]], Any],
-    dispatch: Callable[[Any, Observation | None], Any],
+    dispatch: Callable[[Any, Observation | None, float | None], Any],
     verify: Callable[[Any, Observation | None], bool],
     clock: Callable[[], float],
     on_state: Callable[[LifecycleState], None] | None = None,
@@ -180,6 +180,17 @@ def execute_node(
         raise NodeRefused(
             RefusalCode.UNSUPPORTED_ACTION_SURFACE,
             f"operation backend {spec.backend!r} is unknown",
+        )
+    if spec.backend == "uia_pattern" and any(
+        getattr(spec, name, None) is None
+        for name in (
+            "confirmation_round_trip_deadline_ms",
+            "confirmation_to_request_deadline_ms",
+        )
+    ):
+        raise NodeRefused(
+            RefusalCode.PRECONDITION_CONFIRMATION_TIMEOUT,
+            "a UIA operation has no complete signed timing policy",
         )
     states: list[LifecycleState] = []
 
@@ -242,10 +253,12 @@ def execute_node(
     # --- confirm -----------------------------------------------------------
     identity_record = None
     confirmed = None
+    confirmation_completed_at = None
     if spec.draws_a_pointer:
         stopped_here("the confirmation")
         enter(LifecycleState.CONFIRMING)
         confirmed = observe("confirm_before")
+        confirmation_completed_at = clock()
         if confirmed.semantic != baseline.semantic:
             raise NodeRefused(
                 RefusalCode.PRECONDITION_DRIFTED,
@@ -301,13 +314,28 @@ def execute_node(
             "confirmation_sha256": confirmed.semantic_sha256 if confirmed else None,
         }
     )
+    request_deadline_ms = getattr(
+        spec, "confirmation_to_request_deadline_ms", None
+    )
+    if confirmation_completed_at is not None and request_deadline_ms is not None:
+        if clock() - confirmation_completed_at > request_deadline_ms:
+            raise NodeRefused(
+                RefusalCode.PRECONDITION_STALE,
+                "the confirmed target became stale before dispatch",
+            )
     if dispatch_permitted is not None and not dispatch_permitted():
         raise NodeRefused(
             RefusalCode.OPERATOR_STOPPED,
             "the operator paused or stopped the run after authorization "
             "and before dispatch",
         )
-    dispatch(token, confirmed)
+    if confirmation_completed_at is not None and request_deadline_ms is not None:
+        if clock() - confirmation_completed_at > request_deadline_ms:
+            raise NodeRefused(
+                RefusalCode.PRECONDITION_STALE,
+                "the confirmed target became stale before dispatch",
+            )
+    dispatch(token, confirmed, confirmation_completed_at)
 
     # --- verify ------------------------------------------------------------
     enter(LifecycleState.VERIFYING)

@@ -422,9 +422,9 @@ def main() -> int:
                         f"{session_id}:live-001".encode()
                     ).hexdigest()
                 ),
-                dispatch=lambda token, confirmed: (
+                dispatch=lambda token, confirmed, confirmed_at: (
                     dispatched.__setitem__("count", dispatched["count"] + 1),
-                    session.dispatch(node, token, confirmed),
+                    session.dispatch(node, token, confirmed, confirmed_at),
                 )[1],
                 verify=lambda _node, baseline: _verify(
                     VerifierHost(verifier_descriptor),

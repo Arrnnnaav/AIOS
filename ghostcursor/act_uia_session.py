@@ -30,6 +30,7 @@ check being real, and Phase E measures it rather than assuming it is small.
 from __future__ import annotations
 
 import threading
+import time
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
@@ -87,8 +88,24 @@ def build_uia_session(
     dispatch is instead bounded by its own timeout.
     """
 
+    session_clock = clock or (lambda: time.monotonic() * 1000.0)
+
     def observe(node, mode: str) -> Observation:
         spec = operation_for(node)
+        verifier_timeout_s = verify_timeout_s
+        confirmation_started_at = (
+            session_clock()
+            if mode == "confirm_before" and spec.backend == "uia_pattern"
+            else None
+        )
+        if mode == "confirm_before" and spec.backend == "uia_pattern":
+            deadline_ms = getattr(spec, "confirmation_round_trip_deadline_ms", None)
+            if deadline_ms is None:
+                raise UiaSessionError(
+                    "the UIA operation has no signed confirmation deadline",
+                    RefusalCode.PRECONDITION_CONFIRMATION_TIMEOUT,
+                )
+            verifier_timeout_s = deadline_ms / 1000.0
         # Re-resolved on EVERY observation, not cached from the first. The
         # payload is on disk and the selector file could be replaced between
         # the two reads; a cached name would mean the confirmation resolved a
@@ -111,7 +128,7 @@ def build_uia_session(
                 validation_sha256=validation_sha256,
                 output_path=output_path,
                 target=target,
-                timeout_s=verify_timeout_s,
+                timeout_s=verifier_timeout_s,
                 cancel_event=cancel_event,
                 baseline=None,
                 postconditions=spec.postconditions,
@@ -121,6 +138,14 @@ def build_uia_session(
                 f"the read-only verifier could not answer for {mode}: {exc}",
                 RefusalCode.PRECONDITION_DRIFTED,
             ) from None
+
+        if confirmation_started_at is not None:
+            deadline_ms = spec.confirmation_round_trip_deadline_ms
+            if session_clock() - confirmation_started_at > deadline_ms:
+                raise UiaSessionError(
+                    "the confirmation read exceeded its signed deadline",
+                    RefusalCode.PRECONDITION_CONFIRMATION_TIMEOUT,
+                )
 
         # A verifier that CANNOT READ reports it the normal way: exit 0,
         # `outcome="refused"`, `observed={}`. `VerifierHost.verify` accepts
@@ -140,11 +165,20 @@ def build_uia_session(
                 RefusalCode.PRECONDITION_DRIFTED,
             )
 
+        control_timeout_s = observe_timeout_s
+        if confirmation_started_at is not None:
+            remaining_ms = deadline_ms - (session_clock() - confirmation_started_at)
+            if remaining_ms <= 0:
+                raise UiaSessionError(
+                    "the confirmation read exceeded its signed deadline",
+                    RefusalCode.PRECONDITION_CONFIRMATION_TIMEOUT,
+                )
+            control_timeout_s = min(control_timeout_s, remaining_ms / 1000.0)
         try:
             seen = host.observe_control(
                 selector.control_type,
                 selector.name,
-                timeout_s=observe_timeout_s,
+                timeout_s=control_timeout_s,
                 cancel_event=cancel_event,
             )
         except AdapterProtocolError as exc:
@@ -152,6 +186,13 @@ def build_uia_session(
                 f"the control could not be read for {mode}: {exc}",
                 RefusalCode.TARGET_IDENTITY_MISMATCH,
             ) from None
+        if confirmation_started_at is not None and (
+            session_clock() - confirmation_started_at > deadline_ms
+        ):
+            raise UiaSessionError(
+                "the confirmation read exceeded its signed deadline",
+                RefusalCode.PRECONDITION_CONFIRMATION_TIMEOUT,
+            )
 
         return Observation(
             semantic=answer.observed,
@@ -161,8 +202,30 @@ def build_uia_session(
             match_count=1,
         )
 
-    def dispatch(node, token, confirmed: Observation | None) -> None:
+    def dispatch(
+        node,
+        token,
+        confirmed: Observation | None,
+        confirmation_completed_at: float | None = None,
+    ) -> None:
         spec = operation_for(node)
+        deadline_ms = (
+            spec.confirmation_to_request_deadline_ms
+            if spec.backend == "uia_pattern"
+            else None
+        )
+        if spec.backend == "uia_pattern" and deadline_ms is None:
+            raise UiaSessionError(
+                "the UIA operation has no signed dispatch deadline",
+                RefusalCode.PRECONDITION_STALE,
+            )
+        if confirmation_completed_at is not None and deadline_ms is not None and (
+            session_clock() - confirmation_completed_at > deadline_ms
+        ):
+            raise UiaSessionError(
+                "the confirmed target became stale before dispatch",
+                RefusalCode.PRECONDITION_STALE,
+            )
         if token is None or not getattr(token, "authorization_sha256", ""):
             # The authorization core minted for THIS node, or nothing. An
             # earlier version ignored the token and sent a digest computed by
@@ -201,6 +264,13 @@ def build_uia_session(
         )
         if reasons:
             raise UiaSessionError("; ".join(reasons), RefusalCode.TARGET_IDENTITY_MISMATCH)
+        if confirmation_completed_at is not None and deadline_ms is not None and (
+            session_clock() - confirmation_completed_at > deadline_ms
+        ):
+            raise UiaSessionError(
+                "the confirmed target became stale before the adapter request",
+                RefusalCode.PRECONDITION_STALE,
+            )
         response = host.dispatch_pattern(
             selector.control_type,
             selector.name,

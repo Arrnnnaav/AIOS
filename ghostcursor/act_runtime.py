@@ -196,7 +196,7 @@ class UiaNodeSession:
         Sequence[Receipt],
     ]
     #: Dispatches the pattern on the control that was just compared.
-    dispatch: Callable[[object, object, Observation], None]
+    dispatch: Callable[[object, object, float | None], None]
     #: NOTE: this type deliberately has no `run` method. An earlier version
     #: had one, and a caller could have overridden it to return a verified
     #: outcome without ever calling the verifier -- the same bypass shape a
@@ -852,8 +852,8 @@ def _execute_approved_graph(
                         observe=lambda mode: uia_session.observe(node, mode),
                         present=uia_session.present,
                         authorize=authorize_observed,
-                        dispatch=lambda token, confirmed: uia_session.dispatch(
-                            node, token, confirmed
+                        dispatch=lambda token, confirmed, confirmed_at: uia_session.dispatch(
+                            node, token, confirmed, confirmed_at
                         ),
                         verify=lambda target, baseline: verify(
                             target, operation, baseline, approval

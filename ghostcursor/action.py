@@ -131,6 +131,9 @@ class OperationSpec:
     #: control to hold.
     uia_pattern: str | None = None
     identity: "IdentityPolicy | None" = None
+    #: Signed timing policy for a UIA confirmation boundary.
+    confirmation_round_trip_deadline_ms: int | None = None
+    confirmation_to_request_deadline_ms: int | None = None
 
     @property
     def draws_a_pointer(self) -> bool:
@@ -306,6 +309,17 @@ def _parse_uia_block(operation_id: str, uia: object, backend: str):
 
     from ghostcursor.uia_identity import IdentityPolicy, IdentityPolicyError
 
+    if (
+        backend == "legacy_iaccessible"
+        and isinstance(uia, dict)
+        and "pattern" in uia
+        and uia["pattern"] != "DoDefaultAction"
+    ):
+        _reject(
+            ActionValidationCode.INVALID_REGISTRY,
+            f"operation {operation_id!r} legacy backend must declare DoDefaultAction",
+        )
+
     expected = {
         "control_type",
         "evidence_identity_fields",
@@ -315,6 +329,11 @@ def _parse_uia_block(operation_id: str, uia: object, backend: str):
         "selector_id",
         "selector_sha256",
     }
+    if backend == "uia_pattern":
+        expected |= {
+            "confirmation_round_trip_deadline_ms",
+            "confirmation_to_request_deadline_ms",
+        }
     if not isinstance(uia, dict) or set(uia) != expected:
         _reject(
             ActionValidationCode.INVALID_REGISTRY,
@@ -335,6 +354,18 @@ def _parse_uia_block(operation_id: str, uia: object, backend: str):
             ActionValidationCode.INVALID_REGISTRY,
             f"operation {operation_id!r} pattern {pattern!r} is not a "
             "dispatchable UIA pattern",
+        )
+    deadlines = (
+        (uia["confirmation_round_trip_deadline_ms"],
+         uia["confirmation_to_request_deadline_ms"])
+        if backend == "uia_pattern" else (None, None)
+    )
+    if backend == "uia_pattern" and any(
+        type(value) is not int or not 1 <= value <= 120_000 for value in deadlines
+    ):
+        _reject(
+            ActionValidationCode.INVALID_REGISTRY,
+            f"operation {operation_id!r} UIA timing policy is invalid",
         )
     for label in ("required_identity_fields", "evidence_identity_fields"):
         if not isinstance(uia[label], list) or any(
@@ -359,7 +390,7 @@ def _parse_uia_block(operation_id: str, uia: object, backend: str):
             ActionValidationCode.INVALID_REGISTRY,
             f"operation {operation_id!r} identity policy is invalid: {exc}",
         )
-    return pattern, identity
+    return pattern, identity, deadlines
 
 def load_operation_registry(
     raw: bytes,
@@ -535,8 +566,17 @@ def load_operation_registry(
                     "declares a uia block",
                 )
             uia_pattern, identity = None, None
+            confirmation_round_trip_deadline_ms = None
+            confirmation_to_request_deadline_ms = None
         else:
-            uia_pattern, identity = _parse_uia_block(operation_id, uia, backend)
+            (
+                uia_pattern,
+                identity,
+                (
+                    confirmation_round_trip_deadline_ms,
+                    confirmation_to_request_deadline_ms,
+                ),
+            ) = _parse_uia_block(operation_id, uia, backend)
 
         timeout_s = item["timeout_s"]
         if type(timeout_s) not in {int, float} or not 0.1 <= float(timeout_s) <= 120.0:
@@ -561,6 +601,8 @@ def load_operation_registry(
             safe_to_repeat=item["safe_to_repeat"],
             effect_key_fields=tuple(effect_fields),
             timeout_s=float(timeout_s),
+            confirmation_round_trip_deadline_ms=confirmation_round_trip_deadline_ms,
+            confirmation_to_request_deadline_ms=confirmation_to_request_deadline_ms,
         )
 
     digest = hashlib.sha256(raw).hexdigest()

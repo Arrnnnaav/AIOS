@@ -388,7 +388,7 @@ campaigns as diagnostic. The r5 and r1 transcripts stay uncitable.
 | UIA slice `add-slide-uia-v1` | independent D032 review, externally signed bytes, its own counted campaign |
 | Animation-catalog campaign | run it; it has never been counted |
 | Independent lane runs | each lane green on its own, per D025 |
-| D032 review of the derived budgets | the receipt deadlines are measured; the review of the derivation is not done |
+| D032 review of the derived budgets | READY for the confirmation-policy slice; see D145. The final activation review remains separate. |
 | D032 activation review | **NOT READY** at the current independent review of `63cd2b5`: fresh counted evidence and the remaining release/desktop gates are still absent |
 | Semantic PowerPoint capabilities | activation review READY |
 | Agent / skills / marketplace program | activation review READY, then its own phase entries here |

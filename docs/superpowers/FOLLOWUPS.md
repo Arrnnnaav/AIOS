@@ -1073,14 +1073,12 @@ D032 review at `63c5ca5` independently reproduced the hashes, counts, render,
 arithmetic and runtime wiring, killed both omission mutations, and returned
 READY. The receipt-deadline gate is closed; that verdict did not close Act.
 
-What remains open is the confirmation-to-request
-budget: the diagnostic now records the verifier/control round trip and the
-interval from confirmation return to the actual successful UIA request write.
-`ghostcursor.devtools.confirmation_budget` now orchestrates serial fresh
-processes of that diagnostic under one campaign scope, requires explicit
-acknowledgement that every successful sample adds a real slide, and retains the
-first failure rather than dropping it. It is measurement machinery only until
-independently reviewed; no retained sample set or production policy exists yet.
+The confirmation-to-request budget is now measured and reviewed in the
+separate evidence record `docs/evidence/act-confirmation-budget.md`. The
+retained samples derive 1280 ms for confirmation round-trip and 32 ms for the
+confirmation-to-request interval. D145 records the independent review and the
+runtime enforcement. This closes the budget-review gate, but not bundle
+re-signing, counted acceptance, or final activation.
 
 
 ## The D032 activation review remains open, and it gates everything
