@@ -611,6 +611,40 @@ cost dramatically — navigate the graph, don't grep raw files.
 Re-run `/graphify .` after completing each major build step to keep the graph current.
 
 
+## Product plan and project boundaries
+
+### Orbyn product plan and separate Spatial project
+
+The forward product plan is indexed by `docs/orbyn-plan/README.md`; its MVP
+definition is `docs/orbyn-plan/MVP.md`, and implementation design is divided
+among the linked Mega Phase files. Self-maintaining software is a first-class
+track at `docs/orbyn-plan/mp8-self-maintaining-software.md`, not a subsection
+of a later phase (D148), and is not sequenced behind Spatial, Brain, Act
+activation, or the marketplace. These documents describe desired future work;
+they do not change current behavior, status, or authority. `ROADMAP.md` remains
+the operational phase order/status, `DECISIONS.md` records accepted policy,
+`FLOW.md` describes current call paths, and this file remains the current
+mandatory rule set. Do not mark work complete from the plan alone.
+
+Spatial is a separate project at `D:\PROJECTS\Spatial`. It must be built,
+tested, and independently reviewed as its own application before Orbyn
+integration. Do not merge its source tree into AIOS or modify/reset its working
+tree from an AIOS task. While Act activation is not READY, standalone Spatial,
+read-only evaluation, and documentation/design that does not wire manager
+Ideate/Plan or semantic app workflows may proceed; downstream manager work is
+gated. Following a READY activation review, Spatial Context is the first item
+of ROADMAP Stage 1 under D143. Integration is a typed `SpatialContextReference`
+inside the Brief, never selector/target/coordinate/authority or an Act shortcut.
+
+**D147 (D141-R2) supersedes D141's local-only default for reasoning during
+the trial period**, owner-approved 24 September 2026 with its independent D032
+review still outstanding. Cloud provider reasoning may be the default and is
+no longer Stage 6-gated; side-effecting connectors still are. The
+untrusted-content
+boundary must precede every model-facing DOM, ARIA, PDF, OCR, search, or app
+content path. Replay/evaluation starts with each phase; it is not deferred to
+OrbynBench.
+
 ## What this project is
 
 **Naming (recorded with D141–D144):** the product is called **Orbyn** from the
@@ -799,14 +833,24 @@ next adopted workflow run against the same app hydrates its compiled steps
 from what was learned before. It is
 written by `ghostcursor/memory/store.py`'s `ObservationStore` to
 `%LOCALAPPDATA%\GhostCursor\kb.sqlite`, and only ever there — no telemetry,
-no network, no cloud sync (D017 in DECISIONS.md). **D141 amends D017
-additively:** the local-only default is unchanged and every current test runs
-offline, but a later phase may add three opt-in, separately consented
-capabilities — per-App connectors with a local credential vault, policy-gated
-cloud model escalation with redaction and no screenshots by default, and
-events-not-content telemetry off by default. None is built; none may be built
-outside a reviewed slice at the capability-platform phase; `kb.sqlite` and
-`sessions.sqlite` never sync under any of them. `GHOSTCURSOR_KB_PATH`
+no network, no cloud sync (D017 in DECISIONS.md). **D141 amended D017
+additively, and D147 (D141-R2) moved the default for the trial period:** a
+configured cloud provider may be the default System-One/System-Two reasoning
+provider, and cloud reasoning is no longer gated on ROADMAP Stage 6 or on a
+per-session consent step. Local execution stays a supported, tested
+configuration — a path that only works with a cloud key is a defect — so the
+later shift back to local remains a configuration change. What did NOT move:
+cloud reasoning is never execution authority; provider failure never enables a
+fallback execution path; no credentials, keys, raw HWND/PID, selectors,
+executable paths or verifier readings leave the device; images leave only
+under the configured privacy policy; provider responses are not durably
+promoted to memory; untrusted content stays untrusted and still requires the
+Untrusted Observation Boundary before reaching any model; telemetry stays off
+by default and events-not-content; `kb.sqlite` and `sessions.sqlite` never
+sync. **Connectors that cause external side effects did not move** — they keep
+their own scoped-token, vault, audit, revocation and approval gates (D144).
+D147 is owner-approved but its independent D032 review is outstanding; no
+phase may be marked complete on it. `GHOSTCURSOR_KB_PATH`
 overrides the path, which is how tests and multi-process verification use a
 scratch database instead of the real one. Deleting the file erases the
 knowledge base entirely; the system simply re-learns from scratch on the

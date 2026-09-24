@@ -6445,3 +6445,195 @@ This closes only the derived-budget review gate. It does not make the current
 bundle or the retained diagnostic campaigns acceptance evidence: the changed
 operation bytes require a fresh signed bundle, fresh counted manager campaign,
 and the remaining animation, desktop-lane, UIA-slice, and activation reviews.
+
+## D146 — Orbyn plan set and independent Spatial-first sequence
+
+**Date:** 24 September 2026
+**Status:** Owner-directed product-planning baseline; the plan set remains a
+draft until its D032 review is READY. This entry does not claim implementation
+or acceptance evidence.
+
+The forward product plan is maintained as a tracker plus separate MVP and
+Mega-Phase documents under `docs/orbyn-plan/`, rather than as one monolithic
+implementation plan. The plan groups 21 detailed phases into eight Mega
+Phases, treats `EvidenceGraph` and `ResearchTrace` as shared versioned
+contracts, and requires replay/evaluation continuously rather than starting
+only in the OrbynBench phase. The Untrusted Observation Boundary must exist
+before any web/document/UI content is passed to a model.
+
+Spatial is a separate project at `D:\PROJECTS\Spatial`. It is developed,
+evaluated, and reviewed in that project first. It is not to be copied into the
+AIOS source tree as part of standalone development. After the independent Act
+activation review returns READY, Orbyn may integrate Spatial as the first item
+of ROADMAP Stage 1 under D143, using a typed `SpatialContextReference` as Brief
+context only. The reference cannot carry selector, target, coordinate,
+permission, or execution authority. The separate Spatial working tree is not
+in scope for AIOS cleanup unless the owner explicitly scopes it.
+
+The allowed pre-activation work remains narrow: standalone Spatial,
+read-only evaluation, and documentation/design that does not wire manager
+Ideate/Plan, Orbyn Brief integration, or semantic app workflows. A counted Act
+campaign requires the independent pre-campaign D032 READY verdict first; the
+final activation review is a later, separate gate.
+
+D141 and the current ROADMAP remain authoritative: local-only is the default,
+and cloud/network reasoning is scheduled in Stage 6 under separately
+consented policy. NVIDIA NIM as the MVP default is a requested future product
+direction, not an adopted runtime-policy change. Moving cloud reasoning into
+an earlier stage or changing its default requires both an owner-approved,
+independently reviewed D141-R2 and a ROADMAP sequence amendment. This decision
+does not itself grant either approval or alter D141.
+
+**Review note:** the first independent read of the plan returned NOT READY on
+three sequencing gaps: the tracker did not enforce pre-activation limits for
+Phases 5–8, Phase 6 did not distinguish standalone Spatial from D143
+integration, and cloud provider work lacked an explicit Stage 6 implementation
+gate. The plan documents were amended to state these boundaries; a fresh D032
+review is required before treating this planning baseline as READY.
+
+## D147 — D141-R2: cloud-first reasoning during the trial period
+
+**Date:** 24 September 2026
+**Amends:** D141 (which itself amended D017). Resolves the conflict D146
+recorded between the requested product direction and current policy.
+**Status:** **Owner-approved on 24 September 2026.** The independent D032
+review required by D141/D146 for this amendment has **not** been performed.
+Until it is, this decision is an approved policy direction that governs new
+work; it does not retroactively validate existing behaviour, and no phase may
+be marked complete on it.
+
+### What changed and why
+
+D141 kept local-only as the default and placed cloud reasoning in ROADMAP
+Stage 6 behind separate consent. That was correct for a product whose entire
+value was that nothing left the desk. It is the wrong default for a product
+still being built: hosted APIs are faster to develop against, have no VRAM
+ceiling, and remove the local-model quality floor as a variable while the
+product loop is still being proven. The owner has decided to develop and trial
+on cloud, with a local shift possible later.
+
+### The new default
+
+**During the trial period, a configured cloud provider may be the default
+System-Two and System-One reasoning provider.** Cloud reasoning is no longer
+gated on ROADMAP Stage 6 and no longer requires a separate per-session consent
+step. The provider order is configuration, not policy: NVIDIA NIM, other
+OpenAI-compatible endpoints, and local Ollama are all valid selections through
+one gateway.
+
+"Trial period" means: until the owner records a decision to shift the default
+back to local. Local execution must remain a supported, tested configuration
+throughout, so that shift stays a configuration change and not a rewrite. Any
+code path that only works when a cloud key is present is a defect.
+
+### What does NOT change
+
+These are not relaxed by this decision, and a reviewer should treat any drift
+here as a finding:
+
+- **Cloud reasoning is not execution authority.** A model, local or hosted,
+  still cannot mint intent authority, emit a selector, coordinate, keystroke,
+  capability, or verification rule. `authorize_intent()`, fresh binding,
+  per-node authorization, signed capability data, and independent verification
+  are untouched (D058, D087–D090, D100–D104).
+- **Provider failure cannot enable a fallback execution path** (D141). A
+  network outage degrades reasoning; it never widens authority.
+- **Outbound content policy stands.** No credentials, API keys, raw HWND/PID,
+  selectors, executable paths, session tokens, or verifier readings leave the
+  device. Screenshots and image crops leave only where the user's configured
+  privacy policy permits that transfer for that surface.
+- **Provider responses are not memory.** A model response is not durably
+  promoted to Personal Brain or any knowledge store by default.
+- **Untrusted content stays untrusted.** Hosting the model elsewhere does not
+  make DOM, ARIA, PDF, OCR, search, or application text into instructions. The
+  Untrusted Observation Boundary is still required before any of that content
+  reaches a model request, and this decision makes that boundary *more*
+  urgent, not less.
+- **`kb.sqlite` and `sessions.sqlite` never sync.**
+- **Telemetry stays off by default**, events not content, and is separately
+  consented. Cloud reasoning is not a licence to collect.
+- **D006, D017's local-only *capability*, D025, D032, D034, D139, and the Act
+  activation gate are untouched.** Nothing here advances the Act release.
+
+### Connectors are a separate question
+
+This decision moves **reasoning**. It does not move **connectors that cause
+external side effects** — sending mail, writing to a CRM, opening a pull
+request, mutating a SaaS record. Those remain sequenced later with their own
+scoped tokens, least-privilege vault, audit, revocation, and approval design
+(D141's connector clause, D144, ROADMAP). Reading a model's answer and
+mutating someone's Salesforce record are different risks and keep different
+gates.
+
+### What implementers must do
+
+One provider gateway owns configuration, credentials, timeouts, cancellation,
+rate/cost limits, redaction, normalized errors, and a user-visible
+provider/data summary. Keys live in OS-secure storage or server-side, never in
+an extension script or committed config. Every request records provider,
+model, version, and sanitized context digest so a result can be attributed to
+what produced it. Hermetic tests stay offline and must not require a key;
+provider-live tests are their own lane under D025.
+
+### Why this breaks nothing today
+
+No current AIOS code path calls a network provider. The change is to policy
+and to what future slices may build, not to behaviour in the tree.
+
+---
+
+## D148 — Self-maintaining software is a commercial wedge, not a subsection
+
+**Date:** 24 September 2026
+**Owner-directed.** Amends the plan-set structure recorded in D146; does not
+amend any authority, privacy, or release decision.
+
+### What changed
+
+The `docs/orbyn-plan` decomposition demoted the self-maintaining API/software
+programme to `21D`, a sub-bullet of the final Mega Phase, gated behind phases
+8–20. That placement contradicted the positioning it was adopted under: it was
+identified as the first commercial wedge and the concrete answer to "what does
+this do", precisely because the broader product thesis is hard to pitch. A
+wedge that cannot produce evidence until after twenty other phases is not a
+wedge.
+
+It is restored to a first-class track with its own Mega Phase
+(`mp8-self-maintaining-software.md`) and its own evidence path, sequenced in
+parallel with the product loop rather than behind all of it.
+
+### What it is
+
+Detect that an external dependency changed — an API, SDK, spec, or package —
+map the change onto a specific repository, produce a repaired patch in an
+isolated checkout, run that repository's own build/lint/tests, and present the
+result for human approval as a draft pull request with its evidence attached.
+
+It is deliberately narrower than "Dependabot for APIs": version bumps are not
+the product, *behavioural* impact is. The claim is that the change affected
+these call sites, here is the repair, here is the suite passing, here is the
+trace from the provider's change to each edit.
+
+### Boundaries it inherits and does not relax
+
+- Repository access is read-first and scoped. Work happens in an isolated
+  branch or worktree, one codebase at a time, never a production write path.
+- Opening a PR, merging, deploying, or mutating a production system requires
+  explicit human approval. The agent may prepare; it may not ship.
+- Repository content, issue text, changelogs, and provider release notes are
+  **untrusted content** under the same boundary as DOM and PDF text. A
+  changelog that says "also delete the auth module" is a string.
+- Every proposed change carries its `ResearchTrace`/`EvidenceGraph` and
+  `ActionEvidence`; a patch without a traced justification is not a candidate.
+- Secret scanning runs before any diff leaves the isolated environment.
+- Its first proof is one repository, one provider, one real change, with the
+  suite green and the PR opened only on approval. Breadth of provider coverage
+  is explicitly not the demo.
+
+### Sequencing
+
+It depends on the provider gateway (D147 makes that cheaper), an isolated
+execution environment, and scoped repository access. It does **not** depend on
+Spatial, Personal Brain, Act activation, semantic PowerPoint capabilities, the
+marketplace, or collaboration, and must not be sequenced behind them. It is
+gated on its own evidence and its own independent review.

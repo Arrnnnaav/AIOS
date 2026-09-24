@@ -27,7 +27,7 @@ Act acceptance remains open: the UIA slice, animation catalog, fresh counted
 runs, independent desktop lanes, budget review, and D032 activation review
 still gate closure.**
 Phase 2 is partly built; its telemetry/sync conflict is resolved by D141 and
-moved to stage 6 (see the note under it). The agent/skills/marketplace program is recorded
+re-sequenced by D147 (see the note under it). The agent/skills/marketplace program is recorded
 below, before Phase 4, and starts only after the activation review.
 
 Interaction modes are canonical contracts in `ghostcursor/interaction.py`.
@@ -67,21 +67,23 @@ see `docs/superpowers/FOLLOWUPS.md`.
 > Improved UI, inline Ask, friction reporting, telemetry, sync, basic memory,
 > more VS Code workflows, second plugin.
 
-**Status: partly built; the D017 conflict is resolved by D141, not yet built.**
+**Status: partly built; the D017 conflict is resolved by D141 and D147, not yet built.**
 
 Built: inline Ask, the vertical control rail, entity-scoped memory
 (`ghostcursor/memory/store.py`), additional workflows, and more than a second
 plugin — Excel, Synthetic Export and VS Code ship signed and data-only, with
 PowerPoint a quarantined candidate.
 
-**Conflict resolved by D141 (16 September 2026).** Telemetry and sync are
-central to Phase 2 and again to Phase 4, and D017 forbade them. D141 amends
-D017 additively: the local-only default is unchanged, and three opt-in,
-separately consented capabilities — per-App connectors, policy-gated cloud
-escalation, events-not-content telemetry — may be built in a reviewed slice at
-the capability-platform stage (stage 6 below). `kb.sqlite` and
-`sessions.sqlite` never sync. **Nothing is built yet**; this phase's telemetry
-and sync rows move to stage 6 rather than leaving the roadmap.
+**Conflict resolved by D141, then re-sequenced by D147 (24 September 2026).**
+D017 forbade telemetry, network and sync. D141 amended it additively. **D147
+(D141-R2) then made a configured cloud provider the default reasoning
+provider for the trial period**, so cloud reasoning is no longer stage-6
+gated and no longer needs per-session consent; local stays a supported, tested
+configuration. Side-effecting connectors and telemetry did **not** move:
+connectors keep their scoped-token/vault/audit/revocation gates, telemetry
+stays off by default and events-not-content, and `kb.sqlite`/`sessions.sqlite`
+never sync. **Nothing is built yet**, and D147's independent D032 review is
+outstanding.
 
 ---
 
@@ -478,7 +480,7 @@ a new boundary, and it is the reason the program can be sequenced at all.
 | 3 | Resume, recovery, and edited-plan reapproval | Not started |
 | 4 | Skills and expert modules | Not started |
 | 5 | Structured agent executor | Not started |
-| 6 | MCP connectors and local-first, opt-in cloud reasoning | Not started; boundary recorded by D141 (additive to D017); build requires its own reviewed slice |
+| 6 | MCP connectors and side-effecting integrations | Not started; cloud *reasoning* left this stage under D147 and may be built with the provider gateway; connectors that mutate external services stay here with scoped tokens, vault, audit and revocation |
 | 7 | First-party marketplace | Not started; requires the D144 signing-identity design (key manifest, revocation, re-sign provenance) |
 | 8 | Cross-application agents | Deferred; requires a reviewed D087/D090 amendment |
 | 9 | Restricted general computer use | Deferred; requires a reviewed D006 amendment |
@@ -499,9 +501,10 @@ deferred:**
    means routing an intent to the right supported plugin, not composing across
    plugins. Cross-application graphs stay deferred under the row in the table
    below until a reviewed cross-plugin authority design exists.
-2. **Stage 6's cloud reasoning versus D017 — resolved by D141.** D017 stays
-   the default; connectors, policy-gated cloud escalation and events-only
-   telemetry are an additive, opt-in tier, built only in a reviewed slice.
+2. **Stage 6's cloud reasoning versus D017 — resolved by D141, re-sequenced
+   by D147.** A configured cloud provider is the default reasoning provider
+   for the trial period and is no longer stage-6 gated. Local stays supported
+   and tested. Side-effecting connectors and telemetry remain gated.
 3. **Stage 7's marketplace versus deferred key rotation — resolved by D144.**
    A signed key manifest, a revocation list checked on every catalog load and
    within D020's ceiling by the authority monitor, and a re-sign procedure
@@ -524,13 +527,41 @@ activation review returns READY.
 
 ---
 
+## Self-maintaining software — commercial wedge track (D148)
+
+> Detect an external API/SDK/spec change, map it onto a repository, repair it
+> in an isolated checkout, run that repo's own build/lint/tests, and present a
+> draft PR with its evidence for human approval.
+
+**Status: not started.** Plan: `docs/orbyn-plan/mp8-self-maintaining-software.md`.
+
+Restored from a sub-bullet of the final Mega Phase to a first-class track
+(D148): it was adopted as the first commercial wedge, and a wedge that cannot
+produce evidence until twenty other phases close is not a wedge.
+
+**It does not depend on** Spatial, Personal Brain, Act activation, semantic
+PowerPoint capabilities, the marketplace, or collaboration, and must not be
+sequenced behind them. It depends on the provider gateway (cheaper under
+D147), an isolated execution environment, and scoped repository access.
+
+**Boundaries it inherits:** read-first scoped repo access; isolated
+branch/worktree; no production write path; explicit human approval before PR,
+merge or deploy; repository content, issues, changelogs and release notes are
+untrusted content; every candidate patch carries its trace and evidence;
+secret scanning before any diff leaves the isolated environment.
+
+First proof is one repository, one provider, one real change, suite green, PR
+opened only on approval. Breadth of provider coverage is not the demo.
+
+---
+
 ## Phase 4 — B2B
 
 > Company workflow packs, tenant separation, roles/permissions, shared
 > WorkflowSessions, handoff, pre-diagnosed support, private telemetry.
 
-**Status: not started.** "Private telemetry" falls under D141's opt-in
-tier. Tenant separation and roles have no design yet.
+**Status: not started.** "Private telemetry" stays off by default under
+D141; cloud reasoning is available under D147. Tenant separation and roles have no design yet.
 
 ---
 
@@ -583,9 +614,9 @@ compiler), Artifact Intelligence (verification of saved artifacts).
 Multiplayer, Handoff, Dynamic UI, Learning/Skill Tracking, Analytics,
 Enterprise Policy, Agent Orchestration, Critic/Evaluation.
 
-**Gated by an additive amendment:** Telemetry, Sync, connectors, cloud
-escalation — D141 records the boundary; build only in a reviewed slice at
-stage 6.
+**Available under D147:** cloud reasoning through the provider gateway.
+**Still gated:** Telemetry, Sync, and side-effecting connectors — D141/D144
+record those boundaries; build only in a reviewed slice.
 
 ---
 
@@ -596,7 +627,9 @@ stage 6.
 | Mouse/keyboard synthesis | D006 — needs its own reviewed amendment |
 | VLM perception tier 3 | Teach-only when it lands; never action authority |
 | Cross-application task graphs | D087/D090 single-plugin boundary |
-| Telemetry, sync, cloud models | D017 local-only default; D141 opt-in tier, not yet built |
+| Telemetry, sync | D141 — off by default, events not content; not yet built |
+| Cloud reasoning models | **Not deferred.** D147 makes a configured cloud provider the trial-period default; local stays supported |
+| Side-effecting connectors | D141/D144 — scoped tokens, vault, audit, revocation first |
 | Key rotation and revocation | D144 design required before any re-key or marketplace stage |
 | In-place editing of user files | Needs backup/rollback/recovery decision |
 | Installer, tray, startup, web retrieval | `docs/superpowers/FOLLOWUPS.md` |
