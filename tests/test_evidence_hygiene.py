@@ -290,7 +290,8 @@ def _blocklisted(text: str, *, prose: bool):
     write, and one rule would be either leaky or unusable:
 
     * `prose=True` (documents) compares DIGITS ONLY -- total against any
-      rendering that adds no digits of its own.
+      rendering that adds no digits of its own. Valid JSON is parsed first so
+      digits in independent fields cannot concatenate into a fictitious value.
     * `prose=False` (source, fixtures, anything else) compares the normalised
       text. A Python literal cannot contain a space, `4_460_192` can and is
       covered, and digits-only here would flag THIS file: `_OBSERVED` splits
@@ -299,8 +300,50 @@ def _blocklisted(text: str, *, prose: bool):
       A rule that always fails on its own source teaches nothing (D138).
     """
 
-    haystack = _digits_only(text) if prose else _normalise(text)
+    if prose:
+        try:
+            document = json.loads(text)
+        except json.JSONDecodeError:
+            haystack = _digits_only(text)
+            return [value for value in _OBSERVED if value in haystack]
+
+        def scalars(value):
+            if isinstance(value, dict):
+                for child in value.values():
+                    yield from scalars(child)
+            elif isinstance(value, list):
+                for child in value:
+                    yield from scalars(child)
+            elif value is not None:
+                yield str(value)
+
+        values = [_digits_only(scalar) for scalar in scalars(document)]
+        return [
+            value for value in _OBSERVED if any(value in scalar for scalar in values)
+        ]
+
+    haystack = _normalise(text)
     return [value for value in _OBSERVED if value in haystack]
+
+
+def test_json_blocklist_does_not_join_distinct_scalar_values():
+    """Unrelated JSON fields must not concatenate into a fictitious handle."""
+
+    value = _OBSERVED[0]
+    record = json.dumps({"first_count": value[:3], "second_count": value[3:]})
+
+    assert _blocklisted(record, prose=True) == []
+
+
+def test_json_blocklist_still_finds_a_complete_handle_in_one_scalar():
+    """A real observed value in a JSON string remains a leak."""
+
+    value = _OBSERVED[0]
+    record = json.dumps({"target_ref": value})
+    numeric_record = json.dumps({"unrelated_numeric_field": int(value)})
+
+    assert _blocklisted(record, prose=True) == [value]
+    assert _blocklisted(numeric_record, prose=True) == [value]
 
 
 def _document_offenders(text: str):
@@ -743,9 +786,16 @@ def test_no_tracked_file_at_all_reuses_an_observed_handle():
             ".ghostplugin",
         }:
             continue
-        prose = Path(name).suffix.lower() in _SCANNED_SUFFIXES
-        for value in _blocklisted(_text(name), prose=prose):
-            offenders.append(f"{name}: contains observed value ending {value[-3:]}")
+        suffix = Path(name).suffix.lower()
+        prose = suffix in _SCANNED_SUFFIXES
+        text = _text(name)
+        if suffix == ".jsonl":
+            records = [line for line in text.splitlines() if line.strip()]
+        else:
+            records = [text]
+        for record in records:
+            for value in _blocklisted(record, prose=prose):
+                offenders.append(f"{name}: contains observed value ending {value[-3:]}")
     assert not offenders, "observed handles reused:\n" + "\n".join(
         sorted(set(offenders))
     )
