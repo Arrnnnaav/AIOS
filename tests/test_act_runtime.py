@@ -35,6 +35,8 @@ PLUGIN = "ghostcursor.powerpoint"
 VERSION = "1.0.0"
 MANIFEST = "c" * 64
 ACTIVE = "d" * 64
+UIA_CONFIRMATION_ROUND_TRIP_DEADLINE_MS = 1280
+UIA_CONFIRMATION_TO_REQUEST_DEADLINE_MS = 32
 
 
 def _adapter_source() -> str:
@@ -544,6 +546,12 @@ def _uia_registry():
             backend="uia_pattern",
             uia_pattern="Invoke",
             identity=policy,
+            confirmation_round_trip_deadline_ms=(
+                UIA_CONFIRMATION_ROUND_TRIP_DEADLINE_MS
+            ),
+            confirmation_to_request_deadline_ms=(
+                UIA_CONFIRMATION_TO_REQUEST_DEADLINE_MS
+            ),
         )
     }
     return OperationRegistry(
@@ -1252,6 +1260,12 @@ def test_the_uia_path_authorizes_the_node_it_is_running(tmp_path):
             timeout_s=2.0,
             backend="uia_pattern",
             uia_pattern="Invoke",
+            confirmation_round_trip_deadline_ms=(
+                UIA_CONFIRMATION_ROUND_TRIP_DEADLINE_MS
+            ),
+            confirmation_to_request_deadline_ms=(
+                UIA_CONFIRMATION_TO_REQUEST_DEADLINE_MS
+            ),
             identity=IdentityPolicy(
                 operation_id=operation_id,
                 selector_id="powerpoint.new-slide",
@@ -1300,13 +1314,13 @@ def test_the_uia_path_authorizes_the_node_it_is_running(tmp_path):
     session, _record = _fake_session()
     original = session.dispatch
 
-    def watch(n, token, confirmed):
+    def watch(n, token, confirmed, confirmed_at=None):
         seen.append((token.node_id, token.ordinal, token.authorization_sha256))
-        return original(n, token, confirmed)
+        return original(n, token, confirmed, confirmed_at)
 
     session.dispatch = watch
     (tmp_path / "owned").mkdir(exist_ok=True)
-    _execute_approved_graph(
+    result = _execute_approved_graph(
         two,
         registry,
         approval,
@@ -1318,7 +1332,7 @@ def test_the_uia_path_authorizes_the_node_it_is_running(tmp_path):
         uia_session=session,
     )
 
-    assert len(seen) == 2, f"both nodes must dispatch, saw {seen}"
+    assert len(seen) == 2, f"both nodes must dispatch, saw {seen}; result={result}"
     for ordinal, dispatched in enumerate(two.ordered_nodes, start=1):
         expected = _authorize_node(
             approval, two, node=dispatched, ordinal=ordinal,
