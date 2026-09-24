@@ -346,6 +346,54 @@ def test_json_blocklist_still_finds_a_complete_handle_in_one_scalar():
     assert _blocklisted(numeric_record, prose=True) == [value]
 
 
+def _file_blocklisted(name: str, text: str):
+    """Apply the text/value blocklist with the file's record boundaries."""
+
+    suffix = Path(name).suffix.lower()
+    prose = suffix in _SCANNED_SUFFIXES
+    if suffix != ".jsonl":
+        return _blocklisted(text, prose=prose)
+
+    records = [line for line in text.splitlines() if line.strip()]
+    try:
+        for record in records:
+            json.loads(record)
+    except json.JSONDecodeError:
+        # A malformed record may split a blocked value across lines. Fall back
+        # to the complete artifact rather than letting line boundaries hide it.
+        return _blocklisted(text, prose=prose)
+    return sorted(
+        {
+            value
+            for record in records
+            for value in _blocklisted(record, prose=prose)
+        }
+    )
+
+
+def test_jsonl_does_not_join_distinct_valid_record_values():
+    """Separate well-formed JSONL records remain separate scan units."""
+
+    value = _OBSERVED[0]
+    records = "\n".join(
+        (
+            json.dumps({"first_count": value[:3]}),
+            json.dumps({"second_count": value[3:]}),
+        )
+    )
+
+    assert _file_blocklisted("fixture.jsonl", records) == []
+
+
+def test_malformed_jsonl_cannot_split_a_blocklisted_value_across_lines():
+    """Malformed records fall back to scanning the complete artifact."""
+
+    value = _OBSERVED[0]
+    malformed = f'{{"first":"{value[:3]}"\nnot-json:"{value[3:]}"'
+
+    assert _file_blocklisted("fixture.jsonl", malformed) == [value]
+
+
 def _document_offenders(text: str):
     """Every line a shape rule objects to, as (line number, line).
 
@@ -786,16 +834,8 @@ def test_no_tracked_file_at_all_reuses_an_observed_handle():
             ".ghostplugin",
         }:
             continue
-        suffix = Path(name).suffix.lower()
-        prose = suffix in _SCANNED_SUFFIXES
-        text = _text(name)
-        if suffix == ".jsonl":
-            records = [line for line in text.splitlines() if line.strip()]
-        else:
-            records = [text]
-        for record in records:
-            for value in _blocklisted(record, prose=prose):
-                offenders.append(f"{name}: contains observed value ending {value[-3:]}")
+        for value in _file_blocklisted(name, _text(name)):
+            offenders.append(f"{name}: contains observed value ending {value[-3:]}")
     assert not offenders, "observed handles reused:\n" + "\n".join(
         sorted(set(offenders))
     )
