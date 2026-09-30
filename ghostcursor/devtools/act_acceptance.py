@@ -157,13 +157,27 @@ def run(args) -> int:
         unattended=True,
         lifetime_s=args.approval_lifetime,
     )
+    from ghostcursor.devtools.candidate_acceptance import (
+        window_reference,
+        window_scope,
+    )
+
+    # A raw handle is never emitted: this stdout is what a campaign retains as
+    # evidence, and D128 forbids publishing it. The salted, campaign-scoped
+    # reference is comparable across the campaign's attempts and nowhere else.
     _emit(
         "approved",
         approval_sha256=approval.approval_sha256,
+        bundle_sha256=args.bundle_sha256,
+        catalog_generation=context.catalog.generation,
         graph_sha256=validated.graph_sha256,
+        manifest_sha256=descriptor.manifest_sha256,
         nodes=len(validated.ordered_nodes),
         output_path=str(output),
-        target_hwnd=act_target.hwnd,
+        plan_id=args.plan_id,
+        plan_sha256=template.plan_sha256,
+        target_ref=window_reference(act_target.hwnd),
+        target_scope=window_scope(),
     )
 
     def current_authority():
@@ -333,7 +347,7 @@ def run(args) -> int:
         from ghostcursor import act_rail
 
         rail = act_rail.open_rail()
-        _emit("rail_opened", hwnd=rail.hwnd, mode=pace.name)
+        _emit("rail_opened", mode=pace.name)
         if args.regions:
             from ghostcursor.overlay import dpi
             from ghostcursor.overlay import window as overlay_window
@@ -342,7 +356,7 @@ def run(args) -> int:
             overlay_bounds = (left, top, left + width, top + height)
             overlay_hwnd = overlay_window.create_overlay_window()
             overlay_metrics = overlay_window.measure_label(overlay_hwnd, "Adding text")
-            _emit("regions_shown", hwnd=overlay_hwnd)
+            _emit("regions_shown")
         published = event_sink
 
         def event_sink(event):  # noqa: F811 - deliberately wraps the recorder
@@ -384,7 +398,7 @@ def run(args) -> int:
         overlay_hwnd, presentation = presentation_for(
             args, controls, overlay_hwnd=overlay_hwnd
         )
-        _emit("presentation_ready", hwnd=overlay_hwnd)
+        _emit("presentation_ready")
 
     run_started = time.monotonic()
     try:

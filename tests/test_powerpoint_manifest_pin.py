@@ -152,6 +152,15 @@ def test_every_document_naming_a_powerpoint_manifest_names_this_one():
     )
 
 
+def test_campaign_tooling_refuses_without_this_exact_pin():
+    """Both campaign paths preflight against `campaign_pins`; that constant and
+    this one are one value in two places, so they are compared here (D150)."""
+
+    from ghostcursor.devtools.campaign_pins import POWERPOINT_MANIFEST_SHA256
+
+    assert POWERPOINT_MANIFEST_SHA256 == DOCUMENTED
+
+
 def test_the_pin_is_not_vacuous():
     """A digest constant that matched nothing would pass silently."""
 

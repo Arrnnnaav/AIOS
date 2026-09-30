@@ -590,6 +590,13 @@ may be performed by the author of what it reviews. Do not wire
 adding stages changes plan bytes and invalidates the digests the diagnostic
 run needs.
 
+A counted campaign runs only through `python -m ghostcursor.devtools.act_campaign`
+(harness path) or `python -m ghostcursor.devtools.act_manager_campaign` (manager
+path, one attempt per invocation), and its evidence document is produced only by
+`tools/render_act_campaign.py`, never written by hand. Both runners refuse
+unless the manifest equals `campaign_pins.POWERPOINT_MANIFEST_SHA256` and the
+tree is clean (D150).
+
 Phase A and B tooling measures without acting. `ActBoundaryProbe` may never
 change a run's outcome, and `uia_feasibility` may never call `Invoke`,
 `DoDefaultAction`, `Toggle`, `SetValue`, or any other effect -- that

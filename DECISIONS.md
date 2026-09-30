@@ -6702,8 +6702,25 @@ runtime checks run before dispatch and before the adapter write.
 
 **Blocking findings and their disposition.**
 
-1. *Campaign evidence would not be bound to `3a4f8c57` or checked.* Open;
-   the campaign-tooling slice addresses it.
+1. *Campaign evidence would not be bound to `3a4f8c57` or checked.*
+   Addressed in the campaign-tooling slice. `ghostcursor/devtools/campaign_pins.py`
+   holds the one pinned manifest (a test requires it to equal the manifest pin)
+   and refuses a dirty work tree. `act_campaign` preflights the bundle's
+   manifest against it and writes a report that keeps every attempt that ran,
+   the failing one included, with its full record stream, commit and digests.
+   `act_acceptance` no longer prints raw handles; it emits a campaign-scoped
+   `target_ref` and the manifest, plan and bundle digests. The manager path has
+   a tracked runner, `ghostcursor/devtools/act_manager_campaign.py`, which
+   replaces the frozen diagnostic script (kept as evidence, not run): it
+   refuses without one exported scope, the pinned installed manifest, a clean
+   tree, the next consecutive attempt number, and every earlier attempt
+   completed. `tools/render_act_campaign.py --check` refuses any campaign that
+   is not N consecutive completed N/N attempts on the pin with distinct outputs,
+   one target reference (harness) or the D123 order and unchanged transcript
+   digests (manager), and no raw handles; its 12 checks are each killed by a
+   mutation in `tests/test_act_campaign_evidence.py`, which also runs the check
+   over the real 11 September transcripts and sees it refuse only on their
+   superseded manifest.
 2. *The disclosure misstated its own detector* (a "spliced tally" check that
    was dead code). Corrected in `111ce5e`: the sentence now names what is
    detected and what is not, and the dead pattern is deleted.

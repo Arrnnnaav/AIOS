@@ -53,7 +53,22 @@ PROBE_RECORD = "interrupt_probe"
 
 
 class CampaignError(RuntimeError):
-    """A campaign that must not start, or must not continue."""
+    """A campaign that must not start, or must not continue.
+
+    ``attempts`` holds every attempt that ran before the refusal, the failing
+    one included, so a report can retain them rather than silently dropping
+    the attempt that ended the campaign.
+    """
+
+    def __init__(self, message: str, attempts: tuple = ()) -> None:
+        super().__init__(message)
+        self.attempts = tuple(attempts)
+
+
+#: Keys that would publish a raw window handle or process id if retained.
+FORBIDDEN_RECORD_KEYS = frozenset(
+    {"hwnd", "target_hwnd", "pid", "process_id", "window_handle"}
+)
 
 
 @dataclass(frozen=True)
@@ -209,16 +224,78 @@ def run_campaign(
         )
         seconds = time.monotonic() - started
 
-        attempt = attempt_from(index, read_records(proc.stdout), seconds)
+        try:
+            attempt = attempt_from(index, read_records(proc.stdout), seconds)
+        except CampaignError as exc:
+            raise CampaignError(str(exc), completed) from exc
         completed.append(attempt)
         if not attempt.clean:
             raise CampaignError(
                 f"attempt {index} was not clean ({attempt.code}, "
                 f"{attempt.nodes} nodes, published="
                 f"{bool(attempt.published_sha256)}); the campaign ends here "
-                f"rather than reporting a pass rate"
+                f"rather than reporting a pass rate",
+                completed,
             )
     return tuple(completed)
+
+
+def retained_records(records) -> list[dict]:
+    """An attempt's records as they will be retained, or a refusal.
+
+    Refuses rather than scrubbing: a record that carries a raw handle means
+    the harness emitted one, and quietly deleting the key would hide that the
+    tool publishing evidence regressed (D128, D139).
+    """
+
+    kept = []
+    for record in records:
+        leaked = FORBIDDEN_RECORD_KEYS & set(record)
+        if leaked:
+            raise CampaignError(
+                f"a {record.get('type')!r} record carries {sorted(leaked)}; "
+                "the harness must not emit raw handles or process ids"
+            )
+        kept.append(dict(record))
+    return kept
+
+
+def campaign_report(
+    *,
+    status: str,
+    detail: str | None,
+    attempts,
+    attempts_requested: int,
+    binding: dict,
+) -> dict:
+    """The whole campaign as one retainable record.
+
+    ``binding`` names what ran: commit, pinned manifest, bundle and plan
+    digests, and mode. Every attempt that ran is present with its full record
+    stream, so the renderer checks consecutiveness and that nothing was
+    dropped, rather than trusting a summary line.
+    """
+
+    return {
+        "attempts": [
+            {
+                "code": a.code,
+                "completed": a.completed,
+                "index": a.index,
+                "nodes": a.nodes,
+                "published_sha256": a.published_sha256,
+                "records": retained_records(a.records),
+                "seconds": a.seconds,
+            }
+            for a in attempts
+        ],
+        "attempts_requested": attempts_requested,
+        "binding": dict(binding),
+        "campaign": status,
+        "detail": detail,
+        "path": "harness",
+        "schema_version": 2,
+    }
 
 
 def main() -> int:  # pragma: no cover - thin CLI over run_campaign
@@ -233,8 +310,27 @@ def main() -> int:  # pragma: no cover - thin CLI over run_campaign
     parser.add_argument("--plan-id", default="build-investor-deck-v1")
     parser.add_argument("--plan-sha256", required=True)
     parser.add_argument("--mode", choices=("quick", "watch"), default="quick")
-    parser.add_argument("--report", type=Path, default=None)
+    parser.add_argument("--report", type=Path, required=True)
     arguments = parser.parse_args()
+
+    from ghostcursor.devtools.campaign_pins import (
+        CampaignPreflightError,
+        bundle_manifest_sha256,
+        repository_commit,
+        require_pinned_manifest,
+    )
+
+    report_path = arguments.report.resolve()
+    if report_path.exists():
+        print(json.dumps({"campaign": "refused", "detail": "report exists; never overwrite a campaign"}))
+        return 3
+    try:
+        manifest = bundle_manifest_sha256(arguments.bundle.resolve())
+        require_pinned_manifest(manifest)
+        commit = repository_commit()
+    except (CampaignPreflightError, OSError, KeyError) as exc:
+        print(json.dumps({"campaign": "refused", "detail": str(exc)}, sort_keys=True))
+        return 3
 
     def build(index, store, output):
         return [
@@ -263,6 +359,15 @@ def main() -> int:  # pragma: no cover - thin CLI over run_campaign
             arguments.mode,
         ]
 
+    binding = {
+        "bundle_sha256": arguments.bundle_sha256,
+        "commit": commit,
+        "manifest_sha256": manifest,
+        "mode": arguments.mode,
+        "plan_id": arguments.plan_id,
+        "plan_sha256": arguments.plan_sha256,
+    }
+    status, detail, code = "clean", None, 0
     try:
         attempts = run_campaign(
             attempts=arguments.attempts,
@@ -271,32 +376,31 @@ def main() -> int:  # pragma: no cover - thin CLI over run_campaign
             window_class=arguments.window_class,
         )
     except CampaignError as exc:
-        print(json.dumps({"campaign": "refused", "detail": str(exc)}, sort_keys=True))
-        return 3
+        attempts, status, detail, code = exc.attempts, "refused", str(exc), 3
 
-    summary = {
-        "attempts": [
-            {
-                "code": a.code,
-                "index": a.index,
-                "nodes": a.nodes,
-                "published_sha256": a.published_sha256,
-                "seconds": a.seconds,
-            }
-            for a in attempts
-        ],
-        "campaign": "clean",
-        "count": len(attempts),
-    }
-    print(json.dumps(summary, indent=2, sort_keys=True))
-    if arguments.report is not None:
-        arguments.report.write_text(
-            json.dumps(summary, indent=2, sort_keys=True),
-            encoding="utf-8",
-            newline="\n",
+    try:
+        report = campaign_report(
+            status=status,
+            detail=detail,
+            attempts=attempts,
+            attempts_requested=arguments.attempts,
+            binding=binding,
         )
-    return 0
-
+    except CampaignError as exc:
+        report = campaign_report(
+            status="refused",
+            detail=str(exc),
+            attempts=(),
+            attempts_requested=arguments.attempts,
+            binding=binding,
+        )
+        code = 3
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_bytes(
+        (json.dumps(report, indent=2, sort_keys=True) + "\n").encode("utf-8")
+    )
+    print(json.dumps({"campaign": report["campaign"], "report": str(report_path)}))
+    return code
 
 if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(main())
@@ -305,7 +409,10 @@ if __name__ == "__main__":  # pragma: no cover
 __all__ = [
     "Attempt",
     "CampaignError",
+    "FORBIDDEN_RECORD_KEYS",
     "attempt_from",
+    "campaign_report",
+    "retained_records",
     "read_records",
     "restore_target_windows",
     "run_campaign",
