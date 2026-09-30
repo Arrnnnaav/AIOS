@@ -1,5 +1,10 @@
 # Diagnostic runs — NOT acceptance evidence
 
+> **Harness superseded 30 September 2026 (D150).** `manager_campaign_harness.py`
+> is retained as the harness these runs used, per D121. It is no longer run:
+> it hard-coded the repository path and checked no manifest. Counted
+> manager-path attempts use `ghostcursor/devtools/act_manager_campaign.py`.
+
 **Status: frozen, diagnostic only. Nothing in this directory may be cited as
 acceptance evidence, and no phase may be marked closed on the strength of it.**
 
