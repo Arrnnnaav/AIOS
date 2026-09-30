@@ -948,6 +948,8 @@ def test_digests_and_fractional_timings_are_not_read_as_handles():
         "0x{v}",
         "{a} {b}",
         "{a},{b}",
+        "a{v}b",  # glued between hex letters: pins the exemption width (review M20)
+        "id-{v}-ffff",
     ],
 )
 def test_integer_renderings_of_an_observed_handle_are_still_found(rendering):

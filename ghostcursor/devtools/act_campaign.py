@@ -69,6 +69,48 @@ class CampaignError(RuntimeError):
         self.attempts = tuple(attempts)
 
 
+class CampaignInterrupted(CampaignError):
+    """Ctrl+C or another BaseException mid-campaign, carrying the attempts that
+    already ran; the caller records them and then re-raises ``interrupt``
+    (D156, review R2)."""
+
+    def __init__(self, message: str, attempts: tuple, interrupt: BaseException) -> None:
+        super().__init__(message, attempts)
+        self.interrupt = interrupt
+
+
+#: Windows status codes a crashed child commonly exits with, by name. A raw
+#: NTSTATUS is a 10-digit decimal that the handle scan rightly refuses, so it
+#: is named rather than printed (D156, review R1).
+_NTSTATUS = {
+    0xC0000005: "ACCESS_VIOLATION",
+    0xC0000409: "STACK_BUFFER_OVERRUN",
+    0xC000013A: "CONTROL_C_EXIT",
+    0xC00000FD: "STACK_OVERFLOW",
+    0xC0000374: "HEAP_CORRUPTION",
+}
+
+
+def exit_label(returncode) -> str:
+    """A child's exit status in a form that can be retained."""
+
+    if returncode is None:
+        return "no exit status"
+    code = int(returncode) & 0xFFFFFFFF
+    if code < 1000:
+        return f"exit {code}"
+    return f"crashed ({_NTSTATUS.get(code, 'native status')})"
+
+
+def letters(length: int) -> str:
+    """A random id made of letters only: digits inside ids concatenated with
+    dates and indices into observed handle values (D156, review R5)."""
+
+    import string
+
+    return "".join(secrets.choice(string.ascii_lowercase) for _ in range(length))
+
+
 #: Keys that would publish a raw window handle or process id if retained.
 FORBIDDEN_RECORD_KEYS = frozenset(
     {"hwnd", "target_hwnd", "pid", "process_id", "window_handle"}
@@ -201,10 +243,24 @@ def run_campaign(
     scope_environment = dict(os.environ)
     # A letter prefix: an all-digit scope reads as a handle to the evidence
     # hygiene scan, which would force an edit of a retained report (D154).
-    scope_environment["GHOSTCURSOR_CAMPAIGN_SCOPE"] = "s" + uuid.uuid4().hex[:11]
+    scope_environment["GHOSTCURSOR_CAMPAIGN_SCOPE"] = "s" + letters(11)
     scope_environment["GHOSTCURSOR_CAMPAIGN_SALT"] = secrets.token_bytes(32).hex()
 
     completed: list[Attempt] = []
+    try:
+        _attempts(attempts, completed, restore, window_class, settle_s, workspace, runner, build_command, scope_environment)
+    except CampaignError:
+        raise
+    except BaseException as exc:  # Ctrl+C anywhere in the loop keeps what ran
+        raise CampaignInterrupted(
+            f"interrupted during attempt {len(completed) + 1} ({type(exc).__name__})",
+            tuple(completed),
+            exc,
+        ) from exc
+    return tuple(completed)
+
+
+def _attempts(attempts, completed, restore, window_class, settle_s, workspace, runner, build_command, scope_environment):
     for index in range(1, attempts + 1):
         windows = restore(window_class)
         if len(windows) != 1:
@@ -218,7 +274,7 @@ def run_campaign(
         if settle_s:
             time.sleep(settle_s)
 
-        token = "t" + uuid.uuid4().hex[:9]  # never all digits (D155, review m1)
+        token = "t" + letters(9)  # no digits at all (D156, review R5)
         store = workspace / f"store-{index:02d}-{token}"
         output = workspace / "out" / f"attempt-{index:02d}-{token}.pptx"
         output.parent.mkdir(parents=True, exist_ok=True)
@@ -243,7 +299,7 @@ def run_campaign(
             attempt = attempt_from(index, read_records(proc.stdout), seconds)
         except CampaignError as exc:
             raise CampaignError(
-                f"{exc}; child exit {proc.returncode}, last stderr line: "
+                f"{exc}; child {exit_label(proc.returncode)}, last stderr line: "
                 f"{redacted_last_line(getattr(proc, 'stderr', '') or '')}",
                 completed,
             ) from exc
@@ -256,7 +312,6 @@ def run_campaign(
                 f"rather than reporting a pass rate",
                 completed,
             )
-    return tuple(completed)
 
 
 #: A standalone decimal of four or more digits, or any 0x-prefixed hex value.
@@ -276,6 +331,26 @@ _HANDLE_TEXT = re.compile(
 #: campaign pseudonym `window-<8 hex>`, and a campaign scope id. Exempt only as
 #: the ENTIRE string, so a handle embedded beside one is still refused.
 _SAFE_TEXT = re.compile(r"[0-9a-f]{64}|window-[0-9a-f]{8}|s[0-9a-f]{11}")
+
+
+def safe_detail(detail):
+    """A refusal reason that can be retained and rendered, and whether it had
+    to be redacted to get there.
+
+    Applied when the reason is WRITTEN, by the runner, and recorded as such --
+    not an edit of captured output afterwards (D139). A reason can quote an
+    exception carrying a manifest prefix, an HRESULT or a status that is
+    handle-shaped; refusing to render it would leave a declared campaign
+    unrenderable (D156, review R1/R4).
+    """
+
+    if detail is None or not record_leaks({"detail": detail}):
+        return detail, False
+    text = _LONG_NUMBER.sub("<n>", str(detail))
+    text = re.sub(r"(?<![0-9A-Za-z])[0-9a-fA-F]*[0-9]{3,}[0-9a-fA-F]*(?![0-9A-Za-z])", "<n>", text)
+    if record_leaks({"detail": text}):
+        text = "the refusal reason was withheld: it could not be made free of handle-shaped values"
+    return text, True
 
 
 def redacted_last_line(text: str) -> str:
@@ -425,11 +500,14 @@ def conduct(
             attempts = run()
         except CampaignError as exc:
             attempts, status, detail, code = exc.attempts, "refused", str(exc), 3
+            if isinstance(exc, CampaignInterrupted):
+                interrupted = exc.interrupt
         except Exception as exc:
             status, detail, code = "refused", f"runner failed: {type(exc).__name__}", 3
         except BaseException as exc:  # Ctrl+C, SystemExit: record, then re-raise
             status, detail, code = "refused", f"interrupted: {type(exc).__name__}", 3
             interrupted = exc
+    detail, redacted = safe_detail(detail)
     report = campaign_report(
         status=status,
         detail=detail,
@@ -437,6 +515,8 @@ def conduct(
         attempts_requested=attempts_requested,
         binding=binding,
     )
+    if redacted:
+        report["detail_redacted"] = True
     if report["campaign"] != "clean":
         code = 3
     if artifacts_dir is not None:
@@ -482,7 +562,6 @@ def retain_artifacts(report: dict, attempts, directory: Path) -> None:
 
 def main() -> int:  # pragma: no cover - thin CLI over run_campaign
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--attempts", type=int, default=3)
     parser.add_argument("--workspace", type=Path, required=True)
     parser.add_argument("--window-class", default="PPTFrameClass")
     parser.add_argument("--bundle", type=Path, required=True)
@@ -566,10 +645,10 @@ def main() -> int:  # pragma: no cover - thin CLI over run_campaign
         report, code = conduct(
             report_path=directory / "report.json",
             binding=binding,
-            attempts_requested=arguments.attempts,
+            attempts_requested=3,
             preflight=preflight,
             run=lambda: run_campaign(
-                attempts=arguments.attempts,
+                attempts=3,
                 build_command=build,
                 workspace=arguments.workspace,
                 window_class=arguments.window_class,

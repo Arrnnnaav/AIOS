@@ -7012,3 +7012,52 @@ message. Per-layer tests were added; 68/68 killed.
 
 **Not claimed.** Read only by its author; no acceptance evidence exists.
 
+## D156 — Fifth pre-campaign review (`9e998bf`), interrupted, and its residuals
+
+**Date:** 1 October 2026
+
+**The review.** An independent agent reviewed `9e998bf` and was cut off by a
+usage limit before writing its verdict. Its committed working notes (branch
+`worktree-agent-a6ce39c2240731f18`, commits `7ca718a`..`1cf3d67`,
+`review-ready-9e998bf.md`) record an end-to-end simulation of the operator
+procedure -- ledger commit, `conduct()` with the real preflight against the
+real signed bundle, CLI rendering, commit, full hermetic lane -- over eleven
+outcomes, and a Monte Carlo of about 2,500 realistic campaign reports through
+the evidence tests' own functions. Nine outcomes rendered and kept the lane
+green (2885 passed); two did not. It found:
+
+- **R1.** A child that dies with a Windows NTSTATUS exit code wrote the raw
+  code (a 10-digit decimal) into the refusal reason, which the renderer
+  refuses as handle-shaped: 96 of 150 simulated crashes were unrenderable.
+- **R2.** Ctrl+C during an attempt lost every attempt that had already run.
+- **R3.** A report the runner calls clean but the checker refuses (targets
+  differ after a PowerPoint restart, a build change mid-campaign) had no
+  rendering.
+- **R4.** A wrong-bundle refusal quoted an 8-hex manifest prefix that was all
+  decimal about 2% of the time, and was unrenderable.
+- **R5.** About 0.2% of clean campaigns: digits inside generated ids in paths
+  concatenated with dates and indices into an observed handle value.
+- **M20.** Widening the blocklist's digest exemption survived the full lane.
+- Confirmed: 1000 simulated clean campaigns produced no false positive (95%
+  upper bound about 0.3%) outside R5; the D155 blocklist change still found
+  all 320 integer renderings of the 16 observed values; only fractional JSON
+  numbers are skipped, by design.
+
+**Repairs.** Native exit codes are named (`crashed (ACCESS_VIOLATION)`), never
+printed. A `CampaignInterrupted` carries the completed attempts out of any
+point in the attempt loop, and `conduct()` records them before re-raising.
+A refusal reason is made safe when the runner writes it, by `safe_detail()`,
+and the report marks `detail_redacted` -- capture-time redaction by the tool,
+not an edit of retained output. A clean report the checker refuses renders a
+"NOT counted" document naming the checker's reason, on both paths. Generated
+ids (scope, token, staging run id) are letters only. The attempt count is no
+longer a flag. Each residual has a planted test, and M20 is pinned by a
+rendering glued between hex letters. Mutants: 9/9 new killed. The 68-mutant
+D154 sweep, re-run: 67 killed; the 68th targets the old hex scope prefix, which
+no longer exists (scopes now come from `letters()`, covered by the R5 mutant).
+
+**No payload change.** The manifest remains `b0d63512`.
+
+**Not claimed.** Read only by its author; the interrupted review is to be
+resumed for a verdict on this commit.
+

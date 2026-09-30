@@ -37,7 +37,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ghostcursor.devtools.act_campaign import record_leaks  # noqa: E402
+from ghostcursor.devtools.act_campaign import record_leaks, safe_detail  # noqa: E402
 from ghostcursor.devtools.campaign_pins import POWERPOINT_MANIFEST_SHA256  # noqa: E402
 
 #: The acceptance policy. Not a parameter: a checker that accepts "1 of 1"
@@ -393,7 +393,7 @@ def render(summary: dict, sources=()) -> str:
     return "\n".join(lines) + "\n"
 
 
-def refusal_summary(kind: str, value: dict) -> dict:
+def refusal_summary(kind: str, value: dict, checker_reason: str | None = None) -> dict:
     """What a refused or unfinished campaign retains, for its document (N5).
 
     A committed ledger line needs a cited, rendered record of its outcome; a
@@ -414,9 +414,16 @@ def refusal_summary(kind: str, value: dict) -> dict:
     else:
         reasons = [str(r) for r in value.get("refusals", [])] or ["fewer than three attempts ran"]
         rows = [(a.get("index"), f"exit {a.get('manager_exit')}", None) for a in value.get("attempts", [])]
+    if checker_reason is not None:
+        # The runner called it clean and the checker did not (review R3): it is
+        # retained, rendered, and NOT counted.
+        reasons = [f"the runner reported clean; the checker refused it: {safe_detail(checker_reason)[0]}"]
     _require(all(reasons), "a refused campaign must say why")
     _no_raw_handles([{"reasons": reasons}], "refusal")
-    return {"binding": binding, "path": kind, "reasons": reasons, "rows": rows, "status": value.get("campaign", "refused")}
+    status = value.get("campaign", "refused") if kind == "harness" else ("refused" if value.get("refusals") else "incomplete")
+    if checker_reason is not None:
+        status = "refused by the checker"
+    return {"binding": binding, "path": kind, "reasons": reasons, "rows": rows, "status": status}
 
 
 def render_refusal(summary: dict, sources=()) -> str:
@@ -469,7 +476,10 @@ def main(argv=None) -> int:
             if value.get("campaign") != "clean":
                 rendered = render_refusal(refusal_summary("harness", value), sources)
             else:
-                rendered = render(check_harness(value, artifacts=arguments.artifacts), sources)
+                try:
+                    rendered = render(check_harness(value, artifacts=arguments.artifacts), sources)
+                except CampaignRefused as refused:
+                    rendered = render_refusal(refusal_summary("harness", value, str(refused)), sources)
         else:
             value = json.loads((arguments.manager / "campaign.json").read_text(encoding="utf-8"))
             files = [arguments.manager / "campaign.json", *sorted(
@@ -479,7 +489,10 @@ def main(argv=None) -> int:
             if value.get("refusals") or len(value.get("attempts", [])) != REQUIRED_ATTEMPTS:
                 rendered = render_refusal(refusal_summary("manager", value), sources)
             else:
-                rendered = render(check_manager(arguments.manager), sources)
+                try:
+                    rendered = render(check_manager(arguments.manager), sources)
+                except CampaignRefused as refused:
+                    rendered = render_refusal(refusal_summary("manager", value, str(refused)), sources)
     except (CampaignRefused, OSError, KeyError, ValueError) as exc:
         print(f"refused: {exc}")
         return 2

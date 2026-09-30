@@ -1377,13 +1377,21 @@ def subprocess_output(root, *args):
     return subprocess.run(["git", *args], cwd=root, capture_output=True, text=True, check=True).stdout.strip()
 
 
-def test_generated_ids_never_look_like_numbers():
-    """m1: an all-decimal run id or token trips the handle scan (~1%)."""
+def test_generated_ids_contain_no_digits():
+    """R5: digits inside ids concatenated with dates and indices in paths into
+    observed handle values; ids are now letters only."""
 
-    source = (ROOT / "ghostcursor" / "devtools" / "act_acceptance.py").read_text(encoding="utf-8")
-    assert 'run_id="r" + uuid.uuid4().hex[:11]' in source
+    from ghostcursor.devtools.act_campaign import letters
+
+    for _ in range(200):
+        value = letters(11)
+        assert value.isalpha() and value.islower() and len(value) == 11
+    acceptance = (ROOT / "ghostcursor" / "devtools" / "act_acceptance.py").read_text(encoding="utf-8")
     campaign = (ROOT / "ghostcursor" / "devtools" / "act_campaign.py").read_text(encoding="utf-8")
-    assert 'token = "t" + uuid.uuid4().hex[:9]' in campaign
+    assert 'run_id="r" + letters(11)' in acceptance
+    assert 'token = "t" + letters(9)' in campaign
+    assert '"s" + letters(11)' in campaign
+    assert "uuid.uuid4().hex" not in campaign.split("def _attempts", 1)[1]
 
 
 def test_decks_are_retained_outside_git():
@@ -1435,3 +1443,121 @@ def test_a_refusal_record_of_the_wrong_kind_is_not_rendered(tmp_path):
                       encoding="utf-8")
     assert checker.main(["--harness", str(source), "--out", str(tmp_path / "c.md")]) == 2
 
+
+# --- D156: fifth-review residuals --------------------------------------------
+
+
+def test_a_native_crash_is_named_not_numbered(tmp_path):
+    """R1: an NTSTATUS exit code is a 10-digit decimal the renderer refuses."""
+
+    from types import SimpleNamespace
+
+    from ghostcursor.devtools.act_campaign import conduct, exit_label, run_campaign
+
+    assert exit_label(0xC0000005) == "crashed (ACCESS_VIOLATION)"
+    assert exit_label(-1073741819) == "crashed (ACCESS_VIOLATION)"
+    assert exit_label(0xC0001234) == "crashed (native status)"
+    assert exit_label(1) == "exit 1"
+
+    outputs = iter(["\n".join(json.dumps(r) for r in _harness_records(1)) + "\n", ""])
+
+    def launch(command, **_):
+        stdout = next(outputs)
+        return SimpleNamespace(stdout=stdout, stderr="", returncode=0 if stdout else 0xC0000005)
+
+    report, _ = conduct(
+        report_path=tmp_path / "report.json",
+        binding=_binding_base(),
+        attempts_requested=3,
+        preflight=lambda: {"commit": COMMIT, "manifest_sha256": PIN},
+        run=lambda: run_campaign(
+            attempts=3, build_command=lambda *a: ["x"], workspace=tmp_path / "w",
+            window_class="PPTFrameClass", restore=lambda _c: (1,), launch=launch, settle_s=0,
+        ),
+    )
+    assert "ACCESS_VIOLATION" in report["detail"] and "3221225477" not in report["detail"]
+    out = tmp_path / "campaign.md"
+    assert checker.main(["--harness", str(tmp_path / "report.json"), "--out", str(out)]) == 0
+
+
+def test_an_interrupt_mid_campaign_keeps_the_attempts_that_ran(tmp_path):
+    """R2: Ctrl+C during attempt 2 lost attempt 1 and its deck."""
+
+    from types import SimpleNamespace
+
+    from ghostcursor.devtools.act_campaign import conduct, run_campaign
+
+    calls = iter(range(10))
+
+    def launch(command, **_):
+        if next(calls) == 1:
+            raise KeyboardInterrupt
+        stdout = "\n".join(json.dumps(r) for r in _harness_records(1)) + "\n"
+        return SimpleNamespace(stdout=stdout, stderr="", returncode=0)
+
+    with pytest.raises(KeyboardInterrupt):
+        conduct(
+            report_path=tmp_path / "report.json",
+            binding=_binding_base(),
+            attempts_requested=3,
+            preflight=lambda: {"commit": COMMIT, "manifest_sha256": PIN},
+            run=lambda: run_campaign(
+                attempts=3, build_command=lambda *a: ["x"], workspace=tmp_path / "w",
+                window_class="PPTFrameClass", restore=lambda _c: (1,), launch=launch, settle_s=0,
+            ),
+        )
+    report = json.loads((tmp_path / "report.json").read_text(encoding="utf-8"))
+    assert report["campaign"] == "refused"
+    assert [a["index"] for a in report["attempts"]] == [1]
+    assert "KeyboardInterrupt" in report["detail"]
+
+
+def test_a_clean_report_the_checker_refuses_still_renders_as_not_counted(tmp_path):
+    """R3: e.g. PowerPoint restarted between attempts, so the targets differ."""
+
+    report = _harness_report()
+    report["attempts"][2]["records"][0]["target_ref"] = "window-ffffffff"
+    source = tmp_path / "report.json"
+    source.write_text(json.dumps(report), encoding="utf-8")
+    out = tmp_path / "campaign.md"
+    assert checker.main(["--harness", str(source), "--out", str(out)]) == 0
+    text = out.read_text(encoding="utf-8")
+    assert "NOT counted" in text and "the checker refused it" in text
+    assert "one campaign-scoped target" in text
+    assert checker.main(["--harness", str(source), "--out", str(out), "--check"]) == 0
+
+
+def test_a_manager_campaign_the_checker_refuses_still_renders(tmp_path):
+    transcripts = [_manager_transcript(i) for i in (1, 2, 3)]
+    transcripts[2][1]["application_version"] = "16.0.20326.20112"
+    directory = _manager_campaign(tmp_path, transcripts)
+    out = tmp_path / "campaign.md"
+    assert checker.main(["--manager", str(directory), "--out", str(out)]) == 0
+    assert "the checker refused it" in out.read_text(encoding="utf-8")
+
+
+def test_a_handle_shaped_reason_is_made_safe_when_written(tmp_path):
+    """R4: an all-decimal manifest prefix or HRESULT in a reason."""
+
+    from ghostcursor.devtools.act_campaign import conduct, safe_detail
+
+    detail, redacted = safe_detail("preflight: manifest 12345678 is not the pinned b0d63512")
+    assert redacted and "12345678" not in detail
+    assert safe_detail("attempt 2 was not clean (refused, 40 nodes)") == (
+        "attempt 2 was not clean (refused, 40 nodes)", False
+    )
+
+    def preflight():
+        raise RuntimeError("manifest 12345678 is not the pinned b0d63512")
+
+    report, _ = conduct(
+        report_path=tmp_path / "report.json", binding=_binding_base(),
+        attempts_requested=3, preflight=preflight, run=tuple,
+    )
+    assert report["detail_redacted"] is True
+    assert checker.main(["--harness", str(tmp_path / "report.json"), "--out", str(tmp_path / "c.md")]) == 0
+
+
+def test_the_attempt_count_is_not_an_operator_choice():
+    source = (ROOT / "ghostcursor" / "devtools" / "act_campaign.py").read_text(encoding="utf-8")
+    assert '"--attempts"' not in source

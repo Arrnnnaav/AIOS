@@ -98,8 +98,10 @@ def run(args) -> int:
     # adapter is handed the STAGING path and is never told where the final
     # deck goes, so it cannot expose a partial one even if asked.
     owned_root.mkdir(parents=True, exist_ok=True)
+    from ghostcursor.devtools.act_campaign import letters
+
     area = open_staging(
-        final_output, owned_root=owned_root, run_id="r" + uuid.uuid4().hex[:11]
+        final_output, owned_root=owned_root, run_id="r" + letters(11)
     )
     output = area.staging
     _emit(
