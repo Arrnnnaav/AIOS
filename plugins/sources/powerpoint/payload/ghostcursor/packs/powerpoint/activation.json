@@ -9,6 +9,14 @@
         "sha256": "b977a9e62a2e9810e479bf137c92edffdec9578984399780543642856be3caa3"
       }
     },
+    "BUILD_ANIMATION_CATALOG": {
+      "active_adoption_id": null,
+      "adoptions": {},
+      "intent": {
+        "path": "intents/build_animation_catalog.json",
+        "sha256": "c327a987f286622930dd92bf01461476538321a191bc30763c25484e752c2bfd"
+      }
+    },
     "BUILD_INVESTOR_DECK": {
       "active_adoption_id": null,
       "adoptions": {},

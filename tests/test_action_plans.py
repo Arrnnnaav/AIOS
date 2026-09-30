@@ -132,3 +132,47 @@ def test_action_plan_parameters_are_closed_before_graph_materialization(tmp_path
             {"output_path": str(tmp_path / "deck.pptx"), "macro": "run"},
             _registry(),
         )
+
+
+def _adapter_animation_catalog() -> dict[str, set[str]]:
+    """The (category -> effects) map the signed adapter itself accepts, read
+    from its source rather than restated, so the plan is held to the real
+    catalog."""
+
+    import ast
+
+    tree = ast.parse(ADAPTER.read_text(encoding="utf-8"))
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and any(
+            isinstance(t, ast.Name) and t.id == "_ANIMATION_EFFECTS" for t in node.targets
+        ):
+            return {k: set(v) for k, v in ast.literal_eval(node.value).items()}
+    raise AssertionError("adapter no longer declares _ANIMATION_EFFECTS")
+
+
+def test_the_animation_catalog_plan_exercises_every_effect_the_adapter_accepts(tmp_path):
+    template = _templates()["animation-catalog-v1"]
+    validated = materialize_action_plan(
+        template, {"output_path": str(tmp_path / "catalog.pptx")}, _registry()
+    )
+    nodes = validated.ordered_nodes
+    animations = [n.parameters for n in nodes if n.operation_id == "powerpoint.add_animation"]
+    pairs = {(a["category"], a["effect"]) for a in animations}
+    expected = {
+        (category, effect)
+        for category, effects in _adapter_animation_catalog().items()
+        for effect in effects
+    }
+
+    assert template.intent_id == "BUILD_ANIMATION_CATALOG"
+    assert pairs == expected and len(animations) == len(expected) == 15
+    assert {a["trigger"] for a in animations} == {"on_click", "with_previous", "after_previous"}
+    assert {a["direction"] for a in animations} >= {"left", "right", "up", "down", "none"}
+    assert {
+        n.parameters["effect"] for n in nodes if n.operation_id == "powerpoint.set_transition"
+    } == {"none", "fade", "morph"}
+    assert nodes[0].operation_id == "powerpoint.create_presentation"
+    assert [n.operation_id for n in nodes[-2:]] == [
+        "powerpoint.save_presentation",
+        "powerpoint.inspect_presentation",
+    ]

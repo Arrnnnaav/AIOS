@@ -350,7 +350,10 @@ built but not yet exercised by a caller or a live run.
       255/255 nodes each, three distinct published artifacts
       (`docs/evidence/act-acceptance-campaign-2026-09-11.md`). The 4 Sep runs
       are superseded: their bundle is no longer reproducible.
-- [ ] Animation-catalog campaign
+- [~] Animation-catalog campaign — the signed plan `animation-catalog-v1`
+      (intent `BUILD_ANIMATION_CATALOG`) now exists, covering all 15
+      category/effect pairs the adapter accepts, every trigger, and the
+      none/fade/morph transitions (D151). It has not been run or counted.
 - [ ] All lanes green independently
 - [x] D032 pre-sign review — three independent cold passes; 26 + 4 + 3
       findings, all fixed. The blocking one was a COM retry that could
@@ -377,7 +380,8 @@ pin, the built bundle and every digest in the retained r5 transcript named a
 file no clean checkout produced. LF is now canonical (D125), the PowerPoint
 bundle was rebuilt and re-signed at manifest `28dbaf2d` after two further
 rebuilds for signed build products (D127) and for redaction (D128), and again
-at `3a4f8c57` when D145 added signed UIA timing fields (D149), and
+at `3a4f8c57` when D145 added signed UIA timing fields (D149), and at
+`6dbd5ba2` when the animation-catalog plan was added (D151), and
 `tests/test_powerpoint_manifest_pin.py` recomputes that manifest from tracked
 sources so the figure cannot drift unnoticed. The seventh independent D032
 review returned READY at `45d1323` (D134), and the 3/3 campaign ran on 11
@@ -390,7 +394,7 @@ campaigns as diagnostic. The r5 and r1 transcripts stay uncitable.
 |---|---|
 | Fresh counted campaign | an independent READY verdict first. Both 11 Sep campaigns — harness and manager-path — are diagnostic, not acceptance (D139) |
 | UIA slice `add-slide-uia-v1` | independent D032 review, externally signed bytes, its own counted campaign |
-| Animation-catalog campaign | run it; it has never been counted |
+| Animation-catalog campaign | signed plan exists (D151); run and count it |
 | Independent lane runs | each lane green on its own, per D025 |
 | D032 review of the derived budgets | receipt budget READY at `63c5ca5`; confirmation budget (D145) review open, no retained record (D150) |
 | D032 activation review | **NOT READY** at the current independent review of `63cd2b5`: fresh counted evidence and the remaining release/desktop gates are still absent |

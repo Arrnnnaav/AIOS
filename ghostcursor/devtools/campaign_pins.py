@@ -20,9 +20,9 @@ import subprocess
 import zipfile
 from pathlib import Path
 
-#: The PowerPoint manifest the tracking documents name (D149).
+#: The PowerPoint manifest the tracking documents name (D151).
 POWERPOINT_MANIFEST_SHA256 = (
-    "3a4f8c570f49c583d07f578c3f1c05622b9fa736c8a3a170062818ab4fce0584"
+    "6dbd5ba2585fbf9287abe5753270407be1253f3660047fbc435694864421cd53"
 )
 POWERPOINT_PLUGIN_ID = "ghostcursor.powerpoint"
 

@@ -328,8 +328,9 @@ within D020's ceiling, and a re-sign procedure that records the prior key id
 and manifest digest in bundle provenance. Until those are built and reviewed,
 no bundle is re-keyed. Excel therefore remains a feasibility/data
 artifact only, not an active adopted Act surface; its prior live runs do not
-close acceptance. PowerPoint is rebuilt at manifest `3a4f8c57` (D149, superseding
-`28dbaf2d` after D145 changed signed operation bytes), but its current
+close acceptance. PowerPoint is rebuilt at manifest `6dbd5ba2` (D151, adding
+the animation-catalog plan; it supersedes `3a4f8c57` from D149 and `28dbaf2d`
+before it), but its current
 counted acceptance is open under D139. The active generation advances with
 every publish and is deliberately not restated here; read it from the store.
 
@@ -381,7 +382,7 @@ longer exist. `act-live-manager-d125-r1.jsonl` is superseded (D127) — its
 catalog manifest `48e6e4f4` contained signed build products and was never
 reproducible. Neither may be cited as current evidence. The most recent live run
 is `act-live-manager-d131-run.md`, on the `28dbaf2d` bundle that D149 superseded;
-no live run exists yet on `3a4f8c57`.
+no live run exists yet on `6dbd5ba2`.
 
 **Activation has not been granted.** The independent activation review of
 `63cd2b5` returned **NOT READY**. Work inside the implemented object-model

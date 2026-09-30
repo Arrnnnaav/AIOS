@@ -1,7 +1,8 @@
 """The documented PowerPoint manifest is recomputed, not trusted.
 
 `DOCUMENTED` is the manifest CLAUDE.md, DECISIONS.md and ROADMAP.md name as
-the bundle production runs (`3a4f8c57` since D149; `28dbaf2d` before it).
+the bundle production runs (`6dbd5ba2` since D151; `3a4f8c57` under D149 and
+`28dbaf2d` before it).
 Until D133 no test carried it: the figure could drift from the sources and
 nothing would fail, which is the same shape as a measured number that names no
 record (D034).
@@ -34,7 +35,7 @@ import build_ghostplugin  # noqa: E402
 SPEC = ROOT / "plugins" / "sources" / "powerpoint" / "plugin-source.json"
 
 #: The digest every tracking document names as the current PowerPoint bundle.
-DOCUMENTED = "3a4f8c570f49c583d07f578c3f1c05622b9fa736c8a3a170062818ab4fce0584"
+DOCUMENTED = "6dbd5ba2585fbf9287abe5753270407be1253f3660047fbc435694864421cd53"
 
 #: Every PowerPoint manifest this repository has published and replaced. ONE
 #: source of truth for both tests below: D133 guarded the copy used by the
@@ -46,6 +47,7 @@ SUPERSEDED = (
     "48e6e4f4d67dade069d8bcac5ce621b5eb1dc330c66e2550ed0e323cb177baea",
     "61b39b653eba7991c563e9dbcd2564cdd3cdc93bffc0263e1549e9eec46ab424",
     "28dbaf2d372c55144e289316a1b92dd25185281351cd685a8e735ee9d759a836",
+    "3a4f8c570f49c583d07f578c3f1c05622b9fa736c8a3a170062818ab4fce0584",
 )
 
 
@@ -76,7 +78,7 @@ def test_the_powerpoint_manifest_still_reproduces_from_tracked_sources():
 
     digest, count = _manifest_digest()
 
-    assert count == 24, count
+    assert count == 26, count
     assert digest == DOCUMENTED, (
         f"PowerPoint manifest drifted: rebuilt {digest}, documented {DOCUMENTED}. "
         "Either the payload changed and every document naming the old digest is "

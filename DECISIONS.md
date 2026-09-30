@@ -6754,3 +6754,47 @@ version `1.0.0`, so learned observations scoped by `(plugin_id,
 plugin_version)` span distinct signed bundles; a version bump is deferred to
 the next payload change that also changes behaviour. m6 is recorded in the
 D145 correction.
+
+## D151 — The animation-catalog plan, and PowerPoint manifest `6dbd5ba2`
+
+**Date:** 30 September 2026
+
+**Why.** The animation-catalog gate (CLAUDE.md, ROADMAP) named a campaign that
+could not run: no signed plan exercised the catalog. The only Act plans were
+`build-investor-deck-v1` (5 of the adapter's 14 effect names) and
+`add-slide-uia-v1`. FOLLOWUPS also waits on this campaign for a `morph`
+sample before the transition postcondition may be tightened.
+
+**What was added.** Intent `BUILD_ANIMATION_CATALOG`, exact phrases only
+("build the animation catalog in powerpoint", "run the animation catalog in
+powerpoint") so neither it nor the investor deck's heuristic can claim the
+other's goal. Plan `animation-catalog-v1`, 46 nodes: four slides, one shape per
+animation, every one of the 15 category/effect pairs the signed adapter's
+`_ANIMATION_EFFECTS` accepts exactly once, all three triggers, the four
+directions, and `none`/`fade`/`morph` transitions, then save and inspect.
+`tests/test_action_plans.py` reads the pair set from the adapter source rather
+than restating it. The intent is known but unadopted: Act authority for a
+signed plan does not come from a Teach adoption.
+
+**The rebuild.** Payload files 24 → 26; manifest `6dbd5ba2585fbf9287abe5753270407be1253f3660047fbc435694864421cd53`, signed with the same
+`ghostcursor-release-2026-3` key and installed through `PluginStore` (production
+catalog generation 11). One mistake was caught before publication: the first
+build ran before the two new files were staged, and because the builder packs
+tracked files only (D127) it produced a 24-file bundle without them. It was
+deleted unused; the pin test's file count is what exposed it.
+
+**Pins.** `DOCUMENTED` and `campaign_pins.POWERPOINT_MANIFEST_SHA256` move to
+`6dbd5ba2` together; `3a4f8c57` joins the superseded set; evidence notes name
+the new manifest above their unedited captured content.
+
+**The application build moved.** The installed PowerPoint is now
+`16.0.20326.20158`. The ADD_SLIDE Teach acceptance runs were on `.20112` and the
+UIA confirmation budget was measured on `.20132`. Act binds the live build at
+approval, so a campaign on `.20158` is evidence for `.20158` only. A Teach
+adoption pins its build, so ADD_SLIDE cannot be adopted from the `.20112` runs:
+it needs three new supervised runs on the current build. Whether the `.20132`
+confirmation budget applies to `.20158` is not established; a reviewer should
+decide whether it must be re-measured.
+
+**What this does not claim.** The catalog has not run. Nothing here is
+acceptance evidence, and this slice has been read by no one but its author.

@@ -777,7 +777,7 @@ or new feature phase.
 
 1. SUPERSEDED 10 Sep 2026 — the run happened and completed 1/1
    (`act-live-manager-d125-run.md`), but it bound manifest `48e6e4f4` — two
-   rebuilds behind `28dbaf2d`, itself superseded by the current `3a4f8c57` (D149) — which
+   rebuilds behind `28dbaf2d`, itself superseded by `3a4f8c57` (D149) and then by the current `6dbd5ba2` (D151) — which
    contained signed build products and was never reproducible. Rerun on the CURRENT PowerPoint bundle.
 2. DONE 11 Sep 2026 — readings retained PER ATTEMPT
    (`act-live-deck-2026-09-11-{before-1,after-1}.json`): 1 -> 2 slides across a

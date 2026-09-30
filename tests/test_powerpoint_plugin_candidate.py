@@ -144,8 +144,10 @@ def test_candidate_is_nameable_but_carries_no_execution_authority(tmp_path):
     assert matcher.classify("open normal view in powerpoint").intent_id == "OPEN_NORMAL_VIEW"
     assert matcher.classify("open slide sorter in powerpoint").intent_id == "OPEN_SLIDE_SORTER"
     assert matcher.classify("build the ghostcursor investor deck in powerpoint").intent_id == "BUILD_INVESTOR_DECK"
+    assert matcher.classify("build the animation catalog in powerpoint").intent_id == "BUILD_ANIMATION_CATALOG"
     assert set(pack.intents) == {
         "ADD_SLIDE",
+        "BUILD_ANIMATION_CATALOG",
         "BUILD_INVESTOR_DECK",
         "INSERT_BAR_CHART",
         "OPEN_COMMENT_EDITOR",
