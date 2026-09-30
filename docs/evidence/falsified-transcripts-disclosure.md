@@ -4,8 +4,9 @@
 
 Several documents in this repository publish pytest output under headings that
 say **verbatim**. Some of those blocks were edited after capture. This document
-names every one that is known, says exactly what was changed, and says what can
-and cannot be repaired.
+names every known edit of captured output — pytest transcripts and, since the
+D149 review, captured acceptance records — says exactly what was changed, and
+says what can and cannot be repaired.
 
 It exists because the repair attempted on 11 September 2026 **repeated the
 defect it was repairing**, and because a second instance — in files no review
@@ -112,6 +113,41 @@ record then asserted it had not.** D138 is corrected in place; see D139.
 
 ---
 
+## Instance 4 — `3e8ad17` and `3d4956f`, acceptance records rewritten in place
+
+*Added 30 September 2026 after the D149 independent review (finding I4)
+observed that this document claimed to name every known instance while
+covering pytest transcripts only.*
+
+**Commits:** `3e8ad17` *"fix: pseudonymise target bindings and remove published
+handles"* and `3d4956f` *"fix: derive target references from a per-campaign
+salt"* (both 10 September 2026).
+**Files:** all twenty committed PowerPoint and Excel acceptance records under
+`plugins/sources/*/acceptance-records/`, twelve PowerPoint records among them.
+
+**What was changed.** `3e8ad17` replaced each record's raw window handle with
+the pseudonym `window-A`. `3d4956f` then rewrote `window-A` to a keyed
+per-campaign reference and added a `target_scope` field. Both edits happened
+after the records had been captured. The commit message says
+the values were regenerated from the original handles recovered from
+`11d8b85`.
+
+**Why it counts.** The motive was a real defect: a process-local counter wrote
+`window-A` for every attempt, so the renderer's "all references are equal"
+check was a tautology. The method was the one D139 now forbids: captured
+records were edited rather than re-captured. The derivation is deterministic
+and disclosed in the commit, but the records are no longer the bytes the runs
+wrote, and nothing in them says so. `tests/test_retained_record_history.py` now
+lists both commits as the only permitted post-capture edits of those records,
+so any further edit fails until it is disclosed.
+
+**Status.** Not repaired. The original records are reachable at `3e8ad17^`,
+and they carry the raw handles that D128 withholds, which is why they were not
+restored. Those acceptance records are historical; none is current acceptance
+evidence (D139).
+
+---
+
 ## What was done about each
 
 | Instance | Files | Action |
@@ -119,6 +155,7 @@ record then asserted it had not.** D138 is corrected in place; see D139.
 | 1 (`3e8ad17`) | chromium warm-up ledger + plan | Relabelled REDACTED; cannot be re-captured — tests deleted by `1ba371a` |
 | 2 (`301e86b`) | wrong-action ledger | Superseded by instance 3's repair |
 | 3 (`0ba67c8`) | wrong-action ledger | Blocks fully re-captured, tally lines included; see below |
+| 4 (`3e8ad17`, `3d4956f`) | PowerPoint/Excel acceptance records | Disclosed here; not restorable without republishing raw handles |
 
 Nothing is deleted. No commit is rewritten. The original bytes remain reachable
 in git history for every file named here, except where the pre-redaction bytes
@@ -133,7 +170,12 @@ from a real run — or the scan is wrong, in which case fix the scan. Editing th
 record to satisfy the check inverts the direction of evidence and is the one
 defect class this repository's tests structurally cannot detect.
 
-`tests/test_evidence_provenance.py` now detects the two fingerprints seen here
-(a spliced tally, and a substitution that duplicates surrounding text), which
-narrows the class without closing it. A human read remains the only complete
+`tests/test_evidence_provenance.py` now detects two fingerprints: a value
+reported by a run that appears nowhere in its own quoted source (a spliced
+literal, instances 1 and 2), and a substitution that duplicates surrounding
+text. It does **not** detect a spliced tally — a real traceback under an older
+summary line, which is exactly instance 3. An earlier version of this sentence
+said it did; the D149 independent review found the tally pattern was defined
+and never used, and it has been deleted rather than left to look like a check.
+The scan narrows the class without closing it. A human read remains the only complete
 instrument, and that is why this file exists rather than a green test.

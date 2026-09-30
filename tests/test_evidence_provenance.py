@@ -44,9 +44,6 @@ _FENCE = re.compile(r"```[^\n]*\n(.*?)```", re.DOTALL)
 #: actually produced, as pytest printed it.
 _ACTUAL = re.compile(r"^E\s+AssertionError: assert '([^']*)' ==", re.MULTILINE)
 
-#: `1 failed, 8 passed in 1.48s`
-_TALLY = re.compile(r"(\d+) failed, (\d+) passed in ([\d.]+)s")
-
 #: A pytest source echo line inside a traceback. FOUR OR MORE spaces, not
 #: exactly four: pytest indents the echo by four and the code keeps its own
 #: indentation, so the fixture call that matters most sits at eight. The first
@@ -281,7 +278,7 @@ def test_the_disclosure_document_exists_and_names_every_commit():
     disclosure = ROOT / "docs" / "evidence" / "falsified-transcripts-disclosure.md"
     assert disclosure.is_file()
     text = disclosure.read_text(encoding="utf-8")
-    for commit in ("3e8ad17", "301e86b", "0ba67c8"):
+    for commit in ("3e8ad17", "301e86b", "0ba67c8", "3d4956f"):
         assert commit in text, commit
 
 
