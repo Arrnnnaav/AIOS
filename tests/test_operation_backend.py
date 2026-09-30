@@ -33,12 +33,12 @@ def _uia(**overrides):
         "selector_id": "powerpoint.new-slide",
         "selector_sha256": SELECTOR,
     }
-    block.update(overrides)
-    if block["pattern"] != "DoDefaultAction":
+    if overrides.get("pattern", block["pattern"]) != "DoDefaultAction":
         block.update(
             confirmation_round_trip_deadline_ms=1280,
             confirmation_to_request_deadline_ms=32,
         )
+    block.update(overrides)
     return block
 
 
@@ -268,6 +268,68 @@ def test_a_malformed_uia_block_shape_is_refused():
     with pytest.raises(ActionValidationError, match="uia block is invalid"):
         _registry(
             {"powerpoint.new_slide": _operation(backend="uia_pattern", uia=block)}
+        )
+
+
+TIMING_KEYS = (
+    "confirmation_round_trip_deadline_ms",
+    "confirmation_to_request_deadline_ms",
+)
+
+
+@pytest.mark.parametrize("key", TIMING_KEYS)
+def test_a_uia_operation_missing_a_signed_timing_field_is_refused(key):
+    """D145: the confirmation budget is signed policy, never a host default.
+
+    This is the rule that made the installed `28dbaf2d` catalog unloadable
+    (D149); without it a bundle could omit the budget and run unbounded."""
+
+    block = _uia()
+    del block[key]
+
+    with pytest.raises(ActionValidationError, match="uia block is invalid"):
+        _registry(
+            {"powerpoint.new_slide": _operation(backend="uia_pattern", uia=block)}
+        )
+
+
+@pytest.mark.parametrize("key", TIMING_KEYS)
+@pytest.mark.parametrize("value", [0, 120_001, -1, 32.0, "32", None, True])
+def test_a_uia_timing_field_outside_its_bounds_is_refused(key, value):
+    with pytest.raises(ActionValidationError, match="UIA timing policy is invalid"):
+        _registry(
+            {
+                "powerpoint.new_slide": _operation(
+                    backend="uia_pattern", uia=_uia(**{key: value})
+                )
+            }
+        )
+
+
+@pytest.mark.parametrize("key", TIMING_KEYS)
+def test_a_uia_timing_field_at_its_bounds_is_accepted(key):
+    for value in (1, 120_000):
+        registry = _registry(
+            {
+                "powerpoint.new_slide": _operation(
+                    backend="uia_pattern", uia=_uia(**{key: value})
+                )
+            }
+        )
+        assert "powerpoint.new_slide" in registry.operations
+
+
+def test_a_legacy_operation_may_not_carry_uia_timing_fields():
+    block = _uia(pattern="DoDefaultAction")
+    block["confirmation_round_trip_deadline_ms"] = 1280
+
+    with pytest.raises(ActionValidationError, match="uia block is invalid"):
+        _registry(
+            {
+                "powerpoint.new_slide": _operation(
+                    backend="legacy_iaccessible", uia=block
+                )
+            }
         )
 
 

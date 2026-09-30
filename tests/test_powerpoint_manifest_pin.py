@@ -1,9 +1,10 @@
 """The documented PowerPoint manifest is recomputed, not trusted.
 
-`28dbaf2d` is cited in CLAUDE.md, DECISIONS.md, ROADMAP.md and the evidence
-documents as the bundle production runs. Until now it appeared in no test: the
-figure could drift from the sources and nothing would fail, which is the same
-shape as a measured number that names no record (D034).
+`DOCUMENTED` is the manifest CLAUDE.md, DECISIONS.md and ROADMAP.md name as
+the bundle production runs (`3a4f8c57` since D149; `28dbaf2d` before it).
+Until D133 no test carried it: the figure could drift from the sources and
+nothing would fail, which is the same shape as a measured number that names no
+record (D034).
 
 A fifth independent review pointed out that `plugins/bundled/` holds excel,
 synthetic and vscode but no PowerPoint bundle, so the hermetic lane never
@@ -83,26 +84,39 @@ def test_the_powerpoint_manifest_still_reproduces_from_tracked_sources():
     )
 
 
-ARCHIVE_DIR = "docs/orbyn-plan/source"
+#: The one preserved owner-supplied archive that cites a superseded manifest
+#: and may not be edited (its README forbids it; its bytes are its
+#: provenance). The digest is pinned HERE rather than read from the README, so
+#: an archive and its provenance row cannot be edited together to widen the
+#: exemption (D149 review, finding I3).
+PINNED_ARCHIVES = {
+    "docs/orbyn-plan/source/ORBYN_UNIFIED_PLAN.md": "56c46a98ba39ee7be33d6a945fea1e2e519a1fe3101bd0dbd1d215c3ccf540eb",
+}
 
 
-def _digest_pinned_archives() -> dict[str, str]:
-    """Archived sources and the SHA-256 their provenance table records."""
+def _exempt(name: str, raw: bytes) -> bool:
+    """Exempt only a pinned archive whose bytes are still exactly the pinned ones."""
 
-    table = (ROOT / ARCHIVE_DIR / "README.md").read_text(encoding="utf-8")
-    rows = re.findall(r"^\| `([A-Z_]+\.md)` \|.*\| `([0-9A-F]{64})` \|$", table, re.M)
-    return {f"{ARCHIVE_DIR}/{name}": digest.lower() for name, digest in rows}
+    pinned = PINNED_ARCHIVES.get(name)
+    return pinned is not None and hashlib.sha256(raw).hexdigest() == pinned
 
 
-def test_the_archive_exemption_names_only_pinned_sources():
-    """The exemption is not vacuous and cannot silently widen."""
+def test_the_archive_exemption_holds_only_for_the_exact_pinned_bytes():
+    name = next(iter(PINNED_ARCHIVES))
+    raw = (ROOT / name).read_bytes()
 
-    archived = _digest_pinned_archives()
-    assert set(archived) == {
-        f"{ARCHIVE_DIR}/ORBYN_MASTER_BUILD_PLAN.md",
-        f"{ARCHIVE_DIR}/ORBYN_JEV_SYSTEM_ONE_ADDENDUM.md",
-        f"{ARCHIVE_DIR}/ORBYN_UNIFIED_PLAN.md",
-    }
+    assert _exempt(name, raw)
+    assert not _exempt(name, raw + b" ")
+    assert not _exempt(name, raw[:-1])
+    assert not _exempt("docs/evidence/act-acceptance-campaign-2026-09-11.md", raw)
+
+
+def test_the_pinned_archive_digest_agrees_with_its_provenance_table():
+    """The README row and the pin are two independent records of one value."""
+
+    table = (ROOT / "docs/orbyn-plan/source/README.md").read_text(encoding="utf-8")
+    for name, digest in PINNED_ARCHIVES.items():
+        assert f"`{digest.upper()}`" in table, name
 
 
 def test_every_document_naming_a_powerpoint_manifest_names_this_one():
@@ -121,16 +135,10 @@ def test_every_document_naming_a_powerpoint_manifest_names_this_one():
     if listed.returncode != 0:
         pytest.skip("not a git work tree")
 
-    archived = _digest_pinned_archives()
     offenders = []
     for name in [n for n in listed.stdout.decode("utf-8").split("\0") if n]:
-        if name in archived:
-            # A preserved owner-supplied source may not be edited to add the
-            # current digest; exempt it only while its bytes are still exactly
-            # the ones its provenance table records.
-            actual = hashlib.sha256((ROOT / name).read_bytes()).hexdigest()
-            if actual == archived[name]:
-                continue
+        if _exempt(name, (ROOT / name).read_bytes()):
+            continue
         text = (ROOT / name).read_text(encoding="utf-8", errors="ignore")
         mentioned = {value for value in superseded if value[:8] in text}
         if not mentioned:

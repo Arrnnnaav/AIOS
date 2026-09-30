@@ -46,6 +46,8 @@ class ReleaseTrustPolicy:
     key_records: Mapping[str, ReleaseKey]
     key_manifest_sha256: str
     revocations_sha256: str
+    key_manifest_sequence: int
+    revocations_sequence: int
 
 
 def _canonical(value: object) -> bytes:
@@ -114,9 +116,18 @@ def load_trust_policy(
     revocations_bytes: bytes,
     revocations_signature: bytes,
     root_public_key: bytes,
+    key_manifest_floor: int = 0,
+    revocations_floor: int = 0,
     now: datetime | None = None,
 ) -> ReleaseTrustPolicy:
-    """Verify root-signed metadata and return only currently trusted keys."""
+    """Verify root-signed metadata and return only currently trusted keys.
+
+    Each document carries a root-signed monotonic ``sequence``. The caller
+    persists the highest sequence it has accepted and passes it back as the
+    floor, so replaying an older, validly signed revocation list cannot
+    un-revoke a key. A signature proves who wrote a document, not that it is
+    the newest one.
+    """
 
     _verify_root_signature(
         key_manifest_bytes, key_manifest_signature, root_public_key, "key manifest"
@@ -127,17 +138,28 @@ def load_trust_policy(
     key_doc = _strict_json(key_manifest_bytes, "key manifest")
     revocation_doc = _strict_json(revocations_bytes, "revocation list")
     if (
-        set(key_doc) != {"schema_version", "generated_at", "keys"}
+        set(key_doc) != {"schema_version", "generated_at", "sequence", "keys"}
         or type(key_doc["schema_version"]) is not int
         or key_doc["schema_version"] != 1
     ):
         raise ReleaseTrustError("key manifest schema is invalid")
     if (
-        set(revocation_doc) != {"schema_version", "generated_at", "revoked"}
+        set(revocation_doc) != {"schema_version", "generated_at", "sequence", "revoked"}
         or type(revocation_doc["schema_version"]) is not int
         or revocation_doc["schema_version"] != 1
     ):
         raise ReleaseTrustError("revocation list schema is invalid")
+    for label, doc, floor in (
+        ("key manifest", key_doc, key_manifest_floor),
+        ("revocation list", revocation_doc, revocations_floor),
+    ):
+        if type(floor) is not int or floor < 0:
+            raise ReleaseTrustError(f"{label} sequence floor is invalid")
+        sequence = doc["sequence"]
+        if type(sequence) is not int or sequence < 1:
+            raise ReleaseTrustError(f"{label} sequence is invalid")
+        if sequence < floor:
+            raise ReleaseTrustError(f"{label} is older than one already accepted")
     current = now or datetime.now(timezone.utc)
     if current.tzinfo is None or current.utcoffset() != timezone.utc.utcoffset(current):
         raise ReleaseTrustError("current time must be timezone-aware UTC")
@@ -254,6 +276,8 @@ def load_trust_policy(
         MappingProxyType(records),
         hashlib.sha256(key_manifest_bytes).hexdigest(),
         hashlib.sha256(revocations_bytes).hexdigest(),
+        key_doc["sequence"],
+        revocation_doc["sequence"],
     )
 
 

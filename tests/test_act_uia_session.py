@@ -15,6 +15,7 @@ from __future__ import annotations
 import hashlib
 import json
 import textwrap
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -451,7 +452,7 @@ def test_the_dispatch_goes_to_the_selector_named_control(tmp_path):
     digest = _payload(tmp_path, name="Reuse Slides")
     with _host(tmp_path) as host:
         session = _session(tmp_path, host, digest=digest)
-        session.dispatch(_node(), _token(), _confirmed())
+        session.dispatch(_node(), _token(), _confirmed(), _just_confirmed())
     # No exception means the adapter reported completed for that name; the
     # name itself is asserted through the observe path above.
 
@@ -483,6 +484,23 @@ def test_dispatch_refuses_when_request_window_expires_before_adapter_write(tmp_p
         assert not getattr(host, "dispatched", [])
 
 
+def _just_confirmed() -> float:
+    """A confirmation instant on the session's default millisecond clock."""
+
+    return time.monotonic() * 1000.0
+
+
+def test_a_uia_dispatch_without_a_confirmation_instant_is_refused(tmp_path):
+    """A signed request window with nothing to measure it from is refused,
+    not skipped (D149 review, finding m2)."""
+
+    with _host(tmp_path) as host:
+        session = _session(tmp_path, host)
+        with pytest.raises(UiaSessionError, match="confirmation instant is unknown"):
+            session.dispatch(_node(), _token(), _confirmed(), None)
+    assert not getattr(host, "dispatched", [])
+
+
 def test_a_dispatch_without_a_confirmation_is_refused(tmp_path):
     """Reaching here would mean dispatching at a control nobody confirmed was
     still the one under the pointer."""
@@ -503,7 +521,7 @@ def test_an_adapter_that_did_not_complete_refuses_the_node(tmp_path, outcome):
         session = _session(tmp_path, host)
 
         with pytest.raises(UiaSessionError, match="did not complete the dispatch"):
-            session.dispatch(_node(), _token(), _confirmed())
+            session.dispatch(_node(), _token(), _confirmed(), _just_confirmed())
 
 
 def test_the_dispatch_carries_the_authorization_core_minted(tmp_path):
@@ -528,7 +546,7 @@ def test_the_dispatch_carries_the_authorization_core_minted(tmp_path):
         host.dispatch_pattern = spy
         session = _session(tmp_path, host)
         session.dispatch(
-            _node(), _token("d" * 64), _confirmed()
+            _node(), _token("d" * 64), _confirmed(), _just_confirmed()
         )
 
     assert sent == ["d" * 64]

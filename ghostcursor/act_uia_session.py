@@ -264,6 +264,14 @@ def build_uia_session(
         )
         if reasons:
             raise UiaSessionError("; ".join(reasons), RefusalCode.TARGET_IDENTITY_MISMATCH)
+        if deadline_ms is not None and confirmation_completed_at is None:
+            # A signed request window with no confirmation instant to measure
+            # it from is not a window that passed; it is one nobody checked.
+            raise UiaSessionError(
+                "the confirmation instant is unknown, so the signed dispatch "
+                "window cannot be checked",
+                RefusalCode.PRECONDITION_STALE,
+            )
         if confirmation_completed_at is not None and deadline_ms is not None and (
             session_clock() - confirmation_completed_at > deadline_ms
         ):

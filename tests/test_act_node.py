@@ -50,8 +50,12 @@ def _spec(backend="uia_pattern", **overrides):
         "draws_a_pointer": backend != "object_model",
         "identity": _identity_policy() if backend != "object_model" else None,
         "uia_pattern": "Invoke" if backend != "object_model" else None,
-        "confirmation_round_trip_deadline_ms": 1280 if backend != "object_model" else None,
-        "confirmation_to_request_deadline_ms": 32 if backend != "object_model" else None,
+        "confirmation_round_trip_deadline_ms": 1280
+        if backend != "object_model"
+        else None,
+        "confirmation_to_request_deadline_ms": 32
+        if backend != "object_model"
+        else None,
     }
     values.update(overrides)
     return SimpleNamespace(**values)
@@ -278,7 +282,9 @@ def test_a_receipt_for_another_request_does_not_authorize_this_node():
             observe=lambda mode: _observation(),
             present=present,
             authorize=lambda facts: None,
-            dispatch=lambda token, confirmed, confirmed_at: pytest.fail("must not dispatch"),
+            dispatch=lambda token, confirmed, confirmed_at: pytest.fail(
+                "must not dispatch"
+            ),
             verify=lambda node, baseline: True,
             clock=clock,
         )
@@ -337,6 +343,39 @@ def test_confirmation_to_request_deadline_refuses_before_dispatch():
     )
 
     with pytest.raises(NodeRefused) as raised:
+        _run(spec, dispatch_spy=dispatched)
+
+    assert raised.value.code is RefusalCode.PRECONDITION_STALE
+    assert dispatched == []
+
+
+def test_the_request_window_is_rechecked_after_the_pause_recheck():
+    """The fake clock advances 10 ms per read. With a 15 ms window the check
+    before the Pause/Stop recheck sees 10 ms and passes; the one after it sees
+    20 ms and must refuse. Removing the second check would dispatch here
+    (D149 review, finding m1)."""
+
+    dispatched = []
+    spec = _spec(
+        confirmation_to_request_deadline_ms=15,
+        confirmation_round_trip_deadline_ms=500,
+    )
+
+    with pytest.raises(NodeRefused) as raised:
+        _run(spec, dispatch_spy=dispatched)
+
+    assert raised.value.code is RefusalCode.PRECONDITION_STALE
+    assert dispatched == []
+
+
+def test_a_request_window_without_a_confirmation_instant_refuses():
+    """A spec that carries a signed window but never confirmed (so has no
+    instant to measure from) is refused rather than skipping the check."""
+
+    dispatched = []
+    spec = _spec(draws_a_pointer=False)
+
+    with pytest.raises(NodeRefused, match="no confirmation instant") as raised:
         _run(spec, dispatch_spy=dispatched)
 
     assert raised.value.code is RefusalCode.PRECONDITION_STALE
@@ -443,7 +482,9 @@ def test_the_token_is_minted_only_after_the_identity_check_passes():
                 req, sink=sink, clock=clock
             ),
             authorize=authorize,
-            dispatch=lambda token, confirmed, confirmed_at: pytest.fail("must not dispatch"),
+            dispatch=lambda token, confirmed, confirmed_at: pytest.fail(
+                "must not dispatch"
+            ),
             verify=lambda node, baseline: True,
             clock=clock,
         )
@@ -588,4 +629,3 @@ def test_the_stop_callable_cannot_make_a_node_succeed():
     outcome, _calls = _run(verified=False, should_continue=lambda: True)
 
     assert outcome.verified is False
-

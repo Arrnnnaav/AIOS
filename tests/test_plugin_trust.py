@@ -23,7 +23,7 @@ def _canonical(value: object) -> bytes:
     return (json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n").encode()
 
 
-def _signed_policy(*, revoked: bool = False):
+def _signed_policy(*, revoked: bool = False, sequence: int = 1):
     root = Ed25519PrivateKey.generate()
     releases = [Ed25519PrivateKey.generate(), Ed25519PrivateKey.generate()]
     publics = [
@@ -37,6 +37,7 @@ def _signed_policy(*, revoked: bool = False):
     keys = {
         "schema_version": 1,
         "generated_at": "2026-09-24T00:00:00Z",
+        "sequence": sequence,
         "keys": [
             {
                 "key_id": "release-1",
@@ -59,6 +60,7 @@ def _signed_policy(*, revoked: bool = False):
     revocations = {
         "schema_version": 1,
         "generated_at": "2026-09-24T00:00:00Z",
+        "sequence": sequence,
         "revoked": (
             [{"key_id": "release-1", "revoked_at": "2026-09-24T00:00:00Z", "reason_code": "retired"}]
             if revoked
@@ -179,3 +181,71 @@ def test_rotation_requires_bundle_bound_previous_key_and_manifest_digest():
             validate_resigning_provenance(
                 {**manifest, "re_sign_provenance": bad}, policy.key_records
             )
+
+
+def test_a_key_naming_a_predecessor_that_does_not_list_it_is_rejected():
+    """The other half of the lineage: release-2 claims release-1 as its
+    predecessor, but release-1 no longer lists release-2 as a successor."""
+
+    root, keys, _key_sig, revocations, revoke_sig, root_private = _signed_policy()
+    value = json.loads(keys)
+    value["keys"][0]["successor_key_ids"] = []
+    changed = _canonical(value)
+    with pytest.raises(ReleaseTrustError, match="predecessor relationship"):
+        load_trust_policy(
+            key_manifest_bytes=changed,
+            key_manifest_signature=root_private.sign(changed),
+            revocations_bytes=revocations,
+            revocations_signature=revoke_sig,
+            root_public_key=root,
+            now=NOW,
+        )
+
+
+def test_replaying_an_older_revocation_list_is_refused():
+    """A validly signed but older list would otherwise un-revoke a key."""
+
+    newer = _load(revoked=True, **{})
+    assert newer.revocations_sequence == 1
+    root, keys, key_sig, revocations, revoke_sig, _root_private = _signed_policy(
+        revoked=False
+    )
+    with pytest.raises(ReleaseTrustError, match="older than one already accepted"):
+        load_trust_policy(
+            key_manifest_bytes=keys,
+            key_manifest_signature=key_sig,
+            revocations_bytes=revocations,
+            revocations_signature=revoke_sig,
+            root_public_key=root,
+            revocations_floor=2,
+            now=NOW,
+        )
+    with pytest.raises(ReleaseTrustError, match="older than one already accepted"):
+        load_trust_policy(
+            key_manifest_bytes=keys,
+            key_manifest_signature=key_sig,
+            revocations_bytes=revocations,
+            revocations_signature=revoke_sig,
+            root_public_key=root,
+            key_manifest_floor=2,
+            now=NOW,
+        )
+
+
+@pytest.mark.parametrize("sequence", [0, -1])
+def test_a_non_positive_sequence_is_rejected(sequence):
+    root, keys, key_sig, revocations, revoke_sig, _ = _signed_policy(sequence=sequence)
+    with pytest.raises(ReleaseTrustError, match="sequence is invalid"):
+        load_trust_policy(
+            key_manifest_bytes=keys,
+            key_manifest_signature=key_sig,
+            revocations_bytes=revocations,
+            revocations_signature=revoke_sig,
+            root_public_key=root,
+            now=NOW,
+        )
+
+
+def test_the_accepted_sequences_are_returned_for_the_caller_to_persist():
+    policy = _load()
+    assert (policy.key_manifest_sequence, policy.revocations_sequence) == (1, 1)

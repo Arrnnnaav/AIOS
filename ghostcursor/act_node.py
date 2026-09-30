@@ -317,6 +317,11 @@ def execute_node(
     request_deadline_ms = getattr(
         spec, "confirmation_to_request_deadline_ms", None
     )
+    if request_deadline_ms is not None and confirmation_completed_at is None:
+        raise NodeRefused(
+            RefusalCode.PRECONDITION_STALE,
+            "the signed dispatch window has no confirmation instant to start from",
+        )
     if confirmation_completed_at is not None and request_deadline_ms is not None:
         if clock() - confirmation_completed_at > request_deadline_ms:
             raise NodeRefused(
