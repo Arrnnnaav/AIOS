@@ -176,3 +176,45 @@ def test_the_animation_catalog_plan_exercises_every_effect_the_adapter_accepts(t
         "powerpoint.save_presentation",
         "powerpoint.inspect_presentation",
     ]
+
+
+@pytest.mark.parametrize("plan_id", ["build-investor-deck-v1", "animation-catalog-v1"])
+def test_the_signed_adapter_accepts_every_signed_plan(plan_id):
+    """Core validation and the adapter's own `PlanValidator` are separate
+    gates; a plan core accepts but the adapter refuses fails on the desktop,
+    after a campaign has started (D152, review m7). Placeholder session
+    values only: no PowerPoint is contacted."""
+
+    import importlib.util
+    import json
+
+    spec = importlib.util.spec_from_file_location("powerpoint_adapter_under_test", ADAPTER)
+    adapter = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(adapter)
+    nodes = json.loads((ROOT / "action-plans" / f"{plan_id}.json").read_text(encoding="utf-8"))["nodes"]
+    for node in nodes:
+        for key, value in list(node["parameters"].items()):
+            if isinstance(value, dict) and "$parameter" in value:
+                node["parameters"][key] = "C:/placeholder/out.pptx"
+    validator = adapter.PlanValidator(
+        {
+            "output_path": "C:/placeholder/out.pptx",
+            "target": {"executable": "powerpnt.exe", "executable_version": "16.0", "hwnd": 1, "pid": 1},
+        }
+    )
+    validator.validate(nodes)
+
+
+def test_the_colour_change_effect_targets_text():
+    """A font-colour change on a shape with no text may refuse live (review m9)."""
+
+    import json
+
+    nodes = json.loads((ROOT / "action-plans" / "animation-catalog-v1.json").read_text(encoding="utf-8"))["nodes"]
+    target = next(
+        n["parameters"]["object_id"]
+        for n in nodes
+        if n["operation_id"] == "powerpoint.add_animation" and n["parameters"]["effect"] == "color_change"
+    )
+    creators = [n["operation_id"] for n in nodes if n["parameters"].get("object_id") == target and n["operation_id"] != "powerpoint.add_animation"]
+    assert creators == ["powerpoint.add_text"]

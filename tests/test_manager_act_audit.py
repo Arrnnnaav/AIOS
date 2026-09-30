@@ -79,7 +79,7 @@ def test_proposal_audit_binding_changes_with_goal_or_validated_graph():
 
 def test_audit_json_is_fixed_schema_and_excludes_private_live_geometry():
     record = ManagerActAuditRecord(
-        schema_version=1,
+        schema_version=2,
         sequence=7,
         type="act_runtime_event",
         at_ns=123,

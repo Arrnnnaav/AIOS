@@ -37,6 +37,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import secrets
 import subprocess
 import sys
@@ -202,9 +203,12 @@ def run_campaign(
     for index in range(1, attempts + 1):
         windows = restore(window_class)
         if len(windows) != 1:
+            # The count only: a handle in this message would reach the
+            # retained report (D128), which is the pressure behind D139.
             raise CampaignError(
                 f"attempt {index} needs exactly one visible {window_class} window, "
-                f"found {len(windows)}: {list(windows)}"
+                f"found {len(windows)}",
+                completed,
             )
         if settle_s:
             time.sleep(settle_s)
@@ -227,7 +231,11 @@ def run_campaign(
         try:
             attempt = attempt_from(index, read_records(proc.stdout), seconds)
         except CampaignError as exc:
-            raise CampaignError(str(exc), completed) from exc
+            raise CampaignError(
+                f"{exc}; child exit {proc.returncode}, last stderr line: "
+                f"{redacted_last_line(getattr(proc, 'stderr', '') or '')}",
+                completed,
+            ) from exc
         completed.append(attempt)
         if not attempt.clean:
             raise CampaignError(
@@ -240,6 +248,39 @@ def run_campaign(
     return tuple(completed)
 
 
+_LONG_NUMBER = re.compile(r"(?<![0-9a-fA-F])[0-9]{4,}(?![0-9a-fA-F])")
+_HANDLE_TEXT = re.compile(r"(?i)\b(hwnd|handle|pid|process id)\b\W{0,3}[0-9]{3,}")
+
+
+def redacted_last_line(text: str) -> str:
+    """The last non-empty line of a child's stderr, with every standalone
+    number of four or more digits replaced. A crash's cause is kept; a window
+    handle or process id quoted in a refusal (D075 names every candidate) is
+    not."""
+
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if not lines:
+        return "(none)"
+    return _LONG_NUMBER.sub("<n>", lines[-1])[:400]
+
+
+def record_leaks(value, path="") -> list[str]:
+    """Every forbidden key or handle-shaped string anywhere in ``value``."""
+
+    found = []
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if key in FORBIDDEN_RECORD_KEYS:
+                found.append(f"{path}{key}")
+            found.extend(record_leaks(item, f"{path}{key}."))
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            found.extend(record_leaks(item, f"{path}{index}."))
+    elif isinstance(value, str) and _HANDLE_TEXT.search(value):
+        found.append(f"{path}<text>")
+    return found
+
+
 def retained_records(records) -> list[dict]:
     """An attempt's records as they will be retained, or a refusal.
 
@@ -250,7 +291,7 @@ def retained_records(records) -> list[dict]:
 
     kept = []
     for record in records:
-        leaked = FORBIDDEN_RECORD_KEYS & set(record)
+        leaked = record_leaks(record)
         if leaked:
             raise CampaignError(
                 f"a {record.get('type')!r} record carries {sorted(leaked)}; "
@@ -310,17 +351,27 @@ def main() -> int:  # pragma: no cover - thin CLI over run_campaign
     parser.add_argument("--plan-id", default="build-investor-deck-v1")
     parser.add_argument("--plan-sha256", required=True)
     parser.add_argument("--mode", choices=("quick", "watch"), default="quick")
-    parser.add_argument("--report", type=Path, required=True)
+    parser.add_argument(
+        "--campaign-id",
+        required=True,
+        help="declared in the committed campaign ledger before attempt 1 (D152)",
+    )
     arguments = parser.parse_args()
 
     from ghostcursor.devtools.campaign_pins import (
         CampaignPreflightError,
         bundle_manifest_sha256,
+        campaign_directory,
         repository_commit,
+        require_ledgered,
         require_pinned_manifest,
     )
 
-    report_path = arguments.report.resolve()
+    try:
+        report_path = campaign_directory(arguments.campaign_id) / "report.json"
+    except CampaignPreflightError as exc:
+        print(json.dumps({"campaign": "refused", "detail": str(exc)}))
+        return 3
     if report_path.exists():
         print(json.dumps({"campaign": "refused", "detail": "report exists; never overwrite a campaign"}))
         return 3
@@ -328,6 +379,7 @@ def main() -> int:  # pragma: no cover - thin CLI over run_campaign
         manifest = bundle_manifest_sha256(arguments.bundle.resolve())
         require_pinned_manifest(manifest)
         commit = repository_commit()
+        require_ledgered(arguments.campaign_id, path="harness", plan_id=arguments.plan_id)
     except (CampaignPreflightError, OSError, KeyError) as exc:
         print(json.dumps({"campaign": "refused", "detail": str(exc)}, sort_keys=True))
         return 3
@@ -357,10 +409,14 @@ def main() -> int:  # pragma: no cover - thin CLI over run_campaign
             arguments.plan_sha256,
             "--mode",
             arguments.mode,
+            # Used only by a plan with a pointer-drawing node; the measured
+            # policy is checked against its records by the hermetic lane.
+            "--measured-deadlines",
         ]
 
     binding = {
         "bundle_sha256": arguments.bundle_sha256,
+        "campaign_id": arguments.campaign_id,
         "commit": commit,
         "manifest_sha256": manifest,
         "mode": arguments.mode,

@@ -20,9 +20,9 @@ import subprocess
 import zipfile
 from pathlib import Path
 
-#: The PowerPoint manifest the tracking documents name (D151).
+#: The PowerPoint manifest the tracking documents name (D152).
 POWERPOINT_MANIFEST_SHA256 = (
-    "6dbd5ba2585fbf9287abe5753270407be1253f3660047fbc435694864421cd53"
+    "b0d63512d1bcc14bc49f322139613018fc31483f7a7b49007ce0532e35082b4e"
 )
 POWERPOINT_PLUGIN_ID = "ghostcursor.powerpoint"
 
@@ -95,3 +95,54 @@ __all__ = [
     "repository_commit",
     "require_pinned_manifest",
 ]
+
+
+#: Every counted campaign is declared here, in a COMMITTED line, before its
+#: first attempt runs. `tests/test_campaign_ledger.py` requires every declared
+#: campaign to have its results retained, so running until a campaign passes
+#: and keeping only that one becomes visible (D152).
+LEDGER_RELATIVE = "docs/campaigns/ledger.jsonl"
+CAMPAIGN_ID_PATTERN = r"[0-9]{4}-[0-9]{2}-[0-9]{2}-[a-z0-9-]{1,40}"
+
+
+def campaign_directory(campaign_id: str, root: Path = REPOSITORY_ROOT) -> Path:
+    import re
+
+    if not re.fullmatch(CAMPAIGN_ID_PATTERN, campaign_id):
+        raise CampaignPreflightError(f"campaign id {campaign_id!r} is malformed")
+    return root / "docs" / "evidence" / "campaigns" / campaign_id
+
+
+def require_ledgered(
+    campaign_id: str, *, path: str, plan_id: str, root: Path = REPOSITORY_ROOT
+) -> dict:
+    """The committed ledger entry for this campaign, or a refusal.
+
+    Read from HEAD, not the working copy: an entry that exists only on disk
+    could be deleted after a failed campaign, which is the case this exists
+    to expose.
+    """
+
+    import json
+
+    campaign_directory(campaign_id, root)
+    shown = subprocess.run(
+        ["git", "show", f"HEAD:{LEDGER_RELATIVE}"],
+        cwd=root, capture_output=True, text=True, check=False,
+    )
+    if shown.returncode != 0:
+        raise CampaignPreflightError("the campaign ledger is not committed")
+    entries = [json.loads(line) for line in shown.stdout.splitlines() if line.strip()]
+    matches = [e for e in entries if e.get("campaign_id") == campaign_id]
+    if len(matches) != 1:
+        raise CampaignPreflightError(
+            f"campaign {campaign_id} is not declared exactly once in the committed "
+            f"ledger; append it to {LEDGER_RELATIVE} and commit before attempt 1"
+        )
+    entry = matches[0]
+    expected = {"path": path, "plan_id": plan_id, "manifest_sha256": POWERPOINT_MANIFEST_SHA256}
+    if any(entry.get(key) != value for key, value in expected.items()):
+        raise CampaignPreflightError(
+            "the ledger entry declares a different path, plan or manifest"
+        )
+    return entry

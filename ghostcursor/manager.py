@@ -224,6 +224,10 @@ class ManagerActAuditRecord:
     completed: bool | None = None
     completed_nodes: int = 0
     detail_sha256: str | None = None
+    #: The application build the proposal bound, in cleartext. Evidence is valid
+    #: only for the build it names (CLAUDE.md), and a build is not a handle or a
+    #: process id, so D122 does not withhold it (schema 2, D152).
+    application_version: str | None = None
 
 
 #: Per-process key for every exported audit commitment (D122).
@@ -268,6 +272,7 @@ def _proposal_audit_facts(goal: str, proposal: object) -> dict[str, object]:
     output_path = getattr(proposal, "output_path", None)
     facts = {
         "intent_id": getattr(proposal, "intent_id", None),
+        "application_version": getattr(target, "executable_version", None),
         "plugin_id": getattr(proposal, "plugin_id", None),
         "plugin_version": getattr(validated, "plugin_version", None),
         "catalog_generation": getattr(proposal, "catalog_generation", None),
@@ -646,7 +651,7 @@ class NativeManagerWindow:
         self._act_audit_sequence += 1
         self._act_audit_records.put(
             ManagerActAuditRecord(
-                schema_version=1,
+                schema_version=2,
                 sequence=self._act_audit_sequence,
                 type=kind,
                 at_ns=time.time_ns(),

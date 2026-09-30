@@ -23,7 +23,7 @@ list) and one transcript per attempt. `tools/render_act_campaign.py --check`
 reads them; this module never summarises a result itself.
 
     py -3.12 -m ghostcursor.devtools.act_manager_campaign \\
-        --campaign-dir <dir> --attempt 1
+        --campaign-id <declared id> --attempt 1
 """
 
 from __future__ import annotations
@@ -43,6 +43,17 @@ from ghostcursor.devtools.campaign_pins import (
 )
 
 PLAN_ID = "build-investor-deck-v1"
+
+#: Each signed object-model plan and the one intent it answers. The checker
+#: requires every attempt's proposal to carry this intent (D152, review I1).
+PLAN_INTENTS = {
+    "build-investor-deck-v1": "BUILD_INVESTOR_DECK",
+    "animation-catalog-v1": "BUILD_ANIMATION_CATALOG",
+}
+GOALS = {
+    "build-investor-deck-v1": "build the ghostcursor investor deck in powerpoint",
+    "animation-catalog-v1": "build the animation catalog in powerpoint",
+}
 CAMPAIGN_FILE = "campaign.json"
 SCOPE_VARIABLE = "GHOSTCURSOR_CAMPAIGN_SCOPE"
 SALT_VARIABLE = "GHOSTCURSOR_CAMPAIGN_SALT"
@@ -79,6 +90,7 @@ def prepare_attempt(
     commit: str,
     manifest_sha256: str,
     plan_sha256: str,
+    plan_id: str = PLAN_ID,
 ) -> Path:
     """Validate the campaign state for ``attempt`` and return its transcript path.
 
@@ -101,7 +113,8 @@ def prepare_attempt(
     binding = {
         "commit": commit,
         "manifest_sha256": manifest_sha256,
-        "plan_id": PLAN_ID,
+        "intent_id": PLAN_INTENTS[plan_id],
+        "plan_id": plan_id,
         "plan_sha256": plan_sha256,
         "scope": scope,
     }
@@ -167,20 +180,28 @@ def record_attempt(campaign_dir: Path, attempt: int, exit_code: int) -> None:
 
 def main(argv=None) -> int:  # pragma: no cover - thin live wrapper
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--campaign-dir", type=Path, required=True)
+    parser.add_argument("--campaign-id", required=True)
     parser.add_argument("--attempt", type=int, required=True)
+    parser.add_argument("--plan-id", choices=sorted(PLAN_INTENTS), default=PLAN_ID)
     arguments = parser.parse_args(argv)
 
+    from ghostcursor.devtools.campaign_pins import (
+        campaign_directory,
+        require_ledgered,
+    )
     from ghostcursor.plugins.platform import production_store
 
-    campaign_dir = arguments.campaign_dir.resolve()
     try:
+        campaign_dir = campaign_directory(arguments.campaign_id)
+        require_ledgered(
+            arguments.campaign_id, path="manager", plan_id=arguments.plan_id
+        )
         store = production_store()
         manifest = installed_manifest_sha256(store)
         plan = (
             store.load_composition_context()
             .adapters[POWERPOINT_PLUGIN_ID]
-            .plans[PLAN_ID]
+            .plans[arguments.plan_id]
         )
         transcript = prepare_attempt(
             campaign_dir,
@@ -189,6 +210,7 @@ def main(argv=None) -> int:  # pragma: no cover - thin live wrapper
             commit=repository_commit(),
             manifest_sha256=manifest,
             plan_sha256=plan.plan_sha256,
+            plan_id=arguments.plan_id,
         )
     except (CampaignPreflightError, KeyError, OSError) as exc:
         print(f"refusing: {exc}")
@@ -197,13 +219,12 @@ def main(argv=None) -> int:  # pragma: no cover - thin live wrapper
     from ghostcursor.manager import launch_manager
 
     print(f"attempt {arguments.attempt}: transcript -> {transcript}")
-    print("Goal:  build the ghostcursor investor deck in powerpoint")
+    print(f"Goal:  {GOALS[arguments.plan_id]}")
     print("Mode:  Act. Review the complete plan, then press Approve & run once.")
     print("Close the manager only after the terminal result is visible.")
     code = launch_manager(act_audit_path=transcript)
     record_attempt(campaign_dir, arguments.attempt, code)
     return code
-
 
 if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(main())

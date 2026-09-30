@@ -354,6 +354,12 @@ built but not yet exercised by a caller or a live run.
       (intent `BUILD_ANIMATION_CATALOG`) now exists, covering all 15
       category/effect pairs the adapter accepts, every trigger, and the
       none/fade/morph transitions (D151). It has not been run or counted.
+      Scope (D152): the artifact verifier confirms that an animation was
+      added to each target shape and that a transition exists; it does not
+      verify effect, category, trigger, direction or order in the saved
+      file, so a green catalog campaign shows the adapter's requests were
+      accepted and targeted the right shapes, not that each effect landed
+      as specified.
 - [ ] All lanes green independently
 - [x] D032 pre-sign review — three independent cold passes; 26 + 4 + 3
       findings, all fixed. The blocking one was a COM retry that could
@@ -381,7 +387,8 @@ file no clean checkout produced. LF is now canonical (D125), the PowerPoint
 bundle was rebuilt and re-signed at manifest `28dbaf2d` after two further
 rebuilds for signed build products (D127) and for redaction (D128), and again
 at `3a4f8c57` when D145 added signed UIA timing fields (D149), and at
-`6dbd5ba2` when the animation-catalog plan was added (D151), and
+`6dbd5ba2` when the animation-catalog plan was added (D151), and at
+`b0d63512` for the D152 review fixes, and
 `tests/test_powerpoint_manifest_pin.py` recomputes that manifest from tracked
 sources so the figure cannot drift unnoticed. The seventh independent D032
 review returned READY at `45d1323` (D134), and the 3/3 campaign ran on 11

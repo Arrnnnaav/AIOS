@@ -1272,6 +1272,30 @@ run. `BaseException` is deliberately not caught -- swallowing `KeyboardInterrupt
 would be worse than the failure it prevents -- so an observer raising one does
 propagate, with `host.stop()` still running.
 
+### Counted campaigns (D150, D152)
+
+A counted campaign is declared first: one line in
+`docs/campaigns/ledger.jsonl`, committed. Then either path runs:
+
+- harness: `devtools/act_campaign.py --campaign-id <id>` preflights
+  (`campaign_pins`: bundle manifest equals the pin, clean tree, ledger entry
+  at HEAD), spawns `act_acceptance` once per attempt with one exported scope
+  and salt, stops at the first unclean attempt, and writes
+  `docs/evidence/campaigns/<id>/report.json` with every attempt that ran and
+  its full record stream (refusing any record carrying a raw handle, at any
+  depth or quoted in text);
+- manager: `devtools/act_manager_campaign.py --campaign-id <id> --attempt N`,
+  once per attempt, preflights the installed manifest, ledger, clean tree,
+  consecutive numbering and every earlier attempt completed, then opens the
+  real manager with the observation-only audit path. The audit record (schema
+  2) carries the application build.
+
+`tools/render_act_campaign.py --check` is the only producer of the campaign
+document and refuses anything but 3 consecutive completed attempts on the pin,
+one build, distinct outputs, and the D123 order (manager).
+`tests/test_campaign_ledger.py` requires every ledger entry to be retained and
+the ledger to be append-only.
+
 `ghostcursor/devtools/act_acceptance.py --diagnostics <path>` wires
 `ActBoundaryProbe` into both the event sink and that observer, writing JSONL:
 package state before each node, after the adapter's mandatory save, and after
@@ -1440,13 +1464,15 @@ the observation boundary, its digest bound into the per-node authorization, and
 never reconstructed after dispatch. Core passes the baseline through and never
 interprets it; the comparison stays in signed plugin code.
 
-## You are here — 11 September 2026
+## You are here — 30 September 2026
 
 | Area | State |
 |---|---|
 | Object-model Act, PowerPoint deck build | implemented; the 11 Sep 3/3 campaign is diagnostic under D139 and no current counted evidence exists |
 | Manager `Approve & run` layer | implemented, hermetically tested, mutations killed — **one diagnostic live run, no counted campaign** |
 | UIA slice `add-slide-uia-v1` | implemented, one diagnostic run, **unadopted** |
+| Animation catalog | signed plan `animation-catalog-v1` (D151), never run; verification scope limited (D152) |
+| Counted-campaign tooling | ledger, pinned-manifest preflight, retained reports, checked renderer (D150, D152) |
 | Activation | **NOT READY** (D139); fresh independent review and counted campaigns remain |
 | Semantic planning, agent/marketplace program | not started, gated on activation |
 

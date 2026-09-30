@@ -6445,7 +6445,9 @@ lane is green.
 > review claimed here is retained anywhere in the repository or its review
 > archive, so the claim cannot be checked (D034) and is withdrawn. The
 > confirmation-budget review is open. "Focused lane green" also excluded the
-> manifest pin, which was red from this commit until D149. The measured PowerPoint UIA evidence derives a 1280 ms
+> manifest pin, which was red from this commit until D149.
+
+The measured PowerPoint UIA evidence derives a 1280 ms
 confirmation round-trip deadline and a 32 ms confirmation-to-request deadline.
 Those values are now signed operation-policy fields, not host defaults.
 
@@ -6721,6 +6723,12 @@ runtime checks run before dispatch and before the adapter write.
    mutation in `tests/test_act_campaign_evidence.py`, which also runs the check
    over the real 11 September transcripts and sees it refuse only on their
    superseded manifest.
+
+   > **Correction, 30 September 2026 (D152).** "Its 12 checks are each killed
+   > by a mutation" was false. Twelve checks were mutated and killed; the
+   > checker had at least nineteen, and the second independent review killed
+   > none of seven others (MC1-MC7) plus two preflight mutants (MR3, MR4).
+   > D152 records the repair.
 2. *The disclosure misstated its own detector* (a "spliced tally" check that
    was dead code). Corrected in `111ce5e`: the sentence now names what is
    detected and what is not, and the dead pattern is deleted.
@@ -6768,7 +6776,12 @@ sample before the transition postcondition may be tightened.
 **What was added.** Intent `BUILD_ANIMATION_CATALOG`, exact phrases only
 ("build the animation catalog in powerpoint", "run the animation catalog in
 powerpoint") so neither it nor the investor deck's heuristic can claim the
-other's goal. Plan `animation-catalog-v1`, 46 nodes: four slides, one shape per
+other's goal.
+
+> **Correction, 30 September 2026 (D152).** The no-collision claim is too
+> strong: "build the animation catalog deck in powerpoint" matches the
+> investor deck's heuristic (0.85). The exact phrases do route correctly, and
+> the complete plan is shown before approval, which bounds the harm. Plan `animation-catalog-v1`, 46 nodes: four slides, one shape per
 animation, every one of the 15 category/effect pairs the signed adapter's
 `_ANIMATION_EFFECTS` accepts exactly once, all three triggers, the four
 directions, and `none`/`fade`/`morph` transitions, then save and inspect.
@@ -6798,3 +6811,70 @@ decide whether it must be re-measured.
 
 **What this does not claim.** The catalog has not run. Nothing here is
 acceptance evidence, and this slice has been read by no one but its author.
+
+## D152 — Second pre-campaign review (`75670dc`): NOT READY, and its repairs
+
+**Date:** 30 September 2026
+
+**The review.** An independent agent reviewed `75670dc` in its own worktree
+and returned **NOT READY**; record `review-ready-75670dc.md` on branch
+`review-75670dc` (commit `78acfc5`). Hermetic lane 2781 passed; 25 mutations,
+9 survived, all in the new campaign tooling. It confirmed most first-review
+findings fixed and mutation-guarded, and the D151 manifest reproducible.
+
+**Blocking findings, repaired here.**
+
+- *B1: a refused harness campaign wrote raw handles into its report and
+  dropped earlier attempts.* The window-count refusal now names the count only
+  and carries the completed attempts; a hermetic test serializes a refused
+  report and asserts no planted handle appears and attempt 1 survives.
+- *B2: neither path recorded the PowerPoint build.* The harness `approved`
+  record carries `application_version`; the manager audit record gains
+  `application_version` (schema 2), filled from the proposal's bound target.
+  The checker requires one build across attempts and renders it.
+- *B3: D150 overstated checker coverage.* Corrected by note in D150. Every
+  refusal now has a planted test: disabling each of the checker's 33
+  `_require` call sites on its own, by line, is killed in all 33 cases (an
+  earlier message-based sweep reached two sites with one message). The
+  dirty-tree and zip-member preflight mutants, the ledger-at-HEAD read, and
+  the B1 and stderr fixes are each killed too.
+- *B4: a green catalog campaign would not show effects landed.* Resolved by
+  scope, not by code: the verifier confirms an animation targets each shape
+  and that a transition exists, and ROADMAP now states that limit. Verifying
+  preset, class, trigger, direction and order from the saved timing XML needs
+  a verifier change and a re-sign, and is left open.
+
+**Important and minor findings.** I1: the manager checker binds the plan's
+intent, one proposal digest per attempt, and non-decreasing timestamps; the
+runner takes `--plan-id` for either object-model plan. I2: a campaign must be
+declared in a committed line of `docs/campaigns/ledger.jsonl` before
+attempt 1 (read from HEAD, so a staged line is refused), results go to
+`docs/evidence/campaigns/<id>/`, and `test_campaign_ledger.py` requires every
+entry retained and the ledger append-only. I3: `presentation_for` moved above
+the `__main__` guard and the harness passes `--measured-deadlines`. I4:
+handle checks walk nested values and handle-shaped text. m2 fixed (the D145
+note had absorbed its next sentence). m3: FLOW.md gains the campaign flow.
+m4: D151's collision claim corrected. m5: record history now counts every
+commit after first creation, so delete-then-re-add is seen; the add-slide
+records' 1907006/2e718f0 replacement is listed. m6: a crashed attempt keeps a
+redacted last stderr line. m7: a hermetic test runs the adapter's own
+`PlanValidator` over both signed plans. m8: the 3/3 policy is fixed in the
+checker, not a flag. m9: `color_change` now targets a text box.
+
+**m1, not repaired.** The `63cd2b5` "remediation READY / activation NOT READY"
+verdicts are cited in CLAUDE.md, ROADMAP and FOLLOWUPS with no DECISIONS entry
+and no retained record; the review archive holds only that worktree's diff.
+The NOT READY half is the conservative reading and stands; the READY half is
+unverified in the same way D145's claim was.
+
+**Rebuild.** The plan change moved the manifest to `b0d63512d1bcc14bc49f322139613018fc31483f7a7b49007ce0532e35082b4e`, signed with
+the same `-2026-3` key and installed (production generation 12).
+
+**Build and budget.** The reviewer's opinion, recorded: the object-model
+campaigns (investor deck, animation catalog) carry no signed UIA timing and
+draw no pointer, so the `.20132` confirmation budget and the receipt budget do
+not apply to them. A counted UIA campaign should re-measure the confirmation
+budget on the installed build first.
+
+**Not claimed.** Nothing here is acceptance evidence, and this slice has been
+read only by its author.

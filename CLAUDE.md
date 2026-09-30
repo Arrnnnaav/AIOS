@@ -328,9 +328,9 @@ within D020's ceiling, and a re-sign procedure that records the prior key id
 and manifest digest in bundle provenance. Until those are built and reviewed,
 no bundle is re-keyed. Excel therefore remains a feasibility/data
 artifact only, not an active adopted Act surface; its prior live runs do not
-close acceptance. PowerPoint is rebuilt at manifest `6dbd5ba2` (D151, adding
-the animation-catalog plan; it supersedes `3a4f8c57` from D149 and `28dbaf2d`
-before it), but its current
+close acceptance. PowerPoint is rebuilt at manifest `b0d63512` (D152; it
+supersedes `6dbd5ba2` from D151, `3a4f8c57` from D149 and `28dbaf2d` before
+them), but its current
 counted acceptance is open under D139. The active generation advances with
 every publish and is deliberately not restated here; read it from the store.
 
@@ -382,7 +382,7 @@ longer exist. `act-live-manager-d125-r1.jsonl` is superseded (D127) — its
 catalog manifest `48e6e4f4` contained signed build products and was never
 reproducible. Neither may be cited as current evidence. The most recent live run
 is `act-live-manager-d131-run.md`, on the `28dbaf2d` bundle that D149 superseded;
-no live run exists yet on `6dbd5ba2`.
+no live run exists yet on `b0d63512`.
 
 **Activation has not been granted.** The independent activation review of
 `63cd2b5` returned **NOT READY**. Work inside the implemented object-model
@@ -595,8 +595,12 @@ A counted campaign runs only through `python -m ghostcursor.devtools.act_campaig
 (harness path) or `python -m ghostcursor.devtools.act_manager_campaign` (manager
 path, one attempt per invocation), and its evidence document is produced only by
 `tools/render_act_campaign.py`, never written by hand. Both runners refuse
-unless the manifest equals `campaign_pins.POWERPOINT_MANIFEST_SHA256` and the
-tree is clean (D150).
+unless the manifest equals `campaign_pins.POWERPOINT_MANIFEST_SHA256`, the
+tree is clean, and the campaign id is declared in a COMMITTED line of
+`docs/campaigns/ledger.jsonl`; results go to
+`docs/evidence/campaigns/<id>/` and every declared campaign must be retained
+there, failed ones included (D150, D152). Evidence names its PowerPoint build
+and is valid for that build only.
 
 Phase A and B tooling measures without acting. `ActBoundaryProbe` may never
 change a run's outcome, and `uia_feasibility` may never call `Invoke`,

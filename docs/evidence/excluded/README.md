@@ -8,6 +8,8 @@
 > Nothing below is evidence for `3a4f8c57`, and the captured content is not edited.
 > `3a4f8c57` was itself superseded on 30 September by `6dbd5ba2` (D151), which
 > added the animation-catalog plan; nothing below is evidence for it either.
+> The current manifest is `b0d63512` (D152); nothing below is evidence for
+> it.
 
 Runs that happened and are **not** counted as evidence. They are retained here
 rather than deleted, because an attempt that is dropped silently is
