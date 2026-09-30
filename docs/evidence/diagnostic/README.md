@@ -24,7 +24,7 @@ one calls `approve_action_graph`/`execute_approved_graph` directly and never
 mints an `ActExecutionRequest` (D137).
 
 | Attempt | Artifact | Result | Nodes | Execution | Transcript SHA-256 |
-|---|---|---:|---:|---|
+|---|---|---|---:|---:|---|
 | 1 | `act-live-manager-campaign-attempt-1.jsonl` | `completed` | 255/255 | 102.145 s | `19db97f8d861c207a09dabf8502f5c33a26d4dfe6c1ac6a4c968383f5db75705` |
 | 2 | `act-live-manager-campaign-attempt-2.jsonl` | `completed` | 255/255 | 149.811 s | `ab5a443ef89cbff8296dc94048e437218ad0474f833434ec1beb4eb21e28863e` |
 | 3 | `act-live-manager-campaign-attempt-3.jsonl` | `completed` | 255/255 | 161.253 s | `dc05f538b7e5f75220d015d0817ba39173b48c00238ff8dea034922e163bba54` |

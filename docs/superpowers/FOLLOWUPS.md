@@ -1076,9 +1076,11 @@ READY. The receipt-deadline gate is closed; that verdict did not close Act.
 The confirmation-to-request budget is now measured and reviewed in the
 separate evidence record `docs/evidence/act-confirmation-budget.md`. The
 retained samples derive 1280 ms for confirmation round-trip and 32 ms for the
-confirmation-to-request interval. D145 records the independent review and the
-runtime enforcement. This closes the budget-review gate, but not bundle
-re-signing, counted acceptance, or final activation.
+confirmation-to-request interval. D145 records the runtime enforcement and
+claims an independent review, but no record of that review is retained, so the
+review is treated as open (D150). The rendered document and the signed values
+are now mechanically linked to the records by
+`tests/test_confirmation_budget_is_enforced.py`.
 
 
 ## The D032 activation review remains open, and it gates everything

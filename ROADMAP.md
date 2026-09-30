@@ -299,17 +299,18 @@ built but not yet exercised by a caller or a live run.
       production is aligned. A fresh independent D032 review at `63c5ca5`
       re-hashed the records, reproduced the render and arithmetic, killed both
       derivation omissions, and returned READY: this receipt gate is complete.
-- [~] Confirmation-to-invoke deadline — the live UIA diagnostic now records
-      both the full `confirm_before` round trip and the interval from its
-      return to the successful UIA execute-frame write. No retained sample
-      set, derived deadline, signed policy, or production refusal exists yet;
-      therefore this remains an open Phase E gate. The diagnostic-only
-      `ghostcursor.devtools.confirmation_budget` collector now exists to run
-      serial verified live effects and retain the first failed sample rather
-      than selecting it out; it must be reviewed before producing records.
+- [~] Confirmation-to-invoke deadline — measured and enforced (D145):
+      three complete 60-sample runs derive 1280 ms round trip and 32 ms
+      confirmation-to-request, signed into `operations.json` and refused at
+      runtime. `docs/evidence/act-confirmation-budget.md` re-renders from its
+      records, one failed run is retained and listed as excluded, and
+      `tests/test_confirmation_budget_is_enforced.py` recomputes the signed
+      values from the raw samples (D150). Its independent review has no
+      retained record, so that review is still open.
 - [ ] Interruption latency matrix — **not measured**
 - [~] Independent D032 review of the derived budgets — the receipt budget is
-      READY at `63c5ca5`; confirmation-to-invoke has no retained records yet.
+      READY at `63c5ca5`; the confirmation budget has retained records and
+      enforcement but no retained review record (D150).
       An activation
       re-reviewer recomputed them (p99 x 2.0, ceiling, floored at the 15 ms
       tick, highest applicable travelled/first-cue sample across three runs ->
@@ -391,17 +392,16 @@ campaigns as diagnostic. The r5 and r1 transcripts stay uncitable.
 | UIA slice `add-slide-uia-v1` | independent D032 review, externally signed bytes, its own counted campaign |
 | Animation-catalog campaign | run it; it has never been counted |
 | Independent lane runs | each lane green on its own, per D025 |
-| D032 review of the derived budgets | READY for the confirmation-policy slice; see D145. The final activation review remains separate. |
+| D032 review of the derived budgets | receipt budget READY at `63c5ca5`; confirmation budget (D145) review open, no retained record (D150) |
 | D032 activation review | **NOT READY** at the current independent review of `63cd2b5`: fresh counted evidence and the remaining release/desktop gates are still absent |
 | Semantic PowerPoint capabilities | activation review READY |
 | Agent / skills / marketplace program | activation review READY, then its own phase entries here |
 
 Do not read "acceptance closed" as permission to start semantic planning or the
-agent program. **Activation has been reviewed twice and refused twice** — at
-`a1739aa` (D137) and at `f19eaaf` (D138). The second round read `301e86b`, the
-unread commit the first round flagged, and found that it had narrowed a rule
-while appearing to widen it and had falsified two retained pytest transcripts.
-Both rounds' blockers are now closed, and a third round has not yet run.
+agent program. **Activation has been reviewed and refused repeatedly** — at
+`a1739aa` (D137), at `f19eaaf` (D138), in the third round recorded as D139, and
+at `63cd2b5`. The pre-campaign READY review of `b1ba80a` (30 September) also
+returned NOT READY (D150). No activation round has returned READY.
 
 **The next integration milestone remains the live manager-approved pointer
 action.**

@@ -28,7 +28,7 @@ class EvidenceRefused(Exception):
     """Raised when records cannot substantiate a complete derivation."""
 
 
-def _load(path: Path) -> dict:
+def _load(path: Path, *, excluded: bool = False) -> dict:
     raw = path.read_bytes()
     if raw.startswith(b"\xef\xbb\xbf") or b"\r" in raw:
         raise EvidenceRefused(f"{path}: JSON must be UTF-8/LF without BOM")
@@ -52,6 +52,11 @@ def _load(path: Path) -> dict:
         raise EvidenceRefused(f"{path}: wrong record kind")
     if value.get("is_acceptance_evidence") is not False:
         raise EvidenceRefused(f"{path}: record must be diagnostic-only")
+    if excluded:
+        failure = value.get("failure")
+        if not isinstance(failure, dict) or not failure.get("failure_class"):
+            raise EvidenceRefused(f"{path}: an excluded record must carry its failure")
+        return value
     if value.get("failure") is not None:
         raise EvidenceRefused(f"{path}: failed record cannot derive policy")
     if value.get("samples_requested") != REQUIRED_SAMPLES:
@@ -90,7 +95,7 @@ def _p99(values: list[float]) -> float:
     return ordered[max(0, math.ceil(len(ordered) * 0.99) - 1)]
 
 
-def derive(paths: list[Path]) -> dict[str, object]:
+def derive(paths: list[Path], excluded: list[Path] | None = None) -> dict[str, object]:
     if len(paths) != REQUIRED_RUNS:
         raise EvidenceRefused(f"expected exactly {REQUIRED_RUNS} records")
     records = [(_load(path), path) for path in paths]
@@ -131,6 +136,17 @@ def derive(paths: list[Path]) -> dict[str, object]:
         "margin_over_p99": MARGIN,
         "confirmation_round_trip_ms": summaries["confirmation_round_trip_ms"],
         "confirmation_to_request_write_ms": summaries["confirmation_to_request_write_ms"],
+        "excluded": [
+            {
+                "name": path.name,
+                "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                "failure_class": record["failure"]["failure_class"],
+                "sample": record["failure"].get("sample"),
+                "completed": record["samples_completed"],
+                "requested": record["samples_requested"],
+            }
+            for record, path in ((_load(path, excluded=True), path) for path in excluded or [])
+        ],
     }
 
 
@@ -157,6 +173,21 @@ def render(report: dict[str, object]) -> str:
     ]
     lines.extend(f"- `{name}` — SHA-256 `{digest}`" for name, digest in zip(report["record_sources"], report["record_digests"]))
     lines.append("")
+    if report["excluded"]:
+        lines.extend([
+            "## Excluded records",
+            "",
+            "Retained and not used in the derivation, because the run did not complete.",
+            "A record keeps only its failure class and the sample it stopped at; the",
+            "refusal code and detail are not retained, so the cause is not recorded.",
+            "",
+        ])
+        lines.extend(
+            f"- `{item['name']}` — SHA-256 `{item['sha256']}` — `{item['failure_class']}` "
+            f"at sample {item['sample']}, {item['completed']}/{item['requested']} completed"
+            for item in report["excluded"]
+        )
+        lines.append("")
     lines.append("The production policy must be derived from these values and refuse when either signed deadline is exceeded.")
     return "\n".join(lines) + "\n"
 
@@ -165,9 +196,10 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--records", type=Path, nargs=3, required=True)
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--excluded", type=Path, nargs="*", default=[])
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args(argv)
-    report = derive(args.records)
+    report = derive(args.records, args.excluded)
     rendered = render(report)
     if args.check:
         if not args.out.is_file() or args.out.read_text(encoding="utf-8") != rendered:

@@ -394,7 +394,7 @@ is the following, and this list is kept aligned with `ROADMAP.md`:
 | UIA slice `add-slide-uia-v1` | independent D032 review, externally signed bytes, own counted campaign |
 | Animation-catalog campaign | it has never been counted |
 | Independent lane runs | interactive, pixel and hung lanes green alone, per D025 |
-| D032 review of the derived budgets | the budgets are measured; the review of them is not done |
+| D032 review of the derived budgets | receipt budget READY at `63c5ca5`; the confirmation budget (D145) has no retained review record, so its review is open (D150) |
 | D032 activation review | a fresh activation verdict after the counted, UIA, animation, budget, and independent-lane gates |
 
 `ROADMAP.md` carries the same gates plus the two downstream phases they block

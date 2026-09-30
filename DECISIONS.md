@@ -5911,6 +5911,11 @@ exactly what D032 asks. Both are corrected.
 > deadline to every cue. Including its separately retained first-paint sample
 > derives `29`; completion remains `1121`. D137's review history is preserved,
 > but `29 / 1121` is the current policy.
+>
+> **Correction, 30 September 2026 (D150).** `29 / 1121` is no longer current.
+> `63c5ca5` re-captured the receipt records with independently created first
+> cues and re-derived `28 / 1100`, which `act_cli.py` carries. No decision
+> recorded that change until D150.
 
 ### What this decision does not do
 
@@ -6027,6 +6032,9 @@ reader mistake one for the other.
 > `29 / 1121`. A later fresh reviewer also found that first-cue completion was
 > absent from the derivation; current records do not change `1121`, but the
 > derivation and mutation tests now include that path.
+>
+> **Correction, 30 September 2026 (D150).** The current policy is `28 / 1100`,
+> re-derived at `63c5ca5`; see D150.
 
 ### What is closed and what is not
 
@@ -6431,7 +6439,13 @@ yet read these four decisions.
 **Date:** 21 September 2026
 
 The confirmation-budget slice is independently reviewed and its focused test
-lane is green. The measured PowerPoint UIA evidence derives a 1280 ms
+lane is green.
+
+> **Correction, 30 September 2026 (D150).** No record of the independent
+> review claimed here is retained anywhere in the repository or its review
+> archive, so the claim cannot be checked (D034) and is withdrawn. The
+> confirmation-budget review is open. "Focused lane green" also excluded the
+> manifest pin, which was red from this commit until D149. The measured PowerPoint UIA evidence derives a 1280 ms
 confirmation round-trip deadline and a 32 ms confirmation-to-request deadline.
 Those values are now signed operation-policy fields, not host defaults.
 
@@ -6673,3 +6687,53 @@ fixes the exempt set to exactly those three sources.
 **What this does not claim.** No live run exists on `3a4f8c57`. Every campaign
 and live run on record bound an earlier manifest. Act acceptance remains open
 under D139, and this slice has been read by no one but its author.
+
+## D150 — Pre-campaign review of `b1ba80a`: NOT READY, and what it corrected
+
+**Date:** 30 September 2026
+
+**The review.** An independent agent that authored none of the reviewed work
+read `b1ba80a` in its own worktree and returned **NOT READY** for a fresh
+counted campaign. Its record is `review-ready-b1ba80a.md` on branch
+`review-b1ba80a` (commit `ddf54c7`); hermetic lane 2711 passed; ten mutations,
+four survived. It confirmed the D149 rebuild reproduces `3a4f8c57` from a
+clean checkout, that the evidence notes only inserted lines, and that D145's
+runtime checks run before dispatch and before the adapter write.
+
+**Blocking findings and their disposition.**
+
+1. *Campaign evidence would not be bound to `3a4f8c57` or checked.* Open;
+   the campaign-tooling slice addresses it.
+2. *The disclosure misstated its own detector* (a "spliced tally" check that
+   was dead code). Corrected in `111ce5e`: the sentence now names what is
+   detected and what is not, and the dead pattern is deleted.
+3. *Gate status contradicted itself.* Reconciled here: `CLAUDE.md`,
+   `ROADMAP.md` and `FOLLOWUPS.md` now agree that the receipt budget is READY
+   at `63c5ca5`, that the confirmation budget has records and enforcement but
+   no retained review, and that no activation round has returned READY.
+   D137/D138's `29 / 1121` carry correction notes: `63c5ca5` re-derived
+   `28 / 1100`, the values in `act_cli.py`. D145's claim of an independent
+   review is withdrawn by correction note because no record of it exists.
+
+**Important findings closed.** I1: registry timing keys tested (`22c368e`, M4
+killed). I2: `act-confirmation-budget.md` had a source line inserted by hand in
+`e6b9bb0`, so `--check` failed; the renderer now prints retained excluded
+records itself, and `test_confirmation_budget_is_enforced.py` links records,
+document and signed values, with the dual-edit mutation killed. I3: archive
+exemption pinned in the test (M6 killed). I4 and I5 in `111ce5e`: disclosure
+instance 4 names the in-place acceptance-record rewrites, and
+`test_retained_record_history.py` requires every post-capture edit of a
+retained record to be listed. I6: `trust.py` gained a root-signed sequence
+floor against revocation replay and a test per lineage half (M9 killed).
+
+**What `trust.py` is not.** It is unwired: nothing calls
+`load_trust_policy()`, no root key is pinned, and no signed manifest or
+revocation list exists. D144's preconditions for any re-key are therefore
+still unmet; the module is a component, not the D144 system.
+
+**Minor findings.** m1 to m3 closed in `22c368e`. m4 fixed (diagnostic
+table). m5 is recorded, not changed: every rebuilt PowerPoint bundle keeps
+version `1.0.0`, so learned observations scoped by `(plugin_id,
+plugin_version)` span distinct signed bundles; a version bump is deferred to
+the next payload change that also changes behaviour. m6 is recorded in the
+D145 correction.
