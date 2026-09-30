@@ -1205,3 +1205,12 @@ it can be shown to be unreachable from any tracked file's history.
   own paths, not handles). **Trigger:** before campaign evidence is published
   outside this repository.
 
+## Campaign renderer: deck retention must be derived from the report (D157, S1)
+
+`check_harness` ignores `artifact_refused` / `artifact_retention`, so whether a
+clean campaign renders counted depends on the `--artifacts` flag rather than on
+the retained record. **Trigger:** before the animation-catalog campaign, whose
+counted claim depends on the decks. Fix: require every attempt to carry
+`artifact` and no retention failure; make `--artifacts` verify-only. Also
+pin the surviving mutants M5, M11, M19, N7, N10.
+

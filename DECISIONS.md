@@ -7061,3 +7061,37 @@ no longer exists (scopes now come from `letters()`, covered by the R5 mutant).
 **Not claimed.** Read only by its author; the interrupted review is to be
 resumed for a verdict on this commit.
 
+## D157 — Fifth review resumed: READY for the investor-deck harness campaign
+
+**Date:** 1 October 2026
+
+The independent reviewer of D156 resumed on `ce028e8` and returned **READY**
+for a counted OBJECT-MODEL harness campaign of `build-investor-deck-v1`,
+conditional on its operator procedure. Record: `review-ready-9e998bf.md` on
+branch `review-9e998bf` (commit `6cccd96`), with a section for `ce028e8`.
+
+It confirmed R1-R5 and M20 closed by end-to-end simulation, Monte Carlo and
+killed mutants. On committed evidence: 0 failures in 1000 simulated clean
+campaigns (95% upper bound 0.3%) and 0 in 150 of each failure class; a
+per-field scan of 12000 attempt streams put the residual false-positive rate
+near 0.01% per campaign (a `target_ref` pseudonym matching a blocklisted
+value). Hermetic lane: 2893 passed.
+
+**Condition.** The committed `campaign.md` is rendered WITHOUT `--artifacts`,
+because that is how `test_campaign_ledger` re-renders it; `--artifacts` is run
+only as a separate `--check` whose non-zero exit is a finding to record, never
+a reason to re-render.
+
+**Open, not blocking for this plan (S1).** `check_harness` ignores
+`artifact_refused` / `artifact_retention`, so a clean campaign whose deck
+retention failed renders counted without the flag and not counted with it.
+The investor deck's counted claim is node verification, which does not rest on
+the decks; the animation catalog's does. Fix before that campaign: derive deck
+retention from the report and make `--artifacts` verify-only. Not changed now,
+so the READY verdict applies to exactly the reviewed code.
+
+**Minor, recorded.** Surviving mutants M5 (an ordinary exception in the loop
+reports as "interrupted"), M11 (base64 key branch), M19 (`key_id` in binding),
+N7 (checker reason not made safe), N10 (withheld-reason fallback); a COM
+HRESULT withholds that attempt's records (the campaign is still refused).
+
