@@ -196,7 +196,9 @@ def run_campaign(
     # rests on became a tautology (D129). The salt is never written down: it
     # lives in this process and its children, and dies with the campaign.
     scope_environment = dict(os.environ)
-    scope_environment["GHOSTCURSOR_CAMPAIGN_SCOPE"] = uuid.uuid4().hex[:12]
+    # A letter prefix: an all-digit scope reads as a handle to the evidence
+    # hygiene scan, which would force an edit of a retained report (D154).
+    scope_environment["GHOSTCURSOR_CAMPAIGN_SCOPE"] = "s" + uuid.uuid4().hex[:11]
     scope_environment["GHOSTCURSOR_CAMPAIGN_SALT"] = secrets.token_bytes(32).hex()
 
     completed: list[Attempt] = []
@@ -219,13 +221,19 @@ def run_campaign(
         output.parent.mkdir(parents=True, exist_ok=True)
 
         started = time.monotonic()
-        proc = runner(
-            build_command(index, store, output),
-            capture_output=True,
-            text=True,
-            timeout=1800,
-            env=scope_environment,
-        )
+        try:
+            proc = runner(
+                build_command(index, store, output),
+                capture_output=True,
+                text=True,
+                timeout=1800,
+                env=scope_environment,
+            )
+        except Exception as exc:  # TimeoutExpired, OSError, anything: keep what ran
+            raise CampaignError(
+                f"attempt {index} could not run to completion ({type(exc).__name__})",
+                completed,
+            ) from exc
         seconds = time.monotonic() - started
 
         try:
@@ -248,8 +256,23 @@ def run_campaign(
     return tuple(completed)
 
 
-_LONG_NUMBER = re.compile(r"(?<![0-9a-fA-F])[0-9]{4,}(?![0-9a-fA-F])")
-_HANDLE_TEXT = re.compile(r"(?i)\b(hwnd|handle|pid|process id)\b\W{0,3}[0-9]{3,}")
+#: A standalone decimal of four or more digits, or any 0x-prefixed hex value.
+_LONG_NUMBER = re.compile(r"(?<![0-9A-Za-z])(?:0[xX][0-9a-fA-F]+|[0-9]{4,})(?![0-9A-Za-z])")
+#: Handle-shaped text: a named handle/pid/window followed by a number, any
+#: 0x-prefixed hex value, or a standalone decimal of six or more digits (window
+#: handles and process ids are that size; digests are hex without a 0x prefix
+#: and never standalone decimals). Refused, not scrubbed (D154, review I3).
+_HANDLE_TEXT = re.compile(
+    r"(?i)\b(?:hwnd|handle|pid|process id|window|target)\b\W{0,3}(?:0x)?[0-9a-f]{3,}"
+    r"|(?<![0-9A-Za-z])0x[0-9a-fA-F]{3,}(?![0-9A-Za-z])"
+    r"|(?<![0-9A-Za-z.])[0-9]{6,}(?![0-9A-Za-z.])"
+)
+
+
+#: Whole values that are known non-handle shapes: a SHA-256 digest, the salted
+#: campaign pseudonym `window-<8 hex>`, and a campaign scope id. Exempt only as
+#: the ENTIRE string, so a handle embedded beside one is still refused.
+_SAFE_TEXT = re.compile(r"[0-9a-f]{64}|window-[0-9a-f]{8}|s[0-9a-f]{11}")
 
 
 def redacted_last_line(text: str) -> str:
@@ -276,7 +299,11 @@ def record_leaks(value, path="") -> list[str]:
     elif isinstance(value, list):
         for index, item in enumerate(value):
             found.extend(record_leaks(item, f"{path}{index}."))
-    elif isinstance(value, str) and _HANDLE_TEXT.search(value):
+    elif (
+        isinstance(value, str)
+        and not _SAFE_TEXT.fullmatch(value)
+        and _HANDLE_TEXT.search(value)
+    ):
         found.append(f"{path}<text>")
     return found
 
@@ -317,19 +344,27 @@ def campaign_report(
     dropped, rather than trusting a summary line.
     """
 
+    kept = []
+    for a in attempts:
+        entry = {
+            "code": a.code,
+            "completed": a.completed,
+            "index": a.index,
+            "nodes": a.nodes,
+            "published_sha256": a.published_sha256,
+            "seconds": a.seconds,
+        }
+        try:
+            entry["records"] = retained_records(a.records)
+        except CampaignError as exc:
+            # The attempt happened and stays counted; only its leaking record
+            # stream is withheld, and the report says why (D154).
+            entry["records"] = []
+            entry["records_withheld"] = str(exc)
+            status, detail = "refused", detail or str(exc)
+        kept.append(entry)
     return {
-        "attempts": [
-            {
-                "code": a.code,
-                "completed": a.completed,
-                "index": a.index,
-                "nodes": a.nodes,
-                "published_sha256": a.published_sha256,
-                "records": retained_records(a.records),
-                "seconds": a.seconds,
-            }
-            for a in attempts
-        ],
+        "attempts": kept,
         "attempts_requested": attempts_requested,
         "binding": dict(binding),
         "campaign": status,
@@ -337,6 +372,83 @@ def campaign_report(
         "path": "harness",
         "schema_version": 2,
     }
+
+
+def conduct(
+    *,
+    report_path: Path,
+    binding: dict,
+    attempts_requested: int,
+    preflight,
+    run,
+    artifacts_dir: Path | None = None,
+) -> tuple[dict, int]:
+    """Run a DECLARED campaign; every exit from here writes its report.
+
+    The caller has already checked the ledger. From that point a committed
+    ledger line demands retained results (``test_campaign_ledger``), so a
+    preflight refusal, a crashed or timed-out attempt, or a leaking record
+    must still leave a ``refused`` report -- otherwise the only way back to a
+    green lane is a hand-written report or a ledger rewrite (D139, D154).
+    """
+
+    if report_path.exists():
+        raise CampaignError("report exists; never overwrite a campaign")
+    binding = dict(binding)
+    status, detail, code, attempts = "clean", None, 0, ()
+    try:
+        binding.update(preflight())
+    except Exception as exc:
+        status, detail, code = "refused", f"preflight: {exc}", 3
+    else:
+        try:
+            attempts = run()
+        except CampaignError as exc:
+            attempts, status, detail, code = exc.attempts, "refused", str(exc), 3
+        except Exception as exc:
+            status, detail, code = "refused", f"runner failed: {type(exc).__name__}", 3
+    report = campaign_report(
+        status=status,
+        detail=detail,
+        attempts=attempts,
+        attempts_requested=attempts_requested,
+        binding=binding,
+    )
+    if report["campaign"] != "clean":
+        code = 3
+    if artifacts_dir is not None:
+        retain_artifacts(report, attempts, artifacts_dir)
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_bytes(
+        (json.dumps(report, indent=2, sort_keys=True) + "\n").encode("utf-8")
+    )
+    return report, code
+
+
+def retain_artifacts(report: dict, attempts, directory: Path) -> None:
+    """Copy each published artifact beside the report, checked by digest.
+
+    The deck a campaign produced is the only thing that can settle what an
+    effect actually did; without it a verifier's narrow check is all anyone
+    can ever re-examine (D154, review I4).
+    """
+
+    import hashlib
+    import shutil
+
+    by_index = {a.index: a for a in attempts}
+    for entry in report["attempts"]:
+        attempt = by_index.get(entry["index"])
+        source = Path(attempt.output_path) if attempt and attempt.output_path else None
+        if not entry.get("published_sha256") or source is None or not source.is_file():
+            continue
+        if hashlib.sha256(source.read_bytes()).hexdigest() != entry["published_sha256"]:
+            entry["artifact_refused"] = "published bytes changed before retention"
+            continue
+        directory.mkdir(parents=True, exist_ok=True)
+        name = f"attempt-{entry['index']:02d}{source.suffix}"
+        shutil.copyfile(source, directory / name)
+        entry["artifact"] = f"artifacts/{name}"
 
 
 def main() -> int:  # pragma: no cover - thin CLI over run_campaign
@@ -367,22 +479,19 @@ def main() -> int:  # pragma: no cover - thin CLI over run_campaign
         require_pinned_manifest,
     )
 
+    # Nothing is written before the ledger check passes: an undeclared
+    # campaign has no obligation to retain anything.
     try:
-        report_path = campaign_directory(arguments.campaign_id) / "report.json"
+        directory = campaign_directory(arguments.campaign_id)
+        require_ledgered(arguments.campaign_id, path="harness", plan_id=arguments.plan_id)
     except CampaignPreflightError as exc:
         print(json.dumps({"campaign": "refused", "detail": str(exc)}))
         return 3
-    if report_path.exists():
-        print(json.dumps({"campaign": "refused", "detail": "report exists; never overwrite a campaign"}))
-        return 3
-    try:
+
+    def preflight() -> dict:
         manifest = bundle_manifest_sha256(arguments.bundle.resolve())
         require_pinned_manifest(manifest)
-        commit = repository_commit()
-        require_ledgered(arguments.campaign_id, path="harness", plan_id=arguments.plan_id)
-    except (CampaignPreflightError, OSError, KeyError) as exc:
-        print(json.dumps({"campaign": "refused", "detail": str(exc)}, sort_keys=True))
-        return 3
+        return {"commit": repository_commit(), "manifest_sha256": manifest}
 
     def build(index, store, output):
         return [
@@ -417,45 +526,30 @@ def main() -> int:  # pragma: no cover - thin CLI over run_campaign
     binding = {
         "bundle_sha256": arguments.bundle_sha256,
         "campaign_id": arguments.campaign_id,
-        "commit": commit,
-        "manifest_sha256": manifest,
+        "commit": None,
+        "manifest_sha256": None,
         "mode": arguments.mode,
         "plan_id": arguments.plan_id,
         "plan_sha256": arguments.plan_sha256,
     }
-    status, detail, code = "clean", None, 0
     try:
-        attempts = run_campaign(
-            attempts=arguments.attempts,
-            build_command=build,
-            workspace=arguments.workspace,
-            window_class=arguments.window_class,
+        report, code = conduct(
+            report_path=directory / "report.json",
+            binding=binding,
+            attempts_requested=arguments.attempts,
+            preflight=preflight,
+            run=lambda: run_campaign(
+                attempts=arguments.attempts,
+                build_command=build,
+                workspace=arguments.workspace,
+                window_class=arguments.window_class,
+            ),
+            artifacts_dir=directory / "artifacts",
         )
     except CampaignError as exc:
-        attempts, status, detail, code = exc.attempts, "refused", str(exc), 3
-
-    try:
-        report = campaign_report(
-            status=status,
-            detail=detail,
-            attempts=attempts,
-            attempts_requested=arguments.attempts,
-            binding=binding,
-        )
-    except CampaignError as exc:
-        report = campaign_report(
-            status="refused",
-            detail=str(exc),
-            attempts=(),
-            attempts_requested=arguments.attempts,
-            binding=binding,
-        )
-        code = 3
-    report_path.parent.mkdir(parents=True, exist_ok=True)
-    report_path.write_bytes(
-        (json.dumps(report, indent=2, sort_keys=True) + "\n").encode("utf-8")
-    )
-    print(json.dumps({"campaign": report["campaign"], "report": str(report_path)}))
+        print(json.dumps({"campaign": "refused", "detail": str(exc)}))
+        return 3
+    print(json.dumps({"campaign": report["campaign"], "report": str(directory / "report.json")}))
     return code
 
 if __name__ == "__main__":  # pragma: no cover
@@ -468,6 +562,8 @@ __all__ = [
     "FORBIDDEN_RECORD_KEYS",
     "attempt_from",
     "campaign_report",
+    "conduct",
+    "retain_artifacts",
     "retained_records",
     "read_records",
     "restore_target_windows",

@@ -57,6 +57,22 @@ MANAGER_ORDER = (
     "act_worker_started",
     "act_run_result",
 )
+#: What each plan's verifier actually establishes, printed in the document so a
+#: green campaign is never read as more than it shows (D154, review I4).
+PLAN_SCOPE = {
+    "build-investor-deck-v1": (
+        "Every node passed the signed verifier's check of its declared postcondition."
+    ),
+    "animation-catalog-v1": (
+        "Scope: the verifier confirmed an animation was added to each target object and "
+        "that slide-level transition state was written; it does not verify the effect, "
+        "category, trigger, direction or order that landed, which the retained decks "
+        "below can settle."
+    ),
+}
+#: Records that must not sit beside a counted, completed result.
+DISQUALIFYING = frozenset({"interrupt_fired", "interrupt_probe", "publish_refused", "probe_faults"})
+PLAN_ROOT = Path(__file__).resolve().parents[1] / "plugins" / "sources" / "powerpoint" / "payload"
 _SHA = re.compile(r"[0-9a-f]{64}")
 _COMMIT = re.compile(r"[0-9a-f]{40}")
 
@@ -96,6 +112,28 @@ def _binding(binding: dict) -> None:
     _require(binding.get("plan_id") in PLAN_INTENTS, "campaign names an unknown plan")
 
 
+def _signed_plan(binding: dict) -> int:
+    """The node count of the TRACKED signed plan the binding names, after
+    requiring the binding's digest to be that plan's index digest (review I2)."""
+
+    index = json.loads((PLAN_ROOT / "ghostcursor" / "action-plans.json").read_text(encoding="utf-8"))
+    entry = index["plans"].get(binding["plan_id"])
+    _require(entry is not None, "campaign names a plan the signed index does not list")
+    _require(
+        entry["sha256"] == binding["plan_sha256"],
+        f"campaign plan digest {binding['plan_sha256'][:8]} is not the signed plan's",
+    )
+    plan = json.loads((PLAN_ROOT / entry["path"]).read_text(encoding="utf-8"))
+    return len(plan["nodes"])
+
+
+def _campaign_id(binding: dict) -> None:
+    _require(
+        bool(re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}-[a-z0-9-]{1,40}", str(binding.get("campaign_id")))),
+        "campaign names no ledgered campaign id",
+    )
+
+
 def _consecutive(indices, label: str) -> None:
     _require(
         list(indices) == list(range(1, REQUIRED_ATTEMPTS + 1)),
@@ -111,7 +149,7 @@ def _one_build(builds, label: str) -> str:
     return builds[0]
 
 
-def check_harness(report: dict) -> dict:
+def check_harness(report: dict, base: Path | None = None) -> dict:
     _require(
         report.get("schema_version") == 2 and report.get("path") == "harness",
         "not a harness campaign report",
@@ -122,6 +160,8 @@ def check_harness(report: dict) -> dict:
         bool(_SHA.fullmatch(str(binding.get("bundle_sha256", "")))),
         "campaign names no bundle digest",
     )
+    _campaign_id(binding)
+    planned = _signed_plan(binding)
     _require(
         report.get("campaign") == "clean",
         f"campaign ended {report.get('campaign')!r}: {report.get('detail')}",
@@ -145,6 +185,13 @@ def check_harness(report: dict) -> dict:
             f"{label}: needs one approved and one result record",
         )
         approved, result = approved[0], results[0]
+        stray = DISQUALIFYING & {r.get("type") for r in records}
+        _require(not stray, f"{label}: carries disqualifying records {sorted(stray)}")
+        _require(
+            approved.get("plan_id") == binding["plan_id"],
+            f"{label}: ran plan {approved.get('plan_id')!r}, not the campaign's",
+        )
+        _require(approved.get("nodes") == planned, f"{label}: plan has {planned} nodes, attempt ran {approved.get('nodes')}")
         _require(
             approved.get("manifest_sha256") == POWERPOINT_MANIFEST_SHA256,
             f"{label}: ran an unpinned manifest",
@@ -171,6 +218,13 @@ def check_harness(report: dict) -> dict:
             and digest == attempt.get("published_sha256"),
             f"{label}: nothing published",
         )
+        if base is not None:
+            artifact = attempt.get("artifact")
+            _require(bool(artifact), f"{label}: its published deck was not retained")
+            _require(
+                hashlib.sha256((base / artifact).read_bytes()).hexdigest() == digest,
+                f"{label}: the retained deck is not the published one",
+            )
         references.append((approved.get("target_ref"), approved.get("target_scope")))
         published.append(digest)
         builds.append(approved.get("application_version"))
@@ -201,6 +255,9 @@ def check_manager(directory: Path) -> dict:
     )
     binding = campaign.get("binding", {})
     _binding(binding)
+    _campaign_id(binding)
+    planned = _signed_plan(binding)
+    _require(not campaign.get("refusals"), f"campaign recorded refusals: {campaign.get('refusals')}")
     intent = PLAN_INTENTS[binding["plan_id"]]
     _require(binding.get("intent_id") == intent, "campaign binds the wrong intent")
     entries = campaign.get("attempts", [])
@@ -265,6 +322,7 @@ def check_manager(directory: Path) -> dict:
             len(totals) == 1, f"{label}: runtime events disagree on the node total"
         )
         total = totals.pop()
+        _require(total == planned, f"{label}: plan has {planned} nodes, attempt ran {total}")
         _require(
             result.get("completed") is True
             and result.get("code") == "completed"
@@ -309,6 +367,7 @@ def render(summary: dict, sources=()) -> str:
         "",
         f"- Commit: `{binding['commit']}`",
         f"- Manifest: `{binding['manifest_sha256']}` (the pinned manifest)",
+        f"- Campaign: `{binding['campaign_id']}`",
         f"- Plan: `{binding['plan_id']}` `{binding['plan_sha256']}`",
         f"- PowerPoint build: `{summary['build']}` (valid for this build only)",
         "",
@@ -322,8 +381,8 @@ def render(summary: dict, sources=()) -> str:
     lines.extend(
         [
             "",
-            f"{REQUIRED_ATTEMPTS} of {REQUIRED_ATTEMPTS} consecutive attempts completed "
-            "and verified every node.",
+            f"{REQUIRED_ATTEMPTS} of {REQUIRED_ATTEMPTS} consecutive attempts completed.",
+            PLAN_SCOPE[binding["plan_id"]],
             "This document states what the retained records show; it is acceptance",
             "evidence only after independent D032 review.",
         ]
@@ -348,7 +407,8 @@ def main(argv=None) -> int:
     try:
         if arguments.harness is not None:
             summary = check_harness(
-                json.loads(arguments.harness.read_text(encoding="utf-8"))
+                json.loads(arguments.harness.read_text(encoding="utf-8")),
+                base=arguments.harness.parent,
             )
         else:
             summary = check_manager(arguments.manager)

@@ -40,10 +40,17 @@ COMMIT = "c" * 40
 PLAN = "84e39d0d2987e153923c537587380e9eeecccfae0a50ede5be586e0238e4fe79"
 BUNDLE = "b" * 64
 BUILD = "16.0.20326.20158"
+CAMPAIGN = "2026-10-01-deck"
 ENV = {"GHOSTCURSOR_CAMPAIGN_SCOPE": "scope01", "GHOSTCURSOR_CAMPAIGN_SALT": "ab" * 32}
 
 
 # --- harness path ------------------------------------------------------------
+
+
+def _deck(index: int) -> bytes:
+    """Stand-in bytes for attempt `index`'s published deck."""
+
+    return f"deck-{index}".encode("utf-8")
 
 
 def _harness_records(index: int, *, nodes: int = 255) -> tuple[dict, ...]:
@@ -69,7 +76,7 @@ def _harness_records(index: int, *, nodes: int = 255) -> tuple[dict, ...]:
             "code": "completed",
             "completed": True,
             "completed_nodes": nodes,
-            "published_sha256": f"{index:x}" * 64,
+            "published_sha256": hashlib.sha256(_deck(index)).hexdigest(),
         },
     )
 
@@ -97,6 +104,7 @@ def _harness_report(attempts=None, **overrides) -> dict:
         attempts_requested=3,
         binding={
             "bundle_sha256": BUNDLE,
+            "campaign_id": CAMPAIGN,
             "commit": COMMIT,
             "manifest_sha256": PIN,
             "mode": "quick",
@@ -215,7 +223,13 @@ def test_a_refused_campaign_keeps_the_attempt_that_ended_it():
 
 def test_check_mode_rejects_a_hand_edited_document(tmp_path):
     report = tmp_path / "report.json"
-    report.write_text(json.dumps(_harness_report()), encoding="utf-8")
+    value = _harness_report()
+    (tmp_path / "artifacts").mkdir()
+    for attempt in value["attempts"]:
+        name = f"artifacts/attempt-{attempt['index']:02d}.pptx"
+        (tmp_path / name).write_bytes(_deck(attempt["index"]))
+        attempt["artifact"] = name
+    report.write_text(json.dumps(value), encoding="utf-8")
     out = tmp_path / "campaign.md"
 
     assert checker.main(["--harness", str(report), "--out", str(out)]) == 0
@@ -229,7 +243,7 @@ def test_check_mode_rejects_a_hand_edited_document(tmp_path):
 # --- manager path ------------------------------------------------------------
 
 
-def _manager_transcript(index: int, *, total: int = 3, order=None) -> list[dict]:
+def _manager_transcript(index: int, *, total: int = 255, order=None) -> list[dict]:
     kinds = list(order or checker.MANAGER_ORDER)
     body = []
     for kind in kinds:
@@ -289,6 +303,7 @@ def _manager_campaign(tmp_path, transcripts=None) -> Path:
                     "plan_id": "build-investor-deck-v1",
                     "plan_sha256": PLAN,
                     "scope": "scope01",
+                    "campaign_id": CAMPAIGN,
                 },
             }
         ),
@@ -299,7 +314,7 @@ def _manager_campaign(tmp_path, transcripts=None) -> Path:
 
 def test_a_clean_manager_campaign_is_accepted(tmp_path):
     summary = checker.check_manager(_manager_campaign(tmp_path))
-    assert [row[1] for row in summary["rows"]] == ["3/3"] * 3
+    assert [row[1] for row in summary["rows"]] == ["255/255"] * 3
 
 
 def test_the_d123_order_is_enforced(tmp_path):
@@ -318,7 +333,7 @@ def test_a_transcript_edited_after_recording_is_refused(tmp_path):
     directory = _manager_campaign(tmp_path)
     path = directory / manager_campaign.transcript_name(2)
     path.write_bytes(
-        path.read_bytes().replace(b'"completed_nodes": 3', b'"completed_nodes": 3 ')
+        path.read_bytes().replace(b'"completed_nodes": 255', b'"completed_nodes": 255 ')
     )
     with pytest.raises(checker.CampaignRefused, match="changed after it was recorded"):
         checker.check_manager(directory)
@@ -390,6 +405,7 @@ def test_the_real_diagnostic_transcripts_parse_and_fail_only_on_their_manifest(
                     "plan_id": "build-investor-deck-v1",
                     "plan_sha256": PLAN,
                     "scope": "s",
+                    "campaign_id": CAMPAIGN,
                 },
             }
         ),
@@ -749,3 +765,397 @@ def test_a_staged_but_uncommitted_ledger_entry_is_refused(tmp_path):
     _git(root, "add", LEDGER_RELATIVE)
     with pytest.raises(CampaignPreflightError, match="not committed"):
         require_ledgered("2026-10-01-deck", path="harness", plan_id="build-investor-deck-v1", root=root)
+
+
+# --- D154: every exit writes, and the checker binds the signed plan ----------
+
+
+def _binding_base():
+    binding = dict(_harness_report()["binding"])
+    binding.update(commit=None, manifest_sha256=None)
+    return binding
+
+
+def test_a_preflight_refusal_after_declaration_still_writes_a_report(tmp_path):
+    """Review B1: once the ledger line is committed, a dirty tree or an unpinned
+    manifest must leave a retained `refused` report, not only stdout."""
+
+    from ghostcursor.devtools.act_campaign import conduct
+
+    def preflight():
+        raise CampaignPreflightError("the work tree has uncommitted tracked changes")
+
+    report, code = conduct(
+        report_path=tmp_path / "report.json",
+        binding=_binding_base(),
+        attempts_requested=3,
+        preflight=preflight,
+        run=lambda: pytest.fail("must not run after a preflight refusal"),
+    )
+    on_disk = json.loads((tmp_path / "report.json").read_text(encoding="utf-8"))
+    assert code == 3 and on_disk == report
+    assert report["campaign"] == "refused" and "preflight" in report["detail"]
+
+
+def test_a_crashing_runner_still_writes_a_report(tmp_path):
+    from ghostcursor.devtools.act_campaign import conduct
+
+    def run():
+        raise OSError("disk vanished")
+
+    report, code = conduct(
+        report_path=tmp_path / "report.json",
+        binding=_binding_base(),
+        attempts_requested=3,
+        preflight=lambda: {"commit": COMMIT, "manifest_sha256": PIN},
+        run=run,
+    )
+    assert code == 3 and report["campaign"] == "refused"
+    assert (tmp_path / "report.json").is_file()
+
+
+def test_an_existing_report_is_never_overwritten(tmp_path):
+    from ghostcursor.devtools.act_campaign import conduct
+
+    (tmp_path / "report.json").write_text("{}", encoding="utf-8")
+    with pytest.raises(CampaignError, match="never overwrite"):
+        conduct(
+            report_path=tmp_path / "report.json",
+            binding=_binding_base(),
+            attempts_requested=3,
+            preflight=dict,
+            run=tuple,
+        )
+    assert (tmp_path / "report.json").read_text(encoding="utf-8") == "{}"
+
+
+def test_a_timed_out_attempt_keeps_the_attempts_before_it(tmp_path):
+    import subprocess as _subprocess
+    from types import SimpleNamespace
+
+    from ghostcursor.devtools.act_campaign import run_campaign
+
+    calls = iter(range(10))
+
+    def launch(command, **_):
+        if next(calls) == 1:
+            raise _subprocess.TimeoutExpired(command, 1800)
+        stdout = "\n".join(json.dumps(r) for r in _harness_records(1)) + "\n"
+        return SimpleNamespace(stdout=stdout, stderr="", returncode=0)
+
+    with pytest.raises(CampaignError, match="TimeoutExpired") as raised:
+        run_campaign(
+            attempts=3,
+            build_command=lambda *a: ["x"],
+            workspace=tmp_path,
+            window_class="PPTFrameClass",
+            restore=lambda _c: (1,),
+            launch=launch,
+            settle_s=0,
+        )
+    assert [a.index for a in raised.value.attempts] == [1]
+
+
+def test_a_leaking_record_is_withheld_but_its_attempt_is_kept():
+    leaked = list(_harness_records(2))
+    leaked[1] = {"type": "event", "detail": "candidates hwnd=4460192"}
+    report = campaign_report(
+        status="clean",
+        detail=None,
+        attempts=[_attempt(1), _attempt(2, records=tuple(leaked))],
+        attempts_requested=3,
+        binding=_harness_report()["binding"],
+    )
+    assert report["campaign"] == "refused"
+    assert [a["index"] for a in report["attempts"]] == [1, 2]
+    assert report["attempts"][1]["records"] == []
+    assert report["attempts"][1]["records_withheld"]
+    assert "4460192" not in json.dumps(report["attempts"][1]["records"])
+
+
+def test_retained_artifacts_are_copied_and_digest_checked(tmp_path):
+    from ghostcursor.devtools.act_campaign import retain_artifacts
+
+    published = tmp_path / "out.pptx"
+    published.write_bytes(_deck(1))
+    attempt = Attempt(
+        index=1,
+        completed=True,
+        code="completed",
+        nodes=255,
+        published_sha256=hashlib.sha256(_deck(1)).hexdigest(),
+        output_path=str(published),
+        seconds=1.0,
+        records=_harness_records(1),
+    )
+    report = {"attempts": [{"index": 1, "published_sha256": attempt.published_sha256}]}
+    retain_artifacts(report, [attempt], tmp_path / "artifacts")
+    assert report["attempts"][0]["artifact"] == "artifacts/attempt-01.pptx"
+    assert (tmp_path / "artifacts" / "attempt-01.pptx").read_bytes() == _deck(1)
+
+    published.write_bytes(b"changed")
+    report = {"attempts": [{"index": 1, "published_sha256": attempt.published_sha256}]}
+    retain_artifacts(report, [attempt], tmp_path / "artifacts2")
+    assert "artifact" not in report["attempts"][0]
+    assert report["attempts"][0]["artifact_refused"]
+
+
+@pytest.mark.parametrize(
+    ("path", "value", "reason"),
+    [
+        (("attempts", 1, "records", 0, "plan_id"), "animation-catalog-v1", "not the campaign"),
+        (("attempts", 1, "records", 0, "nodes"), 3, "plan has 255 nodes"),
+        (("binding", "plan_sha256"), "e" * 64, "not the signed plan"),
+        (("binding", "campaign_id"), None, "no ledgered campaign id"),
+        (("attempts", 0, "records", 1, "type"), "publish_refused", "disqualifying"),
+    ],
+)
+def test_the_checker_binds_the_signed_plan_and_the_campaign(path, value, reason):
+    with pytest.raises(checker.CampaignRefused, match=reason):
+        checker.check_harness(_mutate(_harness_report(), path, value))
+
+
+def test_a_catalog_campaign_under_the_decks_digest_is_refused():
+    """Review I2/H1: the catalog's name over the deck's digest."""
+
+    report = _mutate(_harness_report(), ("binding", "plan_id"), "animation-catalog-v1")
+    with pytest.raises(checker.CampaignRefused, match="not the signed plan"):
+        checker.check_harness(report)
+
+
+def test_a_missing_or_substituted_retained_deck_is_refused(tmp_path):
+    report = _harness_report()
+    with pytest.raises(checker.CampaignRefused, match="was not retained"):
+        checker.check_harness(report, base=tmp_path)
+    (tmp_path / "artifacts").mkdir()
+    for attempt in report["attempts"]:
+        name = f"artifacts/attempt-{attempt['index']:02d}.pptx"
+        (tmp_path / name).write_bytes(b"not the published deck")
+        attempt["artifact"] = name
+    with pytest.raises(checker.CampaignRefused, match="not the published one"):
+        checker.check_harness(report, base=tmp_path)
+
+
+def test_manager_node_totals_are_bound_to_the_signed_plan(tmp_path):
+    transcripts = [_manager_transcript(i, total=3) for i in (1, 2, 3)]
+    with pytest.raises(checker.CampaignRefused, match="plan has 255 nodes"):
+        checker.check_manager(_manager_campaign(tmp_path, transcripts))
+
+
+def test_a_manager_campaign_with_recorded_refusals_is_not_clean(tmp_path):
+    directory = _rewrite_campaign(
+        _manager_campaign(tmp_path), lambda c: c.update(refusals=["x"])
+    )
+    with pytest.raises(checker.CampaignRefused, match="recorded refusals"):
+        checker.check_manager(directory)
+
+
+def test_a_manager_refusal_after_declaration_is_retained(tmp_path):
+    manager_campaign.record_refusal(tmp_path, CAMPAIGN, "attempt 1: dirty tree")
+    manager_campaign.record_refusal(tmp_path, CAMPAIGN, "attempt 1: dirty tree again")
+    campaign = json.loads((tmp_path / "campaign.json").read_text(encoding="utf-8"))
+    assert campaign["path"] == "manager"
+    assert campaign["binding"]["campaign_id"] == CAMPAIGN
+    assert len(campaign["refusals"]) == 2
+
+
+def test_each_plan_prints_its_own_verification_scope():
+    deck = checker.render(checker.check_harness(_harness_report()))
+    assert checker.PLAN_SCOPE["build-investor-deck-v1"] in deck
+    assert "does not verify the effect" in checker.PLAN_SCOPE["animation-catalog-v1"]
+    assert "verified every node" not in deck
+
+
+def test_a_duplicate_ledger_declaration_is_refused(tmp_path):
+    """Review I1/C2: weakening `len(matches) != 1` to `< 1` survived."""
+
+    from ghostcursor.devtools.campaign_pins import LEDGER_RELATIVE, require_ledgered
+
+    root = _repo(tmp_path)
+    ledger = root / LEDGER_RELATIVE
+    ledger.parent.mkdir(parents=True)
+    line = json.dumps(
+        {
+            "campaign_id": "2026-10-01-deck",
+            "manifest_sha256": PIN,
+            "path": "harness",
+            "plan_id": "build-investor-deck-v1",
+        }
+    ) + "\n"
+    ledger.write_text(line + line, encoding="utf-8")
+    _git(root, "add", LEDGER_RELATIVE)
+    _git(root, "commit", "-q", "-m", "declare twice")
+    with pytest.raises(CampaignPreflightError, match="exactly once"):
+        require_ledgered(
+            "2026-10-01-deck", path="harness", plan_id="build-investor-deck-v1", root=root
+        )
+
+
+def test_the_manager_audit_records_the_bound_build_under_schema_2():
+    """Review I5: dropping the field or reverting the schema survived."""
+
+    from types import SimpleNamespace
+
+    from ghostcursor.manager import ManagerActAuditRecord, _proposal_audit_facts
+
+    target = SimpleNamespace(
+        executable="POWERPNT.EXE", executable_version=BUILD, hwnd=1, pid=1
+    )
+    facts = _proposal_audit_facts(
+        "goal", SimpleNamespace(target=target, validated=None, descriptor=None)
+    )
+    assert facts["application_version"] == BUILD
+    assert "application_version" in ManagerActAuditRecord.__dataclass_fields__
+    source = (ROOT / "ghostcursor" / "manager.py").read_text(encoding="utf-8")
+    assert "schema_version=2," in source and "schema_version=1," not in source
+
+
+def test_the_harness_approved_record_names_the_build():
+    import ast
+
+    tree = ast.parse(
+        (ROOT / "ghostcursor" / "devtools" / "act_acceptance.py").read_text(encoding="utf-8")
+    )
+    approved = [
+        call
+        for call in ast.walk(tree)
+        if isinstance(call, ast.Call)
+        and getattr(call.func, "id", None) == "_emit"
+        and call.args
+        and isinstance(call.args[0], ast.Constant)
+        and call.args[0].value == "approved"
+    ]
+    assert len(approved) == 1
+    keywords = {k.arg: ast.unparse(k.value) for k in approved[0].keywords}
+    assert keywords.get("application_version") == "act_target.executable_version"
+
+
+def test_a_plan_the_signed_index_does_not_list_is_refused(monkeypatch):
+    monkeypatch.setitem(checker.PLAN_INTENTS, "ghost-plan-v1", "GHOST")
+    report = _mutate(_harness_report(), ("binding", "plan_id"), "ghost-plan-v1")
+    with pytest.raises(checker.CampaignRefused, match="does not list"):
+        checker.check_harness(report)
+
+
+def test_a_result_that_did_not_complete_is_refused_even_with_code_completed():
+    report = _mutate(_harness_report(), ("attempts", 1, "records", 2, "completed"), False)
+    with pytest.raises(checker.CampaignRefused, match="not completed"):
+        checker.check_harness(report)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        {"detail": [{"hwnd": 1}]},
+        {"events": [{"note": "target 4460192 gone"}]},
+        {"detail": "window 0x1A2B3C"},
+        {"detail": "HWND=0x00012a4f"},
+        {"detail": "candidates: [(4460192, 'PowerPoint')]"},
+        {"detail": "stale 5550123"},
+        {"detail": "candidates [0x1A2B3C, 0x2B3C4D]"},
+    ],
+)
+def test_handle_shaped_values_are_refused_at_any_depth(value):
+    """Review I3: hex handles, bare numbers and nested lists all leaked."""
+
+    from ghostcursor.devtools.act_campaign import record_leaks
+
+    assert record_leaks(value)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "Act plan completed",
+        "published 94371 bytes",
+        "16.0.20326.20158",
+        "node 255 of 255",
+        "2026-10-01T12:00:00Z",
+        "window-12345678",
+        "1" * 64,
+    ],
+)
+def test_ordinary_values_are_not_mistaken_for_handles(value):
+    from ghostcursor.devtools.act_campaign import record_leaks
+
+    assert record_leaks({"detail": value}) == []
+
+
+def test_an_attempt_without_a_result_keeps_the_attempts_before_it(tmp_path):
+    """Review A6: a crashed attempt emitted no result record, and the refusal
+    raised for it discarded the clean attempts that preceded it."""
+
+    from types import SimpleNamespace
+
+    from ghostcursor.devtools.act_campaign import run_campaign
+
+    outputs = iter(
+        [
+            "\n".join(json.dumps(r) for r in _harness_records(1)) + "\n",
+            "Traceback\nRuntimeError: boom\n",
+        ]
+    )
+
+    def launch(command, **_):
+        return SimpleNamespace(stdout=next(outputs), stderr="RuntimeError: boom 4460192", returncode=1)
+
+    with pytest.raises(CampaignError) as raised:
+        run_campaign(
+            attempts=3,
+            build_command=lambda *a: ["x"],
+            workspace=tmp_path,
+            window_class="PPTFrameClass",
+            restore=lambda _c: (1,),
+            launch=launch,
+            settle_s=0,
+        )
+    assert [a.index for a in raised.value.attempts] == [1]
+    assert "4460192" not in str(raised.value)
+
+
+def test_the_campaign_scope_never_looks_like_a_number(tmp_path):
+    """An all-digit scope trips the evidence handle scan in a committed report."""
+
+    from types import SimpleNamespace
+
+    from ghostcursor.devtools.act_campaign import run_campaign
+
+    scopes = []
+
+    def launch(command, env=None, **_):
+        scopes.append(env["GHOSTCURSOR_CAMPAIGN_SCOPE"])
+        stdout = "\n".join(json.dumps(r) for r in _harness_records(len(scopes))) + "\n"
+        return SimpleNamespace(stdout=stdout, stderr="", returncode=0)
+
+    for _ in range(20):
+        scopes.clear()
+        run_campaign(
+            attempts=1,
+            build_command=lambda *a: ["x"],
+            workspace=tmp_path,
+            window_class="PPTFrameClass",
+            restore=lambda _c: (1,),
+            launch=launch,
+            settle_s=0,
+        )
+        assert scopes[0][0].isalpha()
+
+
+def test_the_manager_runner_retains_a_refusal_after_declaration(tmp_path, monkeypatch):
+    """Review B1 on the manager path: a refusal once declared is written down."""
+
+    import ghostcursor.devtools.campaign_pins as pins
+    import ghostcursor.plugins.platform as platform
+
+    directory = tmp_path / "campaign"
+    monkeypatch.setattr(pins, "campaign_directory", lambda _id: directory)
+    monkeypatch.setattr(pins, "require_ledgered", lambda *a, **k: {})
+
+    def broken_store():
+        raise OSError("store unavailable")
+
+    monkeypatch.setattr(platform, "production_store", broken_store)
+    code = manager_campaign.main(["--campaign-id", CAMPAIGN, "--attempt", "1"])
+    campaign = json.loads((directory / "campaign.json").read_text(encoding="utf-8"))
+    assert code == 2
+    assert campaign["refusals"] and "store unavailable" in campaign["refusals"][0]

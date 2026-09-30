@@ -6781,7 +6781,9 @@ other's goal.
 > **Correction, 30 September 2026 (D152).** The no-collision claim is too
 > strong: "build the animation catalog deck in powerpoint" matches the
 > investor deck's heuristic (0.85). The exact phrases do route correctly, and
-> the complete plan is shown before approval, which bounds the harm. Plan `animation-catalog-v1`, 46 nodes: four slides, one shape per
+> the complete plan is shown before approval, which bounds the harm.
+
+Plan `animation-catalog-v1`, 46 nodes: four slides, one shape per
 animation, every one of the 15 category/effect pairs the signed adapter's
 `_ANIMATION_EFFECTS` accepts exactly once, all three triggers, the four
 directions, and `none`/`fade`/`morph` transitions, then save and inspect.
@@ -6878,3 +6880,68 @@ budget on the installed build first.
 
 **Not claimed.** Nothing here is acceptance evidence, and this slice has been
 read only by its author.
+
+## D154 — Third pre-campaign review (`bc31fe5`): NOT READY, and its repairs
+
+**Date:** 30 September 2026
+
+**Owner direction recorded first.** On 30 September the owner chose to close
+PowerPoint Act v1 -- repair this review's findings and run the investor-deck
+harness campaign -- and then to move from hand-curated per-app packs toward a
+model-first harness (a large model plus the Jev System-One provider choosing
+among observed on-screen candidates, with the existing approval, verification
+and evidence machinery). That pivot is not decided here; it needs its own
+decision amending the CLAUDE.md rule that no enabled plugin means no
+executable UI knowledge, and D058.
+
+**The review.** An independent agent reviewed `bc31fe5` and returned **NOT
+READY** for the harness path, with one blocking defect, and NOT READY (opinion)
+for the manager path. Record: `review-ready-bc31fe5.md` on branch
+`review-bc31fe5` (commit `aee44cc`); hermetic lane 2818 passed; 33/33 checker
+call sites killed, 12 of 29 targeted mutants survived.
+
+**B1, repaired.** A declared campaign could end with nothing retained: a
+preflight refusal, a `TimeoutExpired` from an attempt, or a manager refusal
+before `campaign.json` existed wrote no report, leaving a permanently red lane
+whose only exits were a forged report or a ledger rewrite -- the D139
+pressure. Now the ledger is checked first and nothing is written before it;
+after it, `act_campaign.conduct()` writes a `refused` report on every exit, a
+failure to run an attempt keeps the attempts before it, a record that would
+leak a handle is withheld while its attempt stays counted, and the manager
+runner appends every post-declaration refusal to `campaign.json` and records
+an attempt even if the manager crashes.
+
+**Important findings, repaired.** I1: the ledger test binds each retained
+result to its own entry (campaign id, plan, manifest, schema), requires a
+refused campaign to say why, and requires the commit a campaign ran at to
+already contain its ledger line; a duplicate declaration is tested. I2: the
+checker requires the binding's plan digest to be the tracked signed index's,
+each attempt's `plan_id` to match, and node counts to equal the signed plan's
+(255 for the deck, on both paths). I3: the handle scan also refuses any `0x`
+hex value and any standalone decimal of six or more digits in text, exempting
+only a whole value that is a SHA-256 digest, the `window-<8 hex>` pseudonym or
+a scope id; stderr redaction covers hex; FLOW.md now states the rule exactly.
+I4: the rendered document prints each plan's own verification scope, and the
+harness copies each published deck beside the report, checked by digest. I5:
+the build-recording emitters are tested on both paths.
+
+**Minor.** Campaign scopes start with a letter, so an all-digit scope can no
+longer trip the evidence scan. The D151 correction no longer swallows its
+next sentence. ROADMAP's catalog scope was wrong for a `none` transition and
+is corrected. The `63cd2b5` READY claim is marked unretained in ROADMAP and
+FOLLOWUPS. Records like `interrupt_fired` or `publish_refused` beside a
+completed result disqualify an attempt. Residuals are listed in FOLLOWUPS.
+
+**Mutation evidence.** A sweep of 66 mutants -- every checker call site plus
+targeted mutants for each prior survivor (C2, G1, G2, AA1, A2, A6), the
+timeout path, the preflight write, withheld records, the safe-text
+exemption, both new handle alternatives, the scope prefix, the manager
+refusal record, compound sub-conditions and the ledger bindings -- is killed
+66/66 by `test_act_campaign_evidence`, `test_campaign_ledger`,
+`test_act_campaign` and `test_manager_act_audit`.
+
+**No payload change.** Nothing signed changed; the manifest remains
+`b0d63512`.
+
+**Not claimed.** Read only by its author; no acceptance evidence exists.
+

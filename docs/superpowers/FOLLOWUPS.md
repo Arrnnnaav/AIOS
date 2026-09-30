@@ -1085,8 +1085,8 @@ are now mechanically linked to the records by
 
 ## The D032 activation review remains open, and it gates everything
 
-The independent remediation review of `63cd2b5` is **READY**, but the separate
-activation review returned **NOT READY** because current counted acceptance,
+A remediation review of `63cd2b5` is recorded as **READY** with no retained
+record of it (D152), and the separate activation review returned **NOT READY** because current counted acceptance,
 independent desktop lanes, the UIA slice, animation campaign, and the budget
 review are still absent. This entry stays open until those gates are complete.
 
@@ -1184,3 +1184,23 @@ compared, never printed. Worth a decision before it doubles again.
 
 **Trigger:** when `_OBSERVED` passes roughly thirty entries, or when a value in
 it can be shown to be unreachable from any tracked file's history.
+
+
+## Campaign evidence: residuals after D154
+
+- **The animation-catalog verifier checks presence, not the effect.** A green
+  catalog campaign shows each animation request was accepted and targeted the
+  right object. Verifying preset class/ID, node type, trigger, direction and
+  order from the saved timing XML needs a verifier change and a re-sign.
+  **Trigger:** before any claim that the catalog "works", or before tightening
+  the transition postcondition (the `morph` item above). The retained decks
+  under `docs/evidence/campaigns/<id>/artifacts/` are the material to measure.
+- **Deleting an untracked report and rerunning under the same id** is not
+  mechanically detectable before the report is committed; the ledger line, the
+  binding commit that must contain it, and review of the campaign directory's
+  history are the controls. **Trigger:** if campaigns ever run unattended
+  without a human committing results the same day.
+- **Retained records carry absolute workspace paths** (they are the operator's
+  own paths, not handles). **Trigger:** before campaign evidence is published
+  outside this repository.
+

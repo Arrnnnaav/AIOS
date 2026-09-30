@@ -1282,8 +1282,11 @@ A counted campaign is declared first: one line in
   at HEAD), spawns `act_acceptance` once per attempt with one exported scope
   and salt, stops at the first unclean attempt, and writes
   `docs/evidence/campaigns/<id>/report.json` with every attempt that ran and
-  its full record stream (refusing any record carrying a raw handle, at any
-  depth or quoted in text);
+  its full record stream. A record carrying a handle-named key, or text
+  shaped like a handle (a named handle/pid/window/target number, any `0x`
+  hex value, or a standalone decimal of six or more digits), is withheld and
+  the campaign refused; its attempt stays counted. Every exit after the
+  ledger check writes the report, and published decks are copied beside it;
 - manager: `devtools/act_manager_campaign.py --campaign-id <id> --attempt N`,
   once per attempt, preflights the installed manifest, ledger, clean tree,
   consecutive numbering and every earlier attempt completed, then opens the

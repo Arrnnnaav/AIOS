@@ -599,7 +599,10 @@ unless the manifest equals `campaign_pins.POWERPOINT_MANIFEST_SHA256`, the
 tree is clean, and the campaign id is declared in a COMMITTED line of
 `docs/campaigns/ledger.jsonl`; results go to
 `docs/evidence/campaigns/<id>/` and every declared campaign must be retained
-there, failed ones included (D150, D152). Evidence names its PowerPoint build
+there, failed ones included (D150, D152). After the ledger check every exit
+writes its report -- a preflight refusal, a timeout, a crash -- so the only
+honest path back to a green lane is never a hand-written report (D154).
+Evidence names its PowerPoint build
 and is valid for that build only.
 
 Phase A and B tooling measures without acting. `ActBoundaryProbe` may never

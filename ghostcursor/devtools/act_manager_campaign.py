@@ -91,6 +91,7 @@ def prepare_attempt(
     manifest_sha256: str,
     plan_sha256: str,
     plan_id: str = PLAN_ID,
+    campaign_id: str | None = None,
 ) -> Path:
     """Validate the campaign state for ``attempt`` and return its transcript path.
 
@@ -113,6 +114,7 @@ def prepare_attempt(
     binding = {
         "commit": commit,
         "manifest_sha256": manifest_sha256,
+        "campaign_id": campaign_id,
         "intent_id": PLAN_INTENTS[plan_id],
         "plan_id": plan_id,
         "plan_sha256": plan_sha256,
@@ -127,6 +129,7 @@ def prepare_attempt(
                 "attempts": [],
                 "binding": binding,
                 "path": "manager",
+                "refusals": [],
                 "schema_version": 1,
             },
         )
@@ -155,6 +158,30 @@ def prepare_attempt(
                 f"{transcript_name(later)} already exists; never overwrite a run"
             )
     return campaign_dir / transcript_name(attempt)
+
+
+def record_refusal(campaign_dir: Path, campaign_id: str, detail: str) -> None:
+    """Retain a refusal that happened after the campaign was declared.
+
+    A committed ledger line demands retained results, so a refusal before the
+    first attempt -- an unpinned manifest, a dirty tree, a wrong attempt
+    number -- is written down rather than printed and lost (D154, review B1).
+    """
+
+    campaign_dir.mkdir(parents=True, exist_ok=True)
+    path = campaign_dir / CAMPAIGN_FILE
+    if path.exists():
+        campaign = json.loads(path.read_text(encoding="utf-8"))
+    else:
+        campaign = {
+            "attempts": [],
+            "binding": {"campaign_id": campaign_id},
+            "path": "manager",
+            "refusals": [],
+            "schema_version": 1,
+        }
+    campaign.setdefault("refusals", []).append(detail)
+    _write(path, campaign)
 
 
 def record_attempt(campaign_dir: Path, attempt: int, exit_code: int) -> None:
@@ -191,11 +218,17 @@ def main(argv=None) -> int:  # pragma: no cover - thin live wrapper
     )
     from ghostcursor.plugins.platform import production_store
 
+    # Nothing is written before the ledger check passes.
     try:
         campaign_dir = campaign_directory(arguments.campaign_id)
         require_ledgered(
             arguments.campaign_id, path="manager", plan_id=arguments.plan_id
         )
+    except CampaignPreflightError as exc:
+        print(f"refusing: {exc}")
+        return 2
+
+    try:
         store = production_store()
         manifest = installed_manifest_sha256(store)
         plan = (
@@ -211,8 +244,12 @@ def main(argv=None) -> int:  # pragma: no cover - thin live wrapper
             manifest_sha256=manifest,
             plan_sha256=plan.plan_sha256,
             plan_id=arguments.plan_id,
+            campaign_id=arguments.campaign_id,
         )
-    except (CampaignPreflightError, KeyError, OSError) as exc:
+    except Exception as exc:
+        record_refusal(
+            campaign_dir, arguments.campaign_id, f"attempt {arguments.attempt}: {exc}"
+        )
         print(f"refusing: {exc}")
         return 2
 
@@ -222,12 +259,16 @@ def main(argv=None) -> int:  # pragma: no cover - thin live wrapper
     print(f"Goal:  {GOALS[arguments.plan_id]}")
     print("Mode:  Act. Review the complete plan, then press Approve & run once.")
     print("Close the manager only after the terminal result is visible.")
-    code = launch_manager(act_audit_path=transcript)
-    record_attempt(campaign_dir, arguments.attempt, code)
+    code = 1
+    try:
+        code = launch_manager(act_audit_path=transcript)
+    finally:
+        # A manager that crashed still ran an attempt; it is recorded.
+        record_attempt(campaign_dir, arguments.attempt, code)
     return code
 
 if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(main())
 
 
-__all__ = ["prepare_attempt", "record_attempt", "transcript_name"]
+__all__ = ["prepare_attempt", "record_attempt", "record_refusal", "transcript_name"]

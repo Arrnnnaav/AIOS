@@ -354,12 +354,14 @@ built but not yet exercised by a caller or a live run.
       (intent `BUILD_ANIMATION_CATALOG`) now exists, covering all 15
       category/effect pairs the adapter accepts, every trigger, and the
       none/fade/morph transitions (D151). It has not been run or counted.
-      Scope (D152): the artifact verifier confirms that an animation was
-      added to each target shape and that a transition exists; it does not
-      verify effect, category, trigger, direction or order in the saved
-      file, so a green catalog campaign shows the adapter's requests were
-      accepted and targeted the right shapes, not that each effect landed
-      as specified.
+      Scope (D152, corrected D154): the artifact verifier confirms that an
+      animation was added to each target object and, for a `fade` or
+      `morph` transition, that some transition was written; for `none` it
+      checks nothing. It does not verify effect, category, trigger,
+      direction or order in the saved file, so a green catalog campaign
+      shows the adapter's requests were accepted and targeted the right
+      objects, not that each effect landed as specified. The campaign
+      retains the published decks so that can be examined afterwards.
 - [ ] All lanes green independently
 - [x] D032 pre-sign review — three independent cold passes; 26 + 4 + 3
       findings, all fixed. The blocking one was a COM retry that could
@@ -367,7 +369,8 @@ built but not yet exercised by a caller or a live run.
 - [x] External non-ephemeral signing key — `ghostcursor-release-2026-3`,
       generated outside the repo, public half committed, pair verified
       through the production PluginStore path
-- [ ] D032 activation review — remediation review of `63cd2b5` is READY;
+- [ ] D032 activation review — a remediation review of `63cd2b5` is
+      recorded here as READY, but no record of it is retained (D152); the
       activation review is NOT READY pending the gates listed below
 
 **Already built, awaiting a caller**
