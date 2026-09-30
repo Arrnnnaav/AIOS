@@ -6945,3 +6945,70 @@ refusal record, compound sub-conditions and the ledger bindings -- is killed
 
 **Not claimed.** Read only by its author; no acceptance evidence exists.
 
+## D155 — Fourth pre-campaign review (`764286f`): NOT READY, and its repairs
+
+**Date:** 30 September 2026
+
+**The review.** An independent agent reviewed `764286f` and returned **NOT
+READY** for the harness investor-deck campaign. Record: `review-ready-764286f.md`
+on branch `review-764286f` (commit `7073b1b`); hermetic lane 2862 passed; 20
+targeted mutants, 4 survived. It walked the full operator procedure, and its
+blocking finding came from doing that rather than from reading code.
+
+**N1 (blocking): committing the evidence would have turned the lane red.**
+D154 copied each published deck into `docs/evidence/`. A `.pptx` is binary,
+and 21 of the 42 real decks on this machine contain a CRLF byte pair, which
+`test_no_tracked_evidence_artifact_contains_crlf` refuses -- so about seven
+campaigns in eight would have forced either the scan to be loosened after the
+fact or the decks to be dropped, the D139 pressure again. Decks also carry the
+Office user name (review m2). **Decision:** decks are not committed. They are
+kept, digest-checked, in the git-ignored `.artifacts/campaigns/<id>/`; the
+committed report records each deck's digest, and the renderer verifies the
+decks when given `--artifacts`. The CRLF scan is unchanged.
+
+**N2: the total handle blocklist fired on honest records about 8% of the
+time.** Its prose rule compares every digit of each JSON scalar with 16
+observed handles, three of them five digits long; millisecond `at_s` floats
+and random digests matched. This is a change to a safety check and is made
+before any campaign evidence exists, not in response to it. Two exemptions:
+a whole 40- or 64-character hex digest is removed before digits are compared,
+and inside a JSON record (an object or array) a float with a non-zero fraction
+is skipped by type. Prose keeps the total rule, including the dot-grouped
+rendering of an observed value; an integer, an integer-valued float, and every
+separator rendering are still found, each by a planted test. While writing
+this entry the author quoted a dot-grouped observed value as the example; the
+unchanged prose rule refused DECISIONS.md before commit, and the example was
+removed.
+
+**N3: two exits still wrote nothing.** Ctrl+C passed every `except
+Exception`, and a deck-copy failure ran before the report write. `conduct()`
+now writes a `started` report before anything can fail, catches
+`BaseException` to write the final report and then re-raises, and guards
+both the whole retention step and each copy.
+
+**N4: four mutants survived D154's sweep** (launch guard narrowed to
+`TimeoutExpired`, preflight guard narrowed, the ledger commit-containment
+check removed, stderr hex redaction removed). Each now has a planted test.
+
+**N5: a refused campaign could not be cited without hand-written prose.** The
+renderer now produces a "NOT counted" document from a refused or unfinished
+record (harness or manager), cites the record by digest, requires a stated
+reason, and refuses a reason shaped like a handle. `test_campaign_ledger`
+renders and `--check`s a document for every outcome.
+
+**Minor.** Staging run ids and workspace tokens start with a letter, so an
+all-decimal id can no longer trip the handle scan (m1). `.gitattributes` pins
+`docs/campaigns/*.jsonl` to LF (m3). The report binding records the signing
+key id, and `act_acceptance` accepts the base64 key form stored in
+`trusted_keys.json` (m4).
+
+**Mutation evidence.** 18 new targeted mutants: 18/18 killed. The D154 sweep,
+re-run over this slice (now 68 mutants with the renderer's new call sites),
+first showed three survivors: the refusal-record schema check, and two ledger
+checks the renderer now duplicates, whose tests matched either layer's
+message. Per-layer tests were added; 68/68 killed.
+
+**No payload change.** The manifest remains `b0d63512`.
+
+**Not claimed.** Read only by its author; no acceptance evidence exists.
+

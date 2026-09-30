@@ -1286,7 +1286,9 @@ A counted campaign is declared first: one line in
   shaped like a handle (a named handle/pid/window/target number, any `0x`
   hex value, or a standalone decimal of six or more digits), is withheld and
   the campaign refused; its attempt stays counted. Every exit after the
-  ledger check writes the report, and published decks are copied beside it;
+  ledger check writes the report (a `started` report first, overwritten
+  only by the final one), and published decks are copied to the git-ignored
+  `.artifacts/campaigns/<id>/` with their digests in the report;
 - manager: `devtools/act_manager_campaign.py --campaign-id <id> --attempt N`,
   once per attempt, preflights the installed manifest, ledger, clean tree,
   consecutive numbering and every earlier attempt completed, then opens the
@@ -1294,8 +1296,11 @@ A counted campaign is declared first: one line in
   2) carries the application build.
 
 `tools/render_act_campaign.py --check` is the only producer of the campaign
-document and refuses anything but 3 consecutive completed attempts on the pin,
-one build, distinct outputs, and the D123 order (manager).
+document. For a clean campaign it refuses anything but 3 consecutive completed
+attempts on the pin, one build, distinct outputs, the signed plan's digest and
+node count, and the D123 order (manager); `--artifacts <dir>` also
+digest-checks the kept decks. For a refused or unfinished campaign it renders
+a "NOT counted" document from the retained record.
 `tests/test_campaign_ledger.py` requires every ledger entry to be retained and
 the ledger to be append-only.
 

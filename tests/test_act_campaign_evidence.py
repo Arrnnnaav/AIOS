@@ -224,15 +224,19 @@ def test_a_refused_campaign_keeps_the_attempt_that_ended_it():
 def test_check_mode_rejects_a_hand_edited_document(tmp_path):
     report = tmp_path / "report.json"
     value = _harness_report()
-    (tmp_path / "artifacts").mkdir()
+    decks = tmp_path / "decks"
+    decks.mkdir()
     for attempt in value["attempts"]:
-        name = f"artifacts/attempt-{attempt['index']:02d}.pptx"
-        (tmp_path / name).write_bytes(_deck(attempt["index"]))
+        name = f"attempt-{attempt['index']:02d}.pptx"
+        (decks / name).write_bytes(_deck(attempt["index"]))
         attempt["artifact"] = name
     report.write_text(json.dumps(value), encoding="utf-8")
     out = tmp_path / "campaign.md"
 
-    assert checker.main(["--harness", str(report), "--out", str(out)]) == 0
+    assert checker.main(["--harness", str(report), "--out", str(out), "--artifacts", str(decks)]) == 0
+    (decks / "attempt-02.pptx").write_bytes(b"swapped")
+    assert checker.main(["--harness", str(report), "--out", str(out), "--artifacts", str(decks), "--check"]) == 2
+    (decks / "attempt-02.pptx").write_bytes(_deck(2))
     digest = hashlib.sha256(report.read_bytes()).hexdigest()
     assert f"- `report.json` — SHA-256 `{digest}`" in out.read_text(encoding="utf-8")
     assert checker.main(["--harness", str(report), "--out", str(out), "--check"]) == 0
@@ -890,7 +894,7 @@ def test_retained_artifacts_are_copied_and_digest_checked(tmp_path):
     )
     report = {"attempts": [{"index": 1, "published_sha256": attempt.published_sha256}]}
     retain_artifacts(report, [attempt], tmp_path / "artifacts")
-    assert report["attempts"][0]["artifact"] == "artifacts/attempt-01.pptx"
+    assert report["attempts"][0]["artifact"] == "attempt-01.pptx"
     assert (tmp_path / "artifacts" / "attempt-01.pptx").read_bytes() == _deck(1)
 
     published.write_bytes(b"changed")
@@ -926,14 +930,13 @@ def test_a_catalog_campaign_under_the_decks_digest_is_refused():
 def test_a_missing_or_substituted_retained_deck_is_refused(tmp_path):
     report = _harness_report()
     with pytest.raises(checker.CampaignRefused, match="was not retained"):
-        checker.check_harness(report, base=tmp_path)
-    (tmp_path / "artifacts").mkdir()
+        checker.check_harness(report, artifacts=tmp_path)
     for attempt in report["attempts"]:
-        name = f"artifacts/attempt-{attempt['index']:02d}.pptx"
+        name = f"attempt-{attempt['index']:02d}.pptx"
         (tmp_path / name).write_bytes(b"not the published deck")
         attempt["artifact"] = name
     with pytest.raises(checker.CampaignRefused, match="not the published one"):
-        checker.check_harness(report, base=tmp_path)
+        checker.check_harness(report, artifacts=tmp_path)
 
 
 def test_manager_node_totals_are_bound_to_the_signed_plan(tmp_path):
@@ -1159,3 +1162,276 @@ def test_the_manager_runner_retains_a_refusal_after_declaration(tmp_path, monkey
     campaign = json.loads((directory / "campaign.json").read_text(encoding="utf-8"))
     assert code == 2
     assert campaign["refusals"] and "store unavailable" in campaign["refusals"][0]
+
+
+# --- D155: fourth-review findings --------------------------------------------
+
+
+def test_a_started_report_exists_before_anything_can_fail(tmp_path):
+    """N3: a process killed outright still leaves a report that says it started."""
+
+    from ghostcursor.devtools.act_campaign import conduct
+
+    seen = {}
+
+    def preflight():
+        seen.update(json.loads((tmp_path / "report.json").read_text(encoding="utf-8")))
+        return {"commit": COMMIT, "manifest_sha256": PIN}
+
+    conduct(
+        report_path=tmp_path / "report.json",
+        binding=_binding_base(),
+        attempts_requested=3,
+        preflight=preflight,
+        run=tuple,
+    )
+    assert seen["campaign"] == "started"
+
+
+def test_an_interrupt_still_writes_the_report_and_then_propagates(tmp_path):
+    """N3: Ctrl+C got past every `except Exception`."""
+
+    from ghostcursor.devtools.act_campaign import conduct
+
+    def run():
+        raise KeyboardInterrupt
+
+    with pytest.raises(KeyboardInterrupt):
+        conduct(
+            report_path=tmp_path / "report.json",
+            binding=_binding_base(),
+            attempts_requested=3,
+            preflight=lambda: {"commit": COMMIT, "manifest_sha256": PIN},
+            run=run,
+        )
+    report = json.loads((tmp_path / "report.json").read_text(encoding="utf-8"))
+    assert report["campaign"] == "refused" and "KeyboardInterrupt" in report["detail"]
+
+
+def test_a_failing_deck_copy_does_not_lose_the_report(tmp_path, monkeypatch):
+    """N3: a copy failure ran before the report write, unguarded."""
+
+    import shutil
+
+    from ghostcursor.devtools.act_campaign import conduct
+
+    published = tmp_path / "out.pptx"
+    published.write_bytes(_deck(1))
+    attempt = Attempt(
+        index=1,
+        completed=True,
+        code="completed",
+        nodes=255,
+        published_sha256=hashlib.sha256(_deck(1)).hexdigest(),
+        output_path=str(published),
+        seconds=1.0,
+        records=_harness_records(1),
+    )
+
+    def broken_copy(*_a, **_k):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(shutil, "copyfile", broken_copy)
+    report, _code = conduct(
+        report_path=tmp_path / "report.json",
+        binding=_binding_base(),
+        attempts_requested=1,
+        preflight=lambda: {"commit": COMMIT, "manifest_sha256": PIN},
+        run=lambda: (attempt,),
+        artifacts_dir=tmp_path / "decks",
+    )
+    assert report["attempts"][0]["artifact_refused"].startswith("copy failed")
+    assert (tmp_path / "report.json").is_file()
+
+
+def test_an_attempt_that_cannot_launch_keeps_the_attempts_before_it(tmp_path):
+    """X1: narrowing the launch guard to TimeoutExpired survived."""
+
+    from types import SimpleNamespace
+
+    from ghostcursor.devtools.act_campaign import run_campaign
+
+    calls = iter(range(10))
+
+    def launch(command, **_):
+        if next(calls) == 1:
+            raise OSError("python.exe vanished")
+        stdout = "\n".join(json.dumps(r) for r in _harness_records(1)) + "\n"
+        return SimpleNamespace(stdout=stdout, stderr="", returncode=0)
+
+    with pytest.raises(CampaignError, match="OSError") as raised:
+        run_campaign(
+            attempts=3,
+            build_command=lambda *a: ["x"],
+            workspace=tmp_path,
+            window_class="PPTFrameClass",
+            restore=lambda _c: (1,),
+            launch=launch,
+            settle_s=0,
+        )
+    assert [a.index for a in raised.value.attempts] == [1]
+
+
+def test_a_missing_bundle_at_preflight_still_writes_a_report(tmp_path):
+    """X3: a wrong --bundle path raises OSError, not a preflight refusal."""
+
+    from ghostcursor.devtools.act_campaign import conduct
+
+    def preflight():
+        raise FileNotFoundError("no such bundle")
+
+    report, code = conduct(
+        report_path=tmp_path / "report.json",
+        binding=_binding_base(),
+        attempts_requested=3,
+        preflight=preflight,
+        run=tuple,
+    )
+    assert code == 3 and "no such bundle" in report["detail"]
+
+
+def test_stderr_redaction_covers_hex_handles():
+    """X13."""
+
+    from ghostcursor.devtools.act_campaign import redacted_last_line
+
+    line = redacted_last_line("RuntimeError: window 0x1A2B3C gone\n")
+    assert "1A2B3C" not in line and "<n>" in line
+
+
+def test_a_refused_campaign_renders_a_citable_document(tmp_path):
+    """N5: a refused campaign needs a rendered document, not hand-written prose."""
+
+    report = campaign_report(
+        status="refused",
+        detail="attempt 2 was not clean (refused, 40 nodes, published=False)",
+        attempts=[_attempt(1)],
+        attempts_requested=3,
+        binding=_harness_report()["binding"],
+    )
+    source = tmp_path / "report.json"
+    source.write_text(json.dumps(report), encoding="utf-8")
+    out = tmp_path / "campaign.md"
+    assert checker.main(["--harness", str(source), "--out", str(out)]) == 0
+    text = out.read_text(encoding="utf-8")
+    assert "NOT counted" in text and "attempt 2 was not clean" in text
+    assert f"- `report.json` — SHA-256 `{hashlib.sha256(source.read_bytes()).hexdigest()}`" in text
+    assert checker.main(["--harness", str(source), "--out", str(out), "--check"]) == 0
+
+
+def test_a_manager_refusal_renders_a_citable_document(tmp_path):
+    manager_campaign.record_refusal(tmp_path, CAMPAIGN, "attempt 1: dirty tree")
+    out = tmp_path / "campaign.md"
+    assert checker.main(["--manager", str(tmp_path), "--out", str(out)]) == 0
+    assert "dirty tree" in out.read_text(encoding="utf-8")
+
+
+def test_a_refusal_document_still_refuses_a_leaking_reason(tmp_path):
+    report = campaign_report(
+        status="refused",
+        detail="two windows: hwnd 4460192 and 5550123",
+        attempts=(),
+        attempts_requested=3,
+        binding=_harness_report()["binding"],
+    )
+    source = tmp_path / "report.json"
+    source.write_text(json.dumps(report), encoding="utf-8")
+    assert checker.main(["--harness", str(source), "--out", str(tmp_path / "c.md")]) == 2
+
+
+def test_the_commit_a_campaign_ran_at_must_contain_its_ledger_line(tmp_path):
+    """X8: removing the commit-containment check survived."""
+
+    sys.path.insert(0, str(ROOT / "tests"))
+    import test_campaign_ledger as ledger
+
+    root = _repo(tmp_path)
+    head = subprocess_output(root, "rev-parse", "HEAD")
+    entry = {
+        "campaign_id": CAMPAIGN,
+        "manifest_sha256": PIN,
+        "path": "harness",
+        "plan_id": "build-investor-deck-v1",
+    }
+    value = {
+        "binding": {"campaign_id": CAMPAIGN, "commit": head, "plan_id": "build-investor-deck-v1"},
+        "campaign": "refused",
+        "detail": "x",
+        "path": "harness",
+        "schema_version": 2,
+    }
+    assert any("does not contain its ledger line" in p for p in ledger._binding_problems(entry, value, root))
+
+    ledger_path = root / "docs" / "campaigns" / "ledger.jsonl"
+    ledger_path.parent.mkdir(parents=True)
+    ledger_path.write_text(json.dumps(entry) + "\n", encoding="utf-8")
+    _git(root, "add", "docs/campaigns/ledger.jsonl")
+    _git(root, "commit", "-q", "-m", "declare")
+    value["binding"]["commit"] = subprocess_output(root, "rev-parse", "HEAD")
+    assert ledger._binding_problems(entry, value, root) == []
+
+
+def subprocess_output(root, *args):
+    import subprocess
+
+    return subprocess.run(["git", *args], cwd=root, capture_output=True, text=True, check=True).stdout.strip()
+
+
+def test_generated_ids_never_look_like_numbers():
+    """m1: an all-decimal run id or token trips the handle scan (~1%)."""
+
+    source = (ROOT / "ghostcursor" / "devtools" / "act_acceptance.py").read_text(encoding="utf-8")
+    assert 'run_id="r" + uuid.uuid4().hex[:11]' in source
+    campaign = (ROOT / "ghostcursor" / "devtools" / "act_campaign.py").read_text(encoding="utf-8")
+    assert 'token = "t" + uuid.uuid4().hex[:9]' in campaign
+
+
+def test_decks_are_retained_outside_git():
+    """N1/m2: tracked decks trip the CRLF and handle scans and publish the
+    Office user name; they stay in the git-ignored store."""
+
+    import subprocess
+
+    from ghostcursor.devtools.act_campaign import REPOSITORY_ARTIFACTS
+
+    relative = REPOSITORY_ARTIFACTS.relative_to(ROOT).as_posix() + "/probe/attempt-01.pptx"
+    ignored = subprocess.run(["git", "check-ignore", "-q", relative], cwd=ROOT)
+    assert ignored.returncode == 0
+
+
+def test_any_deck_retention_failure_still_writes_the_report(tmp_path, monkeypatch):
+    import ghostcursor.devtools.act_campaign as campaign
+
+    def broken(*_a, **_k):
+        raise RuntimeError("retention broke")
+
+    monkeypatch.setattr(campaign, "retain_artifacts", broken)
+    report, _code = campaign.conduct(
+        report_path=tmp_path / "report.json",
+        binding=_binding_base(),
+        attempts_requested=3,
+        preflight=lambda: {"commit": COMMIT, "manifest_sha256": PIN},
+        run=tuple,
+        artifacts_dir=tmp_path / "decks",
+    )
+    on_disk = json.loads((tmp_path / "report.json").read_text(encoding="utf-8"))
+    assert on_disk["artifact_retention"] == "failed: RuntimeError"
+
+
+def test_a_refusal_without_a_reason_is_not_rendered(tmp_path):
+    report = campaign_report(
+        status="refused", detail=None, attempts=(), attempts_requested=3,
+        binding=_harness_report()["binding"],
+    )
+    source = tmp_path / "report.json"
+    source.write_text(json.dumps(report), encoding="utf-8")
+    assert checker.main(["--harness", str(source), "--out", str(tmp_path / "c.md")]) == 2
+
+
+def test_a_refusal_record_of_the_wrong_kind_is_not_rendered(tmp_path):
+    source = tmp_path / "report.json"
+    source.write_text(json.dumps({"campaign": "refused", "detail": "x", "path": "manager",
+                                  "schema_version": 2, "binding": {"campaign_id": CAMPAIGN}}),
+                      encoding="utf-8")
+    assert checker.main(["--harness", str(source), "--out", str(tmp_path / "c.md")]) == 2
+

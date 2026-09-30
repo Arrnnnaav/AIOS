@@ -15,3 +15,5 @@ ghostcursor/demo/synthetic_export_app.py text eol=lf
 plugins/**/*.py text eol=lf
 plugins/**/*.json text eol=lf
 plugins/**/*.md text eol=lf
+# The campaign ledger is append-only and byte-compared across history (D155).
+docs/campaigns/*.jsonl text eol=lf

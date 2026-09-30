@@ -46,6 +46,9 @@ import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
+#: Where published decks are retained: git-ignored, on this machine (D155).
+REPOSITORY_ARTIFACTS = Path(__file__).resolve().parents[2] / ".artifacts" / "campaigns"
+
 #: Record type that counts. Anything else is not an attempt outcome.
 RESULT_RECORD = "result"
 
@@ -215,7 +218,7 @@ def run_campaign(
         if settle_s:
             time.sleep(settle_s)
 
-        token = uuid.uuid4().hex[:10]
+        token = "t" + uuid.uuid4().hex[:9]  # never all digits (D155, review m1)
         store = workspace / f"store-{index:02d}-{token}"
         output = workspace / "out" / f"attempt-{index:02d}-{token}.pptx"
         output.parent.mkdir(parents=True, exist_ok=True)
@@ -395,7 +398,24 @@ def conduct(
     if report_path.exists():
         raise CampaignError("report exists; never overwrite a campaign")
     binding = dict(binding)
+
+    def write(report: dict) -> None:
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_bytes(
+            (json.dumps(report, indent=2, sort_keys=True) + "\n").encode("utf-8")
+        )
+
+    # Written before anything can fail, and overwritten only by this call: a
+    # process killed outright (power loss, taskkill) still leaves a report
+    # that says the campaign started and never finished (D155, review N3).
+    write(
+        campaign_report(
+            status="started", detail="the campaign did not finish", attempts=(),
+            attempts_requested=attempts_requested, binding=binding,
+        )
+    )
     status, detail, code, attempts = "clean", None, 0, ()
+    interrupted = None
     try:
         binding.update(preflight())
     except Exception as exc:
@@ -407,6 +427,9 @@ def conduct(
             attempts, status, detail, code = exc.attempts, "refused", str(exc), 3
         except Exception as exc:
             status, detail, code = "refused", f"runner failed: {type(exc).__name__}", 3
+        except BaseException as exc:  # Ctrl+C, SystemExit: record, then re-raise
+            status, detail, code = "refused", f"interrupted: {type(exc).__name__}", 3
+            interrupted = exc
     report = campaign_report(
         status=status,
         detail=detail,
@@ -417,11 +440,13 @@ def conduct(
     if report["campaign"] != "clean":
         code = 3
     if artifacts_dir is not None:
-        retain_artifacts(report, attempts, artifacts_dir)
-    report_path.parent.mkdir(parents=True, exist_ok=True)
-    report_path.write_bytes(
-        (json.dumps(report, indent=2, sort_keys=True) + "\n").encode("utf-8")
-    )
+        try:
+            retain_artifacts(report, attempts, artifacts_dir)
+        except Exception as exc:
+            report["artifact_retention"] = f"failed: {type(exc).__name__}"
+    write(report)
+    if interrupted is not None:
+        raise interrupted
     return report, code
 
 
@@ -445,10 +470,14 @@ def retain_artifacts(report: dict, attempts, directory: Path) -> None:
         if hashlib.sha256(source.read_bytes()).hexdigest() != entry["published_sha256"]:
             entry["artifact_refused"] = "published bytes changed before retention"
             continue
-        directory.mkdir(parents=True, exist_ok=True)
         name = f"attempt-{entry['index']:02d}{source.suffix}"
-        shutil.copyfile(source, directory / name)
-        entry["artifact"] = f"artifacts/{name}"
+        try:
+            directory.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source, directory / name)
+        except OSError as exc:
+            entry["artifact_refused"] = f"copy failed: {type(exc).__name__}"
+            continue
+        entry["artifact"] = name
 
 
 def main() -> int:  # pragma: no cover - thin CLI over run_campaign
@@ -526,6 +555,7 @@ def main() -> int:  # pragma: no cover - thin CLI over run_campaign
     binding = {
         "bundle_sha256": arguments.bundle_sha256,
         "campaign_id": arguments.campaign_id,
+        "key_id": arguments.key_id,
         "commit": None,
         "manifest_sha256": None,
         "mode": arguments.mode,
@@ -544,7 +574,11 @@ def main() -> int:  # pragma: no cover - thin CLI over run_campaign
                 workspace=arguments.workspace,
                 window_class=arguments.window_class,
             ),
-            artifacts_dir=directory / "artifacts",
+            # Decks stay OUT of git: they carry the Office user name and are
+            # binary, so tracked copies would trip the CRLF and handle scans
+            # and publish a personal name (D155, review N1/m2). The report
+            # keeps each deck's digest; the bytes stay on this machine.
+            artifacts_dir=REPOSITORY_ARTIFACTS / arguments.campaign_id,
         )
     except CampaignError as exc:
         print(json.dumps({"campaign": "refused", "detail": str(exc)}))

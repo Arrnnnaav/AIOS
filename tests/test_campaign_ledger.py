@@ -92,32 +92,28 @@ def entries_problems(entries, root: Path) -> list[str]:
             continue
         value = json.loads(source.read_text(encoding="utf-8"))
         problems.extend(_binding_problems(entry, value, root))
-        clean = (
-            value.get("campaign") == "clean"
-            if entry["path"] == "harness"
-            else len(value.get("attempts", [])) == 3 and not value.get("refusals")
+        # Every outcome has a rendered, checked document: a clean campaign's
+        # evidence or a refused one's record (D155, review N5).
+        flag = "--harness" if entry["path"] == "harness" else "--manager"
+        target = source if entry["path"] == "harness" else directory
+        check = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "tools" / "render_act_campaign.py"),
+                flag,
+                str(target),
+                "--out",
+                str(directory / "campaign.md"),
+                "--check",
+            ],
+            cwd=root,
+            capture_output=True,
+            text=True,
         )
-        if clean:
-            flag = "--harness" if entry["path"] == "harness" else "--manager"
-            target = source if entry["path"] == "harness" else directory
-            check = subprocess.run(
-                [
-                    sys.executable,
-                    str(ROOT / "tools" / "render_act_campaign.py"),
-                    flag,
-                    str(target),
-                    "--out",
-                    str(directory / "campaign.md"),
-                    "--check",
-                ],
-                cwd=root,
-                capture_output=True,
-                text=True,
+        if check.returncode != 0:
+            problems.append(
+                f"{cid}: {check.stdout.strip() or check.stderr.strip()}"
             )
-            if check.returncode != 0:
-                problems.append(
-                    f"{cid}: {check.stdout.strip() or check.stderr.strip()}"
-                )
     return problems
 
 
@@ -231,3 +227,21 @@ def test_the_commit_a_campaign_ran_at_must_already_declare_it():
 
     head = _git("rev-parse", "HEAD").strip()
     assert not _commit_declares(ROOT, head, "2026-10-01-never-declared")
+
+
+def test_the_binding_layer_itself_refuses_wrong_schema_and_silent_refusals(tmp_path):
+    """The renderer refuses these too; this pins the ledger's own check so
+    either layer failing alone is still seen."""
+
+    assert _binding_problems(_entry(), {}, tmp_path) == [
+        "2026-10-01-deck: retained result is not a harness campaign record"
+    ]
+    silent = {
+        "binding": {"campaign_id": "2026-10-01-deck"},
+        "campaign": "refused",
+        "detail": None,
+        "path": "harness",
+        "schema_version": 2,
+    }
+    assert any("must say why" in p for p in _binding_problems(_entry(), silent, tmp_path))
+

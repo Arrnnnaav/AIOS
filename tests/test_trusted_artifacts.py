@@ -790,6 +790,8 @@ def test_gitattributes_pins_every_attested_text_class_to_lf():
             "ghostcursor/demo/synthetic_export_app.py text eol=lf",
         "plugins/**/*.py text eol=lf",
         "plugins/**/*.json text eol=lf",
+        # The campaign ledger is compared byte-for-byte across history (D155).
+        "docs/campaigns/*.jsonl text eol=lf",
         "plugins/**/*.md text eol=lf",
     }
 

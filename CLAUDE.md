@@ -600,8 +600,11 @@ tree is clean, and the campaign id is declared in a COMMITTED line of
 `docs/campaigns/ledger.jsonl`; results go to
 `docs/evidence/campaigns/<id>/` and every declared campaign must be retained
 there, failed ones included (D150, D152). After the ledger check every exit
-writes its report -- a preflight refusal, a timeout, a crash -- so the only
-honest path back to a green lane is never a hand-written report (D154).
+writes its report -- a preflight refusal, a timeout, a crash, Ctrl+C -- and
+the renderer produces a document for a refused campaign too, so no outcome
+ever needs hand-written prose (D154, D155). Published decks are kept in the
+git-ignored `.artifacts/campaigns/<id>/`, never committed; the report keeps
+each deck's digest.
 Evidence names its PowerPoint build
 and is valid for that build only.
 

@@ -149,7 +149,7 @@ def _one_build(builds, label: str) -> str:
     return builds[0]
 
 
-def check_harness(report: dict, base: Path | None = None) -> dict:
+def check_harness(report: dict, artifacts: Path | None = None) -> dict:
     _require(
         report.get("schema_version") == 2 and report.get("path") == "harness",
         "not a harness campaign report",
@@ -218,11 +218,11 @@ def check_harness(report: dict, base: Path | None = None) -> dict:
             and digest == attempt.get("published_sha256"),
             f"{label}: nothing published",
         )
-        if base is not None:
+        if artifacts is not None:
             artifact = attempt.get("artifact")
             _require(bool(artifact), f"{label}: its published deck was not retained")
             _require(
-                hashlib.sha256((base / artifact).read_bytes()).hexdigest() == digest,
+                hashlib.sha256((artifacts / artifact).read_bytes()).hexdigest() == digest,
                 f"{label}: the retained deck is not the published one",
             )
         references.append((approved.get("target_ref"), approved.get("target_scope")))
@@ -393,45 +393,105 @@ def render(summary: dict, sources=()) -> str:
     return "\n".join(lines) + "\n"
 
 
+def refusal_summary(kind: str, value: dict) -> dict:
+    """What a refused or unfinished campaign retains, for its document (N5).
+
+    A committed ledger line needs a cited, rendered record of its outcome; a
+    refusal is an outcome. Only structure is checked here -- a refused
+    campaign claims nothing, so there is nothing further to substantiate.
+    """
+
+    expected = (2, "harness") if kind == "harness" else (1, "manager")
+    _require(
+        (value.get("schema_version"), value.get("path")) == expected,
+        f"not a {kind} campaign record",
+    )
+    binding = value.get("binding") or {}
+    _campaign_id(binding)
+    if kind == "harness":
+        reasons = [str(value.get("detail") or "")]
+        rows = [(a.get("index"), a.get("code"), a.get("nodes")) for a in value.get("attempts", [])]
+    else:
+        reasons = [str(r) for r in value.get("refusals", [])] or ["fewer than three attempts ran"]
+        rows = [(a.get("index"), f"exit {a.get('manager_exit')}", None) for a in value.get("attempts", [])]
+    _require(all(reasons), "a refused campaign must say why")
+    _no_raw_handles([{"reasons": reasons}], "refusal")
+    return {"binding": binding, "path": kind, "reasons": reasons, "rows": rows, "status": value.get("campaign", "refused")}
+
+
+def render_refusal(summary: dict, sources=()) -> str:
+    binding = summary["binding"]
+    lines = [
+        f"# Campaign `{binding['campaign_id']}` — {summary['path']} path — NOT counted",
+        "",
+        "Rendered by `tools/render_act_campaign.py` from the retained record;",
+        "`--check` re-renders and compares bytes. This campaign did not produce",
+        "three consecutive clean attempts and is not acceptance evidence.",
+        "",
+        f"- Outcome: `{summary['status']}`",
+        f"- Plan: `{binding.get('plan_id')}`",
+        "",
+        "## Why",
+        "",
+    ]
+    lines.extend(f"- {reason}" for reason in summary["reasons"])
+    if summary["rows"]:
+        lines.extend(["", "| Attempt | Outcome | Nodes |", "|---:|---|---:|"])
+        lines.extend(f"| {i} | {code} | {nodes if nodes is not None else '—'} |" for i, code, nodes in summary["rows"])
+    if sources:
+        lines.extend(["", "## Source records", ""])
+        lines.extend(f"- `{name}` — SHA-256 `{digest}`" for name, digest in sources)
+    return "\n".join(lines) + "\n"
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--harness", type=Path)
     source.add_argument("--manager", type=Path)
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument(
+        "--artifacts",
+        type=Path,
+        default=None,
+        help="the git-ignored deck store; when given, every deck is digest-checked",
+    )
     parser.add_argument("--check", action="store_true")
     arguments = parser.parse_args(argv)
+
     def digest(path: Path) -> str:
         return hashlib.sha256(path.read_bytes()).hexdigest()
 
     try:
         if arguments.harness is not None:
-            summary = check_harness(
-                json.loads(arguments.harness.read_text(encoding="utf-8")),
-                base=arguments.harness.parent,
-            )
+            value = json.loads(arguments.harness.read_text(encoding="utf-8"))
+            sources = [(arguments.harness.name, digest(arguments.harness))]
+            if value.get("campaign") != "clean":
+                rendered = render_refusal(refusal_summary("harness", value), sources)
+            else:
+                rendered = render(check_harness(value, artifacts=arguments.artifacts), sources)
         else:
-            summary = check_manager(arguments.manager)
+            value = json.loads((arguments.manager / "campaign.json").read_text(encoding="utf-8"))
+            files = [arguments.manager / "campaign.json", *sorted(
+                arguments.manager.glob("act-live-manager-campaign-attempt-*.jsonl")
+            )]
+            sources = [(path.name, digest(path)) for path in files]
+            if value.get("refusals") or len(value.get("attempts", [])) != REQUIRED_ATTEMPTS:
+                rendered = render_refusal(refusal_summary("manager", value), sources)
+            else:
+                rendered = render(check_manager(arguments.manager), sources)
     except (CampaignRefused, OSError, KeyError, ValueError) as exc:
         print(f"refused: {exc}")
         return 2
-    if arguments.harness is not None:
-        sources = [(arguments.harness.name, digest(arguments.harness))]
-    else:
-        files = [arguments.manager / "campaign.json", *sorted(
-            arguments.manager.glob("act-live-manager-campaign-attempt-*.jsonl")
-        )]
-        sources = [(path.name, digest(path)) for path in files]
-    rendered = render(summary, sources).encode("utf-8")
+    data = rendered.encode("utf-8")
     if arguments.check:
-        if not arguments.out.is_file() or arguments.out.read_bytes() != rendered:
+        if not arguments.out.is_file() or arguments.out.read_bytes() != data:
             print("refused: the campaign document is not what its records render to")
             return 2
         return 0
     arguments.out.parent.mkdir(parents=True, exist_ok=True)
-    arguments.out.write_bytes(rendered)
+    arguments.out.write_bytes(data)
     return 0
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

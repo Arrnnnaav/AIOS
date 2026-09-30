@@ -1190,7 +1190,8 @@ it can be shown to be unreachable from any tracked file's history.
 
 - **The animation-catalog verifier checks presence, not the effect.** A green
   catalog campaign shows each animation request was accepted and targeted the
-  right object. Verifying preset class/ID, node type, trigger, direction and
+  right object. The decks to measure are kept in the git-ignored
+  `.artifacts/campaigns/<id>/` on the machine that ran the campaign (D155). Verifying preset class/ID, node type, trigger, direction and
   order from the saved timing XML needs a verifier change and a re-sign.
   **Trigger:** before any claim that the catalog "works", or before tightening
   the transition postcondition (the `morph` item above). The retained decks

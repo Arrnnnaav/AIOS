@@ -283,6 +283,19 @@ def _digits_only(text: str) -> str:
     return "".join(c for c in text if c.isdigit())
 
 
+#: A whole 40- or 64-character hex digest is removed before digits are
+#: compared (D155): a handle is never rendered as one, and random digests matched
+#: a 5-digit observed value often enough to fire on honest campaign records. A
+#: JSON number that is a float with a non-zero fraction (a millisecond timing)
+#: is skipped by TYPE in `_blocklisted`, not by text shape -- `264.482` written
+#: as prose is a dot-grouped rendering and must still match.
+_NOT_A_HANDLE = re.compile(r"(?<![0-9A-Za-z])(?:[0-9a-f]{64}|[0-9a-f]{40})(?![0-9A-Za-z])")
+
+
+def _handle_digits(text: str) -> str:
+    return _digits_only(_NOT_A_HANDLE.sub(" ", text))
+
+
 def _blocklisted(text: str, *, prose: bool):
     """Observed values present in `text`.
 
@@ -304,7 +317,10 @@ def _blocklisted(text: str, *, prose: bool):
         try:
             document = json.loads(text)
         except json.JSONDecodeError:
-            haystack = _digits_only(text)
+            document = None
+        if not isinstance(document, (dict, list)):
+            # Not a JSON record (a bare `264.482` parses as a float): prose.
+            haystack = _handle_digits(text)
             return [value for value in _OBSERVED if value in haystack]
 
         def scalars(value):
@@ -314,10 +330,12 @@ def _blocklisted(text: str, *, prose: bool):
             elif isinstance(value, list):
                 for child in value:
                     yield from scalars(child)
+            elif isinstance(value, float) and not value.is_integer():
+                return  # a measured fraction, never a handle (D155)
             elif value is not None:
                 yield str(value)
 
-        values = [_digits_only(scalar) for scalar in scalars(document)]
+        values = [_handle_digits(scalar) for scalar in scalars(document)]
         return [
             value for value in _OBSERVED if any(value in scalar for scalar in values)
         ]
@@ -905,3 +923,40 @@ def test_a_nested_file_sharing_a_name_is_still_scanned():
     # Whatever shares a basename today, every copy of it is in the scanned set.
     for name, paths in by_name.items():
         assert len(paths) == len(set(paths)), name
+
+
+
+def test_digests_and_fractional_timings_are_not_read_as_handles():
+    """D155: honest campaign records carry digests and millisecond floats; the
+    total scan must not fire on them, or it forces edits of retained evidence."""
+
+    value = _OBSERVED[0]
+    digest = ("ab" + value + "cd" * 30)[:64]
+    record = json.dumps({"at_s": float(f"{value[:3]}.{value[3:]}"), "sha256": digest})
+    assert _blocklisted(record, prose=True) == []
+    assert _blocklisted(f"| 1 | `{digest}` |\n", prose=True) == []
+    # Prose keeps the total rule: a dot-grouped rendering is still a handle.
+    assert _blocklisted(f"{value[:3]}.{value[3:]}", prose=True) == [value]
+
+
+@pytest.mark.parametrize(
+    "rendering",
+    [
+        "{v}",
+        "{v}.0",
+        "window {v}",
+        "0x{v}",
+        "{a} {b}",
+        "{a},{b}",
+    ],
+)
+def test_integer_renderings_of_an_observed_handle_are_still_found(rendering):
+    """The exemption removes only digests and fractional decimals; every
+    integer rendering the total rule was built for still matches."""
+
+    value = _OBSERVED[0]
+    text = rendering.format(v=value, a=value[:3], b=value[3:])
+    assert _blocklisted(text, prose=True) == [value]
+    assert _blocklisted(json.dumps({"x": text}), prose=True) == [value]
+    assert _blocklisted(json.dumps({"x": int(value)}), prose=True) == [value]
+    assert _blocklisted(json.dumps({"x": float(value)}), prose=True) == [value]

@@ -99,7 +99,7 @@ def run(args) -> int:
     # deck goes, so it cannot expose a partial one even if asked.
     owned_root.mkdir(parents=True, exist_ok=True)
     area = open_staging(
-        final_output, owned_root=owned_root, run_id=uuid.uuid4().hex[:12]
+        final_output, owned_root=owned_root, run_id="r" + uuid.uuid4().hex[:11]
     )
     output = area.staging
     _emit(
@@ -111,6 +111,11 @@ def run(args) -> int:
     if _sha(bundle) != args.bundle_sha256:
         raise RuntimeError("candidate bundle digest disagrees with reviewed bytes")
     public_key = args.public_key.read_bytes()
+    if len(public_key) != 32:
+        # Accept the base64 form `trusted_keys.json` stores (review m4).
+        import base64
+
+        public_key = base64.b64decode(public_key.strip(), validate=True)
     store = PluginStore(
         args.store_root.resolve(),
         trusted_keys={args.key_id: public_key},
