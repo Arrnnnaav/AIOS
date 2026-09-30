@@ -107,6 +107,15 @@ as a document refresh when Markdown, documents, or evidence changed.
 | Planning and local models | `ROADMAP.md` Phase 3 build-order items 7–8 | `idea.txt`, `ghostcursor/brief.py`, `ghostcursor/task_graph.py`, `ghostcursor/inference/ollama.py`, `tests/test_brief.py`, `tests/test_task_graph.py` |
 | Manager/panel | `FLOW.md` manager section; D088, D098, D099, D118 | `ghostcursor/manager.py`, `ghostcursor/act_ui_bridge.py`, `tests/test_manager.py`, `tests/test_manager_window.py`, `tests/test_manager_act_bridge.py`, `tests/test_act_ui_bridge.py` |
 | Evidence or release | D032, D034 and release rules | `docs/evidence/`, activation and acceptance tools |
+| Product evolution plan | `docs/orbyn-plan/README.md`, `MVP.md`, and the relevant Mega Phase; current status still comes from `ROADMAP.md` | `docs/orbyn-plan/`, `DECISIONS.md` |
+
+### Separate Spatial project and later integration
+
+- Spatial is an independently developed project at `D:\PROJECTS\Spatial`, not a subdirectory or branch of this AIOS repository. Build, test, and review it in its own repository first. Do not clean, reset, move, or edit its working tree as part of an AIOS task unless the user explicitly scopes that project in.
+- Before the current Act activation review returns READY, only standalone Spatial work, read-only evaluation, and documentation/design that does not wire manager Ideate/Plan, Spatial Context into a Brief, or semantic app workflows may proceed.
+- After activation, Spatial Context integration is the first item of ROADMAP Stage 1 under D143. Pass a typed `SpatialContextReference` into the Brief as non-authoritative context; never convert a mark into a selector, target identity, coordinate, permission, or execution request.
+- D147 (D141-R2) is the current provider policy: a configured cloud provider may be the default reasoning provider for the trial period, local execution stays supported and tested, and side-effecting connectors keep their D144 gates. D147's independent D032 review is outstanding; see `CLAUDE.md` for the binding rule.
+- Keep regression/replay/evaluation continuous from the first standalone Spatial change. An OrbynBench phase consolidates infrastructure; it does not defer tests. External DOM, ARIA, PDF, OCR, search, and app text are untrusted input before any model sees them.
 
 Add a smaller `AGENTS.md` inside a major module only when that module has
 stable local commands, generated-file rules, or safety constraints that are not
