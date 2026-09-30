@@ -33,7 +33,7 @@ import build_ghostplugin  # noqa: E402
 SPEC = ROOT / "plugins" / "sources" / "powerpoint" / "plugin-source.json"
 
 #: The digest every tracking document names as the current PowerPoint bundle.
-DOCUMENTED = "28dbaf2d372c55144e289316a1b92dd25185281351cd685a8e735ee9d759a836"
+DOCUMENTED = "3a4f8c570f49c583d07f578c3f1c05622b9fa736c8a3a170062818ab4fce0584"
 
 #: Every PowerPoint manifest this repository has published and replaced. ONE
 #: source of truth for both tests below: D133 guarded the copy used by the
@@ -44,6 +44,7 @@ SUPERSEDED = (
     "c048e47b2ec066ae23aa62d1aa18471a1f0118c47a1320a086859731cd63925e",
     "48e6e4f4d67dade069d8bcac5ce621b5eb1dc330c66e2550ed0e323cb177baea",
     "61b39b653eba7991c563e9dbcd2564cdd3cdc93bffc0263e1549e9eec46ab424",
+    "28dbaf2d372c55144e289316a1b92dd25185281351cd685a8e735ee9d759a836",
 )
 
 
@@ -82,6 +83,28 @@ def test_the_powerpoint_manifest_still_reproduces_from_tracked_sources():
     )
 
 
+ARCHIVE_DIR = "docs/orbyn-plan/source"
+
+
+def _digest_pinned_archives() -> dict[str, str]:
+    """Archived sources and the SHA-256 their provenance table records."""
+
+    table = (ROOT / ARCHIVE_DIR / "README.md").read_text(encoding="utf-8")
+    rows = re.findall(r"^\| `([A-Z_]+\.md)` \|.*\| `([0-9A-F]{64})` \|$", table, re.M)
+    return {f"{ARCHIVE_DIR}/{name}": digest.lower() for name, digest in rows}
+
+
+def test_the_archive_exemption_names_only_pinned_sources():
+    """The exemption is not vacuous and cannot silently widen."""
+
+    archived = _digest_pinned_archives()
+    assert set(archived) == {
+        f"{ARCHIVE_DIR}/ORBYN_MASTER_BUILD_PLAN.md",
+        f"{ARCHIVE_DIR}/ORBYN_JEV_SYSTEM_ONE_ADDENDUM.md",
+        f"{ARCHIVE_DIR}/ORBYN_UNIFIED_PLAN.md",
+    }
+
+
 def test_every_document_naming_a_powerpoint_manifest_names_this_one():
     """A digest quoted in prose is a claim, and this is what checks it.
 
@@ -98,8 +121,16 @@ def test_every_document_naming_a_powerpoint_manifest_names_this_one():
     if listed.returncode != 0:
         pytest.skip("not a git work tree")
 
+    archived = _digest_pinned_archives()
     offenders = []
     for name in [n for n in listed.stdout.decode("utf-8").split("\0") if n]:
+        if name in archived:
+            # A preserved owner-supplied source may not be edited to add the
+            # current digest; exempt it only while its bytes are still exactly
+            # the ones its provenance table records.
+            actual = hashlib.sha256((ROOT / name).read_bytes()).hexdigest()
+            if actual == archived[name]:
+                continue
         text = (ROOT / name).read_text(encoding="utf-8", errors="ignore")
         mentioned = {value for value in superseded if value[:8] in text}
         if not mentioned:

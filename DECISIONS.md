@@ -6637,3 +6637,39 @@ execution environment, and scoped repository access. It does **not** depend on
 Spatial, Personal Brain, Act activation, semantic PowerPoint capabilities, the
 marketplace, or collaboration, and must not be sequenced behind them. It is
 gated on its own evidence and its own independent review.
+
+
+## D149 — PowerPoint rebuilt at manifest `3a4f8c57` for the D145 timing fields
+
+**Date:** 30 September 2026
+
+**What happened.** D145 (`afdcedd`) added `confirmation_round_trip_deadline_ms`
+and `confirmation_to_request_deadline_ms` to the signed
+`powerpoint.new_slide_uia` operation in `operations.json` and made the
+runtime require them. No bundle was rebuilt in that slice. Two consequences
+were found on 30 September: `tests/test_powerpoint_manifest_pin.py` failed
+(tracked sources rebuild to `3a4f8c57`, not `28dbaf2d`), and the installed
+production catalog refused to load at all, because the installed `28dbaf2d`
+bytes lack the now-mandatory fields (`plugin operation registry is invalid:
+operation 'powerpoint.new_slide_uia' uia block is invalid`).
+
+**What changed.** The bundle was rebuilt from tracked sources with
+`tools/build_ghostplugin.py`, signed with the existing
+`ghostcursor-release-2026-3` key, installed and enabled through `PluginStore`.
+Manifest `3a4f8c570f49c583d07f578c3f1c05622b9fa736c8a3a170062818ab4fce0584`.
+Only `operations.json` differs; adapter, UIA adapter and verifier bytes are
+unchanged. This is a rebuild under the same signing identity, not a re-key, so
+D144's re-key preconditions do not apply.
+
+**Pin and citations.** The pin moved to `3a4f8c57` and `28dbaf2d` joined the
+superseded set, with owner approval for the security-test change. Evidence
+files that cite `28dbaf2d` received a supersession note above their captured
+content, which is not edited (D139). The preserved owner-supplied archives in
+`docs/orbyn-plan/source/` cannot be edited without breaking their recorded
+provenance digests, so the citation check exempts a file there only while its
+bytes still hash to the digest its provenance table records; a separate test
+fixes the exempt set to exactly those three sources.
+
+**What this does not claim.** No live run exists on `3a4f8c57`. Every campaign
+and live run on record bound an earlier manifest. Act acceptance remains open
+under D139, and this slice has been read by no one but its author.

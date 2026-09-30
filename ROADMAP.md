@@ -374,8 +374,9 @@ recorded here on 6 September was repaired. Its cause was real: the
 signed payload bytes in the working copy were CRLF while git stored LF, so the
 pin, the built bundle and every digest in the retained r5 transcript named a
 file no clean checkout produced. LF is now canonical (D125), the PowerPoint
-bundle is rebuilt and re-signed at manifest `28dbaf2d` after two further
-rebuilds for signed build products (D127) and for redaction (D128), and
+bundle was rebuilt and re-signed at manifest `28dbaf2d` after two further
+rebuilds for signed build products (D127) and for redaction (D128), and again
+at `3a4f8c57` when D145 added signed UIA timing fields (D149), and
 `tests/test_powerpoint_manifest_pin.py` recomputes that manifest from tracked
 sources so the figure cannot drift unnoticed. The seventh independent D032
 review returned READY at `45d1323` (D134), and the 3/3 campaign ran on 11

@@ -1,5 +1,12 @@
 # Live manager-owned-surface PowerPoint pointer diagnostic
 
+> **Manifest superseded 30 September 2026 (D149).** The PowerPoint manifest
+> `28dbaf2d` named in this record is superseded by `3a4f8c57`. D145 added two
+> signed UIA confirmation-timing fields to `operations.json`, so the bundle was
+> rebuilt from tracked sources and re-signed with the same
+> `ghostcursor-release-2026-3` key; adapter and verifier bytes are unchanged.
+> Nothing below is evidence for `3a4f8c57`, and the captured content is not edited.
+
 **Date:** 8 September 2026  
 **Repository commit:** `27413857333e72ff4652d5fd59b9e7d5aad53529`  
 **Application:** Microsoft PowerPoint `16.0.20326.20132`  

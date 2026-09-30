@@ -1,5 +1,12 @@
 # Excluded live attempts
 
+> **Manifest superseded 30 September 2026 (D149).** The PowerPoint manifest
+> `28dbaf2d` named in this record is superseded by `3a4f8c57`. D145 added two
+> signed UIA confirmation-timing fields to `operations.json`, so the bundle was
+> rebuilt from tracked sources and re-signed with the same
+> `ghostcursor-release-2026-3` key; adapter and verifier bytes are unchanged.
+> Nothing below is evidence for `3a4f8c57`, and the captured content is not edited.
+
 Runs that happened and are **not** counted as evidence. They are retained here
 rather than deleted, because an attempt that is dropped silently is
 indistinguishable from an attempt that never happened, and a reader has no way

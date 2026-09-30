@@ -1,5 +1,12 @@
 # Historical campaign record — PowerPoint investor deck, rebuilt bundle
 
+> **Manifest superseded 30 September 2026 (D149).** The PowerPoint manifest
+> `28dbaf2d` named in this record is superseded by `3a4f8c57`. D145 added two
+> signed UIA confirmation-timing fields to `operations.json`, so the bundle was
+> rebuilt from tracked sources and re-signed with the same
+> `ghostcursor-release-2026-3` key; adapter and verifier bytes are unchanged.
+> Nothing below is evidence for `3a4f8c57`, and the captured content is not edited.
+
 > **RECLASSIFIED — diagnostic only.** This historical campaign is retained for
 > audit context, but it is not current acceptance evidence and must not be
 > used to close Act. It was reclassified under D139 while the evidence
