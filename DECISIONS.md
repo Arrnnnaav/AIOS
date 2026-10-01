@@ -7231,3 +7231,43 @@ Also in this slice: the manager-path checker now recomputes completion from
 the runtime event stream exactly as the harness checker does (D160 E1); the
 real 11 September manager transcripts satisfy it.
 
+## D162 — Proportionate rigor
+
+**Date:** 1 October 2026
+**Owner decision.** The process had become slower and costlier than the risk
+justified: five review rounds for one PowerPoint campaign (D152-D157), each
+finding smaller edge cases yet treated as blocking; the same ceremony for a
+design document, a test helper and a safety boundary; a 1,147-line CLAUDE.md
+and a 7,000-line DECISIONS.md that agents had to reconcile every session. The
+rules were each earned by a real incident, but applied uniformly they stopped
+the product from moving: Act v1 was "in progress" from 2 September to 1
+October.
+
+**New policy.** Three tiers:
+
+1. **Safety boundary** -- Act authority, input synthesis, what leaves the
+   machine, the kill switch, signed-bundle verification: tests, a D018
+   mutation of the guard, and one independent review.
+2. **Product feature** -- Teach, manager, perception, planning, providers:
+   tests, and one independent review per milestone rather than per slice.
+3. **Tooling, documentation, prototypes** -- tests where there is code.
+
+A review gates only on a BLOCKING safety finding; everything else becomes a
+follow-up and work continues; no re-review until zero findings. Acceptance
+ceremony (ledger, rendered campaign documents, counted runs) applies only to
+release claims. Prototypes go behind a flag, are measured on real use, then
+hardened.
+
+**Amends:** D032 (independent review is required per tier, not for every
+artifact), D139 (a fresh counted campaign needs a READY verdict only for a
+tier-1 change since the last accepted campaign; the manager-path campaign runs
+on the tooling already hardened under D150-D161), and the CLAUDE.md
+sequencing rule that allowed only design before Act activation: model-driven
+Teach slices with no effect may proceed now as tier 2. Hard safety rules are
+unchanged.
+
+**CLAUDE.md.** A short replacement is proposed at
+`docs/proposals/CLAUDE.md.proposed`; the agent's tooling refused to edit its own
+instruction file, so the owner applies it. The previous version will be
+archived at `docs/archive/CLAUDE-pre-D162.md`.
+
