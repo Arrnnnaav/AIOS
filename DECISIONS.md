@@ -7123,3 +7123,46 @@ independent D032 review reads the retained records. The manager-path campaign
 animation-catalog campaign are open (S1 must be fixed first), and the final
 activation review has not been performed.
 
+## D159 — Model-first Teach: a model chooses among observed controls
+
+**Date:** 1 October 2026
+**Status:** owner direction recorded; design written; nothing built. Its
+independent D032 review is outstanding, and no rule changes until the slice
+that implements it.
+
+**Direction.** On 30 September the owner chose to stop building hand-curated
+per-application packs as the way Orbyn learns an application, and to drive
+guidance with a large model plus a fast System-One model (TypeSafe Jev)
+through the existing harness. Evidence for the change, from this repository:
+one application took weeks, its only accepted Teach recipe was invalidated by
+an Office update (`.20112` to `.20158`, D151), and five consecutive reviews
+were spent on campaign-evidence tooling for that one application (D150-D157).
+
+**What is decided.** The first target is Teach, not Act: the user states a
+goal in any application; a large model plans steps; Jev chooses, per step, one
+candidate from the controls the harness observed in the current
+`ObservationFrame`, or abstains; the overlay points at that candidate's
+observed rectangle; the human clicks; the harness verifies. Design:
+`docs/superpowers/specs/2026-10-01-model-driven-teach-design.md`. This brings
+MP5 phases 15-16 forward for Teach only.
+
+**What is not decided, and stays as it is.** Act remains on the signed plugin
+path (D100-D104) and its gates. Orbyn still never clicks or types for the user
+(D006). Packs are not removed: an existing signed pack keeps working and may
+later become a verified Skill (MP6 phase 18).
+
+**Rules this will amend, when implemented.** CLAUDE.md "No enabled compatible
+plugin means no executable UI knowledge" -- for Teach guidance only, a model may
+select an observed candidate in the current frame; and D058 -- model output may
+choose among observed candidates for guidance, never what executes. The
+amendment lands with the implementing slice and its review, not here.
+
+**Providers.** Trial providers are free tiers under D147: NVIDIA NIM (a key
+exists on this machine) or OpenRouter free models for System Two, and Jev for
+System One (key in the git-ignored `.env`). Local models remain supported.
+Spatial's System-One and OpenAI-compatible transports are to be ported, with
+attribution, rather than rewritten.
+
+**Measured before claimed.** No accuracy figure is quoted until a recorded
+replay corpus of real frames scores it (D034).
+

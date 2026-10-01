@@ -39,6 +39,22 @@ than current design.
 
 ---
 
+## Model-first Teach (D159) — next after Act v1 closes
+
+**Status: designed, not built.** Owner direction, 30 September 2026: guidance
+for any application comes from a large model plus Jev choosing among the
+controls the harness observed, instead of hand-curated per-application packs.
+Teach only; Act stays on the signed plugin path. Design:
+`docs/superpowers/specs/2026-10-01-model-driven-teach-design.md`.
+
+Order: (1) provider gateway + Jev transport, (2) `ObservationFrame`, (3) corpus
+capture + offline replay evaluation, (4) model-driven Teach executor behind a
+flag, (5) manager integration, (6) later, verified runs drafted into Skills.
+Each slice is reviewed before the next; no accuracy claim before the replay
+corpus measures it.
+
+---
+
 ## Phase 1 — Reliable Guided Runtime
 
 > Core, VS Code plugin, intent normalization, declarative workflows, UI
