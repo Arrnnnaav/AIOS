@@ -320,3 +320,30 @@ def test_window_titles_and_facts_stay_local():
     data = Envelope(task="t", tainted={"frame": frame.model_view()}).tainted_json()
     for leak in ("Q3 Board", "selected=1", "focused"):
         assert leak not in data, leak
+
+
+def test_document_names_are_hidden_from_the_model_but_kept_locally():
+    frame = _frame(
+        [
+            _c(1, "notes-2026.txt", "TabItem"),
+            _c(2, "Plan for Q3. Modified.", "TabItem", rect=(80, 10, 130, 40)),
+            _c(3, "Board Pack", "TabItem", rect=(140, 10, 190, 40)),
+            _c(4, "Insert", "TabItem", rect=(200, 10, 250, 40)),
+        ],
+        title="Board Pack - PowerPoint",
+    )
+    view = frame.model_view()["candidates"]
+    names = [view[c]["name"].text for c in ("c1", "c2", "c3", "c4")]
+    assert names[:3] == ["(document name hidden)"] * 3 and names[3] == "Insert"
+    assert frame.get("c1").name == "notes-2026.txt"  # drawing and resolve still use it
+
+
+def test_each_completed_step_records_why():
+    session, _ = _session(
+        _plan(ExpectedChange.CHOSEN_DISAPPEARS, ExpectedChange.TITLE_CHANGES),
+        [_choice("c1"), _choice("c1")],
+    )
+    session.tick(_frame([_c(1)]))
+    session.tick(_frame([_c(2)], frame_id=2))
+    session.tick(_frame([_c(2)], frame_id=3), confirm=True)
+    assert session.completed == [(1, "observed chosen_disappears"), (2, "you confirmed")]

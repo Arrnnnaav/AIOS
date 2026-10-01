@@ -131,11 +131,19 @@ def is_minimized(hwnd: int) -> bool:
         return False
 
 
-def window_facts(hwnd: int, pid: int) -> tuple[str, int]:
-    """(title, visible top-level windows of ``pid``) for verification. Both
-    stay on this machine: titles carry document names."""
+#: Processes that host the frames of many unrelated apps (every UWP app's
+#: window belongs to one ApplicationFrameHost), so their PID says nothing
+#: about which app opened a window.
+FRAME_HOSTS = frozenset({"applicationframehost.exe"})
+
+
+def window_facts(hwnd: int, pid: int, executable: str = "") -> tuple[str, int]:
+    """(title, the bound app's visible top-level windows) for verification.
+    Both stay on this machine: titles carry document names. For a frame host
+    only windows OWNED by the bound window count, since its PID is shared."""
 
     try:
+        import win32con
         import win32gui
         import win32process
 
@@ -144,10 +152,12 @@ def window_facts(hwnd: int, pid: int) -> tuple[str, int]:
 
         def visit(other, _):
             nonlocal count
-            if (
-                win32gui.IsWindowVisible(other)
-                and win32process.GetWindowThreadProcessId(other)[1] == pid
-            ):
+            if not win32gui.IsWindowVisible(other):
+                return True
+            if executable in FRAME_HOSTS:
+                if win32gui.GetWindow(other, win32con.GW_OWNER) == hwnd:
+                    count += 1
+            elif win32process.GetWindowThreadProcessId(other)[1] == pid:
                 count += 1
             return True
 

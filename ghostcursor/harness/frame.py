@@ -13,6 +13,7 @@ its rectangle within a tolerance of where it was chosen.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Sequence
 
@@ -40,6 +41,28 @@ ALLOWED_TYPES = frozenset(
 MAX_CANDIDATES = 150
 
 Rect = tuple[int, int, int, int]
+
+#: What a model sees instead of a name that reveals a document (D167): a
+#: window title never leaves the machine (spec section 7), and a tab or item
+#: naming a file is the same information.
+HIDDEN_NAME = "(document name hidden)"
+_FILE_NAME = re.compile(r"\.[A-Za-z0-9]{1,5}\b")
+_UNSAVED = re.compile(r"\b(modified|unsaved|edited)\.?$", re.IGNORECASE)
+
+
+def _norm(text: str) -> str:
+    return " ".join(text.casefold().split())
+
+
+def reveals_document(name: str, control_type: str, title: str) -> bool:
+    """True for a name that looks like a file or document: a file extension,
+    an unsaved-changes marker, or a tab whose name appears in its window's
+    title. Errs toward hiding; the model can still choose the candidate."""
+
+    if _FILE_NAME.search(name) or _UNSAVED.search(name):
+        return True
+    norm = _norm(name)
+    return control_type == "TabItem" and len(norm) >= 4 and norm in _norm(title)
 
 
 @dataclass(frozen=True)
@@ -108,6 +131,12 @@ class ObservationFrame:
         per candidate its window, type, name and coarse region. Every string
         is Tainted; no runtime id, rectangle, handle or title is included."""
 
+        titles = {label: title for label, title, _ in self.facts}
+
+        def shown(c: Candidate) -> str:
+            hidden = reveals_document(c.name, c.control_type, titles.get(c.window, ""))
+            return HIDDEN_NAME if hidden else c.name
+
         return {
             "windows": {
                 b.label: {
@@ -123,7 +152,7 @@ class ObservationFrame:
                 c.cid: {
                     "window": Tainted.of("window_label", c.window),
                     "type": Tainted.of("control_type", c.control_type),
-                    "name": Tainted.of("uia_name", c.name),
+                    "name": Tainted.of("uia_name", shown(c)),
                     "region": Tainted.of("region", c.region),
                 }
                 for c in self.candidates

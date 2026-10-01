@@ -1242,16 +1242,16 @@ to confirm where the cost actually is before changing anything else.
 
 ## Model-Teach prototype findings (D167)
 
-- **Unexplained step advance** (Calculator, first live run): instrument
-  `change_observed` in the measurement step and look for false completions
+- **Unexplained step advance** (Calculator, first live run): completion
+  reasons are now printed (D168); instrument `change_observed` in the measurement step and look for false completions
   under background churn (spec section 9).
-- **NEW_WINDOW_OF_TARGET is not attributable for UWP apps:** the bound PID is
+- CLOSED (D168): **NEW_WINDOW_OF_TARGET is not attributable for UWP apps:** the bound PID is
   `applicationframehost.exe`, which owns every UWP frame. Count only windows
   owned by the bound window, or drop the kind for frame hosts.
 - **Unsupported UIA patterns read as default ints** (`toggle=2;expand=3`), so
   `state` is rarely empty; harmless for change detection, but do not treat a
   non-empty state as "has a toggle".
-- **Tab names leak document titles** to providers (owner decision; see D167).
+- CLOSED (D168, conservative default; owner may relax): **Tab names leak document titles** to providers.
 - **Free NIM planning is slow** (one plan took tens of seconds); measure
   latency p50/p95 per provider and consider a faster planner.
 - **Spec section 6 provenance** (`MODEL_SELECTED`, `promote()` refusal) at

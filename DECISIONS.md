@@ -7441,3 +7441,24 @@ FOLLOWUPS. Tests: hermetic suite, 15 targeted mutants killed.
 Open privacy question for the owner: candidate names include tab names, which
 in Notepad are file names and the first line of an unsaved note -- in effect a
 window title, which spec section 7 excludes. Not decided here.
+
+## D168 — Model-Teach fixes: document names stay local, frame-host windows, completion reasons
+
+**Date:** 1 October 2026
+
+Follow-ups from D167, done before the steps 1-3 milestone review:
+
+- **Document names stay on the machine** (privacy, conservative default the
+  owner may relax). A candidate name with a file extension, an unsaved marker
+  ("Modified."), or a tab whose name appears in its window title reaches a
+  model as "(document name hidden)"; the local frame keeps the real name for
+  drawing and re-resolution. Found live: Notepad tab names carried file names
+  and the first line of an unsaved note (D167).
+- **NEW_WINDOW_OF_TARGET for UWP apps.** For a frame host
+  (`applicationframehost.exe`) only windows owned by the bound window count;
+  live check on Calculator: the per-PID count was 2 (another app's frame), the
+  owned count 0.
+- **Why a step completed** is recorded ("observed <change>" or "you
+  confirmed") and printed live, so a false completion like D167's is visible.
+
+Tests added; 5 targeted mutants killed with the new `/mutate` sweep.

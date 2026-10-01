@@ -155,6 +155,9 @@ class ModelTeachSession:
         self.step = 0
         self.reasks = 0
         self.message = "planning"
+        #: (step number, why it completed) -- "you confirmed" or the observed
+        #: change; printed live so a false completion is visible (D167).
+        self.completed: list[tuple[int, str]] = []
         self._request: int | None = None
         self._asked: ObservationFrame | None = None
         self._chosen: Candidate | None = None  # identity at draw time
@@ -295,6 +298,8 @@ class ModelTeachSession:
             if confirm or change_observed(
                 step.expected_change, self._chosen, self._before, frame
             ):
+                why = "you confirmed" if confirm else f"observed {step.expected_change.value}"
+                self.completed.append((self.step + 1, why))
                 self._advance()
                 return self.tick(frame)
             current = resolve(self._chosen, frame)

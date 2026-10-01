@@ -61,7 +61,9 @@ class Observer(threading.Thread):
                     if rect is None or not still_bound(binding):
                         self.lost = binding.label
                         return
-                    title, owned = window_facts(binding.hwnd, binding.identity.pid)
+                    title, owned = window_facts(
+                        binding.hwnd, binding.identity.pid, binding.identity.executable
+                    )
                     observations.append(
                         WindowObservation(
                             binding,
@@ -137,6 +139,7 @@ def run_model_teach(
     )
     deadline = time.monotonic() + seconds
     space_down = False
+    reported = 0
     shown = None
     code = 0
     try:
@@ -153,6 +156,9 @@ def run_model_teach(
                 break
             confirm, space_down = _space_edge(bound, space_down)
             display = session.tick(observer.latest(), confirm=confirm)
+            for number, why in session.completed[reported:]:
+                print(f"[done] step {number}: {why}")
+            reported = len(session.completed)
             target = display.target
             if target is None:
                 window.clear_hint(overlay)
