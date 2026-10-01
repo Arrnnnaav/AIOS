@@ -53,6 +53,30 @@ def _deck(index: int) -> bytes:
     return f"deck-{index}".encode("utf-8")
 
 
+_DECK_PLAN = json.loads(
+    (
+        ROOT / "plugins" / "sources" / "powerpoint" / "payload" / "ghostcursor"
+        / "action-plans" / "build-investor-deck-v1.json"
+    ).read_text(encoding="utf-8")
+)["nodes"]
+
+
+def _events(nodes: int = 255) -> list[dict]:
+    """The runtime events of a clean attempt over the first `nodes` plan nodes."""
+
+    stream, at = [], 0.0
+    for ordinal, node in enumerate(_DECK_PLAN[:nodes], start=1):
+        for kind in ("action_started", "action_completed"):
+            at += 0.125
+            stream.append({"type": "event", "event": kind, "ordinal": ordinal, "total": nodes,
+                           "node_id": node["node_id"], "operation_id": node["operation_id"],
+                           "at_s": at, "detail": "", "region": None})
+    stream.append({"type": "event", "event": "completed", "ordinal": nodes, "total": nodes,
+                   "node_id": None, "operation_id": None, "at_s": at + 0.125,
+                   "detail": "all actions verified", "region": None})
+    return stream
+
+
 def _harness_records(index: int, *, nodes: int = 255) -> tuple[dict, ...]:
     return (
         {
@@ -70,7 +94,7 @@ def _harness_records(index: int, *, nodes: int = 255) -> tuple[dict, ...]:
             "target_ref": "window-1a2b3c4d",
             "target_scope": "scope01",
         },
-        {"type": "event", "event": "action_started", "ordinal": 1, "total": nodes},
+        *_events(nodes),
         {
             "type": "result",
             "code": "completed",
@@ -112,6 +136,8 @@ def _harness_report(attempts=None, **overrides) -> dict:
             "plan_sha256": PLAN,
         },
     )
+    for attempt in report["attempts"]:
+        attempt.setdefault("artifact", f"attempt-{attempt['index']:02d}.pptx")
     report.update(overrides)
     return report
 
@@ -147,15 +173,15 @@ def _mutate(report, path, value):
             "unpinned manifest",
         ),
         (("attempts", 1, "records", 0, "plan_sha256"), "0" * 64, "different plan"),
-        (("attempts", 2, "records", 2, "completed_nodes"), 254, "not completed"),
-        (("attempts", 2, "records", 2, "code"), "refused", "not completed"),
+        (("attempts", 2, "records", -1, "completed_nodes"), 254, "not completed"),
+        (("attempts", 2, "records", -1, "code"), "refused", "not completed"),
         (
             ("attempts", 1, "records", 0, "target_ref"),
             "window-ffffffff",
             "one campaign-scoped target",
         ),
         (
-            ("attempts", 2, "records", 2, "published_sha256"),
+            ("attempts", 2, "records", -1, "published_sha256"),
             "1" * 64,
             "nothing published",
         ),
@@ -178,7 +204,7 @@ def test_a_reused_artifact_is_refused():
     same = report["attempts"][0]["published_sha256"]
     for attempt in report["attempts"]:
         attempt["published_sha256"] = same
-        attempt["records"][2]["published_sha256"] = same
+        attempt["records"][-1]["published_sha256"] = same
     with pytest.raises(checker.CampaignRefused, match="not distinct"):
         checker.check_harness(report)
 
@@ -235,7 +261,7 @@ def test_check_mode_rejects_a_hand_edited_document(tmp_path):
 
     assert checker.main(["--harness", str(report), "--out", str(out), "--artifacts", str(decks)]) == 0
     (decks / "attempt-02.pptx").write_bytes(b"swapped")
-    assert checker.main(["--harness", str(report), "--out", str(out), "--artifacts", str(decks), "--check"]) == 2
+    assert checker.main(["--harness", str(report), "--out", str(out), "--artifacts", str(decks), "--check"]) == 3
     (decks / "attempt-02.pptx").write_bytes(_deck(2))
     digest = hashlib.sha256(report.read_bytes()).hexdigest()
     assert f"- `report.json` — SHA-256 `{digest}`" in out.read_text(encoding="utf-8")
@@ -911,7 +937,6 @@ def test_retained_artifacts_are_copied_and_digest_checked(tmp_path):
         (("attempts", 1, "records", 0, "nodes"), 3, "plan has 255 nodes"),
         (("binding", "plan_sha256"), "e" * 64, "not the signed plan"),
         (("binding", "campaign_id"), None, "no ledgered campaign id"),
-        (("attempts", 0, "records", 1, "type"), "publish_refused", "disqualifying"),
     ],
 )
 def test_the_checker_binds_the_signed_plan_and_the_campaign(path, value, reason):
@@ -929,7 +954,7 @@ def test_a_catalog_campaign_under_the_decks_digest_is_refused():
 
 def test_a_missing_or_substituted_retained_deck_is_refused(tmp_path):
     report = _harness_report()
-    with pytest.raises(checker.CampaignRefused, match="was not retained"):
+    with pytest.raises(checker.CampaignRefused, match="missing from the store"):
         checker.check_harness(report, artifacts=tmp_path)
     for attempt in report["attempts"]:
         name = f"attempt-{attempt['index']:02d}.pptx"
@@ -1041,7 +1066,7 @@ def test_a_plan_the_signed_index_does_not_list_is_refused(monkeypatch):
 
 
 def test_a_result_that_did_not_complete_is_refused_even_with_code_completed():
-    report = _mutate(_harness_report(), ("attempts", 1, "records", 2, "completed"), False)
+    report = _mutate(_harness_report(), ("attempts", 1, "records", -1, "completed"), False)
     with pytest.raises(checker.CampaignRefused, match="not completed"):
         checker.check_harness(report)
 
@@ -1561,3 +1586,195 @@ def test_a_handle_shaped_reason_is_made_safe_when_written(tmp_path):
 def test_the_attempt_count_is_not_an_operator_choice():
     source = (ROOT / "ghostcursor" / "devtools" / "act_campaign.py").read_text(encoding="utf-8")
     assert '"--attempts"' not in source
+
+
+# --- D160: S1 and the surviving mutants of the fifth review -----------------
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        lambda r: r["attempts"][1].pop("artifact"),
+        lambda r: r["attempts"][1].update(artifact_refused="copy failed: OSError"),
+        lambda r: r.update(artifact_retention="failed: RuntimeError"),
+    ],
+)
+def test_a_campaign_whose_decks_were_not_retained_is_not_counted(tmp_path, change):
+    """S1: the outcome is a fact of the report, not of a command-line flag."""
+
+    report = _harness_report()
+    change(report)
+    with pytest.raises(checker.CampaignRefused, match="not retained|retention failed"):
+        checker.check_harness(report)
+    source = tmp_path / "report.json"
+    source.write_text(json.dumps(report), encoding="utf-8")
+    out = tmp_path / "campaign.md"
+    assert checker.main(["--harness", str(source), "--out", str(out)]) == 0
+    assert "NOT counted" in out.read_text(encoding="utf-8")
+
+
+def test_artifacts_flag_verifies_without_changing_the_document(tmp_path):
+    report = _harness_report()
+    source = tmp_path / "report.json"
+    source.write_text(json.dumps(report), encoding="utf-8")
+    out = tmp_path / "campaign.md"
+    assert checker.main(["--harness", str(source), "--out", str(out)]) == 0
+    rendered = out.read_bytes()
+
+    decks = tmp_path / "decks"
+    decks.mkdir()
+    for attempt in report["attempts"]:
+        (decks / attempt["artifact"]).write_bytes(_deck(attempt["index"]))
+    assert checker.main(["--harness", str(source), "--out", str(out), "--artifacts", str(decks), "--check"]) == 0
+    (decks / "attempt-02.pptx").write_bytes(b"swapped")
+    assert checker.main(["--harness", str(source), "--out", str(out), "--artifacts", str(decks), "--check"]) == 3
+    assert checker.main(["--harness", str(source), "--out", str(out), "--artifacts", str(decks)]) == 3
+    assert out.read_bytes() == rendered
+
+
+def test_an_ordinary_failure_in_the_loop_refuses_without_reraising(tmp_path):
+    """M5: an OSError inside an attempt is a refusal that keeps what ran, not an interrupt."""
+
+    from types import SimpleNamespace
+
+    from ghostcursor.devtools.act_campaign import CampaignInterrupted, conduct, run_campaign
+
+    windows = iter([(1,), OSError("enumeration failed")])
+
+    def restore(_c):
+        value = next(windows)
+        if isinstance(value, Exception):
+            raise value
+        return value
+
+    def launch(command, **_):
+        stdout = "\n".join(json.dumps(r) for r in _harness_records(1)) + "\n"
+        return SimpleNamespace(stdout=stdout, stderr="", returncode=0)
+
+    with pytest.raises(CampaignError) as raised:
+        run_campaign(attempts=3, build_command=lambda *a: ["x"], workspace=tmp_path / "w",
+                     window_class="PPTFrameClass", restore=restore, launch=launch, settle_s=0)
+    assert not isinstance(raised.value, CampaignInterrupted)
+    assert [a.index for a in raised.value.attempts] == [1]
+
+    windows = iter([(1,), OSError("enumeration failed")])
+    report, code = conduct(
+        report_path=tmp_path / "report.json", binding=_binding_base(), attempts_requested=3,
+        preflight=lambda: {"commit": COMMIT, "manifest_sha256": PIN},
+        run=lambda: run_campaign(attempts=3, build_command=lambda *a: ["x"], workspace=tmp_path / "w2",
+                                 window_class="PPTFrameClass", restore=restore, launch=launch, settle_s=0),
+    )
+    assert code == 3 and "OSError" in report["detail"] and [a["index"] for a in report["attempts"]] == [1]
+
+
+def test_the_public_key_is_read_raw_or_base64_and_nothing_else(tmp_path):
+    """M11."""
+
+    import base64
+
+    from ghostcursor.devtools.act_acceptance import public_key_bytes
+
+    raw = bytes(range(32))
+    (tmp_path / "raw").write_bytes(raw)
+    (tmp_path / "b64").write_bytes(base64.b64encode(raw) + b"\n")
+    (tmp_path / "bad").write_bytes(base64.b64encode(b"short"))
+    assert public_key_bytes(tmp_path / "raw") == raw
+    assert public_key_bytes(tmp_path / "b64") == raw
+    with pytest.raises(ValueError):
+        public_key_bytes(tmp_path / "bad")
+
+
+def test_the_binding_records_the_signing_key_id():
+    """M19: read from the CLI wiring, since main() is the live entry."""
+
+    import ast
+
+    source = (ROOT / "ghostcursor" / "devtools" / "act_campaign.py").read_text(encoding="utf-8")
+    main = next(n for n in ast.parse(source).body if isinstance(n, ast.FunctionDef) and n.name == "main")
+    bindings = [
+        n for n in ast.walk(main)
+        if isinstance(n, ast.Dict) and any(isinstance(k, ast.Constant) and k.value == "key_id" for k in n.keys)
+    ]
+    assert len(bindings) == 1
+    value = bindings[0].values[[k.value for k in bindings[0].keys].index("key_id")]
+    assert ast.unparse(value) == "arguments.key_id"
+
+
+def test_a_checker_reason_is_made_safe_before_rendering(tmp_path):
+    """N7: a refusal quoting an all-decimal digest prefix must still render."""
+
+    report = _harness_report()
+    report["binding"]["plan_sha256"] = "12345678" + "a" * 56
+    source = tmp_path / "report.json"
+    source.write_text(json.dumps(report), encoding="utf-8")
+    out = tmp_path / "campaign.md"
+    assert checker.main(["--harness", str(source), "--out", str(out)]) == 0
+    text = out.read_text(encoding="utf-8")
+    assert "the checker refused it" in text and "12345678" not in text
+
+
+def test_an_uncleanable_reason_is_withheld_not_rendered(monkeypatch):
+    """N10: if redaction cannot clear a reason, the reason is withheld."""
+
+    import ghostcursor.devtools.act_campaign as campaign
+
+    monkeypatch.setattr(campaign, "record_leaks", lambda value: ["detail.<text>"])
+    detail, redacted = campaign.safe_detail("anything at all")
+    assert redacted and detail.startswith("the refusal reason was withheld")
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "the target accepted the input",
+        "window deadline passed",
+        "target defaults changed",
+        "handle bad state",
+    ],
+)
+def test_english_after_a_handle_word_is_not_a_handle(text):
+    from ghostcursor.devtools.act_campaign import record_leaks
+
+    assert record_leaks({"detail": text}) == []
+
+
+@pytest.mark.parametrize("kind", ["publish_refused", "interrupt_fired", "probe_faults"])
+def test_a_disqualifying_record_beside_a_completed_result_is_refused(kind):
+    report = _harness_report()
+    report["attempts"][0]["records"].insert(-1, {"type": kind})
+    with pytest.raises(checker.CampaignRefused, match="disqualifying"):
+        checker.check_harness(report)
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        lambda ev: ev.pop(10),  # a node's verification is missing
+        lambda ev: ev.__setitem__(3, dict(ev[3], event="action_failed")),
+        lambda ev: ev.__setitem__(5, dict(ev[5], ordinal=99)),
+        lambda ev: ev.__setitem__(7, dict(ev[7], node_id="n999-forged")),
+        lambda ev: ev.pop(),  # no final completed event
+        lambda ev: ev.__setitem__(9, dict(ev[9], at_s=-1.0)),
+    ],
+)
+def test_the_event_stream_itself_must_show_every_node_verified(change):
+    """Review E1: completion is recomputed from the runtime's own events, not
+    taken from the result record's summary count."""
+
+    report = _harness_report()
+    records = report["attempts"][1]["records"]
+    events = [r for r in records if r.get("type") == "event"]
+    others = [r for r in records if r.get("type") != "event"]
+    change(events)
+    report["attempts"][1]["records"] = [others[0], *events, *others[1:]]
+    with pytest.raises(checker.CampaignRefused, match="events|event times"):
+        checker.check_harness(report)
+
+
+def test_the_retained_campaign_passes_the_event_stream_check():
+    """The accepted 1 October campaign must satisfy the stricter checker as is."""
+
+    source = ROOT / "docs" / "evidence" / "campaigns" / "2026-10-01-investor-deck-harness" / "report.json"
+    summary = checker.check_harness(json.loads(source.read_text(encoding="utf-8")))
+    assert [row[1] for row in summary["rows"]] == ["255/255"] * 3
+

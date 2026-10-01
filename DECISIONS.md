@@ -7166,3 +7166,43 @@ attribution, rather than rewritten.
 **Measured before claimed.** No accuracy figure is quoted until a recorded
 replay corpus of real frames scores it (D034).
 
+## D160 — The investor-deck harness campaign is accepted; the lanes are not
+
+**Date:** 1 October 2026
+
+**Review.** An independent agent reviewed the D158 evidence at `7fd376f`. Record:
+`review-evidence-7fd376f.md` on branch `review-evidence-7fd376f` (commit
+`547739c`); hermetic lane 2893 passed.
+
+**(a) Campaign `2026-10-01-investor-deck-harness`: ACCEPTED**, for a narrow
+claim: three consecutive clean unattended attempts of `build-investor-deck-v1`
+in quick mode on PowerPoint `16.0.20326.20158`, bundle `e46b362d…`, manifest
+`b0d63512`, plan `84e39d0d…`, one campaign-scoped target, 255/255 nodes each,
+three distinct decks. The reviewer recomputed rather than trusted: each
+retained file has one commit; the binding commit is the ledger commit; the
+record streams are 255 started/completed pairs in signed-plan order with no
+failure records; the bundle signature verifies; each deck's digest matches,
+and each opened read-only shows 10 slides, 10 transitions, 30 animations and
+173 shapes -- exactly the plan's operation mix. It is NOT evidence for the
+manager path (D121/D123), visible progress, Pause/Stop, watch mode, UIA, or the
+animation catalog. "Every node verified" is an inference from the runtime's
+emission rule (`action_completed` is emitted only after the signed verifier
+returns true), not from retained verifier answers.
+
+**(b) Independent lanes: NOT ACCEPTED.** The document is the author's prose;
+no output was retained; its counts are reproducible by collection alone; one
+claim ("timings matched within 0.1 s") cites nothing (D034). See FOLLOWUPS.
+
+**Repairs in this slice.** E1: the harness checker now recomputes completion
+from the event stream -- exactly `action_started k`, `action_completed k` for
+each signed-plan node in order, then one `completed`, with non-decreasing
+times and no other event kinds -- and the accepted campaign passes it as
+stored. S1 (D157): deck retention is read from the report, so a flag can no
+longer move a campaign between counted and not counted; `--artifacts` is
+verify-only (exit 3 on a mismatch, document unchanged). M5: an ordinary
+failure inside the attempt loop is a refusal that keeps what ran, not an
+interrupt. The named-handle text rule now requires a digit, removing a false
+positive on English such as "target accepted" that could have withheld a real
+run's records. M11, M19, N7 and N10 are pinned by tests. CLAUDE.md no longer
+carries a dated pass count or the stale "no live run on `b0d63512`".
+

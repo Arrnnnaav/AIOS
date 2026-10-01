@@ -124,7 +124,42 @@ def _signed_plan(binding: dict) -> int:
         f"campaign plan digest {binding['plan_sha256'][:8]} is not the signed plan's",
     )
     plan = json.loads((PLAN_ROOT / entry["path"]).read_text(encoding="utf-8"))
-    return len(plan["nodes"])
+    return [(node["node_id"], node["operation_id"]) for node in plan["nodes"]]
+
+
+#: The only runtime events a clean attempt may emit, in this shape:
+#: `action_started k`, `action_completed k` for k = 1..N, then one `completed`.
+_CLEAN_EVENTS = frozenset({"action_started", "action_completed", "completed"})
+
+
+def _event_stream(records, plan_nodes, label: str) -> None:
+    """Recompute completion from the attempt's own events (D160, review E1).
+
+    A `result` record's `completed_nodes` is a summary the runner wrote; the
+    events are what the runtime emitted as each node started and was verified.
+    `action_completed` is emitted only after the signed verifier returned true
+    (`act_runtime.py`), so this sequence is the per-node evidence.
+    """
+
+    events = [r for r in records if r.get("type") == "event"]
+    kinds = {r.get("event") for r in events}
+    _require(kinds <= _CLEAN_EVENTS, f"{label}: emitted events {sorted(kinds - _CLEAN_EVENTS)}")
+    expected = []
+    for ordinal, (node_id, operation_id) in enumerate(plan_nodes, start=1):
+        expected.append(("action_started", ordinal, node_id, operation_id))
+        expected.append(("action_completed", ordinal, node_id, operation_id))
+    expected.append(("completed", len(plan_nodes), None, None))
+    actual = [(e.get("event"), e.get("ordinal"), e.get("node_id"), e.get("operation_id")) for e in events]
+    _require(
+        actual == expected,
+        f"{label}: its events are not the signed plan's {len(plan_nodes)} nodes started "
+        "and verified in order, then completed",
+    )
+    stamps = [e.get("at_s") for e in events]
+    _require(
+        all(isinstance(s, (int, float)) for s in stamps) and stamps == sorted(stamps),
+        f"{label}: event times go backwards",
+    )
 
 
 def _campaign_id(binding: dict) -> None:
@@ -161,7 +196,8 @@ def check_harness(report: dict, artifacts: Path | None = None) -> dict:
         "campaign names no bundle digest",
     )
     _campaign_id(binding)
-    planned = _signed_plan(binding)
+    plan_nodes = _signed_plan(binding)
+    planned = len(plan_nodes)
     _require(
         report.get("campaign") == "clean",
         f"campaign ended {report.get('campaign')!r}: {report.get('detail')}",
@@ -169,6 +205,10 @@ def check_harness(report: dict, artifacts: Path | None = None) -> dict:
     _require(
         report.get("attempts_requested") == REQUIRED_ATTEMPTS,
         f"campaign requested {report.get('attempts_requested')} attempts, not {REQUIRED_ATTEMPTS}",
+    )
+    _require(
+        not report.get("artifact_retention"),
+        f"deck retention failed: {report.get('artifact_retention')}",
     )
     attempts = report.get("attempts", [])
     _consecutive([a.get("index") for a in attempts], "harness")
@@ -185,6 +225,7 @@ def check_harness(report: dict, artifacts: Path | None = None) -> dict:
             f"{label}: needs one approved and one result record",
         )
         approved, result = approved[0], results[0]
+        _event_stream(records, plan_nodes, label)
         stray = DISQUALIFYING & {r.get("type") for r in records}
         _require(not stray, f"{label}: carries disqualifying records {sorted(stray)}")
         _require(
@@ -218,11 +259,18 @@ def check_harness(report: dict, artifacts: Path | None = None) -> dict:
             and digest == attempt.get("published_sha256"),
             f"{label}: nothing published",
         )
+        # Whether the deck was retained is a fact OF THE REPORT, so the
+        # counted/not-counted outcome cannot depend on a command-line flag
+        # (D160, review S1). `--artifacts` only verifies bytes on disk.
+        _require(
+            bool(attempt.get("artifact")) and not attempt.get("artifact_refused"),
+            f"{label}: its published deck was not retained",
+        )
         if artifacts is not None:
-            artifact = attempt.get("artifact")
-            _require(bool(artifact), f"{label}: its published deck was not retained")
+            stored = artifacts / attempt["artifact"]
+            _require(stored.is_file(), f"{label}: its retained deck is missing from the store")
             _require(
-                hashlib.sha256((artifacts / artifact).read_bytes()).hexdigest() == digest,
+                hashlib.sha256(stored.read_bytes()).hexdigest() == digest,
                 f"{label}: the retained deck is not the published one",
             )
         references.append((approved.get("target_ref"), approved.get("target_scope")))
@@ -256,7 +304,8 @@ def check_manager(directory: Path) -> dict:
     binding = campaign.get("binding", {})
     _binding(binding)
     _campaign_id(binding)
-    planned = _signed_plan(binding)
+    plan_nodes = _signed_plan(binding)
+    planned = len(plan_nodes)
     _require(not campaign.get("refusals"), f"campaign recorded refusals: {campaign.get('refusals')}")
     intent = PLAN_INTENTS[binding["plan_id"]]
     _require(binding.get("intent_id") == intent, "campaign binds the wrong intent")
@@ -477,9 +526,18 @@ def main(argv=None) -> int:
                 rendered = render_refusal(refusal_summary("harness", value), sources)
             else:
                 try:
-                    rendered = render(check_harness(value, artifacts=arguments.artifacts), sources)
+                    rendered = render(check_harness(value), sources)
                 except CampaignRefused as refused:
                     rendered = render_refusal(refusal_summary("harness", value, str(refused)), sources)
+                else:
+                    if arguments.artifacts is not None:
+                        # Verify-only: a mismatch is a finding, reported with
+                        # its own exit code, and never changes the document.
+                        try:
+                            check_harness(value, artifacts=arguments.artifacts)
+                        except (CampaignRefused, OSError) as mismatch:
+                            print(f"decks do not verify: {mismatch}")
+                            return 3
         else:
             value = json.loads((arguments.manager / "campaign.json").read_text(encoding="utf-8"))
             files = [arguments.manager / "campaign.json", *sorted(

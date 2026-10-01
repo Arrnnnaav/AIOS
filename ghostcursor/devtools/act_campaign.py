@@ -251,6 +251,11 @@ def run_campaign(
         _attempts(attempts, completed, restore, window_class, settle_s, workspace, runner, build_command, scope_environment)
     except CampaignError:
         raise
+    except Exception as exc:  # an ordinary failure ends the campaign, not the process
+        raise CampaignError(
+            f"attempt {len(completed) + 1} failed ({type(exc).__name__})",
+            tuple(completed),
+        ) from exc
     except BaseException as exc:  # Ctrl+C anywhere in the loop keeps what ran
         raise CampaignInterrupted(
             f"interrupted during attempt {len(completed) + 1} ({type(exc).__name__})",
@@ -321,7 +326,9 @@ _LONG_NUMBER = re.compile(r"(?<![0-9A-Za-z])(?:0[xX][0-9a-fA-F]+|[0-9]{4,})(?![0
 #: handles and process ids are that size; digests are hex without a 0x prefix
 #: and never standalone decimals). Refused, not scrubbed (D154, review I3).
 _HANDLE_TEXT = re.compile(
-    r"(?i)\b(?:hwnd|handle|pid|process id|window|target)\b\W{0,3}(?:0x)?[0-9a-f]{3,}"
+    # The number must contain a digit: "target accepted" and "window
+    # deadline" are English, not handles (D160).
+    r"(?i)\b(?:hwnd|handle|pid|process id|window|target)\b\W{0,3}(?:0x)?(?=[0-9a-f]*[0-9])[0-9a-f]{3,}"
     r"|(?<![0-9A-Za-z])0x[0-9a-fA-F]{3,}(?![0-9A-Za-z])"
     r"|(?<![0-9A-Za-z.])[0-9]{6,}(?![0-9A-Za-z.])"
 )

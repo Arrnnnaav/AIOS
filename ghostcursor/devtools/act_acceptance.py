@@ -69,6 +69,21 @@ def _validated_measured_deadlines(args) -> tuple[int, int]:
     return derived
 
 
+def public_key_bytes(path: Path) -> bytes:
+    """The raw 32-byte Ed25519 key, from a raw file or the base64 form that
+    `trusted_keys.json` stores (review m4). Anything else is refused."""
+
+    import base64
+
+    raw = path.read_bytes()
+    if len(raw) == 32:
+        return raw
+    decoded = base64.b64decode(raw.strip(), validate=True)
+    if len(decoded) != 32:
+        raise ValueError("public key is neither 32 raw bytes nor base64 of 32 bytes")
+    return decoded
+
+
 def _live_target(target: ActTarget) -> None:
     current = live_window_reader()(target.hwnd)
     if current is None:
@@ -112,12 +127,7 @@ def run(args) -> int:
     )
     if _sha(bundle) != args.bundle_sha256:
         raise RuntimeError("candidate bundle digest disagrees with reviewed bytes")
-    public_key = args.public_key.read_bytes()
-    if len(public_key) != 32:
-        # Accept the base64 form `trusted_keys.json` stores (review m4).
-        import base64
-
-        public_key = base64.b64decode(public_key.strip(), validate=True)
+    public_key = public_key_bytes(args.public_key)
     store = PluginStore(
         args.store_root.resolve(),
         trusted_keys={args.key_id: public_key},

@@ -418,10 +418,10 @@ campaigns as diagnostic. The r5 and r1 transcripts stay uncitable.
 
 | Open item | Gate before it moves |
 |---|---|
-| Fresh counted campaign | harness path ran 3/3 clean on 1 Oct after a READY verdict (D157, D158); its evidence awaits D032 review. Manager path not yet run. The 11 Sep campaigns stay diagnostic (D139) |
+| Fresh counted campaign | harness path ACCEPTED by independent review for its narrow claim (D160); manager path not yet run. The 11 Sep campaigns stay diagnostic (D139) |
 | UIA slice `add-slide-uia-v1` | independent D032 review, externally signed bytes, its own counted campaign |
 | Animation-catalog campaign | signed plan exists (D151); run and count it |
-| Independent lane runs | green on its own on 1 Oct (`docs/evidence/act-independent-lanes-2026-10-01.md`); awaiting D032 review (D158) |
+| Independent lane runs | NOT accepted (D160): prose without retained output; re-run alone through a capture wrapper |
 | D032 review of the derived budgets | receipt budget READY at `63c5ca5`; confirmation budget (D145) review open, no retained record (D150) |
 | D032 activation review | **NOT READY** at the current independent review of `63cd2b5`: fresh counted evidence and the remaining release/desktop gates are still absent |
 | Semantic PowerPoint capabilities | activation review READY |

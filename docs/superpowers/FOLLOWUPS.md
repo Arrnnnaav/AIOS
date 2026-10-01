@@ -1214,3 +1214,18 @@ counted claim depends on the decks. Fix: require every attempt to carry
 `artifact` and no retention failure; make `--artifacts` verify-only. Also
 pin the surviving mutants M5, M11, M19, N7, N10.
 
+## Lane evidence must be captured, not transcribed (D160)
+
+The 1 October lanes document is not accepted: it is prose, and its counts can
+be produced by test collection without running anything. **Trigger:** before
+claiming the independent-lanes gate. Re-run each lane alone at a named commit
+through a wrapper that writes, with explicit LF bytes, the verbatim output (or
+junitxml with per-test outcomes and durations), the exit code and start/end
+wall-clock times; commit those unedited and cite them by digest.
+
+## The manager-path checker should recompute completion from events (D160)
+
+The harness checker now recomputes per-node completion from the runtime's event
+stream (review E1). The manager checker still relies on the audit's
+`completed_nodes`. **Trigger:** before the manager-path campaign is counted.
+
