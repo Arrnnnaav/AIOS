@@ -21,18 +21,26 @@ the drift in the same focused change.
 
 ## Begin every subsystem this way
 
-1. Read this file and the relevant parts of `CLAUDE.md`.
-2. Read `graphify-out/GRAPH_REPORT.md` when it exists, then query or inspect only
-   the folders and files relevant to the task.
-3. Read the matching section of `ROADMAP.md` for sequence and current status.
-4. Read `FLOW.md` for the current call path being changed.
-5. Read only the decisions cited by those files in `DECISIONS.md`. Decisions are
+1. Read this file and `CLAUDE.md` (short; it states every rule in force).
+2. Read the matching section of `ROADMAP.md` -- one section, not the file.
+3. Read the `FLOW.md` section for the call path being changed -- one section.
+4. Use `docs/governance/DECISIONS_INDEX.md` to find the few decisions that
+   section cites, and read only those entries in `DECISIONS.md`. Decisions are
    history and may be explicitly amended as the product evolves.
-6. Check `docs/superpowers/FOLLOWUPS.md` for unresolved constraints triggered by
-   the proposed change.
+5. Search `docs/superpowers/FOLLOWUPS.md` (`rg`) for constraints triggered by
+   the change; do not read it whole.
+6. Treat Graphify output as search metadata, not current truth: query it, do
+   not load the whole report, and expect it to lag recent decisions.
 
-Do not load the whole repository by default. Start with `rg` or Graphify, name
-the smallest relevant file set, and expand only when dependencies require it.
+**Never read the whole of `DECISIONS.md`, `FLOW.md`, `FOLLOWUPS.md` or the
+Graphify report by default.** Whole-file reads are for a historical audit or a
+release review only. Start with `rg`, name the smallest relevant file set, and
+expand only when dependencies require it.
+
+Rigor follows D162: tier 1 (safety boundary) gets tests, a mutation check and
+one independent review; tier 2 (product features) gets tests and one review per
+milestone; tier 3 (tooling, docs, prototypes) gets tests where there is code.
+Only a BLOCKING safety finding stops work.
 
 ## Work in focused slices
 
