@@ -420,13 +420,13 @@ campaigns as diagnostic. The r5 and r1 transcripts stay uncitable.
 
 | Open item | Gate before it moves |
 |---|---|
-| Fresh counted campaign | harness path ACCEPTED by independent review for its narrow claim (D160); manager path not yet run. The 11 Sep campaigns stay diagnostic (D139) |
-| UIA slice `add-slide-uia-v1` | independent D032 review, externally signed bytes, its own counted campaign |
-| Animation-catalog campaign | signed plan exists (D151); run and count it |
+| Fresh counted campaign | harness path ACCEPTED for its narrow claim (D160). Manager path: three real runs completed 255/255 but both campaigns were refused for procedure (D163, D165); a counted manager campaign is optional under D164 |
+| UIA slice `add-slide-uia-v1` | **dropped as a release gate (D164)**: PowerPoint is a test fixture; generic UIA Act comes through the harness (ROADMAP harness track step 5) |
+| Animation-catalog campaign | **dropped as a release gate (D164)**; the signed plan stays as a fixture |
 | Independent lane runs | NOT accepted (D160): prose without retained output; re-run alone through a capture wrapper |
 | D032 review of the derived budgets | receipt budget READY at `63c5ca5`; confirmation budget (D145) review open, no retained record (D150) |
-| D032 activation review | **NOT READY** at the current independent review of `63cd2b5`: fresh counted evidence and the remaining release/desktop gates are still absent |
-| Semantic PowerPoint capabilities | activation review READY |
+| D032 activation review | PowerPoint-plan activation is no longer a goal in itself (D164). Generic Act activation is decided when the harness Act step exists (tier 1 review, D162) |
+| Semantic PowerPoint capabilities | superseded by the model-driven harness (D161, D164) |
 | Agent / skills / marketplace program | activation review READY, then its own phase entries here |
 
 Do not read "acceptance closed" as permission to start semantic planning or the

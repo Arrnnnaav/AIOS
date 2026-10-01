@@ -1232,3 +1232,10 @@ Act v1 closes (manager-path campaign counted). Remove the Teach intents and
 recipes from the PowerPoint payload in one slice, rebuild and re-sign, move
 the pin, and re-run the affected tests; the signed Act plans stay.
 
+## Measure agent context cost (governance note, 1 Oct 2026)
+
+Bounded reading (AGENTS.md) and the decision index are in place. **Trigger:**
+over the next 3-5 tasks, record files and bytes loaded, input tokens, tool
+calls, wall time, review rounds and whether any whole governance file was read,
+to confirm where the cost actually is before changing anything else.
+
