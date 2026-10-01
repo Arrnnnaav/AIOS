@@ -142,20 +142,31 @@ def _event_stream(records, plan_nodes, label: str) -> None:
     """
 
     events = [r for r in records if r.get("type") == "event"]
-    kinds = {r.get("event") for r in events}
+    _sequence_matches_plan(
+        [(e.get("event"), e.get("ordinal"), e.get("node_id"), e.get("operation_id"), e.get("at_s")) for e in events],
+        plan_nodes,
+        label,
+    )
+
+
+def _sequence_matches_plan(actual_events, plan_nodes, label: str) -> None:
+    """`actual_events` is (kind, ordinal, node_id, operation_id, time) per
+    runtime event; both campaign paths are held to the same rule."""
+
+    kinds = {kind for kind, *_ in actual_events}
     _require(kinds <= _CLEAN_EVENTS, f"{label}: emitted events {sorted(kinds - _CLEAN_EVENTS)}")
     expected = []
     for ordinal, (node_id, operation_id) in enumerate(plan_nodes, start=1):
         expected.append(("action_started", ordinal, node_id, operation_id))
         expected.append(("action_completed", ordinal, node_id, operation_id))
     expected.append(("completed", len(plan_nodes), None, None))
-    actual = [(e.get("event"), e.get("ordinal"), e.get("node_id"), e.get("operation_id")) for e in events]
+    actual = [tuple(event[:4]) for event in actual_events]
     _require(
         actual == expected,
         f"{label}: its events are not the signed plan's {len(plan_nodes)} nodes started "
         "and verified in order, then completed",
     )
-    stamps = [e.get("at_s") for e in events]
+    stamps = [event[4] for event in actual_events]
     _require(
         all(isinstance(s, (int, float)) for s in stamps) and stamps == sorted(stamps),
         f"{label}: event times go backwards",
@@ -364,6 +375,15 @@ def check_manager(directory: Path) -> dict:
             f"{label}: records name more than one proposal",
         )
         result = records[types.index("act_run_result")]
+        _sequence_matches_plan(
+            [
+                (r.get("code"), r.get("ordinal"), r.get("node_id"), r.get("operation_id"), r.get("at_ns"))
+                for r in records
+                if r.get("type") == "act_runtime_event"
+            ],
+            plan_nodes,
+            label,
+        )
         totals = {
             r.get("total") for r in records if r.get("type") == "act_runtime_event"
         }

@@ -279,7 +279,9 @@ def _manager_transcript(index: int, *, total: int = 255, order=None) -> list[dic
     for kind in kinds:
         if kind == "act_run_result":
             body.extend(
-                {"type": "act_runtime_event", "total": total} for _ in range(total)
+                {"type": "act_runtime_event", "code": e["event"], "ordinal": e["ordinal"],
+                 "node_id": e["node_id"], "operation_id": e["operation_id"], "total": total}
+                for e in _events(total)
             )
         body.append({"type": kind})
     records = []
@@ -966,7 +968,7 @@ def test_a_missing_or_substituted_retained_deck_is_refused(tmp_path):
 
 def test_manager_node_totals_are_bound_to_the_signed_plan(tmp_path):
     transcripts = [_manager_transcript(i, total=3) for i in (1, 2, 3)]
-    with pytest.raises(checker.CampaignRefused, match="plan has 255 nodes"):
+    with pytest.raises(checker.CampaignRefused, match="plan has 255 nodes|signed plan's 255 nodes"):
         checker.check_manager(_manager_campaign(tmp_path, transcripts))
 
 
@@ -1777,4 +1779,33 @@ def test_the_retained_campaign_passes_the_event_stream_check():
     source = ROOT / "docs" / "evidence" / "campaigns" / "2026-10-01-investor-deck-harness" / "report.json"
     summary = checker.check_harness(json.loads(source.read_text(encoding="utf-8")))
     assert [row[1] for row in summary["rows"]] == ["255/255"] * 3
+
+
+def test_the_manager_check_recomputes_completion_from_events(tmp_path):
+    """E1 on the manager path: a transcript whose result claims completion
+    but whose events miss a verification is refused."""
+
+    transcripts = [_manager_transcript(i) for i in (1, 2, 3)]
+    events = [r for r in transcripts[1] if r["type"] == "act_runtime_event"]
+    transcripts[1].remove(events[20])
+    for sequence, record in enumerate(transcripts[1], start=1):
+        record["sequence"] = sequence
+    with pytest.raises(checker.CampaignRefused, match="signed plan's 255 nodes"):
+        checker.check_manager(_manager_campaign(tmp_path, transcripts))
+
+
+def test_the_real_manager_transcripts_pass_the_event_check():
+    """The 11 Sep transcripts are real manager output; their event streams
+    must satisfy the rule a new campaign is held to."""
+
+    plan = checker._signed_plan({"plan_id": "build-investor-deck-v1",
+                                 "plan_sha256": PLAN})
+    for n in (1, 2, 3):
+        path = ROOT / "docs" / "evidence" / "diagnostic" / f"act-live-manager-campaign-attempt-{n}.jsonl"
+        records = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
+        checker._sequence_matches_plan(
+            [(r.get("code"), r.get("ordinal"), r.get("node_id"), r.get("operation_id"), r.get("at_ns"))
+             for r in records if r.get("type") == "act_runtime_event"],
+            plan, f"attempt {n}",
+        )
 

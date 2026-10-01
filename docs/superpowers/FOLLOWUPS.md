@@ -1223,9 +1223,12 @@ through a wrapper that writes, with explicit LF bytes, the verbatim output (or
 junitxml with per-test outcomes and durations), the exit code and start/end
 wall-clock times; commit those unedited and cite them by digest.
 
-## The manager-path checker should recompute completion from events (D160)
+## The manager-path checker recomputes completion from events — CLOSED (D161)
 
-The harness checker now recomputes per-node completion from the runtime's event
-stream (review E1). The manager checker still relies on the audit's
-`completed_nodes`. **Trigger:** before the manager-path campaign is counted.
+## Remove the hand-written PowerPoint Teach pack content (D161)
+
+Owner decision: hand-written packs are retired. **Trigger:** after PowerPoint
+Act v1 closes (manager-path campaign counted). Remove the Teach intents and
+recipes from the PowerPoint payload in one slice, rebuild and re-sign, move
+the pin, and re-run the affected tests; the signed Act plans stay.
 

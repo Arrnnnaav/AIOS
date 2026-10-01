@@ -7206,3 +7206,28 @@ positive on English such as "target accepted" that could have withheld a real
 run's records. M11, M19, N7 and N10 are pinned by tests. CLAUDE.md no longer
 carries a dated pass count or the stale "no live run on `b0d63512`".
 
+## D161 — Owner: hand-written packs are retired as the way forward
+
+**Date:** 1 October 2026
+
+The owner decided that Orbyn will no longer grow by hand-written per-application
+packs, recipes and selectors; guidance comes from model-driven Teach (D159).
+Consequences recorded now, executed later:
+
+- No further Teach recipe is written or adopted by hand. The planned ADD_SLIDE
+  re-acceptance on the current PowerPoint build is cancelled.
+- The PowerPoint pack's Teach intents and recipes are removed in their own
+  slice AFTER PowerPoint Act v1 closes. They live in the same signed bundle as
+  the Act plans; removing them now would change the manifest and invalidate
+  the accepted campaign (D160) and the manager-path campaign about to run.
+- Signed Act plans stay: execution authority remains on the signed plugin
+  path (D100-D104) until a reviewed decision changes that.
+- The owner approved using the NVIDIA NIM key already configured for Spatial
+  for the Orbyn trial (D147 free tier). D147's requirements still apply:
+  OS-secure key storage and per-request provider attribution (spec review I2,
+  I3) before any request is sent.
+
+Also in this slice: the manager-path checker now recomputes completion from
+the runtime event stream exactly as the harness checker does (D160 E1); the
+real 11 September manager transcripts satisfy it.
+
