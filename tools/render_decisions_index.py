@@ -2,9 +2,13 @@
 line per decision heading. Navigation only -- never a second source of truth."""
 
 import re
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from ghostcursor.devtools.campaign_pins import POWERPOINT_MANIFEST_SHA256  # noqa: E402
+
 headings = [
     line[3:].strip()
     for line in (ROOT / "DECISIONS.md").read_text(encoding="utf-8").splitlines()
@@ -35,7 +39,7 @@ with the script named at the bottom; edit the curated table by hand.
 | Providers | Model output is advice; closed schemas; tainted screen text never in instructions | D058, D147, D164 |
 | Evidence | Never edit captured output; every number names its record | D034, D139 |
 | Testing | Desktop lanes one at a time; hung-window files alone | D025 |
-| Signing | Payload bytes are LF and pinned; rebuild/re-sign and move both pins together | D125, D127, D149 |
+| Signing | Payload bytes are LF and pinned; rebuild/re-sign and move both pins together; current PowerPoint manifest `{MANIFEST}` | D125, D127, D149 |
 | Campaigns | Declare in the committed ledger; nothing committed until the last attempt; retain every outcome | D150-D158, D163, D165 |
 | Spatial / SayStride | Separate projects; integrate by typed reference / transcript sidecar; port code with attribution | D143, D146, D161 |
 
@@ -48,7 +52,7 @@ with the script named at the bottom; edit the curated table by hand.
 
 ## Every decision, one line each
 
-"""
+""".replace("{MANIFEST}", POWERPOINT_MANIFEST_SHA256[:8])
 lines = [f"- {h}" for h in headings]
 footer = (
     "\n\n_Generated from `DECISIONS.md` headings by "

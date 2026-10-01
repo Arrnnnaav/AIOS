@@ -7362,3 +7362,35 @@ as JSON, to each string value separately; the key-based rule and the
 observed-value blocklist are unchanged, and a planted test shows a handle
 inside a JSON string value is still caught. The transcript was not edited.
 
+## D166 — Harness step 2: multi-window binding and the observation frame
+
+**Date:** 1 October 2026
+
+`ghostcursor/harness/` (tier 2 under D162; its privacy and binding guards are
+tier-1 concerns and carry mutation tests):
+
+- **Binding** -- a session binds up to four exact windows the user chose,
+  recording HWND, PID, executable and file version; `still_bound` requires all
+  four unchanged and never rebinds; credential prompts, password managers, the
+  lock screen and Orbyn's own windows are refused; the chooser hides them.
+- **Frame** -- one immutable `ObservationFrame` across all bound windows:
+  allowlisted control types only; disabled, off-screen, password, nameless,
+  degenerate or out-of-window controls dropped; duplicates collapsed by runtime
+  id within a window; ordered by window then position; capped at 150 with a
+  `truncated` flag; windows whose read hit its budget or that are minimized
+  are reported. The model view carries only window labels (`w1`), application
+  names, and per candidate its window, type, name and a 3x3 region -- every
+  string `Tainted`; never a handle, runtime id, rectangle or title.
+- **Re-resolution** -- a choice is drawn only if exactly one control with the
+  same runtime id in the same window exists in the latest frame, moved at most
+  24 px and resized by less than half.
+- **Reader** -- `read_window` walks one window through UIA within a time budget
+  on a worker thread, returning frozen primitives; a vanished window reads as
+  nothing.
+
+Live probe (1 Oct): a frame built across PowerPoint and Photos at once; the
+Photos read took 0.22 s for 25 controls; minimized PowerPoint exposed only its
+title bar, which is why minimized windows are now flagged. Tests: 31 hermetic,
+2 interactive; 12 targeted mutants killed. Next: step 3, model-driven Teach
+across the bound windows behind a flag.
+
