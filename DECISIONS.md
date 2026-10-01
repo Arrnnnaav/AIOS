@@ -7271,3 +7271,18 @@ unchanged.
 instruction file, so the owner applies it. The previous version will be
 archived at `docs/archive/CLAUDE-pre-D162.md`.
 
+## D163 — First manager-path campaign refused at attempt 2 (commit moved)
+
+**Date:** 1 October 2026
+
+Campaign `2026-10-01-investor-deck-manager` ran attempt 1 through the real
+manager `Approve & run`: completed, 255/255 nodes, PowerPoint
+`16.0.20326.20158`, manifest `b0d63512`, audit schema 2. Attempt 2 was refused
+before the manager opened because HEAD had moved from the campaign's binding
+commit `d0c640d` to `4e50d5b`: the author had asked the owner to commit the new
+CLAUDE.md (D162) while the campaign was running. The runner's refusal is the
+intended behaviour -- the recorded commit must be the code that ran. The
+campaign is retained as produced, rendered "NOT counted", and a new campaign is
+declared. Lesson: nothing is committed between the ledger declaration and the
+last attempt.
+

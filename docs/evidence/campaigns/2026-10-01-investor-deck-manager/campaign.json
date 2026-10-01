@@ -1,0 +1,24 @@
+{
+  "attempts": [
+    {
+      "index": 1,
+      "manager_exit": 0,
+      "transcript": "act-live-manager-campaign-attempt-1.jsonl",
+      "transcript_sha256": "d59d13b5c90af55b834f5850e8405c4c20ae553f04bf001d4f7edbed54bf401d"
+    }
+  ],
+  "binding": {
+    "campaign_id": "2026-10-01-investor-deck-manager",
+    "commit": "d0c640d6a3a2f5ebbc496c4cb4cf9795619877f0",
+    "intent_id": "BUILD_INVESTOR_DECK",
+    "manifest_sha256": "b0d63512d1bcc14bc49f322139613018fc31483f7a7b49007ce0532e35082b4e",
+    "plan_id": "build-investor-deck-v1",
+    "plan_sha256": "84e39d0d2987e153923c537587380e9eeecccfae0a50ede5be586e0238e4fe79",
+    "scope": "sisdxokytuna"
+  },
+  "path": "manager",
+  "refusals": [
+    "attempt 2: this attempt's commit, manifest, plan or scope differs from the campaign's; start a new campaign directory"
+  ],
+  "schema_version": 1
+}
