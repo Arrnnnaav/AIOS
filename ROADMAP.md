@@ -39,9 +39,11 @@ than current design.
 
 ---
 
-## Model-first Teach (D159) — next after Act v1 closes
+## Harness-first, model-driven modes (D159, D164) — the current track
 
-**Status: designed, not built.** Owner direction, 30 September 2026: guidance
+**Status: slice 1 (provider gateway) built; slices 2-6 next.** Teach and Act
+are an application-agnostic harness driven by a model, across several
+applications at once; PowerPoint is the test fixture (D164). Owner direction, 30 September 2026: guidance
 for any application comes from a large model plus Jev choosing among the
 controls the harness observed, instead of hand-curated per-application packs.
 Teach only; Act stays on the signed plugin path. Design:

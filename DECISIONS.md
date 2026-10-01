@@ -7286,3 +7286,79 @@ campaign is retained as produced, rendered "NOT counted", and a new campaign is
 declared. Lesson: nothing is committed between the ledger declaration and the
 last attempt.
 
+## D164 — Harness first: PowerPoint is a test fixture, not the product
+
+**Date:** 1 October 2026
+
+**Owner direction.** Teach, Act and the other modes are a harness driven by a
+model, meant to work across any applications at once -- including goals that
+span several applications. A per-application pack, recipe or signed plan can
+never do multi-application work. PowerPoint is the test bench, not the target.
+
+**Consequences.**
+- PowerPoint's signed Act plans stay as a regression fixture. The
+  PowerPoint-only release gates are dropped: the UIA `New Slide` slice, the
+  animation-catalog campaign, and an activation ceremony for PowerPoint plans.
+  The manager-path campaign is finished because it exercises the generic
+  approve -> hand-off -> run -> verify path, not a PowerPoint feature.
+- What carries forward is app-agnostic: the authority chain (approval,
+  per-node authorization, live target revalidation, independent verification,
+  Stop/ESC, no input synthesis outside Act), perception, the overlay, rail,
+  manager, session events and store, and the generic UIA adapter.
+- Build order: (1) provider gateway, (2) a multi-window `ObservationFrame`
+  (candidates from several exactly-bound windows, each tagged with its
+  window), (3) model-driven Teach across applications behind a flag, (4)
+  measurement on real sessions, (5) generic Act on observed controls through
+  the generic UIA operations -- tier 1, independently reviewed, only after
+  Teach is accurate -- then (6) the MVP layer (workspace, Brief, Spatial
+  reference, Personal Brain, SayStride voice draft, research).
+
+**Slice 1 built here: `ghostcursor/providers/`.** System One (TypeSafe Jev) and
+System Two (OpenAI-compatible chat: NVIDIA NIM, OpenRouter, local Ollama)
+behind one gateway: keys in Windows Credential Manager (`Orbyn/<provider>`;
+the owner-approved Jev and Spatial NIM keys were migrated and the `.env` copy
+deleted); a typed envelope in which every screen-derived string must be a
+`Tainted` value carried only in a labelled data block, never the instruction
+channel; Jev criteria carry opaque ids only; closed schemas with a strict
+parser (duplicate keys, extra fields, unknown ids and out-of-range values
+refused; an empty answer never falls back to reasoning text); a closed
+`ExpectedChange` enum; normalised failures; a per-session request budget;
+cancellation; a local attribution log with provider, model, latency, token
+counts and a digest of what was sent, never content or keys; and a
+non-blocking single-slot request runner for the tick thread. 36 hermetic
+tests on mocked transports; 16 targeted mutants killed. A live check through
+the gateway reached both providers: Jev chose the correct id of two, and NIM
+returned a plan that passed the strict schema. No UI is wired.
+
+## D165 — Second manager-path campaign refused (runner stopped; two runs in one attempt)
+
+**Date:** 1 October 2026
+
+Campaign `2026-10-01-investor-deck-manager-two`, bound to `4da50a2`. In the
+attempt-1 manager session the owner approved two runs; both completed 255/255
+through the real `Approve & run`, the D123 hand-off and the one-use request
+(two distinct proposals, build `16.0.20326.20158`, manifest `b0d63512`). The
+runner was then stopped by Claude Code because the machine was critically low
+on memory, before attempt 1 was recorded. The refusal is retained as produced
+and rendered "NOT counted".
+
+**Where the manager path stands.** Three real manager runs today (D163 attempt
+1 and these two) completed 255/255 each -- strong diagnostic evidence that
+the generic approve -> hand-off -> worker -> verify path works -- but no
+counted 3/3 manager campaign exists. Under D164 the PowerPoint activation
+ceremony is no longer a goal in itself; whether a counted manager campaign is
+still wanted is the owner's call.
+
+**Procedure learned (D163, D165).** Nothing is committed between a campaign's
+declaration and its last attempt; one approval per manager session; close the
+manager after the result; keep enough memory free before a campaign.
+
+**A scan corrected, disclosed.** Committing this campaign's unedited transcript
+tripped `test_no_tracked_document_publishes_a_raw_handle_or_process_id`: with
+1,035 records, `"sequence":1000,` sorts beside `"target_sha256"` and the
+text-proximity rule read that as a number next to the word "target" on every
+later line. No handle is involved. The rule now applies, for records that parse
+as JSON, to each string value separately; the key-based rule and the
+observed-value blocklist are unchanged, and a planted test shows a handle
+inside a JSON string value is still caught. The transcript was not edited.
+

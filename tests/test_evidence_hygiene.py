@@ -722,10 +722,54 @@ def test_the_scan_covers_the_places_handles_have_actually_leaked():
     assert any(n.endswith(".jsonl") for n in scanned)
 
 
+def _string_scalars(value):
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for child in value.values():
+            yield from _string_scalars(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from _string_scalars(child)
+
+
+def _structured_offenders(name: str, text: str):
+    """Shape rules applied to a JSON record's STRING VALUES, one at a time.
+
+    The proximity rule reads adjacency, and adjacency between JSON keys is an
+    accident of sort order: a real manager transcript of 1,000+ records put
+    `"sequence":1000,` beside `"target_sha256"` and tripped it on every later
+    line (D165). Handle-valued KEYS are covered by `_handle_valued_keys` and
+    known values by the blocklist, both unchanged. Returns None when the file
+    is not cleanly parseable JSON, so it is scanned as text instead.
+    """
+
+    suffix = Path(name).suffix.lower()
+    if suffix not in {".json", ".jsonl"}:
+        return None
+    try:
+        records = (
+            [json.loads(line) for line in text.splitlines() if line.strip()]
+            if suffix == ".jsonl"
+            else [json.loads(text)]
+        )
+    except json.JSONDecodeError:
+        return None
+    found = []
+    for number, record in enumerate(records, start=1):
+        for scalar in _string_scalars(record):
+            for _, line in _document_offenders(scalar):
+                found.append((number, line))
+    return found
+
+
 def test_no_tracked_document_publishes_a_raw_handle_or_process_id():
     offenders = []
     for name in _tracked(_SCANNED_SUFFIXES):
-        for number, line in _document_offenders(_text(name)):
+        text = _text(name)
+        structured = _structured_offenders(name, text)
+        hits = structured if structured is not None else _document_offenders(text)
+        for number, line in hits:
             offenders.append(f"{name}:{number}: {line.strip()[:100]}")
     assert not offenders, "raw target values in tracked documents:\n" + "\n".join(
         offenders
@@ -962,3 +1006,16 @@ def test_integer_renderings_of_an_observed_handle_are_still_found(rendering):
     assert _blocklisted(json.dumps({"x": text}), prose=True) == [value]
     assert _blocklisted(json.dumps({"x": int(value)}), prose=True) == [value]
     assert _blocklisted(json.dumps({"x": float(value)}), prose=True) == [value]
+
+
+def test_json_key_adjacency_is_not_a_handle_but_a_handle_in_a_value_still_is():
+    """D165: the real false positive, and the property that must survive it."""
+
+    adjacent = json.dumps({"sequence": 1000, "target_sha256": "a" * 64}, sort_keys=True)
+    assert _document_offenders(adjacent)  # the text rule fires on key adjacency
+    assert _structured_offenders("x.jsonl", adjacent) == []
+    leaking = json.dumps({"detail": "bound target hwnd 4460192"})
+    assert _structured_offenders("x.jsonl", leaking)
+    assert _structured_offenders("x.json", json.dumps({"n": [{"note": "target window 0x1A2B3C"}]}))
+    assert _structured_offenders("x.jsonl", "not json") is None
+

@@ -1,0 +1,173 @@
+"""Transports: TypeSafe Jev (System One) and OpenAI-compatible chat (System Two).
+
+Patterns ported, with attribution, from the separate Spatial project
+(`D:\\PROJECTS\\Spatial\\server\\app\\system_one.py`): one kept-alive client per
+provider, a hard time budget, at most one retry on 429/5xx inside that budget.
+Only the transport is ported -- no prompt building, and no fallback to the
+model's free text when a structured answer is missing.
+
+Every call takes an injectable ``httpx`` transport so tests run on recorded
+cassettes without a network or a key.
+"""
+
+from __future__ import annotations
+
+import time
+from dataclasses import dataclass
+
+import httpx
+
+from ghostcursor.providers.errors import FailureKind, ProviderError
+
+
+@dataclass(frozen=True)
+class ProviderConfig:
+    name: str  # "jev", "nvidia", "openrouter", "ollama"
+    base_url: str
+    model: str
+    key_name: str | None  # Credential Manager name; None for local Ollama
+    timeout_s: float
+
+
+SYSTEM_ONE = ProviderConfig(
+    "jev", "https://api.typesafe.ai", "jev-latest", "typesafe", 3.0
+)
+SYSTEM_TWO = {
+    "nvidia": ProviderConfig(
+        "nvidia",
+        "https://integrate.api.nvidia.com/v1",
+        "nvidia/nemotron-3-super-120b-a12b",
+        "nvidia",
+        45.0,
+    ),
+    "openrouter": ProviderConfig(
+        "openrouter",
+        "https://openrouter.ai/api/v1",
+        "qwen/qwen3-4b:free",
+        "openrouter",
+        45.0,
+    ),
+    "ollama": ProviderConfig(
+        "ollama", "http://127.0.0.1:11434/v1", "qwen3:4b-instruct", None, 60.0
+    ),
+}
+
+
+@dataclass(frozen=True)
+class Reply:
+    body: dict
+    model: str | None
+    latency_ms: int
+    input_tokens: int
+    output_tokens: int
+
+
+def _post(
+    config: ProviderConfig,
+    key: str | None,
+    path: str,
+    payload: dict,
+    *,
+    transport: httpx.BaseTransport | None,
+    deadline_s: float,
+    cancelled,
+) -> Reply:
+    headers = {"Authorization": f"Bearer {key}"} if key else {}
+    started = time.monotonic()
+    deadline = started + min(deadline_s, config.timeout_s)
+    with httpx.Client(
+        base_url=config.base_url, transport=transport, headers=headers
+    ) as client:
+        for attempt in (1, 2):
+            if cancelled():
+                raise ProviderError(FailureKind.CANCELLED)
+            remaining = deadline - time.monotonic()
+            if remaining <= 0.05:
+                raise ProviderError(FailureKind.TIMEOUT, config.name)
+            try:
+                response = client.post(path, json=payload, timeout=remaining)
+            except httpx.TimeoutException as exc:
+                raise ProviderError(FailureKind.TIMEOUT, config.name) from exc
+            except httpx.HTTPError as exc:
+                raise ProviderError(
+                    FailureKind.UNAVAILABLE, f"{config.name}: {type(exc).__name__}"
+                ) from exc
+            code = response.status_code
+            if code in (401, 403):
+                raise ProviderError(FailureKind.AUTH_FAILED, config.name)
+            if code == 429 or code >= 500:
+                kind = (
+                    FailureKind.RATE_LIMITED if code == 429 else FailureKind.UNAVAILABLE
+                )
+                if attempt == 1 and deadline - time.monotonic() > 0.5:
+                    time.sleep(0.2)
+                    continue
+                raise ProviderError(kind, f"{config.name}: HTTP {code}")
+            if code >= 400:
+                raise ProviderError(
+                    FailureKind.UNAVAILABLE, f"{config.name}: HTTP {code}"
+                )
+            try:
+                body = response.json()
+            except ValueError as exc:
+                raise ProviderError(
+                    FailureKind.INVALID_OUTPUT, f"{config.name}: body is not JSON"
+                ) from exc
+            if not isinstance(body, dict):
+                raise ProviderError(
+                    FailureKind.INVALID_OUTPUT, f"{config.name}: body is not an object"
+                )
+            usage = body.get("usage") if isinstance(body.get("usage"), dict) else {}
+            return Reply(
+                body,
+                body.get("model") if isinstance(body.get("model"), str) else None,
+                round((time.monotonic() - started) * 1000),
+                int(usage.get("input_tokens") or usage.get("prompt_tokens") or 0),
+                int(usage.get("output_tokens") or usage.get("completion_tokens") or 0),
+            )
+    raise ProviderError(FailureKind.UNAVAILABLE, config.name)
+
+
+def system_one_call(
+    config, key, state: dict, questions: dict, **kw
+) -> tuple[dict, Reply]:
+    """POST /v1/systemone; returns the ``answers`` object and the reply."""
+
+    reply = _post(
+        config,
+        key,
+        "/v1/systemone",
+        {"model": config.model, "state": state, "questions": questions},
+        **kw,
+    )
+    answers = reply.body.get("answers")
+    if not isinstance(answers, dict):
+        raise ProviderError(FailureKind.INVALID_OUTPUT, "jev: no answers object")
+    return answers, reply
+
+
+def chat_json_call(
+    config, key, messages: list[dict], schema: dict, **kw
+) -> tuple[str, Reply]:
+    """OpenAI-compatible chat completion asking for a JSON object.
+
+    Returns the assistant message CONTENT only. If the content is empty the
+    call is invalid -- the reasoning text some models also return is never
+    used as an answer (spec review B4).
+    """
+
+    payload = {
+        "model": config.model,
+        "messages": messages,
+        "temperature": 0,
+        "response_format": {"type": "json_object"},
+    }
+    reply = _post(config, key, "/chat/completions", payload, **kw)
+    choices = reply.body.get("choices")
+    if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
+        raise ProviderError(FailureKind.INVALID_OUTPUT, f"{config.name}: no choices")
+    message = choices[0].get("message")
+    content = message.get("content") if isinstance(message, dict) else None
+    if not isinstance(content, str) or not content.strip():
+        raise ProviderError(FailureKind.INVALID_OUTPUT, f"{config.name}: empty content")
+    return content, reply
