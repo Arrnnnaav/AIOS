@@ -91,6 +91,8 @@ __all__ = [
     "POWERPOINT_MANIFEST_SHA256",
     "POWERPOINT_PLUGIN_ID",
     "bundle_manifest_sha256",
+    "hold_commits",
+    "release_commits",
     "installed_manifest_sha256",
     "repository_commit",
     "require_pinned_manifest",
@@ -128,7 +130,10 @@ def require_ledgered(
     campaign_directory(campaign_id, root)
     shown = subprocess.run(
         ["git", "show", f"HEAD:{LEDGER_RELATIVE}"],
-        cwd=root, capture_output=True, text=True, check=False,
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=False,
     )
     if shown.returncode != 0:
         raise CampaignPreflightError("the campaign ledger is not committed")
@@ -140,9 +145,31 @@ def require_ledgered(
             f"ledger; append it to {LEDGER_RELATIVE} and commit before attempt 1"
         )
     entry = matches[0]
-    expected = {"path": path, "plan_id": plan_id, "manifest_sha256": POWERPOINT_MANIFEST_SHA256}
+    expected = {
+        "path": path,
+        "plan_id": plan_id,
+        "manifest_sha256": POWERPOINT_MANIFEST_SHA256,
+    }
     if any(entry.get(key) != value for key, value in expected.items()):
         raise CampaignPreflightError(
             "the ledger entry declares a different path, plan or manifest"
         )
+    hold_commits(campaign_id, root)
     return entry
+
+
+#: While this file exists a campaign is open and nothing may be committed
+#: (D163): the recorded commit must be the code that ran every attempt. The
+#: project's PreToolUse hook refuses `git commit` while it exists; rendering
+#: the campaign document, the last step of every campaign, removes it.
+COMMIT_LOCK_RELATIVE = ".artifacts/campaign.lock"
+
+
+def hold_commits(campaign_id: str, root: Path = REPOSITORY_ROOT) -> None:
+    lock = root / COMMIT_LOCK_RELATIVE
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    lock.write_bytes((campaign_id + "\n").encode("utf-8"))
+
+
+def release_commits(root: Path = REPOSITORY_ROOT) -> None:
+    (root / COMMIT_LOCK_RELATIVE).unlink(missing_ok=True)

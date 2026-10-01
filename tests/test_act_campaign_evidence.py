@@ -673,10 +673,17 @@ def test_a_campaign_must_be_declared_in_the_committed_ledger(tmp_path):
 
     with pytest.raises(CampaignPreflightError, match="not committed"):
         require_ledgered("2026-10-01-deck", path="harness", plan_id="build-investor-deck-v1", root=root)
+    from ghostcursor.devtools.campaign_pins import COMMIT_LOCK_RELATIVE, release_commits
+
+    assert not (root / COMMIT_LOCK_RELATIVE).exists()  # a refusal opens nothing
     _git(root, "add", LEDGER_RELATIVE)
     _git(root, "commit", "-q", "-m", "declare")
 
     assert require_ledgered("2026-10-01-deck", path="harness", plan_id="build-investor-deck-v1", root=root) == entry
+    # An admitted attempt holds commits until the campaign document is rendered.
+    assert (root / COMMIT_LOCK_RELATIVE).read_text(encoding="utf-8").strip() == "2026-10-01-deck"
+    release_commits(root)
+    assert not (root / COMMIT_LOCK_RELATIVE).exists()
     with pytest.raises(CampaignPreflightError, match="exactly once"):
         require_ledgered("2026-10-01-other", path="harness", plan_id="build-investor-deck-v1", root=root)
     with pytest.raises(CampaignPreflightError, match="different path"):

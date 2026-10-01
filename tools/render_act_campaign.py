@@ -38,7 +38,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from ghostcursor.devtools.act_campaign import record_leaks, safe_detail  # noqa: E402
-from ghostcursor.devtools.campaign_pins import POWERPOINT_MANIFEST_SHA256  # noqa: E402
+from ghostcursor.devtools.campaign_pins import (  # noqa: E402
+    POWERPOINT_MANIFEST_SHA256,
+    REPOSITORY_ROOT,
+    release_commits,
+)
 
 #: The acceptance policy. Not a parameter: a checker that accepts "1 of 1"
 #: renders a sentence that reads like the policy while meaning nothing.
@@ -582,6 +586,12 @@ def main(argv=None) -> int:
         return 0
     arguments.out.parent.mkdir(parents=True, exist_ok=True)
     arguments.out.write_bytes(data)
+    # The document is the campaign's last step: commits may resume (D163).
+    # Only a real campaign document releases the lock, never a test render.
+    if arguments.out.resolve().is_relative_to(
+        REPOSITORY_ROOT / "docs" / "evidence" / "campaigns"
+    ):
+        release_commits()
     return 0
 
 if __name__ == "__main__":
