@@ -17,7 +17,8 @@ from dataclasses import dataclass, field
 
 #: Bounds on any single tainted string and on the whole tainted payload.
 MAX_TAINTED_CHARS = 300
-MAX_TAINTED_ITEMS = 400
+#: A full harness frame (150 candidates x 4 fields, plus windows) must fit.
+MAX_TAINTED_ITEMS = 800
 
 _CONTROL = re.compile(r"[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩﻿]")
 

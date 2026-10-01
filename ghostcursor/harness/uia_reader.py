@@ -38,6 +38,34 @@ def _is_offscreen(info) -> bool:
         return not getattr(info, "visible", True)
 
 
+#: UIA property ids: SelectionItem.IsSelected, Toggle.ToggleState,
+#: ExpandCollapse.ExpandCollapseState.
+_STATE_PROPERTIES = (("selected", 30079), ("toggle", 30086), ("expand", 30070))
+
+
+def _state(info) -> str:
+    """Compact pattern state. Only bool/int values count: an unsupported
+    pattern returns a COM sentinel whose repr changes between reads, which
+    would look like a state change that never happened."""
+
+    parts = []
+    for label, property_id in _STATE_PROPERTIES:
+        try:
+            value = info.element.GetCurrentPropertyValue(property_id)
+        except Exception:
+            continue
+        if isinstance(value, (bool, int)):
+            parts.append(f"{label}={int(value)}")
+    return ";".join(parts)
+
+
+def _focused(info) -> bool:
+    try:
+        return bool(info.element.CurrentHasKeyboardFocus)
+    except Exception:
+        return False
+
+
 def read_window(
     hwnd: int,
     *,
@@ -81,6 +109,8 @@ def read_window(
                         enabled=bool(info.enabled),
                         offscreen=_is_offscreen(info),
                         is_password=_is_password(info),
+                        state=_state(info),
+                        focused=_focused(info),
                     )
                 )
             except Exception:
@@ -99,3 +129,29 @@ def is_minimized(hwnd: int) -> bool:
         return bool(win32gui.IsIconic(hwnd))
     except Exception:
         return False
+
+
+def window_facts(hwnd: int, pid: int) -> tuple[str, int]:
+    """(title, visible top-level windows of ``pid``) for verification. Both
+    stay on this machine: titles carry document names."""
+
+    try:
+        import win32gui
+        import win32process
+
+        title = win32gui.GetWindowText(hwnd)
+        count = 0
+
+        def visit(other, _):
+            nonlocal count
+            if (
+                win32gui.IsWindowVisible(other)
+                and win32process.GetWindowThreadProcessId(other)[1] == pid
+            ):
+                count += 1
+            return True
+
+        win32gui.EnumWindows(visit, None)
+        return title, count
+    except Exception:
+        return "", 0

@@ -53,6 +53,10 @@ class RawControl:
     enabled: bool
     offscreen: bool
     is_password: bool = False
+    #: Selection/toggle/expand state, e.g. ``"selected=1"``; local only, used
+    #: to verify CHOSEN_STATE_CHANGES (spec section 5).
+    state: str = ""
+    focused: bool = False
 
 
 @dataclass(frozen=True)
@@ -62,6 +66,9 @@ class WindowObservation:
     controls: tuple[RawControl, ...]
     timed_out: bool = False
     minimized: bool = False
+    #: Local-only facts for verification; never sent to a model.
+    title: str = ""
+    owned_windows: int = 0  # visible top-level windows of the bound PID
 
 
 @dataclass(frozen=True)
@@ -73,6 +80,8 @@ class Candidate:
     control_type: str
     rect: Rect
     region: str  # coarse position within its window, for the model
+    state: str = ""
+    focused: bool = False
 
 
 @dataclass(frozen=True)
@@ -84,6 +93,8 @@ class ObservationFrame:
     truncated: bool
     incomplete: tuple[str, ...]  # window labels whose read hit its budget
     minimized: tuple[str, ...] = ()  # window labels that were minimized
+    #: (label, title, owned_windows) per window; local only, for verification.
+    facts: tuple[tuple[str, str, int], ...] = ()
 
     def get(self, cid: str) -> Candidate | None:
         return next((c for c in self.candidates if c.cid == cid), None)
@@ -177,6 +188,8 @@ def build_frame(
             control.control_type,
             control.rect,
             region_of(control.rect, window_rect),
+            control.state,
+            control.focused,
         )
         for number, (binding, control, window_rect) in enumerate(
             kept[:MAX_CANDIDATES], start=1
@@ -190,6 +203,7 @@ def build_frame(
         truncated,
         tuple(o.binding.label for o in observations if o.timed_out),
         tuple(o.binding.label for o in observations if o.minimized),
+        tuple((o.binding.label, o.title, o.owned_windows) for o in observations),
     )
 
 

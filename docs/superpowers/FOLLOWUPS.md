@@ -1239,3 +1239,20 @@ over the next 3-5 tasks, record files and bytes loaded, input tokens, tool
 calls, wall time, review rounds and whether any whole governance file was read,
 to confirm where the cost actually is before changing anything else.
 
+
+## Model-Teach prototype findings (D167)
+
+- **Unexplained step advance** (Calculator, first live run): instrument
+  `change_observed` in the measurement step and look for false completions
+  under background churn (spec section 9).
+- **NEW_WINDOW_OF_TARGET is not attributable for UWP apps:** the bound PID is
+  `applicationframehost.exe`, which owns every UWP frame. Count only windows
+  owned by the bound window, or drop the kind for frame hosts.
+- **Unsupported UIA patterns read as default ints** (`toggle=2;expand=3`), so
+  `state` is rarely empty; harmless for change detection, but do not treat a
+  non-empty state as "has a toggle".
+- **Tab names leak document titles** to providers (owner decision; see D167).
+- **Free NIM planning is slow** (one plan took tens of seconds); measure
+  latency p50/p95 per provider and consider a faster planner.
+- **Spec section 6 provenance** (`MODEL_SELECTED`, `promote()` refusal) at
+  manager integration.

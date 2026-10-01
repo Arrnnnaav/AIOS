@@ -487,6 +487,17 @@ def main() -> int:
         default="teach",
         help="teach guides the user; act executes one approved signed action plan",
     )
+    parser.add_argument(
+        "--model-teach",
+        action="store_true",
+        help="prototype (D164): a model guides --goal across the windows you bind",
+    )
+    parser.add_argument(
+        "--window",
+        type=int,
+        action="append",
+        help="window handle to bind for --model-teach (repeatable); asks if omitted",
+    )
     parser.add_argument("--output", type=Path, help="new output artifact for Act mode")
     parser.add_argument(
         "--act-pace",
@@ -541,6 +552,13 @@ def main() -> int:
         from ghostcursor.manager import launch_manager
 
         return launch_manager()
+
+    if args.model_teach:
+        if not args.goal or args.mode != "teach":
+            parser.error("--model-teach needs --goal and Teach mode")
+        from ghostcursor.harness.teach_live import run_model_teach
+
+        return run_model_teach(args.goal, args.window, seconds=args.seconds)
 
     if args.goal:
         if args.mode == "act":

@@ -200,5 +200,6 @@ with the script named at the bottom; edit the curated table by hand.
 - D164 — Harness first: PowerPoint is a test fixture, not the product
 - D165 — Second manager-path campaign refused (runner stopped; two runs in one attempt)
 - D166 — Harness step 2: multi-window binding and the observation frame
+- D167 — Model-driven Teach across bound windows, behind `--model-teach` (harness step 3)
 
 _Generated from `DECISIONS.md` headings by `py -3.12 tools/render_decisions_index.py`._

@@ -122,7 +122,7 @@ def test_injection_in_screen_text_stays_in_the_data_block():
 
 def test_too_many_tainted_values_are_refused():
     with pytest.raises(ValueError):
-        Envelope(task="t", tainted={"c": [Tainted.of("x", "y")] * 401})
+        Envelope(task="t", tainted={"c": [Tainted.of("x", "y")] * 801})
 
 
 # --- schemas --------------------------------------------------------------------

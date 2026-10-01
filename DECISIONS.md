@@ -7394,3 +7394,50 @@ title bar, which is why minimized windows are now flagged. Tests: 31 hermetic,
 2 interactive; 12 targeted mutants killed. Next: step 3, model-driven Teach
 across the bound windows behind a flag.
 
+
+## D167 — Model-driven Teach across bound windows, behind `--model-teach` (harness step 3)
+
+**Date:** 1 October 2026
+
+A prototype under D162 (tier 2; prototype behind a flag, measure, then harden).
+`python -m ghostcursor.run --model-teach --goal "<goal>" [--window HWND ...]`
+binds the chosen windows (D166; asks on the console when none are given).
+
+- **Loop** -- System Two writes a bounded `TeachPlan`; per step System One
+  picks one candidate id or abstains; model calls run only on the request slot,
+  UIA reads only on an observer thread publishing one overwritten frame; the
+  UI thread polls, draws, pumps and reads ESC/`--seconds` (D020-D022).
+- **Gate** (deterministic, `ghostcursor/harness/teach.py`) -- abstain, a choice
+  not in the asked frame, no exactly-one re-resolution, a same-name same-type
+  twin in the same window, or confidence below floor 0.6 / margin 0.2 means
+  re-ask (capped at 3, then BLOCKED). Floor and margin are **provisional
+  placeholders, not fitted**; spec section 9 fits them in the measurement step.
+  A high-risk name (delete, send, pay, sign in, password ...) is not drawn until
+  the user presses Space in a bound window; a press carried over from before
+  the question never counts.
+- **Verification** -- a step completes on the plan's closed `ExpectedChange`
+  observed on the chosen control or its own window (state, focus, disappearance,
+  new window of the bound PID, title change), never from a partial read, or on
+  the user's Space in a bound window.
+- **Provenance** -- drawn in the INFERRED (amber) colour; instruction text is
+  labelled "suggested"; the plan step travels as tainted data. The teach modules
+  import no memory or session-store code (test-enforced), so nothing a model
+  selected can reach `kb.sqlite` (D070, D147). The `MODEL_SELECTED` enum and
+  `promote()` refusal (spec section 6) wait for manager integration, where a
+  shared path first exists.
+- **Providers** -- a request field per provider; NIM's reasoning is turned off
+  for planning. Provider failure while planning is BLOCKED; while choosing,
+  timeout/unavailable/invalid re-ask and anything else (rate limit, no key)
+  stops with "needs you", never a guess. The envelope cap rises to 800 tainted
+  values so a full frame (4 windows, 150 candidates) fits; a test holds it.
+
+Live smoke (1 Oct, console output only, not evidence): Calculator, goal
+"switch to scientific mode" -- a two-step plan, the pointer drawn on "Open
+Navigation". In the first run the session moved to step 2 without a recorded
+cause (no spy was attached; a click by someone at the machine is possible);
+two instrumented reruns did not advance without a click. Recorded as open in
+FOLLOWUPS. Tests: hermetic suite, 15 targeted mutants killed.
+
+Open privacy question for the owner: candidate names include tab names, which
+in Notepad are file names and the first line of an unsaved note -- in effect a
+window title, which spec section 7 excludes. Not decided here.

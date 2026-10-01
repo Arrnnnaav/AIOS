@@ -27,6 +27,9 @@ class ProviderConfig:
     model: str
     key_name: str | None  # Credential Manager name; None for local Ollama
     timeout_s: float
+    #: Provider-specific request fields, e.g. turning a reasoning model's
+    #: thinking off: with it on, one NIM plan was noticeably slower (not benchmarked).
+    extra: tuple[tuple[str, object], ...] = ()
 
 
 SYSTEM_ONE = ProviderConfig(
@@ -39,6 +42,7 @@ SYSTEM_TWO = {
         "nvidia/nemotron-3-super-120b-a12b",
         "nvidia",
         45.0,
+        (("chat_template_kwargs", {"enable_thinking": False}),),
     ),
     "openrouter": ProviderConfig(
         "openrouter",
@@ -161,6 +165,7 @@ def chat_json_call(
         "messages": messages,
         "temperature": 0,
         "response_format": {"type": "json_object"},
+        **dict(config.extra),
     }
     reply = _post(config, key, "/chat/completions", payload, **kw)
     choices = reply.body.get("choices")
