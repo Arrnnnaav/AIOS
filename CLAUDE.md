@@ -391,10 +391,10 @@ is the following, and this list is kept aligned with `ROADMAP.md`:
 
 | Open | Gate |
 |---|---|
-| Fresh counted campaign, both paths | an independent READY verdict first; the 11 Sep campaigns are diagnostic (D139) |
+| Fresh counted campaign, both paths | harness path RAN 3/3 clean on 1 Oct (`docs/evidence/campaigns/2026-10-01-investor-deck-harness/`) and awaits its own D032 review; manager path not run (D158) |
 | UIA slice `add-slide-uia-v1` | independent D032 review, externally signed bytes, own counted campaign |
 | Animation-catalog campaign | it has never been counted |
-| Independent lane runs | interactive, pixel and hung lanes green alone, per D025 |
+| Independent lane runs | green alone on 1 Oct (`docs/evidence/act-independent-lanes-2026-10-01.md`); awaiting D032 review (D158) |
 | D032 review of the derived budgets | receipt budget READY at `63c5ca5`; the confirmation budget (D145) has no retained review record, so its review is open (D150) |
 | D032 activation review | a fresh activation verdict after the counted, UIA, animation, budget, and independent-lane gates |
 

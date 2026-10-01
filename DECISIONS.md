@@ -7095,3 +7095,31 @@ reports as "interrupted"), M11 (base64 key branch), M19 (`key_id` in binding),
 N7 (checker reason not made safe), N10 (withheld-reason fallback); a COM
 HRESULT withholds that attempt's records (the campaign is still refused).
 
+## D158 — The counted investor-deck harness campaign, and the independent lanes
+
+**Date:** 1 October 2026
+
+**Campaign.** After the READY verdict recorded in D157, the owner cleared the
+desktop and the campaign ran exactly as the reviewed operator procedure
+specifies: ledger line committed first (`7fe1215`), the signed `d152` bundle
+(manifest `b0d63512`, file `e46b362d…`), plan `84e39d0d…`, quick mode,
+unattended. Result: **3 of 3 consecutive attempts clean, 255/255 nodes each**,
+three distinct published decks, PowerPoint build `16.0.20326.20158`. The
+document `docs/evidence/campaigns/2026-10-01-investor-deck-harness/campaign.md`
+was rendered without `--artifacts` and passes `--check`; the separate
+`--artifacts` check verified all three decks against their digests in the
+git-ignored store. The evidence was committed as produced (`05a90a5`) and the
+hermetic lane stayed green (2893 passed) with no edit of any record, scan or
+ledger line.
+
+**Lanes.** The interactive, pixel and hung-window lanes each passed on their
+own (`docs/evidence/act-independent-lanes-2026-10-01.md`), including a
+disclosed re-run of the hung-window files after they were first submitted in
+one batch.
+
+**What this does not claim.** Neither result is acceptance evidence until an
+independent D032 review reads the retained records. The manager-path campaign
+(the real `Approve & run`, D121/D123) has not run, the UIA slice and the
+animation-catalog campaign are open (S1 must be fixed first), and the final
+activation review has not been performed.
+
