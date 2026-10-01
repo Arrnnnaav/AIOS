@@ -98,17 +98,17 @@ def choose_windows() -> list[int]:
     ]
 
 
-def _space_edge(bound: set[int], was_down: bool) -> tuple[bool, bool]:
-    """(pressed now as a fresh edge, down now). Only while a bound window has
-    focus, so a space typed elsewhere never advances the guide."""
+def _console_enter() -> bool:
+    """True if Enter was pressed in this console since the last poll. Read
+    from the console's own input, so the key never reaches the guided app (a
+    Space there would also press whatever control has focus -- review F5)."""
 
-    import win32api
-    import win32con
-    import win32gui
+    import msvcrt
 
-    down = bool(win32api.GetAsyncKeyState(win32con.VK_SPACE) & 0x8000)
-    focused = win32gui.GetForegroundWindow() in bound
-    return down and not was_down and focused, down
+    pressed = False
+    while msvcrt.kbhit():
+        pressed = msvcrt.getwch() in ("\r", "\n") or pressed
+    return pressed
 
 
 def _escape_pressed() -> bool:
@@ -131,14 +131,12 @@ def run_model_teach(
     observer = Observer(bindings)
     observer.start()
     overlay = window.create_overlay_window()
-    bound = {b.hwnd for b in bindings}
     print(
         f"Model Teach across {', '.join(b.label + ' ' + b.identity.executable for b in bindings)}. "
-        f"Pointers are suggestions (amber). Space in a bound window = step done. "
+        f"Pointers are suggestions (amber). Enter in this console = step done. "
         f"ESC quits (auto-stops after {seconds:g}s)."
     )
     deadline = time.monotonic() + seconds
-    space_down = False
     reported = 0
     shown = None
     code = 0
@@ -154,7 +152,7 @@ def run_model_teach(
                 print(f"Window {observer.lost} is gone or changed - stopping.")
                 code = 3
                 break
-            confirm, space_down = _space_edge(bound, space_down)
+            confirm = _console_enter()
             display = session.tick(observer.latest(), confirm=confirm)
             for number, why in session.completed[reported:]:
                 print(f"[done] step {number}: {why}")

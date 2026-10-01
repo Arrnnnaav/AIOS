@@ -1256,3 +1256,27 @@ to confirm where the cost actually is before changing anything else.
   latency p50/p95 per provider and consider a faster planner.
 - **Spec section 6 provenance** (`MODEL_SELECTED`, `promote()` refusal) at
   manager integration.
+
+## Steps 1-3 review follow-ups (D169)
+
+- No test drives `run_model_teach` itself: ESC, `--seconds`, observer-lost exit
+  3, and the D020 tick-latency ceiling extended to model-Teach (spec section 4).
+- Window choice (`input()`), binding and overlay creation run before the
+  `--seconds` deadline starts; ESC is not polled during console selection.
+- `observer.stop()` has no join; a COM walk can be cut mid-call at exit
+  (daemon thread; revisit at manager integration).
+- HIGH_RISK checks only the control name: misses "Don't Save", "Close",
+  "Overwrite", "Replace", and OK/Yes in a destructive dialog; plan step text is
+  not checked.
+- `reveals_document` misses extensionless file names, recent-file and mail
+  ListItems (subject, sender, preview). Owner question open since D167.
+- OpenRouter `:free` is in the default chain, but no provider summary is
+  shown before the first request, and the free tiers that retain prompts
+  cannot be turned off (spec section 7).
+- `CurrentIsOffscreen` does not catch a control covered by another window; a
+  pointer can sit over a different app.
+- Application name is the exe basename; a renamed exe can leak a name.
+  Consider a friendly-name allowlist.
+- No per-step cost cap (only the per-session request budget).
+- No test that SHOWING clears the pointer when re-resolution fails on a later
+  tick (the reask path covers it indirectly).

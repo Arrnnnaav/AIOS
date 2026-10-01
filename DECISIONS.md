@@ -7462,3 +7462,28 @@ Follow-ups from D167, done before the steps 1-3 milestone review:
   confirmed") and printed live, so a false completion like D167's is visible.
 
 Tests added; 5 targeted mutants killed with the new `/mutate` sweep.
+
+## D169 — Steps 1-3 milestone review: one BLOCKING finding, fixed
+
+**Date:** 1 October 2026
+
+Independent review (fresh agent in its own worktree, range `eb0852e^..b681d4c`,
+D162 tier-2 milestone review). Hermetic lane in the reviewer's tree: 3014
+passed.
+
+- **BLOCKING (rule 3), fixed:** the live loop drew from whatever frame the
+  observer last published, so an observer stuck on a hung window kept the
+  amber ring at a rectangle of any age. The session now draws only from a
+  frame younger than 3 s (provisional, above one observe cycle; fitted in the
+  measurement step) and never into a window the frame reports minimized or
+  partly read. Test-enforced; mutants killed.
+- **Also fixed:** a frame truncated at the candidate cap is never evidence that
+  the chosen control disappeared; confirmations (step done, high-risk
+  go-ahead) are now Enter in the Orbyn console, read from the console's own
+  input, because a Space read with GetAsyncKeyState also reached the guided
+  app and could press the focused control.
+- The remaining findings are follow-ups (FOLLOWUPS, "Steps 1-3 review").
+
+The live-probe figures in D166 ("0.22 s for 25 controls") and D168 ("per-PID
+count was 2, owned count 0") were console output in the session and were not
+retained; they are illustrations, not measurements (D034).

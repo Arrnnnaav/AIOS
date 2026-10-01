@@ -193,7 +193,7 @@ def _plan(*changes):
 
 def _session(plan, choices):
     gateway = FakeGateway(plan, choices)
-    return ModelTeachSession("make a deck", gateway, SyncSlot()), gateway
+    return ModelTeachSession("make a deck", gateway, SyncSlot(), clock=lambda: 0.0), gateway
 
 
 def test_a_session_guides_step_by_step_and_finishes_on_observed_change():
@@ -347,3 +347,38 @@ def test_each_completed_step_records_why():
     session.tick(_frame([_c(2)], frame_id=2))
     session.tick(_frame([_c(2)], frame_id=3), confirm=True)
     assert session.completed == [(1, "observed chosen_disappears"), (2, "you confirmed")]
+
+
+def test_a_stale_frame_is_never_drawn_from():
+    """Review B1: a stuck observer keeps handing back its last frame; the
+    pointer must disappear rather than stay at an old rectangle."""
+
+    now = [0.0]
+    gateway = FakeGateway(_plan(ExpectedChange.TITLE_CHANGES), [_choice("c1")])
+    session = ModelTeachSession("g", gateway, SyncSlot(), clock=lambda: now[0])
+    frame = _frame([_c(1)])  # observed at t=0
+    assert session.tick(frame).target is not None
+    now[0] = 4.0
+    stale = session.tick(frame)
+    assert stale.target is None and stale.phase is Phase.SHOWING
+    assert "fresh" in stale.message
+
+
+def test_a_minimized_or_partly_read_window_is_not_drawn_into():
+    session, _ = _session(_plan(ExpectedChange.TITLE_CHANGES), [_choice("c1")])
+    assert session.tick(_frame([_c(1)])).target is not None
+    w1, w2 = W1, W2
+    partial = build_frame(
+        2, 0.0, [WindowObservation(w1, WINDOW, (_c(1),), True), WindowObservation(w2, WINDOW, ())]
+    )
+    assert session.tick(partial).target is None
+
+
+def test_a_capped_frame_is_never_evidence_of_disappearance():
+    before = _frame([_c(1)])
+    many = [_c(i, f"B{i}", rect=(10, 10 + i, 60, 40 + i)) for i in range(2, MAX_CANDIDATES + 5)]
+    after = _frame(many, frame_id=2)
+    assert after.truncated
+    assert not change_observed(
+        ExpectedChange.CHOSEN_DISAPPEARS, before.candidates[0], before, after
+    )

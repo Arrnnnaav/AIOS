@@ -202,5 +202,6 @@ with the script named at the bottom; edit the curated table by hand.
 - D166 — Harness step 2: multi-window binding and the observation frame
 - D167 — Model-driven Teach across bound windows, behind `--model-teach` (harness step 3)
 - D168 — Model-Teach fixes: document names stay local, frame-host windows, completion reasons
+- D169 — Steps 1-3 milestone review: one BLOCKING finding, fixed
 
 _Generated from `DECISIONS.md` headings by `py -3.12 tools/render_decisions_index.py`._

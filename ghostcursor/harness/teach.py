@@ -15,6 +15,7 @@ imports no memory code, and a test holds it to that).
 from __future__ import annotations
 
 import re
+import time
 from dataclasses import dataclass
 from enum import Enum
 
@@ -33,6 +34,10 @@ from ghostcursor.providers import (
 #: in the measurement step. Until then these are placeholders, not results.
 CONFIDENCE_FLOOR = 0.6
 MARGIN = 0.2
+#: A frame older than this is never drawn from (review B1): the observer may
+#: be stuck on a hung window, and the screen may have moved since. Provisional:
+#: above one observe cycle across several windows; fitted in the measurement step.
+MAX_FRAME_AGE_S = 3.0
 #: Re-asks per step before the session says it is stuck.
 MAX_REASKS = 3
 
@@ -104,7 +109,11 @@ def change_observed(
     """True only for a change attributable to the chosen control or its own
     window (spec section 5). A partial read is never evidence of absence."""
 
-    if chosen.window in after.incomplete or chosen.window in after.minimized:
+    if (
+        chosen.window in after.incomplete
+        or chosen.window in after.minimized
+        or after.truncated  # the cap may have dropped a control that is still there
+    ):
         return False
     now = [
         c
@@ -146,8 +155,11 @@ class Display:
 
 
 class ModelTeachSession:
-    def __init__(self, goal: str, gateway, slot: RequestSlot | None = None):
+    def __init__(
+        self, goal: str, gateway, slot: RequestSlot | None = None, *, clock=time.monotonic
+    ):
         self.goal = goal
+        self.clock = clock
         self.gateway = gateway
         self.slot = slot or RequestSlot()
         self.phase = Phase.PLANNING
@@ -290,7 +302,7 @@ class ModelTeachSession:
                 return Display(
                     self.phase,
                     f"{self._instruction()} -- this control can change or lose "
-                    "data; press Space in that window to show it",
+                    "data; press Enter in the Orbyn console to show it",
                 )
 
         if self.phase is Phase.SHOWING:
@@ -307,6 +319,10 @@ class ModelTeachSession:
                 self._reask("the control moved or went away")
             else:
                 self._target = current
+                if self.clock() - frame.at > MAX_FRAME_AGE_S or current.window in (
+                    frame.minimized + frame.incomplete
+                ):
+                    return Display(self.phase, f"{self.message} (waiting for a fresh look)")
                 return Display(self.phase, self.message, current)
 
         return Display(self.phase, self.message)
