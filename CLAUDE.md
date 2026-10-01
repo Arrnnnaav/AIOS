@@ -12,6 +12,11 @@ of this file is archived at `docs/archive/CLAUDE-pre-D162.md` for reference
 only. Architecture: `FLOW.md`. Phase order and status: `ROADMAP.md`. Open work:
 `docs/superpowers/FOLLOWUPS.md`. Measured results: `docs/evidence/`.
 
+**Read in a bounded way.** Read one ROADMAP section and one FLOW section for the
+task, find the decisions they cite through `docs/governance/DECISIONS_INDEX.md`,
+and read only those entries. Never read the whole of `DECISIONS.md`, `FLOW.md`,
+`FOLLOWUPS.md` or the Graphify report by default (AGENTS.md).
+
 ## Rigor is proportional to risk (D162)
 
 | Tier | What | Required before merge |
@@ -65,9 +70,13 @@ only. Architecture: `FLOW.md`. Phase order and status: `ROADMAP.md`. Open work:
 ## Current state (details in ROADMAP.md)
 
 - Production: PowerPoint only; VS Code and Excel installed but disabled (D130).
-- Act v1: harness-path campaign accepted (D160); manager-path campaign next.
-- Direction: hand-written packs retired (D161); model-driven Teach is next
-  (D159, spec in `docs/superpowers/specs/2026-10-01-model-driven-teach-design.md`).
+- Direction: Orbyn is an app-agnostic, model-driven harness working across
+  applications; PowerPoint is a test fixture (D164). Hand-written packs are
+  retired (D161).
+- Act on PowerPoint: harness-path campaign accepted (D160); three real manager
+  runs completed but no counted manager campaign (D163, D165).
+- Now: harness track step 2, the multi-window observation frame. Step 1, the
+  provider gateway (`ghostcursor/providers/`), is built (D164).
 - Spatial (`D:\PROJECTS\Spatial`) and SayStride are separate projects; reuse
   their code by porting with attribution, not by merging trees.
 
