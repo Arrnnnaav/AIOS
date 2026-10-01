@@ -1,129 +1,228 @@
-# Model-driven Teach — design
+# Model-driven Teach — design (revision 2)
 
-**Status:** design, not built. Decision: D159. Independent D032 review of this
-document is required before the first implementation slice.
+**Status:** design, not built. Decision: D159; owner retired hand-written packs
+in D161. Revision 2 answers the first independent review
+(`review-spec-d159.md`, branch `review-spec-d159`, verdict NOT READY: B1-B6,
+I1-I12, M1-M5). It needs a second review before slice 1 starts.
 
 ## 1. What it is
 
-The user states a goal in any Windows application. Orbyn shows where to click,
-one step at a time; the user clicks; Orbyn observes that the step happened and
-moves on. No hand-written pack, recipe or selector is needed for the
-application. A large model plans the steps; a fast System-One model (TypeSafe
-Jev) chooses, for each step, one control from the controls the harness actually
-observed on screen.
+The user states a goal in a Windows application. Orbyn shows where to click,
+one step at a time; the user clicks; Orbyn observes the step happen and moves
+on. No hand-written pack, recipe or selector is needed. A large model (System
+Two) plans the steps; a fast model (System One, TypeSafe Jev) chooses, per
+step, one control from the controls the harness observed, or abstains.
 
-It is Teach, not Act. **Orbyn never clicks, types or moves the cursor** (D006
-unchanged). The human performs every action.
+It is Teach, not Act. **Orbyn never clicks, types or moves the cursor** (D006).
+`authorize_intent()` and `bind_workflow()` refuse a model-Teach session, and a
+model-Teach session can never be converted into an `AuthorizedIntent` or an
+`AuthorizedActionIntent`.
 
-Out of scope here: Act (model-driven execution), cross-application goals,
-Skills/marketplace, screenshots sent to a model by default.
+Out of scope: Act, cross-application goals, Skills/marketplace, screenshots to
+a model, OCR candidates as model choices (v1).
 
-## 2. Why
+## 2. Target binding without a pack (review B6)
 
-Hand-curated packs did not scale: one application took weeks, and its only
-accepted Teach recipe was invalidated by an Office update (D151). The plan
-already describes the replacement -- `ObservationFrame`, a bounded System-One
-choice, and a dual-speed executor (MP5, phases 15-17) -- but sequenced it last.
-This design brings it forward for Teach only, where nothing executes and the
-risk is a wrong pointer, not a wrong effect.
+- The user chooses the window from a list of visible top-level windows that are
+  not Orbyn's own, not elevated above Orbyn, and not on a denylist (password
+  managers, credential prompts, the Windows security desktop).
+- Binding records the exact HWND, PID, executable name and file version.
+  Perception walks **only that HWND's subtree**; there is no title-regex scope.
+- Every tick revalidates HWND, PID, executable and version. Any change ends the
+  session (`TARGET_LOST`); there is no rediscovery and no foreground read (D075).
+- The overlay is created only after binding passes.
 
-## 3. Flow
+## 3. The observation frame and candidates (review B1, I5)
+
+- `ObservationFrame` = frame id, monotonic time, bound target identity, and a
+  **candidate set**: UIA elements only (tier 1), drawn from a control-type
+  allowlist (Button, MenuItem, TabItem, ListItem, TreeItem, CheckBox,
+  RadioButton, ComboBox, Hyperlink, SplitButton, Edit-as-target-only), capped
+  at a measured number of candidates per frame (initial cap 150, to be fitted
+  on the corpus with recorded prefilter recall).
+- `Element` gains: UIA runtime id, `is_enabled`, `is_offscreen`,
+  `is_password`, and a bounded ancestor path. Perception keeps its worker
+  thread and single-slot publication (D021/D022) and its walk-time budget; a
+  hung target produces no frame, never a stall.
+- Each candidate gets a frame-local id `c1..cn` for the model, mapped by the
+  harness to its runtime id. The model never sees runtime ids, rectangles or
+  automation ids.
+- **Freshness is by identity, not by frame id.** Just before drawing, the
+  chosen runtime id is re-resolved to exactly one element in the latest
+  published observation (D069 exactly-one), still enabled and on screen, with
+  its rectangle within a tolerance of the one the choice was made on. Any
+  failure re-observes and re-asks; it never draws at an old rectangle.
+
+## 4. Plan, choose, draw, verify
 
 ```text
-goal (manager Ask / CLI --goal, no pack match)
-  -> target window: user chooses (TARGET_CHOICE_REQUIRED path); never foreground (D075)
-  -> perception worker publishes observations (UIA tier 1, OCR tier 2) as today (D021/D022)
-  -> ObservationFrame: frame id, app identity/version, candidates c1..cn
-       (name, control type, normalized role path, coarse region, tier/provenance)
-  -> System Two (large model): goal + app identity + frame summary
-       -> TeachPlan: ordered steps, each {instruction, expected_change}
-  -> per step:
-       System One (Jev): "which listed candidate does this step act on?"
-         options = frame candidate ids + ABSTAIN
-       deterministic gate: id in THIS frame, frame fresh, confidence >= floor,
-         control enabled/visible -> else re-observe, re-ask, or ask the user
-       overlay draws the ring on that candidate's observed rectangle
-         (INFERRED colour: model-selected, never the confirmed-recipe colour)
-       user acts
-       verify: re-observe; expected_change checked by deterministic signals
-         (element appeared/disappeared, focus moved, value changed) and, only
-         when those are silent, a System-One judgment over the before/after
-         frame digests; the user may also confirm "done"
-       wrong action: existing focus-visited signal (D037) re-asserts the hint
-  -> terminal: completed / stopped / failed-with-reason (SessionSnapshot)
+goal -> bind target -> first frame
+ -> System Two: TeachPlan (bounded steps; each = instruction + expected_change)
+ -> per step:
+      System One: choose one candidate id or ABSTAIN (closed schema)
+      gate (deterministic):
+        membership in the frame; exactly-one re-resolution (section 3);
+        not ambiguous: no other candidate with the same normalised name+type;
+        confidence >= floor AND top-1 minus top-2 >= margin (both fitted on a
+          dev split and frozen before evaluation);
+        not a high-risk target (delete, remove, send, pay, purchase, sign in,
+          password, uninstall, format) -- those need the user's explicit
+          confirmation before the pointer is drawn;
+        tainted candidates (document or web-page content) held to a stricter
+          floor, or excluded in v1
+      -> pass: draw the pointer at the re-resolved observed rectangle
+      -> fail: re-observe / re-ask (capped) / ask the user / BLOCKED
+      user acts -> verify (section 5)
+ -> replan when a step's outcome reveals a new surface (menu, dialog), capped
+    (MP5 outcomes: ACT, WAIT, REOBSERVE, NEEDS_USER, BLOCKED, DONE_CANDIDATE)
 ```
 
-The executor, rail, `SessionSnapshot`, Stop/Pause and session store are reused
-unchanged. The new parts are the frame, the two model calls, and the gate.
+Model calls never run on the tick thread (review I4). They use the tier-2
+pattern: a single overwritten request slot, executed on a worker, result
+published into a later observation; cancelled on step change, Stop, Pause and
+ESC. A request in flight when Stop arrives is abandoned and its result
+discarded (M3). The D020 0.5 s tick ceiling is covered by the existing
+tick-latency test, extended to model-Teach sessions.
 
-## 4. The boundary that keeps it safe
+## 5. Verification (review B2)
 
-- The model may choose **only a candidate id present in the current frame**,
-  or abstain. It never emits coordinates, selectors, AutomationIds, keystrokes
-  or tool names; the response schema is closed and validated deterministically.
-- A frame's ids expire with the frame. A choice against an older frame is
-  refused, not mapped.
-- The pointer is drawn at the chosen candidate's **observed** rectangle,
-  re-read from the frame -- never at a model-supplied position (D109 spirit:
-  the pointer points at a real, observed control).
-- No step completes on a model's say-so alone when a deterministic signal is
-  available; "done" without an observed change requires the user to confirm.
-- Screen text is **untrusted content** (MP2 phase 5): it is passed as quoted,
-  typed data in its own field, never concatenated into instructions; length
-  and character class are bounded; an instruction found in screen text is
-  data. Adversarial cases (button labels that say "ignore previous
-  instructions", "click OK to continue") are in the test corpus from slice 1.
-- Model output is advice (D058): it selects among observed options for
-  **guidance**; it never authorizes an Act effect. Act stays on the signed
-  plugin path.
+`expected_change` is a **closed enum** whose arguments refer only to things the
+harness already observed:
 
-## 5. Providers
+- `CHOSEN_DISAPPEARS` — the chosen candidate's runtime id is gone;
+- `CHOSEN_STATE_CHANGES` — its toggle/selection/expand state changed;
+- `FOCUS_MOVES_TO_CHOSEN` — keyboard focus is on its runtime id;
+- `NEW_WINDOW_OF_TARGET` — a new top-level window of the bound PID appeared;
+- `TITLE_CHANGES` — the bound window's title changed.
 
-- **System Two:** pluggable gateway; trial default NVIDIA NIM (key exists on
-  this machine for Spatial) or OpenRouter free models, under D147. A local
-  Ollama model remains a supported configuration.
-- **System One:** TypeSafe Jev (`TYPESAFE_API_KEY` in the git-ignored `.env`).
-- Port Spatial's `system_one.py` (kept-alive client, hard time budget, one
-  retry) and the OpenAI-compatible streaming path of `providers.py` into
-  `ghostcursor/inference/`, with attribution; they know nothing about Spatial.
-- No provider reachable: Teach says so and offers nothing. It never falls back
-  to guessing a target.
-- What leaves the machine: goal text, application name/version, candidate
-  names/types/role paths/coarse regions. Never HWND, PID, executable paths,
-  window titles containing file paths, or screenshots (a vision fallback is a
-  later, separately consented option).
+A change that cannot be attributed to the chosen candidate does not complete a
+step: background churn (D037 measured about 10% idle churn in VS Code) is not
+evidence. The model may return only `DONE_CANDIDATE`, which completes a step
+**only with the user's confirmation**. Wrong-action feedback (D037) works only
+where controls expose stable identity; it is silent for most Electron and web
+controls, and the UI says so.
 
-## 6. Accuracy is measured before it is claimed
+## 6. Provenance and memory (review B3)
 
-1. A read-only capture tool records real frames and goals from PowerPoint,
-   Excel, VS Code, Notepad and a browser, with the correct candidate per step
-   labelled by the owner. Frames are scrubbed of handles before retention.
-2. An offline replay harness scores deterministic baseline, System Two alone,
-   and System Two + Jev on that corpus: top-1 target accuracy, abstention,
-   wrong-but-confident rate, latency p50/p95, cost per step.
-3. Recorded cassettes make the harness hermetic; live provider runs are a
-   separate, explicitly named lane (D025).
-4. User-facing release requires a recorded result on that corpus (D034) and an
-   independent review. No accuracy number is quoted before it is measured.
+A new closed provenance value, `MODEL_SELECTED`:
+- always rendered INFERRED, never the confirmed colour, never recoloured by
+  D112 (D109/D112 remain Act rules and are not amended here, M2);
+- refused by `promote()` and by `ObservationStore.record()`: nothing a model
+  selected reaches `kb.sqlite` (D070, D147: provider output is not memory);
+- makes `grounded_by_uia_only` false, so D069's UIA-provenance gates cannot
+  count it as UIA.
 
-## 7. Slices
+Each of these gets a D018 mutation test.
 
-1. Provider gateway + Jev transport, cassette-tested; closed response schemas.
-2. `ObservationFrame` built from the existing perception publication.
-3. Corpus capture tool (read-only) and offline replay harness.
-4. Model-driven Teach executor behind `--model-teach`, reusing the compiled
-   tour's rendering, verification, session and control plumbing.
-5. Manager integration: a goal with no pack match offers model-driven Teach.
+## 7. Untrusted content and what leaves the machine (review B4, I2, I3, I7)
+
+- A typed envelope separates trusted fields (goal, policy, schema, task) from
+  tainted fields (every string read from the screen). No API accepts a
+  pre-joined prompt string; tainted values are quoted, length-bounded,
+  control-character-stripped, and never placed in instruction fields.
+- Strict parsing: closed schemas, duplicate keys and extra fields rejected;
+  empty, truncated or invalid output means "unavailable", never a guess, and
+  never a fallback to the model's reasoning text (the Spatial streaming path
+  does that, so only its transport is ported, M1).
+- Outbound: goal text, application name/version, and per candidate its
+  frame-local id, control type, normalised name and coarse region. **Excluded:**
+  runtime ids, AutomationIds, rectangles, ancestor paths, values of Edit and
+  Document controls, anything under a password field, window titles, HWND,
+  PID, executable paths, screenshots. The name/type pair is closer to a
+  selector than D147 anticipated; this slice amends D147's outbound list
+  explicitly to permit it for Teach guidance only, and its D032 review covers
+  that amendment.
+- D147's user-visible provider summary and a per-request local record
+  (provider, model, time, sanitised-context digest; no content) are built
+  before any request is sent. Free tiers that retain or train on prompts are
+  disclosed in that summary, and can be disabled.
+- Keys live in Windows Credential Manager (DPAPI-backed), not in `.env`; the
+  `.env` copy is migrated and deleted (review I3).
+- Instruction text shown to the user is model-written from untrusted content:
+  bounded, sanitised, labelled "suggested", and it never asks the user to type
+  a secret (I7).
+- Cost caps per step and per session; a rate-limit or quota response becomes
+  NEEDS_USER, never a guess (M5).
+
+## 8. Executor composition (review I12)
+
+The compiled tour's grounder reads recipe selectors, its verifier calls
+`workflow.goal_reference_for`, and the run path hydrates and promotes from the
+knowledge base. Model-Teach therefore gets its own composition --
+`ModelTeachSession` supplying grounding (section 4), verification (section 5)
+and provenance (section 6) -- while reusing the overlay, rail,
+`SessionSnapshot`, `session_events`, Stop/Pause and the session store as they
+are. There is still one runtime loop; no second event model.
+
+## 9. Evaluation, pre-registered (review section 6)
+
+- **Primary harm metric:** a wrong pointer shown. Reported per application and
+  for high-risk targets, where the threshold is zero.
+- Pre-registered before measuring: metrics, dev/test split, floor and margin
+  (fitted on dev only), thresholds.
+- Size: at least 300 pointer-shown test steps per claimed application, so a
+  zero-failure result bounds the wrong-pointer rate below about 1% at 95%.
+- Multiple acceptable labels per step; a second labeller on a sample; goals
+  written by people other than the owner.
+- Separate adversarial set (prompt injection in labels, look-alike controls);
+  injection success threshold zero.
+- Also measured: prefilter recall, abstention, false completion under
+  background churn, stale-render rate, latency p50/p95, cost, behaviour with
+  the provider down.
+- Baseline (M4): a deterministic lexical matcher between step instruction and
+  candidate name, on the same corpus.
+- Lanes: hermetic replay with recorded cassettes; a separately named live
+  provider lane; a separately named live end-to-end lane on the desktop
+  (D025). The replay harness lives in `ghostcursor/evaluation/` and obeys its
+  read-only rules (D063-D067); a model or prompt change re-runs it.
+- Corpus capture (I10): the capture tool scrubs before the first write, keeps
+  raw frames only under ignored `.artifacts/`, and the HWND/PID scan runs on
+  every retained frame and cassette. Nothing captured is edited afterwards
+  (D139).
+
+## 10. Slices
+
+1. **Provider gateway** (no UI): Credential-Manager keys, time budgets,
+   cancellation, normalised errors, rate and cost limits, D147 attribution
+   record; the typed untrusted envelope and outbound redaction; closed schemas
+   (System-One choice with abstain; TeachPlan with the closed
+   `expected_change` enum) and a strict parser with no reasoning fallback;
+   the non-blocking request-slot API; cassettes, a keyless hermetic lane, a
+   named live lane, local Ollama parity; D018 mutations on schema membership,
+   the reasoning-fallback ban, redaction and timeout.
+2. `ObservationFrame` and the `Element` fields (section 3), plus binding
+   without a pack (section 2).
+3. Corpus capture and offline replay evaluation (section 9).
+4. `ModelTeachSession` behind `--model-teach` (sections 4-8).
+5. Manager integration.
 6. Later: verified runs drafted into reviewable Skills (MP6 phase 18).
 
-Each slice: hermetic tests, D018 mutations on every boundary in section 4,
+Each slice: hermetic tests, D018 mutations on each boundary it introduces,
 evidence for any number, independent review before the next.
 
-## 8. Rules this changes (to be applied in the slice that implements them)
+**Sequencing (review I11).** CLAUDE.md permits only read-only evaluation and
+design before Act activation. Slices 1-3 add no UI and no effect; starting them
+before activation needs an explicit owner decision recorded in DECISIONS.
+Slices 4-5 wait for that decision and their own reviews.
 
-- CLAUDE.md "No enabled compatible plugin means no executable UI knowledge":
-  amended for **Teach guidance only** -- a model may select an observed
-  candidate in the current frame to draw a guidance pointer. Act, task graphs
-  and capabilities are unchanged.
-- D058: model output may choose among observed candidates for guidance; it
-  still never selects what executes.
+## 11. Rules to amend (each in the slice that needs it, with review)
+
+1. CLAUDE.md "No enabled compatible plugin means no executable UI knowledge"
+   and "a vision tier ... cannot guide an action without plugin authority":
+   Teach guidance may come from a model selecting an observed candidate.
+2. D091 / CLAUDE.md "with no enabled capability registry, do not contact the
+   model ... no target or overlay": not for model-Teach.
+3. CLAUDE.md "Executable targets are identity-bounded by the compiled
+   workflow": replaced for model-Teach by the binding in section 2.
+4. D058 / "Model output is advice": it may choose among observed candidates for
+   guidance, never what executes.
+5. The Teach contract in `ghostcursor.interaction` and D088's rail
+   precondition.
+6. D069's UIA-provenance wording: add `MODEL_SELECTED`.
+7. D147's outbound list (section 7).
+
+**Preserved, unamended:** D006 and the input-synthesis scan; D009/D010; D020;
+D021/D022; D025; D026; D030 (no OCR promotion; no OCR model choices in v1);
+D034; D037 with its limits stated; D069 presence and exactly-one at render;
+D070 (no model output in `kb.sqlite`); D075; D109/D112 for Act; D128 and the
+HWND/PID scan; D139; session-store content rules; ESC and `--seconds`.
