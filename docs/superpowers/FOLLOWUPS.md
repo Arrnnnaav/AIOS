@@ -1292,3 +1292,10 @@ to confirm where the cost actually is before changing anything else.
   or checksum; SayStride's Parakeet path and dictionary are not ported.
 - Replay's synthetic frame cannot measure re-resolution, staleness or the
   twin check across real frames; the live end-to-end lane must.
+- From the D171 review: `dictate_goal` ignores ESC/`--seconds` (records up to
+  30 s; first model load can block on a download) -- runs before the session.
+- `parse_record` checks keys only; a hand-edited corpus is sent as-is by the
+  `live` chooser (no re-hiding of document names, no identity scan).
+- Capture's `leaks_identity` checks HWND/PID but not window titles typed into
+  the goal or instruction.
+- No retry when nothing is under the point; guidance continues without a mark.

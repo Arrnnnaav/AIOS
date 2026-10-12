@@ -91,6 +91,9 @@ def transcribe(samples) -> str:
         return ""
     from faster_whisper import WhisperModel
 
+    print(
+        f"Loading {WHISPER_MODEL} (first use downloads model weights; no audio is sent)."
+    )
     model = WhisperModel(WHISPER_MODEL, device="cpu", compute_type="int8")
     segments, _ = model.transcribe(samples, language="en", beam_size=1, vad_filter=True)
     segments = list(segments)

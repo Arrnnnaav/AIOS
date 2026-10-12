@@ -120,30 +120,48 @@ def _escape_pressed() -> bool:
     return bool(win32api.GetAsyncKeyState(win32con.VK_ESCAPE) & 0x8001)
 
 
-def take_mark(observer: Observer, deadline: float):
+#: take_mark's result when ESC or the session deadline ended it: the session
+#: must stop, not start without a mark (review of D171).
+ABORTED = object()
+
+
+def take_mark(
+    observer: Observer,
+    deadline: float,
+    *,
+    escape=_escape_pressed,
+    enter=_console_enter,
+    cursor=None,
+    clock=time.monotonic,
+):
     """Wait for the user to hover over what they mean and press Enter in this
     console; resolve the cursor point locally against the newest frame (D171).
-    Reads the cursor position only; never moves it. None on ESC or timeout."""
-
-    import win32api
+    Reads the cursor position only; never moves it. Returns a mark, None when
+    nothing is under the point, or ABORTED on ESC or at the deadline."""
 
     from ghostcursor.harness.spatial import SpatialReference, point
 
+    if cursor is None:
+        import win32api
+
+        cursor = win32api.GetCursorPos
     print("Point: hover the mouse over what you mean, then press Enter here.")
-    while time.monotonic() < deadline and not _escape_pressed():
-        if _console_enter():
+    while clock() < deadline:
+        if escape():
+            return ABORTED
+        if enter():
             frame = observer.latest()
             if frame is None:
                 print("Nothing observed yet - try again.")
                 continue
-            mark = SpatialReference.from_mark(point(*win32api.GetCursorPos()), frame)
+            mark = SpatialReference.from_mark(point(*cursor()), frame)
             under = mark.current(frame)
             print(
                 f"Marked: {under[0].name[:40] if under else 'no control under the pointer'}"
             )
             return mark if under else None
         time.sleep(TICK_S)
-    return None
+    return ABORTED
 
 
 def run_model_teach(
@@ -160,7 +178,13 @@ def run_model_teach(
     bindings = bind(hwnds or choose_windows())
     observer = Observer(bindings)
     observer.start()
-    mark = take_mark(observer, time.monotonic() + seconds) if point else None
+    # One deadline for the whole session, the point prompt included (rule 4).
+    deadline = time.monotonic() + seconds
+    mark = take_mark(observer, deadline) if point else None
+    if mark is ABORTED:
+        observer.stop()
+        print("Stopped before guidance started.")
+        return 0
     session = ModelTeachSession(goal, gateway or Gateway(), mark=mark)
     overlay = window.create_overlay_window()
     print(
@@ -168,7 +192,6 @@ def run_model_teach(
         f"Pointers are suggestions (amber). Enter in this console = step done. "
         f"ESC quits (auto-stops after {seconds:g}s)."
     )
-    deadline = time.monotonic() + seconds
     reported = 0
     shown = None
     code = 0

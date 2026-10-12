@@ -135,3 +135,111 @@ def test_a_mark_in_one_window_never_matches_a_twin_id_in_another():
     )
     mark = SpatialReference.from_mark(point(30, 25), frame)
     assert [c.window for c in mark.current(frame)] == ["w1"]
+
+
+# --- take_mark: the point prompt keeps ESC and --seconds (review of D171) ---
+
+
+class _Observer:
+    def __init__(self, frame):
+        self.frame = frame
+
+    def latest(self):
+        return self.frame
+
+
+def _ticks(step=1.0):
+    now = [0.0]
+
+    def clock():
+        now[0] += step
+        return now[0]
+
+    return clock
+
+
+def test_esc_during_the_point_prompt_aborts_the_session():
+    from ghostcursor.harness.teach_live import ABORTED, take_mark
+
+    result = take_mark(
+        _Observer(_frame()), 100.0, escape=lambda: True, enter=lambda: True,
+        cursor=lambda: (100, 25), clock=_ticks(),
+    )
+    assert result is ABORTED
+
+
+def test_the_session_deadline_bounds_the_point_prompt(monkeypatch):
+    from ghostcursor.harness import teach_live
+
+    monkeypatch.setattr(teach_live.time, "sleep", lambda _: None)
+    result = teach_live.take_mark(
+        _Observer(_frame()), 5.0, escape=lambda: False, enter=lambda: False,
+        cursor=lambda: (100, 25), clock=_ticks(),
+    )
+    assert result is teach_live.ABORTED
+
+
+def test_enter_marks_the_control_under_the_cursor():
+    from ghostcursor.harness.teach_live import take_mark
+
+    frame = _frame()
+    mark = take_mark(
+        _Observer(frame), 100.0, escape=lambda: False, enter=lambda: True,
+        cursor=lambda: (100, 25), clock=_ticks(),
+    )
+    assert [c.name for c in mark.current(frame)] == ["Insert"]
+    nothing = take_mark(
+        _Observer(frame), 100.0, escape=lambda: False, enter=lambda: True,
+        cursor=lambda: (800, 500), clock=_ticks(),
+    )
+    assert nothing is None
+
+
+def test_run_model_teach_uses_one_deadline_and_stops_on_abort(monkeypatch):
+    from ghostcursor.harness import teach_live
+
+    seen = {}
+    monkeypatch.setattr(teach_live, "bind", lambda hwnds: (W1,))
+    monkeypatch.setattr(teach_live.Observer, "start", lambda self: None)
+
+    def fake_take_mark(observer, deadline):
+        seen["deadline"] = deadline
+        return teach_live.ABORTED
+
+    monkeypatch.setattr(teach_live, "take_mark", fake_take_mark)
+    monkeypatch.setattr(
+        teach_live.window, "create_overlay_window",
+        lambda: (_ for _ in ()).throw(AssertionError("overlay after abort")),
+    )
+    monkeypatch.setattr(teach_live.time, "monotonic", lambda: 1000.0)
+    assert teach_live.run_model_teach("g", [11], seconds=60, gateway=object(), point=True) == 0
+    assert seen["deadline"] == 1060.0
+
+
+def test_time_spent_pointing_counts_against_the_session(monkeypatch):
+    from ghostcursor.harness import teach_live
+
+    now = [1000.0]
+
+    def clock():
+        now[0] += 0.01
+        return now[0]
+
+    def fake_take_mark(observer, deadline):
+        now[0] = deadline + 1  # the whole budget went on pointing
+        return None
+
+    drawn = []
+    monkeypatch.setattr(teach_live, "bind", lambda hwnds: (W1,))
+    monkeypatch.setattr(teach_live.Observer, "start", lambda self: None)
+    monkeypatch.setattr(teach_live, "take_mark", fake_take_mark)
+    monkeypatch.setattr(teach_live.time, "monotonic", clock)
+    monkeypatch.setattr(teach_live.time, "sleep", lambda _: None)
+    monkeypatch.setattr(teach_live, "_escape_pressed", lambda: False)
+    monkeypatch.setattr(teach_live, "_console_enter", lambda: False)
+    monkeypatch.setattr(teach_live.window, "create_overlay_window", lambda: "overlay")
+    monkeypatch.setattr(teach_live.window, "destroy_overlay_window", lambda o: None)
+    monkeypatch.setattr(teach_live.window, "pump_messages_nonblocking", lambda: None)
+    monkeypatch.setattr(teach_live.window, "clear_hint", lambda o: drawn.append(o))
+    teach_live.run_model_teach("g", [11], seconds=60, gateway=object(), point=True)
+    assert drawn == []  # no guidance tick ran after the deadline

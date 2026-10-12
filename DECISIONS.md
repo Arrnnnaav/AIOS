@@ -7553,3 +7553,12 @@ unknown labels allowed; extra record fields; extra candidate fields; label
 check off; wrong pointer not counted when nothing fits; fit on all splits;
 fit tolerating wrong pointers. Not yet run live: `--point` and `--voice` have
 hermetic tests only.
+
+**Review (12 October; fresh agent, own worktree, range `14b24de..cebbdde`).**
+Two BLOCKING (rule 4), fixed: ESC during the `--point` prompt was consumed and
+guidance then started anyway; and `--point` gave the prompt its own
+`--seconds`, so a session could run about twice the limit. `take_mark` now
+returns ABORTED on ESC or at the deadline and the session stops before the
+overlay exists; one deadline covers the prompt and guidance. Test-enforced;
+4 mutants, 4 killed (escape ignored, timeout read as no mark, abort ignored,
+fresh deadline after pointing). Other findings are in FOLLOWUPS.
