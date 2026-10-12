@@ -1303,8 +1303,9 @@ to confirm where the cost actually is before changing anything else.
   `/plan` and `/teach` from the console.
 - The workspace is a console; the native manager (compact/expanded) does not
   show the brief, evidence or Brain panel yet (MVP.md product acceptance).
-- No `Orbyn/tavily` key; research falls back to DuckDuckGo HTML scraping,
-  which can break or be rate-limited. Owner decides whether to copy Spatial's.
+- ~~No `Orbyn/tavily` key~~ closed 2026-10-12: owner supplied a Tavily key,
+  stored as `Orbyn/tavily`; one live `tavily_search` returned 5 sources.
+  DuckDuckGo remains the fallback when the key is absent.
 - `/teach` binds windows on the console each time; the workspace does not
   remember bindings (handles must not persist).
 - Memory extraction trusts the model's `kind`; a wrong kind becomes a durable
