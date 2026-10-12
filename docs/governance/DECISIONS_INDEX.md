@@ -24,7 +24,7 @@ with the script named at the bottom; edit the curated table by hand.
 | Testing | Desktop lanes one at a time; hung-window files alone | D025 |
 | Signing | Payload bytes are LF and pinned; rebuild/re-sign and move both pins together; current PowerPoint manifest `b0d63512` | D125, D127, D149 |
 | Campaigns | Declare in the committed ledger; nothing committed until the last attempt; retain every outcome | D150-D158, D163, D165 |
-| Spatial / SayStride | Separate projects; integrate by typed reference / transcript sidecar; port code with attribution | D143, D146, D161 |
+| Spatial / SayStride | Separate projects; integrate by typed reference / transcript sidecar; port code with attribution | D143, D146, D161, D171 |
 
 ## Where current status lives
 
@@ -203,5 +203,7 @@ with the script named at the bottom; edit the curated table by hand.
 - D167 — Model-driven Teach across bound windows, behind `--model-teach` (harness step 3)
 - D168 — Model-Teach fixes: document names stay local, frame-host windows, completion reasons
 - D169 — Steps 1-3 milestone review: one BLOCKING finding, fixed
+- D170 — Harness step 4 tooling: corpus capture and offline replay
+- D171 — Owner: Spatial point reference and SayStride voice goal in model-Teach
 
 _Generated from `DECISIONS.md` headings by `py -3.12 tools/render_decisions_index.py`._

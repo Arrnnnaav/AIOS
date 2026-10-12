@@ -120,16 +120,48 @@ def _escape_pressed() -> bool:
     return bool(win32api.GetAsyncKeyState(win32con.VK_ESCAPE) & 0x8001)
 
 
+def take_mark(observer: Observer, deadline: float):
+    """Wait for the user to hover over what they mean and press Enter in this
+    console; resolve the cursor point locally against the newest frame (D171).
+    Reads the cursor position only; never moves it. None on ESC or timeout."""
+
+    import win32api
+
+    from ghostcursor.harness.spatial import SpatialReference, point
+
+    print("Point: hover the mouse over what you mean, then press Enter here.")
+    while time.monotonic() < deadline and not _escape_pressed():
+        if _console_enter():
+            frame = observer.latest()
+            if frame is None:
+                print("Nothing observed yet - try again.")
+                continue
+            mark = SpatialReference.from_mark(point(*win32api.GetCursorPos()), frame)
+            under = mark.current(frame)
+            print(
+                f"Marked: {under[0].name[:40] if under else 'no control under the pointer'}"
+            )
+            return mark if under else None
+        time.sleep(TICK_S)
+    return None
+
+
 def run_model_teach(
-    goal: str, hwnds: list[int] | None, *, seconds: float, gateway=None
+    goal: str,
+    hwnds: list[int] | None,
+    *,
+    seconds: float,
+    gateway=None,
+    point: bool = False,
 ) -> int:
     from ghostcursor.providers import Gateway
     from ghostcursor.reasoning.staleness import Freshness
 
     bindings = bind(hwnds or choose_windows())
-    session = ModelTeachSession(goal, gateway or Gateway())
     observer = Observer(bindings)
     observer.start()
+    mark = take_mark(observer, time.monotonic() + seconds) if point else None
+    session = ModelTeachSession(goal, gateway or Gateway(), mark=mark)
     overlay = window.create_overlay_window()
     print(
         f"Model Teach across {', '.join(b.label + ' ' + b.identity.executable for b in bindings)}. "

@@ -1,4 +1,5 @@
 """Static no-action checks for project-controlled evaluation code."""
+
 from __future__ import annotations
 
 import ast
@@ -8,9 +9,13 @@ from pathlib import Path
 ALLOWED_GHOSTCURSOR_IMPORTS = (
     "ghostcursor.demo.synthetic_export_app",
     "ghostcursor.evaluation",
+    "ghostcursor.harness.binding",
+    "ghostcursor.harness.frame",
+    "ghostcursor.harness.teach",
     "ghostcursor.inference.ollama",
     "ghostcursor.inference.screen_hint",
     "ghostcursor.perception.uia",
+    "ghostcursor.providers",
     "ghostcursor.reasoning.planner",
 )
 FORBIDDEN_IMPORT_PREFIXES = (
@@ -57,7 +62,9 @@ def evaluation_safety_violations(root: Path | None = None) -> list[str]:
 def assert_evaluation_is_read_only(root: Path | None = None) -> dict[str, object]:
     violations = evaluation_safety_violations(root)
     if violations:
-        raise AssertionError("evaluation no-action boundary failed: " + ", ".join(violations))
+        raise AssertionError(
+            "evaluation no-action boundary failed: " + ", ".join(violations)
+        )
     return {
         "project_import_allowlist": list(ALLOWED_GHOSTCURSOR_IMPORTS),
         "forbidden_calls": sorted(FORBIDDEN_CALLS),
@@ -66,9 +73,7 @@ def assert_evaluation_is_read_only(root: Path | None = None) -> dict[str, object
     }
 
 
-def _check_import(
-    module: str, path: Path, line: int, violations: list[str]
-) -> None:
+def _check_import(module: str, path: Path, line: int, violations: list[str]) -> None:
     if not module.startswith("ghostcursor"):
         return
     if module.startswith(FORBIDDEN_IMPORT_PREFIXES):

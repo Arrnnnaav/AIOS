@@ -111,10 +111,10 @@ def _dynamic_devtool_references(source: str):
 #: set fails here and names the directory that vanished. They change when the
 #: package changes, deliberately and visibly in a diff.
 _MEASURED_INVENTORY = {
-    "ghostcursor": 32,
+    "ghostcursor": 33,
     "ghostcursor/demo": 2,
-    "ghostcursor/evaluation": 5,
-    "ghostcursor/harness": 6,
+    "ghostcursor/evaluation": 6,
+    "ghostcursor/harness": 7,
     "ghostcursor/inference": 3,
     "ghostcursor/memory": 2,
     "ghostcursor/overlay": 5,
@@ -144,7 +144,7 @@ def test_the_production_module_set_matches_the_measured_inventory():
         "the scanned production set no longer matches the measured inventory. "
         f"missing/changed: {set(_MEASURED_INVENTORY.items()) ^ set(counted.items())}"
     )
-    assert sum(_MEASURED_INVENTORY.values()) == len(modules) == 101
+    assert sum(_MEASURED_INVENTORY.values()) == len(modules) == 104
 
     for required in (
         "ghostcursor/act_runtime.py",

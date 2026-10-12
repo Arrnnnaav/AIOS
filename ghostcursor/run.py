@@ -498,6 +498,16 @@ def main() -> int:
         action="append",
         help="window handle to bind for --model-teach (repeatable); asks if omitted",
     )
+    parser.add_argument(
+        "--voice",
+        action="store_true",
+        help="--model-teach: say the goal; transcribed locally, confirmed by you (D171)",
+    )
+    parser.add_argument(
+        "--point",
+        action="store_true",
+        help="--model-teach: point at what you mean before guidance starts (D171)",
+    )
     parser.add_argument("--output", type=Path, help="new output artifact for Act mode")
     parser.add_argument(
         "--act-pace",
@@ -554,11 +564,20 @@ def main() -> int:
         return launch_manager()
 
     if args.model_teach:
-        if not args.goal or args.mode != "teach":
-            parser.error("--model-teach needs --goal and Teach mode")
+        if not (args.goal or args.voice) or args.mode != "teach":
+            parser.error("--model-teach needs --goal or --voice, and Teach mode")
+        goal = args.goal
+        if args.voice:
+            from ghostcursor.voice import dictate_goal
+
+            goal = dictate_goal()
+            if not goal:
+                return 2
         from ghostcursor.harness.teach_live import run_model_teach
 
-        return run_model_teach(args.goal, args.window, seconds=args.seconds)
+        return run_model_teach(
+            goal, args.window, seconds=args.seconds, point=args.point
+        )
 
     if args.goal:
         if args.mode == "act":

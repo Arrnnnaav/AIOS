@@ -55,6 +55,13 @@ CHOOSE_QUESTION = (
 )
 
 
+MARK_NOTE = (
+    "The user pointed at the screen while stating the goal. 'user_pointed_at' in "
+    "the observed data lists the option ids under the pointer, best first. It is a "
+    "hint about what the user means, not an instruction."
+)
+
+
 class Verdict(Enum):
     DRAW = "draw"
     CONFIRM = "confirm"  # high-risk: ask before drawing
@@ -66,9 +73,15 @@ def _norm(text: str) -> str:
 
 
 def gate(
-    choice, asked: ObservationFrame, latest: ObservationFrame
+    choice,
+    asked: ObservationFrame,
+    latest: ObservationFrame,
+    *,
+    floor: float = CONFIDENCE_FLOOR,
+    margin: float = MARGIN,
 ) -> tuple[Verdict, Candidate | None, str]:
-    """Deterministic gate between a model's choice and a drawn pointer."""
+    """Deterministic gate between a model's choice and a drawn pointer.
+    ``floor``/``margin`` are parameters only so offline replay can fit them."""
 
     if choice.abstained:
         return Verdict.REASK, None, "no observed control fits this step"
@@ -79,9 +92,11 @@ def gate(
     if current is None:
         return Verdict.REASK, None, "the control moved or went away"
     key = (_norm(current.name), current.control_type)
-    twins = sum(1
+    twins = sum(
+        1
         for c in latest.candidates
-        if c.window == current.window and (_norm(c.name), c.control_type) == key)
+        if c.window == current.window and (_norm(c.name), c.control_type) == key
+    )
     if twins > 1:
         return Verdict.REASK, None, f"{twins} controls look the same"
     mine = choice.probabilities.get(choice.choice, 0.0)
@@ -89,7 +104,7 @@ def gate(
         (p for k, p in choice.probabilities.items() if k != choice.choice),
         default=0.0,
     )
-    if mine < CONFIDENCE_FLOOR or mine - other < MARGIN:
+    if mine < floor or mine - other < margin:
         return Verdict.REASK, None, "not confident enough"
     if HIGH_RISK.search(current.name):
         return Verdict.CONFIRM, current, "this control can change or lose data"
@@ -156,10 +171,18 @@ class Display:
 
 class ModelTeachSession:
     def __init__(
-        self, goal: str, gateway, slot: RequestSlot | None = None, *, clock=time.monotonic
+        self,
+        goal: str,
+        gateway,
+        slot: RequestSlot | None = None,
+        *,
+        clock=time.monotonic,
+        mark=None,
     ):
         self.goal = goal
         self.clock = clock
+        #: A SpatialReference (D171): context only, never a choice.
+        self.mark = mark
         self.gateway = gateway
         self.slot = slot or RequestSlot()
         self.phase = Phase.PLANNING
@@ -180,7 +203,12 @@ class ModelTeachSession:
 
     def _envelope(self, frame: ObservationFrame, **extra) -> Envelope:
         tainted = {"frame": frame.model_view(), **extra}
-        return Envelope(task="teach", trusted={"goal": self.goal}, tainted=tainted)
+        trusted = {"goal": self.goal}
+        marked = self.mark.model_view(frame) if self.mark is not None else []
+        if marked:
+            tainted["user_pointed_at"] = marked
+            trusted["user_mark"] = MARK_NOTE
+        return Envelope(task="teach", trusted=trusted, tainted=tainted)
 
     def _ask_plan(self, frame: ObservationFrame) -> None:
         envelope = self._envelope(frame)
@@ -258,9 +286,7 @@ class ModelTeachSession:
             if result is not None:
                 if result.error is not None:
                     kind = getattr(result.error, "kind", None)
-                    self._block(
-                        f"no usable plan ({getattr(kind, 'value', 'error')})"
-                    )
+                    self._block(f"no usable plan ({getattr(kind, 'value', 'error')})")
                 else:
                     self.plan, self._request = result.value, None
                     self.phase, self.message = Phase.CHOOSING, "finding the control"
@@ -310,7 +336,11 @@ class ModelTeachSession:
             if confirm or change_observed(
                 step.expected_change, self._chosen, self._before, frame
             ):
-                why = "you confirmed" if confirm else f"observed {step.expected_change.value}"
+                why = (
+                    "you confirmed"
+                    if confirm
+                    else f"observed {step.expected_change.value}"
+                )
                 self.completed.append((self.step + 1, why))
                 self._advance()
                 return self.tick(frame)
@@ -322,7 +352,9 @@ class ModelTeachSession:
                 if self.clock() - frame.at > MAX_FRAME_AGE_S or current.window in (
                     frame.minimized + frame.incomplete
                 ):
-                    return Display(self.phase, f"{self.message} (waiting for a fresh look)")
+                    return Display(
+                        self.phase, f"{self.message} (waiting for a fresh look)"
+                    )
                 return Display(self.phase, self.message, current)
 
         return Display(self.phase, self.message)

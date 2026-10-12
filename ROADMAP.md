@@ -41,7 +41,7 @@ than current design.
 
 ## Harness-first, model-driven modes (D159, D164) — the current track
 
-**Status: step 1 (provider gateway, D164) and step 2 (multi-window binding and observation frame, D166) and step 3 (model-driven Teach behind `--model-teach`, D167) built; step 4, measurement, next.** Teach and Act
+**Status: step 1 (provider gateway, D164) and step 2 (multi-window binding and observation frame, D166) and step 3 (model-driven Teach behind `--model-teach`, D167) built; step 4 tooling (corpus capture + offline replay, D170) built, the measurement itself not yet run. Owner pulled Spatial `--point` and SayStride `--voice` into model-Teach early (D171).** Teach and Act
 are an application-agnostic harness driven by a model, across several
 applications at once; PowerPoint is the test fixture (D164). Owner direction, 30 September 2026: guidance
 for any application comes from a large model plus Jev choosing among the

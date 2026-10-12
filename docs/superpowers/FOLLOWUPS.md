@@ -1280,3 +1280,15 @@ to confirm where the cost actually is before changing anything else.
 - No per-step cost cap (only the per-session request budget).
 - No test that SHOWING clears the pointer when re-resolution fails on a later
   tick (the reask path covers it indirectly).
+
+## D170/D171 follow-ups
+
+- No corpus captured yet; floor 0.6, margin 0.2 and the 3 s frame age stay
+  provisional until a dev split is fitted (D170).
+- `--point` and `--voice` are untested live (D171). `--point` takes one point
+  mark; Spatial's freehand/rectangle marks and SOURCE/TARGET roles are not
+  ported. ESC during the point prompt skips the mark instead of exiting.
+- `--voice` downloads faster-whisper `base.en` on first use with no progress
+  or checksum; SayStride's Parakeet path and dictionary are not ported.
+- Replay's synthetic frame cannot measure re-resolution, staleness or the
+  twin check across real frames; the live end-to-end lane must.

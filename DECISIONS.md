@@ -7487,3 +7487,69 @@ passed.
 The live-probe figures in D166 ("0.22 s for 25 controls") and D168 ("per-PID
 count was 2, owned count 0") were console output in the session and were not
 retained; they are illustrations, not measurements (D034).
+
+## D170 — Harness step 4 tooling: corpus capture and offline replay
+
+**Date:** 12 October 2026
+
+Spec section 9 / slice 3, tooling only. No measurement has been run and no
+accuracy, floor, margin or freshness value is claimed here.
+
+- **Capture** -- `py -3.12 -m ghostcursor.devtools.teach_capture --corpus <name>
+  --split dev|test|adversarial` binds windows (D166), observes them, and for
+  each typed step instruction records the acceptable candidate ids. A record is
+  built from the frame's model view, so it is scrubbed before the first write
+  (no handle, PID, runtime id, rectangle or title; document names hidden as in
+  D168), and a line carrying a bound window's HWND or PID is refused. Records go
+  only to the ignored `.artifacts/teach-corpus/` and are never edited (D139).
+- **Replay** -- `py -3.12 -m ghostcursor.evaluation.teach_replay --corpus <file>
+  --chooser lexical|cassette:<file>|live[:<cassette>] [--fit]` runs the real
+  `gate()` on each answer and reports per application: steps, pointers shown,
+  wrong pointers (the primary harm), wrong pointers at high-risk names, correct
+  abstentions, withheld reasons, and a one-sided 95% bound when zero were
+  wrong. `live` is the separately named provider lane and records a cassette
+  for hermetic re-runs. `lexical` is the M4 baseline (rapidfuzz token-set).
+- **Fit** -- floor and margin are fitted on the dev split only (most pointers
+  shown with zero wrong; ties go stricter); `gate()` takes them as parameters,
+  defaults unchanged.
+- Re-resolution and freshness are live properties; replay uses a synthetic
+  frame and does not measure them.
+
+Next: capture a dev/test corpus (spec section 9 asks for goals written by
+people other than the owner and 300 shown test steps per claimed application),
+then fit and report. Tests hermetic; mutants listed under D171.
+
+## D171 — Owner: Spatial point reference and SayStride voice goal in model-Teach
+
+**Date:** 12 October 2026
+
+**Owner direction (12 October):** bring Spatial and SayStride into Orbyn now,
+ahead of D164's item (6). Ported with attribution, not merged (CLAUDE.md);
+both are Teach-only and behind `--model-teach`.
+
+- **`--point`** (Spatial, `ghostcursor/harness/spatial.py`) -- before guidance
+  starts the user hovers over what they mean and presses Enter in the Orbyn
+  console; the cursor position is read (never moved) and scored against the
+  newest frame with Spatial's resolver rule (`server/app/resolver.py`). The
+  reference keeps the controls under the point by identity (window + runtime
+  id). Each request then carries `user_pointed_at`: only the frame-local ids
+  still present, best first, as tainted data, plus a fixed trusted note that it
+  is a hint. The point and rectangles never leave the machine.
+- **Amends D143 for model-Teach:** resolving a mark to an observed control runs
+  in the harness, not in a signed plugin (packs are retired, D161). The mark
+  stays context: it does not choose, does not draw, and the gate is unchanged.
+  Act and the signed path are untouched.
+- **`--voice`** (SayStride, `ghostcursor/voice.py`) -- records until Enter in
+  the console, transcribes locally with faster-whisper `base.en` (CPU int8),
+  cleans with SayStride's `filter_whisper` and filler rules, and shows a draft
+  the user accepts or corrects before it becomes the goal. Audio stays in
+  memory; no cloud; nothing is typed into any application (rule 1). The model
+  weights download from Hugging Face on first use.
+
+Mutation sweep (D018) over D170 and D171 guards, 13 mutants, 13 killed: mark
+min-score off; mark identity by runtime id only; mark view sending names;
+mark block added when empty; capture leak check off; capture PID unchecked;
+unknown labels allowed; extra record fields; extra candidate fields; label
+check off; wrong pointer not counted when nothing fits; fit on all splits;
+fit tolerating wrong pointers. Not yet run live: `--point` and `--voice` have
+hermetic tests only.
