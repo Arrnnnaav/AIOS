@@ -18,6 +18,7 @@ import sys
 import time
 from pathlib import Path
 
+from ghostcursor.harness.frame import HIDDEN_NAME, reveals_document
 from ghostcursor.workspace.brain import Brain
 from ghostcursor.workspace.contracts import SpatialContextReference
 from ghostcursor.workspace.session import Workspace
@@ -33,15 +34,38 @@ def reference_from(mark, frame) -> SpatialContextReference | None:
         return None
     first = under[0]
     apps = {b.label: b.identity.executable for b in frame.windows}
+    titles = {label: title for label, title, _ in frame.facts}
+
+    def shown(c) -> str:
+        """As a model would see it (D168), and never text from the window
+        title: the brief reaches System Two (review of D173)."""
+
+        title = titles.get(c.window, "")
+        name = " ".join(c.name.casefold().split())
+        in_title = len(name) >= 4 and name in " ".join(title.casefold().split())
+        hidden = in_title or reveals_document(c.name, c.control_type, title)
+        return HIDDEN_NAME if hidden else c.name
+
     return SpatialContextReference(
         "point",
-        first.name,
+        shown(first),
         first.control_type,
         apps.get(first.window, "unknown"),
         # Spatial's point-inside score; nested controls make it ambiguous.
         0.95 if len(under) == 1 else 0.6,
-        tuple(c.name for c in under[1:4]),
+        tuple(shown(c) for c in under[1:4]),
     )
+
+
+def teach_seconds(args: list[str]) -> float | None:
+    """A finite, positive guidance limit, or None: nan or inf would mean the
+    deadline never fires (rule 4)."""
+
+    try:
+        seconds = float(args[0]) if args else TEACH_SECONDS
+    except ValueError:
+        return None
+    return seconds if 0 < seconds <= 3600 else None
 
 
 def take_point() -> SpatialContextReference | None:
@@ -156,7 +180,10 @@ def main(argv: list[str] | None = None) -> int:
                     continue
                 from ghostcursor.harness.teach_live import run_model_teach
 
-                seconds = float(parts[1]) if len(parts) > 1 else TEACH_SECONDS
+                seconds = teach_seconds(parts[1:])
+                if seconds is None:
+                    print("seconds must be a number from 1 to 3600")
+                    continue
                 run_model_teach(workspace.goal, None, seconds=seconds, plan=plan)
             elif command == "/brain":
                 print(brain_command(brain, rest.split()))

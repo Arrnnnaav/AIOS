@@ -20,6 +20,11 @@ def digest(value: object) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
+#: Brief turns that hold a spatial reference start with this; they are screen
+#: text, so they are never the (trusted) goal.
+POINT_PREFIX = "[pointed at]"
+
+
 # --- Spatial --------------------------------------------------------------------
 
 
@@ -41,13 +46,15 @@ class SpatialContextReference:
         return digest(asdict(self))
 
     def as_text(self) -> str:
+        """Brief text; starts with POINT_PREFIX so it is never read as the goal."""
+
         alt = (
             f" (also under it: {', '.join(self.alternatives)})"
             if self.alternatives
             else ""
         )
         return (
-            f"[pointed at] {self.control_type} '{self.name}' in {self.application}, "
+            f"{POINT_PREFIX} {self.control_type} '{self.name}' in {self.application}, "
             f"confidence {self.confidence:.2f}{alt}"
         )
 

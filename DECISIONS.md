@@ -7630,3 +7630,31 @@ invented id, uncited-supported, passages trusted; session memories trusted,
 support check bypassed, Act allowed). Not run live: research, discussion and
 the console have hermetic tests only. No Tavily key is stored for Orbyn;
 Spatial's key is not copied without the owner's approval (as D161 did for NIM).
+
+## D174 — MVP workspace review: three BLOCKING findings, fixed
+
+**Date:** 12 October 2026
+
+Independent review (fresh agent, range `7abf9ea..6c702a4`).
+
+- **BLOCKING (rule 6), fixed:** the goal was the first user turn, and a
+  `/point` turn is a user turn, so a point-first topic made screen text the
+  trusted goal of every later request and of Teach. Point turns now start with
+  `POINT_PREFIX` and are never the goal.
+- **BLOCKING (rule 6), fixed:** `/point` wrote raw control names to the brief,
+  so a title bar, tab or document name reached System Two. Names are now hidden
+  as in the model view (D168), and also when they appear in the window title.
+- **BLOCKING (rule 4), fixed:** the `--voice` confirm prompt was a blocking
+  `input()`; ESC and `--seconds` could not end it. It is now a polling line
+  reader that returns on ESC or at the deadline.
+- Also fixed from the review: `/teach` seconds must be finite and 1..3600;
+  research page fetches refuse any host (or redirect hop) that is not
+  globally routable; "PIN"/"pw" text is never stored; a memory that fails the
+  support check is labelled `model_inferred` in the panel; a test pins that
+  search receives only the question.
+
+Mutation sweep: 10 mutants, 10 killed (one applied by hand). **Process fault,
+disclosed:** wrapping the sweep in `timeout` hard-killed it twice before it
+restored files, leaving a mutant in `voice.py`; both were found by checking
+every mutant's original text and restored before commit. Never wrap the
+sweep in `timeout`; kill a hung pytest child instead so the sweep restores.

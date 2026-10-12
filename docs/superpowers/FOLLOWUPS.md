@@ -1310,3 +1310,6 @@ to confirm where the cost actually is before changing anything else.
 - Memory extraction trusts the model's `kind`; a wrong kind becomes a durable
   memory of the wrong class (still user-stated and supported).
 - No replay corpus for research/memory yet (MVP.md "Replay tests").
+- From the D173 review: `transcribe()` has no deadline (slow CPU runs past
+  `--seconds`); the workspace `/voice` uses a fixed 120 s, not a session
+  deadline.

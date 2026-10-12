@@ -35,7 +35,7 @@ MAX_TEXT = 300
 
 _SENSITIVE = re.compile(
     r"(password|passcode|pin code|api[ _-]?key|secret|token|credential|"
-    r"\bssn\b|social security|credit card|\bcvv\b|"
+    r"\bssn\b|social security|credit card|\bcvv\b|\bpins?\b|\bpwd?\b|"
     r"sk-[a-z0-9]|nvapi-|ghp_|\b\d{6,}\b)",
     re.IGNORECASE,
 )
@@ -68,6 +68,13 @@ class PersonalMemory:
     source: str  # where it came from, e.g. "user turn 2026-10-12T..."; no screen text
 
 
+def _supported(text: str, user_turn: str) -> bool:
+    """Most of the memory's content words are in the user's own turn."""
+
+    words = _words(text)
+    return bool(words) and len(words & _words(user_turn)) / len(words) >= MIN_SUPPORT
+
+
 def eligibility(
     kind: str, text: str, origin: str, confidence: float, user_turn: str
 ) -> str:
@@ -81,10 +88,7 @@ def eligibility(
         return "durable"
     if _TEMPORARY.search(text) or _TEMPORARY.search(user_turn):
         return "session"
-    words = _words(text)
-    supported = (
-        bool(words) and len(words & _words(user_turn)) / len(words) >= MIN_SUPPORT
-    )
+    supported = _supported(text, user_turn)
     if (
         origin in ("user_stated", "verified_workflow")
         and supported
@@ -155,6 +159,8 @@ class Brain:
         scope = eligibility(kind, text, origin, confidence, user_turn)
         if scope == "refused":
             return None
+        if origin == "user_stated" and not _supported(text, user_turn):
+            origin = "model_inferred"  # the panel says honestly where it came from
         now = self.clock()
         expires = None if scope == "durable" else now + SESSION_TTL_S
         with self._db:

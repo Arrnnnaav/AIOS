@@ -198,6 +198,38 @@ def tavily_search(query: str, key: str, *, transport=None) -> list[dict]:
     return hits
 
 
+def is_public(host: str, *, resolve=None) -> bool:
+    """True only if every address ``host`` resolves to is globally routable:
+    a result page must never pull loopback or LAN content into passages that
+    go to a model (review of D173)."""
+
+    import ipaddress
+    import socket
+
+    resolve = resolve or (lambda h: {i[4][0] for i in socket.getaddrinfo(h, None)})
+    try:
+        addresses = resolve(host)
+    except OSError:
+        return False
+    return bool(addresses) and all(
+        ipaddress.ip_address(a.split("%")[0]).is_global for a in addresses
+    )
+
+
+def fetch_public(client, url: str, *, hops: int = 3, resolve=None):
+    """GET following at most ``hops`` redirects, checking every hop's host."""
+
+    for _ in range(hops + 1):
+        host = urlparse(url).hostname or ""
+        if _blocked(url) or not is_public(host, resolve=resolve):
+            return None
+        page = client.get(url, follow_redirects=False)
+        if not page.is_redirect:
+            return page
+        url = str(page.next_request.url) if page.next_request else ""
+    return None
+
+
 def duckduckgo_search(query: str, *, transport=None) -> list[dict]:
     with _client(transport) as client:
         response = client.post(
@@ -220,8 +252,8 @@ def duckduckgo_search(query: str, *, transport=None) -> list[dict]:
 
         def fetch(hit):
             try:
-                page = client.get(hit["url"])
-                if "html" not in page.headers.get("content-type", ""):
+                page = fetch_public(client, hit["url"])
+                if page is None or "html" not in page.headers.get("content-type", ""):
                     return ""
                 return _clean(page.text[: MAX_PAGE_CHARS * 4])[:MAX_PAGE_CHARS]
             except Exception:

@@ -293,3 +293,32 @@ def test_esc_or_the_deadline_cancels_dictation():
         return ""
 
     assert _voice(clock=lambda: now[0], ask=slow_confirm) is None  # passed while confirming
+
+
+def test_the_confirm_prompt_stops_on_esc_or_deadline_without_input():
+    from ghostcursor.voice import read_line
+
+    keys = iter("ab\b\r")
+    assert read_line("p", lambda: False, getch=lambda: next(keys), kbhit=lambda: True) == "a"
+    assert read_line("p", lambda: False, getch=lambda: "\x1b", kbhit=lambda: True) is None
+    assert read_line("p", lambda: True, getch=_enter_never(), kbhit=_enter_never()) is None
+
+
+def test_dictation_uses_the_polling_prompt_by_default(monkeypatch):
+    import ghostcursor.voice as voice
+
+    monkeypatch.setattr(voice, "read_line", lambda prompt, stop: None if stop() else "")
+    now = [0.0]
+
+    def transcribe(samples):
+        now[0] = 200.0  # transcription ran past the deadline
+        return "add a slide"
+
+    assert _voice(ask=None, clock=lambda: now[0], transcribe=transcribe) is None
+
+
+def test_esc_at_the_confirm_prompt_cancels(monkeypatch):
+    import ghostcursor.voice as voice
+
+    monkeypatch.setattr(voice, "read_line", lambda prompt, stop: None)  # ESC typed
+    assert _voice(ask=None) is None

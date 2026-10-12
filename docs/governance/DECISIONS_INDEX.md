@@ -207,5 +207,6 @@ with the script named at the bottom; edit the curated table by hand.
 - D171 — Owner: Spatial point reference and SayStride voice goal in model-Teach
 - D172 — D171 follow-ups closed
 - D173 — The solo MVP workspace, console first
+- D174 — MVP workspace review: three BLOCKING findings, fixed
 
 _Generated from `DECISIONS.md` headings by `py -3.12 tools/render_decisions_index.py`._

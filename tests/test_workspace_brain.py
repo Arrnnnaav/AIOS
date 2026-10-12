@@ -214,3 +214,8 @@ def test_spatial_reference_carries_no_geometry():
         "version",
     }
     assert "Insert" in ref.as_text() and len(ref.digest()) == 64
+
+
+@pytest.mark.parametrize("text", ["my PIN is 1234", "pw: hunter2"])
+def test_short_pins_and_passwords_are_refused(brain, text):
+    assert brain.remember("fact", text, origin="user_stated", confidence=1, user_turn=text) is None

@@ -182,3 +182,23 @@ def test_passage_selection_and_graph_caps():
     graph = build_graph("q", many)
     assert len(graph.sources) == 5 and len(graph.passages) == 15
     research_envelope("q", graph)  # within the tainted-item budget
+
+
+def test_fetch_refuses_private_hosts_and_private_redirects():
+    import httpx
+
+    from ghostcursor.workspace.research import fetch_public, is_public
+
+    dns = {"good.com": {"93.184.216.34"}, "lan.com": {"192.168.1.5"}, "loop.com": {"127.0.0.1"}}
+    resolve = dns.__getitem__
+    assert is_public("good.com", resolve=resolve)
+    assert not is_public("lan.com", resolve=resolve) and not is_public("loop.com", resolve=resolve)
+
+    def handler(request):
+        if request.url.host == "good.com":
+            return httpx.Response(302, headers={"location": "http://loop.com/admin"})
+        return httpx.Response(200, text="<html>secret</html>")
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        assert fetch_public(client, "http://good.com/x", resolve=resolve) is None
+        assert fetch_public(client, "http://lan.com/x", resolve=resolve) is None

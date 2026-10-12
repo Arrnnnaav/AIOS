@@ -24,7 +24,11 @@ from ghostcursor.providers.envelope import Envelope, Tainted
 from ghostcursor.providers.errors import FailureKind, ProviderError
 from ghostcursor.providers.schemas import TeachPlan, strict_json
 from ghostcursor.workspace.brain import CLASSES, Brain
-from ghostcursor.workspace.contracts import EvidenceGraph, SpatialContextReference
+from ghostcursor.workspace.contracts import (
+    POINT_PREFIX,
+    EvidenceGraph,
+    SpatialContextReference,
+)
 from ghostcursor.workspace.research import render, research
 
 #: Brief turns a request carries (most recent first kept).
@@ -127,7 +131,13 @@ class Workspace:
 
     @property
     def goal(self) -> str:
-        first = next((t.text for t in self.turns if t.speaker == "user"), "")
+        # Only what the user typed or said is the goal: a point turn is
+        # screen text and must never reach the trusted channel (review of D173).
+        first = next(
+            (t.text for t in self.turns
+             if t.speaker == "user" and not t.text.startswith(POINT_PREFIX)),
+            "",
+        )
         return first.splitlines()[0][:300] if first else ""
 
     def _say(self, speaker: str, text: str) -> None:

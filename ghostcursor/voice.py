@@ -119,10 +119,45 @@ def _escape_pressed() -> bool:
     return bool(win32api.GetAsyncKeyState(win32con.VK_ESCAPE) & 0x8001)
 
 
+def read_line(prompt: str, stop, *, getch=None, kbhit=None) -> str | None:
+    """A console line that never blocks past ``stop()``: None on ESC (typed
+    here or polled globally) or at the deadline. ``input()`` cannot be
+    interrupted (review of D173)."""
+
+    import time
+
+    if getch is None or kbhit is None:
+        import msvcrt
+
+        getch, kbhit = msvcrt.getwch, msvcrt.kbhit
+    print(prompt, end="", flush=True)
+    typed: list[str] = []
+    while True:
+        if stop():
+            print()
+            return None
+        while kbhit():
+            char = getch()
+            if char in ("\r", "\n"):
+                print()
+                return "".join(typed)
+            if char == "\x1b":
+                print()
+                return None
+            if char == "\b":
+                if typed:
+                    typed.pop()
+                    print("\b \b", end="", flush=True)
+            elif char.isprintable():
+                typed.append(char)
+                print(char, end="", flush=True)
+        time.sleep(0.05)
+
+
 def dictate_goal(
     deadline: float,
     *,
-    ask=input,
+    ask=None,
     enter=_console_enter,
     escape=_escape_pressed,
     record=record_until,
@@ -158,7 +193,11 @@ def dictate_goal(
     if not draft:
         print("Nothing was heard.")
         return None
-    correction = ask(f'Goal (draft): "{draft}"\nEnter to use it, or type a correction: ')
-    if clock() >= deadline:
+    prompt = f'Goal (draft): "{draft}"\nEnter to use it, or type a correction: '
+    if ask is None:
+        correction = read_line(prompt, lambda: escape() or clock() >= deadline)
+    else:
+        correction = ask(prompt)
+    if correction is None or clock() >= deadline:
         return None
     return correction.strip() or draft
