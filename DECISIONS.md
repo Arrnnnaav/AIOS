@@ -7658,3 +7658,35 @@ disclosed:** wrapping the sweep in `timeout` hard-killed it twice before it
 restored files, leaving a mutant in `voice.py`; both were found by checking
 every mutant's original text and restored before commit. Never wrap the
 sweep in `timeout`; kill a hung pytest child instead so the sweep restores.
+
+## D175 — MVP workspace: inspect, correct, revise, record, replay
+
+**Date:** 12 October 2026
+
+Closes the MVP.md gaps the console left after D173/D174 (tier 2).
+
+- **Inspect evidence:** `/evidence [n]` lists each claim with the exact
+  passages and URLs it cites; a research answer also shows its privacy line
+  (what went to the search provider and to System Two).
+- **See and correct Spatial resolution:** `/point` shows what was resolved and
+  the controls also under the pointer; Enter keeps it, a number picks an
+  alternative (confidence 1, marked "user chose"), anything else discards it.
+- **Editable plan proposals:** `PlanProposal` (contracts) binds a plan to the
+  sha256 of the brief bytes it was made from and a revision number. `/plan
+  edit <n> <text> | drop <n> | add <text>` makes a new revision with a new
+  digest; `/teach` guides only the latest one. Edits keep the 1..20 step and
+  200-character limits; edited text still passes the Teach risk gate (D172).
+- **Verify into the brief:** `run_model_teach(outcome=)` returns the completed
+  steps; the workspace appends `[teach rN] step k done (why); ended|blocked|
+  stopped` -- only what was observed or what the user confirmed.
+- **Replay tests:** `tests/fixtures/workspace_replay.json` replays recorded
+  model answers and search hits through the workspace: cross-session
+  preference learning, temporary/sensitive refusal, injected passages and
+  invented citations, provider failures, plan revisions. The replay found a
+  real gap: "just for today" was not temporary; `for today` is now.
+- **Manager:** a Workspace button opens `ghostcursor.workspace` for a topic
+  made from the goal box in its own console. The manager does not yet show
+  the brief, evidence or Brain itself (FOLLOWUPS).
+
+No tier-1 surface changed: no Act, input or authority path; nothing new
+leaves the machine. Not run live yet.

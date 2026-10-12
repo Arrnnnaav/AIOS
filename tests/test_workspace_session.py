@@ -97,7 +97,7 @@ def test_a_point_and_research_become_brief_content(ws):
 def test_a_plan_is_a_proposal_teach_can_start_from(ws):
     ws.discuss("Make my investor deck")
     assert ws.make_plan() is PLAN
-    assert "[plan, a proposal]" in ws.turns[-1].text
+    assert "[plan r1, a proposal " in ws.turns[-1].text
     session = ModelTeachSession(ws.goal, gateway=None, plan=ws.teach_plan(2))
     assert session.phase is Phase.CHOOSING and len(session.plan.steps) == 1
     with pytest.raises(ValueError):

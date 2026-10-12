@@ -173,7 +173,10 @@ def run_model_teach(
     gateway=None,
     point: bool = False,
     plan=None,
+    outcome: list | None = None,
 ) -> int:
+    """``outcome`` receives (step, why) for each completed step."""
+
     from ghostcursor.providers import Gateway
     from ghostcursor.reasoning.staleness import Freshness
 
@@ -241,4 +244,6 @@ def run_model_teach(
         session.stop()
         observer.stop()
         window.destroy_overlay_window(overlay)
+        if outcome is not None:
+            outcome.extend(session.completed)
     return code

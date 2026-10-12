@@ -435,6 +435,27 @@ def research(
     return graph, trace
 
 
+def evidence_view(graph: EvidenceGraph) -> str:
+    """Each claim with the exact passages it cites (MVP.md "inspect the
+    evidence behind researched claims")."""
+
+    if not graph.claims:
+        return "No claims to inspect."
+    text = {p.pid: p for p in graph.passages}
+    lines = []
+    for n, claim in enumerate(graph.claims, start=1):
+        lines.append(f"{n}. {claim.text} [{claim.status.value}]")
+        for pid in claim.evidence:
+            source = graph.source_of(pid)
+            lines.append(
+                f"   {pid} from [{source.sid}] {source.url}:\n"
+                f'      "{text[pid].text[:400]}"'
+            )
+        if not claim.evidence:
+            lines.append("   (no passage cited)")
+    return "\n".join(lines)
+
+
 def render(graph: EvidenceGraph) -> str:
     """The answer as the user sees it: each claim with its status and sources."""
 

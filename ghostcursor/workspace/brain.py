@@ -40,7 +40,7 @@ _SENSITIVE = re.compile(
     re.IGNORECASE,
 )
 _TEMPORARY = re.compile(
-    r"\b(for now|this time|just today|today only|temporarily|right now|"
+    r"\b(for now|this time|for today|just today|today only|temporarily|right now|"
     r"for this (session|task)|just this once)\b",
     re.IGNORECASE,
 )

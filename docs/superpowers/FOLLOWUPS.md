@@ -1303,6 +1303,11 @@ to confirm where the cost actually is before changing anything else.
   `/plan` and `/teach` from the console.
 - The workspace is a console; the native manager (compact/expanded) does not
   show the brief, evidence or Brain panel yet (MVP.md product acceptance).
+  D175: the manager's Workspace button opens the console for the goal's topic.
+- D175: "continuous measures" (claim support, memory correction/expiry, plan
+  edit rate, Teach completion) are not aggregated anywhere yet; the replay
+  fixtures are scenarios, not a baseline. The temporary-phrase list is short
+  and English-only.
 - ~~No `Orbyn/tavily` key~~ closed 2026-10-12: owner supplied a Tavily key,
   stored as `Orbyn/tavily`; one live `tavily_search` returned 5 sources.
   DuckDuckGo remains the fallback when the key is absent.

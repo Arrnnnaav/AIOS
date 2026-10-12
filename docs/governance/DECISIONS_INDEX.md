@@ -24,7 +24,7 @@ with the script named at the bottom; edit the curated table by hand.
 | Testing | Desktop lanes one at a time; hung-window files alone | D025 |
 | Signing | Payload bytes are LF and pinned; rebuild/re-sign and move both pins together; current PowerPoint manifest `b0d63512` | D125, D127, D149 |
 | Campaigns | Declare in the committed ledger; nothing committed until the last attempt; retain every outcome | D150-D158, D163, D165 |
-| Spatial / SayStride | Separate projects; integrate by typed reference / transcript sidecar; port code with attribution | D143, D146, D161, D171 |
+| Spatial / SayStride | Separate projects; integrate by typed reference / transcript sidecar; port code with attribution | D143, D146, D161 |
 
 ## Where current status lives
 
@@ -208,5 +208,6 @@ with the script named at the bottom; edit the curated table by hand.
 - D172 — D171 follow-ups closed
 - D173 — The solo MVP workspace, console first
 - D174 — MVP workspace review: three BLOCKING findings, fixed
+- D175 — MVP workspace: inspect, correct, revise, record, replay
 
 _Generated from `DECISIONS.md` headings by `py -3.12 tools/render_decisions_index.py`._

@@ -56,6 +56,7 @@ class SpatialContextReference:
         return (
             f"{POINT_PREFIX} {self.control_type} '{self.name}' in {self.application}, "
             f"confidence {self.confidence:.2f}{alt}"
+            + ("" if self.mark_kind == "point" else f" ({self.mark_kind})")
         )
 
 
@@ -204,3 +205,30 @@ class ResearchTrace:
 
     def as_json(self) -> str:
         return json.dumps(asdict(self), sort_keys=True)
+
+
+# --- Plan -----------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class PlanProposal:
+    """A plan the user reads and may edit (MVP.md "MVP contracts"). Bound to
+    the exact brief bytes it was made from; any edit is a new revision with a
+    new digest. Advice for Teach, never authority: nothing here can execute."""
+
+    plan: object  # providers.TeachPlan
+    brief_sha256: str
+    revision: int
+    version: int = VERSION
+
+    def digest(self) -> str:
+        return digest(asdict(self))
+
+    def as_text(self) -> str:
+        lines = [
+            f"{n}. {s.instruction}" for n, s in enumerate(self.plan.steps, start=1)
+        ]
+        return (
+            f"[plan r{self.revision}, a proposal {self.digest()[:12]}]\n"
+            + "\n".join(lines)
+        )

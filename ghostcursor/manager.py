@@ -75,6 +75,7 @@ ID_COMPLEX = 2113
 ID_MODE = 2114
 ID_MODE_NOTE = 2115
 ID_LAYOUT = 2116
+ID_WORKSPACE = 2117
 ID_HEADER = 2190
 ID_PLAN_LABEL = 2191
 ID_GUIDANCE_LABEL = 2192
@@ -84,6 +85,25 @@ ID_DETAILS_LABEL = 2195
 ID_MODE_LABEL = 2196
 ID_GOAL_LABEL = 2197
 DEFAULT_GUI_FONT = 17
+
+
+def workspace_topic(goal: str) -> str:
+    """A brief topic name from the goal box: lowercase words joined by '-'."""
+
+    words = "".join(c if c.isascii() and c.isalnum() else " " for c in goal.lower())
+    return "-".join(words.split()[:6])[:60].strip("-") or "workspace"
+
+
+def open_workspace(topic: str) -> None:
+    """The goal workspace (D173) in its own console; it never acts."""
+
+    import subprocess
+    import sys
+
+    subprocess.Popen(
+        [sys.executable, "-m", "ghostcursor.workspace", topic],
+        creationflags=subprocess.CREATE_NEW_CONSOLE,
+    )
 
 
 def _manager_bounds(expanded: bool) -> tuple[int, int, int, int]:
@@ -750,6 +770,7 @@ class NativeManagerWindow:
             ID_PRIVACY,
         )
         self._child("BUTTON", "Expand", win32con.BS_PUSHBUTTON, ID_LAYOUT)
+        self._child("BUTTON", "Workspace", win32con.BS_PUSHBUTTON, ID_WORKSPACE)
 
     def _move(self, control_id: int, x: int, y: int, width: int, height: int) -> None:
         child = self._controls.get(control_id)
@@ -814,8 +835,11 @@ class NativeManagerWindow:
         self._move(ID_HEADER, margin, 18, 360, header_h)
         self._move(ID_LAYOUT, width - margin - layout_w, 14, layout_w, 34)
         self._move(
+            ID_WORKSPACE, width - margin - 2 * layout_w - 8, 14, layout_w, 34
+        )
+        self._move(
             ID_STATUS,
-            width - margin - layout_w - 12 - 280,
+            width - margin - 2 * layout_w - 20 - 280,
             18,
             280,
             header_h,
@@ -879,6 +903,7 @@ class NativeManagerWindow:
             ID_STOP,
             ID_PRIVACY,
             ID_LAYOUT,
+            ID_WORKSPACE,
         }
         for control_id in self._controls:
             self._show(control_id, control_id in visible)
@@ -886,8 +911,9 @@ class NativeManagerWindow:
         margin = 16
         content_w = width - 2 * margin
         layout_w = 84
-        self._move(ID_HEADER, margin, 12, content_w - layout_w - 8, 28)
+        self._move(ID_HEADER, margin, 12, content_w - 2 * layout_w - 16, 28)
         self._move(ID_LAYOUT, width - margin - layout_w, 8, layout_w, 34)
+        self._move(ID_WORKSPACE, width - margin - 2 * layout_w - 8, 8, layout_w, 34)
         self._move(ID_STATUS, margin, 46, content_w, 22)
         self._move(ID_MODE_LABEL, margin, 78, content_w, 18)
         self._move(ID_MODE, margin, 98, content_w, 220)
@@ -966,6 +992,12 @@ class NativeManagerWindow:
             )
 
     def _on_command(self, control_id: int, _notification: int = 0) -> None:
+        if control_id == ID_WORKSPACE:
+            goal = win32gui.GetWindowText(self._controls[ID_GOAL])
+            topic = workspace_topic(goal)
+            open_workspace(topic)
+            self._set(ID_STATUS, f"Workspace '{topic}' opened in its own console")
+            return
         if control_id == ID_LAYOUT:
             self._set_layout(not self._expanded)
             return

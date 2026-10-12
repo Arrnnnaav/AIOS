@@ -4,7 +4,10 @@ Type to discuss. Commands:
   /point            bind windows, point at what you mean (Spatial, D171)
   /voice            say your message instead of typing (SayStride, D171)
   /research <q>     a cited answer from web sources
+  /evidence [n]     the passages behind research answer n (default: latest)
   /plan             a step plan from the conversation (a proposal)
+  /plan edit <n> <text> | drop <n> | add <text>
+                    edit the plan; each edit is a new proposal
   /teach <n> [s]    guide plan step n onward on screen for s seconds (default 300)
   /brain [list | search <q> | forget <id> | correct <id> <text> |
           pause | resume | export <file> | erase]
@@ -16,6 +19,7 @@ from __future__ import annotations
 
 import sys
 import time
+from dataclasses import replace
 from pathlib import Path
 
 from ghostcursor.harness.frame import HIDDEN_NAME, reveals_document
@@ -55,6 +59,27 @@ def reference_from(mark, frame) -> SpatialContextReference | None:
         0.95 if len(under) == 1 else 0.6,
         tuple(shown(c) for c in under[1:4]),
     )
+
+
+def confirm_reference(
+    ref: SpatialContextReference, answer: str
+) -> SpatialContextReference | None:
+    """The user sees what Orbyn resolved and keeps it (Enter), picks one of
+    the alternatives (its number), or discards it (anything else)."""
+
+    answer = answer.strip()
+    if not answer:
+        return ref
+    if answer.isdigit() and 1 <= int(answer) <= len(ref.alternatives):
+        return replace(
+            ref,
+            mark_kind="point, user chose",
+            name=ref.alternatives[int(answer) - 1],
+            control_type="control",
+            confidence=1.0,
+            alternatives=(),
+        )
+    return None
 
 
 def teach_seconds(args: list[str]) -> float | None:
@@ -147,6 +172,20 @@ def main(argv: list[str] | None = None) -> int:
                 print(workspace.research(rest))
             elif command == "/point":
                 reference = take_point()
+                if reference is not None:
+                    print(reference.as_text())
+                    options = "".join(
+                        f"  {n}. {name}\n"
+                        for n, name in enumerate(reference.alternatives, start=1)
+                    )
+                    reference = confirm_reference(
+                        reference,
+                        input(
+                            f"{options}Enter keeps it"
+                            + (", a number picks another" if options else "")
+                            + ", x discards: "
+                        ),
+                    )
                 if reference is None:
                     print("No point taken.")
                 else:
@@ -158,6 +197,14 @@ def main(argv: list[str] | None = None) -> int:
                 said = dictate_goal(time.monotonic() + 120)
                 if said:
                     print(workspace.discuss(said))
+            elif command == "/evidence":
+                print(workspace.evidence(int(rest) if rest.isdigit() else 0))
+            elif command == "/plan" and rest:
+                verb, *args = rest.split()
+                try:
+                    print(workspace.edit_plan(verb, args).as_text())
+                except ValueError as exc:
+                    print(exc)
             elif command == "/plan":
                 plan = workspace.make_plan()
                 print(
@@ -184,7 +231,11 @@ def main(argv: list[str] | None = None) -> int:
                 if seconds is None:
                     print("seconds must be a number from 1 to 3600")
                     continue
-                run_model_teach(workspace.goal, None, seconds=seconds, plan=plan)
+                outcome: list = []
+                code = run_model_teach(
+                    workspace.goal, None, seconds=seconds, plan=plan, outcome=outcome
+                )
+                print(workspace.record_teach(int(parts[0]), outcome, code))
             elif command == "/brain":
                 print(brain_command(brain, rest.split()))
             elif command == "/act":

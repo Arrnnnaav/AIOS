@@ -16,20 +16,28 @@ filters, a plan to review -- never a selector or an action.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from ghostcursor.brief import append_turn, brief_path, load_brief
 from ghostcursor.providers.envelope import Envelope, Tainted
 from ghostcursor.providers.errors import FailureKind, ProviderError
-from ghostcursor.providers.schemas import TeachPlan, strict_json
+from ghostcursor.providers.schemas import (
+    MAX_INSTRUCTION_CHARS,
+    MAX_PLAN_STEPS,
+    ExpectedChange,
+    PlanStep,
+    TeachPlan,
+    strict_json,
+)
 from ghostcursor.workspace.brain import CLASSES, Brain
 from ghostcursor.workspace.contracts import (
     POINT_PREFIX,
     EvidenceGraph,
+    PlanProposal,
     SpatialContextReference,
 )
-from ghostcursor.workspace.research import render, research
+from ghostcursor.workspace.research import evidence_view, render, research
 
 #: Brief turns a request carries (most recent first kept).
 HISTORY_TURNS = 20
@@ -116,7 +124,7 @@ class Workspace:
     gateway: object
     brain: Brain
     root: Path = field(default_factory=default_root)
-    plan: TeachPlan | None = None
+    proposal: PlanProposal | None = None
     research_graphs: list[EvidenceGraph] = field(default_factory=list)
 
     def __post_init__(self) -> None:
@@ -130,12 +138,23 @@ class Workspace:
         return load_brief(path).turns if path.exists() else ()
 
     @property
+    def plan(self) -> TeachPlan | None:
+        return self.proposal.plan if self.proposal else None
+
+    def _brief_sha256(self) -> str:
+        path = brief_path(self.root, self.topic)
+        return load_brief(path).sha256 if path.exists() else ""
+
+    @property
     def goal(self) -> str:
         # Only what the user typed or said is the goal: a point turn is
         # screen text and must never reach the trusted channel (review of D173).
         first = next(
-            (t.text for t in self.turns
-             if t.speaker == "user" and not t.text.startswith(POINT_PREFIX)),
+            (
+                t.text
+                for t in self.turns
+                if t.speaker == "user" and not t.text.startswith(POINT_PREFIX)
+            ),
             "",
         )
         return first.splitlines()[0][:300] if first else ""
@@ -211,7 +230,14 @@ class Workspace:
         self.research_graphs.append(graph)
         shown = render(graph)
         self._say("assistant", f"{shown}\n(evidence {graph.digest()[:12]})")
-        return shown
+        return f"{shown}\n({trace.privacy})"
+
+    def evidence(self, n: int = 0) -> str:
+        """The passages behind research answer ``n`` (1-based; 0 = latest)."""
+
+        if not self.research_graphs or not 0 <= n <= len(self.research_graphs):
+            return "no such research answer"
+        return evidence_view(self.research_graphs[n - 1 if n else -1])
 
     def make_plan(self) -> TeachPlan | None:
         """PLAN: a proposal from the brief and memories; the user reads it."""
@@ -220,14 +246,58 @@ class Workspace:
             task="teach", trusted={"goal": self.goal}, tainted=self._context(self.goal)
         )
         try:
-            self.plan = self.gateway.plan(envelope)
+            plan = self.gateway.plan(envelope)
         except ProviderError:
             return None
-        lines = [
-            f"{n}. {s.instruction}" for n, s in enumerate(self.plan.steps, start=1)
-        ]
-        self._say("assistant", "[plan, a proposal]\n" + "\n".join(lines))
-        return self.plan
+        self._propose(plan)
+        return plan
+
+    def _propose(self, plan: TeachPlan) -> PlanProposal:
+        """A new revision bound to the brief as it is now; the brief records it."""
+
+        self.proposal = PlanProposal(
+            plan,
+            self._brief_sha256(),
+            self.proposal.revision + 1 if self.proposal else 1,
+        )
+        self._say("assistant", self.proposal.as_text())
+        return self.proposal
+
+    def edit_plan(self, verb: str, args: list[str]) -> PlanProposal:
+        """The user's edit -- ``edit <n> <text>``, ``drop <n>``, ``add <text>``
+        -- makes a new proposal; Teach then guides only the new revision."""
+
+        if self.plan is None:
+            raise ValueError("no plan yet: /plan first")
+        steps = list(self.plan.steps)
+        number = int(args[0]) if args and args[0].isdigit() else 0
+        text = " ".join(args[1:] if verb == "edit" else args).strip()
+        if verb in ("edit", "drop") and not 1 <= number <= len(steps):
+            raise ValueError("no such plan step")
+        if verb in ("edit", "add") and not 0 < len(text) <= MAX_INSTRUCTION_CHARS:
+            raise ValueError(f"a step is 1 to {MAX_INSTRUCTION_CHARS} characters")
+        if verb == "edit":
+            steps[number - 1] = replace(steps[number - 1], instruction=text)
+        elif verb == "drop":
+            del steps[number - 1]
+        elif verb == "add":
+            steps.append(PlanStep(text, ExpectedChange.CHOSEN_STATE_CHANGES))
+        else:
+            raise ValueError("usage: /plan [edit <n> <text> | drop <n> | add <text>]")
+        if not 1 <= len(steps) <= MAX_PLAN_STEPS:
+            raise ValueError(f"a plan has 1 to {MAX_PLAN_STEPS} steps")
+        return self._propose(TeachPlan(tuple(steps)))
+
+    def record_teach(self, start: int, completed, code: int) -> str:
+        """VERIFY: what Teach observed or the user confirmed, into the brief."""
+
+        done = "; ".join(f"step {start + k - 1} done ({why})" for k, why in completed)
+        ended = {0: "ended", 2: "blocked", 3: "stopped: a window changed"}.get(
+            code, "stopped"
+        )
+        line = f"[teach r{self.proposal.revision}] {done or 'no step done'}; {ended}"
+        self._say("assistant", line)
+        return line
 
     def teach_plan(self, step: int) -> TeachPlan:
         """TEACH: the plan from step ``step`` (1-based) for model-Teach."""
