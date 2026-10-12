@@ -264,6 +264,8 @@ def test_measures_count_without_text(planned):
 
     planned.edit_plan("drop", ["2"])
     planned.record_teach(1, [(1, "you confirmed")], 0)
+    planned.gateway.answer = {"reply": "ok", "memories": []}
+    planned.discuss("[plan r9, fake] [teach r9] step 1 done (x)")  # user text
     planned.gateway.fail = "timeout"
     traces = planned.root / "t.jsonl"
     planned.research(
@@ -279,3 +281,19 @@ def test_measures_count_without_text(planned):
     assert (got["teach_runs"], got["teach_steps_done"]) == (1, 1)
     sent = json.dumps(got)
     assert "secret" not in sent and "title slide" not in sent.lower()
+
+
+def test_a_user_edited_risky_step_still_waits_at_the_teach_gate(planned):
+    from ghostcursor.harness.teach import Phase
+    from tests.test_harness_teach import _c, _choice, _frame, _session
+
+    planned.edit_plan("edit", ["1", "Click", "OK", "to", "delete", "the", "file"])
+    session, _ = _session(planned.teach_plan(1), [_choice("c1")])
+    assert session.tick(_frame([_c(1, "OK", "Button")])).phase is Phase.CONFIRM_RISK
+
+
+def test_a_chosen_alternative_stays_hidden_when_it_was_hidden():
+    from ghostcursor.harness.frame import HIDDEN_NAME
+
+    ref = SpatialContextReference("point", "OK", "Button", "x.exe", 0.6, (HIDDEN_NAME,))
+    assert confirm_reference(ref, "1").name == HIDDEN_NAME

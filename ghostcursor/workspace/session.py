@@ -253,7 +253,8 @@ class Workspace:
         return plan
 
     def _propose(self, plan: TeachPlan) -> PlanProposal:
-        """A new revision bound to the brief as it is now; the brief records it."""
+        """A new revision recording the digest of the brief it was made from
+        (provenance; Teach does not re-check it). The brief records it."""
 
         self.proposal = PlanProposal(
             plan,
@@ -334,8 +335,9 @@ def measures(brain: Brain, briefs: Path, traces: Path) -> dict:
         for path in (sorted(briefs.glob("*.md")) if briefs.exists() else ())
         for t in load_brief(path).turns
     ]
-    plans = [t.text for t in turns if t.text.startswith("[plan r")]
-    teach = [t.text for t in turns if t.text.startswith("[teach r")]
+    mine = [t.text for t in turns if t.speaker == "assistant"]  # never user text
+    plans = [t for t in mine if t.startswith("[plan r")]
+    teach = [t for t in mine if t.startswith("[teach r")]
     return {
         "research_answers": len(research_rows),
         "claims": sum(r.get("claims", 0) for r in research_rows),

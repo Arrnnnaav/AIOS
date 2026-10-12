@@ -100,8 +100,12 @@ def open_workspace(topic: str) -> None:
     import subprocess
     import sys
 
+    exe = Path(sys.executable)
+    if exe.name.lower() == "pythonw.exe":  # the console needs a real stdin
+        exe = exe.with_name("python.exe")
     subprocess.Popen(
-        [sys.executable, "-m", "ghostcursor.workspace", topic],
+        [str(exe), "-m", "ghostcursor.workspace", topic],
+        cwd=str(Path(__file__).resolve().parent.parent),
         creationflags=subprocess.CREATE_NEW_CONSOLE,
     )
 

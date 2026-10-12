@@ -7671,8 +7671,9 @@ Closes the MVP.md gaps the console left after D173/D174 (tier 2).
 - **See and correct Spatial resolution:** `/point` shows what was resolved and
   the controls also under the pointer; Enter keeps it, a number picks an
   alternative (confidence 1, marked "user chose"), anything else discards it.
-- **Editable plan proposals:** `PlanProposal` (contracts) binds a plan to the
-  sha256 of the brief bytes it was made from and a revision number. `/plan
+- **Editable plan proposals:** `PlanProposal` (contracts) records the sha256
+  of the brief bytes it was made from (provenance only: Teach does not
+  re-check it when the brief later changes) and a revision number. `/plan
   edit <n> <text> | drop <n> | add <text>` makes a new revision with a new
   digest; `/teach` guides only the latest one. Edits keep the 1..20 step and
   200-character limits; edited text still passes the Teach risk gate (D172).
@@ -7693,3 +7694,10 @@ Closes the MVP.md gaps the console left after D173/D174 (tier 2).
 
 No tier-1 surface changed: no Act, input or authority path; nothing new
 leaves the machine. Not run live yet.
+
+Milestone review (fresh agent, `9745b3a..bdc62d6`): no BLOCKING finding.
+Fixed from it: `/stats` counts only Orbyn's own turns, so user text cannot
+inflate it; the proposal "binding" is described as provenance; the
+Workspace button runs `python.exe` (not `pythonw.exe`) from the repo root;
+tests pin that a user-edited risky step still waits at the Teach gate and
+that a hidden alternative stays hidden. Other suggestions are in FOLLOWUPS.

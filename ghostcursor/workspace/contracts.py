@@ -212,8 +212,8 @@ class ResearchTrace:
 
 @dataclass(frozen=True)
 class PlanProposal:
-    """A plan the user reads and may edit (MVP.md "MVP contracts"). Bound to
-    the exact brief bytes it was made from; any edit is a new revision with a
+    """A plan the user reads and may edit (MVP.md "MVP contracts"). Records
+    the digest of the brief bytes it was made from; any edit is a new revision with a
     new digest. Advice for Teach, never authority: nothing here can execute."""
 
     plan: object  # providers.TeachPlan

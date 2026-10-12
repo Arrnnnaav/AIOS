@@ -1309,6 +1309,12 @@ to confirm where the cost actually is before changing anything else.
   replay fixtures are scenarios, not a baseline. Spatial correction and
   provider latency/cost are not counted yet. The temporary-phrase list is
   short and English-only.
+- D175 review: `plan_revisions` also counts a fresh `/plan` after an earlier
+  proposal, not only user edits. The manager's Workspace button can start a
+  Teach session beside a running manager session (both stop on ESC, nothing
+  prevents both). `run_model_teach` fills `outcome` after cleanup; if
+  cleanup raises, the outcome is lost (kill switch unaffected). Teach does
+  not refuse a proposal whose brief changed later.
 - ~~No `Orbyn/tavily` key~~ closed 2026-10-12: owner supplied a Tavily key,
   stored as `Orbyn/tavily`; one live `tavily_search` returned 5 sources.
   DuckDuckGo remains the fallback when the key is absent.
