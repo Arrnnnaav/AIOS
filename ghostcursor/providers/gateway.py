@@ -141,17 +141,40 @@ class Gateway:
     def plan(
         self, envelope: Envelope, *, deadline_s: float = 45.0, cancelled=lambda: False
     ) -> TeachPlan:
-        """A TeachPlan from the first System-Two provider that answers validly.
+        """A TeachPlan from the first System-Two provider that answers validly."""
 
-        A provider that is unconfigured, down, slow or invalid is skipped; a
-        rate limit is not retried on another provider silently -- the caller
-        gets RATE_LIMITED if every provider declined (NEEDS_USER, never a guess).
+        return self.complete(
+            envelope,
+            PLAN_SYSTEM_PROMPT,
+            TEACH_PLAN_SCHEMA,
+            parse_teach_plan,
+            deadline_s=deadline_s,
+            cancelled=cancelled,
+            purpose="planning",
+        )
+
+    def complete(
+        self,
+        envelope: Envelope,
+        system_prompt: str,
+        schema: dict,
+        parse,
+        *,
+        deadline_s: float = 45.0,
+        cancelled=lambda: False,
+        purpose: str = "System Two",
+    ):
+        """``parse(content)`` of the first System-Two answer that parses.
+
+        ``parse`` must be a strict closed-schema parser raising ProviderError
+        (INVALID_OUTPUT) on anything else. A provider that is unconfigured,
+        down, slow or invalid is skipped; a rate limit is not retried on
+        another provider silently -- the caller gets RATE_LIMITED if every
+        provider declined (NEEDS_USER, never a guess).
         """
 
         failures: list[ProviderError] = []
-        messages = envelope.messages(
-            PLAN_SYSTEM_PROMPT + " Schema: " + json.dumps(TEACH_PLAN_SCHEMA)
-        )
+        messages = envelope.messages(system_prompt + " Schema: " + json.dumps(schema))
         for name in self.system_two:
             if cancelled():
                 raise ProviderError(FailureKind.CANCELLED)
@@ -167,12 +190,12 @@ class Gateway:
                     config,
                     key,
                     messages,
-                    TEACH_PLAN_SCHEMA,
+                    schema,
                     transport=self.transport,
                     deadline_s=deadline_s,
                     cancelled=cancelled,
                 )
-                plan = parse_teach_plan(content)
+                result = parse(content)
             except ProviderError as exc:
                 self._record(name, config.model, started, envelope, None, exc.kind)
                 if exc.kind in (FailureKind.CANCELLED, FailureKind.BUDGET_EXCEEDED):
@@ -182,15 +205,15 @@ class Gateway:
             self._record(
                 name, reply.model or config.model, started, envelope, reply, None
             )
-            return plan
+            return result
         kinds = {f.kind for f in failures}
         if FailureKind.RATE_LIMITED in kinds:
             raise ProviderError(
-                FailureKind.RATE_LIMITED, "every planning provider declined"
+                FailureKind.RATE_LIMITED, f"every {purpose} provider declined"
             )
         if kinds == {FailureKind.NOT_CONFIGURED}:
             raise ProviderError(
-                FailureKind.NOT_CONFIGURED, "no planning provider is configured"
+                FailureKind.NOT_CONFIGURED, f"no {purpose} provider is configured"
             )
         raise ProviderError(
             FailureKind.UNAVAILABLE,

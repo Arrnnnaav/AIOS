@@ -7583,3 +7583,50 @@ Mutation sweep, 13 mutants, 13 killed (one, "don't save dropped", applied by
 hand because the sweep's matcher missed it, then restored). A sweep killed
 mid-run left a mutant in `voice.py`; it was found by inspection and restored
 before commit, and the voice tests now fail instead of hanging under it.
+
+## D173 — The solo MVP workspace, console first
+
+**Date:** 12 October 2026
+
+**Owner direction (12 October): build the MVP plan.** This builds MVP.md's
+loop ahead of D164's step 5 (generic Act) because the MVP excludes broad
+cross-app execution; Act stays on the signed path and the workspace has no Act
+call. MVP.md's "integrate Spatial only after activation READY" is superseded
+by D164 (no activation ceremony) and D171.
+
+`py -3.12 -m ghostcursor.workspace <topic>` -- a console workspace per goal
+(the native manager is not extended in this slice):
+
+- **Brief** -- the conversation is the existing brief (`ghostcursor/brief.py`,
+  `%LOCALAPPDATA%\GhostCursor\briefs`); a point, each research answer (with
+  its EvidenceGraph digest) and each plan are appended as readable turns.
+- **Contracts** (`workspace/contracts.py`) -- `SpatialContextReference`
+  (names only, no geometry), `EvidenceGraph` (claims -> passage ids; validate
+  refuses unknown or missing citations), `ResearchTrace` (digests, URLs,
+  counts, provider, privacy line, timings, failures -- no question text),
+  `SourceCategory` shown instead of any credibility score.
+- **Research** (`workspace/research.py`, ported from Spatial) -- Tavily with
+  an `Orbyn/tavily` key, else DuckDuckGo HTML + page fetch; only the question
+  goes to search; passages reach System Two only as tainted data; claims may
+  cite only offered passage ids (an invented id is INVALID_OUTPUT); a
+  "supported" claim without evidence is shown as unresolved; failures give
+  "No answer", never a guess. Traces append to `research-traces.jsonl`.
+- **Personal Brain** (`workspace/brain.py`, `brain.sqlite`, local, never
+  synced) -- the model proposes memories from the user's current message; a
+  deterministic rule makes one durable only if its class is allowed, it is not
+  sensitive or temporary, its content words are in the user's own turn and
+  confidence >= 0.7; else it is session-scoped (24 h). A restatement
+  supersedes; a user correction overrides. Panel: `/brain list | search |
+  forget | correct | pause | resume | export | erase`.
+- **Discuss / Plan / Teach** -- the current message and goal are trusted;
+  history and memories are tainted. `/plan` writes a TeachPlan proposal;
+  `/teach n` starts model-Teach at step n with that plan (no re-planning;
+  every step still goes through the gate). `/point` and `/voice` are D171.
+- `Gateway.complete()` generalises the System-Two path (`plan()` uses it).
+
+Mutation sweep: 16 mutants, 16 killed (brain class/sensitive/temporary/
+support/confidence/origin/pause; graph orphan/unknown/uncited; research
+invented id, uncited-supported, passages trusted; session memories trusted,
+support check bypassed, Act allowed). Not run live: research, discussion and
+the console have hermetic tests only. No Tavily key is stored for Orbyn;
+Spatial's key is not copied without the owner's approval (as D161 did for NIM).

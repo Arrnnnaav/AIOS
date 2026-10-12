@@ -1296,3 +1296,17 @@ to confirm where the cost actually is before changing anything else.
   and the one `--seconds` deadline; replay refuses non-string/odd `windows`
   and fields (document names are re-hidden by `model_view()`); capture refuses
   a typed window title; a point over no control asks again.
+
+## D173 MVP workspace follow-ups
+
+- Not run live: research (search + System Two), discussion, memory extraction,
+  `/plan` and `/teach` from the console.
+- The workspace is a console; the native manager (compact/expanded) does not
+  show the brief, evidence or Brain panel yet (MVP.md product acceptance).
+- No `Orbyn/tavily` key; research falls back to DuckDuckGo HTML scraping,
+  which can break or be rate-limited. Owner decides whether to copy Spatial's.
+- `/teach` binds windows on the console each time; the workspace does not
+  remember bindings (handles must not persist).
+- Memory extraction trusts the model's `kind`; a wrong kind becomes a durable
+  memory of the wrong class (still user-stated and supported).
+- No replay corpus for research/memory yet (MVP.md "Replay tests").

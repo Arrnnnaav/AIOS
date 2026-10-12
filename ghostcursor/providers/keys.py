@@ -12,7 +12,7 @@ import os
 TARGET_PREFIX = "Orbyn/"
 
 #: Provider key names this gateway knows.
-KNOWN = ("typesafe", "nvidia", "openrouter")
+KNOWN = ("typesafe", "nvidia", "openrouter", "tavily")
 
 
 def _env_name(name: str) -> str:

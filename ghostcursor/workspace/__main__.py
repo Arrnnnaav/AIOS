@@ -1,0 +1,178 @@
+"""The workspace console (D173):  py -3.12 -m ghostcursor.workspace <topic>
+
+Type to discuss. Commands:
+  /point            bind windows, point at what you mean (Spatial, D171)
+  /voice            say your message instead of typing (SayStride, D171)
+  /research <q>     a cited answer from web sources
+  /plan             a step plan from the conversation (a proposal)
+  /teach <n> [s]    guide plan step n onward on screen for s seconds (default 300)
+  /brain [list | search <q> | forget <id> | correct <id> <text> |
+          pause | resume | export <file> | erase]
+  /act              (refused: Act runs only on the signed plugin path)
+  /quit
+"""
+
+from __future__ import annotations
+
+import sys
+import time
+from pathlib import Path
+
+from ghostcursor.workspace.brain import Brain
+from ghostcursor.workspace.contracts import SpatialContextReference
+from ghostcursor.workspace.session import Workspace
+
+TEACH_SECONDS = 300.0
+
+
+def reference_from(mark, frame) -> SpatialContextReference | None:
+    """The brief's view of a harness mark: names only, no geometry (D143)."""
+
+    under = mark.current(frame)
+    if not under:
+        return None
+    first = under[0]
+    apps = {b.label: b.identity.executable for b in frame.windows}
+    return SpatialContextReference(
+        "point",
+        first.name,
+        first.control_type,
+        apps.get(first.window, "unknown"),
+        # Spatial's point-inside score; nested controls make it ambiguous.
+        0.95 if len(under) == 1 else 0.6,
+        tuple(c.name for c in under[1:4]),
+    )
+
+
+def take_point() -> SpatialContextReference | None:
+    from ghostcursor.harness.binding import bind
+    from ghostcursor.harness.teach_live import (
+        ABORTED,
+        Observer,
+        choose_windows,
+        take_mark,
+    )
+
+    observer = Observer(bind(choose_windows()))
+    observer.start()
+    try:
+        mark = take_mark(observer, time.monotonic() + 120)
+        frame = observer.latest()
+        return None if mark is ABORTED or frame is None else reference_from(mark, frame)
+    finally:
+        observer.stop()
+
+
+def brain_command(brain: Brain, args: list[str]) -> str:
+    verb = args[0] if args else "list"
+    if verb == "list":
+        rows = brain.list()
+        return "\n".join(
+            f"#{m.mid} [{m.kind}, {m.scope}, {m.origin}] {m.text}" for m in rows
+        ) or "(no memories)" + (" -- learning is paused" if brain.paused else "")
+    if verb == "search" and len(args) > 1:
+        return (
+            "\n".join(f"#{m.mid} {m.text}" for m in brain.search(" ".join(args[1:])))
+            or "(none)"
+        )
+    if verb == "forget" and len(args) == 2 and args[1].isdigit():
+        return "forgotten" if brain.forget(int(args[1])) else "no such memory"
+    if verb == "correct" and len(args) > 2 and args[1].isdigit():
+        fixed = brain.correct(int(args[1]), " ".join(args[2:]))
+        return f"corrected as #{fixed.mid}" if fixed else "no such memory (or refused)"
+    if verb in ("pause", "resume"):
+        brain.pause(verb == "pause")
+        return f"learning {'paused' if verb == 'pause' else 'resumed'}"
+    if verb == "export" and len(args) == 2:
+        Path(args[1]).write_text(brain.export(), encoding="utf-8")
+        return f"exported to {args[1]}"
+    if verb == "erase":
+        if input("Erase every memory? Type yes: ").strip() == "yes":
+            brain.erase_all()
+            return "erased"
+        return "kept"
+    return __doc__.split("/brain", 1)[1].split("/act")[0].strip()
+
+
+def main(argv: list[str] | None = None) -> int:
+    argv = sys.argv[1:] if argv is None else argv
+    if len(argv) != 1:
+        print(__doc__)
+        return 2
+    from ghostcursor.providers import Gateway
+
+    brain = Brain()
+    workspace = Workspace(argv[0], Gateway(), brain)
+    print(
+        f"Workspace '{argv[0]}'"
+        + (f" -- goal: {workspace.goal}" if workspace.goal else "")
+        + ". /quit to leave; type a message or a command."
+    )
+    try:
+        while True:
+            try:
+                line = input("> ").strip()
+            except EOFError:
+                break
+            if not line:
+                continue
+            command, _, rest = line.partition(" ")
+            if command == "/quit":
+                break
+            elif command == "/research" and rest:
+                print(workspace.research(rest))
+            elif command == "/point":
+                reference = take_point()
+                if reference is None:
+                    print("No point taken.")
+                else:
+                    workspace.point(reference)
+                    print(reference.as_text())
+            elif command == "/voice":
+                from ghostcursor.voice import dictate_goal
+
+                said = dictate_goal(time.monotonic() + 120)
+                if said:
+                    print(workspace.discuss(said))
+            elif command == "/plan":
+                plan = workspace.make_plan()
+                print(
+                    "No plan: the model is not available."
+                    if plan is None
+                    else "\n".join(
+                        f"{n}. {s.instruction}"
+                        for n, s in enumerate(plan.steps, start=1)
+                    )
+                )
+            elif command == "/teach":
+                parts = rest.split()
+                if not parts or not parts[0].isdigit():
+                    print("usage: /teach <step> [seconds]")
+                    continue
+                try:
+                    plan = workspace.teach_plan(int(parts[0]))
+                except ValueError as exc:
+                    print(exc)
+                    continue
+                from ghostcursor.harness.teach_live import run_model_teach
+
+                seconds = float(parts[1]) if len(parts) > 1 else TEACH_SECONDS
+                run_model_teach(workspace.goal, None, seconds=seconds, plan=plan)
+            elif command == "/brain":
+                print(brain_command(brain, rest.split()))
+            elif command == "/act":
+                try:
+                    workspace.act()
+                except PermissionError as exc:
+                    print(exc)
+            elif command.startswith("/"):
+                print(__doc__)
+            else:
+                print(workspace.discuss(line))
+    finally:
+        brain.close()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

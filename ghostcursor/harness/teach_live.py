@@ -172,6 +172,7 @@ def run_model_teach(
     seconds: float,
     gateway=None,
     point: bool = False,
+    plan=None,
 ) -> int:
     from ghostcursor.providers import Gateway
     from ghostcursor.reasoning.staleness import Freshness
@@ -186,7 +187,7 @@ def run_model_teach(
         observer.stop()
         print("Stopped before guidance started.")
         return 0
-    session = ModelTeachSession(goal, gateway or Gateway(), mark=mark)
+    session = ModelTeachSession(goal, gateway or Gateway(), mark=mark, plan=plan)
     overlay = window.create_overlay_window()
     print(
         f"Model Teach across {', '.join(b.label + ' ' + b.identity.executable for b in bindings)}. "

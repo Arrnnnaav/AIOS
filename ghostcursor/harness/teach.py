@@ -181,6 +181,7 @@ class ModelTeachSession:
         *,
         clock=time.monotonic,
         mark=None,
+        plan: TeachPlan | None = None,
     ):
         self.goal = goal
         self.clock = clock
@@ -188,8 +189,10 @@ class ModelTeachSession:
         self.mark = mark
         self.gateway = gateway
         self.slot = slot or RequestSlot()
-        self.phase = Phase.PLANNING
-        self.plan: TeachPlan | None = None
+        #: A plan the user already reviewed in the workspace (D173) skips
+        #: planning; it is still only guidance, chosen and gated per step.
+        self.phase = Phase.PLANNING if plan is None else Phase.CHOOSING
+        self.plan: TeachPlan | None = plan
         self.step = 0
         self.reasks = 0
         self.message = "planning"
