@@ -1327,3 +1327,13 @@ to confirm where the cost actually is before changing anything else.
 - ~~`transcribe()` has no deadline~~ closed: transcription runs on a daemon
   thread and ESC/deadline end dictation (2 mutants, 2 killed). The workspace
   `/voice` keeps its own 120 s bound (the console has no session deadline).
+
+## Live run findings, 12 October 2026 (docs/evidence/live-2026-10-12.md)
+
+- Research categorizes `sqlite.org` (a project's own documentation) as
+  `unknown`; the category list only knows `docs.*` hosts and a short list.
+- Act on PowerPoint has not run live since D176: the agent may not approve an
+  Act plan, so the minimized-window restore needs an owner-approved run.
+- D176 review leftovers: restoring at proposal time leaves windows restored
+  when `resolve_target` then refuses; `restore_minimized_for` itself is
+  `pragma: no cover` (its selection and gating are tested).
