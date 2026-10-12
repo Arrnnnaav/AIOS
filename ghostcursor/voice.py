@@ -189,7 +189,20 @@ def dictate_goal(
     if stopped:
         return None
     print("Transcribing on this machine...")
-    draft = transcribe(samples)
+    # On a daemon thread so ESC and the deadline still stop the session while
+    # the model loads or runs (rule 4); an abandoned result is discarded.
+    import threading
+
+    result: list[str] = []
+    worker = threading.Thread(
+        target=lambda: result.append(transcribe(samples)), daemon=True
+    )
+    worker.start()
+    while worker.is_alive():
+        if over():
+            return None
+        worker.join(0.05)
+    draft = result[0] if result else ""
     if not draft:
         print("Nothing was heard.")
         return None

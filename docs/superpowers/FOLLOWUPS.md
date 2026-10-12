@@ -1316,7 +1316,8 @@ to confirm where the cost actually is before changing anything else.
   remember bindings (handles must not persist).
 - Memory extraction trusts the model's `kind`; a wrong kind becomes a durable
   memory of the wrong class (still user-stated and supported).
-- No replay corpus for research/memory yet (MVP.md "Replay tests").
-- From the D173 review: `transcribe()` has no deadline (slow CPU runs past
-  `--seconds`); the workspace `/voice` uses a fixed 120 s, not a session
-  deadline.
+- ~~No replay corpus for research/memory~~ D175: `tests/fixtures/workspace_replay.json`
+  (scenarios from recorded answers; not yet from live sessions).
+- ~~`transcribe()` has no deadline~~ closed: transcription runs on a daemon
+  thread and ESC/deadline end dictation (2 mutants, 2 killed). The workspace
+  `/voice` keeps its own 120 s bound (the console has no session deadline).

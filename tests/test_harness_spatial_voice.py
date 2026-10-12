@@ -322,3 +322,19 @@ def test_esc_at_the_confirm_prompt_cancels(monkeypatch):
 
     monkeypatch.setattr(voice, "read_line", lambda prompt, stop: None)  # ESC typed
     assert _voice(ask=None) is None
+
+
+def test_esc_during_a_hung_transcription_stops_dictation():
+    import threading
+
+    release = threading.Event()
+
+    def hung(samples):
+        release.wait(5)  # a model load that never finishes
+        return "add a slide"
+
+    escapes = iter([False, False, True])  # pressed only once transcription runs
+    try:
+        assert _voice(transcribe=hung, escape=lambda: next(escapes, True)) is None
+    finally:
+        release.set()
