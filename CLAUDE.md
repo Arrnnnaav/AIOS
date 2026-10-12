@@ -77,7 +77,7 @@ and read only those entries. Never read the whole of `DECISIONS.md`, `FLOW.md`,
   runs completed but no counted manager campaign (D163, D165).
 - Now: harness steps 1-3 and step-4 tooling built (D164-D170); Spatial
   `--point`, SayStride `--voice` (D171) and the console MVP workspace
-  (`ghostcursor/workspace/`, D173) built; live measurement is next.
+  (`ghostcursor/workspace/`, D173-D175) built; live measurement is next.
 - Spatial (`D:\PROJECTS\Spatial`) and SayStride are separate projects; reuse
   their code by porting with attribution, not by merging trees.
 
