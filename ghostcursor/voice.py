@@ -103,27 +103,62 @@ def transcribe(samples) -> str:
     )
 
 
-def dictate_goal(*, ask=input) -> str | None:
-    """Console flow: speak, press Enter, then accept (Enter) or type a
-    correction. Returns the confirmed goal, or None if nothing was heard."""
-
+def _console_enter() -> bool:
     import msvcrt
 
-    def enter() -> bool:
-        pressed = False
-        while msvcrt.kbhit():
-            pressed = msvcrt.getwch() in ("\r", "\n") or pressed
-        return pressed
+    pressed = False
+    while msvcrt.kbhit():
+        pressed = msvcrt.getwch() in ("\r", "\n") or pressed
+    return pressed
 
-    ask("Press Enter, then say your goal; press Enter again when done. ")
+
+def _escape_pressed() -> bool:
+    import win32api
+    import win32con
+
+    return bool(win32api.GetAsyncKeyState(win32con.VK_ESCAPE) & 0x8001)
+
+
+def dictate_goal(
+    deadline: float,
+    *,
+    ask=input,
+    enter=_console_enter,
+    escape=_escape_pressed,
+    record=record_until,
+    transcribe=transcribe,
+    clock=None,
+) -> str | None:
+    """Console flow: Enter starts, Enter ends, then accept (Enter) or type a
+    correction. Returns the confirmed goal, or None if nothing was heard, ESC
+    was pressed, or the session deadline passed (CLAUDE.md rule 4)."""
+
+    import time
+
+    clock = clock or time.monotonic
+    stopped = []
+
+    def over() -> bool:
+        if escape() or clock() >= deadline:
+            stopped.append(True)
+            return True
+        return False
+
+    print("Press Enter, then say your goal; press Enter again when done (ESC cancels).")
+    while not enter():
+        if over():
+            return None
+        time.sleep(0.05)
     print("Listening...")
-    samples = record_until(enter)
+    samples = record(lambda: enter() or over())
+    if stopped:
+        return None
     print("Transcribing on this machine...")
     draft = transcribe(samples)
     if not draft:
         print("Nothing was heard.")
         return None
-    correction = ask(
-        f'Goal (draft): "{draft}"\nEnter to use it, or type a correction: '
-    )
+    correction = ask(f'Goal (draft): "{draft}"\nEnter to use it, or type a correction: ')
+    if clock() >= deadline:
+        return None
     return correction.strip() or draft

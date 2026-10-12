@@ -7562,3 +7562,24 @@ returns ABORTED on ESC or at the deadline and the session stops before the
 overlay exists; one deadline covers the prompt and guidance. Test-enforced;
 4 mutants, 4 killed (escape ignored, timeout read as no mark, abort ignored,
 fresh deadline after pointing). Other findings are in FOLLOWUPS.
+
+## D172 — D171 follow-ups closed
+
+**Date:** 12 October 2026
+
+- `--voice` obeys ESC and the session's single `--seconds` deadline while
+  waiting, recording and confirming; guidance gets only the time left.
+- Replay `parse_record` refuses non-string goal/instruction/step id and any
+  `windows` key other than `w1`..`w9`; document names in a foreign corpus are
+  re-hidden by `model_view()` (an added re-hide in `step_frame` was redundant:
+  its mutant survived, so it was removed).
+- Capture refuses a record containing a bound window's title.
+- `--point` over no control asks again instead of continuing without a mark.
+- HIGH_RISK adds overwrite, replace, reset, close, quit, exit, don't save; the
+  gate also checks the plan step instruction (a risky step on a plain OK
+  button waits for Enter).
+
+Mutation sweep, 13 mutants, 13 killed (one, "don't save dropped", applied by
+hand because the sweep's matcher missed it, then restored). A sweep killed
+mid-run left a mutant in `voice.py`; it was found by inspection and restored
+before commit, and the voice tests now fail instead of hanging under it.

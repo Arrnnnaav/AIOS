@@ -205,5 +205,6 @@ with the script named at the bottom; edit the curated table by hand.
 - D169 — Steps 1-3 milestone review: one BLOCKING finding, fixed
 - D170 — Harness step 4 tooling: corpus capture and offline replay
 - D171 — Owner: Spatial point reference and SayStride voice goal in model-Teach
+- D172 — D171 follow-ups closed
 
 _Generated from `DECISIONS.md` headings by `py -3.12 tools/render_decisions_index.py`._

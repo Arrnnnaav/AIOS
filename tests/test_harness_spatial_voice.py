@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from ghostcursor.harness import (
     Identity,
     RawControl,
@@ -179,8 +181,11 @@ def test_the_session_deadline_bounds_the_point_prompt(monkeypatch):
     assert result is teach_live.ABORTED
 
 
-def test_enter_marks_the_control_under_the_cursor():
+def test_enter_marks_the_control_under_the_cursor(monkeypatch):
+    from ghostcursor.harness import teach_live
     from ghostcursor.harness.teach_live import take_mark
+
+    monkeypatch.setattr(teach_live.time, "sleep", lambda _: None)
 
     frame = _frame()
     mark = take_mark(
@@ -192,7 +197,7 @@ def test_enter_marks_the_control_under_the_cursor():
         _Observer(frame), 100.0, escape=lambda: False, enter=lambda: True,
         cursor=lambda: (800, 500), clock=_ticks(),
     )
-    assert nothing is None
+    assert nothing is teach_live.ABORTED  # asked again until the deadline
 
 
 def test_run_model_teach_uses_one_deadline_and_stops_on_abort(monkeypatch):
@@ -243,3 +248,48 @@ def test_time_spent_pointing_counts_against_the_session(monkeypatch):
     monkeypatch.setattr(teach_live.window, "clear_hint", lambda o: drawn.append(o))
     teach_live.run_model_teach("g", [11], seconds=60, gateway=object(), point=True)
     assert drawn == []  # no guidance tick ran after the deadline
+
+
+# --- voice respects ESC and the session deadline (D171 review follow-up) ---
+
+
+def _voice(**kw):
+    from ghostcursor.voice import dictate_goal
+
+    defaults = dict(
+        ask=lambda prompt: "",
+        enter=lambda: True,
+        escape=lambda: False,
+        record=lambda stop: (stop(), [0.1])[1],
+        transcribe=lambda samples: "add a slide",
+        clock=lambda: 0.0,
+    )
+    defaults.update(kw)
+    return dictate_goal(100.0, **defaults)
+
+
+def test_voice_returns_the_confirmed_draft_or_the_correction():
+    assert _voice() == "add a slide"
+    assert _voice(ask=lambda p: "add two slides") == "add two slides"
+    assert _voice(transcribe=lambda s: "") is None
+
+
+def _enter_never(limit=5):
+    """Never pressed; fails instead of hanging if the loop ignores its stop."""
+
+    calls = iter(range(limit))
+    return lambda: next(calls, None) is None and pytest.fail("dictation did not stop")
+
+
+def test_esc_or_the_deadline_cancels_dictation():
+    assert _voice(escape=lambda: True, enter=_enter_never()) is None  # before speaking
+    assert _voice(escape=lambda: True, record=lambda stop: (stop(), [0.1])[1],
+                  enter=iter([True, False, False]).__next__) is None  # while speaking
+    assert _voice(clock=lambda: 200.0, enter=_enter_never()) is None
+    now = [0.0]
+
+    def slow_confirm(prompt):
+        now[0] = 200.0
+        return ""
+
+    assert _voice(clock=lambda: now[0], ask=slow_confirm) is None  # passed while confirming

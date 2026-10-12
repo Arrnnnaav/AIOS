@@ -567,17 +567,20 @@ def main() -> int:
         if not (args.goal or args.voice) or args.mode != "teach":
             parser.error("--model-teach needs --goal or --voice, and Teach mode")
         goal = args.goal
+        # One --seconds budget covers dictation and guidance (rule 4).
+        deadline = time.monotonic() + args.seconds
         if args.voice:
             from ghostcursor.voice import dictate_goal
 
-            goal = dictate_goal()
+            goal = dictate_goal(deadline)
             if not goal:
                 return 2
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return 0
         from ghostcursor.harness.teach_live import run_model_teach
 
-        return run_model_teach(
-            goal, args.window, seconds=args.seconds, point=args.point
-        )
+        return run_model_teach(goal, args.window, seconds=remaining, point=args.point)
 
     if args.goal:
         if args.mode == "act":

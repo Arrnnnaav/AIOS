@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -117,6 +118,15 @@ def parse_record(record: dict) -> Step:
             isinstance(v, str) for v in candidate.values()
         ):
             raise ValueError(f"candidate fields are {sorted(candidate)}")
+    windows = record["windows"]
+    if not isinstance(windows, dict) or not all(
+        isinstance(k, str) and re.fullmatch(r"w[1-9]", k) and isinstance(v, str)
+        for k, v in windows.items()
+    ):
+        raise ValueError("windows must map w1..w9 to application names")
+    for text in (record["goal"], record["instruction"], record["step_id"]):
+        if not isinstance(text, str):
+            raise ValueError("goal, instruction and step_id must be strings")
     ids = {c["cid"] for c in candidates}
     labels = frozenset(record["labels"])
     if not labels <= ids:
@@ -126,7 +136,7 @@ def parse_record(record: dict) -> Step:
         record["split"],
         str(record["goal"]),
         str(record["instruction"]),
-        {str(k): str(v) for k, v in record["windows"].items()},
+        windows,
         candidates,
         labels,
     )
@@ -158,7 +168,7 @@ def step_frame(step: Step) -> ObservationFrame:
             c["cid"],
             c["window"],
             (number,),
-            c["name"],
+            c["name"],  # model_view() re-hides document names (D168)
             c["type"],
             (0, 0, 10, 10),
             c["region"],
@@ -284,7 +294,12 @@ def score(
     for step in steps:
         frame = step_frame(step)
         verdict, target, reason = gate(
-            answers[step.step_id], frame, frame, floor=floor, margin=margin
+            answers[step.step_id],
+            frame,
+            frame,
+            floor=floor,
+            margin=margin,
+            instruction=step.instruction,
         )
         app = _application(step, target.cid if target else None)
         for tally in (tallies.setdefault(app, Tally()), overall):

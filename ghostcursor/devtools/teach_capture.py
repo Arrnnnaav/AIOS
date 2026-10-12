@@ -31,10 +31,20 @@ def leaks_identity(line: str, bindings) -> bool:
     return any(re.search(rf"(?<!\d){n}(?!\d)", line) for n in numbers if n != "0")
 
 
-def append_record(path: Path, record: dict, bindings) -> None:
+def leaks_title(line: str, titles) -> bool:
+    """True if a bound window's title (4+ characters) appears in ``line``: a
+    title never leaves the machine (spec section 7), even when typed."""
+
+    folded = line.casefold()
+    return any(len(t.strip()) >= 4 and t.strip().casefold() in folded for t in titles)
+
+
+def append_record(path: Path, record: dict, bindings, titles=()) -> None:
     line = json.dumps(record, sort_keys=True, ensure_ascii=False)
     if leaks_identity(line, bindings):
         raise ValueError("record refused: it contains a bound window's handle or PID")
+    if leaks_title(line, titles):
+        raise ValueError("record refused: it contains a window title")
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8", newline="\n") as handle:
         handle.write(line + "\n")
@@ -84,7 +94,9 @@ def main(argv: list[str] | None = None) -> int:
                     instruction=instruction,
                     labels=raw.split(),
                 )
-                append_record(path, record, bindings)
+                append_record(
+                    path, record, bindings, [title for _, title, _ in frame.facts]
+                )
             except ValueError as exc:
                 print(f"Not recorded: {exc}")
                 continue

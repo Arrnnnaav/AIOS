@@ -1265,9 +1265,9 @@ to confirm where the cost actually is before changing anything else.
   `--seconds` deadline starts; ESC is not polled during console selection.
 - `observer.stop()` has no join; a COM walk can be cut mid-call at exit
   (daemon thread; revisit at manager integration).
-- HIGH_RISK checks only the control name: misses "Don't Save", "Close",
-  "Overwrite", "Replace", and OK/Yes in a destructive dialog; plan step text is
-  not checked.
+- RESOLVED (D172): HIGH_RISK now covers Don't Save, Close, Overwrite,
+  Replace, Reset, Quit/Exit, and the plan step instruction is checked too, so
+  OK in a "delete the file" step waits for Enter.
 - `reveals_document` misses extensionless file names, recent-file and mail
   ListItems (subject, sender, preview). Owner question open since D167.
 - OpenRouter `:free` is in the default chain, but no provider summary is
@@ -1292,10 +1292,7 @@ to confirm where the cost actually is before changing anything else.
   or checksum; SayStride's Parakeet path and dictionary are not ported.
 - Replay's synthetic frame cannot measure re-resolution, staleness or the
   twin check across real frames; the live end-to-end lane must.
-- From the D171 review: `dictate_goal` ignores ESC/`--seconds` (records up to
-  30 s; first model load can block on a download) -- runs before the session.
-- `parse_record` checks keys only; a hand-edited corpus is sent as-is by the
-  `live` chooser (no re-hiding of document names, no identity scan).
-- Capture's `leaks_identity` checks HWND/PID but not window titles typed into
-  the goal or instruction.
-- No retry when nothing is under the point; guidance continues without a mark.
+- RESOLVED (D172): the four D171-review items above -- `--voice` now obeys ESC
+  and the one `--seconds` deadline; replay refuses non-string/odd `windows`
+  and fields (document names are re-hidden by `model_view()`); capture refuses
+  a typed window title; a point over no control asks again.

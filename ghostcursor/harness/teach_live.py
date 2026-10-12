@@ -136,8 +136,8 @@ def take_mark(
 ):
     """Wait for the user to hover over what they mean and press Enter in this
     console; resolve the cursor point locally against the newest frame (D171).
-    Reads the cursor position only; never moves it. Returns a mark, None when
-    nothing is under the point, or ABORTED on ESC or at the deadline."""
+    Reads the cursor position only; never moves it. Returns a mark, or ABORTED on
+    ESC or at the deadline; a point over no control asks again."""
 
     from ghostcursor.harness.spatial import SpatialReference, point
 
@@ -156,10 +156,11 @@ def take_mark(
                 continue
             mark = SpatialReference.from_mark(point(*cursor()), frame)
             under = mark.current(frame)
-            print(
-                f"Marked: {under[0].name[:40] if under else 'no control under the pointer'}"
-            )
-            return mark if under else None
+            if not under:
+                print("No control under the pointer - point again, or ESC.")
+                continue
+            print(f"Marked: {under[0].name[:40]}")
+            return mark
         time.sleep(TICK_S)
     return ABORTED
 

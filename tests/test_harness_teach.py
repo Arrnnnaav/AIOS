@@ -382,3 +382,19 @@ def test_a_capped_frame_is_never_evidence_of_disappearance():
     assert not change_observed(
         ExpectedChange.CHOSEN_DISAPPEARS, before.candidates[0], before, after
     )
+
+
+def test_high_risk_covers_dont_save_overwrite_and_a_risky_instruction():
+    frame = _frame([_c(1, "Don't Save", "Button"), _c(2, "Overwrite", "Button", rect=(70, 10, 120, 40))])
+    for cid in ("c1", "c2"):
+        assert gate(_choice(cid), frame, frame)[0] is Verdict.CONFIRM
+    plain = _frame([_c(3, "OK", "Button")])
+    assert gate(_choice("c1"), plain, plain)[0] is Verdict.DRAW
+    risky = gate(_choice("c1"), plain, plain, instruction="Click OK to delete the file")
+    assert risky[0] is Verdict.CONFIRM
+
+
+def test_a_risky_step_instruction_waits_even_on_a_plain_control():
+    plan = TeachPlan((PlanStep("Click OK to delete the file", ExpectedChange.CHOSEN_DISAPPEARS),))
+    session, _ = _session(plan, [_choice("c1")])
+    assert session.tick(_frame([_c(1, "OK", "Button")])).phase is Phase.CONFIRM_RISK

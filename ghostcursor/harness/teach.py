@@ -44,7 +44,8 @@ MAX_REASKS = 3
 #: A pointer at one of these needs the user's explicit go-ahead first.
 HIGH_RISK = re.compile(
     r"\b(delete|remove|send|pay|purchase|buy|sign ?in|log ?in|password|"
-    r"uninstall|format|erase|discard)\b",
+    r"uninstall|format|erase|discard|overwrite|replace|reset|close|quit|exit|"
+    r"don'?t save|do not save)\b",
     re.IGNORECASE,
 )
 
@@ -79,9 +80,11 @@ def gate(
     *,
     floor: float = CONFIDENCE_FLOOR,
     margin: float = MARGIN,
+    instruction: str = "",
 ) -> tuple[Verdict, Candidate | None, str]:
     """Deterministic gate between a model's choice and a drawn pointer.
-    ``floor``/``margin`` are parameters only so offline replay can fit them."""
+    ``floor``/``margin`` are parameters only so offline replay can fit them.
+    A high-risk control name OR step instruction needs the user's go-ahead."""
 
     if choice.abstained:
         return Verdict.REASK, None, "no observed control fits this step"
@@ -106,7 +109,7 @@ def gate(
     )
     if mine < floor or mine - other < margin:
         return Verdict.REASK, None, "not confident enough"
-    if HIGH_RISK.search(current.name):
+    if HIGH_RISK.search(current.name) or HIGH_RISK.search(instruction):
         return Verdict.CONFIRM, current, "this control can change or lose data"
     return Verdict.DRAW, current, ""
 
@@ -301,7 +304,12 @@ class ModelTeachSession:
                 if result.error is not None:
                     self._failed(result.error)
                 else:
-                    verdict, current, reason = gate(result.value, self._asked, frame)
+                    verdict, current, reason = gate(
+                        result.value,
+                        self._asked,
+                        frame,
+                        instruction=self.plan.steps[self.step].instruction,
+                    )
                     if verdict is Verdict.REASK:
                         self._reask(reason)
                     else:

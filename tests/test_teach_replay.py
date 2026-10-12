@@ -179,3 +179,29 @@ def test_parse_refuses_an_extra_string_field_on_a_candidate():
     bad["candidates"][0]["title"] = "notes.txt - Notepad"
     with pytest.raises(ValueError):
         parse_record(bad)
+
+
+def test_capture_refuses_a_typed_window_title(tmp_path):
+    record = _record(instruction="Save notes.txt - Notepad as a copy")
+    with pytest.raises(ValueError, match="window title"):
+        append_record(tmp_path / "c.jsonl", record, (W1,), ["notes.txt - Notepad"])
+
+
+def test_parse_refuses_non_string_windows_and_fields():
+    record = _record()
+    for bad in ({"w1": 12}, {"hwnd": "notepad.exe"}):
+        with pytest.raises(ValueError):
+            parse_record({**record, "windows": bad})
+    with pytest.raises(ValueError):
+        parse_record({**record, "goal": 5})
+
+
+def test_replay_rehides_a_document_name_from_a_foreign_corpus():
+    from ghostcursor.evaluation.teach_replay import step_frame
+
+    record = _record()
+    record["candidates"][0]["name"] = "budget.xlsx"
+    frame = step_frame(parse_record(record))
+    assert "budget.xlsx" not in json.dumps(
+        {k: v["name"].text for k, v in frame.model_view()["candidates"].items()}
+    )
