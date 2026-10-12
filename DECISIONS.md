@@ -7727,4 +7727,13 @@ Two Act reliability gaps from FOLLOWUPS, both tier 1.
   `<code>.unclassified` -- plus the COM HRESULT when there is one. The audit
   record (schema 3) carries `reason` and `hresult`, never the text (D122).
 
-Mutation sweeps: restore 5 mutants, 5 killed; reason 5 mutants, 5 killed.
+Mutation sweeps (recorded here and in the commit messages): restore 5
+mutants, 5 killed; reason 5 mutants, 5 killed.
+
+Review (fresh agent, `ba42533..fc0e50c`): no BLOCKING finding. Fixed from
+it: restore filters by the pack's title patterns as well as executables;
+restoring uses `ShowWindowAsync`, so a hung target cannot stall the manager
+UI thread; "restore only when no pack window is on screen" is a tested
+helper (`windows_or_restored`); a recorded HRESULT must fit 32 bits. Second
+sweep: 8 mutants, 8 killed. Note: the control bar's Teach/Ask focus return
+uses the same handoff, so it now also restores a minimized target.

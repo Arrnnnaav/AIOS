@@ -263,6 +263,14 @@ def close_panel(hwnd: int) -> None:
         win32gui.SetWindowText(ask_button, "Ask")
 
 
+def _restore(hwnd: int) -> None:
+    """SW_RESTORE without waiting: a hung target must not stall the UI thread."""
+
+    import ctypes
+
+    ctypes.windll.user32.ShowWindowAsync(hwnd, win32con.SW_RESTORE)
+
+
 def restore_focus_if_safe(bar_hwnd: int, target_hwnd: int) -> bool:
     """Hand foreground focus to exactly one already-chosen window.
 
@@ -288,7 +296,7 @@ def restore_focus_if_safe(bar_hwnd: int, target_hwnd: int) -> bool:
         # the run then finds no on-screen window. Restoring the same supplied
         # window is a window-manager call, not input (D075 still holds).
         if win32gui.IsIconic(target_hwnd):
-            win32gui.ShowWindow(target_hwnd, win32con.SW_RESTORE)
+            _restore(target_hwnd)
         win32gui.SetForegroundWindow(target_hwnd)
     except win32gui.error:
         return False

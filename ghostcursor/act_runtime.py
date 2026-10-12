@@ -196,6 +196,8 @@ def failure_reason(result: ActRunResult) -> tuple[str, int | None]:
     detail = result.detail or ""
     hresult = re.match(r"com_error: \((-?\d{1,11}),", detail)
     code = int(hresult.group(1)) if hresult else None
+    if code is not None and not -(2**31) <= code < 2**32:
+        code = None  # not an HRESULT
     for prefix, name in _REASON_PREFIXES:
         if detail.startswith(prefix):
             return name, code

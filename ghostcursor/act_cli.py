@@ -24,6 +24,7 @@ from ghostcursor.packs.workflow import (
     live_window_reader,
     live_windows_for,
     restore_minimized_for,
+    windows_or_restored,
     resolve_target,
 )
 from ghostcursor.plugins.platform import production_store
@@ -167,9 +168,7 @@ def prepare_act_goal(
         raise RuntimeError(
             "authorized intent does not own exactly one application pack"
         )
-    windows = live_windows_for(packs[0])
-    if not windows and restore_minimized_for(packs[0]):
-        windows = live_windows_for(packs[0])
+    windows = windows_or_restored(packs[0], live_windows_for, restore_minimized_for)
     selected = resolve_target(
         packs[0],
         windows,

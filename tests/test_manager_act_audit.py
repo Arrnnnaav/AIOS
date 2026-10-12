@@ -215,3 +215,13 @@ def test_a_failed_run_records_a_closed_reason_and_never_its_text(code, detail, r
     assert (facts["reason"], facts["hresult"]) == (reason, hresult)
     line = json.dumps(facts)
     assert "Users" not in line and "Q3" not in line and "slides" not in line
+
+
+def test_a_number_outside_the_hresult_range_is_not_recorded():
+    from ghostcursor.act_runtime import ActRunCode, failure_reason
+
+    result = SimpleNamespace(
+        code=ActRunCode.ADAPTER_FAILED, completed=False,
+        detail="com_error: (99999999999, 'x')",
+    )
+    assert failure_reason(result) == ("exception.com_error", None)

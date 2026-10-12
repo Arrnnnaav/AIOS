@@ -350,19 +350,34 @@ def live_windows_for(pack: VerifiedPack) -> list[WindowCandidate]:  # pragma: no
 
 
 def minimized_owned(pack: VerifiedPack, windows) -> list[int]:
-    """Handles of visible, minimized windows whose executable the pack claims.
+    """Handles of visible, minimized windows the pack would accept: its own
+    executables and title patterns (the same filters `resolve_target` uses).
 
-    ``windows`` is ``(hwnd, visible, minimized, executable_name)`` rows. Only
-    the pack's own executables qualify: restoring is not choosing a target,
-    and nothing outside the application the user asked to act on is touched.
+    ``windows`` is ``(hwnd, visible, minimized, executable_name, title)`` rows.
+    Restoring is not choosing a target, and nothing outside the application
+    the user asked to act on is touched.
     """
 
     wanted = {name.casefold() for name in pack.pack_value["executable_names"]}
+    patterns = [re.compile(p) for p in pack.pack_value["title_patterns"]]
     return [
         hwnd
-        for hwnd, visible, minimized, executable in windows
-        if visible and minimized and executable.casefold() in wanted
+        for hwnd, visible, minimized, executable, title in windows
+        if visible
+        and minimized
+        and executable.casefold() in wanted
+        and any(pattern.search(title) for pattern in patterns)
     ]
+
+
+def windows_or_restored(pack: VerifiedPack, list_windows, restore) -> list:
+    """The pack's on-screen windows; only when there are none, restore its
+    minimized ones once and look again."""
+
+    windows = list_windows(pack)
+    if not windows and restore(pack):
+        windows = list_windows(pack)
+    return windows
 
 
 def restore_minimized_for(pack: VerifiedPack) -> int:  # pragma: no cover
@@ -370,6 +385,7 @@ def restore_minimized_for(pack: VerifiedPack) -> int:  # pragma: no cover
     (FOLLOWUPS: a minimized PowerPoint refused every Act proposal). A
     window-manager call, not input synthesis. Returns how many."""
 
+    import ctypes
     import os
 
     import win32con
@@ -391,13 +407,15 @@ def restore_minimized_for(pack: VerifiedPack) -> int:  # pragma: no cover
                 win32gui.IsWindowVisible(hwnd),
                 True,
                 os.path.basename(_exe_path_for_pid(pid) or ""),
+                win32gui.GetWindowText(hwnd),
             )
         )
 
     win32gui.EnumWindows(_collect, None)
     restored = minimized_owned(pack, rows)
     for hwnd in restored:
-        win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+        # Async: a hung application must not stall the caller.
+        ctypes.windll.user32.ShowWindowAsync(hwnd, win32con.SW_RESTORE)
     return len(restored)
 
 
