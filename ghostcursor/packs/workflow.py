@@ -349,6 +349,58 @@ def live_windows_for(pack: VerifiedPack) -> list[WindowCandidate]:  # pragma: no
     return found
 
 
+def minimized_owned(pack: VerifiedPack, windows) -> list[int]:
+    """Handles of visible, minimized windows whose executable the pack claims.
+
+    ``windows`` is ``(hwnd, visible, minimized, executable_name)`` rows. Only
+    the pack's own executables qualify: restoring is not choosing a target,
+    and nothing outside the application the user asked to act on is touched.
+    """
+
+    wanted = {name.casefold() for name in pack.pack_value["executable_names"]}
+    return [
+        hwnd
+        for hwnd, visible, minimized, executable in windows
+        if visible and minimized and executable.casefold() in wanted
+    ]
+
+
+def restore_minimized_for(pack: VerifiedPack) -> int:  # pragma: no cover
+    """Restore the pack's minimized windows so they can be offered as targets
+    (FOLLOWUPS: a minimized PowerPoint refused every Act proposal). A
+    window-manager call, not input synthesis. Returns how many."""
+
+    import os
+
+    import win32con
+    import win32gui
+    import win32process
+
+    from ghostcursor.perception.appinfo import _exe_path_for_pid
+
+    rows = []
+
+    def _collect(hwnd, _):
+        # Returns None on every path: a falsy return stops EnumWindows.
+        if not win32gui.IsIconic(hwnd):
+            return
+        pid = win32process.GetWindowThreadProcessId(hwnd)[1]
+        rows.append(
+            (
+                hwnd,
+                win32gui.IsWindowVisible(hwnd),
+                True,
+                os.path.basename(_exe_path_for_pid(pid) or ""),
+            )
+        )
+
+    win32gui.EnumWindows(_collect, None)
+    restored = minimized_owned(pack, rows)
+    for hwnd in restored:
+        win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+    return len(restored)
+
+
 def bind_workflow(
     authorization: AuthorizedIntent,
     goal: str,
@@ -412,7 +464,9 @@ def _verify_authorization(
     if catalog.index_sha256 != authorization.catalog_sha256:
         raise WorkflowUnavailable("active catalog changed after authorization")
     if catalog.generation != authorization.catalog_generation:
-        raise WorkflowUnavailable("active catalog generation changed after authorization")
+        raise WorkflowUnavailable(
+            "active catalog generation changed after authorization"
+        )
 
     plugin_id = pack.plugin_id or pack.pack_id
     plugin_version = pack.plugin_version or "legacy"

@@ -491,7 +491,7 @@ activated. Every surface must call `PluginStore` and
 `check_core_compatibility()` rather than implementing validation, conflict, or
 state transitions itself.
 
-### The Act campaign harness cannot restore a minimized approved window
+### The Act campaign harness cannot restore a minimized approved window — CLOSED (D176 restores at proposal and handoff; the harness already restores)
 
 PowerPoint minimized itself between window resolution and the Phase A launch,
 putting its rect at `(-25600, -25600, -25441, -25573)`. `is_on_screen` returned
@@ -837,7 +837,7 @@ Redact the handle in the candidate, run the adoption path, and remove the name
 from the exemption list in the same slice. Do not edit an accepted artifact to
 make a scan pass.
 
-## An adapter refusal cannot be explained from retained evidence — OPEN 10 Sep 2026
+## An adapter refusal cannot be explained from retained evidence — CLOSED 12 Oct 2026 (D176: closed `reason` in the manager audit)
 
 The 10 September run's first approval cycle ended `adapter_failed` and changed
 nothing, which is correct behaviour, but nothing retained says why. The bounded

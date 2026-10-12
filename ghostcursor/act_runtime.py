@@ -28,6 +28,7 @@ from ghostcursor.act_protocol import (
     PresentationRequest,
     Receipt,
     ReceiptPolicy,
+    RefusalCode,
 )
 from ghostcursor.adapter_host import (
     AdapterHost,
@@ -145,6 +146,69 @@ class ActRunResult:
         return self.code is ActRunCode.COMPLETED
 
 
+#: Detail prefix -> closed reason name, first match wins. The manager's audit
+#: keeps only the name: a name from a closed set is not content (D122), and
+#: an unexplained refusal used to cost a whole run (FOLLOWUPS, 10 Sep).
+_REASON_PREFIXES = (
+    ("the presentation surface was not created", "presentation_untrusted"),
+    ("a control-driving run needs the plugin's signed", "no_live_verifier"),
+    ("the presentation session could not be assembled", "presentation_unassembled"),
+    ("a UIA operation requires a presentation surface", "no_presentation_surface"),
+    ("the verified run could not be published", "publish_failed"),
+    ("adapter rejected complete plan", "adapter_preflight_rejected"),
+    ("adapter timed out", "adapter_timeout"),
+    ("verifier timed out", "verifier_timeout"),
+    ("verifier exited with code", "verifier_exited"),
+    ("adapter refused the observation", "observation_refused"),
+    ("adapter action stopped", "stopped"),
+    ("verification stopped", "stopped"),
+    ("adapter ", "adapter_protocol"),
+    ("verifier ", "verifier_protocol"),
+)
+#: Exception class names an adapter or this process may report as
+#: "Name: message"; anything else is "exception.other".
+_KNOWN_EXCEPTIONS = frozenset(
+    {
+        "com_error",
+        "Refusal",
+        "TimeoutError",
+        "FileExistsError",
+        "FileNotFoundError",
+        "PermissionError",
+        "OSError",
+        "RuntimeError",
+        "ValueError",
+        "KeyError",
+        "AttributeError",
+        "TypeError",
+    }
+)
+
+
+def failure_reason(result: ActRunResult) -> tuple[str, int | None]:
+    """A closed reason name for a run that did not complete, and the COM
+    HRESULT when the detail carries one (a number, not content)."""
+
+    import re
+
+    if result.completed:
+        return "completed", None
+    detail = result.detail or ""
+    hresult = re.match(r"com_error: \((-?\d{1,11}),", detail)
+    code = int(hresult.group(1)) if hresult else None
+    for prefix, name in _REASON_PREFIXES:
+        if detail.startswith(prefix):
+            return name, code
+    refusal = detail.split(":", 1)[0]
+    if refusal in {c.value for c in RefusalCode}:
+        return f"node_refused.{refusal}", code
+    exception = re.match(r"([A-Za-z_][A-Za-z0-9_]{0,60}): ", detail)
+    if exception:
+        name = exception.group(1)
+        return f"exception.{name if name in _KNOWN_EXCEPTIONS else 'other'}", code
+    return f"{result.code.value}.unclassified", code
+
+
 @dataclass
 class ActControls:
     """Thread-safe stop/pause state shared with the manager and CLI."""
@@ -247,7 +311,9 @@ class PresentationSurface:
         object.__setattr__(self, "_seal", _seal)
 
 
-def _bind_presentation_surface(overlay: object, policy: ReceiptPolicy) -> PresentationSurface:
+def _bind_presentation_surface(
+    overlay: object, policy: ReceiptPolicy
+) -> PresentationSurface:
     """Bind one of the two reviewed production presentation implementations.
 
     This private edge is intentionally narrower than accepting any object
@@ -293,9 +359,8 @@ def _trusted_presentation_surface(value: object) -> bool:
     overlay = value.overlay
     if type(overlay) is OverlaySession:
         return _trusted_overlay_session(overlay)
-    return (
-        type(overlay) is UiThreadPresentationBridge
-        and _trusted_overlay_session(getattr(overlay, "_overlay", None))
+    return type(overlay) is UiThreadPresentationBridge and _trusted_overlay_session(
+        getattr(overlay, "_overlay", None)
     )
 
 
@@ -613,8 +678,11 @@ def _execute_approved_graph(
             output_path=approval.output_path,
         )
 
-    object_nodes = tuple(n for n in validated.ordered_nodes
-                         if not registry.operations[n.operation_id].draws_a_pointer)
+    object_nodes = tuple(
+        n
+        for n in validated.ordered_nodes
+        if not registry.operations[n.operation_id].draws_a_pointer
+    )
     host = AdapterHost(
         descriptor,
         session_nonce=secrets.token_hex(16),
@@ -831,16 +899,25 @@ def _execute_approved_graph(
                         # The cue and confirmation can take seconds. The
                         # node-entry authority check is no longer fresh here.
                         if approval.expires_at < wall_clock():
-                            raise AdapterProtocolError("approval expired during presentation")
+                            raise AdapterProtocolError(
+                                "approval expired during presentation"
+                            )
                         if current_authority() != (
-                            approval.active_index_sha256, approval.catalog_generation,
-                            approval.plugin_version, approval.manifest_sha256,
+                            approval.active_index_sha256,
+                            approval.catalog_generation,
+                            approval.plugin_version,
+                            approval.manifest_sha256,
                             approval.adapter_sha256,
                         ):
-                            raise AdapterProtocolError("authority changed during presentation")
+                            raise AdapterProtocolError(
+                                "authority changed during presentation"
+                            )
                         revalidate_target(approval.target)
                         return _authorize_node(
-                            approval, validated, node=node, ordinal=ordinal,
+                            approval,
+                            validated,
+                            node=node,
+                            ordinal=ordinal,
                             observation_facts=facts,
                         )
 
@@ -852,8 +929,8 @@ def _execute_approved_graph(
                         observe=lambda mode: uia_session.observe(node, mode),
                         present=uia_session.present,
                         authorize=authorize_observed,
-                        dispatch=lambda token, confirmed, confirmed_at: uia_session.dispatch(
-                            node, token, confirmed, confirmed_at
+                        dispatch=lambda token, confirmed, confirmed_at: (
+                            uia_session.dispatch(node, token, confirmed, confirmed_at)
                         ),
                         verify=lambda target, baseline: verify(
                             target, operation, baseline, approval
@@ -874,8 +951,7 @@ def _execute_approved_graph(
                         # adapter receives it. A late Pause refuses this node;
                         # it never waits and resumes with stale confirmation.
                         dispatch_permitted=lambda: (
-                            not controls.stop_event.is_set()
-                            and not controls.paused
+                            not controls.stop_event.is_set() and not controls.paused
                         ),
                         on_state=(
                             None
@@ -1088,10 +1164,14 @@ def choose_verifier(artifact, live, operation, *, observation=None):
             f"{operation.backend!r} but the plugin ships no live_verifier; "
             "the artifact verifier cannot answer for a live effect"
         )
-    if (not isinstance(observation, Observation)
-            or not isinstance(observation.semantic, Mapping)
-            or not observation.semantic):
-        raise AdapterProtocolError("live verification requires the node's nonempty baseline")
+    if (
+        not isinstance(observation, Observation)
+        or not isinstance(observation.semantic, Mapping)
+        or not observation.semantic
+    ):
+        raise AdapterProtocolError(
+            "live verification requires the node's nonempty baseline"
+        )
     if not operation.postconditions:
         raise AdapterProtocolError("live verification requires declared postconditions")
     return live, observation.semantic, tuple(operation.postconditions)
@@ -1154,7 +1234,9 @@ def execute_approved_graph(
         )
 
     def _verifier_for(operation, observation):
-        return choose_verifier(verifier, live_verifier, operation, observation=observation)
+        return choose_verifier(
+            verifier, live_verifier, operation, observation=observation
+        )
 
     def observe(phase: str, facts: Mapping[str, object]) -> None:
         if verify_observer is None:

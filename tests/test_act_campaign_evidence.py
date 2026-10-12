@@ -1028,8 +1028,9 @@ def test_a_duplicate_ledger_declaration_is_refused(tmp_path):
         )
 
 
-def test_the_manager_audit_records_the_bound_build_under_schema_2():
-    """Review I5: dropping the field or reverting the schema survived."""
+def test_the_manager_audit_records_the_bound_build_under_schema_3():
+    """Review I5: dropping the field or reverting the schema survived.
+    Schema 3 (D176) adds the closed failure reason."""
 
     from types import SimpleNamespace
 
@@ -1044,7 +1045,8 @@ def test_the_manager_audit_records_the_bound_build_under_schema_2():
     assert facts["application_version"] == BUILD
     assert "application_version" in ManagerActAuditRecord.__dataclass_fields__
     source = (ROOT / "ghostcursor" / "manager.py").read_text(encoding="utf-8")
-    assert "schema_version=2," in source and "schema_version=1," not in source
+    assert "schema_version=3," in source and "schema_version=2," not in source
+    assert {"reason", "hresult"} <= set(ManagerActAuditRecord.__dataclass_fields__)
 
 
 def test_the_harness_approved_record_names_the_build():

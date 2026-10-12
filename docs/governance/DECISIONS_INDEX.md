@@ -209,5 +209,6 @@ with the script named at the bottom; edit the curated table by hand.
 - D173 — The solo MVP workspace, console first
 - D174 — MVP workspace review: three BLOCKING findings, fixed
 - D175 — MVP workspace: inspect, correct, revise, record, replay
+- D176 — Act: a minimized target is restored; a failed run names its reason
 
 _Generated from `DECISIONS.md` headings by `py -3.12 tools/render_decisions_index.py`._

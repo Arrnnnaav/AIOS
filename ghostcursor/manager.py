@@ -252,6 +252,10 @@ class ManagerActAuditRecord:
     #: only for the build it names (CLAUDE.md), and a build is not a handle or a
     #: process id, so D122 does not withhold it (schema 2, D152).
     application_version: str | None = None
+    #: Why a run did not complete, as a closed name (`failure_reason`), and
+    #: the COM HRESULT when there is one -- never the detail text (schema 3).
+    reason: str | None = None
+    hresult: int | None = None
 
 
 #: Per-process key for every exported audit commitment (D122).
@@ -351,8 +355,13 @@ def _run_result_audit_facts(
             "detail_sha256": _audit_digest(result),
         }
     validated = getattr(result, "validated", None)
+    from ghostcursor.act_runtime import failure_reason
+
+    reason, hresult = failure_reason(result)
     return {
         "proposal_sha256": proposal_sha256,
+        "reason": reason,
+        "hresult": hresult,
         "graph_sha256": getattr(validated, "graph_sha256", None),
         "validation_sha256": getattr(validated, "validation_sha256", None),
         "code": getattr(getattr(result, "code"), "value"),
@@ -675,7 +684,7 @@ class NativeManagerWindow:
         self._act_audit_sequence += 1
         self._act_audit_records.put(
             ManagerActAuditRecord(
-                schema_version=2,
+                schema_version=3,
                 sequence=self._act_audit_sequence,
                 type=kind,
                 at_ns=time.time_ns(),

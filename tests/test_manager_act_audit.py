@@ -180,3 +180,38 @@ def test_production_manager_loop_wires_every_load_bearing_audit_transition():
         "act_run_result",
     } <= record_kinds
     assert {"_runtime_event_audit_facts", "_run_result_audit_facts"} <= helper_calls
+
+
+@pytest.mark.parametrize(
+    "code, detail, reason, hresult",
+    [
+        ("completed", "all actions verified", "completed", None),
+        (
+            "adapter_failed",
+            "com_error: (-2147352567, 'Exception occurred.', (0, 'C:/Users/x/deck.pptx'))",
+            "exception.com_error",
+            -2147352567,
+        ),
+        ("adapter_failed", "MySecretDeckError: Q3 numbers", "exception.other", None),
+        ("adapter_failed", "adapter timed out", "adapter_timeout", None),
+        ("adapter_failed", "adapter rejected complete plan: x", "adapter_preflight_rejected", None),
+        ("adapter_failed", "adapter emitted invalid JSON", "adapter_protocol", None),
+        ("adapter_failed", "verifier exited with code 2: boom", "verifier_exited", None),
+        ("adapter_failed", "target_identity_mismatch: moved", "node_refused.target_identity_mismatch", None),
+        ("verification_failed", "the deck has 3 slides", "verification_failed.unclassified", None),
+    ],
+)
+def test_a_failed_run_records_a_closed_reason_and_never_its_text(code, detail, reason, hresult):
+    from ghostcursor.act_runtime import ActRunCode
+
+    result = SimpleNamespace(
+        validated=None,
+        code=ActRunCode(code),
+        completed=code == "completed",
+        completed_node_ids=(),
+        detail=detail,
+    )
+    facts = _run_result_audit_facts("7" * 64, result)
+    assert (facts["reason"], facts["hresult"]) == (reason, hresult)
+    line = json.dumps(facts)
+    assert "Users" not in line and "Q3" not in line and "slides" not in line

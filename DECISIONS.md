@@ -7701,3 +7701,30 @@ inflate it; the proposal "binding" is described as provenance; the
 Workspace button runs `python.exe` (not `pythonw.exe`) from the repo root;
 tests pin that a user-edited risky step still waits at the Teach gate and
 that a hidden alternative stays hidden. Other suggestions are in FOLLOWUPS.
+
+## D176 — Act: a minimized target is restored; a failed run names its reason
+
+**Date:** 12 October 2026
+
+Two Act reliability gaps from FOLLOWUPS, both tier 1.
+
+- **Minimized PowerPoint.** `live_windows_for` skips minimized windows, so a
+  minimized PowerPoint refused every Act proposal ("no window matches"), and
+  a target that minimized itself after approval stayed minimized through the
+  foreground handoff. Now:
+  - when the pack has no on-screen window, `restore_minimized_for` restores
+    only the pack's own visible, minimized windows (`minimized_owned`) and
+    enumerates again; choosing a target is still `resolve_target`'s job;
+  - `restore_focus_if_safe` restores the exact supplied target, only after the
+    manager still owns the foreground and the handle is live, and only when it
+    is minimized (SW_RESTORE on a maximized window would un-maximize it).
+  `ShowWindow` is a window-manager call, not input synthesis.
+- **Unexplained refusal.** The manager audit hashed the failure detail, so the
+  10 September `adapter_failed` could not be explained. `failure_reason()`
+  maps a result to a closed name -- a known prefix (`adapter_timeout`,
+  `adapter_preflight_rejected`, ...), `node_refused.<RefusalCode>`,
+  `exception.<allowlisted class>` or `exception.other`, else
+  `<code>.unclassified` -- plus the COM HRESULT when there is one. The audit
+  record (schema 3) carries `reason` and `hresult`, never the text (D122).
+
+Mutation sweeps: restore 5 mutants, 5 killed; reason 5 mutants, 5 killed.

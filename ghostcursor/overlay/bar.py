@@ -284,6 +284,11 @@ def restore_focus_if_safe(bar_hwnd: int, target_hwnd: int) -> bool:
     if not target_hwnd or not win32gui.IsWindow(target_hwnd):
         return False
     try:
+        # A minimized target stays minimized under SetForegroundWindow, and
+        # the run then finds no on-screen window. Restoring the same supplied
+        # window is a window-manager call, not input (D075 still holds).
+        if win32gui.IsIconic(target_hwnd):
+            win32gui.ShowWindow(target_hwnd, win32con.SW_RESTORE)
         win32gui.SetForegroundWindow(target_hwnd)
     except win32gui.error:
         return False
