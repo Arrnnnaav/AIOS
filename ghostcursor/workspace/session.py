@@ -312,3 +312,41 @@ class Workspace:
             "Act is not available from the workspace: it runs only through the "
             "signed plugin path after its release gate"
         )
+
+
+def measures(brain: Brain, briefs: Path, traces: Path) -> dict:
+    """MVP.md "Continuous measures", counted from this machine's own records:
+    research traces, the Brain and the briefs. Counts only -- no text."""
+
+    import json
+    from collections import Counter
+
+    research_rows = []
+    if traces.exists():
+        for line in traces.read_text(encoding="utf-8").splitlines():
+            try:
+                research_rows.append(json.loads(line))
+            except ValueError:
+                continue
+    memories = brain.list(include_inactive=True)
+    turns = [
+        t
+        for path in (sorted(briefs.glob("*.md")) if briefs.exists() else ())
+        for t in load_brief(path).turns
+    ]
+    plans = [t.text for t in turns if t.text.startswith("[plan r")]
+    teach = [t.text for t in turns if t.text.startswith("[teach r")]
+    return {
+        "research_answers": len(research_rows),
+        "claims": sum(r.get("claims", 0) for r in research_rows),
+        "unresolved_claims": sum(r.get("unresolved", 0) for r in research_rows),
+        "provider_failures": dict(
+            Counter(f.split(":")[0] for r in research_rows for f in r.get("failures", ()))
+        ),
+        "memories": dict(Counter(f"{m.scope}/{m.origin}" for m in memories)),
+        "memories_superseded": sum(m.status == "superseded" for m in memories),
+        "plan_proposals": len(plans),
+        "plan_revisions": sum(not p.startswith("[plan r1,") for p in plans),
+        "teach_runs": len(teach),
+        "teach_steps_done": sum(t.count(" done (") for t in teach),
+    }

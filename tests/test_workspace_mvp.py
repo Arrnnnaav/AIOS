@@ -257,3 +257,25 @@ def test_the_manager_opens_a_valid_workspace_topic(goal, topic, tmp_path):
 
     assert workspace_topic(goal) == topic
     brief_path(tmp_path, topic)  # a valid topic name
+
+
+def test_measures_count_without_text(planned):
+    from ghostcursor.workspace.session import measures
+
+    planned.edit_plan("drop", ["2"])
+    planned.record_teach(1, [(1, "you confirmed")], 0)
+    planned.gateway.fail = "timeout"
+    traces = planned.root / "t.jsonl"
+    planned.research(
+        "secret question",
+        search=lambda q: [{"url": "https://a.org/x", "title": "A", "passages": ["p"]}],
+        key_lookup=lambda n: None,
+        trace_path=traces,
+    )
+    traces.write_text(traces.read_text() + "not json\n")
+    got = measures(planned.brain, planned.root, traces)
+    assert got["research_answers"] == 1 and got["provider_failures"] == {"model": 1}
+    assert (got["plan_proposals"], got["plan_revisions"]) == (2, 1)
+    assert (got["teach_runs"], got["teach_steps_done"]) == (1, 1)
+    sent = json.dumps(got)
+    assert "secret" not in sent and "title slide" not in sent.lower()

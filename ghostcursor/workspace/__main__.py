@@ -11,6 +11,7 @@ Type to discuss. Commands:
   /teach <n> [s]    guide plan step n onward on screen for s seconds (default 300)
   /brain [list | search <q> | forget <id> | correct <id> <text> |
           pause | resume | export <file> | erase]
+  /stats            counts from this machine's records (no text)
   /act              (refused: Act runs only on the signed plugin path)
   /quit
 """
@@ -236,6 +237,14 @@ def main(argv: list[str] | None = None) -> int:
                     workspace.goal, None, seconds=seconds, plan=plan, outcome=outcome
                 )
                 print(workspace.record_teach(int(parts[0]), outcome, code))
+            elif command == "/stats":
+                from ghostcursor.workspace.research import _trace_path
+                from ghostcursor.workspace.session import measures
+
+                for name, value in measures(
+                    brain, workspace.root, _trace_path()
+                ).items():
+                    print(f"{name}: {value}")
             elif command == "/brain":
                 print(brain_command(brain, rest.split()))
             elif command == "/act":

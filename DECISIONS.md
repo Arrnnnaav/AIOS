@@ -7688,5 +7688,8 @@ Closes the MVP.md gaps the console left after D173/D174 (tier 2).
   made from the goal box in its own console. The manager does not yet show
   the brief, evidence or Brain itself (FOLLOWUPS).
 
+- **Continuous measures:** `/stats` prints counts from local records only
+  (research traces, Brain, briefs) -- never question, goal or memory text.
+
 No tier-1 surface changed: no Act, input or authority path; nothing new
 leaves the machine. Not run live yet.
