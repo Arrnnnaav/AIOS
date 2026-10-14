@@ -12,6 +12,8 @@ cassettes without a network or a key.
 
 from __future__ import annotations
 
+import json
+import os
 import time
 from dataclasses import dataclass
 
@@ -30,6 +32,9 @@ class ProviderConfig:
     #: Provider-specific request fields, e.g. turning a reasoning model's
     #: thinking off: with it on, one NIM plan was noticeably slower (not benchmarked).
     extra: tuple[tuple[str, object], ...] = ()
+    #: "chat" (OpenAI-compatible /chat/completions) or "responses" (the
+    #: streamed Responses API that Sign in with ChatGPT requires).
+    api: str = "chat"
 
 
 SYSTEM_ONE = ProviderConfig(
@@ -54,7 +59,27 @@ SYSTEM_TWO = {
     "ollama": ProviderConfig(
         "ollama", "http://127.0.0.1:11434/v1", "qwen3:4b-instruct", None, 60.0
     ),
+    # The user's own ChatGPT plan (Sign in with ChatGPT); the key is the
+    # OAuth access token from ``chatgpt.access_token``. `python -m
+    # ghostcursor.providers chatgpt models` lists what the account may pick.
+    "chatgpt": ProviderConfig(
+        "chatgpt",
+        "https://api.openai.com/v1",
+        os.environ.get("ORBYN_CHATGPT_MODEL", "gpt-6.1-sol"),
+        "chatgpt",
+        45.0,
+        api="responses",
+    ),
 }
+
+#: Responses errors meaning the user's plan allowance is spent or paused:
+#: NEEDS_USER (rate limited), never a reason to guess.
+PLAN_LIMIT_CODES = frozenset(
+    {
+        "subscription_sharing_usage_limit_exceeded",
+        "subscription_sharing_usage_unavailable",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -64,6 +89,16 @@ class Reply:
     latency_ms: int
     input_tokens: int
     output_tokens: int
+
+
+def _status_failure(config: ProviderConfig, code: int) -> ProviderError | None:
+    if code in (401, 403):
+        return ProviderError(FailureKind.AUTH_FAILED, config.name)
+    if code == 429:
+        return ProviderError(FailureKind.RATE_LIMITED, f"{config.name}: HTTP {code}")
+    if code >= 400:
+        return ProviderError(FailureKind.UNAVAILABLE, f"{config.name}: HTTP {code}")
+    return None
 
 
 def _post(
@@ -97,20 +132,13 @@ def _post(
                     FailureKind.UNAVAILABLE, f"{config.name}: {type(exc).__name__}"
                 ) from exc
             code = response.status_code
-            if code in (401, 403):
-                raise ProviderError(FailureKind.AUTH_FAILED, config.name)
-            if code == 429 or code >= 500:
-                kind = (
-                    FailureKind.RATE_LIMITED if code == 429 else FailureKind.UNAVAILABLE
-                )
-                if attempt == 1 and deadline - time.monotonic() > 0.5:
+            failure = _status_failure(config, code)
+            if failure is not None:
+                retryable = code == 429 or code >= 500
+                if retryable and attempt == 1 and deadline - time.monotonic() > 0.5:
                     time.sleep(0.2)
                     continue
-                raise ProviderError(kind, f"{config.name}: HTTP {code}")
-            if code >= 400:
-                raise ProviderError(
-                    FailureKind.UNAVAILABLE, f"{config.name}: HTTP {code}"
-                )
+                raise failure
             try:
                 body = response.json()
             except ValueError as exc:
@@ -176,3 +204,105 @@ def chat_json_call(
     if not isinstance(content, str) or not content.strip():
         raise ProviderError(FailureKind.INVALID_OUTPUT, f"{config.name}: empty content")
     return content, reply
+
+
+def responses_json_call(
+    config, key, messages: list[dict], schema: dict, *, transport, deadline_s, cancelled
+) -> tuple[str, Reply]:
+    """One streamed Responses API request asking for a JSON object.
+
+    Sign in with ChatGPT requires ``store: false`` (nothing kept server-side)
+    and ``stream: true``, and rejects system-role items and ``temperature``.
+    The answer counts only after ``response.completed``; a failed, incomplete
+    or truncated stream is never parsed. No retry: a retried request would be
+    charged to the user's plan twice.
+    """
+
+    instructions = "\n".join(m["content"] for m in messages if m["role"] == "system")
+    payload = {
+        "model": config.model,
+        "instructions": instructions,
+        "input": [
+            {"role": m["role"], "content": m["content"]}
+            for m in messages
+            if m["role"] != "system"
+        ],
+        **dict(config.extra),
+        "store": False,
+        "stream": True,
+    }
+    started = time.monotonic()
+    deadline = started + min(deadline_s, config.timeout_s)
+    parts: list[str] = []
+    if cancelled():
+        raise ProviderError(FailureKind.CANCELLED)
+    with httpx.Client(
+        base_url=config.base_url,
+        transport=transport,
+        headers={"Authorization": f"Bearer {key}"},
+    ) as client:
+        try:
+            with client.stream(
+                "POST", "/responses", json=payload, timeout=deadline - started
+            ) as response:
+                failure = _status_failure(config, response.status_code)
+                if failure is not None:
+                    raise failure
+                for line in response.iter_lines():
+                    if cancelled():
+                        raise ProviderError(FailureKind.CANCELLED)
+                    if time.monotonic() > deadline:
+                        raise ProviderError(FailureKind.TIMEOUT, config.name)
+                    if not line.startswith("data:"):
+                        continue
+                    try:
+                        event = json.loads(line[5:].strip())
+                    except ValueError:
+                        continue  # e.g. a "[DONE]" sentinel
+                    if not isinstance(event, dict):
+                        continue
+                    kind = event.get("type")
+                    if kind == "response.output_text.delta":
+                        if isinstance(event.get("delta"), str):
+                            parts.append(event["delta"])
+                    elif kind == "response.completed":
+                        body = event.get("response")
+                        body = body if isinstance(body, dict) else {}
+                        return _completed(config, body, "".join(parts), started)
+                    elif kind in ("response.failed", "error"):
+                        raise _stream_failure(config, event)
+                    elif kind == "response.incomplete":
+                        raise ProviderError(
+                            FailureKind.INVALID_OUTPUT, f"{config.name}: incomplete"
+                        )
+        except httpx.TimeoutException as exc:
+            raise ProviderError(FailureKind.TIMEOUT, config.name) from exc
+        except httpx.HTTPError as exc:
+            raise ProviderError(
+                FailureKind.UNAVAILABLE, f"{config.name}: {type(exc).__name__}"
+            ) from exc
+    raise ProviderError(FailureKind.INVALID_OUTPUT, f"{config.name}: stream ended early")
+
+
+def _completed(config, body: dict, content: str, started: float) -> tuple[str, Reply]:
+    if not content.strip():
+        raise ProviderError(FailureKind.INVALID_OUTPUT, f"{config.name}: empty content")
+    usage = body.get("usage") if isinstance(body.get("usage"), dict) else {}
+    return content, Reply(
+        body,
+        body.get("model") if isinstance(body.get("model"), str) else None,
+        round((time.monotonic() - started) * 1000),
+        int(usage.get("input_tokens") or 0),
+        int(usage.get("output_tokens") or 0),
+    )
+
+
+def _stream_failure(config, event: dict) -> ProviderError:
+    response = event.get("response") if isinstance(event.get("response"), dict) else {}
+    error = response.get("error") or event.get("error") or event
+    code = error.get("code") if isinstance(error, dict) else None
+    if code in PLAN_LIMIT_CODES:
+        return ProviderError(FailureKind.RATE_LIMITED, f"{config.name}: {code}")
+    return ProviderError(
+        FailureKind.UNAVAILABLE, f"{config.name}: {code or 'response failed'}"
+    )

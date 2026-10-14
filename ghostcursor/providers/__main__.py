@@ -4,6 +4,11 @@
     py -3.12 -m ghostcursor.providers keys set <typesafe|nvidia|openrouter>   (prompts; no echo)
     py -3.12 -m ghostcursor.providers keys import-env <path-to-.env> <NAME>=<provider> ...
     py -3.12 -m ghostcursor.providers ping            (live: one tiny request per configured provider)
+    py -3.12 -m ghostcursor.providers chatgpt <sign-in|sign-out|status|models>
+
+`chatgpt sign-in` opens the browser for Sign in with ChatGPT; afterwards
+planning and research run on the user's own ChatGPT plan first. Pick a model
+from `chatgpt models` with the ORBYN_CHATGPT_MODEL environment variable.
 
 Keys are stored in Windows Credential Manager under ``Orbyn/<provider>``.
 Values are never printed.
@@ -44,6 +49,8 @@ def main(argv=None) -> int:
         "mappings", nargs="+", help="ENV_NAME=provider, e.g. TYPESAFE_API_KEY=typesafe"
     )
     commands.add_parser("ping")
+    siwc = commands.add_parser("chatgpt")
+    siwc.add_argument("action", choices=("sign-in", "sign-out", "status", "models"))
     arguments = parser.parse_args(argv)
 
     if arguments.command == "keys":
@@ -68,6 +75,9 @@ def main(argv=None) -> int:
             keys.set_key(provider, env[env_name])
             print(f"{provider}: stored from {env_name}")
         return 0
+
+    if arguments.command == "chatgpt":
+        return _chatgpt(arguments.action)
 
     from ghostcursor.providers import Envelope, Gateway, ProviderError, Tainted
 
@@ -99,6 +109,34 @@ def main(argv=None) -> int:
         print("plan:", [s.expected_change.value for s in plan.steps])
     except ProviderError as exc:
         print("plan:", exc.kind.value)
+    return 0
+
+
+def _chatgpt(action: str) -> int:
+    from ghostcursor.providers import chatgpt
+
+    if action == "sign-in":
+        print("Opening the browser to sign in with ChatGPT (5 minutes)...")
+        try:
+            chatgpt.sign_in()
+        except chatgpt.SignInError as exc:
+            print(f"chatgpt: not signed in ({exc})")
+            return 1
+        print("chatgpt: signed in; requests now use your ChatGPT plan")
+        return 0
+    if action == "sign-out":
+        chatgpt.sign_out()
+        print("chatgpt: signed out")
+        return 0
+    token = chatgpt.access_token()
+    if action == "status":
+        print(f"chatgpt: {'signed in' if token else 'not signed in'}")
+        return 0
+    if token is None:
+        print("chatgpt: not signed in")
+        return 1
+    for slug, name in chatgpt.list_models(token):
+        print(f"{slug}	{name}")
     return 0
 
 

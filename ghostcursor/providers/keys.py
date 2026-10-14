@@ -25,6 +25,10 @@ def get_key(name: str) -> str | None:
     override = os.environ.get(_env_name(name))
     if override:
         return override.strip()
+    if name == "chatgpt":  # an OAuth token from Sign in with ChatGPT, not a key
+        from ghostcursor.providers import chatgpt
+
+        return chatgpt.access_token()
     try:
         import win32cred
     except ImportError:  # non-Windows test hosts
@@ -73,4 +77,8 @@ def delete_key(name: str) -> None:
 def status() -> dict[str, bool]:
     """Which keys are present -- presence only, never values."""
 
-    return {name: get_key(name) is not None for name in KNOWN}
+    from ghostcursor.providers import chatgpt
+
+    present = {name: get_key(name) is not None for name in KNOWN}
+    present["chatgpt"] = chatgpt.signed_in(chatgpt.load())
+    return present

@@ -64,7 +64,9 @@ class Budget:
 class Gateway:
     """Construct one per session. Thread-safe for concurrent ``choose``/``plan``."""
 
-    system_two: tuple[str, ...] = ("nvidia", "openrouter", "ollama")
+    #: The user's own ChatGPT plan answers first once they sign in; until
+    #: then it is skipped as not configured, with no request sent.
+    system_two: tuple[str, ...] = ("chatgpt", "nvidia", "openrouter", "ollama")
     budget: Budget = field(default_factory=Budget)
     transport: object = None  # httpx transport override (tests / cassettes)
     log_path: Path | None = None
@@ -186,7 +188,12 @@ class Gateway:
             self._take()
             started = time.time()
             try:
-                content, reply = clients.chat_json_call(
+                call = (
+                    clients.responses_json_call
+                    if config.api == "responses"
+                    else clients.chat_json_call
+                )
+                content, reply = call(
                     config,
                     key,
                     messages,

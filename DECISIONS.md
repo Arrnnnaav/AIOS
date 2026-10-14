@@ -7737,3 +7737,47 @@ UI thread; "restore only when no pack window is on screen" is a tested
 helper (`windows_or_restored`); a recorded HRESULT must fit 32 bits. Second
 sweep: 8 mutants, 8 killed. Note: the control bar's Teach/Ask focus return
 uses the same handoff, so it now also restores a minimized target.
+
+## D177 — Sign in with ChatGPT: the user's own plan powers System Two
+
+**Date:** 15 October 2026
+
+Owner request: let a user power Orbyn with their own ChatGPT plan instead of
+the builder's provider keys. OpenAI's Sign in with ChatGPT open-source/local
+client flow (developers.openai.com/siwc) allows this for open-source and
+personal local apps; a commercial or hosted Orbyn must apply through OpenAI's
+interest form first.
+
+- **Sign-in** (`ghostcursor/providers/chatgpt.py`, `python -m
+  ghostcursor.providers chatgpt sign-in`): browser OpenID Connect with PKCE
+  S256, fresh state and nonce, a one-shot listener bound to 127.0.0.1 only
+  (port 1455 for the first, registering sign-in; any port after), dynamic
+  client registration, a per-install `ext_agent_host_id` (`urn:uuid`). The
+  ID token is checked against OpenAI's JWKS, issuer, audience (the issued
+  client id), expiry and our nonce; plan usage needs the granted
+  `chatgpt.tokens.use.direct` scope.
+- **Storage:** tokens, client id and host id are DPAPI-encrypted for the
+  Windows user in `%LOCALAPPDATA%\GhostCursor\chatgpt.cred` (JWTs outgrow a
+  Credential Manager blob); never logged or printed. Sign-out keeps only the
+  host id. Refresh uses the standard OAuth refresh grant (OpenAI has not
+  documented its shape; marked in code). A refused refresh means "not signed
+  in".
+- **Inference** (`clients.responses_json_call`): the Responses API with
+  `store: false` and `stream: true` placed after config extras so nothing can
+  turn them off; system text goes in `instructions` (system-role items are
+  rejected); no `temperature`. Only a `response.completed` stream with
+  content counts; failed, incomplete or truncated streams are invalid. No
+  retry, because a retry is charged to the user's plan. The two plan-limit
+  codes are RATE_LIMITED (NEEDS_USER), never a guess.
+- **Order:** `chatgpt` is first in the gateway's System-Two order; until the
+  user signs in it is skipped as not configured with no request sent. What
+  is sent is the same envelope every provider gets (rule 6 unchanged); the
+  attribution log records provider `chatgpt`.
+- Hermetic tests can never read a real sign-in (autouse conftest fixture).
+- Not verified: structured-output (`text.format`) support, so JSON is asked
+  for in the instructions and parsed strictly as before. Not run live: no
+  owner sign-in yet.
+
+Mutation sweep: 15 mutants, 15 killed (listener interface, callback path,
+state, audience, issuer, nonce, signature, scope, refresh margin, store,
+extras order, truncated stream, incomplete, plan-limit code, provider order).

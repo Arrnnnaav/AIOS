@@ -210,5 +210,6 @@ with the script named at the bottom; edit the curated table by hand.
 - D174 — MVP workspace review: three BLOCKING findings, fixed
 - D175 — MVP workspace: inspect, correct, revise, record, replay
 - D176 — Act: a minimized target is restored; a failed run names its reason
+- D177 — Sign in with ChatGPT: the user's own plan powers System Two
 
 _Generated from `DECISIONS.md` headings by `py -3.12 tools/render_decisions_index.py`._

@@ -133,3 +133,14 @@ def no_real_keyboard_in_hermetic_tests(request: pytest.FixtureRequest, monkeypat
     import ghostcursor.run as run_module
 
     monkeypatch.setattr(run_module, "escape_pressed", lambda: False)
+
+
+@pytest.fixture(autouse=True)
+def no_real_chatgpt_sign_in(monkeypatch, tmp_path_factory):
+    """No test reads the owner's real Sign in with ChatGPT record: a signed-in
+    machine would otherwise send hermetic-test prompts to their plan."""
+
+    from ghostcursor.providers import chatgpt
+
+    path = tmp_path_factory.mktemp("chatgpt") / "chatgpt.cred"
+    monkeypatch.setattr(chatgpt, "store_path", lambda: path)
