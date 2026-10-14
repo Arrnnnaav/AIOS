@@ -219,3 +219,43 @@ def test_spatial_reference_carries_no_geometry():
 @pytest.mark.parametrize("text", ["my PIN is 1234", "pw: hunter2"])
 def test_short_pins_and_passwords_are_refused(brain, text):
     assert brain.remember("fact", text, origin="user_stated", confidence=1, user_turn=text) is None
+
+
+def test_a_refused_correction_keeps_the_original(brain):
+    kept = brain.remember(
+        "preference",
+        "I prefer dark slides",
+        origin="user_stated",
+        confidence=0.9,
+        user_turn="I prefer dark slides",
+    )
+    assert brain.correct(kept.mid, "my password is hunter2") is None
+    assert [m.mid for m in brain.list()] == [kept.mid]
+
+
+def test_a_correction_applies_while_learning_is_paused(brain):
+    kept = brain.remember(
+        "preference",
+        "I prefer dark slides",
+        origin="user_stated",
+        confidence=0.9,
+        user_turn="I prefer dark slides",
+    )
+    brain.pause()
+    fixed = brain.correct(kept.mid, "I prefer light slides")
+    assert fixed is not None and fixed.origin == "user_corrected"
+    assert [m.text for m in brain.list()] == ["I prefer light slides"]
+
+
+def test_a_forgotten_memory_is_not_left_in_the_file(brain):
+    secret = "zebra-quokka-unusual-marker"
+    kept = brain.remember(
+        "fact",
+        f"my project codename is {secret}",
+        origin="user_stated",
+        confidence=0.9,
+        user_turn=f"my project codename is {secret}",
+    )
+    brain.forget(kept.mid)
+    brain.close()
+    assert secret.encode() not in brain.path.read_bytes()

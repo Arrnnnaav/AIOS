@@ -122,6 +122,9 @@ class Brain:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.clock = clock
         self._db = sqlite3.connect(self.path)
+        # A forgotten or erased memory is overwritten on disk, not left in a
+        # free page where a file-level read could still recover it.
+        self._db.execute("PRAGMA secure_delete = ON")
         self._db.executescript(_SCHEMA)
 
     def close(self) -> None:
@@ -161,27 +164,33 @@ class Brain:
             return None
         if origin == "user_stated" and not _supported(text, user_turn):
             origin = "model_inferred"  # the panel says honestly where it came from
+        with self._db:
+            mid = self._insert(kind, text, origin, confidence, scope, source)
+        return self.get(mid)
+
+    def _insert(self, kind, text, origin, confidence, scope, source) -> int:
+        """Write one memory inside the caller's transaction."""
+
         now = self.clock()
         expires = None if scope == "durable" else now + SESSION_TTL_S
-        with self._db:
-            if scope == "durable":
-                self._supersede(kind, text)
-            cursor = self._db.execute(
-                "INSERT INTO memories (kind, text, origin, confidence, scope, status, "
-                "created, expires, source) VALUES (?,?,?,?,?,?,?,?,?)",
-                (
-                    kind,
-                    text,
-                    origin,
-                    float(confidence),
-                    scope,
-                    "active",
-                    now,
-                    expires,
-                    source[:120],
-                ),
-            )
-        return self.get(cursor.lastrowid)
+        if scope == "durable":
+            self._supersede(kind, text)
+        cursor = self._db.execute(
+            "INSERT INTO memories (kind, text, origin, confidence, scope, status, "
+            "created, expires, source) VALUES (?,?,?,?,?,?,?,?,?)",
+            (
+                kind,
+                text,
+                origin,
+                float(confidence),
+                scope,
+                "active",
+                now,
+                expires,
+                source[:120],
+            ),
+        )
+        return cursor.lastrowid
 
     def _supersede(self, kind: str, text: str) -> None:
         """A new durable memory replaces an active one of the same kind that
@@ -229,22 +238,28 @@ class Brain:
         return [m for _, m in ranked[:k]]
 
     def correct(self, mid: int, text: str) -> PersonalMemory | None:
-        """The user's correction: overrides, durable, confidence 1."""
+        """The user's correction: overrides, durable, confidence 1.
+
+        One transaction: the old memory is superseded only if its replacement
+        is written, so a refused correction (e.g. sensitive text) loses
+        nothing. An explicit edit applies even while learning is paused, as
+        forgetting does.
+        """
 
         old = self.get(mid)
+        text = " ".join(text.split())
         if old is None:
+            return None
+        if eligibility(old.kind, text, "user_corrected", 1.0, "") == "refused":
             return None
         with self._db:
             self._db.execute(
                 "UPDATE memories SET status='superseded' WHERE mid=?", (mid,)
             )
-        return self.remember(
-            old.kind,
-            text,
-            origin="user_corrected",
-            confidence=1.0,
-            source=f"correction of #{mid}",
-        )
+            new = self._insert(
+                old.kind, text, "user_corrected", 1.0, "durable", f"correction of #{mid}"
+            )
+        return self.get(new)
 
     def forget(self, mid: int) -> bool:
         with self._db:
