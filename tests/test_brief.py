@@ -357,3 +357,22 @@ def test_a_proposal_records_whether_it_had_a_brief_at_all():
     assert "brief_sha256" in fields
     assert fields["brief_sha256"].default is None
 
+
+
+def test_a_failed_append_leaves_the_existing_brief_intact(tmp_path, monkeypatch):
+    import os
+
+    from ghostcursor import brief as brief_module
+
+    path = append_turn(tmp_path, "deck", "user", "Ten slides.")
+    before = path.read_bytes()
+
+    def crash(*args):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(brief_module.os, "replace", crash)
+    with pytest.raises(OSError):
+        append_turn(tmp_path, "deck", "assistant", "Which audience?")
+    monkeypatch.undo()
+    assert path.read_bytes() == before
+    assert os.path.exists(path)

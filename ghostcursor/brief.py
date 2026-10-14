@@ -29,6 +29,7 @@ a diff. A brief someone cannot inspect is a brief they cannot correct.
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -121,7 +122,10 @@ def append_turn(
     # A brief's exact bytes are hashed and bound to every proposal made from
     # it (D113), so newline translation would make the digest depend on the
     # platform that appended the turn.
-    path.write_text(existing + block, encoding="utf-8", newline="\n")
+    # Write-then-rename: a crash mid-write must not truncate the history.
+    partial = path.with_name(path.name + ".partial")
+    partial.write_text(existing + block, encoding="utf-8", newline="\n")
+    os.replace(partial, path)
     return path
 
 
