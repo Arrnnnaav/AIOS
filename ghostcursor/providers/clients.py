@@ -247,7 +247,8 @@ def responses_json_call(
             ) as response:
                 failure = _status_failure(config, response.status_code)
                 if failure is not None:
-                    raise failure
+                    response.read()
+                    raise _plan_limit_in(config, response) or failure
                 for line in response.iter_lines():
                     if cancelled():
                         raise ProviderError(FailureKind.CANCELLED)
@@ -295,6 +296,19 @@ def _completed(config, body: dict, content: str, started: float) -> tuple[str, R
         int(usage.get("input_tokens") or 0),
         int(usage.get("output_tokens") or 0),
     )
+
+
+def _plan_limit_in(config, response) -> ProviderError | None:
+    """A spent plan reported as a plain HTTP error rather than in the stream."""
+
+    try:
+        body = response.json()
+    except ValueError:
+        return None
+    error = body.get("error") if isinstance(body, dict) else None
+    if isinstance(error, dict) and error.get("code") in PLAN_LIMIT_CODES:
+        return ProviderError(FailureKind.RATE_LIMITED, f"{config.name}: {error['code']}")
+    return None
 
 
 def _stream_failure(config, event: dict) -> ProviderError:

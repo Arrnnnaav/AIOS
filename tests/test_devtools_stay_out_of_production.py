@@ -121,7 +121,7 @@ _MEASURED_INVENTORY = {
     "ghostcursor/packs": 7,
     "ghostcursor/perception": 11,
     "ghostcursor/plugins": 8,
-    "ghostcursor/providers": 9,
+    "ghostcursor/providers": 10,
     "ghostcursor/reasoning": 11,
     "ghostcursor/workspace": 6,
 }
@@ -145,7 +145,7 @@ def test_the_production_module_set_matches_the_measured_inventory():
         "the scanned production set no longer matches the measured inventory. "
         f"missing/changed: {set(_MEASURED_INVENTORY.items()) ^ set(counted.items())}"
     )
-    assert sum(_MEASURED_INVENTORY.values()) == len(modules) == 110
+    assert sum(_MEASURED_INVENTORY.values()) == len(modules) == 111
 
     for required in (
         "ghostcursor/act_runtime.py",

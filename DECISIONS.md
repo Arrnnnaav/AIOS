@@ -7781,3 +7781,12 @@ interest form first.
 Mutation sweep: 15 mutants, 15 killed (listener interface, callback path,
 state, audience, issuer, nonce, signature, scope, refresh margin, store,
 extras order, truncated stream, incomplete, plan-limit code, provider order).
+
+Review (fresh agent, `1fb38b3..ac6ecc7`): no BLOCKING finding. Fixed from it:
+a callback with another state is ignored instead of aborting sign-in (any
+local page could otherwise cancel it); the handler has a socket timeout;
+refreshes are serialized and bounded to 10 s, and a malformed record or
+reply means "not signed in"; a plan-limit code in a plain HTTP error is
+RATE_LIMITED; the hermetic fixture also clears `ORBYN_CHATGPT_API_KEY`;
+a missing PyJWT is a SignInError. Second sweep: 4 mutants, 4 killed. The
+rest is in FOLLOWUPS.

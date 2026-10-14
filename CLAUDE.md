@@ -119,4 +119,4 @@ py -3.12 tools\render_act_campaign.py --harness|--manager <path> --out <doc> [--
 - Keep this file short: a new rule belongs here only if breaking it is a
   tier-1 risk. Everything else goes to `DECISIONS.md` or `FOLLOWUPS.md`.
 - Dependencies: system Python 3.12 (`py -3.12`), pywin32, pywinauto, numpy,
-  mss, winsdk, Pillow, rapidfuzz, ollama.
+  mss, winsdk, Pillow, rapidfuzz, ollama, httpx, PyJWT[crypto] (Sign in with ChatGPT).

@@ -20,6 +20,7 @@ import http.server
 import json
 import os
 import secrets
+import threading
 import time
 import urllib.parse
 import uuid
@@ -136,6 +137,8 @@ def listen(port: int) -> http.server.HTTPServer:
 
 
 class _CallbackHandler(http.server.BaseHTTPRequestHandler):
+    timeout = 5  # a local client that connects and sends nothing cannot hang sign-in
+
     def do_GET(self):  # noqa: N802 (http.server API)
         url = urllib.parse.urlsplit(self.path)
         if url.path != CALLBACK_PATH:
@@ -165,7 +168,7 @@ def wait_for_code(
             continue
         server.callback = None
         if not secrets.compare_digest(callback.get("state", ""), state):
-            raise SignInError("the sign-in reply did not match this request")
+            continue  # not ours (another local page): keep waiting for ours
         if callback.get("error"):
             raise SignInError(f"sign-in refused: {callback['error']}")
         if not callback.get("code"):
@@ -177,8 +180,8 @@ def wait_for_code(
 # --- tokens ---------------------------------------------------------------------------
 
 
-def _token_request(form: dict, transport=None) -> dict:
-    with httpx.Client(transport=transport, timeout=20.0) as client:
+def _token_request(form: dict, transport=None, timeout_s: float = 20.0) -> dict:
+    with httpx.Client(transport=transport, timeout=timeout_s) as client:
         try:
             response = client.post(TOKEN_URL, data=form)
         except httpx.HTTPError as exc:
@@ -205,8 +208,16 @@ def granted_scopes(body: dict) -> list[str]:
     return []
 
 
+def _jwt():
+    try:
+        import jwt
+    except ImportError as exc:
+        raise SignInError("PyJWT is not installed (pip install pyjwt[crypto])") from exc
+    return jwt
+
+
 def _jwks_key(token: str):
-    import jwt
+    jwt = _jwt()
 
     return jwt.PyJWKClient(JWKS_URL).get_signing_key_from_jwt(token).key
 
@@ -216,7 +227,7 @@ def validate_id_token(
 ) -> dict:
     """Signature against OpenAI's JWKS, issuer, audience, expiry and our nonce."""
 
-    import jwt
+    jwt = _jwt()
 
     try:
         claims = jwt.decode(
@@ -316,12 +327,26 @@ def sign_in(
     return record
 
 
+_REFRESH = threading.Lock()
+
+
 def access_token(
     *, path: Path | None = None, transport=None, now=time.time
 ) -> str | None:
     """A current access token, refreshed when within a minute of expiry; None
-    when not signed in or the refresh was refused (sign in again)."""
+    when not signed in or the refresh was refused (sign in again).
 
+    Refreshes are serialized: if OpenAI rotates refresh tokens, two at once
+    would void each other and sign the user out."""
+
+    with _REFRESH:
+        try:
+            return _current_token(path, transport, now)
+        except (KeyError, TypeError, ValueError):  # a malformed record or reply
+            return None
+
+
+def _current_token(path, transport, now) -> str | None:
     record = load(path)
     if not signed_in(record):
         return None
@@ -338,6 +363,7 @@ def access_token(
                 "resource": RESOURCE,
             },
             transport,
+            timeout_s=10.0,
         )
     except SignInError:
         return None

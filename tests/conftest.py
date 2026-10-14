@@ -144,3 +144,4 @@ def no_real_chatgpt_sign_in(monkeypatch, tmp_path_factory):
 
     path = tmp_path_factory.mktemp("chatgpt") / "chatgpt.cred"
     monkeypatch.setattr(chatgpt, "store_path", lambda: path)
+    monkeypatch.delenv("ORBYN_CHATGPT_API_KEY", raising=False)

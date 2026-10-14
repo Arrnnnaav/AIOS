@@ -127,8 +127,13 @@ def _callback(query, *, state="s1", before=(), before_query="code=stray&state=s1
 
 def test_the_callback_must_carry_our_state():
     assert _callback("code=c1&state=s1&client_id=oaiapp_1") == ("c1", "oaiapp_1")
-    with pytest.raises(chatgpt.SignInError, match="did not match"):
-        _callback("code=c1&state=forged")
+    # a reply with another state (any local page can send one) is ignored
+    got = _callback(
+        "code=c1&state=s1",
+        before=("/auth/callback",),
+        before_query="code=forged&state=forged",
+    )
+    assert got == ("c1", None)
     with pytest.raises(chatgpt.SignInError, match="refused"):
         _callback("error=access_denied&state=s1")
     with pytest.raises(chatgpt.SignInError, match="no code"):
@@ -388,3 +393,34 @@ def test_not_signed_in_sends_nothing_and_falls_through(tmp_path):
     assert gateway.system_two[0] == "chatgpt"
     gateway.plan(_envelope())
     assert [c.url.host for c in calls] == ["integrate.api.nvidia.com"]
+
+
+def test_a_malformed_refresh_reply_means_sign_in_again(tmp_path):
+    path = tmp_path / "c.cred"
+    chatgpt.save(_complete(_reply()), path)
+    odd = httpx.MockTransport(
+        lambda r: httpx.Response(200, json={"access_token": "x", "expires_in": "soon"})
+    )
+    assert chatgpt.access_token(path=path, transport=odd, now=lambda: 9e9) is None
+
+
+def test_a_spent_plan_sent_as_an_http_error_is_rate_limited(tmp_path):
+    body = {"error": {"code": "subscription_sharing_usage_limit_exceeded"}}
+    gateway = Gateway(
+        system_two=("chatgpt",),
+        transport=httpx.MockTransport(lambda r: httpx.Response(400, json=body)),
+        key_lookup=lambda name: "at",
+        log_path=tmp_path / "log",
+    )
+    with pytest.raises(ProviderError) as raised:
+        gateway.plan(_envelope())
+    assert raised.value.kind is FailureKind.RATE_LIMITED
+
+
+def test_hermetic_tests_never_see_a_real_token():
+    import os
+
+    from ghostcursor.providers import keys
+
+    assert "ORBYN_CHATGPT_API_KEY" not in os.environ
+    assert keys.get_key("chatgpt") is None

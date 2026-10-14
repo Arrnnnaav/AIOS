@@ -1337,3 +1337,23 @@ to confirm where the cost actually is before changing anything else.
 - D176 review leftovers: restoring at proposal time leaves windows restored
   when `resolve_target` then refuses; `restore_minimized_for` itself is
   `pragma: no cover` (its selection and gating are tested).
+
+## D177 Sign in with ChatGPT follow-ups
+
+- [ ] Verify the default model slug (`gpt-6.1-sol`) against `python -m
+      ghostcursor.providers chatgpt models` after the owner's first sign-in;
+      until then a wrong slug fails every signed-in request (set
+      `ORBYN_CHATGPT_MODEL`).
+- [ ] A token refresh (at most 10 s) runs inside `Gateway.complete` and does
+      not observe `cancelled`; Stop waits for it. Pass the call's deadline
+      and cancellation through if this is noticed in use.
+- [ ] Check whether the ChatGPT route accepts `text.format` json_schema;
+      if it does, send the schema there instead of only in instructions.
+- [ ] Manager UI: a "Continue with ChatGPT" button and a "using your ChatGPT
+      plan" line where the provider is shown (OpenAI's branding rule asks
+      for the "Continue with ChatGPT" label).
+- [ ] Distribution beyond the owner's own machine needs OpenAI's interest
+      form (commercial/hosted apps).
+- [ ] One hermetic lane run on 15 Oct (after D177 review fixes) had 10
+      failures; the next two full runs passed (3168). Failures were not
+      captured; rerun with `-rf` if it recurs.
