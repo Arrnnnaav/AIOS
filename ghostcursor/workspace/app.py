@@ -59,6 +59,7 @@ class App:
         self.memories: list[dict] = []
         self.seen = time.monotonic()  # the page's last poll
         self.paused = False
+        self.downloads = Path.home() / "Downloads"  # where a handoff is saved
         self.ws = self.jobs.submit(
             make_workspace or (lambda: _default_workspace(topic))
         ).result()
@@ -200,6 +201,18 @@ class App:
             if plan is None:
                 raise ValueError("No plan: the model is not available.")
             return {}
+        if action == "handoff_export":
+            from ghostcursor.workspace import handoff
+
+            text = handoff.export(ws, str(body.get("name", "")))
+            out = self.downloads / f"{ws.topic}.orbyn-handoff.json"
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_text(text, encoding="utf-8", newline="\n")
+            return {"path": str(out)}
+        if action == "handoff_import":
+            from ghostcursor.workspace import handoff
+
+            return {"from": handoff.receive(ws, str(body.get("data", "")))}
         if action == "plan_edit":
             verb, args = (
                 str(body.get("verb", "")),

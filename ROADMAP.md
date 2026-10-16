@@ -69,7 +69,7 @@ section 4):
 | 1 | Organisation policy + scrubbed screen text | MVP privacy; Unified 4.5 enterprise mode | built (D180) |
 | 2 | Ideate: 2-4 approaches with assumptions and unknowns; plan from the chosen one; the plan shows which memories informed it | MP3 Phase 10, Phase 9 retrieval | built |
 | 3 | Jev in the workspace: composer intent suggestion; Brain check beside the deterministic rule | D179 table | built |
-| 4 | Multiplayer V1 seed: hand a mission (goal, plan, sources) to a teammate as a file; what arrives is data, never their goal or authority | Unified 4.2 (YC RFS Multiplayer), MP7 | next |
+| 4 | Multiplayer V1 seed: hand a mission (goal, plan, sources) to a teammate as a file; what arrives is data, never their goal or authority | Unified 4.2 (YC RFS Multiplayer), MP7 | built |
 | 5 | Act from the workspace | MP0/MP4 | stays refused until the Act activation review is READY (tier 1) |
 | 6 | Company Brain / Context Graph, self-maintaining APIs | Unified 4.1, 4.4; MP7, MP8 | later; needs D017-amendment and sandbox work first |
 

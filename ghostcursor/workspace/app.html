@@ -444,7 +444,10 @@ function renderPlan() {
   }
   if (!S.plan) {
     const b = el("div", "blank"); b.append(iconEl("plan"), el("p", "", S.goal ? "No plan yet. Draft one from your conversation, then review each step." : "Start in Chat: describe what you want to do."));
-    root.append(b); return;
+    const file = el("input"); file.type = "file"; file.accept = ".json"; file.hidden = true;
+    file.onchange = async () => { const f = file.files[0]; if (f) act("handoff_import", { data: await f.text() }, "Handoff opened"); };
+    const open = el("button", "secondary", "Open a teammate's handoff"); open.disabled = !!S.busy; open.onclick = () => file.click();
+    b.append(open, file); root.append(b); return;
   }
   const ol = el("ol", "steps");
   S.plan.steps.forEach((text, i) => {
@@ -469,7 +472,14 @@ function renderPlan() {
   inp.onkeydown = (e) => e.key === "Enter" && add.click();
   row.append(inp, add); root.append(row);
   const go = el("button", "cta"); go.append(iconEl("play"), document.createTextNode("Guide me from step 1")); go.disabled = !!S.busy; go.onclick = () => openTeach(1);
-  root.append(go, el("div", "note", "Each edit makes a new revision. Guidance points at real controls only; you do the clicking."));
+  const hand = el("button", "secondary", "Hand off to a teammate"); hand.disabled = !!S.busy;
+  hand.onclick = async () => {
+    const name = prompt("Your name, so your teammate knows who it is from:", "");
+    if (name === null) return;
+    const r = await act("handoff_export", { name });
+    if (r && r.path) toast("Saved " + r.path + " — send it to your teammate. Only the goal, steps and sources are in it.", true);
+  };
+  root.append(go, hand, el("div", "note", "Each edit makes a new revision. Guidance points at real controls only; you do the clicking."));
 }
 
 // ---- brain ------------------------------------------------------------
