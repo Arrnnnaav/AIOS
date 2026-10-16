@@ -176,3 +176,21 @@ def test_local_only_blocks_the_citation_check_and_chatgpt_sign_in(monkeypatch, t
     with pytest.raises(chatgpt.SignInError):
         chatgpt._token_request({}, transport=transport)
     assert calls == []
+
+
+@pytest.mark.parametrize(
+    "text, sent",
+    [
+        (
+            "https://www.slideteam.net/top-10-quarterly-sales-review-templates",
+            "https://www.slideteam.net/top-10-quarterly-sales-review-templates",
+        ),
+        ("id 550e8400-e29b-41d4-a716-446655440000", "id [token]"),
+        ("key sk-proj-AbC123dEf456GhI789jKl012", "key [token]"),
+        ("ghp_abcdEFGH1234ijklMNOP5678qrstUVWX90yz", "[token]"),
+        ("my-api-key-4f9a8b7c6d5e4f3a2b1c0d9e8f", "[token]"),
+        ("token-for-prod-4f9a8b7c6d5e4f3a2b1c0d9e8f", "[token]"),
+    ],
+)
+def test_a_word_slug_is_kept_and_keys_are_still_masked(text, sent):
+    assert scrub(text) == sent

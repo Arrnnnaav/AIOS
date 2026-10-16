@@ -45,13 +45,24 @@ _TOKEN = re.compile(
 _SECRET = re.compile(r"(?<![\w/+])[A-Za-z0-9/+]{32,}={0,2}(?![\w/+])")
 
 
+def _token(m: re.Match) -> str:
+    """A key-like run, unless it is a word slug (``top-10-sales-tips``): three
+    or more purely alphabetic parts of 3+ letters and no long part with a
+    digit (``token-for-prod-4f9a...``). Keys and UUIDs stay masked."""
+
+    parts = re.split(r"[-_]", m.group())
+    words = [p for p in parts if len(p) >= 3 and p.isalpha()]
+    keyish = any(len(p) >= 16 and not p.isalpha() for p in parts)
+    return m.group() if len(words) >= 3 and not keyish else "[token]"
+
+
 def scrub(text: str) -> str:
     """Mask emails, URL queries, key-like tokens and long numbers (9+ digits:
     phones, cards, accounts). Short numbers, dates and versions stay."""
 
     text = _EMAIL.sub("[email]", text)
     text = _QUERY.sub(r"\1?[query]", text)
-    text = _TOKEN.sub("[token]", text)
+    text = _TOKEN.sub(_token, text)
     text = _SECRET.sub("[token]", text)
     return _DIGITS.sub(
         lambda m: "[number]" if sum(c.isdigit() for c in m.group()) >= 9 else m.group(),
