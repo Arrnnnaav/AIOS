@@ -41,19 +41,39 @@ _DIGITS = re.compile(r"\+?\d[\d ().-]{6,}\d")
 _TOKEN = re.compile(
     r"\b(?=[A-Za-z0-9_-]*\d)(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9_-]{24,}\b"
 )
+#: base64url keys with no digit (Google ``AIza...``): mixed case, 24+ chars.
+_MIXED = re.compile(r"\b(?=[\w-]*[a-z])(?=[\w-]*[A-Z])[A-Za-z0-9_-]{24,}\b")
 #: base64-style secrets (``/``, ``+``, ``=``) of 32+ characters.
 _SECRET = re.compile(r"(?<![\w/+])[A-Za-z0-9/+]{32,}={0,2}(?![\w/+])")
 
 
 def _token(m: re.Match) -> str:
-    """A key-like run, unless it is a word slug (``top-10-sales-tips``): three
-    or more purely alphabetic parts of 3+ letters and no long part with a
-    digit (``token-for-prod-4f9a...``). Keys and UUIDs stay masked."""
+    """A key-like run, unless it is a URL path slug (``/top-10-sales-tips``):
+    right after ``/``, every part lowercase letters or at most 4 digits, and
+    three or more words. Mixed case, long digit runs, keys, UUIDs and
+    passphrases outside a URL stay masked (review of the slug change)."""
 
     parts = re.split(r"[-_]", m.group())
-    words = [p for p in parts if len(p) >= 3 and p.isalpha()]
-    keyish = any(len(p) >= 16 and not p.isalpha() for p in parts)
-    return m.group() if len(words) >= 3 and not keyish else "[token]"
+    slug = (
+        m.start() > 0
+        and m.string[m.start() - 1] == "/"
+        and all(
+            (p.isalpha() and p.islower()) or (p.isdigit() and len(p) <= 4)
+            for p in parts
+        )
+        and sum(len(p) >= 3 and p.isalpha() for p in parts) >= 3
+    )
+    return m.group() if slug else "[token]"
+
+
+def _mixed(m: re.Match) -> str:
+    """A digit-free mixed-case run: kept when every part is a plain word
+    (``Accessibility_Settings_Panel``); random key chunks (``qEU``) are not."""
+
+    parts = re.split(r"[-_]", m.group())
+    if len(parts) >= 2 and all(re.fullmatch(r"[A-Z]?[a-z]+", p) for p in parts):
+        return m.group()
+    return _token(m)
 
 
 def scrub(text: str) -> str:
@@ -63,6 +83,7 @@ def scrub(text: str) -> str:
     text = _EMAIL.sub("[email]", text)
     text = _QUERY.sub(r"\1?[query]", text)
     text = _TOKEN.sub(_token, text)
+    text = _MIXED.sub(_mixed, text)
     text = _SECRET.sub("[token]", text)
     return _DIGITS.sub(
         lambda m: "[number]" if sum(c.isdigit() for c in m.group()) >= 9 else m.group(),

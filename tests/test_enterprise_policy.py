@@ -190,6 +190,15 @@ def test_local_only_blocks_the_citation_check_and_chatgpt_sign_in(monkeypatch, t
         ("ghp_abcdEFGH1234ijklMNOP5678qrstUVWX90yz", "[token]"),
         ("my-api-key-4f9a8b7c6d5e4f3a2b1c0d9e8f", "[token]"),
         ("token-for-prod-4f9a8b7c6d5e4f3a2b1c0d9e8f", "[token]"),
+        ("glpat-qEU_JUS_bkOr95X86Sk0", "[token]"),
+        ("glpat-qEU_JUS_bkOrXSkabcde", "[token]"),
+        ("https://x.io/AbcDef-GhiJkl-MnoPqr-12-StuVwx", "https://x.io/[token]"),
+        ("https://x.io/ab-cd-ef-gh-ij-kl-12-mn-op", "https://x.io/[token]"),
+        ("AIzaMCAtE-XscGTGT__lzmd-FsNFHJyeViyUOmp", "[token]"),
+        ("pw correct-horse-battery-staple-2024", "pw [token]"),
+        ("https://x.io/correct-horse-battery-staple-20241", "https://x.io/[token]"),
+        ("https://x.io/Unwind-Clumsy5-Antsy-Outlet-Glider", "https://x.io/[token]"),
+        ("KAux5_wftmGvNQxPoOgb_1LonfWZrgo05_1Ld_Pvy_c1p_Ggqry_W9Rl1A8z5_3RTX1j", "[token]"),
     ],
 )
 def test_a_word_slug_is_kept_and_keys_are_still_masked(text, sent):
