@@ -164,6 +164,10 @@ class Brain:
             return None
         if origin == "user_stated" and not _supported(text, user_turn):
             origin = "model_inferred"  # the panel says honestly where it came from
+        for old in self.list():  # restated each turn: keep one, unless now durable
+            same = old.kind == kind and old.text.casefold() == text.casefold()
+            if same and (old.scope == "durable" or scope != "durable"):
+                return old
         with self._db:
             mid = self._insert(kind, text, origin, confidence, scope, source)
         return self.get(mid)

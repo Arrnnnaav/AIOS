@@ -259,3 +259,21 @@ def test_a_forgotten_memory_is_not_left_in_the_file(brain):
     brain.forget(kept.mid)
     brain.close()
     assert secret.encode() not in brain.path.read_bytes()
+
+
+def test_a_memory_restated_each_turn_is_kept_once(brain):
+    first = brain.remember(
+        "preference", "prefers dark themes", origin="model_inferred", confidence=0.9
+    )
+    again = brain.remember(
+        "preference", "Prefers dark themes", origin="model_inferred", confidence=0.9
+    )
+    assert again.mid == first.mid and len(brain.list()) == 1
+    durable = brain.remember(  # now stated by the user: promoted, not dropped
+        "preference",
+        "prefers dark themes",
+        origin="user_stated",
+        confidence=0.9,
+        user_turn=TURN,
+    )
+    assert durable.scope == "durable"

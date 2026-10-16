@@ -83,3 +83,26 @@ def test_ideas_outside_the_schema_are_refused(bad):
     with pytest.raises(ProviderError) as exc:
         parse_ideas(json.dumps(bad))
     assert exc.value.kind is FailureKind.INVALID_OUTPUT
+
+
+def test_the_page_reads_plan_memories_without_touching_sqlite(tmp_path):
+    """state() runs on a request thread; the Brain's sqlite may not."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    from ghostcursor.workspace.app import App
+
+    app = App(
+        "deck",
+        make_workspace=lambda: Workspace(
+            "deck",
+            IdeaGateway(memories=[MEMORY]),
+            Brain(tmp_path / "brain.sqlite"),
+            root=tmp_path / "briefs",
+        ),
+    )
+    app.handle("say", {"text": "Make my investor deck. I prefer dark slides."})
+    app.handle("plan", {})
+    with ThreadPoolExecutor(1) as other:
+        state = other.submit(app.state).result()
+    assert state["plan_memories"] == ["prefers dark slides"]
+    app.close()

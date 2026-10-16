@@ -77,6 +77,9 @@ class App:
             }
             for m in brain.list()
         ]
+        self.plan_memories = [  # read here: sqlite belongs to this thread
+            m.text for m in map(brain.get, self.ws.plan_memories) if m is not None
+        ]
         self.paused = brain.paused
 
     def run(self, label: str, fn):
@@ -147,9 +150,7 @@ class App:
                 }
                 for i in ws.ideas
             ],
-            "plan_memories": [
-                m.text for m in map(ws.brain.get, ws.plan_memories) if m is not None
-            ],
+            "plan_memories": self.plan_memories,
             "paused": self.paused,
             "busy": self.busy,
             "status": list(self.status),
