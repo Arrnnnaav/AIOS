@@ -150,6 +150,9 @@ section[hidden] { display: none !important; }
 .stat b { display: block; font-size: 17px; }
 .stat span { color: var(--faint); font-size: 11.5px; }
 
+.ideas { display: grid; gap: 10px; margin: 0 0 16px; }
+.idea { border: 1px solid var(--line); border-radius: 14px; padding: 12px; display: grid; gap: 6px; text-align: left; }
+.idea button { justify-self: start; }
 /* composer */
 footer { padding: 8px 12px 12px; }
 .composer { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 8px 8px 6px 12px; transition: border-color .15s; }
@@ -409,7 +412,22 @@ function renderPlan() {
   const regen = el("button", "secondary", S.plan ? "Redraft" : "Draft from chat");
   regen.disabled = !!S.busy || !S.goal;
   regen.onclick = () => act("plan", {}, "Plan drafted");
-  head.append(h, regen); root.append(head);
+  const explore = el("button", "secondary", S.ideas.length ? "New approaches" : "Explore approaches");
+  explore.disabled = !!S.busy || !S.goal;
+  explore.onclick = () => act("ideate", {}, "Approaches ready");
+  head.append(h, explore, regen); root.append(head);
+  if (S.ideas.length) {
+    const ideas = el("div", "ideas");
+    S.ideas.forEach((idea, i) => {
+      const card = el("div", "idea"); card.append(el("b", "", (i + 1) + ". " + idea.title), el("div", "", idea.summary));
+      if (idea.assumptions.length) card.append(el("div", "note", "Assumes: " + idea.assumptions.join("; ")));
+      if (idea.unknowns.length) card.append(el("div", "note", "Settle first: " + idea.unknowns.join("; ")));
+      const pick = el("button", "secondary", "Plan this"); pick.disabled = !!S.busy;
+      pick.onclick = () => act("plan", { idea: i + 1 }, "Plan drafted");
+      card.append(pick); ideas.append(card);
+    });
+    root.append(ideas);
+  }
   if (!S.plan) {
     const b = el("div", "blank"); b.append(iconEl("plan"), el("p", "", S.goal ? "No plan yet. Draft one from your conversation, then review each step." : "Start in Chat: describe what you want to do."));
     root.append(b); return;
@@ -431,6 +449,7 @@ function renderPlan() {
     acts.append(show, ed, dr); body.append(acts); li.append(body); ol.append(li);
   });
   root.append(ol);
+  if (S.plan_memories.length) root.append(el("div", "note", "Made with what Orbyn remembers: " + S.plan_memories.join(" · ")));
   const row = el("div", "addrow"); const inp = el("input"); inp.placeholder = "Add a step…"; inp.maxLength = 300;
   const add = el("button", "secondary", "Add"); add.onclick = () => inp.value.trim() && act("plan_edit", { verb: "add", args: [inp.value] });
   inp.onkeydown = (e) => e.key === "Enter" && add.click();

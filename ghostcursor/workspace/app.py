@@ -136,6 +136,18 @@ class App:
                 "steps": [s.instruction for s in proposal.plan.steps],
             },
             "memories": self.memories,
+            "ideas": [
+                {
+                    "title": i.title,
+                    "summary": i.summary,
+                    "assumptions": list(i.assumptions),
+                    "unknowns": list(i.unknowns),
+                }
+                for i in ws.ideas
+            ],
+            "plan_memories": [
+                m.text for m in map(ws.brain.get, ws.plan_memories) if m is not None
+            ],
             "paused": self.paused,
             "busy": self.busy,
             "status": list(self.status),
@@ -176,8 +188,13 @@ class App:
             return {"answer": self.run("Researching", lambda: ws.research(text))}
         if action == "evidence":
             return {"text": ws.evidence(int(body.get("n", 0)))}
+        if action == "ideate":
+            if not self.run("Exploring", ws.ideate):
+                raise ValueError("No ideas: the model is not available.")
+            return {}
         if action == "plan":
-            plan = self.run("Planning", ws.make_plan)
+            idea = int(body.get("idea", 0) or 0)
+            plan = self.run("Planning", lambda: ws.make_plan(idea))
             if plan is None:
                 raise ValueError("No plan: the model is not available.")
             return {}

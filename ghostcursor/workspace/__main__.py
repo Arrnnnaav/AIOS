@@ -5,7 +5,9 @@ Type to discuss. Commands:
   /voice            say your message instead of typing (SayStride, D171)
   /research <q>     a cited answer from web sources
   /evidence [n]     the passages behind research answer n (default: latest)
+  /ideate           2-4 approaches, with assumptions and unknowns
   /plan             a step plan from the conversation (a proposal)
+  /plan idea <n>    a plan for approach n of /ideate
   /plan edit <n> <text> | drop <n> | add <text>
                     edit the plan; each edit is a new proposal
   /teach <n> [s]    guide plan step n onward on screen for s seconds (default 300)
@@ -200,14 +202,24 @@ def main(argv: list[str] | None = None) -> int:
                     print(workspace.discuss(said))
             elif command == "/evidence":
                 print(workspace.evidence(int(rest) if rest.isdigit() else 0))
-            elif command == "/plan" and rest:
+            elif command == "/ideate":
+                ideas = workspace.ideate()
+                print(
+                    "\n".join(f"{n}. {i.as_text()}" for n, i in enumerate(ideas, 1))
+                    or "No ideas: the model is not available."
+                )
+            elif command == "/plan" and rest and rest.split()[0] != "idea":
                 verb, *args = rest.split()
                 try:
                     print(workspace.edit_plan(verb, args).as_text())
                 except ValueError as exc:
                     print(exc)
             elif command == "/plan":
-                plan = workspace.make_plan()
+                try:
+                    plan = workspace.make_plan(int((rest.split() + ["", "0"])[1] or 0))
+                except ValueError as exc:
+                    print(exc)
+                    continue
                 print(
                     "No plan: the model is not available."
                     if plan is None

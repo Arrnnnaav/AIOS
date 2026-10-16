@@ -181,3 +181,23 @@ def test_the_picture_switch_is_the_users_and_starts_off(served):
     assert json.loads(call(port, "/api/state")[1])["vision"] is True
     assert call(port, "/api/vision", {"on": "yes"})[0] == 200
     assert json.loads(call(port, "/api/state")[1])["vision"] is False
+
+
+def test_ideate_then_plan_the_chosen_approach(tmp_path):
+    from tests.test_workspace_ideate import IdeaGateway
+
+    app = App(
+        "trip",
+        make_workspace=lambda: Workspace(
+            "trip", IdeaGateway(), Brain(tmp_path / "kb.sqlite"), root=tmp_path / "b"
+        ),
+    )
+    app.handle("say", {"text": "Plan a trip deck"})
+    app.handle("ideate", {})
+    state = app.state()
+    assert [i["title"] for i in state["ideas"]] == ["Reuse last deck", "Fresh template"]
+    app.handle("plan", {"idea": 2})
+    assert app.state()["plan"]["revision"] == 1 and app.state()["plan_memories"] == []
+    with pytest.raises(ValueError):
+        app.handle("plan", {"idea": 9})
+    app.close()
