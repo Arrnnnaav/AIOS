@@ -34,7 +34,7 @@ MIN_SUPPORT = 0.6
 MAX_TEXT = 300
 
 _SENSITIVE = re.compile(
-    r"(password|passcode|pin code|api[ _-]?key|secret|token|credential|"
+    r"(password|passcode|passphrase|\blog-?ins?\b|pin code|api[ _-]?key|secret|token|credential|"
     r"\bssn\b|social security|credit card|\bcvv\b|\bpins?\b|\bpwd?\b|"
     r"sk-[a-z0-9]|nvapi-|ghp_|\b\d{6,}\b)",
     re.IGNORECASE,
@@ -257,7 +257,12 @@ class Brain:
                 "UPDATE memories SET status='superseded' WHERE mid=?", (mid,)
             )
             new = self._insert(
-                old.kind, text, "user_corrected", 1.0, "durable", f"correction of #{mid}"
+                old.kind,
+                text,
+                "user_corrected",
+                1.0,
+                "durable",
+                f"correction of #{mid}",
             )
         return self.get(new)
 

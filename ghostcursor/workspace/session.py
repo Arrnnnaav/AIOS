@@ -176,6 +176,30 @@ def parse_ideas(content: str) -> tuple[Idea, ...]:
     return tuple(parsed)
 
 
+#: Jev's workspace check (D179 table): what a message asks for -- shown as a
+#: suggestion, never acted on -- and whether each memory candidate is lasting.
+ROUTE_QUESTION = (
+    "What does the person's message ask Orbyn for? Pick the best fit."
+)
+ROUTES = {
+    "chat": "a conversation, an opinion or a quick answer",
+    "research": "facts that need current sources from the web",
+    "ideate": "options: the person is unsure how to approach the goal",
+    "plan": "step-by-step instructions to do the task now",
+}
+MEMORY_QUESTION = (
+    "`{key}` was extracted from the person's message. What is it?"
+)
+MEMORY_VERDICTS = {
+    "lasting": "a lasting preference, goal, decision or fact the person stated about themselves",
+    "temporary": "true only for now, this task or this session",
+    "not_stated": "not something the person said about themselves",
+    "secret": "contains a password, key, account number or other secret",
+}
+#: Jev must be at least this sure; provisional, as for the citation check.
+CHECK_FLOOR = 0.8
+
+
 @dataclass(frozen=True)
 class Discussed:
     reply: str
@@ -227,6 +251,8 @@ class Workspace:
     ideas: tuple[Idea, ...] = ()
     #: Brain memories the latest plan was made with (Phase 9: shown with it).
     plan_memories: tuple[int, ...] = ()
+    #: Jev's suggestion for the last message: "research", "ideate", "plan" or "".
+    suggestion: str = ""
 
     def __post_init__(self) -> None:
         brief_path(self.root, self.topic)  # validates the topic name
@@ -311,7 +337,8 @@ class Workspace:
             )
         except ProviderError as exc:
             return f"(no reply: the model is not available -- {exc.kind.value})"
-        for kind, text, confidence in answer.memories:
+        self.suggestion, candidates = self._check(message, answer.memories)
+        for kind, text, confidence in candidates:
             # origin is what the model claims; the Brain's rule checks the
             # words against the user's own turn before anything is durable.
             self.brain.remember(
@@ -324,6 +351,48 @@ class Workspace:
             )
         self._say("assistant", answer.reply)
         return answer.reply
+
+    def _check(self, message: str, candidates) -> tuple[str, tuple]:
+        """One Jev request: a suggestion for what the message asks, and a
+        verdict per memory candidate that can only lower it -- a confident
+        secret is dropped, anything not lasting stays session-scoped. Without
+        Jev, nothing changes."""
+
+        judge = getattr(self.gateway, "judge", None)
+        if judge is None:
+            return "", candidates
+        questions = {"route": (ROUTE_QUESTION, ROUTES)}
+        tainted = {}
+        for n, (_kind, text, _confidence) in enumerate(candidates):
+            tainted[f"memory_{n}"] = Tainted.of("model_memory", text)
+            questions[f"memory_{n}"] = (
+                MEMORY_QUESTION.format(key=f"memory_{n}"),
+                MEMORY_VERDICTS,
+            )
+        try:
+            verdicts = judge(
+                Envelope(
+                    task="workspace_check", trusted={"message": message}, tainted=tainted
+                ),
+                questions,
+            )
+        except ProviderError:
+            return "", candidates
+
+        def sure(verdict):
+            return verdict.probabilities.get(verdict.choice, 0.0) >= CHECK_FLOOR
+
+        route = verdicts["route"]
+        suggestion = route.choice if sure(route) and route.choice != "chat" else ""
+        kept = []
+        for n, (kind, text, confidence) in enumerate(candidates):
+            verdict = verdicts[f"memory_{n}"]
+            if sure(verdict) and verdict.choice == "secret":
+                continue
+            if sure(verdict) and verdict.choice != "lasting":
+                confidence = min(confidence, 0.5)  # below MIN_CONFIDENCE: session only
+            kept.append((kind, text, confidence))
+        return suggestion, tuple(kept)
 
     def research(self, question: str, **kw) -> str:
         """RESEARCH: a cited answer, appended to the brief with its digest."""

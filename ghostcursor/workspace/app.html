@@ -324,11 +324,25 @@ function renderChat(scrollDown) {
   if (!S.turns.length && !pending) { thread.append(emptyState()); return; }
   for (const t of S.turns) thread.append(turnEl(t));
   if (pending) thread.append(turnEl({ speaker: "user", text: pending }));
+  if (S.suggest && !S.busy && !pending) thread.append(suggestEl(S.suggest));
   if (S.busy === "Thinking" || S.busy === "Researching" || S.busy === "Planning") {
     const m = el("div", "msg assistant"); m.append(el("div", "orb mini"));
     const ty = el("div", "typing"); ty.append(el("i"), el("i"), el("i")); m.append(ty); thread.append(m);
   }
   if (scrollDown || atBottom) $("main").scrollTop = $("main").scrollHeight;
+}
+
+// Jev's suggestion for the last message: one tap, never automatic.
+function suggestEl(kind) {
+  const last = [...S.turns].reverse().find((t) => t.speaker === "user");
+  const label = { research: "Research this with cited sources", ideate: "Explore approaches first", plan: "Draft a step plan" }[kind];
+  const w = el("div", "event"); const c = el("button", "chip"); c.append(document.createTextNode(label));
+  c.onclick = () => {
+    if (kind === "research") { setResearch(true); $("input").value = last ? last.text : ""; autosize(); $("input").focus(); }
+    else if (kind === "ideate") { act("ideate", {}, "Approaches ready"); setTab("plan"); }
+    else { act("plan", {}, "Plan drafted"); setTab("plan"); }
+  };
+  w.append(c); return w;
 }
 
 function emptyState() {

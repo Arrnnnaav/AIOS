@@ -136,6 +136,7 @@ class App:
                 "steps": [s.instruction for s in proposal.plan.steps],
             },
             "memories": self.memories,
+            "suggest": ws.suggestion,
             "ideas": [
                 {
                     "title": i.title,
@@ -178,6 +179,7 @@ class App:
             return {}
         if self.busy:
             raise ValueError(f"busy: {self.busy}")
+        ws.suggestion = ""  # a suggestion is for the message just answered
         if action == "say":
             if not text:
                 raise ValueError("say something")

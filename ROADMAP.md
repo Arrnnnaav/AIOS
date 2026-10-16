@@ -68,7 +68,7 @@ section 4):
 |---|---|---|---|
 | 1 | Organisation policy + scrubbed screen text | MVP privacy; Unified 4.5 enterprise mode | built (D180) |
 | 2 | Ideate: 2-4 approaches with assumptions and unknowns; plan from the chosen one; the plan shows which memories informed it | MP3 Phase 10, Phase 9 retrieval | built |
-| 3 | Jev in the workspace: composer intent suggestion; Brain Noul beside the deterministic rule | D179 table | next |
+| 3 | Jev in the workspace: composer intent suggestion; Brain check beside the deterministic rule | D179 table | built |
 | 4 | Multiplayer V1 seed: hand a mission (goal, plan, sources) to a teammate as a file; what arrives is data, never their goal or authority | Unified 4.2 (YC RFS Multiplayer), MP7 | next |
 | 5 | Act from the workspace | MP0/MP4 | stays refused until the Act activation review is READY (tier 1) |
 | 6 | Company Brain / Context Graph, self-maintaining APIs | Unified 4.1, 4.4; MP7, MP8 | later; needs D017-amendment and sandbox work first |
@@ -88,8 +88,8 @@ action.
 | Teach: when text is not enough | same Choice with a redacted picture per window (opt-in) | built (D179) |
 | Research: does the cited passage back the claim | Choice supports / contradicts / says nothing; only lowers | built (D179) |
 | Teach: did the step happen | Noul from before/after control facts, beside `change_observed` | next |
-| Brain: is this a lasting, self-stated fact with no secret | Noul beside the deterministic rule | next |
-| Workspace composer: chat, research, plan, point or guide | Choice intent routing | next |
+| Brain: is this a lasting, self-stated fact with no secret | Choice beside the deterministic rule; only lowers | built |
+| Workspace composer: chat, research, ideate or plan | Choice; shown as a one-tap suggestion, never automatic | built |
 | Research: which passages matter | per-passage relevance Score before System Two | next |
 | Any tainted text: does it try to give instructions | Noul injection screen | next |
 | Jev 1.14 (`jev-preview`) vs 1.13 | replay corpus comparison (`ORBYN_JEV_MODEL`) | next |
