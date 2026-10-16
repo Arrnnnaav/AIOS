@@ -122,3 +122,57 @@ def test_blocked_apps_are_never_bound(monkeypatch):
 def test_screen_text_is_scrubbed_before_it_is_sent(text, sent):
     assert scrub(text) == sent
     assert Tainted.of("uia_name", text).text == sent
+
+
+# --- review follow-ups -------------------------------------------------------------
+
+from ghostcursor.policy import _value as _registry_value  # the real reader
+
+
+def test_a_present_but_unreadable_policy_fails_closed(monkeypatch):
+    import winreg
+
+    def denied(*a, **k):
+        raise PermissionError("access denied")
+
+    monkeypatch.setattr(winreg, "OpenKey", denied)
+    monkeypatch.setattr(policy, "_value", _registry_value)
+    assert policy.max_egress() == policy.LOCAL
+
+
+def test_a_missing_policy_key_is_no_policy(monkeypatch):
+    import winreg
+
+    def missing(*a, **k):
+        raise FileNotFoundError
+
+    monkeypatch.setattr(winreg, "OpenKey", missing)
+    monkeypatch.setattr(policy, "_value", _registry_value)
+    assert policy.max_egress() == policy.PICTURES
+
+
+def test_blocked_apps_accept_full_paths(monkeypatch):
+    _policy(monkeypatch, BlockedApps=r"C:\Program Files\KeePass\KeePass.exe")
+    assert policy.blocked_apps() == {"keepass.exe"}
+
+
+def test_base64_secrets_are_masked_and_tainted_text_cannot_skip_the_scrub():
+    aws = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+    assert scrub(f"secret {aws} end") == "secret [token] end"
+    with pytest.raises(ValueError):
+        Tainted("uia_name", "mail bob@acme.com")
+
+
+def test_local_only_blocks_the_citation_check_and_chatgpt_sign_in(monkeypatch, tmp_path):
+    from ghostcursor.providers import chatgpt
+
+    _policy(monkeypatch, MaxEgress=0)
+    transport, calls = _transport(_jev_reply)
+    gateway = Gateway(
+        transport=transport, key_lookup=_keys(typesafe="k"), log_path=tmp_path / "l"
+    )
+    with pytest.raises(ProviderError):
+        gateway.judge(_envelope(), {"q": ("does it?", {"yes": "y", "no": "n"})})
+    with pytest.raises(chatgpt.SignInError):
+        chatgpt._token_request({}, transport=transport)
+    assert calls == []

@@ -11,6 +11,8 @@ lowers what the user may switch on; with no policy, behaviour is unchanged.
 
 from __future__ import annotations
 
+import ntpath
+
 LOCAL, TEXT, PICTURES = 0, 1, 2
 _KEY = r"Software\Policies\Orbyn"
 #: Providers that run on this machine (the local Ollama server).
@@ -27,8 +29,10 @@ def _value(name: str):
         try:
             with winreg.OpenKey(hive, _KEY) as key:
                 return winreg.QueryValueEx(key, name)[0]
-        except OSError:
+        except FileNotFoundError:
             continue
+        except OSError:
+            return "unreadable"  # present but not readable: fails closed
     return None
 
 
@@ -46,7 +50,9 @@ def blocked_apps() -> frozenset[str]:
     value = _value("BlockedApps")
     if not isinstance(value, str):
         return frozenset()
-    return frozenset(p.strip().casefold() for p in value.split(";") if p.strip())
+    return frozenset(
+        ntpath.basename(p.strip()).casefold() for p in value.split(";") if p.strip()
+    )
 
 
 def allows(provider: str, *, images: int = 0) -> bool:

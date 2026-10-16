@@ -181,6 +181,10 @@ def wait_for_code(
 
 
 def _token_request(form: dict, transport=None, timeout_s: float = 20.0) -> dict:
+    from ghostcursor import policy
+
+    if not policy.allows("chatgpt"):  # D180: local only signs in nowhere
+        raise SignInError("blocked by your organisation's policy")
     with httpx.Client(transport=transport, timeout=timeout_s) as client:
         try:
             response = client.post(TOKEN_URL, data=form)

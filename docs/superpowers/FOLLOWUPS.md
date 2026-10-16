@@ -1387,3 +1387,5 @@ to confirm where the cost actually is before changing anything else.
 - Audit export: an `AuditLogPath` policy value and a SIEM-friendly line (provider, purpose, bytes, digest, policy level).
 - `AllowedProviders` policy value (e.g. allow Jev, forbid OpenRouter) if a customer asks.
 - Provider contracts (owner, not code): DPA, zero retention and region from TypeSafe and OpenAI before any enterprise sale.
+- Review of D180: BlockedApps is checked at bind only; a policy pushed mid-session does not unbind a live window.
+- Review of D180: the `model_gate` devtool `--endpoint` can point the Ollama client at a remote host; `LOCAL_PROVIDERS` trusts the name, not the address.

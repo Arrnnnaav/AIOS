@@ -41,6 +41,8 @@ _DIGITS = re.compile(r"\+?\d[\d ().-]{6,}\d")
 _TOKEN = re.compile(
     r"\b(?=[A-Za-z0-9_-]*\d)(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9_-]{24,}\b"
 )
+#: base64-style secrets (``/``, ``+``, ``=``) of 32+ characters.
+_SECRET = re.compile(r"(?<![\w/+])[A-Za-z0-9/+]{32,}={0,2}(?![\w/+])")
 
 
 def scrub(text: str) -> str:
@@ -50,6 +52,7 @@ def scrub(text: str) -> str:
     text = _EMAIL.sub("[email]", text)
     text = _QUERY.sub(r"\1?[query]", text)
     text = _TOKEN.sub("[token]", text)
+    text = _SECRET.sub("[token]", text)
     return _DIGITS.sub(
         lambda m: "[number]" if sum(c.isdigit() for c in m.group()) >= 9 else m.group(),
         text,
@@ -62,6 +65,10 @@ class Tainted:
 
     source: str  # e.g. "uia_name", "ocr", "dom_text", "window_title"
     text: str
+
+    def __post_init__(self) -> None:
+        if self.text != scrub(self.text):  # built without ``of``: never sent raw
+            raise ValueError("tainted text must be built with Tainted.of")
 
     @staticmethod
     def of(source: str, value: object) -> "Tainted":
