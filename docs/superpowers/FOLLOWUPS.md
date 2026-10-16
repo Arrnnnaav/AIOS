@@ -1371,3 +1371,11 @@ to confirm where the cost actually is before changing anything else.
 - Jev 1.14 (`jev-preview`, from 14 Oct) is out; `jev-latest` is still 1.13. `ORBYN_JEV_MODEL=jev-preview` selects it; compare on the D170 replay corpus before switching.
 - Images (beta, both versions) and Box (1.14, "not yet for production") need screenshots sent off the machine: blocked by rule 6 unless the owner decides otherwise. Box output could only ever pick among observed controls (rule 3), never place a pointer.
 - Text-only uses that fit the rules: Noul citation check per claim/passage in research; Noul "user-stated, durable, no secret" beside the Brain's rule; Noul step-verification from before/after control facts; Choice intent routing for the workspace composer; passage rerank before System Two; prompt-injection Noul on research/screen text.
+
+## D179 follow-ups
+
+- Live: measure accuracy with and without pictures on the replay corpus; record picture tokens and latency (a real Chrome window gave an 84 KB JPEG, 65 candidates, 8 unnamed).
+- Outlines and ids of grey (non-shown) controls reveal layout geometry; outline only shown ones if that proves unneeded for accuracy.
+- Browser tab titles show in the picture; their names already go as text (D167 policy). Revisit both together.
+- Buttons inside web/document content (not chrome) can still show if small; exclude controls in Document/web-content subtrees.
+- Re-check the window rectangle at grab time (beyond the ownership check) and assert per-monitor DPI awareness before grabbing.

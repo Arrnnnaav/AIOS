@@ -7874,3 +7874,17 @@ check floor, checked statuses, unnamed only on request).
 Not measured: accuracy gain, picture size in tokens, or latency on real
 windows; TypeSafe's retention of images is not stated in its docs. Not run
 live (needs the TypeSafe key and a real session).
+
+D179 review (fresh agent, `078b7b2..ea97e55`). BLOCKING, fixed: the
+picture was cut from the screen, so a window covering the bound one (the
+Orbyn app, a chat, a toast) could have its pixels copied at a control's
+position. Now a control's pixels are copied only when its four corners and
+centre belong to the bound window (WindowFromPoint, root ancestor), checked
+just after the grab; a moved window fails the same check. Also fixed: a
+failed or empty capture asks text-only and does not relax the look-alike
+rule; links are no longer chrome and shown controls are capped at 96x480 px
+(a real Chrome sample had shown page content through a large link); the
+switch text says TypeSafe's image retention is not documented. Second sweep:
+7 mutants, 7 killed (width cap, link type, occlusion check, corner points,
+seen only with pictures, empty capture, height cap). Outlines and ids of
+non-shown controls still go (geometry only): in FOLLOWUPS.

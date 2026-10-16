@@ -37,6 +37,7 @@ from tests.test_harness_teach import W1, FakeGateway, SyncSlot, _c, _plan
 from tests.test_providers import _envelope, _keys, _transport
 
 RED = (220, 20, 20)
+MINE = lambda x, y: 11  # noqa: E731  every pixel belongs to the bound window (W1)
 WINDOW = (0, 0, 400, 300)
 
 
@@ -64,25 +65,45 @@ def test_only_chrome_controls_keep_their_pixels():
             _c(3, "Slide 1", "ListItem", (10, 150, 60, 200)),
             _c(4, "Report.docx", "TabItem", (100, 150, 160, 190)),  # names a document
             _c(5, "Canvas", "Button", (100, 200, 390, 290)),  # > 15% of the window
+            _c(6, "Ad", "Hyperlink", (300, 100, 380, 130)),  # page content
+            _c(7, "Card", "Button", (330, 140, 345, 290)),  # taller than chrome
         ]
     )
-    picture = redact(frame, "w1", _red((400, 300)))
+    picture = redact(frame, "w1", _red((400, 300)), MINE)
     assert picture.getpixel((45, 80)) == RED  # inside the button, clear of its tag
-    for inside in [(250, 80), (50, 190), (150, 182), (300, 270)]:
+    for inside in [(250, 80), (50, 190), (150, 182), (300, 270), (360, 125), (340, 170)]:
         assert picture.getpixel(inside) == GREY, inside
     assert picture.getpixel((5, 5)) == GREY  # title bar
     assert picture.getpixel((80, 120)) == GREY  # between controls
 
 
+def test_a_control_under_another_window_stays_grey():
+    frame = _frame([_c(1, "Bold", "Button", (10, 50, 60, 90)), _c(2, "Save", "Button", (100, 50, 150, 90))])
+    covered = lambda x, y: 99 if x >= 100 else 11  # noqa: E731  Save is under window 99
+    picture = redact(frame, "w1", _red((400, 300)), covered)
+    assert picture.getpixel((45, 80)) == RED
+    assert picture.getpixel((135, 80)) == GREY
+    corner = lambda x, y: 99 if (x, y) == (148, 88) else 11  # noqa: E731  one corner covered
+    assert redact(frame, "w1", _red((400, 300)), corner).getpixel((135, 80)) == GREY
+
+
+def test_a_wide_control_stays_grey():
+    frame = _frame([_c(1, "Banner", "Button", (10, 400, 600, 440))], window=(0, 0, 1200, 800))
+    picture = redact(frame, "w1", _red((1200, 800)), MINE)
+    assert picture.getpixel(
+        (round(300 * picture.width / 1200), round(430 * picture.width / 1200))
+    ) == GREY
+
+
 def test_pictures_respect_the_size_limits_and_skip_closed_or_empty_windows():
     big = _frame([_c(1, "Bold", "Button", (10, 10, 60, 40))], window=(0, 0, 3000, 2000))
-    out = pictures(big, grab=lambda rect: _red((3000, 2000)))
+    out = pictures(big, grab=lambda rect: _red((3000, 2000)), owner=MINE)
     shot = Image.open(io.BytesIO(out["w1"]))
     assert shot.format == "JPEG" and max(shot.size) <= MAX_SIDE
     small = _frame([_c(1, "Bold", "Button", (1, 1, 20, 20))], window=(0, 0, 100, 50))
-    shot = Image.open(io.BytesIO(pictures(small, grab=lambda r: _red((100, 50)))["w1"]))
+    shot = Image.open(io.BytesIO(pictures(small, grab=lambda r: _red((100, 50)), owner=MINE)["w1"]))
     assert min(shot.size) >= MIN_SIDE
-    assert pictures(_frame([]), grab=lambda r: _red((400, 300))) == {}
+    assert pictures(_frame([]), grab=lambda r: _red((400, 300)), owner=MINE) == {}
     hidden = _frame([_c(1, "Bold", "Button")], minimized=True)
     assert (
         pictures(hidden, grab=lambda r: pytest.fail("grabbed a minimized window")) == {}
@@ -165,6 +186,19 @@ def test_a_failed_text_choice_looks_once_the_user_allowed_it():
     display = session.tick(frame)  # now with a picture
     assert gateway.pictures == [None, {"w1": b"jpeg"}]
     assert display.target is not None and display.target.cid == "c1"
+
+
+@pytest.mark.parametrize("look", [lambda f: {}, lambda f: 1 / 0])
+def test_no_picture_sent_means_no_relaxed_rule(look):
+    twins = [_c(1, "", "Button", (10, 10, 40, 40)), _c(2, "", "Button", (60, 10, 90, 40))]
+    frame = _frame(twins, unnamed=True)
+    session, gateway = _seeing(
+        [Choice(ABSTAIN, {ABSTAIN: 0.9}), Choice("c2", {"c2": 0.95})], look
+    )
+    session.tick(frame)
+    display = session.tick(frame)  # a capture failed or showed nothing: text-only
+    assert gateway.pictures == [None, None]
+    assert display.target is None  # look-alikes still re-asked
 
 
 def test_without_the_users_switch_no_picture_is_ever_taken():

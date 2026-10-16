@@ -473,7 +473,7 @@ function renderBrain() {
   vsw.onclick = () => act("vision", { on: !S.vision }, S.vision ? "Pictures off" : "Pictures on");
   pmeta.append(vsw);
   priv.append(pmeta, el("div", "", "Let Jev see a picture of the windows you guide when text is not enough."),
-    el("div", "note", "Only buttons, tabs and menus are shown; text, lists, documents and titles are greyed out on this computer before anything is sent. Nothing is saved."));
+    el("div", "note", "Only buttons, tabs and menus are shown; text, lists, documents and titles are greyed out on this computer before anything is sent; parts covered by other windows stay grey too. Orbyn saves nothing; TypeSafe's docs do not say how long it keeps images."));
   priv.lastChild.style.textAlign = "left";
   root.append(priv);
   const stats = el("div", "stats"); root.append(stats);

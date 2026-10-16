@@ -4,7 +4,7 @@ Sent only when the user turned it on, and only when the text-only choice
 failed for a step (Jev abstained, was unsure, or two controls look alike).
 What leaves the machine is not a screenshot: each picture starts grey, and
 only the pixels of observed controls that are interface chrome (buttons,
-menu items, tabs, check boxes...) are copied in. Text fields, lists, tree
+menu items, tabs, check boxes; small ones only) are copied in. Links, text fields, lists, tree
 items, document names, title bars and everything between controls stay
 grey. Every option is outlined and tagged with its id, so Jev answers with an
 id -- the pointer is still drawn only at an observed control (rule 3).
@@ -22,18 +22,12 @@ from ghostcursor.harness.frame import ObservationFrame, Rect, reveals_document
 
 #: Only these keep their pixels; the rest of the window is grey.
 CHROME_TYPES = frozenset(
-    {
-        "Button",
-        "SplitButton",
-        "MenuItem",
-        "TabItem",
-        "CheckBox",
-        "RadioButton",
-        "Hyperlink",
-    }
-)
+    {"Button", "SplitButton", "MenuItem", "TabItem", "CheckBox", "RadioButton"}
+)  # not Hyperlink: on a web page a link is page content
 #: A control bigger than this share of its window stays grey: it may hold content.
 MAX_SHOWN_SHARE = 0.15
+#: Chrome is small; a taller or wider control (a card, a preview) stays grey.
+MAX_SHOWN_HEIGHT, MAX_SHOWN_WIDTH = 96, 480
 GREY = (128, 128, 128)
 MARK = (255, 64, 160)
 #: TypeSafe image limits (docs.typesafe.ai/images): each side 280..1568 px.
@@ -52,6 +46,26 @@ def grab_screen(rect: Rect) -> Image.Image:
     return Image.frombytes("RGB", shot.size, shot.rgb)
 
 
+def owner_at(x: int, y: int) -> int:
+    """The top-level window that owns the screen pixel at (x, y), or 0."""
+
+    import win32gui
+
+    hwnd = win32gui.WindowFromPoint((x, y))
+    return win32gui.GetAncestor(hwnd, 2) if hwnd else 0  # GA_ROOT
+
+
+def _visible(rect: Rect, hwnd: int, owner) -> bool:
+    """Every corner and the centre of ``rect`` belong to the bound window: a
+    control under another window (the Orbyn app, a chat, a toast) or one the
+    window moved away from is never copied (review of D179)."""
+
+    left, top, right, bottom = rect[0] + 1, rect[1] + 1, rect[2] - 2, rect[3] - 2
+    points = [(left, top), (right, top), (left, bottom), (right, bottom)]
+    points.append(((left + right) // 2, (top + bottom) // 2))
+    return all(owner(x, y) == hwnd for x, y in points)
+
+
 def shown(candidate, window: Rect, title: str) -> bool:
     """Whether this control's own pixels may appear in the picture."""
 
@@ -61,12 +75,19 @@ def shown(candidate, window: Rect, title: str) -> bool:
         candidate.control_type in CHROME_TYPES
         and not reveals_document(candidate.name, candidate.control_type, title)
         and (right - left) * (bottom - top) <= MAX_SHOWN_SHARE * area
+        and bottom - top <= MAX_SHOWN_HEIGHT
+        and right - left <= MAX_SHOWN_WIDTH
     )
 
 
-def redact(frame: ObservationFrame, label: str, screen: Image.Image) -> Image.Image:
-    """``screen`` is the window's pixels; the result is grey but for chrome
-    controls, with every candidate outlined and tagged."""
+def redact(
+    frame: ObservationFrame, label: str, screen: Image.Image, owner=owner_at
+) -> Image.Image:
+    """``screen`` is the window's pixels, just grabbed; the result is grey but
+    for chrome controls the bound window shows on top, with every candidate
+    outlined and tagged. ``owner`` is checked after the grab."""
+
+    hwnd = next(b.hwnd for b in frame.windows if b.label == label)
 
     window = dict(frame.window_rects)[label]
     title = next((t for lab, t, _ in frame.facts if lab == label), "")
@@ -74,7 +95,7 @@ def redact(frame: ObservationFrame, label: str, screen: Image.Image) -> Image.Im
     picture = Image.new("RGB", screen.size, GREY)
     mine = [c for c in frame.candidates if c.window == label]
     for c in mine:
-        if shown(c, window, title):
+        if shown(c, window, title) and _visible(c.rect, hwnd, owner):
             box = (  # clipped to the window: nothing outside it is copied
                 max(0, c.rect[0] - ox),
                 max(0, c.rect[1] - oy),
@@ -122,7 +143,9 @@ def _fit(picture: Image.Image) -> Image.Image:
     return picture
 
 
-def pictures(frame: ObservationFrame, grab=grab_screen) -> dict[str, bytes]:
+def pictures(
+    frame: ObservationFrame, grab=grab_screen, owner=owner_at
+) -> dict[str, bytes]:
     """One redacted JPEG per bound, open window that has candidates."""
 
     out = {}
@@ -132,7 +155,7 @@ def pictures(frame: ObservationFrame, grab=grab_screen) -> dict[str, bytes]:
         ):
             continue
         buffer = io.BytesIO()
-        redact(frame, label, grab(window)).save(
+        redact(frame, label, grab(window), owner).save(
             buffer, "JPEG", quality=JPEG_QUALITY, progressive=False
         )
         out[label] = buffer.getvalue()

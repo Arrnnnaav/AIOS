@@ -241,11 +241,21 @@ class ModelTeachSession:
         ids = frame.ids
         self._asked = frame
         look = self.look if self._looking else None
-        self._asked_seen = look is not None
+        self._asked_seen = False
 
         def ask(cancelled):
             # Pictures are taken on the worker, never on the UI thread (rule 5).
-            extra = {"pictures": look(frame)} if look is not None else {}
+            # A failed capture asks text-only; only pictures actually sent
+            # relax the look-alike rule (review of D179).
+            extra = {}
+            if look is not None:
+                try:
+                    shots = look(frame)
+                except Exception:
+                    shots = {}
+                if shots:
+                    extra = {"pictures": shots}
+            self._asked_seen = bool(extra)
             return self.gateway.choose(
                 envelope, ids, question=CHOOSE_QUESTION, cancelled=cancelled, **extra
             )
