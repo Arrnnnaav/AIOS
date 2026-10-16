@@ -1357,3 +1357,11 @@ to confirm where the cost actually is before changing anything else.
 - [ ] One hermetic lane run on 15 Oct (after D177 review fixes) had 10
       failures; the next two full runs passed (3168). Failures were not
       captured; rerun with `-rf` if it recurs.
+
+## D178 workspace app follow-ups
+
+- Live run: discuss, research, plan and a Teach session from the app with a real model; record in docs/evidence.
+- Edge app windows have a minimum width near 500 px; the 460 px dock may be clamped. Check on a real display.
+- The app window covers part of the screen during Teach; consider collapsing it to a slim bar while guiding (Copilot-style).
+- Brain tab not captured in screenshots; check visually.
+- The page polls state every 700 ms; switch to a long poll if CPU shows up.

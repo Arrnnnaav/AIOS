@@ -101,6 +101,7 @@ py -3.12 -m pytest tests\test_run_threaded.py --basetemp=.tmp\pytest-hung-runtim
 # Run
 py -3.12 -m ghostcursor.run --manager          # the manager window
 py -3.12 -m ghostcursor.run --goal "<goal>"    # Teach from the CLI; ESC quits
+py -3.12 -m ghostcursor.workspace.app <topic>  # the workspace app (D178)
 py -3.12 -m ghostcursor.plugins list           # installed plugins
 
 # Signed PowerPoint bundle

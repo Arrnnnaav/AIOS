@@ -1,0 +1,437 @@
+"""The workspace app (D178):  py -3.12 -m ghostcursor.workspace.app <topic>
+
+The console workspace (D173) as a docked window: a local page served on
+127.0.0.1 and shown by Edge in app mode, so no new dependency. The page is a
+view; everything it does goes through the same ``Workspace`` the console uses.
+
+Trust boundary: any local process or web page can reach 127.0.0.1, so every
+request must carry the per-launch token and the exact Host (no DNS
+rebinding), and every API call is a JSON POST (a cross-site form cannot send
+one without a preflight this server never answers). Window handles stay in
+this process; the page sees window numbers only. There is no Act path here.
+"""
+
+from __future__ import annotations
+
+import ghostcursor.overlay.dpi  # noqa: F401  (rule 4: before any overlay)
+
+import hmac
+import json
+import os
+import secrets
+import subprocess
+import sys
+import threading
+import time
+from collections import deque
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import asdict
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+
+from ghostcursor.workspace.contracts import POINT_PREFIX
+
+PAGE = Path(__file__).with_name("app.html")
+MAX_BODY = 64 * 1024
+QUIT_AFTER_S = 90.0  # no poll this long: the window is closed (a hidden tab polls ~1/min)
+APP_TITLE = "Orbyn"  # the page's <title>; its window is never offered for binding
+EDGE = Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")) / (
+    r"Microsoft\Edge\Application\msedge.exe"
+)
+
+
+class App:
+    """One worker thread owns the Workspace and its Brain (sqlite is
+    single-thread); request threads only queue jobs and set events."""
+
+    def __init__(self, topic: str, *, make_workspace=None):
+        self.jobs = ThreadPoolExecutor(1, thread_name_prefix="orbyn-workspace")
+        self.signal = threading.Event()  # Enter / "Done" from the page
+        self.stop = threading.Event()  # the page's Stop button
+        self.status: deque[str] = deque(maxlen=40)
+        self.busy = ""
+        self.windows: list = []  # the last bindable list; the page sees indexes
+        self.pending_point = None
+        self.memories: list[dict] = []
+        self.seen = time.monotonic()  # the page's last poll
+        self.paused = False
+        self.ws = self.jobs.submit(
+            make_workspace or (lambda: _default_workspace(topic))
+        ).result()
+        self.jobs.submit(self._refresh).result()
+
+    # --- worker-side ------------------------------------------------------------
+
+    def _refresh(self) -> None:
+        brain = self.ws.brain
+        self.memories = [
+            {
+                k: v
+                for k, v in asdict(m).items()
+                if k in ("mid", "kind", "text", "scope", "origin")
+            }
+            for m in brain.list()
+        ]
+        self.paused = brain.paused
+
+    def run(self, label: str, fn):
+        """Run ``fn`` on the worker; one long job at a time (the page waits)."""
+
+        def job():
+            self.busy = label
+            self.signal.clear()
+            self.stop.clear()
+            try:
+                return fn()
+            finally:
+                self._refresh()
+                self.busy = ""
+
+        return self.jobs.submit(job).result()
+
+    def say(self, line: str) -> None:
+        self.status.append(str(line)[:300])
+
+    def signalled(self) -> bool:
+        if self.signal.is_set():
+            self.signal.clear()
+            return True
+        return False
+
+    def hwnds(self, numbers) -> list[int]:
+        chosen = [
+            self.windows[n].hwnd
+            for n in numbers
+            if isinstance(n, int) and 0 <= n < len(self.windows)
+        ]
+        if not chosen:
+            raise ValueError("choose at least one window")
+        return chosen
+
+    # --- the page's view --------------------------------------------------------
+
+    def state(self) -> dict:
+        ws = self.ws
+        proposal = ws.proposal
+        return {
+            "topic": ws.topic,
+            "goal": ws.goal,
+            "turns": [{"speaker": t.speaker, "text": t.text} for t in ws.turns[-200:]],
+            "plan": None
+            if proposal is None
+            else {
+                "revision": proposal.revision,
+                "steps": [s.instruction for s in proposal.plan.steps],
+            },
+            "memories": self.memories,
+            "paused": self.paused,
+            "busy": self.busy,
+            "status": list(self.status),
+            "research": len(ws.research_graphs),
+            "point_prefix": POINT_PREFIX,
+        }
+
+    # --- actions ----------------------------------------------------------------
+
+    def handle(self, action: str, body: dict):
+        ws = self.ws
+        text = str(body.get("text", "")).strip()
+        if action == "state":
+            self.seen = time.monotonic()
+            return self.state()
+        if action == "signal":
+            self.signal.set()
+            return {}
+        if action == "stop":
+            self.stop.set()
+            return {}
+        if self.busy:
+            raise ValueError(f"busy: {self.busy}")
+        if action == "say":
+            if not text:
+                raise ValueError("say something")
+            return {"reply": self.run("Thinking", lambda: ws.discuss(text))}
+        if action == "research":
+            if not text:
+                raise ValueError("ask a question")
+            return {"answer": self.run("Researching", lambda: ws.research(text))}
+        if action == "evidence":
+            return {"text": ws.evidence(int(body.get("n", 0)))}
+        if action == "plan":
+            plan = self.run("Planning", ws.make_plan)
+            if plan is None:
+                raise ValueError("No plan: the model is not available.")
+            return {}
+        if action == "plan_edit":
+            verb, args = (
+                str(body.get("verb", "")),
+                [str(a) for a in body.get("args", [])],
+            )
+            self.run("Editing plan", lambda: ws.edit_plan(verb, " ".join(args).split()))
+            return {}
+        if action == "windows":
+            from ghostcursor.harness.binding import bindable_windows
+
+            self.windows = [
+                w for w in bindable_windows() if not w.title.startswith(APP_TITLE)
+            ]
+            return {
+                "windows": [
+                    {"n": n, "app": w.executable, "title": w.title[:80]}
+                    for n, w in enumerate(self.windows)
+                ]
+            }
+        if action == "point":
+            hwnds = self.hwnds(body.get("windows", []))
+            ref = self.run("Pointing", lambda: self._point(hwnds))
+            if ref is None:
+                raise ValueError("No point taken.")
+            self.pending_point = ref
+            return {"text": ref.as_text(), "alternatives": list(ref.alternatives)}
+        if action == "point_keep":
+            from ghostcursor.workspace.__main__ import confirm_reference
+
+            ref, self.pending_point = self.pending_point, None
+            if ref is None:
+                raise ValueError("no point to keep")
+            ref = confirm_reference(ref, str(body.get("answer", "x")))
+            if ref is not None:
+                self.run("Saving point", lambda: ws.point(ref))
+            return {}
+        if action == "teach":
+            from ghostcursor.workspace.__main__ import teach_seconds
+
+            step = int(body.get("step", 0))
+            seconds = teach_seconds([str(body.get("seconds", 300))])
+            if seconds is None:
+                raise ValueError("seconds must be a number from 1 to 3600")
+            hwnds = self.hwnds(body.get("windows", []))
+            plan = ws.teach_plan(step)
+            return {
+                "result": self.run(
+                    "Guiding", lambda: self._teach(step, plan, hwnds, seconds)
+                )
+            }
+        if action == "voice":
+            return {"draft": self.run("Listening", self._voice) or ""}
+        if action == "brain":
+            return {"text": self.run("Brain", lambda: self._brain(body))}
+        if action == "stats":
+            from ghostcursor.workspace.research import _trace_path
+            from ghostcursor.workspace.session import measures
+
+            return self.run(
+                "Counting", lambda: measures(ws.brain, ws.root, _trace_path())
+            )
+        if action == "act":
+            ws.act()
+        raise ValueError("unknown action")
+
+    def _point(self, hwnds):
+        from ghostcursor.harness.binding import bind
+        from ghostcursor.harness.teach_live import (
+            ABORTED,
+            Observer,
+            _escape_pressed,
+            take_mark,
+        )
+        from ghostcursor.workspace.__main__ import reference_from
+
+        observer = Observer(bind(hwnds))
+        observer.start()
+        try:
+            mark = take_mark(
+                observer,
+                time.monotonic() + 120,
+                escape=lambda: _escape_pressed() or self.stop.is_set(),
+                enter=self.signalled,
+                say=self.say,
+            )
+            frame = observer.latest()
+            return (
+                None
+                if mark is ABORTED or frame is None
+                else reference_from(mark, frame)
+            )
+        finally:
+            observer.stop()
+
+    def _teach(self, step, plan, hwnds, seconds) -> str:
+        from ghostcursor.harness.teach_live import run_model_teach
+
+        outcome: list = []
+        code = run_model_teach(
+            self.ws.goal,
+            hwnds,
+            seconds=seconds,
+            plan=plan,
+            outcome=outcome,
+            say=self.say,
+            confirm=self.signalled,
+            stop=self.stop.is_set,
+        )
+        return self.ws.record_teach(step, outcome, code)
+
+    def _voice(self):
+        from ghostcursor.harness.teach_live import _escape_pressed
+        from ghostcursor.voice import dictate_goal
+
+        # Enter/Done starts and ends; the draft goes to the composer for the
+        # user to correct and send, so ``ask`` keeps it as is.
+        return dictate_goal(
+            time.monotonic() + 120,
+            ask=lambda _prompt: "",
+            enter=self.signalled,
+            escape=lambda: _escape_pressed() or self.stop.is_set(),
+        )
+
+    def _brain(self, body) -> str:
+        brain = self.ws.brain
+        verb = str(body.get("verb", ""))
+        mid = body.get("id")
+        if verb == "forget" and isinstance(mid, int):
+            return "forgotten" if brain.forget(mid) else "no such memory"
+        if verb == "correct" and isinstance(mid, int):
+            fixed = brain.correct(mid, str(body.get("text", "")))
+            return (
+                f"corrected as #{fixed.mid}" if fixed else "no such memory (or refused)"
+            )
+        if verb in ("pause", "resume"):
+            brain.pause(verb == "pause")
+            return f"learning {verb}d"
+        if verb == "erase" and body.get("confirm") == "yes":
+            brain.erase_all()
+            return "erased"
+        raise ValueError("unknown brain action")
+
+    def close(self) -> None:
+        self.stop.set()
+        self.jobs.submit(self.ws.brain.close).result()
+        self.jobs.shutdown()
+
+
+def _default_workspace(topic: str):
+    from ghostcursor.providers import Gateway
+    from ghostcursor.workspace.brain import Brain
+    from ghostcursor.workspace.session import Workspace
+
+    return Workspace(topic, Gateway(), Brain())
+
+
+def make_server(app: App, token: str, port: int = 0) -> ThreadingHTTPServer:
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *_args):  # the page's text never reaches a log
+            pass
+
+        def _allowed(self) -> bool:
+            host_ok = self.headers.get("Host") == f"127.0.0.1:{self.server.server_port}"
+            return host_ok
+
+        def _send(self, code: int, body: bytes, kind: str) -> None:
+            self.send_response(code)
+            self.send_header("Content-Type", kind)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Referrer-Policy", "no-referrer")
+            self.send_header(
+                "Content-Security-Policy",
+                "default-src 'none'; script-src 'unsafe-inline'; "
+                "style-src 'unsafe-inline'; connect-src 'self'; img-src data:; "
+                "base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+            )
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_GET(self):
+            path, _, query = self.path.partition("?")
+            given = query[2:] if query.startswith("t=") else ""
+            if (
+                path != "/"
+                or not self._allowed()
+                or not hmac.compare_digest(given.encode(), token.encode())
+            ):
+                return self._send(404, b"", "text/plain")
+            page = PAGE.read_text(encoding="utf-8").replace("__TOKEN__", token)
+            self._send(200, page.encode("utf-8"), "text/html; charset=utf-8")
+
+        def do_POST(self):
+            given = self.headers.get("X-Orbyn-Token", "")
+            length = int(self.headers.get("Content-Length") or 0)
+            if (
+                not self.path.startswith("/api/")
+                or not self._allowed()
+                or not hmac.compare_digest(given.encode(), token.encode())
+                or self.headers.get("Content-Type") != "application/json"
+                or not 0 <= length <= MAX_BODY
+            ):
+                return self._send(403, b"{}", "application/json")
+            try:
+                body = json.loads(self.rfile.read(length) or b"{}")
+                if not isinstance(body, dict):
+                    raise ValueError("body must be an object")
+                result, code = app.handle(self.path[5:], body), 200
+            except (ValueError, PermissionError) as exc:
+                result, code = {"error": str(exc)}, 400
+            except Exception as exc:  # the page shows it; the app keeps running
+                result, code = {"error": f"{type(exc).__name__}: {exc}"[:300]}, 500
+            self._send(code, json.dumps(result).encode("utf-8"), "application/json")
+
+    return ThreadingHTTPServer(("127.0.0.1", port), Handler)
+
+
+def open_window(url: str) -> None:
+    """Edge in app mode, docked right like a sidebar; any browser otherwise."""
+
+    if not EDGE.exists():
+        import webbrowser
+
+        webbrowser.open(url)
+        return
+    import win32api
+
+    width = 460
+    screen_w = win32api.GetSystemMetrics(0)
+    base = os.environ.get("LOCALAPPDATA") or str(Path.home())
+    subprocess.Popen(
+        [
+            str(EDGE),
+            f"--app={url}",
+            f"--user-data-dir={Path(base) / 'GhostCursor' / 'app-profile'}",
+            f"--window-size={width},860",
+            f"--window-position={max(0, screen_w - width - 16)},24",
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--disable-features=Translate",
+            "--disable-background-timer-throttling",
+            "--disable-renderer-backgrounding",
+        ]
+    )
+
+
+def main(argv: list[str] | None = None) -> int:
+    argv = sys.argv[1:] if argv is None else argv
+    if len(argv) != 1:
+        print(__doc__)
+        return 2
+    app = App(argv[0])
+    token = secrets.token_urlsafe(32)
+    server = make_server(app, token)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    url = f"http://127.0.0.1:{server.server_port}/?t={token}"
+    open_window(url)
+    try:
+        # The page polls while it is open; closing it ends the app. A long
+        # job (Teach) keeps it alive until the job ends.
+        while app.busy or time.monotonic() - app.seen < QUIT_AFTER_S:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.shutdown()
+        app.close()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -133,6 +133,7 @@ def take_mark(
     enter=_console_enter,
     cursor=None,
     clock=time.monotonic,
+    say=print,
 ):
     """Wait for the user to hover over what they mean and press Enter in this
     console; resolve the cursor point locally against the newest frame (D171).
@@ -145,21 +146,21 @@ def take_mark(
         import win32api
 
         cursor = win32api.GetCursorPos
-    print("Point: hover the mouse over what you mean, then press Enter here.")
+    say("Point: hover the mouse over what you mean, then press Enter here.")
     while clock() < deadline:
         if escape():
             return ABORTED
         if enter():
             frame = observer.latest()
             if frame is None:
-                print("Nothing observed yet - try again.")
+                say("Nothing observed yet - try again.")
                 continue
             mark = SpatialReference.from_mark(point(*cursor()), frame)
             under = mark.current(frame)
             if not under:
-                print("No control under the pointer - point again, or ESC.")
+                say("No control under the pointer - point again, or ESC.")
                 continue
-            print(f"Marked: {under[0].name[:40]}")
+            say(f"Marked: {under[0].name[:40]}")
             return mark
         time.sleep(TICK_S)
     return ABORTED
@@ -174,8 +175,13 @@ def run_model_teach(
     point: bool = False,
     plan=None,
     outcome: list | None = None,
+    say=print,
+    confirm=_console_enter,
+    stop=lambda: False,
 ) -> int:
-    """``outcome`` receives (step, why) for each completed step."""
+    """``outcome`` receives (step, why) for each completed step. A UI passes
+    ``say`` (status lines), ``confirm`` (step done) and ``stop`` (its Stop
+    button); ESC and the deadline stop the session regardless (rule 4)."""
 
     from ghostcursor.providers import Gateway
     from ghostcursor.reasoning.staleness import Freshness
@@ -185,16 +191,26 @@ def run_model_teach(
     observer.start()
     # One deadline for the whole session, the point prompt included (rule 4).
     deadline = time.monotonic() + seconds
-    mark = take_mark(observer, deadline) if point else None
+    mark = (
+        take_mark(
+            observer,
+            deadline,
+            escape=lambda: _escape_pressed() or stop(),
+            enter=confirm,
+            say=say,
+        )
+        if point
+        else None
+    )
     if mark is ABORTED:
         observer.stop()
-        print("Stopped before guidance started.")
+        say("Stopped before guidance started.")
         return 0
     session = ModelTeachSession(goal, gateway or Gateway(), mark=mark, plan=plan)
     overlay = window.create_overlay_window()
-    print(
+    say(
         f"Model Teach across {', '.join(b.label + ' ' + b.identity.executable for b in bindings)}. "
-        f"Pointers are suggestions (amber). Enter in this console = step done. "
+        f"Pointers are suggestions (amber). Enter = step done. "
         f"ESC quits (auto-stops after {seconds:g}s)."
     )
     reported = 0
@@ -202,20 +218,20 @@ def run_model_teach(
     code = 0
     try:
         while True:
-            if _escape_pressed():
-                print("ESC pressed - exiting.")
+            if _escape_pressed() or stop():
+                say("Stopped - exiting.")
                 break
             if time.monotonic() >= deadline:
-                print("Time limit reached - exiting.")
+                say("Time limit reached - exiting.")
                 break
             if observer.lost:
-                print(f"Window {observer.lost} is gone or changed - stopping.")
+                say(f"Window {observer.lost} is gone or changed - stopping.")
                 code = 3
                 break
-            confirm = _console_enter()
-            display = session.tick(observer.latest(), confirm=confirm)
+            done = confirm()
+            display = session.tick(observer.latest(), confirm=done)
             for number, why in session.completed[reported:]:
-                print(f"[done] step {number}: {why}")
+                say(f"[done] step {number}: {why}")
             reported = len(session.completed)
             target = display.target
             if target is None:
@@ -231,7 +247,7 @@ def run_model_teach(
                     Freshness.INFERRED,
                 )
             if display.message != shown:
-                print(f"[{display.phase.value}] {display.message}")
+                say(f"[{display.phase.value}] {display.message}")
                 shown = display.message
             if display.phase in (Phase.DONE, Phase.BLOCKED):
                 code = 0 if display.phase is Phase.DONE else 2
@@ -239,7 +255,7 @@ def run_model_teach(
             window.pump_messages_nonblocking()
             time.sleep(TICK_S)
     except KeyboardInterrupt:
-        print("Interrupted - exiting.")
+        say("Interrupted - exiting.")
     finally:
         session.stop()
         observer.stop()

@@ -7790,3 +7790,37 @@ reply means "not signed in"; a plan-limit code in a plain HTTP error is
 RATE_LIMITED; the hermetic fixture also clears `ORBYN_CHATGPT_API_KEY`;
 a missing PyJWT is a SignInError. Second sweep: 4 mutants, 4 killed. The
 rest is in FOLLOWUPS.
+
+## D178 — The workspace app: a docked window over the same Workspace
+
+Date: 16 October 2026. Owner direction: finish the MVP and make the UI
+match or beat comparable products. Reviewed: Clicky (a voice-first cursor
+companion that pulses a halo on the button to press), Microsoft Copilot
+Vision "Highlights" (share one app window, ask "show me how", Stop in the
+composer) and Cluely (a discreet floating answer card).
+
+- `py -3.12 -m ghostcursor.workspace.app <topic>` serves one page on
+  127.0.0.1 and opens it in Edge app mode, docked on the right like a
+  sidebar (any browser if Edge is missing). No new dependency. The manager's
+  "open workspace" now opens this instead of the console; the console stays.
+- The page is a view over the same `Workspace` (D173): Chat (discuss,
+  research with citation chips and source cards, point chips), Plan (step
+  cards with Show me / Edit / Remove, add, redraft, "Guide me from step 1")
+  and Brain (memories with correct/forget, learning switch, counts, erase
+  with typed confirmation). A live bar shows what is running, with Step done
+  (Enter) and Stop (Esc); Point and Teach ask which windows to bind in a
+  sheet. Voice puts the transcript in the composer to correct before
+  sending.
+- Trust boundary: every API call is a JSON POST carrying a per-launch
+  token and the exact Host; the page itself needs the token; strict CSP;
+  model text only ever enters the page as text. Window handles stay in the
+  process and the page names windows by number. Act is refused as in the
+  console.
+- One worker thread owns the Workspace and its Brain. `run_model_teach` and
+  `take_mark` gained `say`, `confirm` and `stop` hooks; ESC and the deadline
+  still stop every session (rule 4).
+
+Mutation sweep: 6 mutants, 6 killed (API token, Host, content type, page
+token, window index, erase confirmation). Not run live with a model or on a
+real Teach session yet; screenshots of Chat, Plan and the live bar taken
+from a seeded local server (Brain tab not captured).

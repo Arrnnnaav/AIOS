@@ -95,18 +95,15 @@ def workspace_topic(goal: str) -> str:
 
 
 def open_workspace(topic: str) -> None:
-    """The goal workspace (D173) in its own console; it never acts."""
+    """The goal workspace app (D178) in its own window; it never acts."""
 
     import subprocess
     import sys
 
-    exe = Path(sys.executable)
-    if exe.name.lower() == "pythonw.exe":  # the console needs a real stdin
-        exe = exe.with_name("python.exe")
     subprocess.Popen(
-        [str(exe), "-m", "ghostcursor.workspace", topic],
+        [sys.executable, "-m", "ghostcursor.workspace.app", topic],
         cwd=str(Path(__file__).resolve().parent.parent),
-        creationflags=subprocess.CREATE_NEW_CONSOLE,
+        creationflags=subprocess.CREATE_NO_WINDOW,
     )
 
 
@@ -847,9 +844,7 @@ class NativeManagerWindow:
         layout_w = 96
         self._move(ID_HEADER, margin, 18, 360, header_h)
         self._move(ID_LAYOUT, width - margin - layout_w, 14, layout_w, 34)
-        self._move(
-            ID_WORKSPACE, width - margin - 2 * layout_w - 8, 14, layout_w, 34
-        )
+        self._move(ID_WORKSPACE, width - margin - 2 * layout_w - 8, 14, layout_w, 34)
         self._move(
             ID_STATUS,
             width - margin - 2 * layout_w - 20 - 280,

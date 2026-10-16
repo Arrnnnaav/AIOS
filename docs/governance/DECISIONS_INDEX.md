@@ -211,5 +211,6 @@ with the script named at the bottom; edit the curated table by hand.
 - D175 — MVP workspace: inspect, correct, revise, record, replay
 - D176 — Act: a minimized target is restored; a failed run names its reason
 - D177 — Sign in with ChatGPT: the user's own plan powers System Two
+- D178 — The workspace app: a docked window over the same Workspace
 
 _Generated from `DECISIONS.md` headings by `py -3.12 tools/render_decisions_index.py`._

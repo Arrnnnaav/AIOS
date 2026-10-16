@@ -1,0 +1,591 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Orbyn</title>
+<style>
+:root {
+  --bg: #0c0e13; --surface: #141720; --raise: #1b1f2a; --line: #262b38;
+  --text: #e8eaf0; --dim: #9198a8; --faint: #5d6475;
+  --amber: #f5b544; --amber-soft: rgba(245,181,68,.14);
+  --cyan: #6cc6ff; --cyan-soft: rgba(108,198,255,.12);
+  --green: #5fd49a; --red: #ff6b6b;
+  --radius: 14px;
+  color-scheme: dark;
+}
+:root[data-theme="light"] {
+    --bg: #f6f6f3; --surface: #ffffff; --raise: #f0f0ec; --line: #e2e2dc;
+    --text: #1a1c22; --dim: #5b6070; --faint: #9aa0ad;
+    --amber: #c9840f; --amber-soft: rgba(201,132,15,.12);
+    --cyan: #1b74c4; --cyan-soft: rgba(27,116,196,.10);
+    color-scheme: light;
+  }
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--bg); color: var(--text);
+  font: 14px/1.5 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  display: flex; flex-direction: column; overflow: hidden;
+}
+button { font: inherit; color: inherit; cursor: pointer; border: 0; background: none; }
+button:disabled { opacity: .4; cursor: default; }
+button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+svg { width: 18px; height: 18px; flex: none; }
+
+/* header */
+header { padding: 14px 16px 10px; display: flex; gap: 12px; align-items: center; }
+.orb {
+  width: 30px; height: 30px; border-radius: 50%; flex: none;
+  background: radial-gradient(circle at 35% 30%, #ffe2a3, var(--amber) 45%, #8a5310 100%);
+  box-shadow: 0 0 18px var(--amber-soft), inset 0 -3px 6px rgba(0,0,0,.25);
+}
+.busy .orb { animation: breathe 1.6s ease-in-out infinite; }
+@keyframes breathe { 50% { box-shadow: 0 0 28px rgba(245,181,68,.55), inset 0 -3px 6px rgba(0,0,0,.25); transform: scale(1.06); } }
+.titles { min-width: 0; flex: 1; }
+.topic { font-weight: 600; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.goal { color: var(--dim); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.iconbtn { width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center; color: var(--dim); }
+.iconbtn:hover:not(:disabled) { background: var(--raise); color: var(--text); }
+
+nav { display: flex; gap: 4px; margin: 0 16px 8px; padding: 3px; background: var(--surface); border: 1px solid var(--line); border-radius: 11px; }
+nav button { flex: 1; padding: 6px 0; border-radius: 8px; color: var(--dim); font-weight: 500; font-size: 13px; }
+nav button[aria-selected="true"] { background: var(--raise); color: var(--text); box-shadow: 0 1px 0 rgba(255,255,255,.04) inset; }
+nav .count { color: var(--faint); font-size: 11.5px; margin-left: 4px; }
+
+/* live session bar */
+#live { display: none; margin: 0 16px 8px; border-radius: var(--radius); padding: 10px 12px; background: var(--amber-soft); border: 1px solid rgba(245,181,68,.35); }
+.busy #live { display: block; }
+#live .row { display: flex; align-items: center; gap: 10px; }
+.pulse { width: 9px; height: 9px; border-radius: 50%; background: var(--amber); animation: pulse 1.2s infinite; flex: none; }
+@keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(245,181,68,.6); } 100% { box-shadow: 0 0 0 10px rgba(245,181,68,0); } }
+#liveLabel { font-weight: 600; flex: 1; }
+#liveStatus { color: var(--dim); font-size: 12.5px; margin-top: 4px; min-height: 1.2em; }
+.pill { padding: 5px 11px; border-radius: 999px; font-size: 12.5px; font-weight: 600; display: inline-flex; gap: 6px; align-items: center; }
+.pill.go { background: var(--amber); color: #201400; }
+.pill.ghost { border: 1px solid var(--line); background: var(--surface); }
+kbd { font: 11px ui-monospace, Consolas, monospace; padding: 1px 5px; border-radius: 5px; border: 1px solid currentColor; opacity: .7; }
+
+main { flex: 1; overflow-y: auto; padding: 4px 16px 16px; scroll-behavior: smooth; }
+main::-webkit-scrollbar { width: 8px; } main::-webkit-scrollbar-thumb { background: var(--line); border-radius: 8px; }
+section[hidden] { display: none !important; }
+
+/* chat */
+.empty { text-align: center; padding: 48px 8px 0; }
+.empty h2 { font-size: 19px; margin: 14px 0 4px; font-weight: 600; }
+.empty p { color: var(--dim); margin: 0 0 20px; }
+.starters { display: grid; gap: 8px; text-align: left; }
+.starter { display: flex; gap: 12px; align-items: center; padding: 12px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--line); }
+.starter:hover { border-color: var(--amber); }
+.starter b { display: block; font-weight: 600; }
+.starter span { color: var(--dim); font-size: 12.5px; }
+.starter svg { color: var(--amber); width: 20px; height: 20px; }
+
+.msg { margin: 14px 0; display: flex; gap: 10px; }
+.msg.user { justify-content: flex-end; }
+.msg.user .bubble { background: var(--cyan-soft); border: 1px solid rgba(108,198,255,.22); border-radius: 16px 16px 4px 16px; padding: 8px 12px; max-width: 85%; white-space: pre-wrap; overflow-wrap: anywhere; }
+.msg.assistant .mini { width: 20px; height: 20px; margin-top: 2px; box-shadow: none; }
+.msg.assistant .body { flex: 1; min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--dim); background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; max-width: 100%; }
+.chip svg { width: 14px; height: 14px; color: var(--amber); }
+.event { display: flex; justify-content: center; margin: 12px 0; }
+.event .chip { white-space: normal; }
+.tag { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--amber); margin-bottom: 4px; display: flex; align-items: center; gap: 6px; }
+.tag svg { width: 13px; height: 13px; }
+.claims { margin: 0; padding: 0; list-style: none; white-space: normal; }
+.claims li { padding: 4px 0 4px 14px; position: relative; }
+.claims li::before { content: ""; position: absolute; left: 0; top: 12px; width: 5px; height: 5px; border-radius: 50%; background: var(--faint); }
+.cite { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 4px; margin-left: 3px; border-radius: 5px; background: var(--raise); color: var(--cyan); font-size: 11px; font-weight: 600; vertical-align: 1px; }
+.status-note { font-size: 11.5px; color: var(--amber); margin-left: 4px; }
+.sources { display: grid; gap: 6px; margin-top: 10px; white-space: normal; }
+.source { display: flex; gap: 10px; align-items: center; padding: 7px 10px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line); text-decoration: none; color: inherit; }
+.source:hover { border-color: var(--cyan); }
+.source .n { color: var(--cyan); font-weight: 600; font-size: 12px; }
+.source .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.source .k { color: var(--faint); font-size: 11.5px; }
+.linkish { color: var(--cyan); font-size: 12.5px; margin-top: 6px; }
+.typing { display: inline-flex; gap: 4px; padding: 6px 0; }
+.typing i { width: 6px; height: 6px; border-radius: 50%; background: var(--faint); animation: dot 1s infinite; }
+.typing i:nth-child(2) { animation-delay: .15s; } .typing i:nth-child(3) { animation-delay: .3s; }
+@keyframes dot { 50% { opacity: .2; transform: translateY(-2px); } }
+
+/* plan */
+.panelhead { display: flex; align-items: center; justify-content: space-between; margin: 10px 0 12px; }
+.panelhead h3 { margin: 0; font-size: 15px; }
+.rev { font-size: 11.5px; color: var(--faint); margin-left: 6px; font-weight: 400; }
+.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.step { display: flex; gap: 12px; padding: 12px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--line); }
+.step:hover { border-color: #3a4152; }
+.num { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: var(--raise); color: var(--amber); font-weight: 700; font-size: 12px; flex: none; }
+.step .text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.step .acts { display: flex; gap: 6px; margin-top: 8px; }
+.step .acts button { font-size: 12.5px; color: var(--dim); padding: 3px 8px; border-radius: 7px; }
+.step .acts button:hover { background: var(--raise); color: var(--text); }
+.step .acts .show { color: var(--amber); font-weight: 600; }
+.step input, .addrow input, .mem input { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font: inherit; }
+.addrow { display: flex; gap: 8px; margin-top: 10px; }
+.cta { width: 100%; margin-top: 14px; padding: 11px; border-radius: 12px; background: var(--amber); color: #201400; font-weight: 700; display: flex; justify-content: center; gap: 8px; align-items: center; }
+.secondary { padding: 7px 12px; border-radius: 9px; border: 1px solid var(--line); background: var(--surface); font-size: 13px; font-weight: 500; }
+.secondary:hover:not(:disabled) { border-color: var(--amber); }
+.note { color: var(--faint); font-size: 12px; margin-top: 14px; text-align: center; }
+.blank { color: var(--dim); text-align: center; padding: 40px 12px; }
+.blank svg { width: 32px; height: 32px; color: var(--faint); }
+
+/* brain */
+.switch { display: inline-flex; align-items: center; gap: 8px; color: var(--dim); font-size: 13px; }
+.switch i { width: 34px; height: 20px; border-radius: 999px; background: var(--raise); border: 1px solid var(--line); position: relative; transition: .2s; }
+.switch i::after { content: ""; position: absolute; width: 14px; height: 14px; top: 2px; left: 2px; border-radius: 50%; background: var(--dim); transition: .2s; }
+.switch[aria-checked="true"] i { background: var(--amber-soft); border-color: var(--amber); }
+.switch[aria-checked="true"] i::after { left: 16px; background: var(--amber); }
+.mems { display: grid; gap: 8px; }
+.mem { padding: 10px 12px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--line); }
+.mem .meta { display: flex; gap: 6px; align-items: center; font-size: 11.5px; color: var(--faint); margin-bottom: 3px; }
+.kind { color: var(--amber); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.mem .acts { display: flex; gap: 4px; margin-left: auto; }
+.mem .acts button { color: var(--faint); font-size: 12px; padding: 1px 6px; border-radius: 6px; }
+.mem .acts button:hover { color: var(--text); background: var(--raise); }
+.danger { color: var(--red) !important; }
+.stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 16px; }
+.stat { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; }
+.stat b { display: block; font-size: 17px; }
+.stat span { color: var(--faint); font-size: 11.5px; }
+
+/* composer */
+footer { padding: 8px 12px 12px; }
+.composer { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 8px 8px 6px 12px; transition: border-color .15s; }
+.composer:focus-within { border-color: #3d4456; }
+.composer.research { border-color: var(--cyan); }
+textarea { width: 100%; resize: none; border: 0; background: none; color: var(--text); font: inherit; max-height: 160px; min-height: 24px; padding: 4px 0; outline: none; }
+textarea::placeholder { color: var(--faint); }
+.tools { display: flex; align-items: center; gap: 2px; margin-top: 4px; }
+.tool { height: 30px; padding: 0 9px; border-radius: 9px; display: inline-flex; align-items: center; gap: 6px; color: var(--dim); font-size: 12.5px; }
+.tool:hover:not(:disabled) { background: var(--raise); color: var(--text); }
+.tool[aria-pressed="true"] { background: var(--cyan-soft); color: var(--cyan); }
+.send { margin-left: auto; width: 32px; height: 32px; border-radius: 50%; background: var(--amber); color: #201400; display: grid; place-items: center; }
+.send svg { width: 16px; height: 16px; }
+.fine { color: var(--faint); font-size: 11px; text-align: center; margin-top: 6px; }
+
+/* sheet */
+.scrim { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: none; align-items: flex-end; z-index: 10; }
+.scrim.open { display: flex; }
+.sheet { width: 100%; max-height: 80%; overflow-y: auto; background: var(--surface); border-top: 1px solid var(--line); border-radius: 20px 20px 0 0; padding: 16px; animation: up .18s ease-out; }
+@keyframes up { from { transform: translateY(30px); opacity: 0; } }
+.sheet h3 { margin: 0 0 2px; font-size: 16px; }
+.sheet p { margin: 0 0 12px; color: var(--dim); font-size: 13px; }
+.wins { display: grid; gap: 6px; margin-bottom: 12px; }
+.win { display: flex; gap: 10px; align-items: center; padding: 9px 10px; border-radius: 11px; border: 1px solid var(--line); background: var(--bg); cursor: pointer; }
+.win:has(input:checked) { border-color: var(--amber); background: var(--amber-soft); }
+.win input { accent-color: var(--amber); }
+.win .app { font-weight: 600; font-size: 13px; }
+.win .title { color: var(--dim); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.win > div { min-width: 0; }
+.sheetrow { display: flex; gap: 8px; align-items: center; }
+select { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 9px; padding: 7px; }
+.alts { display: grid; gap: 6px; margin: 10px 0; }
+
+#toast { position: fixed; left: 16px; right: 16px; bottom: 120px; padding: 10px 14px; border-radius: 12px; background: #2a1517; border: 1px solid rgba(255,107,107,.4); color: #ffd6d6; font-size: 13px; opacity: 0; transform: translateY(8px); transition: .2s; pointer-events: none; z-index: 20; }
+#toast.ok { background: #13261d; border-color: rgba(95,212,154,.4); color: #d4ffe8; }
+#toast.show { opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="orb" aria-hidden="true"></div>
+  <div class="titles">
+    <div class="topic" id="topic">Workspace</div>
+    <div class="goal" id="goal">Tell Orbyn what you want to get done</div>
+  </div>
+  <button class="iconbtn" id="themeBtn" title="Switch light/dark" aria-label="Switch theme"></button>
+</header>
+<nav role="tablist">
+  <button role="tab" data-tab="chat" aria-selected="true">Chat</button>
+  <button role="tab" data-tab="plan" aria-selected="false">Plan<span class="count" id="planCount"></span></button>
+  <button role="tab" data-tab="brain" aria-selected="false">Brain<span class="count" id="memCount"></span></button>
+</nav>
+<div id="live" role="status" aria-live="polite">
+  <div class="row">
+    <span class="pulse"></span><span id="liveLabel">Working</span>
+    <button class="pill go" id="doneBtn" hidden></button>
+    <button class="pill ghost" id="stopBtn">Stop <kbd>Esc</kbd></button>
+  </div>
+  <div id="liveStatus"></div>
+</div>
+<main id="main">
+  <section id="tab-chat"><div id="thread"></div></section>
+  <section id="tab-plan" hidden></section>
+  <section id="tab-brain" hidden></section>
+</main>
+<footer>
+  <div class="composer" id="composer">
+    <textarea id="input" rows="1" placeholder="Message Orbyn…" aria-label="Message"></textarea>
+    <div class="tools">
+      <button class="tool" id="pointBtn" title="Point at something on screen"></button>
+      <button class="tool" id="voiceBtn" title="Say it instead of typing"></button>
+      <button class="tool" id="researchBtn" aria-pressed="false" title="Answer from cited web sources"></button>
+      <button class="send" id="sendBtn" aria-label="Send"></button>
+    </div>
+  </div>
+  <div class="fine">Orbyn shows where to act; it never clicks for you.</div>
+</footer>
+<div class="scrim" id="scrim"><div class="sheet" id="sheet" role="dialog" aria-modal="true"></div></div>
+<div id="toast" role="alert"></div>
+
+<script>
+"use strict";
+const TOKEN = "__TOKEN__";
+const ICON = {
+  point: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3l7 17 2.5-7.5L21 10z"/></svg>',
+  mic: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>',
+  globe: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.7 3.8 5.7 3.8 9s-1.3 6.3-3.8 9c-2.5-2.7-3.8-5.7-3.8-9S9.5 5.7 12 3z"/></svg>',
+  send: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>',
+  plan: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1.2"/><circle cx="4.5" cy="12" r="1.2"/><circle cx="4.5" cy="18" r="1.2"/></svg>',
+  play: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>',
+  brain: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M9 4a3 3 0 0 0-3 3 3 3 0 0 0-2 5 3 3 0 0 0 2 5 3 3 0 0 0 6 0V7a3 3 0 0 0-3-3zM15 4a3 3 0 0 1 3 3 3 3 0 0 1 2 5 3 3 0 0 1-2 5 3 3 0 0 1-6 0"/></svg>',
+  moon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg>',
+  check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg>',
+};
+const $ = (id) => document.getElementById(id);
+function el(tag, cls, text) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined) n.textContent = text;  // model text only ever goes in as text
+  return n;
+}
+function iconEl(name, tag = "span") { const n = el(tag); n.innerHTML = ICON[name]; return n.firstChild; }
+
+async function api(action, body = {}) {
+  const r = await fetch("/api/" + action, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Orbyn-Token": TOKEN },
+    body: JSON.stringify(body),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || "request refused");
+  return data;
+}
+let toastTimer;
+function toast(text, ok = false) {
+  const t = $("toast"); t.textContent = text; t.className = "show" + (ok ? " ok" : "");
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.className = ok ? "ok" : ""), 3600);
+}
+async function act(action, body, quietOk) {
+  try { const r = await api(action, body); if (quietOk) toast(quietOk, true); await poll(true); return r; }
+  catch (e) { toast(e.message); await poll(true); return null; }
+}
+
+// ---- state ------------------------------------------------------------
+let S = null, lastJson = "", tab = "chat", researchMode = false, pending = "";
+let chosen = new Set(), editing = null;
+
+async function poll(force) {
+  let s;
+  try { s = await api("state"); } catch { return; }
+  const json = JSON.stringify(s);
+  if (!force && json === lastJson) return;
+  const busyChanged = !S || S.busy !== s.busy;
+  lastJson = json; S = s;
+  render(busyChanged);
+}
+setInterval(poll, 700);
+
+function render(busyChanged) {
+  document.body.classList.toggle("busy", !!S.busy);
+  $("topic").textContent = S.topic.replace(/-/g, " ");
+  $("goal").textContent = S.goal || "Tell Orbyn what you want to get done";
+  $("planCount").textContent = S.plan ? S.plan.steps.length : "";
+  $("memCount").textContent = S.memories.length || "";
+  renderLive();
+  ["pointBtn", "voiceBtn", "researchBtn", "sendBtn"].forEach((id) => ($(id).disabled = !!S.busy));
+  $("input").disabled = !!S.busy && S.busy !== "Listening";
+  if (tab === "chat") renderChat(busyChanged); else if (tab === "plan") renderPlan(); else renderBrain();
+}
+
+function renderLive() {
+  const busy = S.busy;
+  $("liveLabel").textContent = { Guiding: "Guiding you", Pointing: "Point at it", Listening: "Listening", Thinking: "Thinking", Researching: "Researching the web", Planning: "Drafting a plan" }[busy] || busy;
+  const last = S.status.length ? S.status[S.status.length - 1] : "";
+  const hint = { Pointing: "Hover the mouse over what you mean, then press Enter here.", Listening: "Press Enter to start, Enter again when you're done." }[busy];
+  $("liveStatus").textContent = (busy === "Pointing" || busy === "Listening") && !last.startsWith("Marked") ? hint : last.replace(/^\[[a-z_]+\]\s*/, "");
+  const done = $("doneBtn");
+  const label = { Guiding: "Step done", Pointing: "That's it", Listening: "Start / end" }[busy];
+  done.hidden = !label;
+  if (label) { done.textContent = label + " "; done.append(el("kbd", "", "Enter")); }
+}
+
+// ---- chat -------------------------------------------------------------
+function renderChat(scrollDown) {
+  const thread = $("thread");
+  const atBottom = $("main").scrollHeight - $("main").scrollTop - $("main").clientHeight < 80;
+  thread.replaceChildren();
+  if (!S.turns.length && !pending) { thread.append(emptyState()); return; }
+  for (const t of S.turns) thread.append(turnEl(t));
+  if (pending) thread.append(turnEl({ speaker: "user", text: pending }));
+  if (S.busy === "Thinking" || S.busy === "Researching" || S.busy === "Planning") {
+    const m = el("div", "msg assistant"); m.append(el("div", "orb mini"));
+    const ty = el("div", "typing"); ty.append(el("i"), el("i"), el("i")); m.append(ty); thread.append(m);
+  }
+  if (scrollDown || atBottom) $("main").scrollTop = $("main").scrollHeight;
+}
+
+function emptyState() {
+  const e = el("div", "empty");
+  e.append(el("div", "orb"));
+  e.firstChild.style.cssText = "width:56px;height:56px;margin:auto";
+  e.append(el("h2", "", "What do you want to get done?"), el("p", "", "Describe the goal. Orbyn researches, plans, then points at each step on your screen."));
+  const list = el("div", "starters");
+  const add = (icon, title, sub, fn) => {
+    const b = el("button", "starter"); b.append(iconEl(icon));
+    const d = el("div"); d.append(el("b", "", title), el("span", "", sub)); b.append(d);
+    b.onclick = fn; list.append(b);
+  };
+  add("point", "Point at something", "Hover over a control; Orbyn reads what it is", openPoint);
+  add("globe", "Research a question", "A cited answer from web sources", () => { setResearch(true); $("input").focus(); });
+  add("plan", "Make a plan", "Steps you can review, edit, then follow", () => { $("input").placeholder = "Describe your goal, then open Plan"; $("input").focus(); });
+  e.append(list);
+  return e;
+}
+
+function turnEl(t) {
+  const text = t.text;
+  if (t.speaker === "user" && text.startsWith(S.point_prefix)) {
+    const w = el("div", "event"); const c = el("span", "chip"); c.append(iconEl("point"), document.createTextNode(text.slice(S.point_prefix.length).trim())); w.append(c); return w;
+  }
+  if (t.speaker === "assistant" && /^\[teach r\d+\]/.test(text)) {
+    const w = el("div", "event"); const c = el("span", "chip"); c.append(iconEl("check"), document.createTextNode(text.replace(/^\[teach (r\d+)\]\s*/, "Guided plan $1 — "))); w.append(c); return w;
+  }
+  if (t.speaker === "assistant" && /^\[plan r\d+, a proposal/.test(text)) {
+    const w = el("div", "event"); const c = el("button", "chip"); c.append(iconEl("plan"), document.createTextNode("Plan revision " + text.match(/^\[plan r(\d+)/)[1] + " — open Plan")); c.onclick = () => setTab("plan"); w.append(c); return w;
+  }
+  const m = el("div", "msg " + (t.speaker === "user" ? "user" : "assistant"));
+  if (t.speaker === "user") {
+    const b = el("div", "bubble");
+    if (text.startsWith("[research] ")) { const tg = el("div", "tag"); tg.append(iconEl("globe"), document.createTextNode("Research")); b.append(tg, document.createTextNode(text.slice(11))); }
+    else b.textContent = text;
+    m.append(b);
+  } else {
+    m.append(el("div", "orb mini"));
+    const body = el("div", "body");
+    if (text.includes("\nSources:") || text.startsWith("No answer:")) body.append(researchEl(text)); else body.textContent = text;
+    m.append(body);
+  }
+  return m;
+}
+
+function researchEl(text) {
+  const frag = document.createDocumentFragment();
+  const [claimPart, srcPart = ""] = text.split("\nSources:");
+  const ul = el("ul", "claims");
+  for (const line of claimPart.split("\n")) {
+    if (!line.startsWith("- ")) { if (line.trim()) frag.append(el("div", "", line)); continue; }
+    const li = el("li");
+    const m = line.slice(2).match(/^(.*?)(\s\((contradicted|unsupported|disputed|[a-z ]+)\))?((?:\s?\[[^\]]+\])*)$/);
+    li.append(document.createTextNode(m ? m[1] : line.slice(2)));
+    if (m && m[3]) li.append(el("span", "status-note", m[3]));
+    if (m && m[4]) for (const c of m[4].matchAll(/\[([^\]]+)\]/g)) li.append(el("span", "cite", c[1]));
+    ul.append(li);
+  }
+  if (ul.childElementCount) frag.prepend(ul);
+  const srcs = el("div", "sources");
+  for (const line of srcPart.split("\n")) {
+    const m = line.match(/^\s*\[([^\]]+)\]\s(.*?)\s--\s(.*?)\s--\s(\S+)\s*$/);
+    if (!m) continue;
+    const safe = /^https?:\/\//i.test(m[4]);
+    const a = el(safe ? "a" : "div", "source");
+    if (safe) { a.href = m[4]; a.target = "_blank"; a.rel = "noopener noreferrer"; }
+    let host = ""; try { host = new URL(m[4]).hostname.replace(/^www\./, ""); } catch {}
+    a.append(el("span", "n", m[1]), el("span", "t", m[2] || host), el("span", "k", host + " · " + m[3]));
+    srcs.append(a);
+  }
+  if (srcs.childElementCount) frag.append(srcs);
+  return frag;
+}
+
+// ---- plan -------------------------------------------------------------
+function renderPlan() {
+  const root = $("tab-plan"); root.replaceChildren();
+  const head = el("div", "panelhead"); const h = el("h3", "", "Plan");
+  if (S.plan) h.append(el("span", "rev", "revision " + S.plan.revision));
+  const regen = el("button", "secondary", S.plan ? "Redraft" : "Draft from chat");
+  regen.disabled = !!S.busy || !S.goal;
+  regen.onclick = () => act("plan", {}, "Plan drafted");
+  head.append(h, regen); root.append(head);
+  if (!S.plan) {
+    const b = el("div", "blank"); b.append(iconEl("plan"), el("p", "", S.goal ? "No plan yet. Draft one from your conversation, then review each step." : "Start in Chat: describe what you want to do."));
+    root.append(b); return;
+  }
+  const ol = el("ol", "steps");
+  S.plan.steps.forEach((text, i) => {
+    const li = el("li", "step"); li.append(el("div", "num", String(i + 1)));
+    const body = el("div", "text");
+    if (editing === i) {
+      const inp = el("input"); inp.value = text; inp.maxLength = 300;
+      inp.onkeydown = (e) => { if (e.key === "Enter") { editing = null; act("plan_edit", { verb: "edit", args: [String(i + 1), inp.value] }); } if (e.key === "Escape") { editing = null; renderPlan(); } };
+      body.append(inp); setTimeout(() => inp.focus());
+    } else body.append(document.createTextNode(text));
+    const acts = el("div", "acts");
+    const show = el("button", "show"); show.append(iconEl("play"), document.createTextNode(" Show me")); show.onclick = () => openTeach(i + 1);
+    const ed = el("button", "", "Edit"); ed.onclick = () => { editing = i; renderPlan(); };
+    const dr = el("button", "", "Remove"); dr.onclick = () => act("plan_edit", { verb: "drop", args: [String(i + 1)] });
+    [show, ed, dr].forEach((b) => (b.disabled = !!S.busy));
+    acts.append(show, ed, dr); body.append(acts); li.append(body); ol.append(li);
+  });
+  root.append(ol);
+  const row = el("div", "addrow"); const inp = el("input"); inp.placeholder = "Add a step…"; inp.maxLength = 300;
+  const add = el("button", "secondary", "Add"); add.onclick = () => inp.value.trim() && act("plan_edit", { verb: "add", args: [inp.value] });
+  inp.onkeydown = (e) => e.key === "Enter" && add.click();
+  row.append(inp, add); root.append(row);
+  const go = el("button", "cta"); go.append(iconEl("play"), document.createTextNode("Guide me from step 1")); go.disabled = !!S.busy; go.onclick = () => openTeach(1);
+  root.append(go, el("div", "note", "Each edit makes a new revision. Guidance points at real controls only; you do the clicking."));
+}
+
+// ---- brain ------------------------------------------------------------
+function renderBrain() {
+  const root = $("tab-brain"); root.replaceChildren();
+  const head = el("div", "panelhead"); head.append(el("h3", "", "What Orbyn remembers"));
+  const sw = el("button", "switch"); sw.setAttribute("role", "switch"); sw.setAttribute("aria-checked", String(!S.paused));
+  sw.append(document.createTextNode(S.paused ? "Paused" : "Learning"), el("i"));
+  sw.onclick = () => act("brain", { verb: S.paused ? "resume" : "pause" });
+  head.append(sw); root.append(head);
+  if (!S.memories.length) {
+    const b = el("div", "blank"); b.append(iconEl("brain"), el("p", "", "Nothing yet. Orbyn keeps only what you say about yourself, on this computer."));
+    root.append(b);
+  }
+  const list = el("div", "mems");
+  for (const m of S.memories) {
+    const card = el("div", "mem"); const meta = el("div", "meta");
+    meta.append(el("span", "kind", m.kind), el("span", "", "· " + m.scope));
+    const acts = el("div", "acts");
+    const fix = el("button", "", "Correct"); const forget = el("button", "danger", "Forget");
+    fix.onclick = () => {
+      const inp = el("input"); inp.value = m.text; card.replaceChild(inp, card.lastChild); inp.focus();
+      inp.onkeydown = (e) => { if (e.key === "Enter") act("brain", { verb: "correct", id: m.mid, text: inp.value }, "Corrected"); if (e.key === "Escape") renderBrain(); };
+    };
+    forget.onclick = () => act("brain", { verb: "forget", id: m.mid }, "Forgotten");
+    acts.append(fix, forget); meta.append(acts);
+    card.append(meta, el("div", "", m.text)); list.append(card);
+  }
+  root.append(list);
+  const stats = el("div", "stats"); root.append(stats);
+  api("stats").then((s) => { for (const [k, v] of Object.entries(s).slice(0, 6)) { const d = el("div", "stat"); d.append(el("b", "", String(v)), el("span", "", k.replace(/_/g, " "))); stats.append(d); } }).catch(() => {});
+  if (S.memories.length) {
+    const erase = el("button", "secondary danger", "Erase every memory"); erase.style.marginTop = "16px";
+    erase.onclick = () => { if (prompt('Erase every memory? Type "yes" to confirm.') === "yes") act("brain", { verb: "erase", confirm: "yes" }, "Erased"); };
+    root.append(erase);
+  }
+}
+
+// ---- sheets: windows, point, teach -----------------------------------
+function closeSheet() { $("scrim").classList.remove("open"); }
+$("scrim").onclick = (e) => e.target === $("scrim") && closeSheet();
+
+async function windowSheet(title, sub, startLabel, extra, onStart) {
+  const sheet = $("sheet"); sheet.replaceChildren(el("h3", "", title), el("p", "", sub));
+  const list = el("div", "wins"); list.append(el("div", "note", "Finding windows…")); sheet.append(list);
+  $("scrim").classList.add("open");
+  const r = await api("windows").catch((e) => (toast(e.message), null));
+  list.replaceChildren();
+  if (!r || !r.windows.length) { list.append(el("div", "note", "No windows to guide. Open the app you want help with.")); }
+  const key = (w) => w.app + "|" + w.title;
+  for (const w of (r ? r.windows : [])) {
+    const lab = el("label", "win"); const cb = el("input"); cb.type = "checkbox"; cb.checked = chosen.has(key(w)); cb.value = w.n;
+    cb.onchange = () => (cb.checked ? chosen.add(key(w)) : chosen.delete(key(w)));
+    const d = el("div"); d.append(el("div", "app", w.app.replace(/\.exe$/i, "")), el("div", "title", w.title || "(untitled)"));
+    lab.append(cb, d); list.append(lab);
+  }
+  const row = el("div", "sheetrow");
+  if (extra) row.append(extra);
+  const cancel = el("button", "secondary", "Cancel"); cancel.onclick = closeSheet;
+  const start = el("button", "pill go", startLabel); start.style.marginLeft = "auto";
+  start.onclick = () => {
+    const nums = [...list.querySelectorAll("input:checked")].map((c) => Number(c.value));
+    if (!nums.length) return toast("Choose at least one window.");
+    closeSheet(); onStart(nums);
+  };
+  row.append(cancel, start); sheet.append(row);
+}
+
+function openPoint() {
+  windowSheet("Point at something", "Which window is it in? Then hover over it and press Enter here.", "Start pointing", null, async (wins) => {
+    const r = await act("point", { windows: wins });
+    if (!r) return;
+    const sheet = $("sheet"); sheet.replaceChildren(el("h3", "", "Is this what you meant?"), el("p", "", r.text));
+    const alts = el("div", "alts");
+    r.alternatives.forEach((a, i) => { const b = el("button", "secondary", "No — " + a); b.onclick = () => { closeSheet(); act("point_keep", { answer: String(i + 1) }); }; alts.append(b); });
+    const row = el("div", "sheetrow");
+    const no = el("button", "secondary", "Discard"); no.onclick = () => { closeSheet(); act("point_keep", { answer: "x" }); };
+    const yes = el("button", "pill go", "Yes, use it"); yes.style.marginLeft = "auto"; yes.onclick = () => { closeSheet(); act("point_keep", { answer: "" }); };
+    row.append(no, yes); sheet.append(alts, row); $("scrim").classList.add("open");
+  });
+}
+
+function openTeach(step) {
+  const sel = el("select"); [["300", "5 min"], ["600", "10 min"], ["1200", "20 min"]].forEach(([v, t]) => { const o = el("option", "", t); o.value = v; sel.append(o); });
+  windowSheet("Guide me from step " + step, "Choose the windows to work across. Orbyn points; you click. Press Enter here when a step is done.", "Start guiding", sel, async (wins) => {
+    setTab("chat");
+    const r = await act("teach", { step, windows: wins, seconds: Number(sel.value) });
+    if (r) toast(r.result, true);
+  });
+}
+
+// ---- composer ---------------------------------------------------------
+function setResearch(on) {
+  researchMode = on; $("researchBtn").setAttribute("aria-pressed", String(on));
+  $("composer").classList.toggle("research", on);
+  $("input").placeholder = on ? "Ask the web — answers cite their sources…" : "Message Orbyn…";
+}
+async function send() {
+  const inp = $("input"); const text = inp.value.trim();
+  if (!text || (S && S.busy)) return;
+  inp.value = ""; autosize(); pending = researchMode ? "[research] " + text : text;
+  const action = researchMode ? "research" : "say";
+  setTab("chat"); renderChat(true);
+  try { await api(action, { text }); } catch (e) { toast(e.message); inp.value = text; }
+  pending = ""; await poll(true); renderChat(true);
+}
+function autosize() { const t = $("input"); t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight, 160) + "px"; }
+$("input").addEventListener("input", autosize);
+$("input").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !(S && S.busy)) { e.preventDefault(); send(); } });
+$("sendBtn").onclick = send;
+$("researchBtn").onclick = () => setResearch(!researchMode);
+$("pointBtn").onclick = openPoint;
+$("voiceBtn").onclick = async () => {
+  const r = await act("voice", {});
+  if (r && r.draft) { $("input").value = r.draft; autosize(); $("input").focus(); }
+  else if (r) toast("Nothing was heard.");
+};
+$("doneBtn").onclick = () => api("signal").catch(() => {});
+$("stopBtn").onclick = () => api("stop").catch(() => {});
+document.addEventListener("keydown", (e) => {
+  if (!S || !S.busy) { if (e.key === "Escape") closeSheet(); return; }
+  if (e.key === "Enter" && ["Guiding", "Pointing", "Listening"].includes(S.busy)) { e.preventDefault(); api("signal").catch(() => {}); }
+  if (e.key === "Escape") api("stop").catch(() => {});
+});
+
+function setTab(name) {
+  tab = name;
+  document.querySelectorAll("nav button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === name)));
+  for (const t of ["chat", "plan", "brain"]) $("tab-" + t).hidden = t !== name;
+  if (S) render(name === "chat");
+}
+document.querySelectorAll("nav button").forEach((b) => (b.onclick = () => setTab(b.dataset.tab)));
+
+// theme
+function applyTheme(t) { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }
+let stored = null; try { stored = localStorage.getItem("orbyn-theme"); } catch {}
+applyTheme(stored || (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark"));
+$("themeBtn").innerHTML = ICON.moon;
+$("themeBtn").onclick = () => {
+  const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark"; applyTheme(next);
+  try { localStorage.setItem("orbyn-theme", next); } catch {}
+};
+
+$("pointBtn").innerHTML = ICON.point + "Point";
+$("voiceBtn").innerHTML = ICON.mic + "Voice";
+$("researchBtn").innerHTML = ICON.globe + "Research";
+$("sendBtn").innerHTML = ICON.send;
+if (["plan", "brain"].includes(location.hash.slice(1))) setTab(location.hash.slice(1));
+poll(true);
+</script>
+</body>
+</html>

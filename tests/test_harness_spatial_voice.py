@@ -207,7 +207,7 @@ def test_run_model_teach_uses_one_deadline_and_stops_on_abort(monkeypatch):
     monkeypatch.setattr(teach_live, "bind", lambda hwnds: (W1,))
     monkeypatch.setattr(teach_live.Observer, "start", lambda self: None)
 
-    def fake_take_mark(observer, deadline):
+    def fake_take_mark(observer, deadline, **_hooks):
         seen["deadline"] = deadline
         return teach_live.ABORTED
 
@@ -230,7 +230,7 @@ def test_time_spent_pointing_counts_against_the_session(monkeypatch):
         now[0] += 0.01
         return now[0]
 
-    def fake_take_mark(observer, deadline):
+    def fake_take_mark(observer, deadline, **_hooks):
         now[0] = deadline + 1  # the whole budget went on pointing
         return None
 
