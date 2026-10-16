@@ -38,7 +38,12 @@ class ProviderConfig:
 
 
 SYSTEM_ONE = ProviderConfig(
-    "jev", "https://api.typesafe.ai", "jev-latest", "typesafe", 3.0
+    "jev",
+    "https://api.typesafe.ai",
+    # jev-latest is the stable alias; jev-preview (1.14) is for replay comparison.
+    os.environ.get("ORBYN_JEV_MODEL", "jev-latest"),
+    "typesafe",
+    3.0,
 )
 SYSTEM_TWO = {
     "nvidia": ProviderConfig(

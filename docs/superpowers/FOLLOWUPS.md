@@ -1365,3 +1365,9 @@ to confirm where the cost actually is before changing anything else.
 - The app window covers part of the screen during Teach; consider collapsing it to a slim bar while guiding (Copilot-style).
 - Brain tab not captured in screenshots; check visually.
 - The page polls state every 700 ms; switch to a long poll if CPU shows up.
+
+## Jev 1.14 / TypeSafe images (checked 16 October 2026, docs.typesafe.ai)
+
+- Jev 1.14 (`jev-preview`, from 14 Oct) is out; `jev-latest` is still 1.13. `ORBYN_JEV_MODEL=jev-preview` selects it; compare on the D170 replay corpus before switching.
+- Images (beta, both versions) and Box (1.14, "not yet for production") need screenshots sent off the machine: blocked by rule 6 unless the owner decides otherwise. Box output could only ever pick among observed controls (rule 3), never place a pointer.
+- Text-only uses that fit the rules: Noul citation check per claim/passage in research; Noul "user-stated, durable, no secret" beside the Brain's rule; Noul step-verification from before/after control facts; Choice intent routing for the workspace composer; passage rerank before System Two; prompt-injection Noul on research/screen text.
