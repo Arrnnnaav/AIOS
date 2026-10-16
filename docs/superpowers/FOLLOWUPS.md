@@ -1398,3 +1398,11 @@ to confirm where the cost actually is before changing anything else.
 - `_context` sets `self._used` as a side effect read by `make_plan`; return it instead.
 - Pin with a test that a Jev reply missing a memory verdict leaves the candidate unchanged.
 - Measure Brain false refusals from `\blog-?ins?\b` (e.g. "prefers Google login") before widening the rule further.
+
+## Live run 16 October 2026 follow-ups (docs/evidence/live-2026-10-16.md)
+
+- ESC tour test (`test_run_threaded`) first-poll gap 1.6-13 s vs 0.75 s, 4/4 runs; trace start-up (C: was full) and re-run on a pre-session commit.
+- Plans from an idea reach 19 of 20 steps; one NIM answer was `invalid_output` with Ollama down. Ask for fewer steps or retry once on INVALID_OUTPUT.
+- Scrub now masks unbroken 24+ char mixed-case words (`PowerPointPresentationWindowFrame`); measure whether it hurts grounding.
+- Short env secrets (`DB_PASSWORD=prod_admin_secret_2024`, under 24 chars) were never masked; needs a key=value rule.
+- Brain dedup: a restatement keeps the old origin; a promoted copy leaves the session copy beside it (review of b906949).
