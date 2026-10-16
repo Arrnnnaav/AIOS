@@ -172,3 +172,12 @@ def test_a_malformed_length_is_refused(served):
     conn.endheaders()
     assert conn.getresponse().status == 403
     conn.close()
+
+
+def test_the_picture_switch_is_the_users_and_starts_off(served):
+    _, port = served
+    assert json.loads(call(port, "/api/state")[1])["vision"] is False
+    assert call(port, "/api/vision", {"on": True})[0] == 200
+    assert json.loads(call(port, "/api/state")[1])["vision"] is True
+    assert call(port, "/api/vision", {"on": "yes"})[0] == 200
+    assert json.loads(call(port, "/api/state")[1])["vision"] is False

@@ -56,6 +56,8 @@ CHOOSE_QUESTION = (
 )
 
 
+MOVED = "the control moved or went away"
+
 MARK_NOTE = (
     "The user pointed at the screen while stating the goal. 'user_pointed_at' in "
     "the observed data lists the option ids under the pointer, best first. It is a "
@@ -81,10 +83,13 @@ def gate(
     floor: float = CONFIDENCE_FLOOR,
     margin: float = MARGIN,
     instruction: str = "",
+    seen: bool = False,
 ) -> tuple[Verdict, Candidate | None, str]:
     """Deterministic gate between a model's choice and a drawn pointer.
     ``floor``/``margin`` are parameters only so offline replay can fit them.
-    A high-risk control name OR step instruction needs the user's go-ahead."""
+    A high-risk control name OR step instruction needs the user's go-ahead.
+    ``seen``: the choice was made with pictures in which every option carried
+    its id, so controls that read alike in text are told apart (D179)."""
 
     if choice.abstained:
         return Verdict.REASK, None, "no observed control fits this step"
@@ -93,14 +98,14 @@ def gate(
         return Verdict.REASK, None, "the choice is not in the frame"
     current = resolve(chosen, latest)
     if current is None:
-        return Verdict.REASK, None, "the control moved or went away"
+        return Verdict.REASK, None, MOVED
     key = (_norm(current.name), current.control_type)
     twins = sum(
         1
         for c in latest.candidates
         if c.window == current.window and (_norm(c.name), c.control_type) == key
     )
-    if twins > 1:
+    if twins > 1 and not seen:
         return Verdict.REASK, None, f"{twins} controls look the same"
     mine = choice.probabilities.get(choice.choice, 0.0)
     other = max(
@@ -182,8 +187,14 @@ class ModelTeachSession:
         clock=time.monotonic,
         mark=None,
         plan: TeachPlan | None = None,
+        look=None,
     ):
         self.goal = goal
+        #: frame -> {window label: redacted JPEG} when the user allowed Jev to
+        #: see pictures (D179); used only after a text-only choice failed.
+        self.look = look
+        self._looking = False
+        self._asked_seen = False
         self.clock = clock
         #: A SpatialReference (D171): context only, never a choice.
         self.mark = mark
@@ -229,11 +240,17 @@ class ModelTeachSession:
         )
         ids = frame.ids
         self._asked = frame
-        self._request = self.slot.submit(
-            lambda cancelled: self.gateway.choose(
-                envelope, ids, question=CHOOSE_QUESTION, cancelled=cancelled
+        look = self.look if self._looking else None
+        self._asked_seen = look is not None
+
+        def ask(cancelled):
+            # Pictures are taken on the worker, never on the UI thread (rule 5).
+            extra = {"pictures": look(frame)} if look is not None else {}
+            return self.gateway.choose(
+                envelope, ids, question=CHOOSE_QUESTION, cancelled=cancelled, **extra
             )
-        )
+
+        self._request = self.slot.submit(ask)
 
     # --- tick (UI thread; never blocks) --------------------------------
 
@@ -256,6 +273,7 @@ class ModelTeachSession:
         self.step += 1
         self.reasks = 0
         self._request = self._chosen = self._before = self._target = None
+        self._looking = False  # each step starts text-only again
         if self.step >= len(self.plan.steps):
             self.phase, self.message = Phase.DONE, "all steps done"
         else:
@@ -312,8 +330,11 @@ class ModelTeachSession:
                         self._asked,
                         frame,
                         instruction=self.plan.steps[self.step].instruction,
+                        seen=self._asked_seen,
                     )
                     if verdict is Verdict.REASK:
+                        if self.look is not None and reason != MOVED:
+                            self._looking = True  # text was not enough: look
                         self._reask(reason)
                     else:
                         self._chosen = self._target = current

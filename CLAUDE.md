@@ -49,7 +49,10 @@ and read only those entries. Never read the whole of `DECISIONS.md`, `FLOW.md`,
 5. **Perception never runs on the UI thread** (D021/D022): worker thread owns
    COM/UIA; only frozen primitives cross threads; one overwritten slot.
 6. **Privacy:** no HWND, PID, credentials, keys, executable paths or screenshots
-   leave the device; `kb.sqlite` and `sessions.sqlite` never sync; no goal or
+   leave the device. One exception (D179, owner decision): when the user has
+   switched it on, a picture of a bound window in which only chrome controls
+   keep their pixels (`ghostcursor/harness/vision.py`) may go to Jev after a
+   text-only choice failed; never stored. `kb.sqlite` and `sessions.sqlite` never sync; no goal or
    screen text in `sessions.sqlite`; keys never in tracked files. No raw HWND or
    PID in any tracked file (the evidence hygiene scan enforces it).
 7. **Evidence is honest:** never edit captured output; never present a number

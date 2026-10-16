@@ -57,6 +57,27 @@ corpus measures it.
 
 ---
 
+## Jev (System One) across the product (D179)
+
+Jev answers typed questions fast and cheaply ($0.042 per million input
+tokens, output free; docs.typesafe.ai/models, read 16 Oct 2026). Rule: Jev
+selects or verifies; code decides; nothing Jev says becomes a position or an
+action.
+
+| Where | Jev question | Status |
+|---|---|---|
+| Teach: which observed control | Choice over candidate ids, or abstain | built (D167) |
+| Teach: when text is not enough | same Choice with a redacted picture per window (opt-in) | built (D179) |
+| Research: does the cited passage back the claim | Choice supports / contradicts / says nothing; only lowers | built (D179) |
+| Teach: did the step happen | Noul from before/after control facts, beside `change_observed` | next |
+| Brain: is this a lasting, self-stated fact with no secret | Noul beside the deterministic rule | next |
+| Workspace composer: chat, research, plan, point or guide | Choice intent routing | next |
+| Research: which passages matter | per-passage relevance Score before System Two | next |
+| Any tainted text: does it try to give instructions | Noul injection screen | next |
+| Jev 1.14 (`jev-preview`) vs 1.13 | replay corpus comparison (`ORBYN_JEV_MODEL`) | next |
+
+---
+
 ## Phase 1 — Reliable Guided Runtime
 
 > Core, VS Code plugin, intent normalization, declarative workflows, UI

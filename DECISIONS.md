@@ -7824,3 +7824,53 @@ Mutation sweep: 6 mutants, 6 killed (API token, Host, content type, page
 token, window index, erase confirmation). Not run live with a model or on a
 real Teach session yet; screenshots of Chat, Plan and the live bar taken
 from a seeded local server (Brain tab not captured).
+
+## D179 — Jev across the product, and redacted pictures for Teach
+
+Date: 16 October 2026. Owner decision: let Jev see the screen, with the best
+accuracy, cost and privacy that can be had; use Jev wherever it fits.
+
+Before: Teach sent Jev text only -- up to 150 observed controls (name, type,
+coarse 3x3 region; document names hidden; no titles, rectangles or pixels)
+and asked a Choice over opaque ids. A deterministic gate drew the pointer
+only at a re-resolved observed control. Controls with no accessible name
+(icon-only buttons) were dropped, and controls that read alike in text were
+always re-asked: those cases could never be guided.
+
+Now:
+- **Escalation, not default.** Every step is first asked text-only (cheap,
+  nothing visual sent). Only when that fails -- Jev abstained, was not
+  confident, or the choice is one of several look-alikes -- and the user
+  switched pictures on, the same Choice is asked again with one picture per
+  bound window, for the rest of that step. Each new step starts text-only.
+- **Controls-only redaction, on this machine.** The picture starts grey.
+  Only the pixels of observed chrome controls (Button, SplitButton,
+  MenuItem, TabItem, CheckBox, RadioButton, Hyperlink) are copied in, and
+  not those that name a document or cover more than 15% of the window. Text
+  fields, combo boxes, lists, tree items, title bars, document content and
+  everything between controls stay grey. Every candidate is outlined and
+  tagged with its id. JPEG, sized to TypeSafe's limits, held in memory only;
+  the attribution log records how many pictures went, never their bytes.
+- **Same authority.** Jev still answers with an offered id or abstains; the
+  gate and `resolve` are unchanged except that look-alikes may be told apart
+  when the choice was made with pictures. No Box answer is used: a pointer is
+  never drawn at a model position (rule 3).
+- **The switch** is the user's: off unless set, in the app's Brain tab;
+  `LOCALAPPDATA/GhostCursor/settings.json`. With it on, controls without a
+  name join the candidates (shown to Jev as "no name; see the picture").
+- **Research citation check.** After System Two answers, Jev reads each
+  supported or partly supported claim against the passages it cites (one
+  request, cookbook pattern). A verdict at 0.8 or above may lower a claim to
+  contradicted or unresolved; it never raises one. If the check fails, the
+  answer stands and the trace says so.
+- Rule 6 in CLAUDE.md now names this as its one exception. The plan for the
+  rest of Jev's uses is in ROADMAP "Jev (System One) across the product".
+
+Mutation sweep: 12 mutants, 12 killed (chrome types, document names,
+oversize, the switch's literal true, the app switch, text-first, per-step
+reset, look-alikes only when seen, image header only with pictures, the
+check floor, checked statuses, unnamed only on request).
+
+Not measured: accuracy gain, picture size in tokens, or latency on real
+windows; TypeSafe's retention of images is not stated in its docs. Not run
+live (needs the TypeSafe key and a real session).

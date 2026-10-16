@@ -29,6 +29,7 @@ from dataclasses import asdict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+from ghostcursor import settings
 from ghostcursor.workspace.contracts import POINT_PREFIX
 
 PAGE = Path(__file__).with_name("app.html")
@@ -140,6 +141,7 @@ class App:
             "status": list(self.status),
             "research": len(ws.research_graphs),
             "point_prefix": POINT_PREFIX,
+            "vision": settings.jev_vision(),
         }
 
     # --- actions ----------------------------------------------------------------
@@ -155,6 +157,10 @@ class App:
             return {}
         if action == "stop":
             self.stop.set()
+            return {}
+        if action == "vision":
+            # The user's own switch (D179); read when the next Teach starts.
+            settings.set_jev_vision(body.get("on") is True)
             return {}
         if self.busy:
             raise ValueError(f"busy: {self.busy}")

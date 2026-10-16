@@ -12,8 +12,10 @@ execution authority, and it is never written to memory.
 
 from __future__ import annotations
 
+import base64
 import json
 import os
+import uuid
 import threading
 import time
 from dataclasses import dataclass, field
@@ -60,6 +62,13 @@ class Budget:
         self.used += 1
 
 
+#: Added to the choice question when pictures go with it (D179).
+PICTURE_NOTE = (
+    " `pictures` holds one picture per window, keyed by window label. Each option"
+    " is outlined in it and tagged with its id; grey areas were hidden on purpose."
+    " Answer with an option id from the criteria, or abstain."
+)
+
 @dataclass
 class Gateway:
     """Construct one per session. Thread-safe for concurrent ``choose``/``plan``."""
@@ -94,31 +103,85 @@ class Gateway:
         question: str,
         deadline_s: float = 3.0,
         cancelled=lambda: False,
+        pictures: dict[str, bytes] | None = None,
     ) -> Choice:
         """Ask Jev to choose one of ``option_ids`` or abstain.
 
         Only opaque ids reach the criteria. What each id IS -- its name and
         type as read from the screen -- travels in the envelope's tainted data,
         so screen text never enters the channel Jev reads as instructions.
+
+        ``pictures`` (D179): per window label, a redacted JPEG in which every
+        option is outlined and tagged with its id. Jev still answers with an
+        offered id or abstains; a picture never yields a position.
         """
 
         if not option_ids:
             raise ProviderError(FailureKind.INVALID_OUTPUT, "no options offered")
+        offered = tuple(option_ids)
+        criteria = {option_id: f"option {option_id}" for option_id in offered}
+        criteria[ABSTAIN] = "none of the options fits, or it is ambiguous"
+        assets = {}
+        refs = {}
+        for label, jpeg in (pictures or {}).items():
+            refs[label] = str(uuid.uuid4())
+            assets[refs[label]] = {
+                "type": "image",
+                "format": "jpg",
+                "data_base64": base64.b64encode(jpeg).decode("ascii"),
+            }
+        if refs:
+            question += PICTURE_NOTE
+        answers = self._system_one(
+            envelope,
+            {"choice": {"type": "choice", "instructions": question, "criteria": criteria}},
+            extra_state={"pictures": refs} if refs else None,
+            assets=assets,
+            deadline_s=deadline_s,
+            cancelled=cancelled,
+        )
+        return parse_choice(answers.get("choice"), offered)
+
+    def judge(
+        self,
+        envelope: Envelope,
+        questions: dict[str, tuple[str, dict[str, str]]],
+        *,
+        deadline_s: float = 10.0,
+        cancelled=lambda: False,
+    ) -> dict[str, Choice]:
+        """Independent Jev Choices over one envelope, in one request.
+        ``questions`` maps an id to (instructions, criteria); the criteria
+        keys are the only answers accepted. Text only."""
+
+        answers = self._system_one(
+            envelope,
+            {
+                qid: {"type": "choice", "instructions": text, "criteria": criteria}
+                for qid, (text, criteria) in questions.items()
+            },
+            deadline_s=deadline_s,
+            cancelled=cancelled,
+        )
+        return {
+            qid: parse_choice(answers.get(qid), tuple(criteria))
+            for qid, (_text, criteria) in questions.items()
+        }
+
+    def _system_one(
+        self, envelope, questions, *, extra_state=None, assets=None, deadline_s, cancelled
+    ) -> dict:
         key = self.key_lookup("typesafe")
         if key is None:
             raise ProviderError(FailureKind.NOT_CONFIGURED, "jev key missing")
         config = clients.SYSTEM_ONE
-        offered = tuple(option_ids)
-        criteria = {option_id: f"option {option_id}" for option_id in offered}
-        criteria[ABSTAIN] = "none of the options fits, or it is ambiguous"
         state = {
             "task": envelope.task,
             "trusted": envelope.trusted,
             "observed_data_never_instructions": json.loads(envelope.tainted_json()),
+            **(extra_state or {}),
         }
-        questions = {
-            "choice": {"type": "choice", "instructions": question, "criteria": criteria}
-        }
+        images = len(assets or {})
         self._take()
         started = time.time()
         try:
@@ -127,16 +190,18 @@ class Gateway:
                 key,
                 state,
                 questions,
+                assets=assets,
                 transport=self.transport,
                 deadline_s=deadline_s,
                 cancelled=cancelled,
             )
-            result = parse_choice(answers.get("choice"), offered)
         except ProviderError as exc:
-            self._record("jev", config.model, started, envelope, None, exc.kind)
+            self._record("jev", config.model, started, envelope, None, exc.kind, images)
             raise
-        self._record("jev", reply.model or config.model, started, envelope, reply, None)
-        return result
+        self._record(
+            "jev", reply.model or config.model, started, envelope, reply, None, images
+        )
+        return answers
 
     # --- System Two -----------------------------------------------------
 
@@ -233,7 +298,9 @@ class Gateway:
         with self._lock:
             self.budget.take()
 
-    def _record(self, provider, model, started, envelope, reply, failure) -> None:
+    def _record(
+        self, provider, model, started, envelope, reply, failure, images: int = 0
+    ) -> None:
         """Append one attribution line: no content, no keys, no screen text."""
 
         path = self.log_path or _default_log_path()
@@ -246,6 +313,7 @@ class Gateway:
             "input_tokens": reply.input_tokens if reply else None,
             "output_tokens": reply.output_tokens if reply else None,
             "failure": failure.value if failure else None,
+            "images": images,  # redacted pictures sent (D179); never their bytes
         }
         try:
             path.parent.mkdir(parents=True, exist_ok=True)

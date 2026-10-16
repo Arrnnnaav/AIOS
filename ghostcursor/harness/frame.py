@@ -46,6 +46,8 @@ Rect = tuple[int, int, int, int]
 #: window title never leaves the machine (spec section 7), and a tab or item
 #: naming a file is the same information.
 HIDDEN_NAME = "(document name hidden)"
+#: A control with no accessible name, kept only when pictures may be sent (D179).
+UNNAMED = "(no name; see its outline in the picture)"
 _FILE_NAME = re.compile(r"\.[A-Za-z0-9]{1,5}\b")
 _UNSAVED = re.compile(r"\b(modified|unsaved|edited)\.?$", re.IGNORECASE)
 
@@ -118,6 +120,8 @@ class ObservationFrame:
     minimized: tuple[str, ...] = ()  # window labels that were minimized
     #: (label, title, owned_windows) per window; local only, for verification.
     facts: tuple[tuple[str, str, int], ...] = ()
+    #: (label, window rectangle); local only, for redacted pictures (D179).
+    window_rects: tuple[tuple[str, Rect], ...] = ()
 
     def get(self, cid: str) -> Candidate | None:
         return next((c for c in self.candidates if c.cid == cid), None)
@@ -135,7 +139,7 @@ class ObservationFrame:
 
         def shown(c: Candidate) -> str:
             hidden = reveals_document(c.name, c.control_type, titles.get(c.window, ""))
-            return HIDDEN_NAME if hidden else c.name
+            return HIDDEN_NAME if hidden else c.name or UNNAMED
 
         return {
             "windows": {
@@ -183,9 +187,15 @@ def region_of(rect: Rect, outer: Rect) -> str:
 
 
 def build_frame(
-    frame_id: int, at: float, observations: Sequence[WindowObservation]
+    frame_id: int,
+    at: float,
+    observations: Sequence[WindowObservation],
+    *,
+    unnamed: bool = False,
 ) -> ObservationFrame:
-    """Filter, deduplicate, order and cap the candidates of every bound window."""
+    """Filter, deduplicate, order and cap the candidates of every bound window.
+    ``unnamed`` keeps controls with no accessible name (icon-only buttons):
+    only useful when Jev may see a picture of them (D179)."""
 
     kept: list[tuple[WindowBinding, RawControl, Rect]] = []
     for observation in sorted(observations, key=lambda o: o.binding.index):
@@ -197,7 +207,7 @@ def build_frame(
                 or control.is_password
                 or not control.enabled
                 or control.offscreen
-                or not name
+                or not (name or unnamed)
                 or not control.runtime_id
                 or not _valid(control.rect)
                 or not _inside(control.rect, observation.window_rect)
@@ -233,6 +243,7 @@ def build_frame(
         tuple(o.binding.label for o in observations if o.timed_out),
         tuple(o.binding.label for o in observations if o.minimized),
         tuple((o.binding.label, o.title, o.owned_windows) for o in observations),
+        tuple((o.binding.label, o.window_rect) for o in observations),
     )
 
 

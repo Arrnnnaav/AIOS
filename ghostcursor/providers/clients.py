@@ -115,8 +115,10 @@ def _post(
     transport: httpx.BaseTransport | None,
     deadline_s: float,
     cancelled,
+    extra_headers: dict | None = None,
 ) -> Reply:
     headers = {"Authorization": f"Bearer {key}"} if key else {}
+    headers |= extra_headers or {}
     started = time.monotonic()
     deadline = started + min(deadline_s, config.timeout_s)
     with httpx.Client(
@@ -166,17 +168,16 @@ def _post(
 
 
 def system_one_call(
-    config, key, state: dict, questions: dict, **kw
+    config, key, state: dict, questions: dict, *, assets: dict | None = None, **kw
 ) -> tuple[dict, Reply]:
-    """POST /v1/systemone; returns the ``answers`` object and the reply."""
+    """POST /v1/systemone; returns the ``answers`` object and the reply.
+    ``assets`` (images, D179) turn on TypeSafe's image header for this call."""
 
-    reply = _post(
-        config,
-        key,
-        "/v1/systemone",
-        {"model": config.model, "state": state, "questions": questions},
-        **kw,
-    )
+    payload = {"model": config.model, "state": state, "questions": questions}
+    if assets:
+        payload["assets"] = assets
+        kw["extra_headers"] = {"TypeSafe-Danger-Zone-Images": "true"}
+    reply = _post(config, key, "/v1/systemone", payload, **kw)
     answers = reply.body.get("answers")
     if not isinstance(answers, dict):
         raise ProviderError(FailureKind.INVALID_OUTPUT, "jev: no answers object")

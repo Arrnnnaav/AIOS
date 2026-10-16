@@ -18,6 +18,7 @@ import os
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
@@ -332,6 +333,59 @@ def parse_claims(content: str, offered: set[str]) -> tuple[Claim, ...]:
     return tuple(claims)
 
 
+#: The citation check (D179; docs.typesafe.ai/cookbooks/citation_check).
+RELATION = {
+    "supports": "the passages state the claim or directly imply it is true",
+    "contradicts": "the passages state the opposite or imply the claim is false",
+    "says_nothing": "the passages do not address the claim either way",
+}
+#: A Jev verdict at or above this may lower a claim's status. Provisional:
+#: the cookbook's example threshold, to be fitted on our own answers.
+CHECK_FLOOR = 0.8
+
+
+def check_claims(graph: EvidenceGraph, gateway) -> tuple[Claim, ...]:
+    """Jev reads each supported claim against the passages it cites, all in
+    one request. A confident 'contradicts' or 'says nothing' lowers the
+    claim; Jev never raises one. Raises ProviderError when Jev cannot answer."""
+
+    checked = [
+        (n, c)
+        for n, c in enumerate(graph.claims)
+        if c.status in (ClaimStatus.SUPPORTED, ClaimStatus.PARTIAL)
+    ]
+    if not checked:
+        return graph.claims
+    passages = {p.pid: p.text for p in graph.passages}
+    tainted = {
+        f"claim_{n}": {
+            "claim": Tainted.of("model_claim", c.text),
+            "passages": [Tainted.of("web_passage", passages[pid]) for pid in c.evidence],
+        }
+        for n, c in checked
+    }
+    verdicts = gateway.judge(
+        Envelope(task="citation_check", trusted={"question": graph.question}, tainted=tainted),
+        {
+            f"claim_{n}": (
+                f"How do the passages in `claim_{n}.passages` relate to `claim_{n}.claim`?",
+                RELATION,
+            )
+            for n, _c in checked
+        },
+    )
+    claims = list(graph.claims)
+    for n, c in checked:
+        verdict = verdicts[f"claim_{n}"]
+        if verdict.probabilities.get(verdict.choice, 0.0) < CHECK_FLOOR:
+            continue
+        if verdict.choice == "contradicts":
+            claims[n] = replace(c, status=ClaimStatus.CONTRADICTED)
+        elif verdict.choice == "says_nothing":
+            claims[n] = replace(c, status=ClaimStatus.UNRESOLVED)
+    return tuple(claims)
+
+
 def research_envelope(
     question: str, graph: EvidenceGraph, context: dict | None = None
 ) -> Envelope:
@@ -408,6 +462,14 @@ def research(
             model = "system-two"
         except ProviderError as exc:
             failures.append(f"model: {exc.kind.value}")
+        if graph.claims and hasattr(gateway, "judge"):
+            try:
+                graph = EvidenceGraph(
+                    question, graph.sources, graph.passages, check_claims(graph, gateway)
+                )
+                model += "+jev-check"
+            except ProviderError as exc:  # the check is extra; its absence is not
+                failures.append(f"check: {exc.kind.value}")
         timings["answer"] = round((time.monotonic() - started) * 1000)
     trace = ResearchTrace(
         question_sha256=digest(question),
@@ -420,6 +482,7 @@ def research(
         unresolved=sum(c.status is ClaimStatus.UNRESOLVED for c in graph.claims),
         model_provider=model,
         privacy=f"question sent to {provider}; passages and question sent to System Two"
+        + ("; claims and cited passages sent to Jev" if "jev-check" in model else "")
         if graph.passages
         else f"question sent to {provider}",
         timings_ms=timings,

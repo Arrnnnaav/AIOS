@@ -33,9 +33,10 @@ class Observer(threading.Thread):
     """Reads every bound window and publishes the newest frame. A window that
     is gone or changed identity ends the session (TARGET_LOST, never rebound)."""
 
-    def __init__(self, bindings: tuple[WindowBinding, ...]):
+    def __init__(self, bindings: tuple[WindowBinding, ...], *, unnamed: bool = False):
         super().__init__(name="harness-observer", daemon=True)
         self.bindings = bindings
+        self.unnamed = unnamed  # keep icon-only controls (pictures on, D179)
         self.lost: str | None = None
         self._latest: ObservationFrame | None = None
         self._lock = threading.Lock()
@@ -76,7 +77,9 @@ class Observer(threading.Thread):
                         )
                     )
                 frame_id += 1
-                frame = build_frame(frame_id, time.monotonic(), observations)
+                frame = build_frame(
+                    frame_id, time.monotonic(), observations, unnamed=self.unnamed
+                )
                 with self._lock:
                     self._latest = frame
                 self._stop.wait(OBSERVE_INTERVAL_S)
@@ -186,8 +189,11 @@ def run_model_teach(
     from ghostcursor.providers import Gateway
     from ghostcursor.reasoning.staleness import Freshness
 
+    from ghostcursor import settings
+
     bindings = bind(hwnds or choose_windows())
-    observer = Observer(bindings)
+    seeing = settings.jev_vision()
+    observer = Observer(bindings, unnamed=seeing)
     observer.start()
     # One deadline for the whole session, the point prompt included (rule 4).
     deadline = time.monotonic() + seconds
@@ -206,7 +212,17 @@ def run_model_teach(
         observer.stop()
         say("Stopped before guidance started.")
         return 0
-    session = ModelTeachSession(goal, gateway or Gateway(), mark=mark, plan=plan)
+    look = None
+    if seeing:
+        from ghostcursor.harness.vision import pictures as look
+
+        say(
+            "Jev may see redacted pictures of these windows when text is not "
+            "enough (only buttons, tabs and menus; the rest is grey)."
+        )
+    session = ModelTeachSession(
+        goal, gateway or Gateway(), mark=mark, plan=plan, look=look
+    )
     overlay = window.create_overlay_window()
     say(
         f"Model Teach across {', '.join(b.label + ' ' + b.identity.executable for b in bindings)}. "

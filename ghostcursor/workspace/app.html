@@ -466,6 +466,16 @@ function renderBrain() {
     card.append(meta, el("div", "", m.text)); list.append(card);
   }
   root.append(list);
+  const priv = el("div", "mem"); priv.style.marginTop = "16px";
+  const pmeta = el("div", "meta"); pmeta.append(el("span", "kind", "privacy"));
+  const vsw = el("button", "switch"); vsw.setAttribute("role", "switch"); vsw.setAttribute("aria-checked", String(!!S.vision));
+  vsw.style.marginLeft = "auto"; vsw.append(document.createTextNode(S.vision ? "On" : "Off"), el("i"));
+  vsw.onclick = () => act("vision", { on: !S.vision }, S.vision ? "Pictures off" : "Pictures on");
+  pmeta.append(vsw);
+  priv.append(pmeta, el("div", "", "Let Jev see a picture of the windows you guide when text is not enough."),
+    el("div", "note", "Only buttons, tabs and menus are shown; text, lists, documents and titles are greyed out on this computer before anything is sent. Nothing is saved."));
+  priv.lastChild.style.textAlign = "left";
+  root.append(priv);
   const stats = el("div", "stats"); root.append(stats);
   api("stats").then((s) => { for (const [k, v] of Object.entries(s).slice(0, 6)) { const d = el("div", "stat"); d.append(el("b", "", String(v)), el("span", "", k.replace(/_/g, " "))); stats.append(d); } }).catch(() => {});
   if (S.memories.length) {
