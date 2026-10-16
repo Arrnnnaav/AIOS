@@ -155,3 +155,13 @@ def no_real_user_settings(monkeypatch, tmp_path_factory):
 
     path = tmp_path_factory.mktemp("settings") / "settings.json"
     monkeypatch.setattr(settings, "_path", lambda: path)
+
+
+@pytest.fixture(autouse=True)
+def no_real_policy(monkeypatch):
+    """No test reads this machine's organisation policy (D180); a test sets
+    its own values through ``policy._value``."""
+
+    from ghostcursor import policy
+
+    monkeypatch.setattr(policy, "_value", lambda name: None)

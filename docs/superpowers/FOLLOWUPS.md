@@ -1379,3 +1379,11 @@ to confirm where the cost actually is before changing anything else.
 - Browser tab titles show in the picture; their names already go as text (D167 policy). Revisit both together.
 - Buttons inside web/document content (not chrome) can still show if small; exclude controls in Document/web-content subtrees.
 - Re-check the window rectangle at grab time (beyond the ownership check) and assert per-monitor DPI awareness before grabbing.
+
+## D180 follow-ups
+
+- Mask people's names in sent screen text (local NER); measure Jev accuracy with and without.
+- Level 0 (local only): a local choice (rapidfuzz over names + the local model) so Teach still works with nothing leaving.
+- Audit export: an `AuditLogPath` policy value and a SIEM-friendly line (provider, purpose, bytes, digest, policy level).
+- `AllowedProviders` policy value (e.g. allow Jev, forbid OpenRouter) if a customer asks.
+- Provider contracts (owner, not code): DPA, zero retention and region from TypeSafe and OpenAI before any enterprise sale.

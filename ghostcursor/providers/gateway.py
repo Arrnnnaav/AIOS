@@ -21,6 +21,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ghostcursor import policy
 from ghostcursor.providers import clients, keys
 from ghostcursor.providers.envelope import Envelope
 from ghostcursor.providers.errors import FailureKind, ProviderError
@@ -85,10 +86,12 @@ class Gateway:
     def available(self) -> dict[str, bool]:
         """Which providers could answer now (key present or local)."""
 
-        state = {"jev": self.key_lookup("typesafe") is not None}
+        state = {
+            "jev": policy.allows("jev") and self.key_lookup("typesafe") is not None
+        }
         for name in self.system_two:
             config = clients.SYSTEM_TWO[name]
-            state[name] = (
+            state[name] = policy.allows(name) and (
                 config.key_name is None or self.key_lookup(config.key_name) is not None
             )
         return state
@@ -171,6 +174,9 @@ class Gateway:
     def _system_one(
         self, envelope, questions, *, extra_state=None, assets=None, deadline_s, cancelled
     ) -> dict:
+        images = len(assets or {})
+        if not policy.allows("jev", images=images):  # D180: checked before anything
+            raise ProviderError(FailureKind.NOT_CONFIGURED, "blocked by policy")
         key = self.key_lookup("typesafe")
         if key is None:
             raise ProviderError(FailureKind.NOT_CONFIGURED, "jev key missing")
@@ -181,7 +187,6 @@ class Gateway:
             "observed_data_never_instructions": json.loads(envelope.tainted_json()),
             **(extra_state or {}),
         }
-        images = len(assets or {})
         self._take()
         started = time.time()
         try:
@@ -246,6 +251,9 @@ class Gateway:
             if cancelled():
                 raise ProviderError(FailureKind.CANCELLED)
             config = clients.SYSTEM_TWO[name]
+            if not policy.allows(name):  # D180: local only skips every remote
+                failures.append(ProviderError(FailureKind.NOT_CONFIGURED, name))
+                continue
             key = self.key_lookup(config.key_name) if config.key_name else None
             if config.key_name and key is None:
                 failures.append(ProviderError(FailureKind.NOT_CONFIGURED, name))

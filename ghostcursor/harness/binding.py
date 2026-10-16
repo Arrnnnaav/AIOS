@@ -17,6 +17,8 @@ import os
 from dataclasses import dataclass
 from typing import Callable, Sequence
 
+from ghostcursor import policy
+
 #: Windows a session may never bind: credential prompts, password managers,
 #: the lock screen and elevation prompts.
 DENYLIST = frozenset(
@@ -35,6 +37,12 @@ DENYLIST = frozenset(
 
 #: At most this many windows in one session.
 MAX_WINDOWS = 4
+
+
+def denied(executable: str) -> bool:
+    """Never bound: the built-in list or the organisation's (D180)."""
+
+    return executable in DENYLIST or executable in policy.blocked_apps()
 
 
 class BindingError(ValueError):
@@ -128,7 +136,7 @@ def bindable_windows(
     choices = []
     for hwnd, title in enumerate_windows():
         identity = identify_window(hwnd)
-        if identity is None or identity.pid == own or identity.executable in DENYLIST:
+        if identity is None or identity.pid == own or denied(identity.executable):
             continue
         choices.append(BindableWindow(hwnd, identity.executable, title))
     return choices
@@ -156,7 +164,7 @@ def bind(
             raise BindingError(f"window {index} is gone")
         if identity.pid == own:
             raise BindingError("Orbyn cannot bind its own windows")
-        if identity.executable in DENYLIST:
+        if denied(identity.executable):
             raise BindingError(f"{identity.executable} is never bound")
         bindings.append(WindowBinding(index, hwnd, identity))
     return tuple(bindings)

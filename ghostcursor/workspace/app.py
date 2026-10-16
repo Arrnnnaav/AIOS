@@ -29,7 +29,7 @@ from dataclasses import asdict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from ghostcursor import settings
+from ghostcursor import policy, settings
 from ghostcursor.workspace.contracts import POINT_PREFIX
 
 PAGE = Path(__file__).with_name("app.html")
@@ -142,6 +142,8 @@ class App:
             "research": len(ws.research_graphs),
             "point_prefix": POINT_PREFIX,
             "vision": settings.jev_vision(),
+            "egress": policy.max_egress(),  # D180: set by the organisation
+            "managed": policy.managed(),
         }
 
     # --- actions ----------------------------------------------------------------

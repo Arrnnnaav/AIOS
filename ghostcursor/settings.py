@@ -22,9 +22,12 @@ def load(path: Path | None = None) -> dict:
 
 def jev_vision(path: Path | None = None) -> bool:
     """D179: may Jev see redacted pictures of the windows being guided?
-    Off unless the user turned it on; anything but a literal true is off."""
+    Off unless the user turned it on; anything but a literal true is off,
+    and an organisation policy below pictures turns it off (D180)."""
 
-    return load(path).get("jev_vision") is True
+    from ghostcursor import policy
+
+    return load(path).get("jev_vision") is True and policy.max_egress() >= policy.PICTURES
 
 
 def set_jev_vision(on: bool, path: Path | None = None) -> None:

@@ -213,5 +213,6 @@ with the script named at the bottom; edit the curated table by hand.
 - D177 — Sign in with ChatGPT: the user's own plan powers System Two
 - D178 — The workspace app: a docked window over the same Workspace
 - D179 — Jev across the product, and redacted pictures for Teach
+- D180 — Organisation policy and scrubbed screen text: less leaves the machine
 
 _Generated from `DECISIONS.md` headings by `py -3.12 tools/render_decisions_index.py`._

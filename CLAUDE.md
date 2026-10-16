@@ -53,7 +53,8 @@ and read only those entries. Never read the whole of `DECISIONS.md`, `FLOW.md`,
    switched it on, a picture of a bound window in which only chrome controls
    keep their pixels (`ghostcursor/harness/vision.py`) may go to Jev after a
    text-only choice failed; never stored. `kb.sqlite` and `sessions.sqlite` never sync; no goal or
-   screen text in `sessions.sqlite`; keys never in tracked files. No raw HWND or
+   screen text in `sessions.sqlite`; keys never in tracked files. An organisation policy (`ghostcursor/policy.py`, D180)
+   may only lower what leaves; screen text goes only through `Tainted.of` (scrubbed). No raw HWND or
    PID in any tracked file (the evidence hygiene scan enforces it).
 7. **Evidence is honest:** never edit captured output; never present a number
    without saying where it is recorded (D034); say plainly when something was

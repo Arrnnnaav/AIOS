@@ -7888,3 +7888,36 @@ switch text says TypeSafe's image retention is not documented. Second sweep:
 7 mutants, 7 killed (width cap, link type, occlusion check, corner points,
 seen only with pictures, empty capture, height cap). Outlines and ids of
 non-shown controls still go (geometry only): in FOLLOWUPS.
+
+## D180 — Organisation policy and scrubbed screen text: less leaves the machine
+
+Date: 16 October 2026. Owner direction: make as little leave the machine as
+possible, at enterprise level.
+
+Before: what left was decided by the user alone (`settings.json`), and the
+text path sent the names of list items, tree items and links as read --
+in a mail client that is senders and subjects. Only file names were hidden.
+
+Now:
+- **Organisation policy** (`ghostcursor/policy.py`), set by Group Policy or
+  Intune under `Software\Policies\Orbyn` (HKLM, then HKCU), read on every
+  request. `MaxEgress` 0 = local only (no Jev, no remote planner, no web
+  search; only the local Ollama model answers), 1 = text, 2 = text and
+  pictures. An unreadable value fails closed to 0. `BlockedApps` adds
+  executables that are never bound. No policy = unchanged behaviour. A policy
+  only lowers: the user's picture switch is off under level 1.
+- **One check at the choke points**: the gateway refuses before any key read
+  or request (so every later Jev use inherits it); research refuses to search;
+  binding refuses blocked apps. The Brain tab says when the organisation set
+  the level and disables the picture switch.
+- **Scrubbing** in `Tainted.of`, the only way screen or web text enters a
+  request: emails, URL queries and fragments, key-like tokens and numbers
+  with 9+ digits (phones, cards, accounts) become `[email]`, `[query]`,
+  `[token]`, `[number]`. Dates, versions and short numbers stay. The local
+  frame keeps the original text; only the sent copy is masked. Text the user
+  typed (goal, chat) is trusted and not scrubbed.
+
+Not done: names of people are not masked (needs a local NER model; measure
+the accuracy cost first); level 0 has no local stand-in for Jev's choice;
+the attribution log is not yet exportable to a SIEM. Tests:
+`tests/test_enterprise_policy.py`; 11/11 guard mutations killed.

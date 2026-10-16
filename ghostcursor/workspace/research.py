@@ -427,13 +427,18 @@ def research(
     for a search or model failure: the graph then carries no claims and the
     trace records why."""
 
+    from ghostcursor import policy
     from ghostcursor.providers import keys
 
     timings, failures = {}, []
     started = time.monotonic()
     key = (key_lookup or keys.get_key)("tavily")
     provider = "tavily" if key else "duckduckgo"
+    if policy.max_egress() < policy.TEXT:
+        provider = "none"
     try:
+        if provider == "none":  # D180: local only; nothing is searched
+            raise PermissionError("blocked by policy")
         if search is not None:
             hits = search(question)
         elif key:

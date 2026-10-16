@@ -32,6 +32,30 @@ def sanitize(text: object, limit: int = MAX_TAINTED_CHARS) -> str:
     return value[:limit]
 
 
+#: Screen and web text a model never needs verbatim to choose a control or
+#: plan a step (D180): masked before it leaves. The local frame keeps the
+#: original; only the copy that is sent is masked.
+_EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+_QUERY = re.compile(r"(\b(?:https?://|www\.)[^\s?#]+)[?#]\S*", re.IGNORECASE)
+_DIGITS = re.compile(r"\+?\d[\d ().-]{6,}\d")
+_TOKEN = re.compile(
+    r"\b(?=[A-Za-z0-9_-]*\d)(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9_-]{24,}\b"
+)
+
+
+def scrub(text: str) -> str:
+    """Mask emails, URL queries, key-like tokens and long numbers (9+ digits:
+    phones, cards, accounts). Short numbers, dates and versions stay."""
+
+    text = _EMAIL.sub("[email]", text)
+    text = _QUERY.sub(r"\1?[query]", text)
+    text = _TOKEN.sub("[token]", text)
+    return _DIGITS.sub(
+        lambda m: "[number]" if sum(c.isdigit() for c in m.group()) >= 9 else m.group(),
+        text,
+    )
+
+
 @dataclass(frozen=True)
 class Tainted:
     """One untrusted value: where it came from, and the sanitised text."""
@@ -41,7 +65,7 @@ class Tainted:
 
     @staticmethod
     def of(source: str, value: object) -> "Tainted":
-        return Tainted(sanitize(source, 40), sanitize(value))
+        return Tainted(sanitize(source, 40), scrub(sanitize(value)))
 
 
 @dataclass(frozen=True)

@@ -471,9 +471,11 @@ function renderBrain() {
   const vsw = el("button", "switch"); vsw.setAttribute("role", "switch"); vsw.setAttribute("aria-checked", String(!!S.vision));
   vsw.style.marginLeft = "auto"; vsw.append(document.createTextNode(S.vision ? "On" : "Off"), el("i"));
   vsw.onclick = () => act("vision", { on: !S.vision }, S.vision ? "Pictures off" : "Pictures on");
+  const capped = S.managed && S.egress < 2; vsw.disabled = capped;
   pmeta.append(vsw);
   priv.append(pmeta, el("div", "", "Let Jev see a picture of the windows you guide when text is not enough."),
     el("div", "note", "Only buttons, tabs and menus are shown; text, lists, documents and titles are greyed out on this computer before anything is sent; parts covered by other windows stay grey too. Orbyn saves nothing; TypeSafe's docs do not say how long it keeps images."));
+  if (S.managed) priv.append(el("div", "note", ["Set by your organization: nothing leaves this computer.", "Set by your organization: text only, no pictures.", "Your organization allows pictures."][S.egress]));
   priv.lastChild.style.textAlign = "left";
   root.append(priv);
   const stats = el("div", "stats"); root.append(stats);
