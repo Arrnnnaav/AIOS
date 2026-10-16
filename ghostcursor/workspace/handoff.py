@@ -33,9 +33,22 @@ def _clean(text: object, limit: int) -> str:
     return scrub(sanitize(text, limit))
 
 
-def export(ws, sender: str) -> str:
-    """The handoff file's text for the current goal and plan."""
+def _text(value: object, limit: int) -> str:
+    """A received field: a string, or the handoff is refused."""
 
+    if not isinstance(value, str):
+        raise ValueError("a handoff field is not text")
+    return _clean(value, limit)
+
+
+def export(ws, sender: str) -> str:
+    """The handoff file's text for the current goal and plan. Refused when
+    the organisation allows nothing to leave (D180 level 0)."""
+
+    from ghostcursor import policy
+
+    if policy.max_egress() < policy.TEXT:
+        raise ValueError("your organisation does not allow handing work off")
     if ws.plan is None:
         raise ValueError("make a plan before handing it off")
     sources = {
@@ -79,7 +92,9 @@ def parse(text: str) -> dict:
         "sources",
     }:
         raise ValueError("not a handoff file")
-    if value["kind"] != KIND or value["version"] != VERSION:
+    if value["kind"] != KIND or type(value["version"]) is not int or (
+        value["version"] != VERSION
+    ):
         raise ValueError("unsupported handoff version")
     plan, sources = value["plan"], value["sources"]
     if not isinstance(plan, list) or not 1 <= len(plan) <= MAX_PLAN_STEPS:
@@ -93,7 +108,7 @@ def parse(text: str) -> dict:
             "expected_change",
         }:
             raise ValueError("a step is not instruction/expected_change")
-        instruction = _clean(step["instruction"], MAX_INSTRUCTION_CHARS)
+        instruction = _text(step["instruction"], MAX_INSTRUCTION_CHARS)
         if not instruction:
             raise ValueError("a step has no instruction")
         try:
@@ -105,13 +120,13 @@ def parse(text: str) -> dict:
     for source in sources:
         if not isinstance(source, dict) or set(source) != {"url", "title"}:
             raise ValueError("a source is not url/title")
-        url = _clean(source["url"], 500)
+        url = _text(source["url"], 500)
         if not url.startswith("https://"):
             raise ValueError("a source must be an https link")
-        clean_sources.append((url, _clean(source["title"], 200)))
+        clean_sources.append((url, _text(source["title"], 200)))
     return {
-        "from": _clean(value["from"], 60) or "a teammate",
-        "goal": _clean(value["goal"], 300),
+        "from": _text(value["from"], 60) or "a teammate",
+        "goal": _text(value["goal"], 300),
         "plan": TeachPlan(tuple(steps)),
         "sources": tuple(clean_sources),
     }

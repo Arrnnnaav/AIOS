@@ -204,15 +204,19 @@ class App:
         if action == "handoff_export":
             from ghostcursor.workspace import handoff
 
-            text = handoff.export(ws, str(body.get("name", "")))
-            out = self.downloads / f"{ws.topic}.orbyn-handoff.json"
-            out.parent.mkdir(parents=True, exist_ok=True)
-            out.write_text(text, encoding="utf-8", newline="\n")
-            return {"path": str(out)}
+            def save():
+                text = handoff.export(ws, str(body.get("name", "")))
+                out = self.downloads / f"{ws.topic}.orbyn-handoff.json"
+                out.parent.mkdir(parents=True, exist_ok=True)
+                out.write_text(text, encoding="utf-8", newline="\n")
+                return str(out)
+
+            return {"path": self.run("Handing off", save)}
         if action == "handoff_import":
             from ghostcursor.workspace import handoff
 
-            return {"from": handoff.receive(ws, str(body.get("data", "")))}
+            data = str(body.get("data", ""))
+            return {"from": self.run("Opening", lambda: handoff.receive(ws, data))}
         if action == "plan_edit":
             verb, args = (
                 str(body.get("verb", "")),

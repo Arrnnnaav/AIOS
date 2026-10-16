@@ -104,3 +104,28 @@ def test_app_saves_and_opens_a_handoff(tmp_path):
     assert other.handle("handoff_import", {"data": data}) == {"from": "Asha"}
     assert other.state()["plan"]["revision"] == 1
     other.close()
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"version": True},
+        {"goal": ["not", "text"]},
+        {"from": {"x": 1}},
+        {"plan": [{"instruction": ["a"], "expected_change": "chosen_disappears"}]},
+        {"sources": [{"url": ["https://x"], "title": "t"}]},
+    ],
+)
+def test_fields_must_be_their_exact_types(tmp_path, change):
+    _, text = _sent(tmp_path)
+    with pytest.raises(ValueError):
+        handoff.parse(_bad(text, **change))
+
+
+def test_local_only_policy_refuses_a_handoff(tmp_path, monkeypatch):
+    from ghostcursor import policy
+
+    ws, _ = _sent(tmp_path)
+    monkeypatch.setattr(policy, "_value", lambda name: 0 if name == "MaxEgress" else None)
+    with pytest.raises(ValueError, match="organisation"):
+        handoff.export(ws, "Asha")

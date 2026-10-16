@@ -1389,3 +1389,12 @@ to confirm where the cost actually is before changing anything else.
 - Provider contracts (owner, not code): DPA, zero retention and region from TypeSafe and OpenAI before any enterprise sale.
 - Review of D180: BlockedApps is checked at bind only; a policy pushed mid-session does not unbind a live window.
 - Review of D180: the `model_gate` devtool `--endpoint` can point the Ollama client at a remote host; `LOCAL_PROVIDERS` trusts the name, not the address.
+
+## D181 follow-ups
+
+- Handoff export overwrites an existing `<topic>.orbyn-handoff.json` in Downloads; add a suffix if that bites.
+- `ws.suggestion` is cleared on the request thread and set on the job thread; the chip can flash stale (benign).
+- A received plan in a fresh topic leaves the goal empty, so Teach runs with goal ""; prompt for a goal before Teach.
+- `_context` sets `self._used` as a side effect read by `make_plan`; return it instead.
+- Pin with a test that a Jev reply missing a memory verdict leaves the candidate unchanged.
+- Measure Brain false refusals from `\blog-?ins?\b` (e.g. "prefers Google login") before widening the rule further.
