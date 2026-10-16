@@ -556,6 +556,10 @@ $("voiceBtn").onclick = async () => {
 };
 $("doneBtn").onclick = () => api("signal").catch(() => {});
 $("stopBtn").onclick = () => api("stop").catch(() => {});
+// Closing the window mid-session stops it (ESC and the deadline do anyway).
+addEventListener("pagehide", () => {
+  if (S && S.busy) fetch("/api/stop", { method: "POST", keepalive: true, headers: { "Content-Type": "application/json", "X-Orbyn-Token": TOKEN }, body: "{}" });
+});
 document.addEventListener("keydown", (e) => {
   if (!S || !S.busy) { if (e.key === "Escape") closeSheet(); return; }
   if (e.key === "Enter" && ["Guiding", "Pointing", "Listening"].includes(S.busy)) { e.preventDefault(); api("signal").catch(() => {}); }

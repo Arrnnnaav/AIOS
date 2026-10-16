@@ -33,7 +33,9 @@ from ghostcursor.workspace.contracts import POINT_PREFIX
 
 PAGE = Path(__file__).with_name("app.html")
 MAX_BODY = 64 * 1024
-QUIT_AFTER_S = 90.0  # no poll this long: the window is closed (a hidden tab polls ~1/min)
+QUIT_AFTER_S = (
+    90.0  # no poll this long: the window is closed (a hidden tab polls ~1/min)
+)
 APP_TITLE = "Orbyn"  # the page's <title>; its window is never offered for binding
 EDGE = Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")) / (
     r"Microsoft\Edge\Application\msedge.exe"
@@ -50,6 +52,7 @@ class App:
         self.stop = threading.Event()  # the page's Stop button
         self.status: deque[str] = deque(maxlen=40)
         self.busy = ""
+        self._claim = threading.Lock()
         self.windows: list = []  # the last bindable list; the page sees indexes
         self.pending_point = None
         self.memories: list[dict] = []
@@ -77,17 +80,25 @@ class App:
     def run(self, label: str, fn):
         """Run ``fn`` on the worker; one long job at a time (the page waits)."""
 
+        # Claimed on the request thread, so a second request is refused, not
+        # queued, and a Stop pressed before the job starts is kept.
+        if not self._claim.acquire(blocking=False):
+            raise ValueError(f"busy: {self.busy}")
+        self.busy = label
+        self.signal.clear()
+        self.stop.clear()
+
         def job():
-            self.busy = label
-            self.signal.clear()
-            self.stop.clear()
             try:
                 return fn()
             finally:
                 self._refresh()
-                self.busy = ""
 
-        return self.jobs.submit(job).result()
+        try:
+            return self.jobs.submit(job).result()
+        finally:
+            self.busy = ""
+            self._claim.release()
 
     def say(self, line: str) -> None:
         self.status.append(str(line)[:300])
@@ -194,9 +205,14 @@ class App:
             ref, self.pending_point = self.pending_point, None
             if ref is None:
                 raise ValueError("no point to keep")
-            ref = confirm_reference(ref, str(body.get("answer", "x")))
-            if ref is not None:
-                self.run("Saving point", lambda: ws.point(ref))
+            answer = str(body.get("answer", "x"))
+
+            def keep():
+                kept = confirm_reference(ref, answer)
+                if kept is not None:
+                    ws.point(kept)
+
+            self.run("Saving point", keep)
             return {}
         if action == "teach":
             from ghostcursor.workspace.__main__ import teach_seconds
@@ -357,7 +373,13 @@ def make_server(app: App, token: str, port: int = 0) -> ThreadingHTTPServer:
 
         def do_POST(self):
             given = self.headers.get("X-Orbyn-Token", "")
-            length = int(self.headers.get("Content-Length") or 0)
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                length = -1
+            # Read the body even when refusing: closing with unread bytes
+            # resets the connection instead of delivering the 403.
+            raw = self.rfile.read(length) if 0 < length <= MAX_BODY else b""
             if (
                 not self.path.startswith("/api/")
                 or not self._allowed()
@@ -367,7 +389,7 @@ def make_server(app: App, token: str, port: int = 0) -> ThreadingHTTPServer:
             ):
                 return self._send(403, b"{}", "application/json")
             try:
-                body = json.loads(self.rfile.read(length) or b"{}")
+                body = json.loads(raw or b"{}")
                 if not isinstance(body, dict):
                     raise ValueError("body must be an object")
                 result, code = app.handle(self.path[5:], body), 200

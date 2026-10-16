@@ -145,3 +145,30 @@ def test_brain_erase_needs_confirmation(served):
     app, port = served
     assert call(port, "/api/brain", {"verb": "erase"})[0] == 400
     assert call(port, "/api/brain", {"verb": "erase", "confirm": "yes"})[0] == 200
+
+
+def test_a_second_job_is_refused_while_one_holds_the_worker(served):
+    app, port = served
+    app._claim.acquire()
+    try:
+        status, body = call(port, "/api/say", {"text": "hi"})
+        assert status == 400 and "busy" in json.loads(body)["error"]
+    finally:
+        app._claim.release()
+    assert call(port, "/api/say", {"text": "hi"})[0] == 200
+
+
+def test_a_malformed_length_is_refused(served):
+    _, port = served
+    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+    conn.putrequest("POST", "/api/state", skip_host=True)
+    for k, v in {
+        "Host": f"127.0.0.1:{port}",
+        "X-Orbyn-Token": "secret-token",
+        "Content-Type": "application/json",
+        "Content-Length": "abc",
+    }.items():
+        conn.putheader(k, v)
+    conn.endheaders()
+    assert conn.getresponse().status == 403
+    conn.close()

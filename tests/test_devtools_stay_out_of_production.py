@@ -123,7 +123,7 @@ _MEASURED_INVENTORY = {
     "ghostcursor/plugins": 8,
     "ghostcursor/providers": 10,
     "ghostcursor/reasoning": 11,
-    "ghostcursor/workspace": 6,
+    "ghostcursor/workspace": 7,
 }
 
 

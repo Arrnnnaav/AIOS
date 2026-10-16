@@ -250,6 +250,45 @@ def test_time_spent_pointing_counts_against_the_session(monkeypatch):
     assert drawn == []  # no guidance tick ran after the deadline
 
 
+@pytest.mark.parametrize(
+    "esc, stop, late", [(True, False, False), (False, True, False), (False, False, True)]
+)
+def test_the_guidance_loop_ends_on_esc_its_stop_hook_or_the_deadline(
+    monkeypatch, esc, stop, late
+):
+    """ESC and the deadline stop a session whatever the UI's ``stop`` hook
+    says, and the hook alone stops it too (rule 4, review of D178)."""
+
+    from ghostcursor.harness import teach_live
+
+    class Session:
+        completed = []
+
+        def __init__(self, *a, **kw):
+            pass
+
+        def tick(self, *a, **kw):
+            pytest.fail("guidance ticked after it should have stopped")
+
+        def stop(self):
+            pass
+
+    times = iter([1000.0] + [2000.0 if late else 1000.0] * 10)
+    monkeypatch.setattr(teach_live, "bind", lambda hwnds: (W1,))
+    monkeypatch.setattr(teach_live.Observer, "start", lambda self: None)
+    monkeypatch.setattr(teach_live, "ModelTeachSession", Session)
+    monkeypatch.setattr(teach_live.time, "monotonic", lambda: next(times))
+    monkeypatch.setattr(teach_live, "_escape_pressed", lambda: esc)
+    monkeypatch.setattr(teach_live.window, "create_overlay_window", lambda: "overlay")
+    monkeypatch.setattr(teach_live.window, "destroy_overlay_window", lambda o: None)
+    said = []
+    teach_live.run_model_teach(
+        "g", [11], seconds=60, gateway=object(), say=said.append,
+        confirm=lambda: False, stop=lambda: stop,
+    )
+    assert said[-1] in ("Stopped - exiting.", "Time limit reached - exiting.")
+
+
 # --- voice respects ESC and the session deadline (D171 review follow-up) ---
 
 
