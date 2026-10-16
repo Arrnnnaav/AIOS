@@ -7921,3 +7921,30 @@ Not done: names of people are not masked (needs a local NER model; measure
 the accuracy cost first); level 0 has no local stand-in for Jev's choice;
 the attribution log is not yet exportable to a SIEM. Tests:
 `tests/test_enterprise_policy.py`; 11/11 guard mutations killed.
+
+## D181 — Ideate, Jev in the workspace, and handoff as the Multiplayer seed
+
+Date: 16 October 2026. Owner direction: build the brain, plan, ideate and
+multiplayer parts of the end-to-end plan (ROADMAP "Owner build order").
+
+- **Ideate** (MP3 Phase 10): 2-4 approaches, each with assumptions and
+  unknowns, recorded in the brief. "Plan this" sends the chosen approach as
+  tainted data (`chosen_approach`); the trusted goal stays what the user
+  typed. The Plan tab names the Brain memories a plan was made with
+  (Phase 9 retrieval provenance).
+- **Jev in the workspace**: one request per message. A suggestion (research,
+  ideate, plan) is shown as a one-tap chip and never acted on -- research in
+  particular would send the message to a search engine, which only the user
+  may decide. A verdict per memory candidate can only lower it (a confident
+  secret is dropped; anything not lasting stays session-scoped). Floor 0.8,
+  provisional. The Brain's own rule also refuses logins and passphrases.
+- **Handoff** (Unified Plan 4.2, YC RFS Multiplayer; build-order "Shared Plan
+  -> Handoffs"): a file in Downloads holding goal, steps and research sources,
+  scrubbed (D180) -- never the conversation, memories, point references or
+  screen text. The receiver's workspace records it as an assistant turn and
+  loads the plan as revision 1, only into a topic without a plan; it never
+  becomes the receiver's goal or any authority. Closed shape, https sources,
+  32 KB cap. Live shared sessions, presence and workstreams are not built:
+  they need a sync service and a D017 decision first.
+- **Act from the workspace** stays refused until the Act activation review
+  is READY.
