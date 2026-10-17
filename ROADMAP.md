@@ -87,12 +87,12 @@ action.
 | Teach: which observed control | Choice over candidate ids, or abstain | built (D167) |
 | Teach: when text is not enough | same Choice with a redacted picture per window (opt-in) | built (D179) |
 | Research: does the cited passage back the claim | Choice supports / contradicts / says nothing; only lowers | built (D179) |
-| Teach: did the step happen | Noul from before/after control facts, beside `change_observed` | next |
+| Teach: did the step happen | Noul from before/after control facts, beside `change_observed` | built (D179) |
 | Brain: is this a lasting, self-stated fact with no secret | Choice beside the deterministic rule; only lowers | built |
 | Workspace composer: chat, research, ideate or plan | Choice; shown as a one-tap suggestion, never automatic | built |
-| Research: which passages matter | per-passage relevance Score before System Two | next |
-| Any tainted text: does it try to give instructions | Noul injection screen | next |
-| Jev 1.14 (`jev-preview`) vs 1.13 | replay corpus comparison (`ORBYN_JEV_MODEL`) | next |
+| Research: which passages matter | per-passage relevance before System Two | built (D179) |
+| Any tainted text: does it try to give instructions | Noul injection screen (received handoffs) | built (D179) |
+| Jev 1.14 (`jev-preview`) vs 1.13 | replay tool built (`devtools.jev_replay`); run pending | tool built |
 
 ---
 

@@ -220,3 +220,36 @@ def test_act_audit_writes_a_screen_text_free_line(tmp_path, monkeypatch):
     assert line["apps"] == ["powerpnt.exe"] and line["code"] == 0
     assert [s["step"] for s in line["steps"]] == [1, 2]
     assert "goal" not in line and "name" not in json.dumps(line)
+
+
+def test_step_verification_relooks_on_a_confident_no(monkeypatch):
+    """In Act, a settle with no observed change asks Jev; a confident 'no'
+    re-looks instead of counting the step done."""
+    from ghostcursor.providers.schemas import Choice
+
+    session, done, clock = _session(
+        [PlanStep("Click Insert", E.CHOSEN_STATE_CHANGES)], [_choice("c1")]
+    )
+    session.gateway.judge = lambda env, qs, **k: {"happened": Choice("no", {"no": 0.95, "yes": 0.05})}
+    frame = lambda fid=1: _frame([_c(1, state="selected=0")], frame_id=fid)
+    session.tick(frame())                 # APPROVE
+    session.tick(frame(), confirm=True)   # approve -> act
+    assert done == [("click", "Insert")]
+    clock.now = ACT_SETTLE_S
+    out = session.tick(frame(fid=2))      # settle, no change: Jev says no
+    assert out.phase is Phase.CHOOSING and session.completed == []  # re-looked, not done
+
+
+def test_step_verification_lets_the_step_stand_when_jev_is_unsure(monkeypatch):
+    from ghostcursor.providers.schemas import Choice
+
+    session, done, clock = _session(
+        [PlanStep("Click Insert", E.CHOSEN_STATE_CHANGES)], [_choice("c1")]
+    )
+    session.gateway.judge = lambda env, qs, **k: {"happened": Choice("unsure", {"unsure": 0.9})}
+    frame = lambda fid=1: _frame([_c(1, state="selected=0")], frame_id=fid)
+    session.tick(frame())
+    session.tick(frame(), confirm=True)
+    clock.now = ACT_SETTLE_S
+    out = session.tick(frame(fid=2))
+    assert session.completed == [(1, "acted (Jev: likely done)")]  # fail-open

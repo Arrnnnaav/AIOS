@@ -238,6 +238,53 @@ class ModelTeachSession:
 
     # --- requests (worker side) ----------------------------------------
 
+    def _verify_says_no(self, step, frame: ObservationFrame) -> bool:
+        """Jev's verdict on whether an acted step took effect (D179). True only
+        on a confident 'no'; fail-open (False) on unsure, yes, or any error, so
+        a verification outage never stalls Act."""
+
+        judge = getattr(self.gateway, "judge", None)
+        if judge is None:
+            return False
+        current = resolve(self._chosen, frame)
+        after = (
+            "the control is gone"
+            if current is None
+            else (f"state={current.state or '(none)'} focused={current.focused}")
+        )
+        before = (
+            f"state={self._chosen.state or '(none)'} focused={self._chosen.focused}"
+        )
+        envelope = Envelope(
+            task="verify",
+            trusted={
+                "ask": "Given the control's before and after, did the step happen?"
+            },
+            tainted={
+                "step": Tainted.of("model_plan_step", step.instruction),
+                "before": Tainted.of("uia_state", before),
+                "after": Tainted.of("uia_state", after),
+            },
+        )
+        try:
+            verdict = judge(
+                envelope,
+                {
+                    "happened": (
+                        "Did the step in `step` take effect, judging by `before` vs "
+                        "`after`?",
+                        {
+                            "yes": "it took effect",
+                            "no": "it did not",
+                            "unsure": "cannot tell",
+                        },
+                    )
+                },
+            )["happened"]
+        except Exception:
+            return False
+        return verdict.choice == "no" and verdict.probabilities.get("no", 0.0) >= 0.8
+
     def _envelope(self, frame: ObservationFrame, **extra) -> Envelope:
         tainted = {"frame": frame.model_view(), **extra}
         trusted = {"goal": self.goal}
@@ -417,7 +464,7 @@ class ModelTeachSession:
                 name = (current.name or "").casefold()
                 if any(d and d in name for d in self.deny):
                     self._block(
-                        f"step {self.step + 1} would act on \"{current.name}\", "
+                        f'step {self.step + 1} would act on "{current.name}", '
                         "which you told Orbyn not to touch"
                     )
                     return Display(self.phase, self.message)
@@ -436,13 +483,24 @@ class ModelTeachSession:
             observed = change_observed(
                 step.expected_change, self._chosen, self._before, frame
             )
+            settle_why = "acted (no change seen)"
+            if settled and not observed and not confirm and self.act is not None:
+                # Step-verification (D179): no deterministic change was seen, so
+                # ask Jev whether the step actually happened. A confident "no"
+                # re-looks instead of counting a false completion; anything else
+                # (yes, unsure, Jev down) lets the settle stand (fail-open).
+                if getattr(self.gateway, "judge", None) is not None:
+                    if self._verify_says_no(step, frame):
+                        self._reask("the step did not take effect")
+                        return Display(self.phase, self.message)
+                    settle_why = "acted (Jev: likely done)"
             if confirm or observed or settled:
                 why = (
                     "you confirmed"
                     if confirm
                     else f"observed {step.expected_change.value}"
                     if observed
-                    else "acted (no change seen)"
+                    else settle_why
                 )
                 self.completed.append((self.step + 1, why))
                 self._advance()
