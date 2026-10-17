@@ -106,3 +106,29 @@ maintaining knowledge graph), **Hyperspell**, **Mem0**, **Glen**.
 - **Act through UI Automation invoke/value patterns instead of the mouse.** A
   safety classifier stopped this twice as it reads like covert automation;
   Act stays on the visible mouse unless the owner explicitly directs otherwise.
+
+## Addendum: apps already installed on this machine (no login)
+
+Scanned local installs; reconstructable Electron apps and their relevance:
+
+**Antigravity 2.9.1 (Google, "Agentic Desktop Application")** — REA + asar
+extract. Windsurf/Codeium architecture: a thin Electron host (`dist/main.js`,
+34 exposed API members, 66 IPC ops, a `hostBridgeServer` over connect-rpc/gRPC
+with a compiled `host_bridge` proto) that bridges native capabilities to a
+separate Gemini agent core reached at `daily-cloudcode-pa.googleapis.com`.
+Bundles **chrome-devtools-mcp** — browser control through the Chrome DevTools
+Protocol as an MCP server, a clean documented path for "work in the browser"
+instead of pixel/UIA. Takeaway for Orbyn: a local host-bridge that exposes
+native capability to the agent core is exactly the harness shape; CDP-over-MCP
+is a better browser-control rung than screen pixels.
+
+- **OpenAI Codex** — native Rust (`codex.exe` 341 MB, plus a
+  `codex-code-mode-host` and a `codex-windows-sandbox-setup`): a sandboxed
+  command/tool host. Deep analysis needs Ghidra/IDA (not installed).
+- **Claude desktop, Ollama** — present; Claude has no reconstructable asar here.
+- Obsidian, Discord, others — not in scope.
+
+Convergent architecture across Amoeba, Antigravity, HeyClicky, Dodaios: a
+native host + a separate agent core, connected by a local RPC/MCP bridge, with
+computer/browser control behind a consent gate. Orbyn's harness is the same
+shape; the gaps are the browser-via-CDP rung and the MCP tool surface.
