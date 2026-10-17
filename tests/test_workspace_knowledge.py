@@ -340,3 +340,20 @@ def test_clip_to_brain_captures_clipboard_as_owner_reviewed_candidate(tmp_path):
         raise OSError("clipboard locked")
     assert ws.clip_to_brain(read=boom) == "could not read the clipboard"
     k.close()
+
+
+def test_clip_to_brain_truncates_an_over_length_clip(tmp_path):
+    from ghostcursor.workspace.brain import Brain
+    from ghostcursor.workspace.session import Workspace
+
+    k = Knowledge(tmp_path / "k.sqlite")
+    ws = Workspace(
+        "t", object(), Brain(tmp_path / "b.sqlite"),
+        root=tmp_path / "briefs", knowledge=k, kb_scope="default",
+    )
+    huge = "word " * 5000  # ~25k chars
+    ws.clip_to_brain(read=lambda: huge)
+    cand = k.list(scope="default", status="candidate")
+    assert len(cand) == 1
+    assert len(cand[0].text) <= ws.MAX_CLIP_CHARS < len(huge)  # truncated
+    k.close()
