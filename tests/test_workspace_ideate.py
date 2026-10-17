@@ -106,3 +106,12 @@ def test_the_page_reads_plan_memories_without_touching_sqlite(tmp_path):
         state = other.submit(app.state).result()
     assert state["plan_memories"] == ["prefers dark slides"]
     app.close()
+
+
+def test_a_matching_app_guide_rides_along_in_the_plan_request(ws):
+    ws.discuss("Build me a 10-slide PowerPoint deck")
+    assert ws.make_plan() == PLAN
+    sent = ws.gateway.envelopes[-1]
+    guidance = sent.trusted.get("app_guidance")
+    assert guidance and guidance[0]["app"] == "powerpoint"
+    assert "New Slide" in guidance[0]["notes"]

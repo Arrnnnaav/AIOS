@@ -470,6 +470,13 @@ class Workspace:
             context["chosen_approach"] = Tainted.of(
                 "model_idea", self.ideas[idea - 1].as_text()
             )
+        from ghostcursor.workspace import skills
+
+        guides = skills.relevant(self.goal + " " + " ".join(i.title for i in self.ideas))
+        if guides:
+            trusted["app_guidance"] = [
+                {"app": name, "notes": body} for name, body in guides
+            ]
         envelope = Envelope(task="teach", trusted=trusted, tainted=context)
         try:
             plan = self.gateway.plan(envelope)
