@@ -284,7 +284,9 @@ def drive_live(
         say(f"[drive] {did}")
 
     def stopped():
-        return stop() or _escape_pressed() or time.monotonic() >= deadline
+        # The real ESC key is read only on the live path; a test injecting
+        # _observe must not depend on the machine's keyboard state.
+        return stop() or (live and _escape_pressed()) or time.monotonic() >= deadline
 
     try:
         return drive_until(
