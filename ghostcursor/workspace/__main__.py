@@ -13,6 +13,8 @@ Type to discuss. Commands:
   /plan edit <n> <text> | drop <n> | add <text>
                     edit the plan; each edit is a new proposal
   /teach <n> [s]    guide plan step n onward on screen for s seconds (default 300)
+  /know [add <source> | <text> | list | review <id> | approve <id> |
+        retire <id> | supersede <old> <new> | conflicts | recall <q>]  org facts
   /brain [list | search <q> | forget <id> | correct <id> <text> |
           pause | resume | export <file> | erase]
   /stats            counts from this machine's records (no text)
@@ -149,6 +151,82 @@ def brain_command(brain: Brain, args: list[str]) -> str:
     return __doc__.split("/brain", 1)[1].split("/act")[0].strip()
 
 
+KNOW_USAGE = (
+    "usage: /know add <source> | <text>  |  list [status]  |  review <id>  |  "
+    "approve <id>  |  retire <id>  |  verify <id>  |  supersede <old> <new>  |  "
+    "relate <subject> | <predicate> | <object> | <source>  |  "
+    "review-edge <id>  |  conflicts  |  recall <query>"
+)
+
+
+def know_command(knowledge, scope: str, args: list[str]) -> str:
+    """Company Brain owner review from the console (D186): add candidates,
+    review/approve/retire/supersede facts, add and review relations, see
+    conflicts, and test recall. An ``id`` is a fact's fid (an edge's eid for
+    review-edge). Candidates are not usable until reviewed."""
+
+    verb = args[0] if args else "list"
+    rest = " ".join(args[1:])
+
+    def fid(n):
+        return int(n) if n.isdigit() else None
+
+    if verb == "add" and "|" in rest:
+        source, _, text = rest.partition("|")
+        try:
+            f = knowledge.add_candidate(
+                text.strip(), source=source.strip(), scope=scope
+            )
+        except ValueError as exc:
+            return str(exc)
+        return f"candidate #{f.fid} added (not usable until you review it)"
+    if verb == "list":
+        status = args[1] if len(args) > 1 else None
+        rows = knowledge.list(scope=scope, status=status)
+        return (
+            "\n".join(
+                f"#{f.fid} [{f.status}] {f.text}  <- {f.source}"
+                + (f" (-> #{f.superseded_by})" if f.superseded_by else "")
+                for f in rows
+            )
+            or "(no facts)"
+        )
+    if verb in ("review", "approve", "retire", "verify") and len(args) == 2:
+        n = fid(args[1])
+        if n is None or knowledge.get(n) is None:
+            return "no such fact"
+        getattr(knowledge, verb)(n)
+        return f"#{n} {knowledge.get(n).status}"
+    if verb == "supersede" and len(args) == 3 and fid(args[1]) and fid(args[2]):
+        try:
+            f = knowledge.supersede(int(args[1]), int(args[2]))
+        except ValueError as exc:
+            return str(exc)
+        return "no such fact" if f is None else f"#{args[1]} superseded by #{args[2]}"
+    if verb == "relate" and rest.count("|") == 3:
+        subject, predicate, obj, source = (p.strip() for p in rest.split("|"))
+        try:
+            e = knowledge.relate(subject, predicate, obj, source=source, scope=scope)
+        except ValueError as exc:
+            return str(exc)
+        return f"edge #{e.eid} added (candidate; review-edge {e.eid} to use it)"
+    if verb == "review-edge" and len(args) == 2 and fid(args[1]):
+        e = knowledge.review_edge(int(args[1]))
+        return "no such edge" if e is None else f"edge #{args[1]} {e.status}"
+    if verb == "conflicts":
+        pairs = knowledge.conflicts(scope)
+        return (
+            "\n".join(f"#{a.fid} <> #{b.fid}: {a.text}  ||  {b.text}" for a, b in pairs)
+            or "(no conflicts)"
+        )
+    if verb == "recall" and rest:
+        hits = knowledge.recall(rest, scope)
+        return (
+            "\n".join(f"#{f.fid} {f.text}  <- {f.source}" for f in hits) or "(nothing)"
+        )
+    return KNOW_USAGE
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     if len(argv) != 1:
@@ -276,6 +354,10 @@ def main(argv: list[str] | None = None) -> int:
                     print(f"{name}: {value}")
             elif command == "/brain":
                 print(brain_command(brain, rest.split()))
+            elif command == "/know":
+                print(
+                    know_command(workspace.knowledge, workspace.kb_scope, rest.split())
+                )
             elif command == "/agent":
                 parts = rest.split(maxsplit=1)
                 verb = parts[0] if parts else "list"

@@ -165,3 +165,36 @@ def test_fts_backfills_a_db_written_before_the_index_existed(tmp_path):
     k = Knowledge(path)
     assert [f.fid for f in k.recall("billing", "acme")] == [1]
     k.close()
+
+
+def test_know_command_owner_review_path(tmp_path):
+    """The /know console path: add makes a candidate (not recalled), review
+    makes it usable, supersede/conflicts/recall work, bad input is refused."""
+
+    from ghostcursor.workspace.__main__ import know_command
+
+    k = Knowledge(tmp_path / "k.sqlite")
+    scope = "default"
+    run = lambda *a: know_command(k, scope, list(a))
+
+    assert "candidate #1" in run("add", "runbook", "|", "Prod is in us-east-1.")
+    assert run("recall", "prod region") == "(nothing)"  # candidate not recalled
+    assert run("review", "1").endswith("reviewed")
+    assert "us-east-1" in run("recall", "prod region")  # now usable
+    assert run("review", "99") == "no such fact"
+    assert run("add", "runbook").startswith("usage")  # no '|' -> usage
+
+    run("add", "doc", "|", "Prod is in us-west-2.")
+    run("approve", "2")
+    assert "superseded by #2" in run("supersede", "1", "2")
+    assert "#2" in run("recall", "prod") and "#1 " not in run("recall", "prod")
+
+    run("add", "a", "|", "The DB is encrypted at rest.")
+    run("add", "b", "|", "The DB is not encrypted at rest.")
+    run("review", "3")
+    run("review", "4")
+    assert "#3 <> #4" in run("conflicts")
+
+    assert "edge #1 added" in run("relate", "Acme", "|", "uses", "|", "PG", "|", "doc")
+    assert run("review-edge", "1").endswith("reviewed")
+    k.close()
