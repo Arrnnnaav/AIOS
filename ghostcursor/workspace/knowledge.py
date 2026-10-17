@@ -104,6 +104,15 @@ def _words(text: str) -> set[str]:
     return set(re.findall(r"[a-z0-9]{2,}", text.casefold()))
 
 
+def _jaccard(a: set[str], b: set[str]) -> float:
+    """Word-set overlap, 0..1. Used for ingest dedup (no embeddings: offline,
+    deterministic). 1.0 = same words; near-1.0 = near-identical wording."""
+
+    if not a or not b:
+        return 0.0
+    return len(a & b) / len(a | b)
+
+
 def _fts_query(query: str) -> str | None:
     """A safe FTS5 MATCH string: the query's alnum terms OR-ed together (any
     term may match, ranked by BM25). None when the query has no usable term,
@@ -169,6 +178,56 @@ class Knowledge:
                 "INSERT INTO facts_fts(rowid, text) VALUES (?,?)", (cur.lastrowid, text)
             )
         return self.get(cur.lastrowid)
+
+    #: Two incoming texts this similar (word Jaccard) are the same fact, so the
+    #: second is not added again. High on purpose: only near-identical wording
+    #: is a duplicate; a changed value is a new candidate for the owner to judge.
+    DUP_THRESHOLD = 0.85
+
+    def ingest(
+        self,
+        texts,
+        *,
+        source: str,
+        scope: str,
+        sensitivity: str = "normal",
+    ) -> list[tuple[str, int]]:
+        """Connector ingestion (Mem0's two-phase extract-then-reconcile, made
+        owner-safe): each text that is not already present is added as a
+        CANDIDATE; a near-duplicate of an existing fact or candidate in the
+        scope is skipped (noop). Unlike Mem0, ingestion never updates or
+        deletes an existing fact -- that stays the owner's decision (review,
+        supersede, retire). Returns (action, fid) per input: 'added' with the
+        new fid, 'duplicate' with the existing fid, or 'skipped' with 0."""
+
+        existing = [
+            f for f in self.list(scope=scope) if f.status != "retired"
+        ]  # dedup against live candidates and facts, not retired history
+        results: list[tuple[str, int]] = []
+        for text in texts:
+            norm = " ".join(str(text).split())
+            words = _words(norm)
+            if not norm or not words:
+                results.append(("skipped", 0))
+                continue
+            match = max(
+                existing,
+                key=lambda f: _jaccard(words, _words(f.text)),
+                default=None,
+            )
+            if match and _jaccard(words, _words(match.text)) >= self.DUP_THRESHOLD:
+                results.append(("duplicate", match.fid))
+                continue
+            try:
+                f = self.add_candidate(
+                    norm, source=source, scope=scope, sensitivity=sensitivity
+                )
+            except ValueError:
+                results.append(("skipped", 0))
+                continue
+            existing.append(f)  # later inputs dedup against it too
+            results.append(("added", f.fid))
+        return results
 
     def supersede(self, old_fid: int, by_fid: int) -> Fact | None:
         """A newer fact replaces an older one (Graphiti's invalidate, never

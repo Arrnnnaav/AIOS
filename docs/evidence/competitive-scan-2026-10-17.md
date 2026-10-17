@@ -205,3 +205,20 @@ Antigravity). The memory systems above are cloud SaaS or Python libraries with
 no local binary to unpack, so they were read from public docs/papers. REA is
 not connected in the session that did this hardening; it is re-run whenever a
 feature needs a proprietary binary opened and REA is reachable.
+
+### Feature: Company Brain ingestion (per-feature REA/source loop, 17 Oct 2026)
+
+Comparable is open-source (read the source/docs, not REA — REA is for binaries):
+
+- **Mem0 update phase** — LLM-driven: newly extracted memories are compared to
+  the most-similar stored memory and the model picks ADD/UPDATE/DELETE/NONE,
+  editing or deleting existing memories directly (mem0 docs; architecture
+  write-ups). Operations are tool calls the LLM chooses.
+- **Decision (rejected by design):** Orbyn does NOT let ingestion update or
+  delete an existing fact. Ingestion has no execution authority and produces
+  CANDIDATES only; update/supersede/retire stay owner decisions. Auto-LLM-edit
+  would break that boundary.
+- **Adopted:** Mem0's two-phase *shape* (extract then reconcile) as a
+  deterministic, offline dedup: `ingest()` adds each new text as a candidate
+  and skips a near-duplicate (word-Jaccard >= 0.85) of an existing fact or
+  candidate in the same scope. No embeddings, no model, owner-safe.

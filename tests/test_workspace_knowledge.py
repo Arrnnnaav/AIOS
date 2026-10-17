@@ -198,3 +198,36 @@ def test_know_command_owner_review_path(tmp_path):
     assert "edge #1 added" in run("relate", "Acme", "|", "uses", "|", "PG", "|", "doc")
     assert run("review-edge", "1").endswith("reviewed")
     k.close()
+
+
+def test_ingest_dedups_but_never_edits_existing_facts(kn):
+    """Mem0's two-phase idea, owner-safe: a new text is added as a candidate,
+    a near-duplicate is a noop, and ingestion never touches existing facts'
+    status (no auto-update/delete -- that stays the owner's)."""
+
+    approved = kn.add_candidate("Prod runs in us-east-1.", source="doc", scope="acme")
+    kn.approve(approved.fid)
+
+    actions = kn.ingest(
+        [
+            "Prod runs in us-east-1.",          # exact dup of an approved fact -> noop
+            "Prod   runs in us-east-1.",        # whitespace-only diff -> still dup
+            "The office moved to Lisbon.",      # new -> candidate
+            "The office moved to Lisbon.",      # dup of the one just added this batch
+            "   ",                               # empty -> skipped
+        ],
+        source="wiki",
+        scope="acme",
+    )
+    kinds = [a for a, _ in actions]
+    assert kinds == ["duplicate", "duplicate", "added", "duplicate", "skipped"]
+    assert actions[0][1] == approved.fid  # duplicate points at the existing fact
+
+    # the approved fact is untouched; exactly one new candidate exists
+    assert kn.get(approved.fid).status == "approved"
+    cands = kn.list(scope="acme", status="candidate")
+    assert len(cands) == 1 and cands[0].text == "The office moved to Lisbon."
+    # ingestion is scope-isolated
+    assert kn.ingest(["Prod runs in us-east-1."], source="x", scope="beta") == [
+        ("added", cands[0].fid + 1)
+    ]
