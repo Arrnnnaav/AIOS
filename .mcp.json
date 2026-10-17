@@ -3,6 +3,10 @@
     "mslearn": {
       "type": "http",
       "url": "https://learn.microsoft.com/api/mcp"
+    },
+    "rea": {
+      "command": "npx",
+      "args": ["-y", "rea-agents@6.5.0", "--mcp"]
     }
   }
 }
