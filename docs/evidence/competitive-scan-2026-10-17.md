@@ -222,3 +222,20 @@ Comparable is open-source (read the source/docs, not REA — REA is for binaries
   deterministic, offline dedup: `ingest()` adds each new text as a candidate
   and skips a near-duplicate (word-Jaccard >= 0.85) of an existing fact or
   candidate in the same scope. No embeddings, no model, owner-safe.
+
+### Feature: Agent creator pre-deploy eval (per-feature loop, 17 Oct 2026)
+
+Comparable is open-source / documented (read docs, not REA — the one local
+binary, Antigravity/Google ADK, has its agent logic minified, no useful
+source-maps, so nothing to mine there):
+
+- **Google ADK evaluation** — evaluate an agent BEFORE deployment: trajectory
+  matching (the tool calls the agent actually makes vs. an expected set),
+  final-response scoring, and safety scoring; a dropped guard step makes the
+  golden test fail. Run via pytest/CLI/CI.
+- **Adopted (deterministic, Orbyn-shaped):** `dry_run(spec, gateway)` plans the
+  agent's filled goal once and checks the plan is IN BOUNDS -- a plan exists,
+  it fits `max_steps`, and no step plans to use a control the deny list forbids
+  (the trajectory-vs-deny check). Shown at create time as "Tried it: ...".
+  Advisory (needs the model); `save()` still gates on the offline static test,
+  so a model outage never blocks deploying a sound spec.

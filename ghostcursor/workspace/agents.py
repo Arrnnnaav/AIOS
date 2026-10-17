@@ -176,6 +176,50 @@ def test_agent(spec: AgentSpec) -> list[str]:
     return issues
 
 
+def filled_goal(spec: AgentSpec, values: dict | None = None) -> str:
+    """The goal template with slots filled from ``values``; a missing slot is
+    left as ``{slot}`` text (never a crash), as use_agent does."""
+
+    class _Safe(dict):
+        def __missing__(self, key):
+            return "{" + key + "}"
+
+    return spec.goal_template.format_map(_Safe(values or {}))
+
+
+def dry_run(spec: AgentSpec, gateway, values: dict | None = None) -> list[str]:
+    """Pre-deploy eval (Google ADK's evaluate-before-deployment, as a
+    deterministic check): actually plan the agent's goal once and confirm the
+    plan is IN BOUNDS -- a plan is produced, it stays within ``max_steps``, and
+    no step plans to use a control the agent's deny list says it must never
+    touch (the trajectory-vs-deny check). Returns problems, empty if the agent
+    plans cleanly. Advisory: needs a model, so it is not part of save()."""
+
+    from ghostcursor.providers.envelope import Envelope
+
+    planner = getattr(gateway, "plan", None)
+    if planner is None:
+        return []  # no planner to vet against; advisory check is skipped
+    goal = filled_goal(spec, values)
+    try:
+        plan = planner(Envelope(task="teach", trusted={"goal": goal}, tainted={}))
+    except ProviderError as exc:
+        return [f"could not plan the goal ({exc.kind.value}); cannot vet it"]
+    if plan is None or not plan.steps:
+        return ["planning the goal produced no steps"]
+    issues = []
+    if len(plan.steps) > spec.max_steps:
+        issues.append(
+            f"the goal needs {len(plan.steps)} steps but the cap is {spec.max_steps}"
+        )
+    for n, step in enumerate(plan.steps, start=1):
+        words = set(re.findall(r"[a-z0-9]+", step.instruction.casefold()))
+        hit = next((d for d in spec.deny if d.casefold() in words), None)
+        if hit:
+            issues.append(f"step {n} plans to use {hit!r}, which it must never touch")
+    return issues
+
+
 def _dir(root: Path) -> Path:
     return Path(root) / "agents"
 

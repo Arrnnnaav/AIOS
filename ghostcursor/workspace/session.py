@@ -618,13 +618,20 @@ class Workspace:
             return None
         issues = agents.test_agent(spec)
         self.draft_agent = spec
-        self._say(
-            "assistant",
-            f"[agent draft] {spec.as_text()}"
-            + (
-                f"\nNeeds fixing: {'; '.join(issues)}" if issues else "\nReady to save."
-            ),
+        # Pre-deploy dry-run (ADK evaluate-before-deploy): plan the goal once and
+        # check it stays in bounds. Advisory -- it needs the model, and a model
+        # failure must not block drafting; save() still gates on the static test.
+        tried = (
+            agents.dry_run(spec, self.gateway)
+            if hasattr(self.gateway, "plan")
+            else None
         )
+        note = f"\nNeeds fixing: {'; '.join(issues)}" if issues else "\nReady to save."
+        if tried:
+            note += f"\nTried it: {'; '.join(tried)}"
+        elif tried == [] and not issues:
+            note += " Tried it: the goal plans within bounds."
+        self._say("assistant", f"[agent draft] {spec.as_text()}{note}")
         return spec
 
     def save_agent(self, spec=None):
@@ -656,12 +663,7 @@ class Workspace:
         from ghostcursor.workspace import agents
 
         spec = agents.load(self.root, name)
-
-        class _Safe(dict):
-            def __missing__(self, key):
-                return "{" + key + "}"
-
-        goal = spec.goal_template.format_map(_Safe(values or {}))
+        goal = agents.filled_goal(spec, values)
         self._say("user", goal)
         self.active_deny = spec.deny
         self._say(

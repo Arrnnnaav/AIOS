@@ -158,3 +158,47 @@ def test_the_app_drafts_saves_uses_and_deletes_an_agent(tmp_path):
         assert app.state()["agents"] == []
     finally:
         app.close()
+
+
+def test_dry_run_vets_the_plan_is_in_bounds():
+    """Pre-deploy dry-run (ADK evaluate-before-deploy): a plan that fits the
+    cap and touches no denied control passes; a too-long plan or one that plans
+    a denied control is flagged; a model failure is reported, not swallowed."""
+
+    from ghostcursor.providers import ExpectedChange, PlanStep, TeachPlan
+    from ghostcursor.providers.errors import FailureKind, ProviderError
+    from ghostcursor.workspace.agents import AgentSpec, dry_run, filled_goal
+
+    spec = AgentSpec(
+        name="deck-helper",
+        description="builds a deck",
+        goal_template="Make a deck about {topic}",
+        apps=("PowerPoint",),
+        skills=(),
+        deny=("Delete",),
+        max_steps=2,
+    )
+
+    def gw(steps):
+        class G:
+            def plan(self, envelope, **kw):
+                # the filled goal reaches the planner
+                assert "Make a deck about AI" in envelope.trusted["goal"]
+                return TeachPlan(
+                    tuple(PlanStep(s, ExpectedChange.CHOSEN_STATE_CHANGES) for s in steps)
+                )
+
+        return G()
+
+    assert filled_goal(spec, {"topic": "AI"}) == "Make a deck about AI"
+    assert dry_run(spec, gw(["Open PowerPoint", "Add a slide"]), {"topic": "AI"}) == []
+    too_long = dry_run(spec, gw(["a", "b", "c"]), {"topic": "AI"})
+    assert too_long and "cap is 2" in too_long[0]
+    denied = dry_run(spec, gw(["Click Delete on the slide", "Done"]), {"topic": "AI"})
+    assert denied and "Delete" in denied[0]
+
+    class Broken:
+        def plan(self, envelope, **kw):
+            raise ProviderError(FailureKind.UNAVAILABLE, "down")
+
+    assert "cannot vet" in dry_run(spec, Broken(), {"topic": "AI"})[0]
