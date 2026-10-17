@@ -1420,3 +1420,8 @@ to confirm where the cost actually is before changing anything else.
 
 - Pre-warm done: Listener.start() loads tiny.en in the background, moving ~7.8s of cold faster-whisper load off the first "Hey Bro" (warmed decode ~0.7s, measured).
 - Still deferred: a streaming keyword spotter (sherpa-onnx) for always-on, sub-second, lower-CPU detection of the custom phrase "Hey Bro". Needs a new dependency + a KWS model download; openWakeWord's pretrained models do not cover a custom phrase. Add on owner's go.
+
+## Act paste_text (tier-1 review of 9e49be1, 18 Oct 2026)
+- `act.py` paste_text: fixed 0.2s pre-restore wait is a race for slow apps; gate restore on a paste ack or make the wait configurable. (Non-blocking; ceiling noted in code + evidence.)
+- `act.py` get_clipboard_text handles only CF_UNICODETEXT; a non-text prior clipboard (image/files, CF_HDROP/CF_BITMAP) is cleared not restored. Capture/restore those later. (Non-blocking; documented ceiling.)
+- Restore-can-itself-raise: FIXED in follow-up commit (best-effort restore, swallow at restore time).

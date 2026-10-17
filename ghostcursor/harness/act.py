@@ -304,7 +304,11 @@ def perform(
             #            before we restore; a slow app could miss it -- raise it
             #            if that shows up, or gate restore on a paste ack.
         finally:
-            set_clip(saved)  # always restore, even if the paste raised
+            try:
+                set_clip(saved)  # always restore, even if the paste raised
+            except Exception:
+                pass  # a locked clipboard at restore time must not propagate
+                #       or mask the paste's own error (tier-1 review followup)
         return f"pasted {len(step.text)} characters"
     if action == "copy":
         send(chord_events("ctrl+c"))

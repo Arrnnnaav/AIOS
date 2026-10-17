@@ -339,3 +339,42 @@ def test_paste_text_is_refused_on_a_blocked_or_elevated_window():
             set_clip=clip_writes.append,
         )
     assert clip_writes == []  # nothing written to the clipboard
+
+
+def test_paste_text_restore_failure_does_not_mask_the_real_error():
+    """Tier-1 review followup: if restoring the clipboard itself fails, that
+    must not propagate or hide the paste's own error."""
+
+    target = _frame([_c(1, "Body", "Edit")]).candidates[0]
+    calls = {"n": 0}
+
+    def flaky_set(_text):
+        calls["n"] += 1
+        if calls["n"] == 2:  # the restore call
+            raise OSError("clipboard locked at restore")
+
+    # paste fails; restore also fails -> the ORIGINAL paste error surfaces
+    with pytest.raises(OSError, match="SendInput failed"):
+        act.perform(
+            PlanStep("Paste", E.CHOSEN_STATE_CHANGES, "paste_text", "x"),
+            target,
+            send=lambda e: (_ for _ in ()).throw(OSError("SendInput failed")),
+            click=lambda x, y: None,
+            pause=lambda s: None,
+            check=lambda x, y: None,
+            get_clip=lambda: "PRIOR",
+            set_clip=flaky_set,
+        )
+    # happy paste, restore fails -> still returns cleanly (error swallowed)
+    calls["n"] = 0
+    out = act.perform(
+        PlanStep("Paste", E.CHOSEN_STATE_CHANGES, "paste_text", "hi"),
+        target,
+        send=lambda e: None,
+        click=lambda x, y: None,
+        pause=lambda s: None,
+        check=lambda x, y: None,
+        get_clip=lambda: "PRIOR",
+        set_clip=flaky_set,
+    )
+    assert out == "pasted 2 characters"
