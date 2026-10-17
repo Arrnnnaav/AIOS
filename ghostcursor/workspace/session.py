@@ -236,6 +236,32 @@ def default_root() -> Path:
     return Path(base) / "GhostCursor" / "briefs"
 
 
+#: Per-request context budgets: every request is paid from the person's own
+#: plan or credit, so context stays small (the idea is Amoeba's 700-token cap).
+HISTORY_TOKENS = 3000
+MEMORY_TOKENS = 700
+
+
+def rough_tokens(text: str) -> int:
+    """Close enough for a budget: CJK scripts run about one token per
+    character, everything else about four characters per token."""
+
+    wide = sum(1 for c in text if "⺀" <= c <= "鿿" or "가" <= c <= "힯")
+    return wide + (len(text) - wide + 3) // 4
+
+
+def _within(items, budget: int) -> list:
+    """The newest items (by order) whose ``.text`` fits ``budget``."""
+
+    kept, spent = [], 0
+    for item in reversed(list(items)):
+        spent += rough_tokens(item.text)
+        if spent > budget and kept:
+            break
+        kept.append(item)
+    return kept[::-1]
+
+
 @dataclass
 class Workspace:
     topic: str
@@ -286,8 +312,8 @@ class Workspace:
         append_turn(self.root, self.topic, speaker, text)
 
     def _context(self, query: str) -> dict:
-        history = self.turns[-HISTORY_TURNS:]
-        used = self.brain.relevant(query)
+        history = _within(self.turns[-HISTORY_TURNS:], HISTORY_TOKENS)
+        used = _within(self.brain.relevant(query), MEMORY_TOKENS)
         self._used = tuple(m.mid for m in used)
         return {
             "conversation": [

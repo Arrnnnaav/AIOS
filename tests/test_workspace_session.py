@@ -243,3 +243,15 @@ def test_teach_seconds_must_be_finite_and_bounded():
     assert teach_seconds([]) == TEACH_SECONDS and teach_seconds(["60"]) == 60
     for bad in (["nan"], ["inf"], ["-5"], ["0"], ["x"], ["99999"]):
         assert teach_seconds(bad) is None
+
+
+def test_context_stays_within_its_token_budget():
+    from types import SimpleNamespace
+
+    from ghostcursor.workspace.session import _within, rough_tokens
+
+    assert rough_tokens("abcd" * 10) == 10 and rough_tokens("日本語") == 3
+    turns = [SimpleNamespace(text="x" * 400) for _ in range(50)]  # 100 tokens each
+    kept = _within(turns, 1000)
+    assert len(kept) == 10 and kept[-1] is turns[-1]  # the newest survive
+    assert _within([SimpleNamespace(text="y" * 99999)], 10)  # never empty
