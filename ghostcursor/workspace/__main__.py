@@ -157,6 +157,7 @@ def brain_command(brain: Brain, args: list[str]) -> str:
 KNOW_USAGE = (
     "usage: /know add <source> | <text>  |  ingest <path>  |  list [status]  |  review <id>  |  "
     "approve <id>  |  retire <id>  |  verify <id>  |  supersede <old> <new>  |  "
+    "export <path>  |  import <path>  |  "
     "relate <subject> | <predicate> | <object> | <source>  |  "
     "review-edge <id>  |  conflicts  |  recall <query>"
 )
@@ -284,6 +285,29 @@ def know_command(knowledge, scope: str, args: list[str]) -> str:
     if verb == "review-edge" and len(args) == 2 and fid(args[1]):
         e = knowledge.review_edge(int(args[1]))
         return "no such edge" if e is None else f"edge #{args[1]} {e.status}"
+    if verb == "export" and rest:
+        import json
+
+        data = knowledge.export_scope(scope)
+        Path(rest.strip()).write_text(
+            json.dumps(data, indent=1), encoding="utf-8", newline="\n"
+        )
+        return (
+            f"exported {len(data['facts'])} fact(s), {len(data['edges'])} relation(s) "
+            f"to {rest.strip()} (sensitive facts excluded)"
+        )
+    if verb == "import" and rest:
+        import json
+
+        try:
+            data = json.loads(Path(rest.strip()).read_text(encoding="utf-8"))
+            r = knowledge.import_scope(data, scope)
+        except (OSError, ValueError) as exc:
+            return f"could not import: {exc}"
+        return (
+            f"imported as candidates: {r['facts_added']} new, {r['facts_duplicate']} "
+            f"already known, {r['edges']} relation(s). Review before use: /know list candidate"
+        )
     if verb == "conflicts":
         pairs = knowledge.conflicts(scope)
         return (

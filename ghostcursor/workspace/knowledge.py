@@ -408,6 +408,71 @@ class Knowledge:
             self._db.execute("UPDATE edges SET status='reviewed' WHERE eid=?", (eid,))
         return self.edge(eid)
 
+    # --- offline team sharing (export / import) -------------------------
+
+    def export_scope(self, scope: str, *, include_sensitive: bool = False) -> dict:
+        """A shareable snapshot of ``scope``: usable facts and reviewed edges
+        with their provenance, for the owner's "offline files first" sharing.
+        Sensitive facts are left out unless asked for, so sharing cannot leak
+        them by accident. Candidates and retired/superseded facts are omitted."""
+
+        facts = [
+            {
+                "text": f.text,
+                "source": f.source,
+                "sensitivity": f.sensitivity,
+                "valid_from": f.valid_from,
+                "valid_until": f.valid_until,
+            }
+            for f in self.list(scope=scope)
+            if f.status in USABLE
+            and (include_sensitive or f.sensitivity != "sensitive")
+        ]
+        rows = self._db.execute(
+            "SELECT * FROM edges WHERE scope=? AND status='reviewed' ORDER BY eid",
+            (scope,),
+        )
+        edges = [
+            {"subject": e.subject, "predicate": e.predicate, "object": e.object,
+             "source": e.source}
+            for e in (Edge(*r) for r in rows)
+        ]  # fmt: skip
+        return {"version": 1, "scope": scope, "facts": facts, "edges": edges}
+
+    def import_scope(self, data: dict, scope: str) -> dict:
+        """Load a snapshot into ``scope`` as CANDIDATES (a teammate's facts are
+        untrusted until this owner reviews them, like a received mission).
+        Near-duplicates are skipped; relations come in as candidate edges.
+        Returns counts; raises ValueError on a snapshot it does not understand."""
+
+        if not isinstance(data, dict) or data.get("version") != 1:
+            raise ValueError("not a Company Brain export (version 1)")
+        added = dup = edges = 0
+        for item in data.get("facts", []):
+            if not isinstance(item, dict) or not str(item.get("text", "")).strip():
+                continue
+            sensitivity = item.get("sensitivity")
+            ((action, _fid),) = self.ingest(
+                [item["text"]],
+                source=f"shared: {item.get('source', 'unknown')}",
+                scope=scope,
+                sensitivity=sensitivity if sensitivity in SENSITIVITIES else "normal",
+            )
+            added += action == "added"
+            dup += action == "duplicate"
+        for e in data.get("edges", []):
+            if not isinstance(e, dict):
+                continue
+            try:
+                self.relate(
+                    e.get("subject", ""), e.get("predicate", ""), e.get("object", ""),
+                    source=f"shared: {e.get('source', 'unknown')}", scope=scope,
+                )  # fmt: skip
+                edges += 1
+            except ValueError:
+                continue
+        return {"facts_added": added, "facts_duplicate": dup, "edges": edges}
+
     def neighbors(self, entity: str, scope: str) -> list[Edge]:
         """Reviewed edges in ``scope`` touching ``entity`` (as subject or
         object), for retrieval that follows connected entities, not just word

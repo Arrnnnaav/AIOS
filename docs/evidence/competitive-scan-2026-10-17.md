@@ -307,3 +307,13 @@ owner's review is the gate that decides whether clipboard content ever reaches
 a model. No input is synthesized (the no-input-synthesis scan stays green);
 nothing leaves the machine (D179 unaffected). Independent tier-1 review to
 follow because capturing arbitrary clipboard text is a new privacy surface.
+
+### Feature: Company Brain offline team sharing (export/import, 18 Oct 2026)
+
+The owner's "offline files first, cloud sync later" for shared knowledge. A
+scope exports to a JSON snapshot of its usable facts and reviewed relations
+with provenance; sensitive facts are excluded so sharing cannot leak them.
+Importing loads them into another Brain as CANDIDATES -- a teammate's facts are
+untrusted until this owner reviews them, exactly like a received mission
+handoff -- deduped against what is already there. No network, no cloud; just a
+file. /know export <path> and /know import <path>.

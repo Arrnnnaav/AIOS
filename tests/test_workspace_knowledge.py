@@ -357,3 +357,60 @@ def test_clip_to_brain_truncates_an_over_length_clip(tmp_path):
     assert len(cand) == 1
     assert len(cand[0].text) <= ws.MAX_CLIP_CHARS < len(huge)  # truncated
     k.close()
+
+
+def test_export_then_import_shares_facts_as_reviewable_candidates(tmp_path):
+    """Offline team sharing: export a scope's usable facts/edges (no sensitive
+    ones), import them into another Brain as CANDIDATES a new owner must review
+    before trusting -- a teammate's facts are not auto-trusted."""
+
+    a = Knowledge(tmp_path / "a.sqlite")
+    f1 = a.add_candidate("Deploys run on Fridays.", source="runbook", scope="team")
+    a.approve(f1.fid)
+    secret = a.add_candidate(
+        "Root password is hunter2.", source="vault", scope="team", sensitivity="sensitive"
+    )
+    a.approve(secret.fid)
+    a.add_candidate("A draft nobody reviewed.", source="x", scope="team")  # candidate
+    e = a.relate("Team", "deploys", "Fridays", source="runbook", scope="team")
+    a.review_edge(e.eid)
+
+    snap = a.export_scope("team")
+    texts = {f["text"] for f in snap["facts"]}
+    assert texts == {"Deploys run on Fridays."}  # usable only; sensitive + candidate excluded
+    assert len(snap["edges"]) == 1
+
+    b = Knowledge(tmp_path / "b.sqlite")
+    r = b.import_scope(snap, "team")
+    assert r == {"facts_added": 1, "facts_duplicate": 0, "edges": 1}
+    # imported as a CANDIDATE, not usable until reviewed, provenance preserved
+    assert b.recall("deploys", "team") == []
+    cand = b.list(scope="team", status="candidate")
+    assert len(cand) == 1 and cand[0].source == "shared: runbook"
+    # re-import dedups
+    assert b.import_scope(snap, "team")["facts_duplicate"] == 1
+
+    import pytest as _p
+    with _p.raises(ValueError):
+        b.import_scope({"nope": True}, "team")
+    a.close()
+    b.close()
+
+
+def test_know_export_import_console_roundtrip(tmp_path):
+    from ghostcursor.workspace.__main__ import know_command
+
+    src = Knowledge(tmp_path / "src.sqlite")
+    f = src.add_candidate("Office is in Lisbon.", source="wiki", scope="default")
+    src.approve(f.fid)
+    path = str(tmp_path / "brain.json")
+    out = know_command(src, "default", ["export", path])
+    assert "1 fact(s)" in out
+
+    dst = Knowledge(tmp_path / "dst.sqlite")
+    out = know_command(dst, "default", ["import", path])
+    assert "1 new" in out
+    assert dst.list(scope="default", status="candidate")[0].text == "Office is in Lisbon."
+    assert "could not import" in know_command(dst, "default", ["import", str(tmp_path / "no.json")])
+    src.close()
+    dst.close()
