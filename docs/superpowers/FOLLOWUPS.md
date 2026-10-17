@@ -1406,3 +1406,12 @@ to confirm where the cost actually is before changing anything else.
 - Scrub now masks unbroken 24+ char mixed-case words (`PowerPointPresentationWindowFrame`); measure whether it hurts grounding.
 - Short env secrets (`DB_PASSWORD=prod_admin_secret_2024`, under 24 chars) were never masked; needs a key=value rule.
 - Brain dedup: a restatement keeps the old origin; a promoted copy leaves the session copy beside it (review of b906949).
+
+## D182 Act / assistant follow-ups (competitive scan 17 Oct 2026; docs/evidence/competitive-scan-2026-10-17.md)
+
+- Jev drive_until: a goal-only single-window loop with typed statuses (done/handed_back/needs_text/blocked/max_steps), built on ModelTeachSession. After the harness is measured.
+- Faster offline wake word (sherpa-onnx or openWakeWord) to replace the Whisper loudness loop; measure accuracy + CPU before adding the dependency.
+- Claude subscription via the installed `claude` CLI (Dodaios pattern). BUSINESS RISK: breaks Anthropic third-party-login terms, may ban the user's account. Owner decision only; API key path already works.
+- Multiplayer takeover + live sync (Amoeba `@coord`): hidden-ref snapshots, three-way apply, cross-machine approval gate. Needs a sync service and a D017 decision.
+- Act via UIA invoke/value patterns rather than the mouse: refused twice by a safety classifier as covert-looking. Stays on the visible mouse unless the owner directs otherwise.
+- GrayPass idea: confirm who is behind a sensitive Act (not just that the plan was approved) before send/pay/delete.
