@@ -239,3 +239,22 @@ source-maps, so nothing to mine there):
   (the trajectory-vs-deny check). Shown at create time as "Tried it: ...".
   Advisory (needs the model); `save()` still gates on the offline static test,
   so a model outage never blocks deploying a sound spec.
+
+### Feature: BYOK account transparency (per-feature loop, 18 Oct 2026)
+
+REA on the one local comparable (Cluely, app.asar) shows a Clerk-hosted auth
+stack (APIKeyModal, APIKeys pages, Checkout/Billing) -- i.e. Cluely bills
+centrally through its own backend. Orbyn's model is the opposite and better for
+the user: the harness runs on the PERSON'S own ChatGPT/Anthropic account or
+keys (BYOK), nothing billed centrally. So nothing to copy from Cluely's billing;
+the gap was that a BYOK user could not see their own account was in use.
+
+- Already sound (verified, not rebuilt): ChatGPT PKCE sign-in with refresh-
+  token rotation (refreshed 60s before expiry), keys in Windows Credential
+  Manager (never in files), and own-accounts-first provider order with
+  fall-through on rate limit.
+- Added: the gateway remembers which provider answered last (`last_provider`),
+  and a console `/providers` command shows who powers the harness -- ChatGPT
+  signed-in state, which providers could answer now (own accounts first), and
+  who answered last -- plus `/providers signin|signout`. Keys are still set in
+  the app, never echoed in the terminal.

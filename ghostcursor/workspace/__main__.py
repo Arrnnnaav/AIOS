@@ -13,6 +13,7 @@ Type to discuss. Commands:
   /plan edit <n> <text> | drop <n> | add <text>
                     edit the plan; each edit is a new proposal
   /teach <n> [s]    guide plan step n onward on screen for s seconds (default 300)
+  /providers [signin | signout]   who powers the harness (your accounts first)
   /know [add <source> | <text> | list | review <id> | approve <id> |
         retire <id> | supersede <old> <new> | conflicts | recall <q>]  org facts
   /brain [list | search <q> | forget <id> | correct <id> <text> |
@@ -157,6 +158,41 @@ KNOW_USAGE = (
     "relate <subject> | <predicate> | <object> | <source>  |  "
     "review-edge <id>  |  conflicts  |  recall <query>"
 )
+
+
+def providers_status(gateway, args: list[str]) -> str:
+    """BYOK transparency (D182): who powers the harness. ``signin`` starts
+    Sign in with ChatGPT; ``signout`` ends it; no arg shows status -- which
+    account is in, which providers could answer now (own accounts first), and
+    which one answered last. Keys are set in the app, never echoed here."""
+
+    from ghostcursor.providers import chatgpt
+
+    verb = args[0] if args else "status"
+    if verb == "signin":
+        try:
+            chatgpt.sign_in()
+            return "signed in to ChatGPT"
+        except Exception as exc:  # SignInError, network, timeout
+            return f"sign-in failed: {exc}"
+    if verb == "signout":
+        chatgpt.sign_out()
+        return "signed out of ChatGPT"
+    avail = gateway.available()
+    ready = [n for n, ok in avail.items() if ok]
+    lines = [
+        "ChatGPT account: "
+        + (
+            "signed in"
+            if chatgpt.signed_in(chatgpt.load())
+            else "not signed in (/providers signin)"
+        ),
+        "Could answer now (your accounts first): "
+        + (", ".join(ready) or "none -- /providers signin, or set a key in the app"),
+    ]
+    if gateway.last_provider:
+        lines.append(f"Last answered by: {gateway.last_provider}")
+    return "\n".join(lines)
 
 
 def know_command(knowledge, scope: str, args: list[str]) -> str:
@@ -354,6 +390,8 @@ def main(argv: list[str] | None = None) -> int:
                     print(f"{name}: {value}")
             elif command == "/brain":
                 print(brain_command(brain, rest.split()))
+            elif command in ("/providers", "/accounts"):
+                print(providers_status(workspace.gateway, rest.split()))
             elif command == "/know":
                 print(
                     know_command(workspace.knowledge, workspace.kb_scope, rest.split())

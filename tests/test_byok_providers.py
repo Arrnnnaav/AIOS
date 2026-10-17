@@ -5,6 +5,7 @@ keys but never returns one."""
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -94,3 +95,40 @@ def test_the_app_saves_and_removes_keys_and_never_returns_one(vault, tmp_path):
         assert vault == {}
     finally:
         app.close()
+
+
+def test_gateway_remembers_which_provider_answered(tmp_path):
+    """BYOK transparency: the gateway records who answered the last request,
+    and a failure does not overwrite it (so 'who powers me' stays truthful)."""
+
+    from ghostcursor.providers.envelope import Envelope
+    from ghostcursor.providers.errors import FailureKind
+    from ghostcursor.providers.gateway import Gateway
+
+    g = Gateway(log_path=tmp_path / "log.jsonl")
+    env = Envelope(task="t", trusted={}, tainted={})
+    assert g.last_provider is None
+    reply = SimpleNamespace(
+        latency_ms=1, input_tokens=1, output_tokens=1, model="m"
+    )
+    g._record("openai", "m", 0.0, env, reply, None)
+    assert g.last_provider == "openai"
+    g._record("chatgpt", "m", 0.0, env, None, FailureKind.RATE_LIMITED)
+    assert g.last_provider == "openai"  # a decline must not claim it answered
+
+
+def test_providers_status_shows_who_powers_the_harness():
+    from ghostcursor.workspace.__main__ import providers_status
+
+    class GW:
+        last_provider = "chatgpt"
+
+        def available(self):
+            return {"chatgpt": True, "anthropic": False, "openai": True}
+
+    out = providers_status(GW(), [])
+    assert "not signed in" in out  # no real credentials in a test
+    ready_line = [ln for ln in out.splitlines() if ln.startswith("Could answer")][0]
+    assert "chatgpt" in ready_line and "openai" in ready_line
+    assert "anthropic" not in ready_line  # not configured -> not listed
+    assert "Last answered by: chatgpt" in out

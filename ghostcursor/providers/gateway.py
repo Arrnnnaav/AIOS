@@ -95,6 +95,9 @@ class Gateway:
     transport: object = None  # httpx transport override (tests / cassettes)
     log_path: Path | None = None
     key_lookup: object = keys.get_key
+    #: The provider that answered the last request, for "who powers this" --
+    #: so a BYOK user can see their own account is in use (one slot, benign).
+    last_provider: str | None = field(default=None, repr=False)
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     def available(self) -> dict[str, bool]:
@@ -374,6 +377,8 @@ class Gateway:
     ) -> None:
         """Append one attribution line: no content, no keys, no screen text."""
 
+        if failure is None:
+            self.last_provider = provider  # a provider answered; remember which
         path = self.log_path or _default_log_path()
         line = {
             "at": round(started, 3),
