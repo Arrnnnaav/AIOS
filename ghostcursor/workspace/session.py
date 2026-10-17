@@ -275,6 +275,8 @@ class Workspace:
     plan_memories: tuple[int, ...] = ()
     #: Jev's suggestion for the last message: "research", "ideate", "plan" or "".
     suggestion: str = ""
+    #: The agent drafted by create_agent, awaiting the user's review (D182).
+    draft_agent: object = None
 
     def __post_init__(self) -> None:
         brief_path(self.root, self.topic)  # validates the topic name
@@ -472,7 +474,9 @@ class Workspace:
             )
         from ghostcursor.workspace import skills
 
-        guides = skills.relevant(self.goal + " " + " ".join(i.title for i in self.ideas))
+        guides = skills.relevant(
+            self.goal + " " + " ".join(i.title for i in self.ideas)
+        )
         if guides:
             trusted["app_guidance"] = [
                 {"app": name, "notes": body} for name, body in guides
@@ -540,6 +544,61 @@ class Workspace:
         if self.plan is None or not 1 <= step <= len(self.plan.steps):
             raise ValueError("no such plan step")
         return TeachPlan(self.plan.steps[step - 1 :])
+
+    def create_agent(self, need: str):
+        """Draft a reusable agent (D182) from a stated need; model output,
+        strictly parsed, shown for the user to review before it is saved.
+        Nothing is saved or run here. None if the model is unavailable."""
+
+        from ghostcursor.providers.envelope import Envelope
+        from ghostcursor.workspace import agents, skills
+
+        known = ", ".join(sorted(name for name, _, _ in skills._loaded()))
+        envelope = Envelope(
+            task="create_agent",
+            trusted={"need": need, "available_guides": known},
+            tainted=self._context(need),
+        )
+        try:
+            spec = self.gateway.complete(
+                envelope,
+                agents.CREATE_SYSTEM,
+                agents.AGENT_SCHEMA,
+                agents.parse_agent,
+                purpose="agent design",
+            )
+        except ProviderError:
+            return None
+        issues = agents.test_agent(spec)
+        self.draft_agent = spec
+        self._say(
+            "assistant",
+            f"[agent draft] {spec.as_text()}"
+            + (
+                f"\nNeeds fixing: {'; '.join(issues)}" if issues else "\nReady to save."
+            ),
+        )
+        return spec
+
+    def save_agent(self, spec=None):
+        """Deploy the drafted (or given) agent to the registry; the auto-test
+        must pass. Returns the saved AgentSpec."""
+
+        from ghostcursor.workspace import agents
+
+        spec = spec or self.draft_agent
+        if spec is None:
+            raise ValueError("no agent drafted yet")
+        agents.save(self.root, spec)
+        self._say("assistant", f"[agent saved] {spec.name}")
+        return spec
+
+    def agents(self):
+        """The saved agents on this machine."""
+
+        from ghostcursor.workspace import agents
+
+        return agents.list_specs(self.root)
 
 
 def measures(brain: Brain, briefs: Path, traces: Path) -> dict:

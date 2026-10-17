@@ -7977,3 +7977,32 @@ on 17 October 2026.
   does not permit third-party apps to use Claude subscription logins, so
   Anthropic is supported by the person's own API key; other providers by key
   too (next slice).
+
+## D183 — Agent creator: reusable Teach/Act agents from a stated need
+
+Date: 17 October 2026. Owner direction: build an agent creator that is "a
+master of agent creation, testing and deploying on its own according to the
+need of the user". Landscape (docs/evidence/competitive-scan-2026-10-17.md
+addendum): OpenAI AgentKit/Agent Builder, Google ADK/Vertex Agent Builder,
+Meta Business Agent Platform, Mastra MetaAgent, DannyMac180/meta-agent,
+evolving-agents, BMAD/convoke; research: the Agent-Testing-Agent (EACL 2026)
+and the Meta-Agent Challenge (arXiv 2606.04455). Common shape: interview ->
+spec -> auto-test -> deploy as a reusable named agent.
+
+- **An agent is a named, reusable Teach/Act config,** nothing more autonomous:
+  `AgentSpec(name, description, goal_template, apps, skills, deny, max_steps)`
+  (`ghostcursor/workspace/agents.py`). Running one still goes through the
+  harness -- plan approval, the deny list, risky-control confirm, ESC. Creating
+  or saving performs no actions and needs no permission.
+- **Create:** `Workspace.create_agent(need)` drafts a spec via the gateway
+  (`CREATE_SYSTEM`, `AGENT_SCHEMA`, strict `parse_agent`); model output, shown
+  for review, saved to nothing yet.
+- **Test (auto):** `test_agent` checks the drafted spec against this machine --
+  guides must exist, a goal that can delete/send/spend must carry a deny list.
+  The save is gated on it (the Agent-Testing-Agent idea, deterministic).
+- **Deploy:** `save` writes JSON under `<root>/agents/<name>.json`; `load`
+  re-validates (files can rot); `list_specs` skips corrupt files.
+- **Surfaces:** console `/agent new|save|list`. App surface and
+  run-a-saved-agent wiring: next.
+- Does NOT self-deploy to the cloud or run unattended; "deploy" means saved and
+  invokable on this machine, always behind the same gates.

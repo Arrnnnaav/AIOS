@@ -8,6 +8,7 @@ Type to discuss. Commands:
   /ideate           2-4 approaches, with assumptions and unknowns
   /plan             a step plan from the conversation (a proposal)
   /plan idea <n>    a plan for approach n of /ideate
+  /agent new <need> | save | list   draft a reusable agent, save it, list them
   /plan edit <n> <text> | drop <n> | add <text>
                     edit the plan; each edit is a new proposal
   /teach <n> [s]    guide plan step n onward on screen for s seconds (default 300)
@@ -268,6 +269,29 @@ def main(argv: list[str] | None = None) -> int:
                     print(f"{name}: {value}")
             elif command == "/brain":
                 print(brain_command(brain, rest.split()))
+            elif command == "/agent":
+                parts = rest.split(maxsplit=1)
+                verb = parts[0] if parts else "list"
+                if verb == "new" and len(parts) == 2:
+                    spec = workspace.create_agent(parts[1])
+                    print(
+                        spec.as_text()
+                        if spec
+                        else "No agent: the model is not available."
+                    )
+                elif verb == "save":
+                    try:
+                        print(f"saved {workspace.save_agent().name}")
+                    except ValueError as exc:
+                        print(exc)
+                elif verb == "list":
+                    saved = workspace.agents()
+                    print(
+                        "\n".join(f"- {s.name}: {s.description}" for s in saved)
+                        or "no agents yet"
+                    )
+                else:
+                    print("usage: /agent new <what you need> | save | list")
             elif command.startswith("/"):
                 print(__doc__)
             else:

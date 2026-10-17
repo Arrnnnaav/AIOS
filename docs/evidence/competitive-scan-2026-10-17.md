@@ -132,3 +132,19 @@ Convergent architecture across Amoeba, Antigravity, HeyClicky, Dodaios: a
 native host + a separate agent core, connected by a local RPC/MCP bridge, with
 computer/browser control behind a consent gate. Orbyn's harness is the same
 shape; the gaps are the browser-via-CDP rung and the MCP tool surface.
+
+## Agent creators (who builds this), 17 October 2026
+
+- OpenAI AgentKit / Agent Builder; Google ADK + Vertex Agent Builder; Meta
+  Business Agent Platform (build/customise/deploy with guardrails).
+- Open source: Mastra MetaAgent (guided interview -> deploy local/cloud),
+  DannyMac180/meta-agent (OpenAI Agents SDK generates agents), evolving-agents,
+  hermes-smith, BMAD/convoke (installable agent teams + skills),
+  agent-evolution / harness-evolver (self-improving via trace diagnosis),
+  omnigent (meta-harness over Claude Code/Codex/Cursor).
+- Research: Agent-Testing-Agent (EACL 2026) builds adversarial tests for other
+  agents; Meta-Agent Challenge (arXiv 2606.04455) asks if agents can build
+  agents in a sandbox with evaluation + iteration.
+- Orbyn's take (D183): the creator drafts a spec, auto-tests it, saves it as a
+  reusable named Teach/Act config. No self-deploy, no unattended run; every run
+  stays behind plan approval, the deny list and ESC.

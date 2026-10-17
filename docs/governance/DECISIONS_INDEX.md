@@ -216,5 +216,6 @@ with the script named at the bottom; edit the curated table by hand.
 - D180 — Organisation policy and scrubbed screen text: less leaves the machine
 - D181 — Ideate, Jev in the workspace, and handoff as the Multiplayer seed
 - D182 — Act on any application through the harness; bring-your-own account
+- D183 — Agent creator: reusable Teach/Act agents from a stated need
 
 _Generated from `DECISIONS.md` headings by `py -3.12 tools/render_decisions_index.py`._
