@@ -8063,3 +8063,25 @@ DETECTION moves to KWS; the request after the wake word is still transcribed
 by faster-whisper. The keyword file (`hey-bro.txt`) is BPE-tokenised offline;
 runtime needs no pypinyin. Verified live on SAPI-spoken audio: fires on
 "Hey Bro", ignores non-matches.
+
+## D186 — Company Brain store (MP7 21A, first slice)
+
+Date: 17 October 2026. Owner direction: continue the build (MP7). First slice
+of the Company Brain / organizational Context Graph.
+
+- `ghostcursor/workspace/knowledge.py` + `knowledge.sqlite` (D070's reserved
+  store), distinct from the Personal Brain and from screen-derived `kb`. No
+  execution authority.
+- Every fact carries provenance (source), scope (tenant/owner), a review
+  STATUS, added/last_verified times, sensitivity, and an optional validity.
+- States an owner governs: candidate -> reviewed -> approved -> retired.
+  Ingestion only makes CANDIDATES; a candidate is never retrieved as a fact.
+  `review`/`approve` promote; `retire` removes from use (kept as history).
+- `recall(query, scope)` returns only usable (reviewed/approved), non-stale
+  facts for that scope, with their provenance -- scope-isolated, never an
+  unattributed answer. `conflicts(scope)` surfaces disagreeing pairs for an
+  owner; nothing is auto-resolved.
+- Personal memories are never silently copied in; sharing one is an explicit
+  add here with its own source.
+- Not yet wired into plan/research retrieval or given an owner UI; those are
+  later 21A slices (shipped by slice, no all-at-once Company Brain claim).

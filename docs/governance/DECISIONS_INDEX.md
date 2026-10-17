@@ -220,5 +220,6 @@ with the script named at the bottom; edit the curated table by hand.
 - D184 — Work in the browser through the Chrome DevTools Protocol
 - D185 — drive_until: a gated, goal-driven loop (browser first)
 - D185 addendum — streaming keyword spotter for "Hey Bro"
+- D186 — Company Brain store (MP7 21A, first slice)
 
 _Generated from `DECISIONS.md` headings by `py -3.12 tools/render_decisions_index.py`._
