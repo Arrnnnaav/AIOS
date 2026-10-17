@@ -104,8 +104,10 @@ def parse(text: str) -> dict:
     extra = {"revision", "done"}
     if not isinstance(value, dict) or not base <= set(value) <= base | extra:
         raise ValueError("not a handoff file")
-    if value["kind"] != KIND or type(value["version"]) is not int or (
-        value["version"] not in (1, 2)
+    if (
+        value["kind"] != KIND
+        or type(value["version"]) is not int
+        or (value["version"] not in (1, 2))
     ):
         raise ValueError("unsupported handoff version")
     plan, sources = value["plan"], value["sources"]
@@ -130,7 +132,14 @@ def parse(text: str) -> dict:
         action = step.get("action", "click")
         if action not in ACTIONS:
             raise ValueError("a step's action is unknown")
-        steps.append(PlanStep(instruction, change, action, _text(step.get("text", ""), MAX_ACTION_TEXT)))
+        steps.append(
+            PlanStep(
+                instruction,
+                change,
+                action,
+                _text(step.get("text", ""), MAX_ACTION_TEXT),
+            )
+        )
     clean_sources = []
     for source in sources:
         if not isinstance(source, dict) or set(source) != {"url", "title"}:
@@ -170,7 +179,23 @@ def receive(ws, text: str) -> str:
     ]
     if received["done"]:
         spans = ", ".join(str(n) for n in received["done"])
-        lines.append(f"They had finished step(s) {spans} of this plan (revision {received['revision']}).")
+        lines.append(
+            f"They had finished step(s) {spans} of this plan (revision {received['revision']})."
+        )
+    # Jev injection screen (D179): a teammate's file is untrusted. Flag it for
+    # the user if its goal or a step reads like an instruction to the assistant
+    # rather than a task; it is never auto-run regardless, this just warns.
+    screen = " ".join(
+        [received["goal"]] + [s.instruction for s in received["plan"].steps]
+    )
+    if (
+        getattr(ws.gateway, "injection_risk", None)
+        and ws.gateway.injection_risk(screen) >= 0.8
+    ):
+        lines.append(
+            "[caution] Parts of this handoff read like instructions to Orbyn, "
+            "not a task. Read the steps before you run any of them."
+        )
     lines += [f"Source: {title or url} -- {url}" for url, title in received["sources"]]
     lines.append(
         "Say what you want to do with it; the plan is theirs until you edit it."

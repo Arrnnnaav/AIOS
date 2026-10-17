@@ -149,3 +149,19 @@ def test_v2_carries_revision_done_and_step_actions_and_v1_still_loads(tmp_path):
     got = handoff.parse(json.dumps(v1))
     assert got["revision"] == 1 and got["done"] == []
     assert got["plan"].steps[0].action == "click"
+
+
+def test_a_handoff_that_reads_like_an_instruction_is_flagged(tmp_path):
+    ws, text = _sent(tmp_path)
+    other = _ws(tmp_path, "receiver")
+    other.gateway.injection_risk = lambda s: 0.95  # Jev says: looks like an instruction
+    handoff.receive(other, text)
+    assert any("[caution]" in t.text for t in other.turns)
+
+
+def test_a_normal_handoff_is_not_flagged(tmp_path):
+    ws, text = _sent(tmp_path)
+    other = _ws(tmp_path, "receiver")
+    other.gateway.injection_risk = lambda s: 0.1
+    handoff.receive(other, text)
+    assert not any("[caution]" in t.text for t in other.turns)
