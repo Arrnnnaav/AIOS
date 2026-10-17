@@ -344,6 +344,44 @@ RELATION = {
 CHECK_FLOOR = 0.8
 
 
+#: Keep at most this many passages for System Two after the Jev rerank, so a
+#: wide search does not spend the person's tokens on noise (D179 rerank).
+RERANK_KEEP = 6
+RERANK_FLOOR = 0.5  # P(relevant) below this is dropped, unless all are below
+
+
+def rerank_passages(graph: EvidenceGraph, gateway) -> EvidenceGraph:
+    """Jev scores each passage's relevance to the question (yes/no per passage,
+    one request); keep the best, drop the irrelevant, order by relevance before
+    System Two. Raises ProviderError when Jev cannot answer (the caller then
+    keeps the original graph -- the rerank is extra)."""
+
+    if len(graph.passages) <= 1:
+        return graph
+    tainted = {p.pid: Tainted.of("web_passage", p.text) for p in graph.passages}
+    verdicts = gateway.judge(
+        Envelope(task="rerank", trusted={"question": graph.question}, tainted=tainted),
+        {
+            p.pid: (
+                f"Does the passage in `{p.pid}` help answer the question?",
+                {"yes": "it helps answer the question", "no": "it does not"},
+            )
+            for p in graph.passages
+        },
+    )
+    scored = [
+        (verdicts[p.pid].probabilities.get("yes", 0.0), p) for p in graph.passages
+    ]
+    kept = [(s, p) for s, p in scored if s >= RERANK_FLOOR]
+    if not kept:  # never starve the model: keep the best few if none clear the floor
+        kept = sorted(scored, reverse=True, key=lambda sp: sp[0])[:RERANK_KEEP]
+    kept.sort(reverse=True, key=lambda sp: sp[0])
+    passages = tuple(p for _s, p in kept[:RERANK_KEEP])
+    used = {p.sid for p in passages}
+    sources = tuple(s for s in graph.sources if s.sid in used)
+    return EvidenceGraph(graph.question, sources, passages)
+
+
 def check_claims(graph: EvidenceGraph, gateway) -> tuple[Claim, ...]:
     """Jev reads each supported claim against the passages it cites, all in
     one request. A confident 'contradicts' or 'says nothing' lowers the
@@ -360,12 +398,16 @@ def check_claims(graph: EvidenceGraph, gateway) -> tuple[Claim, ...]:
     tainted = {
         f"claim_{n}": {
             "claim": Tainted.of("model_claim", c.text),
-            "passages": [Tainted.of("web_passage", passages[pid]) for pid in c.evidence],
+            "passages": [
+                Tainted.of("web_passage", passages[pid]) for pid in c.evidence
+            ],
         }
         for n, c in checked
     }
     verdicts = gateway.judge(
-        Envelope(task="citation_check", trusted={"question": graph.question}, tainted=tainted),
+        Envelope(
+            task="citation_check", trusted={"question": graph.question}, tainted=tainted
+        ),
         {
             f"claim_{n}": (
                 f"How do the passages in `claim_{n}.passages` relate to `claim_{n}.claim`?",
@@ -450,6 +492,13 @@ def research(
     timings["search"] = round((time.monotonic() - started) * 1000)
     graph = build_graph(question, hits)
     model = "none"
+    reranked = False
+    if graph.passages and hasattr(gateway, "judge"):
+        try:
+            graph = rerank_passages(graph, gateway)
+            reranked = True
+        except ProviderError as exc:  # the rerank is extra; keep the full graph
+            failures.append(f"rerank: {exc.kind.value}")
     if graph.passages:
         started = time.monotonic()
         envelope = research_envelope(question, graph, context)
@@ -464,13 +513,16 @@ def research(
             )
             graph = EvidenceGraph(question, graph.sources, graph.passages, claims)
             graph.validate()
-            model = "system-two"
+            model = "jev-rerank+system-two" if reranked else "system-two"
         except ProviderError as exc:
             failures.append(f"model: {exc.kind.value}")
         if graph.claims and hasattr(gateway, "judge"):
             try:
                 graph = EvidenceGraph(
-                    question, graph.sources, graph.passages, check_claims(graph, gateway)
+                    question,
+                    graph.sources,
+                    graph.passages,
+                    check_claims(graph, gateway),
                 )
                 model += "+jev-check"
             except ProviderError as exc:  # the check is extra; its absence is not

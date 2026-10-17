@@ -202,3 +202,50 @@ def test_fetch_refuses_private_hosts_and_private_redirects():
     with httpx.Client(transport=httpx.MockTransport(handler)) as client:
         assert fetch_public(client, "http://good.com/x", resolve=resolve) is None
         assert fetch_public(client, "http://lan.com/x", resolve=resolve) is None
+
+
+def test_rerank_drops_irrelevant_passages_and_orders_by_relevance():
+    from ghostcursor.providers.schemas import Choice
+    from ghostcursor.workspace.contracts import (
+        EvidenceGraph,
+        Passage,
+        Source,
+        SourceCategory,
+    )
+    from ghostcursor.workspace.research import RERANK_KEEP, rerank_passages
+
+    srcs = tuple(Source(f"s{i}", f"https://x{i}.org", f"t{i}", SourceCategory.UNKNOWN) for i in range(1, 4))
+    ps = tuple(Passage(f"p{i}", f"s{i}", f"passage {i}") for i in range(1, 4))
+    graph = EvidenceGraph("q", srcs, ps)
+    scores = {"p1": 0.2, "p2": 0.9, "p3": 0.7}  # p1 irrelevant
+
+    class G:
+        def judge(self, envelope, questions, **kw):
+            return {pid: Choice("yes", {"yes": scores[pid], "no": 1 - scores[pid]}) for pid in questions}
+
+    out = rerank_passages(graph, G())
+    assert [p.pid for p in out.passages] == ["p2", "p3"]  # dropped p1, ordered by score
+    assert {s.sid for s in out.sources} == {"s2", "s3"}  # orphaned source removed
+    assert len(out.passages) <= RERANK_KEEP
+
+
+def test_rerank_keeps_the_best_when_all_are_below_the_floor():
+    from ghostcursor.providers.schemas import Choice
+    from ghostcursor.workspace.contracts import (
+        EvidenceGraph,
+        Passage,
+        Source,
+        SourceCategory,
+    )
+    from ghostcursor.workspace.research import rerank_passages
+
+    srcs = (Source("s1", "https://x.org", "t", SourceCategory.UNKNOWN),)
+    ps = tuple(Passage(f"p{i}", "s1", f"p{i}") for i in range(1, 4))
+    graph = EvidenceGraph("q", srcs, ps)
+
+    class G:
+        def judge(self, envelope, questions, **kw):
+            return {pid: Choice("no", {"yes": 0.1, "no": 0.9}) for pid in questions}
+
+    out = rerank_passages(graph, G())
+    assert out.passages  # never starves the model
