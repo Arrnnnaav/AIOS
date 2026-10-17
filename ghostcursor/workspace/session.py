@@ -277,6 +277,8 @@ class Workspace:
     suggestion: str = ""
     #: The agent drafted by create_agent, awaiting the user's review (D182).
     draft_agent: object = None
+    #: The deny list of the agent in use this session (D183); Act prefers it.
+    active_deny: tuple = ()
 
     def __post_init__(self) -> None:
         brief_path(self.root, self.topic)  # validates the topic name
@@ -599,6 +601,31 @@ class Workspace:
         from ghostcursor.workspace import agents
 
         return agents.list_specs(self.root)
+
+    def use_agent(self, name: str, values: dict | None = None):
+        """Start a saved agent: fill its goal template with ``values`` (missing
+        slots are left as text), record that as the goal, and apply its deny
+        list for this session. The user still plans and approves; running still
+        goes through Act's gates. Returns the AgentSpec."""
+
+        from ghostcursor.workspace import agents
+
+        spec = agents.load(self.root, name)
+
+        class _Safe(dict):
+            def __missing__(self, key):
+                return "{" + key + "}"
+
+        goal = spec.goal_template.format_map(_Safe(values or {}))
+        self._say("user", goal)
+        self.active_deny = spec.deny
+        self._say(
+            "assistant",
+            f"[agent {spec.name}] goal set. Up to {spec.max_steps} steps; "
+            + (f"never touches {', '.join(spec.deny)}. " if spec.deny else "")
+            + "Say /plan then /act.",
+        )
+        return spec
 
 
 def measures(brain: Brain, briefs: Path, traces: Path) -> dict:

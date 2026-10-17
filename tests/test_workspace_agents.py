@@ -118,3 +118,26 @@ def test_the_session_will_not_save_a_failing_draft(tmp_path):
 def test_no_model_means_no_draft(tmp_path):
     ws = _ws(tmp_path, fail=ProviderError(FailureKind.UNAVAILABLE))
     assert ws.create_agent("anything") is None and ws.draft_agent is None
+
+
+def test_use_agent_fills_the_goal_and_applies_the_deny_list(tmp_path):
+    ws = _ws(tmp_path)
+    ws.create_agent("deck builder")
+    ws.save_agent()
+    spec = ws.use_agent("q3-deck-builder", {"n": "8"})
+    assert spec.name == "q3-deck-builder"
+    assert ws.goal == "Build a 8-slide sales deck in PowerPoint"  # slot filled
+    assert ws.active_deny == ("Delete",)  # Act will prefer this
+
+
+def test_use_agent_leaves_unknown_slots_as_text(tmp_path):
+    ws = _ws(tmp_path, draft={**GOOD, "goal_template": "Email {who} the {what}", "deny": ["Send"]})
+    ws.create_agent("mailer")
+    ws.save_agent()
+    ws.use_agent("q3-deck-builder", {"who": "Bob"})
+    assert ws.goal == "Email Bob the {what}"  # missing slot preserved, not crashed
+
+
+def test_use_a_missing_agent_is_refused(tmp_path):
+    with pytest.raises(ValueError, match="no agent"):
+        _ws(tmp_path).use_agent("ghost")

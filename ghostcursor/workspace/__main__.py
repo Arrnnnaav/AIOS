@@ -8,7 +8,7 @@ Type to discuss. Commands:
   /ideate           2-4 approaches, with assumptions and unknowns
   /plan             a step plan from the conversation (a proposal)
   /plan idea <n>    a plan for approach n of /ideate
-  /agent new <need> | save | list   draft a reusable agent, save it, list them
+  /agent new <need> | save | use <name> [k=v] | list   reusable agents
   /plan edit <n> <text> | drop <n> | add <text>
                     edit the plan; each edit is a new proposal
   /teach <n> [s]    guide plan step n onward on screen for s seconds (default 300)
@@ -254,7 +254,10 @@ def main(argv: list[str] | None = None) -> int:
                     plan=plan,
                     outcome=outcome,
                     act=command == "/act",
-                    deny=["delete", "send", "pay", "buy", "purchase", "remove"]
+                    deny=(
+                        list(workspace.active_deny)
+                        or ["delete", "send", "pay", "buy", "purchase", "remove"]
+                    )
                     if command == "/act"
                     else (),
                 )
@@ -284,6 +287,17 @@ def main(argv: list[str] | None = None) -> int:
                         print(f"saved {workspace.save_agent().name}")
                     except ValueError as exc:
                         print(exc)
+                elif verb == "use" and len(parts) == 2:
+                    bits = parts[1].split()
+                    name = bits[0]
+                    values = dict(
+                        kv.split("=", 1) for kv in bits[1:] if "=" in kv
+                    )
+                    try:
+                        spec = workspace.use_agent(name, values)
+                        print(f"using {spec.name}: {workspace.goal}")
+                    except ValueError as exc:
+                        print(exc)
                 elif verb == "list":
                     saved = workspace.agents()
                     print(
@@ -291,7 +305,7 @@ def main(argv: list[str] | None = None) -> int:
                         or "no agents yet"
                     )
                 else:
-                    print("usage: /agent new <what you need> | save | list")
+                    print("usage: /agent new <need> | save | use <name> [k=v] | list")
             elif command.startswith("/"):
                 print(__doc__)
             else:

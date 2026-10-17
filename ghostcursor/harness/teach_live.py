@@ -335,4 +335,33 @@ def run_model_teach(
             win32gui.DestroyWindow(banner)
         if outcome is not None:
             outcome.extend(session.completed)
+        if act:  # D183: an honest local record of what Act did (no screen text)
+            _audit(bindings, session.completed, code)
     return code
+
+
+def _audit(bindings, completed, code: int) -> None:
+    """Append one line per Act run to a local audit log: which apps, how each
+    step ended, and the exit code. Each ``why`` is already screen-text-free
+    ("observed <change>", "you confirmed", "acted (no change seen)"); no
+    control name, goal or screen text is written (privacy rule 6). Never fatal."""
+
+    import json
+    import os
+    import time
+    from pathlib import Path
+
+    try:
+        base = os.environ.get("LOCALAPPDATA") or str(Path.home())
+        path = Path(base) / "GhostCursor" / "act-audit.jsonl"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        line = {
+            "at": round(time.time(), 3),
+            "apps": [b.identity.executable for b in bindings],
+            "steps": [{"step": n, "why": why} for n, why in completed],
+            "code": code,
+        }
+        with path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(line) + "\n")
+    except Exception:
+        pass
