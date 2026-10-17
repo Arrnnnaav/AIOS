@@ -231,3 +231,43 @@ def test_ingest_dedups_but_never_edits_existing_facts(kn):
     assert kn.ingest(["Prod runs in us-east-1."], source="x", scope="beta") == [
         ("added", cands[0].fid + 1)
     ]
+
+
+def test_chunk_document_splits_on_blank_lines_and_bounds():
+    from ghostcursor.workspace.knowledge import MAX_CHUNKS, chunk_document
+
+    text = "First fact here.\n\n  \n\nSecond  fact\ntoo.\n\nx\n\nThird fact line."
+    chunks = chunk_document(text)
+    assert chunks == ["First fact here.", "Second fact too.", "Third fact line."]
+    # lone-word block "x" dropped; whitespace collapsed
+    big = "\n\n".join(f"fact number {i}" for i in range(MAX_CHUNKS + 50))
+    assert len(chunk_document(big)) == MAX_CHUNKS  # count bounded
+
+
+def test_know_ingest_loads_a_folder_as_candidates_deduped(tmp_path):
+    from ghostcursor.workspace.__main__ import know_command
+
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "runbook.md").write_text(
+        "Prod runs in us-east-1.\n\nDeploys happen on Fridays.", encoding="utf-8"
+    )
+    (docs / "notes.txt").write_text(
+        "Deploys happen on Fridays.\n\nThe office is in Lisbon.", encoding="utf-8"
+    )
+    (docs / "ignore.pdf").write_text("binary-ish", encoding="utf-8")  # not loaded
+
+    k = Knowledge(tmp_path / "k.sqlite")
+    out = know_command(k, "default", ["ingest", str(docs)])
+    assert "2 file(s)" in out and "3 new candidate(s)" in out and "1 already known" in out
+    cands = k.list(scope="default", status="candidate")
+    assert {c.text for c in cands} == {
+        "Prod runs in us-east-1.",
+        "Deploys happen on Fridays.",
+        "The office is in Lisbon.",
+    }
+    assert {c.source for c in cands} == {"runbook.md", "notes.txt"}  # provenance = filename
+    # candidates are not usable until reviewed
+    assert k.recall("deploys fridays", "default") == []
+    assert "no .md/.txt/.log" in know_command(k, "default", ["ingest", str(tmp_path / "nope")])
+    k.close()

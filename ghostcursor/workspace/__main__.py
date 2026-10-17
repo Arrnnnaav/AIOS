@@ -14,7 +14,7 @@ Type to discuss. Commands:
                     edit the plan; each edit is a new proposal
   /teach <n> [s]    guide plan step n onward on screen for s seconds (default 300)
   /providers [signin | signout]   who powers the harness (your accounts first)
-  /know [add <source> | <text> | list | review <id> | approve <id> |
+  /know [add <source> | <text> | ingest <path> | list | review <id> | approve <id> |
         retire <id> | supersede <old> <new> | conflicts | recall <q>]  org facts
   /brain [list | search <q> | forget <id> | correct <id> <text> |
           pause | resume | export <file> | erase]
@@ -153,7 +153,7 @@ def brain_command(brain: Brain, args: list[str]) -> str:
 
 
 KNOW_USAGE = (
-    "usage: /know add <source> | <text>  |  list [status]  |  review <id>  |  "
+    "usage: /know add <source> | <text>  |  ingest <path>  |  list [status]  |  review <id>  |  "
     "approve <id>  |  retire <id>  |  verify <id>  |  supersede <old> <new>  |  "
     "relate <subject> | <predicate> | <object> | <source>  |  "
     "review-edge <id>  |  conflicts  |  recall <query>"
@@ -216,6 +216,39 @@ def know_command(knowledge, scope: str, args: list[str]) -> str:
         except ValueError as exc:
             return str(exc)
         return f"candidate #{f.fid} added (not usable until you review it)"
+    if verb == "ingest" and rest:
+        from ghostcursor.workspace.knowledge import chunk_document
+
+        root = Path(rest.strip())
+        files = (
+            [root]
+            if root.is_file()
+            else sorted(
+                p
+                for ext in ("*.md", "*.txt", "*.log")
+                for p in root.rglob(ext)
+                if p.is_file()
+            )
+            if root.is_dir()
+            else []
+        )
+        if not files:
+            return f"no .md/.txt/.log files at {rest.strip()}"
+        added = dup = 0
+        for path in files:
+            try:
+                text = path.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            for action, _fid in knowledge.ingest(
+                chunk_document(text), source=path.name, scope=scope
+            ):
+                added += action == "added"
+                dup += action == "duplicate"
+        return (
+            f"ingested {len(files)} file(s): {added} new candidate(s) to review, "
+            f"{dup} already known. Use /know list candidate."
+        )
     if verb == "list":
         status = args[1] if len(args) > 1 else None
         rows = knowledge.list(scope=scope, status=status)

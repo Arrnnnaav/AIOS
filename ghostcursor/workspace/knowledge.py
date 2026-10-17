@@ -104,6 +104,30 @@ def _words(text: str) -> set[str]:
     return set(re.findall(r"[a-z0-9]{2,}", text.casefold()))
 
 
+#: A document chunks into at most this many facts, each at most this long, so
+#: one big file cannot flood the Brain with thousands of candidates.
+MAX_CHUNKS = 200
+MAX_CHUNK_CHARS = 600
+
+
+def chunk_document(text: str) -> list[str]:
+    """Split a document into candidate-sized chunks on blank lines (the simple
+    loader Mem0/Cognee use before extraction). Whitespace is collapsed, empties
+    and single-word fragments are dropped, each chunk is capped, and the count
+    is bounded."""
+
+    import re
+
+    chunks = []
+    for block in re.split(r"\n\s*\n", text or ""):
+        chunk = " ".join(block.split())
+        if len(chunk.split()) >= 2:  # a lone word is not a fact
+            chunks.append(chunk[:MAX_CHUNK_CHARS])
+        if len(chunks) >= MAX_CHUNKS:
+            break
+    return chunks
+
+
 def _jaccard(a: set[str], b: set[str]) -> float:
     """Word-set overlap, 0..1. Used for ingest dedup (no embeddings: offline,
     deterministic). 1.0 = same words; near-1.0 = near-identical wording."""
