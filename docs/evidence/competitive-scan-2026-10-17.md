@@ -148,3 +148,35 @@ shape; the gaps are the browser-via-CDP rung and the MCP tool surface.
 - Orbyn's take (D183): the creator drafts a spec, auto-tests it, saves it as a
   reusable named Teach/Act config. No self-deploy, no unattended run; every run
   stays behind plan approval, the deny list and ESC.
+
+## Company Brain / agent-memory landscape (MP7 21A, 17 Oct 2026)
+
+Why: the Company Brain is meant to be the main thing, so its design was checked
+against the current memory products and agent-memory frameworks, not only the
+"company brain" startups.
+
+- **Zep / Graphiti** — the clearest design. A temporal knowledge graph of
+  entities, relationships and facts with bi-temporal edges: when information
+  changes it INVALIDATES earlier facts (keeps when they were valid and where
+  they came from) rather than deleting. Retrieval = vector + full-text + graph
+  traversal. Adopted: supersede-not-delete, world-time validity (`valid_from`/
+  `valid_until`) separate from system time (`added`), and a Context Graph
+  (`relate`/`neighbors`).
+- **Mem0** — hybrid vector/graph/kv; a two-phase extraction then update; user/
+  session/agent scopes. Adopted: extraction produces CANDIDATES only; scope
+  isolation at query time.
+- **Letta / MemGPT** — OS-style paging between context and external store;
+  recursive summarisation (can lose fidelity). Not adopted: Orbyn keeps exact
+  facts with provenance rather than summarising.
+- **Cognee** — graph + vector, runs local. Matches Orbyn's local-first stance.
+- **Meta Muse Wonder (12 Oct 2026)** — "Active Memory" carries what matters
+  across conversations; Meta Business Agent keeps one customer memory across
+  channels. Confirms the cross-session, owner-governed direction.
+- **YC company-brain startups** (Savant, Hyper, Hyperspell, Glen, Memory
+  Store, Mem0) — all converge on a provenance-bearing, self-maintaining graph.
+
+Orbyn's store (D186) already had provenance, tenant scope, owner review states
+and conflict surfacing. Hardened to parity: bi-temporal supersession (invalidate
+never delete, keep validity window + source) and a Context Graph
+(entities/edges, retrieve by connected entity). Still local-first, no execution
+authority, shipped by slice.

@@ -84,3 +84,39 @@ def test_conflicts_are_surfaced_not_resolved(kn):
     assert {pairs[0][0].text, pairs[0][1].text} == {a.text, b.text}
     # both remain usable; the owner decides
     assert len(kn.list(scope="acme", status="reviewed")) == 2
+
+
+def test_supersede_invalidates_but_keeps_history_and_provenance(kn):
+    old = kn.add_candidate("Prod region is us-west-1.", source="runbook-v1", scope="acme")
+    kn.approve(old.fid)
+    assert [f.fid for f in kn.recall("prod region", "acme")] == [old.fid]
+    new = kn.add_candidate("Prod region is us-east-1.", source="runbook-v2", scope="acme")
+    kn.approve(new.fid)
+    superseded = kn.supersede(old.fid, new.fid)
+    assert superseded.status == "superseded" and superseded.superseded_by == new.fid
+    assert superseded.source == "runbook-v1"  # history + provenance kept
+    assert [f.fid for f in kn.recall("prod region", "acme")] == [new.fid]  # only the new one
+    assert kn.supersede.__doc__  # supersede documented
+    import pytest as _p
+    with _p.raises(ValueError):
+        kn.supersede(old.fid, 9999)  # successor must exist
+
+
+def test_bitemporal_valid_from_defaults_to_added(kn):
+    f = kn.add_candidate("x", source="s", scope="acme")
+    assert f.valid_from == f.added == 1000.0
+    g = kn.add_candidate("y", source="s", scope="acme", valid_from=500.0)
+    assert g.valid_from == 500.0 and g.added == 1000.0  # world vs system time differ
+
+
+def test_context_graph_relate_review_and_neighbors(kn):
+    e = kn.relate("Acme", "uses", "PostgreSQL", source="arch-doc", scope="acme")
+    assert e.status == "candidate"
+    assert kn.neighbors("Acme", "acme") == []  # candidate edges not returned
+    kn.review_edge(e.fid if hasattr(e, "fid") else e.eid)
+    ns = kn.neighbors("postgresql", "acme")  # case-insensitive, matches object
+    assert len(ns) == 1 and ns[0].predicate == "uses" and ns[0].source == "arch-doc"
+    assert kn.neighbors("Acme", "beta") == []  # scope-isolated
+    import pytest as _p
+    with _p.raises(ValueError):
+        kn.relate("", "p", "o", source="s", scope="acme")

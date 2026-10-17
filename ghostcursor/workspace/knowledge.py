@@ -27,9 +27,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 ENV_PATH = "ORBYN_KNOWLEDGE_PATH"
-STATES = ("candidate", "reviewed", "approved", "retired")
+# superseded: replaced by a newer fact, kept as history (Graphiti/Zep's
+# "invalidate, never delete"). retired: removed by an owner.
+STATES = ("candidate", "reviewed", "approved", "superseded", "retired")
 USABLE = ("reviewed", "approved")  # what retrieval may return as a fact
 SENSITIVITIES = ("normal", "sensitive")
+EDGE_STATES = ("candidate", "reviewed")
 
 
 def _default_path() -> Path:
@@ -44,7 +47,14 @@ CREATE TABLE IF NOT EXISTS facts (
     fid INTEGER PRIMARY KEY AUTOINCREMENT,
     text TEXT NOT NULL, source TEXT NOT NULL, scope TEXT NOT NULL,
     status TEXT NOT NULL, sensitivity TEXT NOT NULL,
-    added REAL NOT NULL, last_verified REAL NOT NULL, valid_until REAL
+    added REAL NOT NULL, last_verified REAL NOT NULL, valid_until REAL,
+    valid_from REAL NOT NULL DEFAULT 0, superseded_by INTEGER
+);
+CREATE TABLE IF NOT EXISTS edges (
+    eid INTEGER PRIMARY KEY AUTOINCREMENT,
+    subject TEXT NOT NULL, predicate TEXT NOT NULL, object TEXT NOT NULL,
+    source TEXT NOT NULL, scope TEXT NOT NULL, status TEXT NOT NULL,
+    added REAL NOT NULL
 );
 """
 
@@ -57,12 +67,29 @@ class Fact:
     scope: str  # tenant/owner the fact belongs to
     status: str
     sensitivity: str
-    added: float
+    added: float  # system time: when Orbyn learned it
     last_verified: float
-    valid_until: float | None  # None = no expiry
+    valid_until: float | None  # world time end; None = no expiry
+    valid_from: float = 0.0  # world time start (bi-temporal)
+    superseded_by: int | None = None  # the fact that replaced this one
 
     def stale(self, now: float) -> bool:
         return self.valid_until is not None and now >= self.valid_until
+
+
+@dataclass(frozen=True)
+class Edge:
+    """One relationship in the Context Graph: subject --predicate--> object,
+    with its own provenance and review status."""
+
+    eid: int
+    subject: str
+    predicate: str
+    object: str
+    source: str
+    scope: str
+    status: str
+    added: float
 
 
 def _words(text: str) -> set[str]:
@@ -95,6 +122,7 @@ class Knowledge:
         source: str,
         scope: str,
         sensitivity: str = "normal",
+        valid_from: float | None = None,
         valid_until: float | None = None,
     ) -> Fact:
         """Record an untrusted candidate. It is NOT a usable fact until an
@@ -111,10 +139,27 @@ class Knowledge:
         with self._db:
             cur = self._db.execute(
                 "INSERT INTO facts (text, source, scope, status, sensitivity, "
-                "added, last_verified, valid_until) VALUES (?,?,?,?,?,?,?,?)",
-                (text, source, scope, "candidate", sensitivity, now, now, valid_until),
-            )
+                "added, last_verified, valid_until, valid_from, superseded_by) "
+                "VALUES (?,?,?,?,?,?,?,?,?,NULL)",
+                (text, source, scope, "candidate", sensitivity, now, now,
+                 valid_until, now if valid_from is None else valid_from),
+            )  # fmt: skip
         return self.get(cur.lastrowid)
+
+    def supersede(self, old_fid: int, by_fid: int) -> Fact | None:
+        """A newer fact replaces an older one (Graphiti's invalidate, never
+        delete): the old is marked superseded with a pointer to its successor,
+        keeping its validity window and source as history. recall skips it."""
+
+        if self.get(by_fid) is None:
+            raise ValueError("the replacing fact does not exist")
+        with self._db:
+            self._db.execute(
+                "UPDATE facts SET status='superseded', superseded_by=?, "
+                "last_verified=? WHERE fid=?",
+                (by_fid, self.clock(), old_fid),
+            )
+        return self.get(old_fid)
 
     # --- owner governance -----------------------------------------------
 
@@ -203,3 +248,44 @@ class Knowledge:
                 ):
                     out.append((a, b))
         return out
+
+    # --- Context Graph: entities and relationships ----------------------
+
+    def relate(
+        self, subject: str, predicate: str, obj: str, *, source: str, scope: str
+    ) -> Edge:
+        """Add a candidate relationship (subject --predicate--> object) with
+        provenance. Like a fact, it is a candidate until an owner reviews it."""
+
+        parts = [" ".join(str(x).split()) for x in (subject, predicate, obj, source)]
+        if not all(parts) or not str(scope).strip():
+            raise ValueError("an edge needs subject, predicate, object, source, scope")
+        with self._db:
+            cur = self._db.execute(
+                "INSERT INTO edges (subject, predicate, object, source, scope, "
+                "status, added) VALUES (?,?,?,?,?,?,?)",
+                (parts[0], parts[1], parts[2], parts[3], scope.strip(), "candidate", self.clock()),
+            )
+        return self.edge(cur.lastrowid)
+
+    def edge(self, eid: int) -> Edge | None:
+        row = self._db.execute("SELECT * FROM edges WHERE eid=?", (eid,)).fetchone()
+        return Edge(*row) if row else None
+
+    def review_edge(self, eid: int) -> Edge | None:
+        with self._db:
+            self._db.execute("UPDATE edges SET status='reviewed' WHERE eid=?", (eid,))
+        return self.edge(eid)
+
+    def neighbors(self, entity: str, scope: str) -> list[Edge]:
+        """Reviewed edges in ``scope`` touching ``entity`` (as subject or
+        object), for retrieval that follows connected entities, not just word
+        overlap. Case-insensitive; candidate edges are never returned."""
+
+        key = " ".join(str(entity).split()).casefold()
+        rows = self._db.execute(
+            "SELECT * FROM edges WHERE scope=? AND status='reviewed' ORDER BY eid",
+            (scope,),
+        )
+        edges = [Edge(*r) for r in rows]
+        return [e for e in edges if key in (e.subject.casefold(), e.object.casefold())]
