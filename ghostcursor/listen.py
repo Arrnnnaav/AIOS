@@ -162,12 +162,23 @@ class Listener:
     # --- threads ---------------------------------------------------------
 
     def start(self) -> None:
+        # Warm the wake model in the background so the FIRST "Hey Bro" is not
+        # slow (a cold faster-whisper load is seconds; warmed it is ~instant).
+        self._threads.append(threading.Thread(target=self._warm, daemon=True))
         # The microphone also carries the request after the hotkey.
         self._threads.append(threading.Thread(target=self._mic, daemon=True))
         if self.hotkey:
             self._threads.append(threading.Thread(target=self._keys, daemon=True))
         for thread in self._threads:
             thread.start()
+
+    def _warm(self) -> None:
+        import numpy as np
+
+        try:
+            self.hear(np.zeros(RATE // 2, "float32"), "tiny.en")  # load tiny.en now
+        except Exception:
+            pass  # a warm-up failure never stops listening
 
     def stop(self) -> None:
         self._stop.set()

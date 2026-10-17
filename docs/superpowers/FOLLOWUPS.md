@@ -1415,3 +1415,8 @@ to confirm where the cost actually is before changing anything else.
 - Multiplayer takeover + live sync (Amoeba `@coord`): hidden-ref snapshots, three-way apply, cross-machine approval gate. Needs a sync service and a D017 decision.
 - Act via UIA invoke/value patterns rather than the mouse: refused twice by a safety classifier as covert-looking. Stays on the visible mouse unless the owner directs otherwise.
 - GrayPass idea: confirm who is behind a sensitive Act (not just that the plan was approved) before send/pay/delete.
+
+## Wake word (D185, 17 Oct 2026)
+
+- Pre-warm done: Listener.start() loads tiny.en in the background, moving ~7.8s of cold faster-whisper load off the first "Hey Bro" (warmed decode ~0.7s, measured).
+- Still deferred: a streaming keyword spotter (sherpa-onnx) for always-on, sub-second, lower-CPU detection of the custom phrase "Hey Bro". Needs a new dependency + a KWS model download; openWakeWord's pretrained models do not cover a custom phrase. Add on owner's go.
