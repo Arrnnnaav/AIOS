@@ -15,7 +15,11 @@ from __future__ import annotations
 import json
 
 from ghostcursor.providers.envelope import sanitize, scrub
+import re
+
 from ghostcursor.providers.schemas import (
+    ACTIONS,
+    MAX_ACTION_TEXT,
     MAX_INSTRUCTION_CHARS,
     MAX_PLAN_STEPS,
     ExpectedChange,
@@ -24,9 +28,10 @@ from ghostcursor.providers.schemas import (
 )
 
 KIND = "orbyn-handoff"
-VERSION = 1
+VERSION = 2  # v2 adds the plan revision, per-step action/text and done steps
 MAX_SOURCES = 20
-MAX_BYTES = 32 * 1024
+MAX_BYTES = 48 * 1024
+_DONE = re.compile(r"\bstep (\d+) done\b")
 
 
 def _clean(text: object, limit: int) -> str:
@@ -51,6 +56,14 @@ def export(ws, sender: str) -> str:
         raise ValueError("your organisation does not allow handing work off")
     if ws.plan is None:
         raise ValueError("make a plan before handing it off")
+    done = sorted(
+        {
+            int(n)
+            for t in ws.turns
+            if t.speaker == "assistant" and t.text.startswith("[teach r")
+            for n in _DONE.findall(t.text)
+        }
+    )
     sources = {
         s.url: s.title for graph in ws.research_graphs for s in graph.sources
     }  # ponytail: newest title wins for a repeated URL
@@ -59,10 +72,14 @@ def export(ws, sender: str) -> str:
         "version": VERSION,
         "from": _clean(sender, 60) or "a teammate",
         "goal": _clean(ws.goal, 300),
+        "revision": ws.proposal.revision if ws.proposal else 1,
+        "done": [n for n in done if 1 <= n <= len(ws.plan.steps)],
         "plan": [
             {
                 "instruction": _clean(s.instruction, MAX_INSTRUCTION_CHARS),
                 "expected_change": s.expected_change.value,
+                "action": s.action,
+                "text": _clean(s.text, MAX_ACTION_TEXT),
             }
             for s in ws.plan.steps
         ],
@@ -83,17 +100,12 @@ def parse(text: str) -> dict:
         value = json.loads(text)
     except ValueError as exc:
         raise ValueError("not a handoff file") from exc
-    if not isinstance(value, dict) or set(value) != {
-        "kind",
-        "version",
-        "from",
-        "goal",
-        "plan",
-        "sources",
-    }:
+    base = {"kind", "version", "from", "goal", "plan", "sources"}
+    extra = {"revision", "done"}
+    if not isinstance(value, dict) or not base <= set(value) <= base | extra:
         raise ValueError("not a handoff file")
     if value["kind"] != KIND or type(value["version"]) is not int or (
-        value["version"] != VERSION
+        value["version"] not in (1, 2)
     ):
         raise ValueError("unsupported handoff version")
     plan, sources = value["plan"], value["sources"]
@@ -103,10 +115,10 @@ def parse(text: str) -> dict:
         raise ValueError("too many sources")
     steps = []
     for step in plan:
-        if not isinstance(step, dict) or set(step) != {
+        if not isinstance(step, dict) or not {
             "instruction",
             "expected_change",
-        }:
+        } <= set(step) <= {"instruction", "expected_change", "action", "text"}:
             raise ValueError("a step is not instruction/expected_change")
         instruction = _text(step["instruction"], MAX_INSTRUCTION_CHARS)
         if not instruction:
@@ -115,7 +127,10 @@ def parse(text: str) -> dict:
             change = ExpectedChange(step["expected_change"])
         except ValueError as exc:
             raise ValueError("a step's expected change is unknown") from exc
-        steps.append(PlanStep(instruction, change))
+        action = step.get("action", "click")
+        if action not in ACTIONS:
+            raise ValueError("a step's action is unknown")
+        steps.append(PlanStep(instruction, change, action, _text(step.get("text", ""), MAX_ACTION_TEXT)))
     clean_sources = []
     for source in sources:
         if not isinstance(source, dict) or set(source) != {"url", "title"}:
@@ -124,9 +139,19 @@ def parse(text: str) -> dict:
         if not url.startswith("https://"):
             raise ValueError("a source must be an https link")
         clean_sources.append((url, _text(source["title"], 200)))
+    revision = value.get("revision", 1)
+    if type(revision) is not int or not 1 <= revision <= 10_000:
+        raise ValueError("a handoff revision is not a whole number")
+    done = value.get("done", [])
+    if not isinstance(done, list) or any(
+        type(n) is not int or not 1 <= n <= len(steps) for n in done
+    ):
+        raise ValueError("a handoff done list is invalid")
     return {
         "from": _text(value["from"], 60) or "a teammate",
         "goal": _text(value["goal"], 300),
+        "revision": revision,
+        "done": sorted(set(done)),
         "plan": TeachPlan(tuple(steps)),
         "sources": tuple(clean_sources),
     }
@@ -143,6 +168,9 @@ def receive(ws, text: str) -> str:
     lines = [
         f"[handoff from {received['from']}] Their goal: {received['goal'] or '(none)'}"
     ]
+    if received["done"]:
+        spans = ", ".join(str(n) for n in received["done"])
+        lines.append(f"They had finished step(s) {spans} of this plan (revision {received['revision']}).")
     lines += [f"Source: {title or url} -- {url}" for url, title in received["sources"]]
     lines.append(
         "Say what you want to do with it; the plan is theirs until you edit it."

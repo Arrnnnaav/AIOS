@@ -30,7 +30,8 @@ def _sent(tmp_path):
 def test_only_goal_steps_and_sources_leave_and_they_are_scrubbed(tmp_path):
     ws, text = _sent(tmp_path)
     value = json.loads(text)
-    assert set(value) == {"kind", "version", "from", "goal", "plan", "sources"}
+    assert {"kind", "version", "from", "goal", "plan", "sources"} <= set(value)
+    assert value["version"] == 2 and value["revision"] == 1
     assert value["goal"] == "Build the Q3 deck; mail [email] when done"
     assert [s["instruction"] for s in value["plan"]] == [
         s.instruction for s in PLAN.steps
@@ -60,7 +61,7 @@ def _bad(text, **change):
     "change",
     [
         {"kind": "other"},
-        {"version": 2},
+        {"version": 3},
         {"plan": []},
         {"plan": [{"instruction": "x", "expected_change": "explode"}]},
         {
@@ -129,3 +130,22 @@ def test_local_only_policy_refuses_a_handoff(tmp_path, monkeypatch):
     monkeypatch.setattr(policy, "_value", lambda name: 0 if name == "MaxEgress" else None)
     with pytest.raises(ValueError, match="organisation"):
         handoff.export(ws, "Asha")
+
+
+def test_v2_carries_revision_done_and_step_actions_and_v1_still_loads(tmp_path):
+    ws, text = _sent(tmp_path)
+    value = json.loads(text)
+    assert value["revision"] == 1 and value["done"] == []
+    assert value["plan"][0]["action"] in ("click", "type", "paste", "copy", "keys", "none")
+    # a v1 file (no revision/done/action/text) still parses
+    v1 = {
+        "kind": "orbyn-handoff",
+        "version": 1,
+        "from": "Asha",
+        "goal": "do it",
+        "plan": [{"instruction": "Open PowerPoint", "expected_change": "new_window_of_target"}],
+        "sources": [],
+    }
+    got = handoff.parse(json.dumps(v1))
+    assert got["revision"] == 1 and got["done"] == []
+    assert got["plan"].steps[0].action == "click"
