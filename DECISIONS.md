@@ -8006,3 +8006,25 @@ spec -> auto-test -> deploy as a reusable named agent.
   run-a-saved-agent wiring: next.
 - Does NOT self-deploy to the cloud or run unattended; "deploy" means saved and
   invokable on this machine, always behind the same gates.
+
+## D184 — Work in the browser through the Chrome DevTools Protocol
+
+Date: 17 October 2026. Owner direction: the assistant should work in the
+browser (copy, paste, write). Scan finding: Antigravity drives the browser via
+chrome-devtools-mcp (CDP), a cleaner rung than screen pixels.
+
+- `ghostcursor/harness/browser.py`: Orbyn launches ITS OWN Chrome/Edge window
+  with a debugging port and a dedicated temp profile -- never the person's
+  everyday profile, never attaching to a browser they did not hand over.
+- **Observation is read-only and free:** `tabs()`, and `controls()` returns the
+  page's named, interactive, on-screen nodes (role, name, backend node id,
+  box) from the accessibility tree.
+- **Actions are gated exactly like Act (D182):** `click`/`type_text` refuse
+  unless `approved=True` and the control is not on the deny list; they act by
+  backend node id (a real observed node), never a model-supplied coordinate.
+  CDP input is scoped to Orbyn's own browser window, not OS desktop input, so
+  the input-synthesis scan (rule 1) is unaffected.
+- Verified live on Chrome 156: observe, refuse-unapproved, refuse-denied,
+  approved click, approved type. Tests are `interactive`.
+- Not yet wired into the autonomous Teach/Act session as a browser target; that
+  is the next slice (a page control is the same shape as a window control).
