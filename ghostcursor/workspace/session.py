@@ -476,6 +476,40 @@ class Workspace:
         self._say("assistant", f"{shown}\n(evidence {graph.digest()[:12]})")
         return f"{shown}\n({trace.privacy})"
 
+    #: A clipboard capture longer than this is truncated into the candidate.
+    MAX_CLIP_CHARS = 2000
+
+    def clip_to_brain(self, read=None) -> str:
+        """Capture the current clipboard selection into the Company Brain as a
+        CANDIDATE (cross-app "copying ... context"), source 'clipboard'. The
+        text stays local and is NOT sent to any model: a candidate is never
+        recalled until the owner reviews it, so the owner gate decides whether
+        clipboard content ever reaches a model. Owner-initiated only."""
+
+        if self.knowledge is None:
+            return "no Company Brain configured"
+        if read is None:
+            from ghostcursor.harness import act
+
+            read = act.get_clipboard_text
+        try:
+            text = read()
+        except Exception:
+            return "could not read the clipboard"
+        text = " ".join((text or "").split())[: self.MAX_CLIP_CHARS]
+        if len(text.split()) < 2:
+            return "the clipboard has no text to save"
+        try:
+            fact = self.knowledge.add_candidate(
+                text, source="clipboard", scope=self.kb_scope
+            )
+        except ValueError as exc:
+            return str(exc)
+        return (
+            f"saved the clipboard as candidate #{fact.fid}; it is not used until "
+            f"you review it (/know review {fact.fid})"
+        )
+
     def remember_claim(self, n: int) -> str:
         """Promote claim ``n`` (1-based) of the latest research answer into the
         Company Brain as a CANDIDATE, its provenance the sources it cited. The

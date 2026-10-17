@@ -313,3 +313,30 @@ def test_remember_claim_promotes_research_into_the_company_brain(tmp_path):
     assert k.recall("prod", "default") == []  # candidate, not usable yet
     assert ws.remember_claim(9) == "no such claim"
     k.close()
+
+
+def test_clip_to_brain_captures_clipboard_as_owner_reviewed_candidate(tmp_path):
+    """Cross-app copy -> Company Brain candidate. The text stays local (never
+    sent to a model) and is not usable until the owner reviews it."""
+
+    from ghostcursor.workspace.brain import Brain
+    from ghostcursor.workspace.session import Workspace
+
+    k = Knowledge(tmp_path / "k.sqlite")
+    ws = Workspace(
+        "t", object(), Brain(tmp_path / "b.sqlite"),
+        root=tmp_path / "briefs", knowledge=k, kb_scope="default",
+    )
+    out = ws.clip_to_brain(read=lambda: "  The prod DB password rotates monthly.  ")
+    assert "candidate #1" in out
+    cand = k.list(scope="default", status="candidate")
+    assert len(cand) == 1 and cand[0].source == "clipboard"
+    assert cand[0].text == "The prod DB password rotates monthly."
+    assert k.recall("prod db", "default") == []  # not usable until reviewed
+
+    assert ws.clip_to_brain(read=lambda: "   ") == "the clipboard has no text to save"
+    assert ws.clip_to_brain(read=lambda: "word") == "the clipboard has no text to save"
+    def boom():
+        raise OSError("clipboard locked")
+    assert ws.clip_to_brain(read=boom) == "could not read the clipboard"
+    k.close()

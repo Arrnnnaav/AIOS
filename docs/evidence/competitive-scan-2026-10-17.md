@@ -292,3 +292,18 @@ the app, not the console:
   know_conflicts and a Company-Brain card in the Brain tab, the same lifecycle
   as the console /know. The store is now thread-safe (writes under a lock,
   shared connection) so the GUI can review facts from HTTP handler threads.
+
+### Feature: clipboard -> Company Brain (cross-app copy, 18 Oct 2026)
+
+Completes cross-app context the safe way. The clipboard READ primitive already
+existed (act.get_clipboard_text, added for paste_text's restore). /clip reads
+the current selection and stores it as a Company Brain CANDIDATE (source
+"clipboard"), owner-initiated only.
+
+Privacy boundary: the clipboard may hold secrets, so the content stays LOCAL --
+it is never sent to a model, logged, or stored anywhere but the owner-reviewed
+candidate store. A candidate is not recalled until the owner reviews it, so the
+owner's review is the gate that decides whether clipboard content ever reaches
+a model. No input is synthesized (the no-input-synthesis scan stays green);
+nothing leaves the machine (D179 unaffected). Independent tier-1 review to
+follow because capturing arbitrary clipboard text is a new privacy surface.
