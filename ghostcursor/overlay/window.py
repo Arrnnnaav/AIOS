@@ -137,9 +137,13 @@ def _wnd_proc(hwnd, msg, wparam, lparam):
     return win32gui.DefWindowProc(hwnd, msg, wparam, lparam)
 
 
-def create_overlay_window() -> int:
+def create_overlay_window(hidden_from_capture: bool = False) -> int:
     """Create a click-through, topmost, taskbar-hidden overlay spanning the
-    whole virtual desktop (all monitors). Returns its HWND."""
+    whole virtual desktop (all monitors). Returns its HWND.
+
+    ``hidden_from_capture`` (D182): screenshots, Jev pictures and screen
+    shares do not see the overlay (WDA_EXCLUDEFROMCAPTURE, Windows 10 2004+);
+    the user still does. Pixel tests leave it off: they photograph the ring."""
     global _bg_brush, _origin
 
     h_instance = win32api.GetModuleHandle(None)
@@ -180,6 +184,10 @@ def create_overlay_window() -> int:
     )
 
     win32gui.SetLayeredWindowAttributes(hwnd, COLOR_KEY, 0, win32con.LWA_COLORKEY)
+    if hidden_from_capture:
+        import ctypes
+
+        ctypes.windll.user32.SetWindowDisplayAffinity(hwnd, 0x11)  # best effort
     # SW_SHOWNOACTIVATE: appear without stealing focus from the app the user
     # is actually working in.
     win32gui.ShowWindow(hwnd, win32con.SW_SHOWNOACTIVATE)

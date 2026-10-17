@@ -14,6 +14,16 @@ import time
 from ctypes import wintypes
 
 _user32 = ctypes.WinDLL("user32", use_last_error=True)
+_user32.OpenInputDesktop.restype = wintypes.HANDLE
+_user32.GetUserObjectInformationW.argtypes = (
+    wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD, ctypes.c_void_p
+)  # fmt: skip
+_user32.CloseDesktop.argtypes = (wintypes.HANDLE,)
+_user32.WindowFromPoint.restype = wintypes.HWND
+_user32.WindowFromPoint.argtypes = (wintypes.POINT,)
+_user32.GetAncestor.restype = wintypes.HWND
+_user32.GetAncestor.argtypes = (wintypes.HWND, wintypes.UINT)
+_user32.GetWindowThreadProcessId.argtypes = (wintypes.HWND, ctypes.POINTER(wintypes.DWORD))
 
 _INPUT_MOUSE, _INPUT_KEYBOARD = 0, 1
 _KEYUP, _UNICODE = 0x0002, 0x0004
@@ -131,7 +141,70 @@ def click_at(x: int, y: int) -> None:
     _send(events)
 
 
-def perform(step, target, *, send=_send, click=click_at, pause=time.sleep) -> str:
+def _elevated(pid: int | None = None) -> bool | None:
+    """True if the process runs elevated; None if it cannot be asked."""
+
+    kernel32, advapi32 = ctypes.WinDLL("kernel32"), ctypes.WinDLL("advapi32")
+    kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+    kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+    advapi32.OpenProcessToken.argtypes = (
+        wintypes.HANDLE, wintypes.DWORD, ctypes.POINTER(wintypes.HANDLE)
+    )  # fmt: skip
+    advapi32.GetTokenInformation.argtypes = (
+        wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD,
+        ctypes.POINTER(wintypes.DWORD),
+    )  # fmt: skip
+    process = (
+        kernel32.GetCurrentProcess()
+        if pid is None
+        else kernel32.OpenProcess(0x1000, False, pid)  # QUERY_LIMITED_INFORMATION
+    )
+    if not process:
+        return None
+    token = wintypes.HANDLE()
+    try:
+        if not advapi32.OpenProcessToken(process, 0x0008, ctypes.byref(token)):
+            return None
+        value, size = wintypes.DWORD(), wintypes.DWORD()
+        ok = advapi32.GetTokenInformation(
+            token, 20, ctypes.byref(value), 4, ctypes.byref(size)  # TokenElevation
+        )
+        kernel32.CloseHandle(token)
+        return bool(value.value) if ok else None
+    finally:
+        if pid is not None:
+            kernel32.CloseHandle(process)
+
+
+def blocker(x: int, y: int) -> str | None:
+    """Why input at (x, y) must not be sent now, or None (D182; the checks
+    Dodaios makes before input). The secure desktop (UAC prompt, lock
+    screen) swallows input; an elevated window drops input from a
+    non-elevated sender (UIPI), so a click would silently do nothing."""
+
+    desktop = _user32.OpenInputDesktop(0, False, 0x0001)  # DESKTOP_READOBJECTS
+    if not desktop:
+        return "the screen is locked or a Windows security prompt is open"
+    name = ctypes.create_unicode_buffer(64)
+    _user32.GetUserObjectInformationW(desktop, 2, name, 128, None)  # UOI_NAME
+    _user32.CloseDesktop(desktop)
+    if name.value.casefold() != "default":
+        return "the screen is locked or a Windows security prompt is open"
+    hwnd = _user32.WindowFromPoint(wintypes.POINT(x, y))
+    root = _user32.GetAncestor(hwnd, 2) if hwnd else 0  # GA_ROOT
+    pid = wintypes.DWORD()
+    if root:
+        _user32.GetWindowThreadProcessId(root, ctypes.byref(pid))
+    if pid.value and _elevated(pid.value) and not _elevated():
+        return "that window runs as administrator; Orbyn cannot act in it"
+    return None
+
+
+def perform(
+    step, target, *, send=_send, click=click_at, pause=time.sleep, check=blocker
+) -> str:
     """Do ``step`` on ``target`` (a Candidate in the latest frame); returns a
     short description for the status line."""
 
@@ -142,6 +215,9 @@ def perform(step, target, *, send=_send, click=click_at, pause=time.sleep) -> st
         return "nothing to do"
     if action == "keys":
         events = chord_events(step.text)  # validate before touching anything
+    reason = check(x, y)
+    if reason:
+        raise PermissionError(reason)
     click(x, y)  # every other action starts by focusing the observed control
     if action == "click":
         return f"clicked {target.name or target.control_type}"

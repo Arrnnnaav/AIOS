@@ -102,7 +102,11 @@ def test_a_failed_action_blocks_instead_of_retrying_blind():
         clock=lambda: 0.0,
         plan=plan,
         act=lambda step, target: act.perform(
-            step, target, send=lambda e: None, click=lambda x, y: None
+            step,
+            target,
+            send=lambda e: None,
+            click=lambda x, y: None,
+            check=lambda x, y: None,
         ),
     )
     frame = _frame([_c(1)])
@@ -122,6 +126,7 @@ def test_perform_clicks_the_observed_centre_then_sends_the_action():
             send=sent.append,
             click=lambda x, y: clicks.append((x, y)),
             pause=lambda s: None,
+            check=lambda x, y: None,
         )
 
     assert run("click") == "clicked Title" and clicks == [(200, 220)] and not sent
@@ -155,3 +160,20 @@ def test_plans_carry_an_action_and_old_plans_default_to_click():
             '{"steps":[{"instruction":"x","expected_change":"title_changes",'
             '"action":"format_disk","text":""}]}'
         )
+
+
+def test_a_blocked_desktop_or_elevated_window_gets_no_input():
+    target = _frame([_c(1)]).candidates[0]
+    clicks = []
+    with pytest.raises(PermissionError, match="administrator"):
+        act.perform(
+            PlanStep("s", E.TITLE_CHANGES),
+            target,
+            click=lambda x, y: clicks.append((x, y)),
+            check=lambda x, y: "that window runs as administrator",
+        )
+    assert clicks == []
+
+
+def test_this_process_can_ask_its_own_elevation():
+    assert act._elevated() in (True, False)

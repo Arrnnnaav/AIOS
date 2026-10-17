@@ -169,6 +169,42 @@ def take_mark(
     return ABORTED
 
 
+def _acting_banner() -> int:  # pragma: no cover - needs a desktop
+    """A small topmost strip, top centre: Orbyn is in control and ESC stops
+    it (D182). Click-through, never focused, hidden from capture."""
+
+    import ctypes
+
+    import win32api
+    import win32con
+    import win32gui
+
+    width, height = 360, 30
+    left = (win32api.GetSystemMetrics(0) - width) // 2
+    hwnd = win32gui.CreateWindowEx(
+        win32con.WS_EX_TOPMOST
+        | win32con.WS_EX_TOOLWINDOW
+        | win32con.WS_EX_NOACTIVATE
+        | win32con.WS_EX_TRANSPARENT
+        | win32con.WS_EX_LAYERED,
+        "STATIC",
+        "  Orbyn is acting - press ESC to stop",
+        win32con.WS_POPUP | win32con.WS_BORDER | 0x0201,  # SS_CENTER|SS_CENTERIMAGE
+        left,
+        8,
+        width,
+        height,
+        None,
+        None,
+        None,
+        None,
+    )
+    win32gui.SetLayeredWindowAttributes(hwnd, 0, 235, win32con.LWA_ALPHA)
+    ctypes.windll.user32.SetWindowDisplayAffinity(hwnd, 0x11)
+    win32gui.ShowWindow(hwnd, win32con.SW_SHOWNOACTIVATE)
+    return hwnd
+
+
 def run_model_teach(
     goal: str,
     hwnds: list[int] | None,
@@ -227,7 +263,8 @@ def run_model_teach(
     session = ModelTeachSession(
         goal, gateway or Gateway(), mark=mark, plan=plan, look=look, act=perform
     )
-    overlay = window.create_overlay_window()
+    overlay = window.create_overlay_window(hidden_from_capture=True)
+    banner = _acting_banner() if act else None
     say(
         f"{'Act' if act else 'Model Teach'} across "
         f"{', '.join(b.label + ' ' + b.identity.executable for b in bindings)}. "
@@ -285,6 +322,10 @@ def run_model_teach(
         session.stop()
         observer.stop()
         window.destroy_overlay_window(overlay)
+        if banner:
+            import win32gui
+
+            win32gui.DestroyWindow(banner)
         if outcome is not None:
             outcome.extend(session.completed)
     return code
