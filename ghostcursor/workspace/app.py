@@ -168,6 +168,10 @@ class App:
                 for i in ws.ideas
             ],
             "plan_memories": self.plan_memories,
+            "agents": [
+                {"name": a.name, "description": a.description} for a in ws.agents()
+            ],
+            "draft_agent": ws.draft_agent.as_text() if ws.draft_agent else "",
             "paused": self.paused,
             "busy": self.busy,
             "status": list(self.status),
@@ -249,6 +253,27 @@ class App:
             plan = self.run("Planning", lambda: ws.make_plan(idea))
             if plan is None:
                 raise ValueError("No plan: the model is not available.")
+            return {}
+        if action == "agent_create":  # D183: draft a reusable agent from a need
+            if not text:
+                raise ValueError("say what the agent should do")
+            if not self.run("Designing the agent", lambda: ws.create_agent(text)):
+                raise ValueError("No agent: the model is not available.")
+            return {}
+        if action == "agent_save":
+            return {"name": self.run("Saving the agent", ws.save_agent).name}
+        if action == "agent_use":
+            name = str(body.get("name", ""))
+            values = body.get("values") if isinstance(body.get("values"), dict) else {}
+            return {
+                "name": self.run(
+                    "Starting the agent", lambda: ws.use_agent(name, values)
+                ).name
+            }
+        if action == "agent_delete":
+            from ghostcursor.workspace import agents
+
+            agents.delete(ws.root, str(body.get("name", "")))
             return {}
         if action == "handoff_export":
             from ghostcursor.workspace import handoff
@@ -547,7 +572,7 @@ def main(argv: list[str] | None = None) -> int:
         listener = Listener(app.heard, say=app.say, hotkey=hotkey, wake=wake)
         listener.start()
         app.say(
-            "Say \"Hey Bro\" or press "
+            'Say "Hey Bro" or press '
             + (hotkey or "the hotkey (off)").title()
             + " to talk to Orbyn."
         )

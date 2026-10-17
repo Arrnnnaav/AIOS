@@ -141,3 +141,20 @@ def test_use_agent_leaves_unknown_slots_as_text(tmp_path):
 def test_use_a_missing_agent_is_refused(tmp_path):
     with pytest.raises(ValueError, match="no agent"):
         _ws(tmp_path).use_agent("ghost")
+
+
+def test_the_app_drafts_saves_uses_and_deletes_an_agent(tmp_path):
+    from ghostcursor.workspace.app import App
+
+    app = App("agent-topic", make_workspace=lambda: _ws(tmp_path))
+    try:
+        app.handle("agent_create", {"text": "build my quarterly deck"})
+        assert app.state()["draft_agent"].startswith("q3-deck-builder")
+        assert app.handle("agent_save", {}) == {"name": "q3-deck-builder"}
+        assert [a["name"] for a in app.state()["agents"]] == ["q3-deck-builder"]
+        app.handle("agent_use", {"name": "q3-deck-builder", "values": {"n": "8"}})
+        assert app.state()["goal"] == "Build a 8-slide sales deck in PowerPoint"
+        app.handle("agent_delete", {"name": "q3-deck-builder"})
+        assert app.state()["agents"] == []
+    finally:
+        app.close()

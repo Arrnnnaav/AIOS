@@ -522,6 +522,7 @@ function renderBrain() {
   if (S.managed) priv.append(el("div", "note", ["Set by your organization: nothing leaves this computer.", "Set by your organization: text only, no pictures.", "Your organization allows pictures."][S.egress]));
   priv.lastChild.style.textAlign = "left";
   root.append(priv);
+  root.append(agentsCard());
   root.append(accountsCard());
   const stats = el("div", "stats"); root.append(stats);
   api("stats").then((s) => { for (const [k, v] of Object.entries(s).slice(0, 6)) { const d = el("div", "stat"); d.append(el("b", "", String(v)), el("span", "", k.replace(/_/g, " "))); stats.append(d); } }).catch(() => {});
@@ -530,6 +531,38 @@ function renderBrain() {
     erase.onclick = () => { if (prompt('Erase every memory? Type "yes" to confirm.') === "yes") act("brain", { verb: "erase", confirm: "yes" }, "Erased"); };
     root.append(erase);
   }
+}
+
+// ---- agents: create, save, use reusable helpers (D183) ----------------
+function agentsCard() {
+  const card = el("div", "mem"); card.style.marginTop = "16px";
+  const meta = el("div", "meta"); meta.append(el("span", "kind", "agents")); card.append(meta);
+  card.append(el("div", "", "Describe a job once; Orbyn drafts a reusable agent, tests it, and saves it. Running one still shows you the plan and asks before risky steps."));
+  for (const a of (S.agents || [])) {
+    const row = el("div", "sheetrow");
+    const use = el("button", "pill go", "Use"); use.disabled = !!S.busy;
+    use.onclick = () => act("agent_use", { name: a.name }, "Agent started").then(() => setTab("chat"));
+    const del = el("button", "secondary", "Delete"); del.disabled = !!S.busy;
+    del.onclick = () => act("agent_delete", { name: a.name }, "Agent deleted").then(() => renderBrain());
+    del.style.marginLeft = "6px";
+    const label = el("span", "", a.name + " — " + a.description);
+    const rt = el("span"); rt.style.marginLeft = "auto"; rt.append(use, del);
+    row.append(label, rt); card.append(row);
+  }
+  if (S.draft_agent) {
+    const draft = el("div", "note"); draft.style.textAlign = "left";
+    draft.append(el("b", "", "Draft: "), document.createTextNode(S.draft_agent));
+    card.append(draft);
+    const save = el("button", "pill go", "Save this agent"); save.disabled = !!S.busy;
+    save.onclick = () => act("agent_save", {}, "Agent saved").then(() => renderBrain());
+    card.append(save);
+  }
+  const inp = el("input"); inp.placeholder = "what should the new agent do?"; inp.disabled = !!S.busy;
+  const make = el("button", "secondary", "Create agent"); make.disabled = !!S.busy;
+  make.onclick = () => inp.value.trim() && act("agent_create", { text: inp.value.trim() }, "Agent drafted").then(() => renderBrain());
+  inp.onkeydown = (e) => { if (e.key === "Enter") make.onclick(); };
+  const row = el("div", "sheetrow"); row.append(inp, make); card.append(row);
+  return card;
 }
 
 // ---- accounts: the person's own ChatGPT plan or API keys (D182) -------
