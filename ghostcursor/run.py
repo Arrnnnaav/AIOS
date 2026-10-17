@@ -816,6 +816,16 @@ def _run_compiled_tour(
     # An abort already waiting before launch must prevent the full-screen,
     # topmost overlay from existing at all. The executor keeps polling after
     # launch; this guard owns the pre-window interval.
+    #
+    # The slow cold start (UIA/COM and winsdk imports, the OCR probe: 2-5 s
+    # measured 16 Oct 2026) happens BEFORE this guard, so no ESC poll gap
+    # spans it (D020; test_run_threaded).
+    tier2 = None
+    if observe is None:  # pragma: no cover - needs a real desktop
+        from ghostcursor.perception import compiled as _compiled  # noqa: F401
+        from ghostcursor.perception import tier2 as tier2_module
+
+        tier2 = tier2_module.build_controller(clock)
     if escape_pressed():
         return 0
 
@@ -936,13 +946,12 @@ def _run_compiled_tour(
             renderer_ladder = None
         stop_perception = None
         if observe is None:  # pragma: no cover - needs a real desktop
-            from ghostcursor.perception import tier2 as tier2_module
             from ghostcursor.perception.compiled import build_compiled_perception
 
             perception = build_compiled_perception(
                 workflow,
                 clock,
-                tier2=tier2_module.build_controller(clock),
+                tier2=tier2,
                 warmup_budget_s=warmup_budget_s,
             )
             if renderer_ladder is not None:
