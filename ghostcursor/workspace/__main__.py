@@ -9,6 +9,7 @@ Type to discuss. Commands:
   /plan             a step plan from the conversation (a proposal)
   /plan idea <n>    a plan for approach n of /ideate
   /agent new <need> | save | use <name> [k=v] | list   reusable agents
+  /web [url]        open Orbyn's browser, read the page's controls (read-only)
   /plan edit <n> <text> | drop <n> | add <text>
                     edit the plan; each edit is a new proposal
   /teach <n> [s]    guide plan step n onward on screen for s seconds (default 300)
@@ -162,6 +163,7 @@ def main(argv: list[str] | None = None) -> int:
         + (f" -- goal: {workspace.goal}" if workspace.goal else "")
         + ". /quit to leave; type a message or a command."
     )
+    web = {"browser": None}
     try:
         while True:
             try:
@@ -290,9 +292,7 @@ def main(argv: list[str] | None = None) -> int:
                 elif verb == "use" and len(parts) == 2:
                     bits = parts[1].split()
                     name = bits[0]
-                    values = dict(
-                        kv.split("=", 1) for kv in bits[1:] if "=" in kv
-                    )
+                    values = dict(kv.split("=", 1) for kv in bits[1:] if "=" in kv)
                     try:
                         spec = workspace.use_agent(name, values)
                         print(f"using {spec.name}: {workspace.goal}")
@@ -306,11 +306,34 @@ def main(argv: list[str] | None = None) -> int:
                     )
                 else:
                     print("usage: /agent new <need> | save | use <name> [k=v] | list")
+            elif command == "/web":
+                from ghostcursor.harness import browser
+
+                target = rest.strip()
+                if target and not target.startswith(("http://", "https://")):
+                    target = "https://" + target
+                try:
+                    if web["browser"] is None:
+                        web["browser"] = browser.Browser.launch("about:blank")
+                    page = web["browser"].page()
+                    if target:
+                        page.navigate(target)
+                    controls = page.controls()
+                    page.close()
+                    print(
+                        "\n".join(f"  [{c.role}] {c.name}" for c in controls[:40])
+                        or "(no named controls on the page)"
+                    )
+                    print(f"({len(controls)} controls; read-only)")
+                except Exception as exc:
+                    print(f"browser unavailable: {exc}")
             elif command.startswith("/"):
                 print(__doc__)
             else:
                 print(workspace.discuss(line))
     finally:
+        if web["browser"] is not None:
+            web["browser"].close()
         brain.close()
     return 0
 
