@@ -8028,3 +8028,26 @@ chrome-devtools-mcp (CDP), a cleaner rung than screen pixels.
   approved click, approved type. Tests are `interactive`.
 - Not yet wired into the autonomous Teach/Act session as a browser target; that
   is the next slice (a page control is the same shape as a window control).
+
+## D185 — drive_until: a gated, goal-driven loop (browser first)
+
+Date: 17 October 2026. Owner direction: build the browser as an Act target,
+then the Jev drive_until loop. Scan: HeyClicky's drive_until clicks toward a
+goal with Jev picking each control, no model turn per click.
+
+- `ghostcursor/harness/drive.py`: `drive_until(goal, observe, choose, act,
+  approved, deny, max_steps, stop)`. Injectable, so the same engine drives the
+  browser and (later) the desktop. Jev picks the next control; the engine
+  validates the pick against the controls it offered, applies the same floors
+  as teach.gate (confidence 0.6, margin 0.2), refuses the deny list, acts, and
+  looks again. Typed `Result`: done | handed_back | blocked | max_steps |
+  not_approved | stopped.
+- **Autonomy gate.** This has no pre-reviewed plan, so it REFUSES unless
+  `approved=True` (the person approved starting the loop), never touches a
+  deny-listed control, stops the instant `stop()` (ESC) is true, and is bounded
+  by `max_steps`. It never guesses -- low confidence or a tie hands back.
+- **Browser wiring (D184/D185):** `Page.drive(goal, gateway, approved, deny,
+  max_steps, stop)` drives Orbyn's own browser page, clicks only (text entry
+  stays on the gated type_text path). Verified live (scripted gateway).
+- Desktop drive wiring reuses the same engine over the harness observer; built
+  behind the same approval, next.

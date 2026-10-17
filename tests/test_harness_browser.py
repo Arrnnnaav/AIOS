@@ -64,3 +64,33 @@ def test_approved_click_and_type_land(page):
         {"expression": "document.getElementById('i').value", "returnByValue": True},
     )
     assert value["result"]["value"] == "hello"
+
+
+def test_drive_clicks_toward_a_goal_then_stops_on_done(page):
+    """Wiring check with a scripted gateway (no live model): drive clicks Save,
+    then the gateway says DONE."""
+    from ghostcursor.providers.schemas import Choice
+
+    b, p = page
+    save = next(c for c in p.controls() if c.name == "Save")
+    calls = {"n": 0}
+
+    class G:
+        def choose(self, envelope, option_ids, **kw):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                sid = str(save.backend_node_id)
+                assert sid in option_ids and "DONE" in option_ids
+                return Choice(sid, {sid: 0.95})
+            return Choice("DONE", {"DONE": 1.0})
+
+    r = p.drive("click Save", G(), approved=True, deny=["delete"])
+    assert r.status == "done" and r.steps == 1
+    import time as _t; _t.sleep(0.3)
+    assert any(t.title == "CLICKED" for t in b.tabs())
+
+
+def test_drive_refuses_without_approval(page):
+    _, p = page
+    r = p.drive("do it", object(), approved=False)
+    assert r.status == "not_approved"

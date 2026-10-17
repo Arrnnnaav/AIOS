@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import threading
 import time
+from dataclasses import dataclass
 
 # Import order matters: overlay.window pulls in overlay.dpi, which declares
 # DPI awareness before any window exists.
@@ -203,6 +204,120 @@ def _acting_banner() -> int:  # pragma: no cover - needs a desktop
     ctypes.windll.user32.SetWindowDisplayAffinity(hwnd, 0x11)
     win32gui.ShowWindow(hwnd, win32con.SW_SHOWNOACTIVATE)
     return hwnd
+
+
+@dataclass(frozen=True)
+class _Pick:
+    id: str
+    name: str
+
+
+def drive_live(
+    goal: str,
+    hwnds: list[int] | None,
+    *,
+    gateway=None,
+    approved: bool = False,
+    deny=(),
+    max_steps: int = 8,
+    seconds: float = 120.0,
+    say=print,
+    stop=lambda: False,
+    _observe=None,
+    _perform=None,
+):
+    """Drive the desktop toward ``goal`` a click at a time (D185), Jev picking
+    each control -- no reviewed plan, so it REFUSES unless ``approved=True``,
+    never touches a deny-listed control, stops on ESC or the deadline, and is
+    bounded by ``max_steps``. Acts through act.perform (visible mouse, the
+    lock-screen / elevated-window blocker). Returns a drive Result.
+
+    ``_observe``/``_perform`` are injection points for tests; the live path
+    builds them from the harness observer and act.perform."""
+
+    from ghostcursor.harness.drive import drive_until
+    from ghostcursor.providers.envelope import Envelope, Tainted
+    from ghostcursor.providers.schemas import ExpectedChange, PlanStep
+
+    DONE = "DONE"
+    click = PlanStep("click", ExpectedChange.CHOSEN_STATE_CHANGES)  # action="click"
+    gateway = gateway or (None if _observe else _default_gateway())
+    live = _observe is None
+    observer = overlay = banner = None
+    if live:
+        from ghostcursor.harness.binding import bind
+
+        observer = Observer(bind(hwnds or choose_windows()))
+        observer.start()
+        overlay = window.create_overlay_window(hidden_from_capture=True)
+        banner = _acting_banner()
+    deadline = time.monotonic() + seconds
+    state = {"frame": None}
+
+    def observe():
+        if _observe is not None:
+            frame = _observe()
+        else:
+            frame = observer.latest()
+        state["frame"] = frame
+        return [] if frame is None else [_Pick(c.cid, c.name) for c in frame.candidates]
+
+    def choose(goal_text, controls):
+        tainted = {c.id: Tainted.of("uia_name", c.name) for c in controls}
+        envelope = Envelope(
+            task="drive",
+            trusted={"goal": goal_text, "done_means": "the goal is already met"},
+            tainted=tainted,
+        )
+        return gateway.choose(
+            envelope,
+            tuple(c.id for c in controls) + (DONE,),
+            question="Which control should be clicked next to reach the goal, "
+            "or DONE if the goal is already met?",
+        )
+
+    def act(pick):
+        target = state["frame"].get(pick.id)
+        if target is None:
+            raise RuntimeError("the control went away")
+        did = (_perform or _live_perform)(click, target)
+        say(f"[drive] {did}")
+
+    def stopped():
+        return stop() or _escape_pressed() or time.monotonic() >= deadline
+
+    try:
+        return drive_until(
+            goal,
+            observe=observe,
+            choose=choose,
+            act=act,
+            approved=approved,
+            deny=deny,
+            max_steps=max_steps,
+            stop=stopped,
+        )
+    finally:
+        if observer is not None:
+            observer.stop()
+        if overlay is not None:
+            window.destroy_overlay_window(overlay)
+        if banner:
+            import win32gui
+
+            win32gui.DestroyWindow(banner)
+
+
+def _default_gateway():
+    from ghostcursor.providers import Gateway
+
+    return Gateway()
+
+
+def _live_perform(step, target):
+    from ghostcursor.harness import act as act_mod
+
+    return act_mod.perform(step, target)
 
 
 def run_model_teach(

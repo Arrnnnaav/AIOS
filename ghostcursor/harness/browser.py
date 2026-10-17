@@ -222,8 +222,76 @@ class Page:
         self.cmd("DOM.focus", {"backendNodeId": control.backend_node_id})
         self.cmd("Input.insertText", {"text": text})
 
+    def drive(
+        self,
+        goal: str,
+        gateway,
+        *,
+        approved: bool = False,
+        deny=(),
+        max_steps: int = 8,
+        stop=lambda: False,
+    ):
+        """Act toward ``goal`` on this page a click at a time (D185), Jev
+        choosing each control. Refuses unless ``approved``; never touches a
+        deny-listed control; ``stop()`` (ESC) ends it. Returns a drive Result.
+        Clicks only -- text entry stays on the gated type_text path."""
+
+        from ghostcursor.harness.drive import drive_until
+        from ghostcursor.providers.envelope import Envelope, Tainted
+
+        DONE = "DONE"
+
+        def observe():
+            handles = {}
+            out = []
+            for c in self.controls():
+                cid = str(c.backend_node_id)
+                handles[cid] = c
+                out.append(_Pick(cid, c.name, c.role))
+            observe.handles = handles
+            return out
+
+        def choose(goal_text, controls):
+            tainted = {
+                c.id: Tainted.of("page_control", f"{c.role}: {c.name}")
+                for c in controls
+            }
+            envelope = Envelope(
+                task="browser",
+                trusted={"goal": goal_text, "done_means": "the goal is already met"},
+                tainted=tainted,
+            )
+            return gateway.choose(
+                envelope,
+                tuple(c.id for c in controls) + (DONE,),
+                question="Which control should be clicked next to reach the goal, "
+                "or DONE if the goal is already met?",
+            )
+
+        def act(pick):
+            self.click(observe.handles[pick.id], approved=True, deny=())
+
+        return drive_until(
+            goal,
+            observe=observe,
+            choose=choose,
+            act=act,
+            approved=approved,
+            deny=deny,
+            max_steps=max_steps,
+            stop=stop,
+        )
+
     def close(self) -> None:
         try:
             self.ws.close()
         except Exception:
             pass
+
+
+@dataclass(frozen=True)
+class _Pick:
+    id: str
+    name: str
+    role: str
