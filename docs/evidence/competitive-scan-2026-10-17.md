@@ -279,3 +279,16 @@ another app.
   review pending.
 - Ceiling (ponytail): a fixed 0.2s wait before restore lets the app read the
   clipboard; a non-text prior clipboard (image/files) is cleared, not restored.
+
+### Feature: Company Brain in the GUI + research promotion (18 Oct 2026)
+
+Two slices finishing the Brain for the actual (non-technical) user, who lives in
+the app, not the console:
+- `/remember <n>` promotes a cited research claim into the Brain as a candidate
+  (provenance = its source URLs), the owner still reviewing it -- curated
+  knowledge grows from web research without losing the gate (Cognee/Graphiti
+  ingest the web into the graph; here it stays owner-governed).
+- GUI Brain panel: app actions know_list/know_review/know_approve/know_retire/
+  know_conflicts and a Company-Brain card in the Brain tab, the same lifecycle
+  as the console /know. The store is now thread-safe (writes under a lock,
+  shared connection) so the GUI can review facts from HTTP handler threads.

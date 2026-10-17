@@ -201,3 +201,50 @@ def test_ideate_then_plan_the_chosen_approach(tmp_path):
     with pytest.raises(ValueError):
         app.handle("plan", {"idea": 9})
     app.close()
+
+
+def test_company_brain_review_panel_actions(tmp_path):
+    """The GUI Brain actions: list, review/approve/retire, conflicts -- the
+    same owner-governed lifecycle as the console, over HTTP."""
+
+    from ghostcursor.workspace.knowledge import Knowledge
+
+    kb = Knowledge(tmp_path / "know.sqlite")
+    app = App(
+        "trip",
+        make_workspace=lambda: Workspace(
+            "trip",
+            Gateway(),
+            Brain(tmp_path / "kb.sqlite"),
+            root=tmp_path / "briefs",
+            knowledge=kb,
+            kb_scope="default",
+        ),
+    )
+    server = make_server(app, "secret-token")
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        port = server.server_port
+        a = kb.add_candidate("DB is encrypted at rest.", source="s", scope="default")
+        b = kb.add_candidate("DB is not encrypted at rest.", source="t", scope="default")
+
+        facts = json.loads(call(port, "/api/know_list")[1])["facts"]
+        assert {f["status"] for f in facts} == {"candidate"}  # nothing usable yet
+
+        status, body = call(port, "/api/know_review", {"fid": a.fid})
+        assert status == 200 and json.loads(body)["status"] == "reviewed"
+        call(port, "/api/know_review", {"fid": b.fid})
+        call(port, "/api/know_approve", {"fid": a.fid})
+
+        conflicts = json.loads(call(port, "/api/know_conflicts")[1])["conflicts"]
+        assert len(conflicts) == 1
+        assert {conflicts[0]["a"]["fid"], conflicts[0]["b"]["fid"]} == {a.fid, b.fid}
+
+        call(port, "/api/know_retire", {"fid": b.fid})
+        states = {f["fid"]: f["status"] for f in json.loads(call(port, "/api/know_list")[1])["facts"]}
+        assert states[a.fid] == "approved" and states[b.fid] == "retired"
+        assert call(port, "/api/know_review", {"fid": 999})[0] == 400  # no such fact
+    finally:
+        server.shutdown()
+        app.close()
+        kb.close()

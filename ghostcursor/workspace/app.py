@@ -226,6 +226,42 @@ class App:
 
             chatgpt.sign_out()
             return {}
+        if action == "know_list":  # Company Brain review panel (D186)
+            if ws.knowledge is None:
+                return {"facts": []}
+            status = body.get("status") or None
+            return {
+                "facts": [
+                    {
+                        "fid": f.fid,
+                        "text": f.text,
+                        "status": f.status,
+                        "source": f.source,
+                        "superseded_by": f.superseded_by,
+                    }
+                    for f in ws.knowledge.list(scope=ws.kb_scope, status=status)
+                ]
+            }
+        if action in ("know_review", "know_approve", "know_retire"):
+            if ws.knowledge is None:
+                raise ValueError("no Company Brain")
+            fid = int(body.get("fid", 0))
+            if ws.knowledge.get(fid) is None:
+                raise ValueError("no such fact")
+            getattr(ws.knowledge, action.split("_")[1])(fid)
+            return {"status": ws.knowledge.get(fid).status}
+        if action == "know_conflicts":
+            if ws.knowledge is None:
+                return {"conflicts": []}
+            return {
+                "conflicts": [
+                    {
+                        "a": {"fid": a.fid, "text": a.text},
+                        "b": {"fid": b.fid, "text": b.text},
+                    }
+                    for a, b in ws.knowledge.conflicts(ws.kb_scope)
+                ]
+            }
         if self.busy:
             raise ValueError(f"busy: {self.busy}")
         if action == "chatgpt_sign_in":

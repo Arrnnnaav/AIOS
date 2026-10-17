@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -155,10 +156,19 @@ class Knowledge:
         self.path = path or _default_path()
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.clock = clock
-        self._db = sqlite3.connect(self.path)
+        # Shared across threads (the GUI reviews facts from HTTP handler
+        # threads, not just the worker). Writes are serialized by _lock; reads
+        # are short, materialized selects that sqlite handles concurrently.
+        # ponytail: one RLock, writes only -- fine for a local single user;
+        # guard reads too if contention ever shows.
+        self._lock = threading.RLock()
+        self._db = sqlite3.connect(self.path, check_same_thread=False)
         self._db.execute("PRAGMA secure_delete = ON")  # retire overwrites on disk
         self._db.executescript(_SCHEMA)
-        with self._db:  # backfill the FTS index for facts added before it existed
+        with (
+            self._lock,
+            self._db,
+        ):  # backfill the FTS index for facts added before it existed
             self._db.execute(
                 "INSERT INTO facts_fts(rowid, text) SELECT fid, text FROM facts "
                 "WHERE fid NOT IN (SELECT rowid FROM facts_fts)"
@@ -190,7 +200,7 @@ class Knowledge:
         if sensitivity not in SENSITIVITIES:
             raise ValueError(f"sensitivity is one of {SENSITIVITIES}")
         now = self.clock()
-        with self._db:
+        with self._lock, self._db:
             cur = self._db.execute(
                 "INSERT INTO facts (text, source, scope, status, sensitivity, "
                 "added, last_verified, valid_until, valid_from, superseded_by) "
@@ -260,7 +270,7 @@ class Knowledge:
 
         if self.get(by_fid) is None:
             raise ValueError("the replacing fact does not exist")
-        with self._db:
+        with self._lock, self._db:
             self._db.execute(
                 "UPDATE facts SET status='superseded', superseded_by=?, "
                 "last_verified=? WHERE fid=?",
@@ -271,7 +281,7 @@ class Knowledge:
     # --- owner governance -----------------------------------------------
 
     def _set_status(self, fid: int, status: str) -> Fact | None:
-        with self._db:
+        with self._lock, self._db:
             self._db.execute(
                 "UPDATE facts SET status=?, last_verified=? WHERE fid=?",
                 (status, self.clock(), fid),
@@ -292,7 +302,7 @@ class Knowledge:
 
     def verify(self, fid: int) -> Fact | None:
         """Mark a fact re-checked now (freshness)."""
-        with self._db:
+        with self._lock, self._db:
             self._db.execute(
                 "UPDATE facts SET last_verified=? WHERE fid=?", (self.clock(), fid)
             )
@@ -373,7 +383,7 @@ class Knowledge:
         parts = [" ".join(str(x).split()) for x in (subject, predicate, obj, source)]
         if not all(parts) or not str(scope).strip():
             raise ValueError("an edge needs subject, predicate, object, source, scope")
-        with self._db:
+        with self._lock, self._db:
             cur = self._db.execute(
                 "INSERT INTO edges (subject, predicate, object, source, scope, "
                 "status, added) VALUES (?,?,?,?,?,?,?)",
@@ -394,7 +404,7 @@ class Knowledge:
         return Edge(*row) if row else None
 
     def review_edge(self, eid: int) -> Edge | None:
-        with self._db:
+        with self._lock, self._db:
             self._db.execute("UPDATE edges SET status='reviewed' WHERE eid=?", (eid,))
         return self.edge(eid)
 
