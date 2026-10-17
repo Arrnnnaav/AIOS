@@ -193,11 +193,16 @@ class ModelTeachSession:
         plan: TeachPlan | None = None,
         look=None,
         act=None,
+        deny=(),
     ):
         self.goal = goal
         #: Act (D182): ``act(step, target) -> str`` performs a step on the
         #: chosen, freshly resolved control; None means Teach (guide only).
         self.act = act
+        #: Act deny list (D182, HeyClicky's idea): control names Act must
+        #: never touch even if Jev picks them. Matched case-insensitively as
+        #: substrings, so "delete" covers "Delete slide" and "Delete all".
+        self.deny = tuple(d.casefold() for d in deny)
         self._acted_at: float | None = None
         #: frame -> {window label: redacted JPEG} when the user allowed Jev to
         #: see pictures (D179); used only after a text-only choice failed.
@@ -408,6 +413,13 @@ class ModelTeachSession:
                 current = resolve(self._chosen, frame)
                 if current is None or self.clock() - frame.at > MAX_FRAME_AGE_S:
                     self._reask("the control moved or went away")
+                    return Display(self.phase, self.message)
+                name = (current.name or "").casefold()
+                if any(d and d in name for d in self.deny):
+                    self._block(
+                        f"step {self.step + 1} would act on \"{current.name}\", "
+                        "which you told Orbyn not to touch"
+                    )
                     return Display(self.phase, self.message)
                 try:
                     did = self.act(step, current)

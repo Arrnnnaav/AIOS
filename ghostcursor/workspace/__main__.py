@@ -253,6 +253,9 @@ def main(argv: list[str] | None = None) -> int:
                     plan=plan,
                     outcome=outcome,
                     act=command == "/act",
+                    deny=["delete", "send", "pay", "buy", "purchase", "remove"]
+                    if command == "/act"
+                    else (),
                 )
                 print(workspace.record_teach(int(parts[0]), outcome, code))
             elif command == "/stats":

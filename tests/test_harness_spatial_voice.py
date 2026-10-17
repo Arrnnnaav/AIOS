@@ -214,7 +214,7 @@ def test_run_model_teach_uses_one_deadline_and_stops_on_abort(monkeypatch):
     monkeypatch.setattr(teach_live, "take_mark", fake_take_mark)
     monkeypatch.setattr(
         teach_live.window, "create_overlay_window",
-        lambda: (_ for _ in ()).throw(AssertionError("overlay after abort")),
+        lambda **k: (_ for _ in ()).throw(AssertionError("overlay after abort")),
     )
     monkeypatch.setattr(teach_live.time, "monotonic", lambda: 1000.0)
     assert teach_live.run_model_teach("g", [11], seconds=60, gateway=object(), point=True) == 0
@@ -242,7 +242,7 @@ def test_time_spent_pointing_counts_against_the_session(monkeypatch):
     monkeypatch.setattr(teach_live.time, "sleep", lambda _: None)
     monkeypatch.setattr(teach_live, "_escape_pressed", lambda: False)
     monkeypatch.setattr(teach_live, "_console_enter", lambda: False)
-    monkeypatch.setattr(teach_live.window, "create_overlay_window", lambda: "overlay")
+    monkeypatch.setattr(teach_live.window, "create_overlay_window", lambda **k: "overlay")
     monkeypatch.setattr(teach_live.window, "destroy_overlay_window", lambda o: None)
     monkeypatch.setattr(teach_live.window, "pump_messages_nonblocking", lambda: None)
     monkeypatch.setattr(teach_live.window, "clear_hint", lambda o: drawn.append(o))
@@ -279,7 +279,7 @@ def test_the_guidance_loop_ends_on_esc_its_stop_hook_or_the_deadline(
     monkeypatch.setattr(teach_live, "ModelTeachSession", Session)
     monkeypatch.setattr(teach_live.time, "monotonic", lambda: next(times))
     monkeypatch.setattr(teach_live, "_escape_pressed", lambda: esc)
-    monkeypatch.setattr(teach_live.window, "create_overlay_window", lambda: "overlay")
+    monkeypatch.setattr(teach_live.window, "create_overlay_window", lambda **k: "overlay")
     monkeypatch.setattr(teach_live.window, "destroy_overlay_window", lambda o: None)
     said = []
     teach_live.run_model_teach(

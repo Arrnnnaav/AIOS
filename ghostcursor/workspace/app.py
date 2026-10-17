@@ -316,10 +316,13 @@ class App:
                 raise ValueError("seconds must be a number from 1 to 3600")
             hwnds = self.hwnds(body.get("windows", []))
             plan = ws.teach_plan(step)
+            deny = [str(d) for d in body.get("deny", []) if str(d).strip()]
             return {
                 "result": self.run(
                     "Acting" if action == "act" else "Guiding",
-                    lambda: self._teach(step, plan, hwnds, seconds, action == "act"),
+                    lambda: self._teach(
+                        step, plan, hwnds, seconds, action == "act", deny
+                    ),
                 )
             }
         if action == "voice":
@@ -364,7 +367,7 @@ class App:
         finally:
             observer.stop()
 
-    def _teach(self, step, plan, hwnds, seconds, act=False) -> str:
+    def _teach(self, step, plan, hwnds, seconds, act=False, deny=()) -> str:
         from ghostcursor.harness.teach_live import run_model_teach
 
         outcome: list = []
@@ -378,6 +381,7 @@ class App:
             confirm=self.signalled,
             stop=self.stop.is_set,
             act=act,
+            deny=deny,
         )
         return self.ws.record_teach(step, outcome, code)
 

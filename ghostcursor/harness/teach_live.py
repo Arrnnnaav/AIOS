@@ -218,6 +218,7 @@ def run_model_teach(
     confirm=_console_enter,
     stop=lambda: False,
     act: bool = False,
+    deny=(),
 ) -> int:
     """``outcome`` receives (step, why) for each completed step. A UI passes
     ``say`` (status lines), ``confirm`` (step done) and ``stop`` (its Stop
@@ -261,7 +262,13 @@ def run_model_teach(
     if act:  # D182: the user approves the plan; Orbyn performs each step
         from ghostcursor.harness.act import perform
     session = ModelTeachSession(
-        goal, gateway or Gateway(), mark=mark, plan=plan, look=look, act=perform
+        goal,
+        gateway or Gateway(),
+        mark=mark,
+        plan=plan,
+        look=look,
+        act=perform,
+        deny=deny,
     )
     overlay = window.create_overlay_window(hidden_from_capture=True)
     banner = _acting_banner() if act else None

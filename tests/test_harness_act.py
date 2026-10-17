@@ -177,3 +177,27 @@ def test_a_blocked_desktop_or_elevated_window_gets_no_input():
 
 def test_this_process_can_ask_its_own_elevation():
     assert act._elevated() in (True, False)
+
+
+def test_a_denied_control_is_never_acted_on_even_if_jev_picks_it():
+    session, done, _ = _session(
+        [PlanStep("Remove the row", E.CHOSEN_DISAPPEARS)], [_choice("c1")]
+    )
+    session.deny = ("delete",)
+    frame = _frame([_c(1, "Delete row", "Button")])
+    session.tick(frame)
+    session.tick(frame, confirm=True)  # approve plan
+    out = session.tick(frame, confirm=True)  # past risk gate
+    assert out.phase is Phase.BLOCKED and "not to touch" in out.message
+    assert done == []
+
+
+def test_an_empty_deny_entry_blocks_nothing():
+    session, done, _ = _session(
+        [PlanStep("Click it", E.CHOSEN_STATE_CHANGES)], [_choice("c1")]
+    )
+    session.deny = ("",)  # must not match every control
+    frame = _frame([_c(1, "Save", "Button")])
+    session.tick(frame)
+    session.tick(frame, confirm=True)
+    assert done == [("click", "Save")]

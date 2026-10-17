@@ -580,7 +580,7 @@ async function windowSheet(title, sub, startLabel, extra, onStart) {
     lab.append(cb, d); list.append(lab);
   }
   const row = el("div", "sheetrow");
-  if (extra) row.append(extra);
+  if (extra) (Array.isArray(extra) ? extra : [extra]).forEach((e) => row.append(e));
   const cancel = el("button", "secondary", "Cancel"); cancel.onclick = closeSheet;
   const start = el("button", "pill go", startLabel); start.style.marginLeft = "auto";
   start.onclick = () => {
@@ -611,9 +611,13 @@ function openTeach(step, doIt) {
   const note = doIt
     ? "Choose the windows to work across. Orbyn shows the plan; press Done to approve, then it clicks and types for you. ESC stops it at once."
     : "Choose the windows to work across. Orbyn points; you click. Press Enter here when a step is done.";
-  windowSheet(title, note, doIt ? "Approve and start" : "Start guiding", sel, async (wins) => {
+  const deny = doIt ? el("input") : null;
+  if (deny) { deny.placeholder = "never click (comma-separated): delete, send, pay"; deny.value = "delete, send, pay, buy, remove"; }
+  windowSheet(title, note, doIt ? "Approve and start" : "Start guiding", deny ? [sel, deny] : sel, async (wins) => {
     setTab("chat");
-    const r = await act(doIt ? "act" : "teach", { step, windows: wins, seconds: Number(sel.value) });
+    const body = { step, windows: wins, seconds: Number(sel.value) };
+    if (deny) body.deny = deny.value.split(",").map((s) => s.trim()).filter(Boolean);
+    const r = await act(doIt ? "act" : "teach", body);
     if (r) toast(r.result, true);
   });
 }
