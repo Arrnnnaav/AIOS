@@ -124,3 +124,7 @@ py -3.12 tools\render_act_campaign.py --harness|--manager <path> --out <doc> [--
   tier-1 risk. Everything else goes to `DECISIONS.md` or `FOLLOWUPS.md`.
 - Dependencies: system Python 3.12 (`py -3.12`), pywin32, pywinauto, numpy,
   mss, winsdk, Pillow, rapidfuzz, ollama, httpx, PyJWT[crypto] (Sign in with ChatGPT).
+- Voice (optional): faster-whisper, sounddevice; the "Hey Bro" fast wake word
+  additionally wants sherpa-onnx plus the KWS model under
+  `%LOCALAPPDATA%\GhostCursor\kws\` (Orbyn falls back to Whisper without it).
+- Browser (D184): websocket-client, and a Chrome/Edge install.

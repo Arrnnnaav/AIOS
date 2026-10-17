@@ -219,5 +219,6 @@ with the script named at the bottom; edit the curated table by hand.
 - D183 — Agent creator: reusable Teach/Act agents from a stated need
 - D184 — Work in the browser through the Chrome DevTools Protocol
 - D185 — drive_until: a gated, goal-driven loop (browser first)
+- D185 addendum — streaming keyword spotter for "Hey Bro"
 
 _Generated from `DECISIONS.md` headings by `py -3.12 tools/render_decisions_index.py`._

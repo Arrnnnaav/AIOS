@@ -130,3 +130,54 @@ def test_a_heard_request_becomes_a_message(tmp_path):
         assert app.state()["turns"][0]["text"] == "make me a plan for the deck"
     finally:
         app.close()
+
+
+def test_kws_availability_is_graceful(monkeypatch, tmp_path):
+    """available() is a plain bool; a missing model or package never raises."""
+    from ghostcursor import listen_kws
+
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))  # empty -> no model
+    assert listen_kws.available() is False
+
+
+def test_the_whisper_wake_path_is_skipped_when_kws_is_active():
+    """With KWS active, utterance() must not run the Whisper wake check; the
+    KWS loop arms the wake instead."""
+    heard = []
+    listener = Listener(lambda t: None, say=lambda s: None, clock=Clock(),
+                        hear=lambda *a: heard.append(a) or "hey bro do it")  # fmt: skip
+    listener._kws = object()  # pretend the fast path is active
+    listener.utterance(_tone(2.0, 0.1))  # not armed, KWS active
+    assert heard == []  # Whisper wake check skipped
+
+
+@pytest.mark.interactive
+def test_kws_detector_fires_on_spoken_hey_bro(tmp_path):
+    import wave
+
+    from ghostcursor import listen_kws
+
+    if not listen_kws.available():
+        pytest.skip("KWS model not installed")
+    try:
+        import win32com.client
+    except Exception:
+        pytest.skip("no SAPI")
+
+    def speak(text):
+        out = str(tmp_path / "k.wav")
+        st = win32com.client.Dispatch("SAPI.SpFileStream")
+        fmt = win32com.client.Dispatch("SAPI.SpAudioFormat"); fmt.Type = 18
+        st.Format = fmt; st.Open(out, 3)
+        v = win32com.client.Dispatch("SAPI.SpVoice"); v.AudioOutputStream = st
+        v.Speak(text); st.Close()
+        with wave.open(out) as w:
+            return (np.frombuffer(w.readframes(w.getnframes()), "int16") / 32768.0).astype("float32")
+
+    def fired(phrase):
+        det = listen_kws.Detector()
+        a = speak(phrase)
+        return any(det.feed(a[i : i + 1600]) for i in range(0, len(a), 1600))
+
+    assert fired("Hey Bro")
+    assert not fired("open the settings")

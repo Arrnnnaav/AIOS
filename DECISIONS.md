@@ -8051,3 +8051,15 @@ goal with Jev picking each control, no model turn per click.
   stays on the gated type_text path). Verified live (scripted gateway).
 - Desktop drive wiring reuses the same engine over the harness observer; built
   behind the same approval, next.
+
+## D185 addendum — streaming keyword spotter for "Hey Bro"
+
+`ghostcursor/listen_kws.py`: when sherpa-onnx and the KWS model
+(`%LOCALAPPDATA%\GhostCursor\kws\sherpa-onnx-kws-zipformer-gigaspeech-...`)
+are present, the mic loop spots "Hey Bro" by streaming (sub-second, no
+per-utterance Whisper decode). Optional and fail-open: a missing package or
+model, or any KWS fault, drops back to the Whisper wake path. Only wake
+DETECTION moves to KWS; the request after the wake word is still transcribed
+by faster-whisper. The keyword file (`hey-bro.txt`) is BPE-tokenised offline;
+runtime needs no pypinyin. Verified live on SAPI-spoken audio: fires on
+"Hey Bro", ignores non-matches.

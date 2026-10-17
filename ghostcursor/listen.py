@@ -129,6 +129,10 @@ class Listener:
         self._stop = threading.Event()
         self._threads: list[threading.Thread] = []
         self._hotkey_thread_id = 0
+        #: The streaming keyword spotter, built lazily in _mic when available
+        #: (D185 fast path). None means the Whisper wake path is used.
+        self._kws = None
+        self._kws_tried = False
 
     # --- decisions (pure enough to test) ---------------------------------
 
@@ -146,6 +150,8 @@ class Listener:
             return
         if not self.wake:
             return
+        if self._kws is not None:
+            return  # the KWS fast path arms the wake; no Whisper wake check here
         # No initial prompt: Whisper drops a prompted phrase as "already said".
         heard = self.hear(samples[: int(RATE * WAKE_MAX_S)], "tiny.en")
         rest = wake_match(heard)
@@ -193,6 +199,16 @@ class Listener:
 
         frames: queue.Queue = queue.Queue()
         gate = Utterances()
+        if self.wake and not self._kws_tried:
+            self._kws_tried = True
+            try:
+                import ghostcursor.listen_kws as kws
+
+                if kws.available():
+                    self._kws = kws.Detector()
+                    self.say('Fast wake word ready — say "Hey Bro".')
+            except Exception:
+                self._kws = None  # fall back to the Whisper wake path
         try:
             with sounddevice.InputStream(
                 samplerate=RATE,
@@ -206,6 +222,12 @@ class Listener:
                         frame = frames.get(timeout=0.2)
                     except queue.Empty:
                         continue
+                    if self._kws is not None and self.clock() >= self.armed_until:
+                        try:
+                            if self._kws.feed(frame):
+                                self.arm("Hey Bro")
+                        except Exception:
+                            self._kws = None  # a KWS fault drops to Whisper wake
                     done = gate.feed(frame)
                     if done is not None:
                         try:
