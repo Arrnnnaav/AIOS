@@ -120,3 +120,48 @@ def test_context_graph_relate_review_and_neighbors(kn):
     import pytest as _p
     with _p.raises(ValueError):
         kn.relate("", "p", "o", source="s", scope="acme")
+
+
+def test_recall_ranks_by_bm25_and_stems(kn):
+    """Retrieval is BM25-ranked (Zep/Mem0 parity), Porter-stemmed so a query
+    term matches its inflections, not exact-word-only."""
+
+    near = kn.add_candidate(
+        "Production deploys happen every Friday afternoon.", source="s", scope="acme"
+    )
+    far = kn.add_candidate(
+        "The Friday standup is at 9am.", source="s", scope="acme"
+    )
+    kn.approve(near.fid)
+    kn.approve(far.fid)
+    hits = kn.recall("friday deploy", "acme")  # both match friday; near also deploy
+    assert [h.fid for h in hits] == [near.fid, far.fid]  # deploy fact ranks first
+    assert kn.recall("deploying production", "acme")[0].fid == near.fid
+    assert kn.recall("", "acme") == []  # no terms -> nothing, not everything
+
+
+def test_fts_backfills_a_db_written_before_the_index_existed(tmp_path):
+    """Opening an older store (facts present, no FTS rows) backfills the index
+    so recall still works."""
+
+    import sqlite3
+
+    from ghostcursor.workspace.knowledge import Knowledge
+
+    path = tmp_path / "old.sqlite"
+    raw = sqlite3.connect(path)
+    raw.executescript(
+        "CREATE TABLE facts (fid INTEGER PRIMARY KEY AUTOINCREMENT, text TEXT, "
+        "source TEXT, scope TEXT, status TEXT, sensitivity TEXT, added REAL, "
+        "last_verified REAL, valid_until REAL, valid_from REAL DEFAULT 0, "
+        "superseded_by INTEGER);"
+    )
+    raw.execute(
+        "INSERT INTO facts VALUES (1,'Legacy fact about billing','s','acme',"
+        "'approved','normal',0,0,NULL,0,NULL)"
+    )
+    raw.commit()
+    raw.close()
+    k = Knowledge(path)
+    assert [f.fid for f in k.recall("billing", "acme")] == [1]
+    k.close()

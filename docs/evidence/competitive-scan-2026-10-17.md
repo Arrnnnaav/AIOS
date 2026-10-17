@@ -180,3 +180,28 @@ and conflict surfacing. Hardened to parity: bi-temporal supersession (invalidate
 never delete, keep validity window + source) and a Context Graph
 (entities/edges, retrieve by connected entity). Still local-first, no execution
 authority, shipped by slice.
+
+### Update (17 Oct 2026, pm) — retrieval hardened; honest gaps
+
+After wiring recall/neighbors into the workspace plan/research context, the
+one real gap against the leaders was retrieval *quality*: Orbyn's recall ranked
+by word-count overlap, whereas Zep/Mem0/Cognee rank by relevance (BM25 and/or
+vectors).
+
+- Adopted: `recall` now uses SQLite **FTS5 with BM25** and a **Porter stemmer**
+  (native, no new dependency), so a query term matches its inflections and
+  results come back relevance-ranked. An FTS index is backfilled for stores
+  written before it existed; only alnum terms reach MATCH (no FTS-operator
+  injection).
+- Deferred (stated, not silently dropped): **vector/embedding retrieval** —
+  needs a local embedding model and a dependency; against Orbyn's offline-first
+  stance for now. BM25 is the lazy, dependency-free win; revisit vectors if
+  recall measurably falls short on real org corpora. **Mem0's two-phase
+  candidate dedup** (merge a near-duplicate into an existing fact at ingest)
+  — not built; add when ingestion connectors land.
+
+REA availability: REA ran earlier on the local Electron apps (Cluely, Amoeba,
+Antigravity). The memory systems above are cloud SaaS or Python libraries with
+no local binary to unpack, so they were read from public docs/papers. REA is
+not connected in the session that did this hardening; it is re-run whenever a
+feature needs a proprietary binary opened and REA is reachable.

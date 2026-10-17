@@ -56,6 +56,12 @@ CREATE TABLE IF NOT EXISTS edges (
     source TEXT NOT NULL, scope TEXT NOT NULL, status TEXT NOT NULL,
     added REAL NOT NULL
 );
+-- Full-text index over fact text for BM25-ranked recall (Zep/Mem0/Cognee all
+-- rank by relevance, not word count). rowid = fid; Porter stemming so a query
+-- 'deploy' matches 'deploys'. Rows are added on add_candidate and backfilled
+-- for any pre-existing facts at open; status/validity are filtered after.
+CREATE VIRTUAL TABLE IF NOT EXISTS facts_fts
+    USING fts5(text, tokenize='porter unicode61');
 """
 
 
@@ -98,6 +104,16 @@ def _words(text: str) -> set[str]:
     return set(re.findall(r"[a-z0-9]{2,}", text.casefold()))
 
 
+def _fts_query(query: str) -> str | None:
+    """A safe FTS5 MATCH string: the query's alnum terms OR-ed together (any
+    term may match, ranked by BM25). None when the query has no usable term,
+    so the caller returns nothing rather than matching everything. Only alnum
+    tokens are kept, so FTS operators and quotes cannot be injected."""
+
+    terms = _words(query)
+    return " OR ".join(sorted(terms)) if terms else None
+
+
 class Knowledge:
     """The Company Brain store. Owner-governed: adding makes a *candidate*;
     only an explicit review/approve makes a fact retrievable."""
@@ -109,6 +125,11 @@ class Knowledge:
         self._db = sqlite3.connect(self.path)
         self._db.execute("PRAGMA secure_delete = ON")  # retire overwrites on disk
         self._db.executescript(_SCHEMA)
+        with self._db:  # backfill the FTS index for facts added before it existed
+            self._db.execute(
+                "INSERT INTO facts_fts(rowid, text) SELECT fid, text FROM facts "
+                "WHERE fid NOT IN (SELECT rowid FROM facts_fts)"
+            )
 
     def close(self) -> None:
         self._db.close()
@@ -144,6 +165,9 @@ class Knowledge:
                 (text, source, scope, "candidate", sensitivity, now, now,
                  valid_until, now if valid_from is None else valid_from),
             )  # fmt: skip
+            self._db.execute(
+                "INSERT INTO facts_fts(rowid, text) VALUES (?,?)", (cur.lastrowid, text)
+            )
         return self.get(cur.lastrowid)
 
     def supersede(self, old_fid: int, by_fid: int) -> Fact | None:
@@ -213,21 +237,27 @@ class Knowledge:
         return [Fact(*r) for r in self._db.execute(sql + " ORDER BY fid", args)]
 
     def recall(self, query: str, scope: str, *, k: int = 5) -> list[Fact]:
-        """Usable facts for ``scope`` matching ``query`` by word overlap, best
-        first, freshest-verified as the tiebreak. Candidates and retired facts
-        are never returned; stale (past validity) facts are excluded."""
+        """Usable facts for ``scope`` matching ``query``, ranked by BM25
+        relevance (FTS5, Porter-stemmed), best first. Candidates and retired
+        facts are never returned; stale (past validity) facts are excluded."""
 
-        want = _words(query)
+        match = _fts_query(query)
+        if match is None:
+            return []
         now = self.clock()
-        scored = []
-        for f in self.list(scope=scope):
-            if f.status not in USABLE or f.stale(now):
-                continue
-            overlap = len(want & _words(f.text))
-            if overlap:
-                scored.append((overlap, f.last_verified, f))
-        scored.sort(key=lambda s: (-s[0], -s[1]))
-        return [f for _o, _v, f in scored[:k]]
+        rows = self._db.execute(
+            "SELECT f.* FROM facts f JOIN facts_fts x ON x.rowid = f.fid "
+            "WHERE f.scope = ? AND facts_fts MATCH ? ORDER BY bm25(facts_fts)",
+            (scope, match),
+        )
+        out = []
+        for row in rows:
+            f = Fact(*row)
+            if f.status in USABLE and not f.stale(now):
+                out.append(f)
+            if len(out) >= k:
+                break
+        return out
 
     def conflicts(self, scope: str) -> list[tuple[Fact, Fact]]:
         """Pairs of usable facts in ``scope`` that look like they disagree:
