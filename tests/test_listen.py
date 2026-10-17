@@ -1,0 +1,132 @@
+"""'Hey Bro' and the hotkey (D182): the wake phrase is recognised in the forms
+Whisper produces; a request in the same breath is sent, a bare wake word arms
+the next utterance; nothing is sent without the wake word or the hotkey."""
+
+from __future__ import annotations
+
+import numpy as np
+import pytest
+
+from ghostcursor import listen, settings
+from ghostcursor.listen import RATE, Listener, Utterances, parse_hotkey, wake_match
+
+
+@pytest.mark.parametrize(
+    "text, rest",
+    [
+        ("Hey Bro, copy the totals into my email.", "copy the totals into my email"),
+        ("hey bruh open excel", "open excel"),
+        ("Hey bro.", ""),
+        ("Hey brother can you help", "can you help"),
+        ("I said hey bro to him", None),
+        ("Hello world", None),
+        ("heybro", ""),
+    ],
+)
+def test_wake_match(text, rest):
+    assert wake_match(text) == rest
+
+
+def _tone(seconds, amp):
+    return (amp * np.ones(int(RATE * seconds))).astype("float32")
+
+
+def test_utterances_split_on_silence_and_skip_blips():
+    gate = Utterances()
+    audio = np.concatenate(
+        [
+            _tone(0.5, 0.001),
+            _tone(1.0, 0.1),
+            _tone(1.0, 0.001),
+            _tone(0.05, 0.1),
+            _tone(1.0, 0.001),
+        ]  # fmt: skip
+    )
+    found = []
+    for i in range(0, len(audio), listen.FRAME):
+        done = gate.feed(audio[i : i + listen.FRAME])
+        if done is not None:
+            found.append(len(done) / RATE)
+    assert len(found) == 1 and 1.5 <= found[0] <= 2.0  # the blip is dropped
+
+
+class Clock:
+    now = 0.0
+
+    def __call__(self):
+        return self.now
+
+
+def _listener(heard):
+    sent, clock = [], Clock()
+    replies = iter(heard)
+    listener = Listener(
+        sent.append, say=lambda s: None, clock=clock, hear=lambda *a: next(replies)
+    )
+    return listener, sent, clock
+
+
+def test_a_request_in_one_breath_is_sent():
+    listener, sent, _ = _listener(["Hey bro open the budget sheet"])
+    listener.utterance(_tone(2.0, 0.1))
+    assert sent == ["open the budget sheet"]
+
+
+def test_a_bare_wake_word_arms_the_next_utterance_until_it_expires():
+    listener, sent, clock = _listener(["Hey bro", "paste it into word", "stray talk"])
+    listener.utterance(_tone(0.6, 0.1))
+    assert sent == []
+    listener.utterance(_tone(2.0, 0.1))
+    assert sent == ["paste it into word"]
+    clock.now = 100.0
+    listener.utterance(_tone(2.0, 0.1))  # not armed, no wake word
+    assert sent == ["paste it into word"]
+
+
+def test_the_hotkey_arms_without_a_wake_word():
+    listener, sent, _ = _listener(["summarise this page"])
+    listener.arm("ctrl+alt+space")
+    listener.utterance(_tone(2.0, 0.1))
+    assert sent == ["summarise this page"]
+
+
+def test_with_the_wake_word_off_only_the_hotkey_listens():
+    listener, sent, _ = _listener(["Hey bro open excel"])
+    listener.wake = False
+    listener.utterance(_tone(2.0, 0.1))
+    assert sent == []
+
+
+def test_hotkey_parsing():
+    assert parse_hotkey("ctrl+alt+space") == (0x4000 | 0x2 | 0x1, 0x20)
+    assert parse_hotkey("Win+Shift+O") == (0x4000 | 0x8 | 0x4, ord("O"))
+    for bad in ("space", "ctrl+alt", "ctrl+banana", "", "hyper+x"):
+        with pytest.raises(ValueError):
+            parse_hotkey(bad)
+
+
+def test_listening_settings(tmp_path):
+    path = tmp_path / "s.json"
+    assert settings.listening(path) == (True, "ctrl+alt+space")
+    path.write_text('{"wake_word": false, "hotkey": "ctrl+shift+o"}')
+    assert settings.listening(path) == (False, "ctrl+shift+o")
+    path.write_text('{"hotkey": ""}')
+    assert settings.listening(path) == (True, None)
+
+
+def test_a_heard_request_becomes_a_message(tmp_path):
+    from ghostcursor.workspace.app import App
+    from tests.test_workspace_handoff import _ws
+
+    app = App("voice", make_workspace=lambda: _ws(tmp_path, "voice"))
+    try:
+        app.heard("make me a plan for the deck")
+        for _ in range(100):
+            if app.state()["turns"]:
+                break
+            import time
+
+            time.sleep(0.05)
+        assert app.state()["turns"][0]["text"] == "make me a plan for the deck"
+    finally:
+        app.close()

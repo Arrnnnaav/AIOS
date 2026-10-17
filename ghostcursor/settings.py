@@ -37,3 +37,15 @@ def set_jev_vision(on: bool, path: Path | None = None) -> None:
     temp = path.with_suffix(".tmp")
     temp.write_text(json.dumps(value), encoding="utf-8")
     temp.replace(path)  # never a half-written file
+
+
+def listening(path: Path | None = None) -> tuple[bool, str | None]:
+    """(wake word on, hotkey or None) -- "Hey Bro" and Ctrl+Alt+Space by
+    default (D182); settings.json "wake_word": false / "hotkey": "" turn
+    them off, "hotkey": "ctrl+shift+o" changes it."""
+
+    value = load(path)
+    hotkey = value.get("hotkey", "ctrl+alt+space")
+    return value.get("wake_word", True) is not False, (
+        hotkey if isinstance(hotkey, str) and hotkey else None
+    )

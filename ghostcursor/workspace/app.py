@@ -108,6 +108,23 @@ class App:
     def say(self, line: str) -> None:
         self.status.append(str(line)[:300])
 
+    def heard(self, text: str) -> None:
+        """A spoken request ("Hey Bro ..." or the hotkey, D182): a message to
+        Orbyn, like typing it. Never acts on its own."""
+
+        if self.busy:
+            self.say(f"Heard you, but Orbyn is busy: {self.busy}")
+            return
+        self.say(f"Heard: {text}")
+
+        def send():
+            try:
+                self.handle("say", {"text": text})
+            except Exception as exc:
+                self.say(f"Could not send: {exc}")
+
+        threading.Thread(target=send, daemon=True).start()
+
     def signalled(self) -> bool:
         if self.signal.is_set():
             self.signal.clear()
@@ -518,6 +535,18 @@ def main(argv: list[str] | None = None) -> int:
     threading.Thread(target=server.serve_forever, daemon=True).start()
     url = f"http://127.0.0.1:{server.server_port}/?t={token}"
     open_window(url)
+    listener = None
+    wake, hotkey = settings.listening()
+    if wake or hotkey:
+        from ghostcursor.listen import Listener
+
+        listener = Listener(app.heard, say=app.say, hotkey=hotkey, wake=wake)
+        listener.start()
+        app.say(
+            "Say \"Hey Bro\" or press "
+            + (hotkey or "the hotkey (off)").title()
+            + " to talk to Orbyn."
+        )
     try:
         # The page polls while it is open; closing it ends the app. A long
         # job (Teach) keeps it alive until the job ends.
@@ -526,6 +555,8 @@ def main(argv: list[str] | None = None) -> int:
     except KeyboardInterrupt:
         pass
     finally:
+        if listener is not None:
+            listener.stop()
         server.shutdown()
         app.close()
     return 0
