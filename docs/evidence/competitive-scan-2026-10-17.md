@@ -258,3 +258,24 @@ the gap was that a BYOK user could not see their own account was in use.
   signed-in state, which providers could answer now (own accounts first), and
   who answered last -- plus `/providers signin|signout`. Keys are still set in
   the app, never echoed in the terminal.
+
+### Feature: Act cross-app context carry (paste_text) — activation (18 Oct 2026)
+
+Owner authorized the Act activation review for cross-app context ("copying,
+pasting, writing" across apps). Plain copy-from-A -> paste-into-B already
+worked via the OS clipboard with the existing copy/paste actions; the missing
+piece was pasting text Orbyn HOLDS (a researched answer, brief content) into
+another app.
+
+- Added a `paste_text` action (schemas ACTIONS, planner prompt, act.perform):
+  put Orbyn's text on the clipboard, focus the observed control, ctrl+v, then
+  restore the user's prior clipboard in a `finally` so Orbyn's text is never
+  left behind.
+- Tier-1 rigor: the lock/admin blocker still runs before any clipboard write;
+  input synthesis stays only in act.py (scan green); the clipboard is read only
+  to restore it (never sent to a model, stored or logged). Tests cover the
+  carry, the empty-text noop, and the blocked-window refusal; the restore guard
+  is D018-mutation-checked (removing it fails two tests). Independent tier-1
+  review pending.
+- Ceiling (ponytail): a fixed 0.2s wait before restore lets the app read the
+  clipboard; a non-text prior clipboard (image/files) is cleared, not restored.

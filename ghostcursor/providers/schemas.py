@@ -116,7 +116,7 @@ def parse_choice(answer: object, offered: tuple[str, ...]) -> Choice:
 
 
 #: What Act performs on the step's observed control (D182). Teach ignores it.
-ACTIONS = ("click", "type", "paste", "copy", "keys", "none")
+ACTIONS = ("click", "type", "paste", "paste_text", "copy", "keys", "none")
 MAX_ACTION_TEXT = 2000
 
 
@@ -172,12 +172,16 @@ def parse_teach_plan(text: str) -> TeachPlan:
     for index, step in enumerate(steps, start=1):
         if not isinstance(step, dict):
             raise _invalid(f"step {index} is not an object")
-        if not {"instruction", "expected_change"} <= set(step) <= {
-            "instruction",
-            "expected_change",
-            "action",
-            "text",
-        }:
+        if (
+            not {"instruction", "expected_change"}
+            <= set(step)
+            <= {
+                "instruction",
+                "expected_change",
+                "action",
+                "text",
+            }
+        ):
             raise _invalid(f"step {index} fields are {sorted(step)}")
         action, text = step.get("action", "click"), step.get("text", "")
         if action not in ACTIONS:

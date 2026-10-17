@@ -253,3 +253,89 @@ def test_step_verification_lets_the_step_stand_when_jev_is_unsure(monkeypatch):
     clock.now = ACT_SETTLE_S
     out = session.tick(frame(fid=2))
     assert session.completed == [(1, "acted (Jev: likely done)")]  # fail-open
+
+
+def test_paste_text_carries_known_text_then_restores_the_clipboard():
+    """Cross-app context carry (D182 activation): paste_text puts Orbyn's text
+    on the clipboard, focuses the observed control, pastes with ctrl+v, then
+    restores the user's prior clipboard so Orbyn's text is never left behind."""
+
+    target = _frame([_c(1, "Body", "Edit", rect=(100, 200, 300, 240))]).candidates[0]
+    clicks, sent, clip_writes = [], [], []
+
+    out = act.perform(
+        PlanStep("Paste the address", E.CHOSEN_STATE_CHANGES, "paste_text", "221B Baker St"),
+        target,
+        send=sent.append,
+        click=lambda x, y: clicks.append((x, y)),
+        pause=lambda s: None,
+        check=lambda x, y: None,
+        get_clip=lambda: "USER PRIOR",
+        set_clip=clip_writes.append,
+    )
+    assert out == "pasted 13 characters"
+    assert clicks == [(200, 220)]  # focused the observed control first
+    assert [e.u.ki.wVk for e in sent[0]] == [0x11, 0x56, 0x56, 0x11]  # ctrl+v
+    # set to our text, then restored to the user's prior clipboard (never left ours)
+    assert clip_writes == ["221B Baker St", "USER PRIOR"]
+
+
+def test_paste_text_restores_the_clipboard_even_if_the_paste_fails():
+    """The guard (D018 mutation target): the restore is in a finally, so a
+    failed paste still puts the user's clipboard back -- Orbyn's text is never
+    stranded on the clipboard."""
+
+    target = _frame([_c(1, "Body", "Edit", rect=(10, 10, 50, 50))]).candidates[0]
+    clip_writes = []
+
+    def boom(_events):
+        raise OSError("SendInput failed")
+
+    with pytest.raises(OSError, match="SendInput failed"):
+        act.perform(
+            PlanStep("Paste", E.CHOSEN_STATE_CHANGES, "paste_text", "secret-carry"),
+            target,
+            send=boom,
+            click=lambda x, y: None,
+            pause=lambda s: None,
+            check=lambda x, y: None,
+            get_clip=lambda: "USER PRIOR",
+            set_clip=clip_writes.append,
+        )
+    assert clip_writes[-1] == "USER PRIOR"  # restored despite the failure
+    assert "secret-carry" not in clip_writes[-1:]  # ours is not what's left
+
+
+def test_paste_text_with_no_text_touches_nothing():
+    target = _frame([_c(1, "Body", "Edit")]).candidates[0]
+    clip_writes, clicks = [], []
+    out = act.perform(
+        PlanStep("Paste", E.CHOSEN_STATE_CHANGES, "paste_text", ""),
+        target,
+        send=lambda e: None,
+        click=lambda x, y: clicks.append(1),
+        pause=lambda s: None,
+        check=lambda x, y: None,
+        get_clip=lambda: "USER PRIOR",
+        set_clip=clip_writes.append,
+    )
+    assert out == "nothing to paste" and clip_writes == []
+
+
+def test_paste_text_is_refused_on_a_blocked_or_elevated_window():
+    """The lock/admin blocker runs before any clipboard write or paste."""
+
+    target = _frame([_c(1, "Body", "Edit")]).candidates[0]
+    clip_writes = []
+    with pytest.raises(PermissionError, match="administrator"):
+        act.perform(
+            PlanStep("Paste", E.CHOSEN_STATE_CHANGES, "paste_text", "x"),
+            target,
+            send=lambda e: None,
+            click=lambda x, y: None,
+            pause=lambda s: None,
+            check=lambda x, y: "that window runs as administrator",
+            get_clip=lambda: "PRIOR",
+            set_clip=clip_writes.append,
+        )
+    assert clip_writes == []  # nothing written to the clipboard
