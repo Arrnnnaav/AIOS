@@ -79,7 +79,16 @@ class Gateway:
 
     #: The user's own ChatGPT plan answers first once they sign in; until
     #: then it is skipped as not configured, with no request sent.
-    system_two: tuple[str, ...] = ("chatgpt", "nvidia", "openrouter", "ollama")
+    #: The person's own accounts first (D182), then the shared fallbacks.
+    system_two: tuple[str, ...] = (
+        "chatgpt",
+        "anthropic",
+        "openai",
+        "gemini",
+        "nvidia",
+        "openrouter",
+        "ollama",
+    )
     budget: Budget = field(default_factory=Budget)
     transport: object = None  # httpx transport override (tests / cassettes)
     log_path: Path | None = None
@@ -264,11 +273,10 @@ class Gateway:
             self._take()
             started = time.time()
             try:
-                call = (
-                    clients.responses_json_call
-                    if config.api == "responses"
-                    else clients.chat_json_call
-                )
+                call = {
+                    "responses": clients.responses_json_call,
+                    "anthropic": clients.anthropic_json_call,
+                }.get(config.api, clients.chat_json_call)
                 content, reply = call(
                     config,
                     key,

@@ -179,8 +179,39 @@ class App:
             # The user's own switch (D179); read when the next Teach starts.
             settings.set_jev_vision(body.get("on") is True)
             return {}
+        if action == "accounts":  # presence only, never a key (D182)
+            from ghostcursor.providers import chatgpt, clients, keys
+
+            return {
+                "chatgpt": chatgpt.signed_in(chatgpt.load()),
+                "keys": {name: keys.get_key(name) is not None for name in clients.BYOK},
+            }
+        if action in ("key_set", "key_clear"):
+            from ghostcursor.providers import clients, keys
+
+            name = str(body.get("name", ""))
+            if name not in clients.BYOK:
+                raise ValueError("unknown provider")
+            if action == "key_clear":
+                keys.delete_key(name)
+                return {}
+            key = str(body.get("key", "")).strip()
+            if not 8 <= len(key) <= 400 or any(c.isspace() for c in key):
+                raise ValueError("that does not look like an API key")
+            keys.set_key(name, key)
+            return {}
+        if action == "chatgpt_sign_out":
+            from ghostcursor.providers import chatgpt
+
+            chatgpt.sign_out()
+            return {}
         if self.busy:
             raise ValueError(f"busy: {self.busy}")
+        if action == "chatgpt_sign_in":
+            from ghostcursor.providers import chatgpt
+
+            self.run("Signing in", chatgpt.sign_in)
+            return {}
         ws.suggestion = ""  # a suggestion is for the message just answered
         if action == "say":
             if not text:

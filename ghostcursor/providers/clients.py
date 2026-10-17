@@ -32,8 +32,9 @@ class ProviderConfig:
     #: Provider-specific request fields, e.g. turning a reasoning model's
     #: thinking off: with it on, one NIM plan was noticeably slower (not benchmarked).
     extra: tuple[tuple[str, object], ...] = ()
-    #: "chat" (OpenAI-compatible /chat/completions) or "responses" (the
-    #: streamed Responses API that Sign in with ChatGPT requires).
+    #: "chat" (OpenAI-compatible /chat/completions), "responses" (the
+    #: streamed Responses API that Sign in with ChatGPT requires) or
+    #: "anthropic" (the Messages API).
     api: str = "chat"
 
 
@@ -75,7 +76,35 @@ SYSTEM_TWO = {
         45.0,
         api="responses",
     ),
+    # Bring your own key (D182): the person's own API account and credit.
+    # Anthropic does not allow third-party apps to use Claude subscription
+    # logins, so Anthropic is by API key. ORBYN_<NAME>_MODEL picks the model.
+    "anthropic": ProviderConfig(
+        "anthropic",
+        "https://api.anthropic.com/v1",
+        os.environ.get("ORBYN_ANTHROPIC_MODEL", "claude-sonnet-5-5"),
+        "anthropic",
+        60.0,
+        api="anthropic",
+    ),
+    "openai": ProviderConfig(
+        "openai",
+        "https://api.openai.com/v1",
+        os.environ.get("ORBYN_OPENAI_MODEL", "gpt-6.1-sol"),
+        "openai",
+        45.0,
+    ),
+    "gemini": ProviderConfig(
+        "gemini",
+        "https://generativelanguage.googleapis.com/v1beta/openai",
+        os.environ.get("ORBYN_GEMINI_MODEL", "gemini-2.5-flash"),
+        "gemini",
+        45.0,
+    ),
 }
+
+#: Providers a person can bring an API key for, shown in the app (D182).
+BYOK = ("anthropic", "openai", "gemini", "openrouter", "nvidia")
 
 #: Responses errors meaning the user's plan allowance is spent or paused:
 #: NEEDS_USER (rate limited), never a reason to guess.
@@ -210,6 +239,43 @@ def chat_json_call(
     if not isinstance(content, str) or not content.strip():
         raise ProviderError(FailureKind.INVALID_OUTPUT, f"{config.name}: empty content")
     return content, reply
+
+
+def anthropic_json_call(
+    config, key, messages: list[dict], schema: dict, **kw
+) -> tuple[str, Reply]:
+    """Anthropic Messages API asking for a JSON object; the text content only."""
+
+    system = "\n".join(m["content"] for m in messages if m["role"] == "system")
+    payload = {
+        "model": config.model,
+        "max_tokens": 4096,
+        "system": system + " Reply with the JSON object only.",
+        "messages": [
+            {"role": m["role"], "content": m["content"]}
+            for m in messages
+            if m["role"] != "system"
+        ],
+        "temperature": 0,
+    }
+    reply = _post(
+        config,
+        None,
+        "/messages",
+        payload,
+        extra_headers={"x-api-key": key or "", "anthropic-version": "2023-06-01"},
+        **kw,
+    )
+    blocks = reply.body.get("content")
+    text = "".join(
+        b.get("text", "")
+        for b in blocks or []
+        if isinstance(b, dict) and b.get("type") == "text"
+    )
+    start, end = text.find("{"), text.rfind("}")
+    if start < 0 or end < start:
+        raise ProviderError(FailureKind.INVALID_OUTPUT, f"{config.name}: no JSON object")
+    return text[start : end + 1], reply
 
 
 def responses_json_call(

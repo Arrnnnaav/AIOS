@@ -522,6 +522,7 @@ function renderBrain() {
   if (S.managed) priv.append(el("div", "note", ["Set by your organization: nothing leaves this computer.", "Set by your organization: text only, no pictures.", "Your organization allows pictures."][S.egress]));
   priv.lastChild.style.textAlign = "left";
   root.append(priv);
+  root.append(accountsCard());
   const stats = el("div", "stats"); root.append(stats);
   api("stats").then((s) => { for (const [k, v] of Object.entries(s).slice(0, 6)) { const d = el("div", "stat"); d.append(el("b", "", String(v)), el("span", "", k.replace(/_/g, " "))); stats.append(d); } }).catch(() => {});
   if (S.memories.length) {
@@ -529,6 +530,35 @@ function renderBrain() {
     erase.onclick = () => { if (prompt('Erase every memory? Type "yes" to confirm.') === "yes") act("brain", { verb: "erase", confirm: "yes" }, "Erased"); };
     root.append(erase);
   }
+}
+
+// ---- accounts: the person's own ChatGPT plan or API keys (D182) -------
+const PROVIDERS = { anthropic: "Anthropic (Claude) API key", openai: "OpenAI API key", gemini: "Google Gemini API key", openrouter: "OpenRouter API key", nvidia: "NVIDIA NIM API key" };
+function accountsCard() {
+  const card = el("div", "mem"); card.style.marginTop = "16px";
+  const meta = el("div", "meta"); meta.append(el("span", "kind", "accounts")); card.append(meta);
+  card.append(el("div", "", "Orbyn runs on your own account: sign in with ChatGPT, or paste an API key. Your plan or credit pays; keys stay in Windows Credential Manager on this computer."));
+  const body = el("div"); card.append(body);
+  api("accounts").then((a) => {
+    const row = (label, right) => { const r = el("div", "sheetrow"); r.append(el("span", "", label), right); right.style.marginLeft = "auto"; body.append(r); };
+    const gpt = el("button", a.chatgpt ? "secondary" : "pill go", a.chatgpt ? "Sign out" : "Sign in with ChatGPT");
+    gpt.onclick = () => act(a.chatgpt ? "chatgpt_sign_out" : "chatgpt_sign_in", {}, a.chatgpt ? "Signed out" : "Signed in").then(() => renderBrain());
+    row("ChatGPT" + (a.chatgpt ? " (signed in)" : ""), gpt);
+    for (const [name, label] of Object.entries(PROVIDERS)) {
+      if (a.keys[name]) {
+        const rm = el("button", "secondary", "Remove");
+        rm.onclick = () => act("key_clear", { name }, "Key removed").then(() => renderBrain());
+        row(label + " (saved)", rm);
+      } else {
+        const wrap = el("span"); const inp = el("input"); inp.type = "password"; inp.placeholder = "paste key"; inp.autocomplete = "off";
+        const save = el("button", "secondary", "Save");
+        save.onclick = () => inp.value.trim() && act("key_set", { name, key: inp.value.trim() }, "Key saved").then(() => renderBrain());
+        wrap.append(inp, save); row(label, wrap);
+      }
+    }
+    body.append(el("div", "note", "Anthropic does not let other apps use a Claude Free/Pro/Max login, so Claude works here with an API key."));
+  }).catch(() => body.append(el("div", "note", "Accounts unavailable.")));
+  return card;
 }
 
 // ---- sheets: windows, point, teach -----------------------------------
