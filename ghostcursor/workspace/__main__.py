@@ -5,6 +5,7 @@ Type to discuss. Commands:
   /voice            say your message instead of typing (SayStride, D171)
   /research <q>     a cited answer from web sources
   /evidence [n]     the passages behind research answer n (default: latest)
+  /remember <n>     save research claim n to the Company Brain (owner reviews)
   /ideate           2-4 approaches, with assumptions and unknowns
   /plan             a step plan from the conversation (a proposal)
   /plan idea <n>    a plan for approach n of /ideate
@@ -355,6 +356,8 @@ def main(argv: list[str] | None = None) -> int:
                     print(workspace.discuss(said))
             elif command == "/evidence":
                 print(workspace.evidence(int(rest) if rest.isdigit() else 0))
+            elif command == "/remember" and rest.isdigit():
+                print(workspace.remember_claim(int(rest)))
             elif command == "/ideate":
                 ideas = workspace.ideate()
                 print(

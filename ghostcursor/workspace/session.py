@@ -476,6 +476,35 @@ class Workspace:
         self._say("assistant", f"{shown}\n(evidence {graph.digest()[:12]})")
         return f"{shown}\n({trace.privacy})"
 
+    def remember_claim(self, n: int) -> str:
+        """Promote claim ``n`` (1-based) of the latest research answer into the
+        Company Brain as a CANDIDATE, its provenance the sources it cited. The
+        owner still reviews it before it is usable (Cognee/Graphiti ingest the
+        web into the graph; here it stays owner-governed)."""
+
+        if self.knowledge is None:
+            return "no Company Brain configured"
+        if not self.research_graphs:
+            return "no research yet; /research first"
+        graph = self.research_graphs[-1]
+        if not 1 <= n <= len(graph.claims):
+            return "no such claim"
+        claim = graph.claims[n - 1]
+        urls = sorted(
+            {graph.source_of(pid).url for pid in claim.evidence if graph.source_of(pid)}
+        )
+        source = "research: " + (", ".join(urls) if urls else "no source cited")
+        try:
+            fact = self.knowledge.add_candidate(
+                claim.text, source=source, scope=self.kb_scope
+            )
+        except ValueError as exc:
+            return str(exc)
+        return (
+            f"saved as candidate #{fact.fid} ({source}); "
+            f"review it with /know review {fact.fid}"
+        )
+
     def evidence(self, n: int = 0) -> str:
         """The passages behind research answer ``n`` (1-based; 0 = latest)."""
 

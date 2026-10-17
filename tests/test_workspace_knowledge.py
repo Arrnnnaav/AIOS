@@ -271,3 +271,45 @@ def test_know_ingest_loads_a_folder_as_candidates_deduped(tmp_path):
     assert k.recall("deploys fridays", "default") == []
     assert "no .md/.txt/.log" in know_command(k, "default", ["ingest", str(tmp_path / "nope")])
     k.close()
+
+
+def test_remember_claim_promotes_research_into_the_company_brain(tmp_path):
+    """A cited research claim becomes a Company Brain candidate with its source
+    URLs as provenance; the owner still reviews before it is usable."""
+
+    from ghostcursor.workspace.brain import Brain
+    from ghostcursor.workspace.contracts import (
+        Claim,
+        ClaimStatus,
+        EvidenceGraph,
+        Passage,
+        Source,
+        categorize,
+    )
+    from ghostcursor.workspace.session import Workspace
+
+    k = Knowledge(tmp_path / "k.sqlite")
+    ws = Workspace(
+        "topic", object(), Brain(tmp_path / "b.sqlite"),
+        root=tmp_path / "briefs", knowledge=k, kb_scope="default",
+    )
+    assert ws.remember_claim(1) == "no research yet; /research first"
+
+    src = Source("s1", "https://example.com/runbook", "Runbook", categorize("https://example.com/runbook"))
+    graph = EvidenceGraph(
+        "where does prod run",
+        (src,),
+        (Passage("p1", "s1", "Prod runs in us-east-1."),),
+        (Claim("Prod runs in us-east-1.", ClaimStatus.SUPPORTED, ("p1",)),),
+    )
+    ws.research_graphs.append(graph)
+    out = ws.remember_claim(1)
+    assert "candidate #1" in out and "example.com/runbook" in out
+
+    cand = k.list(scope="default", status="candidate")
+    assert len(cand) == 1
+    assert cand[0].text == "Prod runs in us-east-1."
+    assert cand[0].source == "research: https://example.com/runbook"
+    assert k.recall("prod", "default") == []  # candidate, not usable yet
+    assert ws.remember_claim(9) == "no such claim"
+    k.close()
