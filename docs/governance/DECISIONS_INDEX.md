@@ -215,5 +215,6 @@ with the script named at the bottom; edit the curated table by hand.
 - D179 — Jev across the product, and redacted pictures for Teach
 - D180 — Organisation policy and scrubbed screen text: less leaves the machine
 - D181 — Ideate, Jev in the workspace, and handoff as the Multiplayer seed
+- D182 — Act on any application through the harness; bring-your-own account
 
 _Generated from `DECISIONS.md` headings by `py -3.12 tools/render_decisions_index.py`._

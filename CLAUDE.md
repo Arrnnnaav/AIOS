@@ -33,14 +33,13 @@ and read only those entries. Never read the whole of `DECISIONS.md`, `FLOW.md`,
 
 ## Hard rules (tier 1 — always)
 
-1. **Orbyn never types, clicks or moves the cursor for the user** outside the
-   signed Act path. The input-synthesis scan (`tests/test_no_input_synthesis.py`)
-   covers `ghostcursor/` and the signed adapter payloads; keep it green.
-2. **Act runs only signed plans through the one authority path:** `PluginStore`
-   (signed bundles only in production) → `authorize_intent()` → explicit user
-   approval of the complete plan → per-node authorization → signed adapter →
-   independent verifier. Never add a second path, never import an adapter into
-   core, never let model output select what executes.
+1. **Input synthesis lives in one module:** `ghostcursor/harness/act.py`
+   (D182, owner decision: Act on any application). The input-synthesis scan
+   (`tests/test_no_input_synthesis.py`) pins it as the only one; keep it green.
+2. **Act acts only after the user approves the whole plan,** only on a control
+   the harness observed (never a model-supplied position), still asks before
+   risky controls (delete, send, pay, overwrite), and ESC stops it. The signed
+   PowerPoint plugin path (D100-D176) remains as a second, narrower Act.
 3. **A pointer that is shown is a pointer at a real, observed control.** Never
    draw at a model-supplied position.
 4. **Kill switch:** ESC and `--seconds` always stop a session; Stop/Pause reach

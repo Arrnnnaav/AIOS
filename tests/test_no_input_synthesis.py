@@ -48,6 +48,11 @@ _BANNED_IMPORTS = {
 }
 
 
+#: D182 (owner decision, 17 Oct 2026): Act on any application. This one
+#: module performs approved steps on observed controls; nothing else may.
+ACTUATOR = "harness/act.py"
+
+
 def _python_files() -> list[Path]:
     return sorted(ROOT.rglob("*.py"))
 
@@ -111,6 +116,7 @@ def test_production_code_contains_no_input_synthesis_calls():
     violations = [
         f"{path.relative_to(ROOT)}:{hit}"
         for path, tree in _trees()
+        if path.relative_to(ROOT).as_posix() != ACTUATOR
         for hit in banned_calls_in(tree)
     ]
     assert violations == [], "production input synthesis is forbidden: " + ", ".join(
@@ -279,3 +285,13 @@ def test_the_adapter_scan_still_permits_the_sanctioned_object_model():
         "app = win32com.client.gencache.EnsureDispatch('PowerPoint.Application')\n"
     )
     assert banned_imports_in(used, _ADAPTER_BANNED_IMPORTS) == []
+
+
+def test_the_actuator_is_the_only_module_that_synthesizes_input():
+    """D182: the exception is one file, and it really is the one that acts."""
+    users = {
+        path.relative_to(ROOT).as_posix()
+        for path, tree in _trees()
+        if banned_calls_in(tree)
+    }
+    assert users == {ACTUATOR}

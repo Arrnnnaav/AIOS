@@ -259,7 +259,7 @@ class App:
 
             self.run("Saving point", keep)
             return {}
-        if action == "teach":
+        if action in ("teach", "act"):
             from ghostcursor.workspace.__main__ import teach_seconds
 
             step = int(body.get("step", 0))
@@ -270,7 +270,8 @@ class App:
             plan = ws.teach_plan(step)
             return {
                 "result": self.run(
-                    "Guiding", lambda: self._teach(step, plan, hwnds, seconds)
+                    "Acting" if action == "act" else "Guiding",
+                    lambda: self._teach(step, plan, hwnds, seconds, action == "act"),
                 )
             }
         if action == "voice":
@@ -284,8 +285,6 @@ class App:
             return self.run(
                 "Counting", lambda: measures(ws.brain, ws.root, _trace_path())
             )
-        if action == "act":
-            ws.act()
         raise ValueError("unknown action")
 
     def _point(self, hwnds):
@@ -317,7 +316,7 @@ class App:
         finally:
             observer.stop()
 
-    def _teach(self, step, plan, hwnds, seconds) -> str:
+    def _teach(self, step, plan, hwnds, seconds, act=False) -> str:
         from ghostcursor.harness.teach_live import run_model_teach
 
         outcome: list = []
@@ -330,6 +329,7 @@ class App:
             say=self.say,
             confirm=self.signalled,
             stop=self.stop.is_set,
+            act=act,
         )
         return self.ws.record_teach(step, outcome, code)
 

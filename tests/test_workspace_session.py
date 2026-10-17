@@ -110,11 +110,6 @@ def test_model_failure_is_reported_never_guessed(ws):
     assert ws.make_plan() is None and ws.plan is None
 
 
-def test_act_is_refused(ws):
-    with pytest.raises(PermissionError):
-        ws.act()
-
-
 def test_strict_discussion_parse():
     for bad in (
         {"reply": "x"},

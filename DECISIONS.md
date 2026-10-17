@@ -7948,3 +7948,32 @@ multiplayer parts of the end-to-end plan (ROADMAP "Owner build order").
   they need a sync service and a D017 decision first.
 - **Act from the workspace** stays refused until the Act activation review
   is READY.
+
+## D182 — Act on any application through the harness; bring-your-own account
+
+Date: 17 October 2026. Owner direction: "we are aiming to build a harness that
+can be logged in by people's ChatGPT or Anthropic account ... something like
+Clicky ... the act should work for any app, multiple apps, with context:
+copying, pasting, writing", voice wake word "Hey Bro" plus a keyboard key.
+Owner approved "Act in any app" and "approve the whole plan before Orbyn acts"
+on 17 October 2026.
+
+- **Act on the harness.** `ModelTeachSession(act=...)` reuses planning, Jev's
+  choice among observed controls, the risk gate and change checks. New phase
+  `APPROVE`: the user reads the whole plan and approves it before anything
+  acts. Each step is performed once by `ghostcursor/harness/act.py` at the
+  centre of the freshly resolved observed control: click, type, paste, copy
+  (Ctrl+C of the selection), keys (a chord; ESC refused). A step completes on
+  the expected observed change or after `ACT_SETTLE_S`. Risky controls still
+  wait for the user. ESC and `--seconds` stop the loop.
+- **Plans carry the action.** `PlanStep.action` and `PlanStep.text`; old plans
+  default to `click`.
+- **Surfaces.** Workspace app "Do it for me", console `/act <n> [s]`, CLI
+  `--model-teach --mode act`. The workspace no longer refuses Act.
+- **Supersedes** hard rules 1-2 as written (D006, D100): input synthesis is
+  allowed in exactly one module, pinned by the scan. The signed PowerPoint
+  plugin path stays as is.
+- **Accounts.** Sign in with ChatGPT (D177) uses the person's plan. Anthropic
+  does not permit third-party apps to use Claude subscription logins, so
+  Anthropic is supported by the person's own API key; other providers by key
+  too (next slice).

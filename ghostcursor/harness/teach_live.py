@@ -181,6 +181,7 @@ def run_model_teach(
     say=print,
     confirm=_console_enter,
     stop=lambda: False,
+    act: bool = False,
 ) -> int:
     """``outcome`` receives (step, why) for each completed step. A UI passes
     ``say`` (status lines), ``confirm`` (step done) and ``stop`` (its Stop
@@ -220,14 +221,22 @@ def run_model_teach(
             "Jev may see redacted pictures of these windows when text is not "
             "enough (only buttons, tabs and menus; the rest is grey)."
         )
+    perform = None
+    if act:  # D182: the user approves the plan; Orbyn performs each step
+        from ghostcursor.harness.act import perform
     session = ModelTeachSession(
-        goal, gateway or Gateway(), mark=mark, plan=plan, look=look
+        goal, gateway or Gateway(), mark=mark, plan=plan, look=look, act=perform
     )
     overlay = window.create_overlay_window()
     say(
-        f"Model Teach across {', '.join(b.label + ' ' + b.identity.executable for b in bindings)}. "
-        f"Pointers are suggestions (amber). Enter = step done. "
-        f"ESC quits (auto-stops after {seconds:g}s)."
+        f"{'Act' if act else 'Model Teach'} across "
+        f"{', '.join(b.label + ' ' + b.identity.executable for b in bindings)}. "
+        + (
+            "Enter = approve the plan / a risky step. "
+            if act
+            else "Pointers are suggestions (amber). Enter = step done. "
+        )
+        + f"ESC stops (auto-stops after {seconds:g}s)."
     )
     reported = 0
     shown = None

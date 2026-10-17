@@ -115,10 +115,18 @@ def parse_choice(answer: object, offered: tuple[str, ...]) -> Choice:
     return Choice(choice, probabilities)
 
 
+#: What Act performs on the step's observed control (D182). Teach ignores it.
+ACTIONS = ("click", "type", "paste", "copy", "keys", "none")
+MAX_ACTION_TEXT = 2000
+
+
 @dataclass(frozen=True)
 class PlanStep:
     instruction: str
     expected_change: ExpectedChange
+    action: str = "click"
+    #: what to type for "type"; a key chord such as "ctrl+s" for "keys"
+    text: str = ""
 
 
 @dataclass(frozen=True)
@@ -138,13 +146,15 @@ TEACH_PLAN_SCHEMA = {
             "items": {
                 "type": "object",
                 "additionalProperties": False,
-                "required": ["instruction", "expected_change"],
+                "required": ["instruction", "expected_change", "action", "text"],
                 "properties": {
                     "instruction": {
                         "type": "string",
                         "maxLength": MAX_INSTRUCTION_CHARS,
                     },
                     "expected_change": {"enum": [c.value for c in ExpectedChange]},
+                    "action": {"enum": list(ACTIONS)},
+                    "text": {"type": "string", "maxLength": MAX_ACTION_TEXT},
                 },
             },
         }
@@ -162,7 +172,18 @@ def parse_teach_plan(text: str) -> TeachPlan:
     for index, step in enumerate(steps, start=1):
         if not isinstance(step, dict):
             raise _invalid(f"step {index} is not an object")
-        _exact(step, {"instruction", "expected_change"}, f"step {index}")
+        if not {"instruction", "expected_change"} <= set(step) <= {
+            "instruction",
+            "expected_change",
+            "action",
+            "text",
+        }:
+            raise _invalid(f"step {index} fields are {sorted(step)}")
+        action, text = step.get("action", "click"), step.get("text", "")
+        if action not in ACTIONS:
+            raise _invalid(f"step {index} action is not allowed")
+        if not isinstance(text, str) or len(text) > MAX_ACTION_TEXT:
+            raise _invalid(f"step {index} text is invalid")
         instruction = step["instruction"]
         if (
             not isinstance(instruction, str)
@@ -174,5 +195,5 @@ def parse_teach_plan(text: str) -> TeachPlan:
             change = ExpectedChange(step["expected_change"])
         except ValueError as exc:
             raise _invalid(f"step {index} expected_change is not allowed") from exc
-        parsed.append(PlanStep(" ".join(instruction.split()), change))
+        parsed.append(PlanStep(" ".join(instruction.split()), change, action, text))
     return TeachPlan(tuple(parsed))

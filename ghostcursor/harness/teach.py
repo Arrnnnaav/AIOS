@@ -40,6 +40,9 @@ MARGIN = 0.2
 MAX_FRAME_AGE_S = 3.0
 #: Re-asks per step before the session says it is stuck.
 MAX_REASKS = 3
+#: Act (D182): after acting, wait this long for the expected change, then
+#: count the step done anyway (typing rarely changes what UIA reports).
+ACT_SETTLE_S = 2.0
 
 #: A pointer at one of these needs the user's explicit go-ahead first.
 HIGH_RISK = re.compile(
@@ -161,6 +164,7 @@ def change_observed(
 
 class Phase(Enum):
     PLANNING = "planning"
+    APPROVE = "approve"  # Act: the user reads the whole plan first (D182)
     CHOOSING = "choosing"
     CONFIRM_RISK = "confirm_risk"
     SHOWING = "showing"
@@ -188,8 +192,13 @@ class ModelTeachSession:
         mark=None,
         plan: TeachPlan | None = None,
         look=None,
+        act=None,
     ):
         self.goal = goal
+        #: Act (D182): ``act(step, target) -> str`` performs a step on the
+        #: chosen, freshly resolved control; None means Teach (guide only).
+        self.act = act
+        self._acted_at: float | None = None
         #: frame -> {window label: redacted JPEG} when the user allowed Jev to
         #: see pictures (D179); used only after a text-only choice failed.
         self.look = look
@@ -202,7 +211,13 @@ class ModelTeachSession:
         self.slot = slot or RequestSlot()
         #: A plan the user already reviewed in the workspace (D173) skips
         #: planning; it is still only guidance, chosen and gated per step.
-        self.phase = Phase.PLANNING if plan is None else Phase.CHOOSING
+        self.phase = (
+            Phase.PLANNING
+            if plan is None
+            else Phase.APPROVE
+            if act is not None
+            else Phase.CHOOSING
+        )
         self.plan: TeachPlan | None = plan
         self.step = 0
         self.reasks = 0
@@ -273,7 +288,7 @@ class ModelTeachSession:
 
     def _reask(self, reason: str) -> None:
         self.reasks += 1
-        self._request = None
+        self._request = self._acted_at = None
         if self.reasks > MAX_REASKS:
             self._block(f"stuck on step {self.step + 1}: {reason}")
         else:
@@ -283,6 +298,7 @@ class ModelTeachSession:
         self.step += 1
         self.reasks = 0
         self._request = self._chosen = self._before = self._target = None
+        self._acted_at = None
         self._looking = False  # each step starts text-only again
         if self.step >= len(self.plan.steps):
             self.phase, self.message = Phase.DONE, "all steps done"
@@ -324,6 +340,19 @@ class ModelTeachSession:
                 else:
                     self.plan, self._request = result.value, None
                     self.phase, self.message = Phase.CHOOSING, "finding the control"
+                    if self.act is not None:
+                        self.phase = Phase.APPROVE
+                    confirm = False
+
+        if self.phase is Phase.APPROVE:
+            if not confirm:
+                steps = "; ".join(
+                    f"{n}. {s.instruction}"
+                    for n, s in enumerate(self.plan.steps, start=1)
+                )
+                return Display(self.phase, f"Approve to let Orbyn do: {steps}")
+            self.phase, self.message = Phase.CHOOSING, "finding the control"
+            confirm = False
 
         if self.phase is Phase.CHOOSING:
             if self._request is None:
@@ -375,13 +404,33 @@ class ModelTeachSession:
 
         if self.phase is Phase.SHOWING:
             step = self.plan.steps[self.step]
-            if confirm or change_observed(
+            if self.act is not None and self._acted_at is None:
+                current = resolve(self._chosen, frame)
+                if current is None or self.clock() - frame.at > MAX_FRAME_AGE_S:
+                    self._reask("the control moved or went away")
+                    return Display(self.phase, self.message)
+                try:
+                    did = self.act(step, current)
+                except Exception as exc:  # a refused chord, a failed SendInput
+                    self._block(f"could not act on step {self.step + 1}: {exc}")
+                    return Display(self.phase, self.message)
+                self._acted_at = self.clock()
+                self.message = f"{self._instruction()} -- {did}"
+                return Display(self.phase, self.message, current)
+            settled = (
+                self._acted_at is not None
+                and self.clock() - self._acted_at >= ACT_SETTLE_S
+            )
+            observed = change_observed(
                 step.expected_change, self._chosen, self._before, frame
-            ):
+            )
+            if confirm or observed or settled:
                 why = (
                     "you confirmed"
                     if confirm
                     else f"observed {step.expected_change.value}"
+                    if observed
+                    else "acted (no change seen)"
                 )
                 self.completed.append((self.step + 1, why))
                 self._advance()

@@ -178,18 +178,14 @@ def parse_ideas(content: str) -> tuple[Idea, ...]:
 
 #: Jev's workspace check (D179 table): what a message asks for -- shown as a
 #: suggestion, never acted on -- and whether each memory candidate is lasting.
-ROUTE_QUESTION = (
-    "What does the person's message ask Orbyn for? Pick the best fit."
-)
+ROUTE_QUESTION = "What does the person's message ask Orbyn for? Pick the best fit."
 ROUTES = {
     "chat": "a conversation, an opinion or a quick answer",
     "research": "facts that need current sources from the web",
     "ideate": "options: the person is unsure how to approach the goal",
     "plan": "step-by-step instructions to do the task now",
 }
-MEMORY_QUESTION = (
-    "`{key}` was extracted from the person's message. What is it?"
-)
+MEMORY_QUESTION = "`{key}` was extracted from the person's message. What is it?"
 MEMORY_VERDICTS = {
     "lasting": "a lasting preference, goal, decision or fact the person stated about themselves",
     "temporary": "true only for now, this task or this session",
@@ -372,7 +368,9 @@ class Workspace:
         try:
             verdicts = judge(
                 Envelope(
-                    task="workspace_check", trusted={"message": message}, tainted=tainted
+                    task="workspace_check",
+                    trusted={"message": message},
+                    tainted=tainted,
                 ),
                 questions,
             )
@@ -510,13 +508,6 @@ class Workspace:
             raise ValueError("no such plan step")
         return TeachPlan(self.plan.steps[step - 1 :])
 
-    @staticmethod
-    def act(*_args, **_kwargs):
-        raise PermissionError(
-            "Act is not available from the workspace: it runs only through the "
-            "signed plugin path after its release gate"
-        )
-
 
 def measures(brain: Brain, briefs: Path, traces: Path) -> dict:
     """MVP.md "Continuous measures", counted from this machine's own records:
@@ -546,7 +537,9 @@ def measures(brain: Brain, briefs: Path, traces: Path) -> dict:
         "claims": sum(r.get("claims", 0) for r in research_rows),
         "unresolved_claims": sum(r.get("unresolved", 0) for r in research_rows),
         "provider_failures": dict(
-            Counter(f.split(":")[0] for r in research_rows for f in r.get("failures", ()))
+            Counter(
+                f.split(":")[0] for r in research_rows for f in r.get("failures", ())
+            )
         ),
         "memories": dict(Counter(f"{m.scope}/{m.origin}" for m in memories)),
         "memories_superseded": sum(m.status == "superseded" for m in memories),

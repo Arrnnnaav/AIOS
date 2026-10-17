@@ -564,8 +564,8 @@ def main() -> int:
         return launch_manager()
 
     if args.model_teach:
-        if not (args.goal or args.voice) or args.mode != "teach":
-            parser.error("--model-teach needs --goal or --voice, and Teach mode")
+        if not (args.goal or args.voice):
+            parser.error("--model-teach needs --goal or --voice")
         goal = args.goal
         # One --seconds budget covers dictation and guidance (rule 4).
         deadline = time.monotonic() + args.seconds
@@ -580,7 +580,13 @@ def main() -> int:
             return 0
         from ghostcursor.harness.teach_live import run_model_teach
 
-        return run_model_teach(goal, args.window, seconds=remaining, point=args.point)
+        return run_model_teach(
+            goal,
+            args.window,
+            seconds=remaining,
+            point=args.point,
+            act=args.mode == "act",  # D182: approve the plan, Orbyn does it
+        )
 
     if args.goal:
         if args.mode == "act":

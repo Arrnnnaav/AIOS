@@ -112,10 +112,10 @@ def test_discuss_plan_and_edit_reach_the_brief(served):
     assert [t["speaker"] for t in state["turns"]][:2] == ["user", "assistant"]
 
 
-def test_act_is_refused_and_unknown_actions_fail(served):
+def test_act_needs_a_plan_and_unknown_actions_fail(served):
     _, port = served
-    status, body = call(port, "/api/act")
-    assert status == 400 and "signed plugin path" in json.loads(body)["error"]
+    status, body = call(port, "/api/act", {"step": 1, "windows": [0]})
+    assert status == 400  # no plan / no window: nothing acts
     assert call(port, "/api/nope")[0] == 400
 
 

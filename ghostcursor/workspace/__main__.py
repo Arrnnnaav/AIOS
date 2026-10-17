@@ -14,7 +14,8 @@ Type to discuss. Commands:
   /brain [list | search <q> | forget <id> | correct <id> <text> |
           pause | resume | export <file> | erase]
   /stats            counts from this machine's records (no text)
-  /act              (refused: Act runs only on the signed plugin path)
+  /act <n> [s]      Orbyn does plan step n onward itself, after you approve
+                    the plan (Enter); ESC stops (D182)
   /quit
 """
 
@@ -228,10 +229,10 @@ def main(argv: list[str] | None = None) -> int:
                         for n, s in enumerate(plan.steps, start=1)
                     )
                 )
-            elif command == "/teach":
+            elif command in ("/teach", "/act"):
                 parts = rest.split()
                 if not parts or not parts[0].isdigit():
-                    print("usage: /teach <step> [seconds]")
+                    print(f"usage: {command} <step> [seconds]")
                     continue
                 try:
                     plan = workspace.teach_plan(int(parts[0]))
@@ -246,7 +247,12 @@ def main(argv: list[str] | None = None) -> int:
                     continue
                 outcome: list = []
                 code = run_model_teach(
-                    workspace.goal, None, seconds=seconds, plan=plan, outcome=outcome
+                    workspace.goal,
+                    None,
+                    seconds=seconds,
+                    plan=plan,
+                    outcome=outcome,
+                    act=command == "/act",
                 )
                 print(workspace.record_teach(int(parts[0]), outcome, code))
             elif command == "/stats":
@@ -259,11 +265,6 @@ def main(argv: list[str] | None = None) -> int:
                     print(f"{name}: {value}")
             elif command == "/brain":
                 print(brain_command(brain, rest.split()))
-            elif command == "/act":
-                try:
-                    workspace.act()
-                except PermissionError as exc:
-                    print(exc)
             elif command.startswith("/"):
                 print(__doc__)
             else:
