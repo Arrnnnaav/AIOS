@@ -1425,3 +1425,6 @@ to confirm where the cost actually is before changing anything else.
 - `act.py` paste_text: fixed 0.2s pre-restore wait is a race for slow apps; gate restore on a paste ack or make the wait configurable. (Non-blocking; ceiling noted in code + evidence.)
 - `act.py` get_clipboard_text handles only CF_UNICODETEXT; a non-text prior clipboard (image/files, CF_HDROP/CF_BITMAP) is cleared not restored. Capture/restore those later. (Non-blocking; documented ceiling.)
 - Restore-can-itself-raise: FIXED in follow-up commit (best-effort restore, swallow at restore time).
+
+## Wake word KWS install (D185, 18 Oct 2026)
+- Streaming KWS install is now built: `py -3.12 -m ghostcursor.listen_kws install` downloads the sherpa-onnx gigaspeech KWS model and writes hey-bro.txt from the model's own BPE (keywords_text). Needs sherpa-onnx + sentencepiece + network on the user's machine; fail-open to Whisper throughout. Orchestration is tested with injected IO; the real download/tokenize is not CI-tested (no model/network in CI).

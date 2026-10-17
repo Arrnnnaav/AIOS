@@ -181,3 +181,53 @@ def test_kws_detector_fires_on_spoken_hey_bro(tmp_path):
 
     assert fired("Hey Bro")
     assert not fired("open the settings")
+
+
+def test_kws_install_places_model_and_writes_keyword_file(tmp_path, monkeypatch):
+    """install() downloads+extracts the model and writes hey-bro.txt from the
+    model's own BPE tokenizer. IO is injected; no network, no real model."""
+
+    import tarfile
+
+    from ghostcursor import listen_kws
+
+    model = tmp_path / listen_kws._MODEL_DIR_NAME
+    monkeypatch.setattr(listen_kws, "model_dir", lambda: model)
+
+    def fake_download(url, dest):
+        assert url == listen_kws.MODEL_URL
+        # a tar whose single top dir matches the model dir name, holding tokens
+        staged = tmp_path / "staged" / listen_kws._MODEL_DIR_NAME
+        staged.mkdir(parents=True)
+        (staged / "tokens.txt").write_text("a 1\n", encoding="utf-8")
+        (staged / "bpe.model").write_bytes(b"x")
+        with tarfile.open(dest, "w:bz2") as t:
+            t.add(staged, arcname=listen_kws._MODEL_DIR_NAME)
+
+    class FakeSP:
+        def __init__(self, bpe):
+            assert bpe.name == "bpe.model"
+
+        def encode(self, text, out_type=str):
+            assert text == "HEY BRO"
+            return ["▁HEY", "▁B", "RO"]
+
+    out = listen_kws.install(download=fake_download, load_sp=FakeSP)
+    assert out == model and (model / "tokens.txt").exists()
+    assert (model / "hey-bro.txt").read_text(encoding="utf-8").strip() == "▁HEY ▁B RO :2.0"
+
+
+def test_kws_keyword_fallback_when_tokenizer_missing(tmp_path, monkeypatch):
+    from ghostcursor import listen_kws
+
+    model = tmp_path / listen_kws._MODEL_DIR_NAME
+    model.mkdir(parents=True)
+    (model / "tokens.txt").write_text("a 1\n", encoding="utf-8")  # model already present
+    monkeypatch.setattr(listen_kws, "model_dir", lambda: model)
+
+    def boom(_bpe):
+        raise RuntimeError("no sentencepiece")
+
+    listen_kws.install(download=lambda u, d: None, load_sp=boom)
+    note = (model / "hey-bro.txt").read_text(encoding="utf-8")
+    assert "Could not auto-generate" in note  # clear guidance, never a wrong keyword
