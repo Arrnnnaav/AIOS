@@ -156,8 +156,10 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     from ghostcursor.providers import Gateway
 
+    from ghostcursor.workspace.knowledge import Knowledge
+
     brain = Brain()
-    workspace = Workspace(argv[0], Gateway(), brain)
+    workspace = Workspace(argv[0], Gateway(), brain, knowledge=Knowledge())
     print(
         f"Workspace '{argv[0]}'"
         + (f" -- goal: {workspace.goal}" if workspace.goal else "")
@@ -335,6 +337,7 @@ def main(argv: list[str] | None = None) -> int:
         if web["browser"] is not None:
             web["browser"].close()
         brain.close()
+        workspace.knowledge.close()
     return 0
 
 

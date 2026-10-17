@@ -264,7 +264,15 @@ class Knowledge:
             cur = self._db.execute(
                 "INSERT INTO edges (subject, predicate, object, source, scope, "
                 "status, added) VALUES (?,?,?,?,?,?,?)",
-                (parts[0], parts[1], parts[2], parts[3], scope.strip(), "candidate", self.clock()),
+                (
+                    parts[0],
+                    parts[1],
+                    parts[2],
+                    parts[3],
+                    scope.strip(),
+                    "candidate",
+                    self.clock(),
+                ),
             )
         return self.edge(cur.lastrowid)
 
@@ -289,3 +297,33 @@ class Knowledge:
         )
         edges = [Edge(*r) for r in rows]
         return [e for e in edges if key in (e.subject.casefold(), e.object.casefold())]
+
+    def related(self, query: str, scope: str, *, k: int = 5) -> list[Edge]:
+        """Reviewed edges in ``scope`` whose subject or object shares a word
+        with ``query``, best overlap first -- the query-driven counterpart to
+        ``neighbors`` (which needs an exact entity)."""
+
+        want = _words(query)
+        if not want:
+            return []
+        rows = self._db.execute(
+            "SELECT * FROM edges WHERE scope=? AND status='reviewed' ORDER BY eid",
+            (scope,),
+        )
+        scored = []
+        for r in rows:
+            e = Edge(*r)
+            overlap = len(want & (_words(e.subject) | _words(e.object)))
+            if overlap:
+                scored.append((overlap, e))
+        scored.sort(key=lambda s: -s[0])
+        return [e for _o, e in scored[:k]]
+
+    def context(
+        self, query: str, scope: str, *, k: int = 5
+    ) -> tuple[list[Fact], list[Edge]]:
+        """Curated org facts and relations for ``query`` in ``scope``, for a
+        caller that wants both at once (plan/research retrieval). Each carries
+        its own provenance; usable-state and scope rules already apply."""
+
+        return self.recall(query, scope, k=k), self.related(query, scope, k=k)

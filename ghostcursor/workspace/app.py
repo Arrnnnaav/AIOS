@@ -451,9 +451,10 @@ class App:
 def _default_workspace(topic: str):
     from ghostcursor.providers import Gateway
     from ghostcursor.workspace.brain import Brain
+    from ghostcursor.workspace.knowledge import Knowledge
     from ghostcursor.workspace.session import Workspace
 
-    return Workspace(topic, Gateway(), Brain())
+    return Workspace(topic, Gateway(), Brain(), knowledge=Knowledge())
 
 
 def make_server(app: App, token: str, port: int = 0) -> ThreadingHTTPServer:

@@ -255,3 +255,41 @@ def test_context_stays_within_its_token_budget():
     kept = _within(turns, 1000)
     assert len(kept) == 10 and kept[-1] is turns[-1]  # the newest survive
     assert _within([SimpleNamespace(text="y" * 99999)], 10)  # never empty
+
+
+def test_company_brain_facts_surface_with_provenance_scope_isolated(tmp_path):
+    """D186 wiring: curated org facts reach the model as tainted data with
+    their source, candidates do not, and another tenant's facts never leak."""
+
+    from ghostcursor.workspace.knowledge import Knowledge
+
+    kb = Knowledge(tmp_path / "knowledge.sqlite")
+    reviewed = kb.add_candidate(
+        "Deploys go out on Fridays.", source="runbook", scope="default"
+    )
+    kb.review(reviewed.fid)
+    kb.add_candidate("Unreviewed rumour about Fridays.", source="chat", scope="default")
+    other = kb.add_candidate("Beta deploys on Mondays.", source="x", scope="beta")
+    kb.review(other.fid)
+    edge = kb.relate("Acme", "deploys", "Fridays", source="arch", scope="default")
+    kb.review_edge(edge.eid)
+
+    ws = Workspace(
+        "deck", FakeGateway(), Brain(tmp_path / "b.sqlite"),
+        root=tmp_path / "briefs", knowledge=kb, kb_scope="default",
+    )
+    ws.discuss("When do deploys happen on Fridays?")
+    sent = ws.gateway.envelopes[-1].tainted_json()
+    assert "Deploys go out on Fridays." in sent and "runbook" in sent  # fact + source
+    assert "company_fact" in sent and "fact_source" in sent  # provenance labels
+    assert "Acme deploys Fridays" in sent  # reviewed relation surfaced
+    assert "Unreviewed rumour" not in sent  # candidate never retrieved
+    assert "Beta deploys on Mondays." not in sent  # scope-isolated
+    assert ws.plan_facts == () and len(ws._used_facts) == 1
+    kb.close()
+
+
+def test_no_company_brain_keeps_the_workspace_personal_only(ws):
+    ws.discuss("hello")  # knowledge defaults to None
+    assert ws._used_facts == ()
+    assert "company_fact" not in ws.gateway.envelopes[-1].tainted_json()

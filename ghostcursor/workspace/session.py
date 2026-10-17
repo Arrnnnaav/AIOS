@@ -240,6 +240,7 @@ def default_root() -> Path:
 #: plan or credit, so context stays small (the idea is Amoeba's 700-token cap).
 HISTORY_TOKENS = 3000
 MEMORY_TOKENS = 700
+KNOWLEDGE_TOKENS = 700  # curated org facts (Company Brain), same cap as memories
 
 
 def rough_tokens(text: str) -> int:
@@ -271,8 +272,14 @@ class Workspace:
     proposal: PlanProposal | None = None
     research_graphs: list[EvidenceGraph] = field(default_factory=list)
     ideas: tuple[Idea, ...] = ()
+    #: The Company Brain (curated org facts), if one is configured; None keeps
+    #: the workspace personal-only. kb_scope is this owner's tenant (D186).
+    knowledge: object = None
+    kb_scope: str = "default"
     #: Brain memories the latest plan was made with (Phase 9: shown with it).
     plan_memories: tuple[int, ...] = ()
+    #: Company Brain facts the latest plan was made with (shown with it).
+    plan_facts: tuple[int, ...] = ()
     #: Jev's suggestion for the last message: "research", "ideate", "plan" or "".
     suggestion: str = ""
     #: The agent drafted by create_agent, awaiting the user's review (D182).
@@ -319,7 +326,7 @@ class Workspace:
         history = _within(self.turns[-HISTORY_TURNS:], HISTORY_TOKENS)
         used = _within(self.brain.relevant(query), MEMORY_TOKENS)
         self._used = tuple(m.mid for m in used)
-        return {
+        context = {
             "conversation": [
                 {
                     "speaker": Tainted.of("brief_speaker", t.speaker),
@@ -335,6 +342,43 @@ class Workspace:
                 for m in used
             ],
         }
+        self._add_company_knowledge(query, context)
+        return context
+
+    def _add_company_knowledge(self, query: str, context: dict) -> None:
+        """Curated org facts and relations from the Company Brain (D186),
+        alongside personal memories, each with its provenance. Retrieval is
+        usable-state- and scope-isolated in the store. Fail-open: no store, or
+        any store error, leaves the workspace personal-only."""
+
+        self._used_facts = ()
+        if self.knowledge is None:
+            return
+        try:
+            facts, edges = self.knowledge.context(query, self.kb_scope)
+        except Exception:
+            return
+        facts = _within(facts, KNOWLEDGE_TOKENS)
+        self._used_facts = tuple(f.fid for f in facts)
+        if facts:
+            context["company_facts"] = [
+                {
+                    "text": Tainted.of("company_fact", f.text),
+                    "source": Tainted.of("fact_source", f.source),
+                    "status": Tainted.of("fact_status", f.status),
+                }
+                for f in facts
+            ]
+        if edges:
+            context["company_relations"] = [
+                {
+                    "relation": Tainted.of(
+                        "company_relation", f"{e.subject} {e.predicate} {e.object}"
+                    ),
+                    "source": Tainted.of("fact_source", e.source),
+                }
+                for e in edges
+            ]
 
     # --- the loop -------------------------------------------------------------
 
@@ -467,7 +511,7 @@ class Workspace:
 
         if idea and not 1 <= idea <= len(self.ideas):
             raise ValueError("no such idea")
-        context, used = self._context(self.goal), self._used
+        context, used, facts = self._context(self.goal), self._used, self._used_facts
         trusted = {"goal": self.goal}
         if idea:
             trusted["approach"] = f"the person chose approach {idea}: chosen_approach"
@@ -490,6 +534,7 @@ class Workspace:
             return None
         self._propose(plan)
         self.plan_memories = used
+        self.plan_facts = facts
         return plan
 
     def _propose(self, plan: TeachPlan) -> PlanProposal:
