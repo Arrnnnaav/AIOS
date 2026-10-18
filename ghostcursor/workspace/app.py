@@ -244,6 +244,33 @@ class App:
                     for f in ws.knowledge.list(scope=ws.kb_scope, status=status)
                 ]
             }
+        if action == "know_edges":  # Context Graph relationships for the panel
+            if ws.knowledge is None:
+                return {"edges": []}
+            now = ws.knowledge.clock()
+            return {
+                "edges": [
+                    {
+                        "eid": e.eid,
+                        "subject": e.subject,
+                        "predicate": e.predicate,
+                        "object": e.object,
+                        "source": e.source,
+                        "status": e.status,
+                        "expired": e.expired(now),
+                    }
+                    for e in ws.knowledge.list_edges(scope=ws.kb_scope)
+                ]
+            }
+        if action in ("know_review_edge", "know_expire_edge"):
+            if ws.knowledge is None:
+                raise ValueError("no Company Brain")
+            eid = int(body.get("eid", 0))
+            if ws.knowledge.edge(eid) is None:
+                raise ValueError("no such edge")
+            meth = "review_edge" if action == "know_review_edge" else "expire_edge"
+            getattr(ws.knowledge, meth)(eid)
+            return {"status": ws.knowledge.edge(eid).status}
         if action in (
             "know_review",
             "know_approve",

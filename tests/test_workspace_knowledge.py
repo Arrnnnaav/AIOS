@@ -607,3 +607,18 @@ def test_owner_can_expire_an_existing_fact_and_edge(kn):
     assert kn.recall("ships", "acme") == []  # expired fact not recalled
     assert kn.connected("zephyr", "acme") == []  # dead edge not walked
     assert kn.get(a.fid) is not None and kn.edge(e.eid) is not None  # kept as history
+
+
+def test_list_edges_returns_candidates_and_reviewed_including_expired(kn):
+    """The edge review panel needs every edge (unlike the traversal readers,
+    which hide candidate and expired ones)."""
+
+    kn.now = 1000.0
+    kn.clock = lambda: kn.now
+    c = kn.relate("A", "x", "B", source="s", scope="acme")  # candidate
+    r = kn.relate("C", "y", "D", source="s", scope="acme")
+    kn.review_edge(r.eid)
+    kn.expire_edge(r.eid)  # reviewed but expired
+    eids = {e.eid for e in kn.list_edges(scope="acme")}
+    assert eids == {c.eid, r.eid}  # both shown despite candidate + expired
+    assert kn.related("C", "acme") == []  # traversal still hides the expired one

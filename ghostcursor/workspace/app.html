@@ -597,6 +597,21 @@ function companyBrainCard() {
       row.append(label, rt); list.append(row);
     }
   }).catch(() => {});
+  const edgeList = el("div"); card.append(edgeList);
+  api("know_edges").then((r) => {
+    if (!r.edges || !r.edges.length) return;
+    edgeList.append(el("div", "note", "Relationships"));
+    for (const e of r.edges) {
+      const row = el("div", "sheetrow");
+      const tag = e.expired ? "expired" : e.status;
+      const label = el("span", "", "[" + tag + "] " + e.subject + " " + e.predicate + " " + e.object + " — " + e.source);
+      if (e.expired) label.style.opacity = "0.55";
+      const rt = el("span"); rt.style.marginLeft = "auto";
+      if (e.status === "candidate") { const b = el("button", "pill go", "Review"); b.onclick = () => act("know_review_edge", { eid: e.eid }, "Reviewed").then(renderBrain); rt.append(b); }
+      if (e.status === "reviewed" && !e.expired) { const b = el("button", "secondary", "Expire"); b.style.marginLeft = "6px"; b.title = "Relationship ended now; kept as history"; b.onclick = () => act("know_expire_edge", { eid: e.eid }, "Expired").then(renderBrain); rt.append(b); }
+      row.append(label, rt); edgeList.append(row);
+    }
+  }).catch(() => {});
   api("know_aging").then((r) => {
     for (const f of (r.aging || [])) {
       const warn = el("div", "note"); warn.style.textAlign = "left";

@@ -506,6 +506,25 @@ class Knowledge:
             self._db.execute("UPDATE edges SET status='reviewed' WHERE eid=?", (eid,))
         return self.edge(eid)
 
+    def list_edges(
+        self, *, scope: str | None = None, status: str | None = None
+    ) -> list[Edge]:
+        """All edges (candidate and reviewed) for a review panel -- the edge
+        counterpart to ``list``. Unlike the traversal readers it does not hide
+        expired edges; the panel shows and tags them."""
+
+        sql, args = "SELECT * FROM edges", []
+        where = []
+        if scope is not None:
+            where.append("scope=?")
+            args.append(scope)
+        if status is not None:
+            where.append("status=?")
+            args.append(status)
+        if where:
+            sql += " WHERE " + " AND ".join(where)
+        return [Edge(*r) for r in self._db.execute(sql + " ORDER BY eid", args)]
+
     # --- offline team sharing (export / import) -------------------------
 
     def export_scope(self, scope: str, *, include_sensitive: bool = False) -> dict:

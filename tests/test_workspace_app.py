@@ -421,3 +421,42 @@ def test_know_expire_over_http(tmp_path):
         server.shutdown()
         app.close()
         kb.close()
+
+
+def test_know_edges_review_and_expire_over_http(tmp_path):
+    """GUI relationships panel (D186): know_edges lists every edge; a candidate
+    can be reviewed and a reviewed one expired, from the panel."""
+    from ghostcursor.workspace.knowledge import Knowledge
+
+    kb = Knowledge(tmp_path / "know.sqlite")
+    kb.now = 1000.0
+    kb.clock = lambda: kb.now
+    app = App(
+        "trip",
+        make_workspace=lambda: Workspace(
+            "trip",
+            Gateway(),
+            Brain(tmp_path / "kb.sqlite"),
+            root=tmp_path / "briefs",
+            knowledge=kb,
+            kb_scope="default",
+        ),
+    )
+    e = kb.relate("Acme", "uses", "PG", source="doc", scope="default")  # candidate
+    server = make_server(app, "secret-token")
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        port = server.server_port
+        edges = json.loads(call(port, "/api/know_edges", {})[1])["edges"]
+        assert [x["status"] for x in edges] == ["candidate"]
+        assert call(port, "/api/know_review_edge", {"eid": e.eid})[0] == 200
+        assert kb.edge(e.eid).status == "reviewed"
+        assert call(port, "/api/know_expire_edge", {"eid": e.eid})[0] == 200
+        assert kb.related("Acme", "default") == []  # expired, not traversed
+        edges = json.loads(call(port, "/api/know_edges", {})[1])["edges"]
+        assert [x["expired"] for x in edges] == [True]
+        assert call(port, "/api/know_review_edge", {"eid": 99})[0] >= 400  # no edge
+    finally:
+        server.shutdown()
+        app.close()
+        kb.close()
