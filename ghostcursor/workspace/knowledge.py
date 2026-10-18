@@ -404,6 +404,14 @@ class Knowledge:
             [f for f in self.list(scope=scope) if f.status in USABLE]
         )
 
+    def aging(self, scope: str) -> list[Fact]:
+        """Usable facts in ``scope`` nobody has re-verified within the window.
+        Surfaced so the owner can re-verify; never dropped."""
+
+        return self.aging_among(
+            [f for f in self.list(scope=scope) if f.status in USABLE]
+        )
+
     # --- Context Graph: entities and relationships ----------------------
 
     def relate(

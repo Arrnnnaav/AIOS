@@ -242,7 +242,7 @@ class App:
                     for f in ws.knowledge.list(scope=ws.kb_scope, status=status)
                 ]
             }
-        if action in ("know_review", "know_approve", "know_retire"):
+        if action in ("know_review", "know_approve", "know_retire", "know_verify"):
             if ws.knowledge is None:
                 raise ValueError("no Company Brain")
             fid = int(body.get("fid", 0))
@@ -273,6 +273,15 @@ class App:
                 "checks": [
                     {"name": c.name, "ready": c.ready, "hint": c.hint}
                     for c in doctor.checks()
+                ]
+            }
+        if action == "know_aging":  # usable facts nobody re-verified lately (D186)
+            if ws.knowledge is None:
+                return {"aging": []}
+            return {
+                "aging": [
+                    {"fid": f.fid, "text": f.text}
+                    for f in ws.knowledge.aging(ws.kb_scope)
                 ]
             }
         if action == "know_conflicts":

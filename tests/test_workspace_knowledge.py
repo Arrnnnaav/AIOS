@@ -87,17 +87,24 @@ def test_conflicts_are_surfaced_not_resolved(kn):
 
 
 def test_supersede_invalidates_but_keeps_history_and_provenance(kn):
-    old = kn.add_candidate("Prod region is us-west-1.", source="runbook-v1", scope="acme")
+    old = kn.add_candidate(
+        "Prod region is us-west-1.", source="runbook-v1", scope="acme"
+    )
     kn.approve(old.fid)
     assert [f.fid for f in kn.recall("prod region", "acme")] == [old.fid]
-    new = kn.add_candidate("Prod region is us-east-1.", source="runbook-v2", scope="acme")
+    new = kn.add_candidate(
+        "Prod region is us-east-1.", source="runbook-v2", scope="acme"
+    )
     kn.approve(new.fid)
     superseded = kn.supersede(old.fid, new.fid)
     assert superseded.status == "superseded" and superseded.superseded_by == new.fid
     assert superseded.source == "runbook-v1"  # history + provenance kept
-    assert [f.fid for f in kn.recall("prod region", "acme")] == [new.fid]  # only the new one
+    assert [f.fid for f in kn.recall("prod region", "acme")] == [
+        new.fid
+    ]  # only the new one
     assert kn.supersede.__doc__  # supersede documented
     import pytest as _p
+
     with _p.raises(ValueError):
         kn.supersede(old.fid, 9999)  # successor must exist
 
@@ -118,6 +125,7 @@ def test_context_graph_relate_review_and_neighbors(kn):
     assert len(ns) == 1 and ns[0].predicate == "uses" and ns[0].source == "arch-doc"
     assert kn.neighbors("Acme", "beta") == []  # scope-isolated
     import pytest as _p
+
     with _p.raises(ValueError):
         kn.relate("", "p", "o", source="s", scope="acme")
 
@@ -129,9 +137,7 @@ def test_recall_ranks_by_bm25_and_stems(kn):
     near = kn.add_candidate(
         "Production deploys happen every Friday afternoon.", source="s", scope="acme"
     )
-    far = kn.add_candidate(
-        "The Friday standup is at 9am.", source="s", scope="acme"
-    )
+    far = kn.add_candidate("The Friday standup is at 9am.", source="s", scope="acme")
     kn.approve(near.fid)
     kn.approve(far.fid)
     hits = kn.recall("friday deploy", "acme")  # both match friday; near also deploy
@@ -210,11 +216,11 @@ def test_ingest_dedups_but_never_edits_existing_facts(kn):
 
     actions = kn.ingest(
         [
-            "Prod runs in us-east-1.",          # exact dup of an approved fact -> noop
-            "Prod   runs in us-east-1.",        # whitespace-only diff -> still dup
-            "The office moved to Lisbon.",      # new -> candidate
-            "The office moved to Lisbon.",      # dup of the one just added this batch
-            "   ",                               # empty -> skipped
+            "Prod runs in us-east-1.",  # exact dup of an approved fact -> noop
+            "Prod   runs in us-east-1.",  # whitespace-only diff -> still dup
+            "The office moved to Lisbon.",  # new -> candidate
+            "The office moved to Lisbon.",  # dup of the one just added this batch
+            "   ",  # empty -> skipped
         ],
         source="wiki",
         scope="acme",
@@ -259,17 +265,24 @@ def test_know_ingest_loads_a_folder_as_candidates_deduped(tmp_path):
 
     k = Knowledge(tmp_path / "k.sqlite")
     out = know_command(k, "default", ["ingest", str(docs)])
-    assert "2 file(s)" in out and "3 new candidate(s)" in out and "1 already known" in out
+    assert (
+        "2 file(s)" in out and "3 new candidate(s)" in out and "1 already known" in out
+    )
     cands = k.list(scope="default", status="candidate")
     assert {c.text for c in cands} == {
         "Prod runs in us-east-1.",
         "Deploys happen on Fridays.",
         "The office is in Lisbon.",
     }
-    assert {c.source for c in cands} == {"runbook.md", "notes.txt"}  # provenance = filename
+    assert {c.source for c in cands} == {
+        "runbook.md",
+        "notes.txt",
+    }  # provenance = filename
     # candidates are not usable until reviewed
     assert k.recall("deploys fridays", "default") == []
-    assert "no .md/.txt/.log" in know_command(k, "default", ["ingest", str(tmp_path / "nope")])
+    assert "no .md/.txt/.log" in know_command(
+        k, "default", ["ingest", str(tmp_path / "nope")]
+    )
     k.close()
 
 
@@ -290,12 +303,21 @@ def test_remember_claim_promotes_research_into_the_company_brain(tmp_path):
 
     k = Knowledge(tmp_path / "k.sqlite")
     ws = Workspace(
-        "topic", object(), Brain(tmp_path / "b.sqlite"),
-        root=tmp_path / "briefs", knowledge=k, kb_scope="default",
+        "topic",
+        object(),
+        Brain(tmp_path / "b.sqlite"),
+        root=tmp_path / "briefs",
+        knowledge=k,
+        kb_scope="default",
     )
     assert ws.remember_claim(1) == "no research yet; /research first"
 
-    src = Source("s1", "https://example.com/runbook", "Runbook", categorize("https://example.com/runbook"))
+    src = Source(
+        "s1",
+        "https://example.com/runbook",
+        "Runbook",
+        categorize("https://example.com/runbook"),
+    )
     graph = EvidenceGraph(
         "where does prod run",
         (src,),
@@ -324,8 +346,12 @@ def test_clip_to_brain_captures_clipboard_as_owner_reviewed_candidate(tmp_path):
 
     k = Knowledge(tmp_path / "k.sqlite")
     ws = Workspace(
-        "t", object(), Brain(tmp_path / "b.sqlite"),
-        root=tmp_path / "briefs", knowledge=k, kb_scope="default",
+        "t",
+        object(),
+        Brain(tmp_path / "b.sqlite"),
+        root=tmp_path / "briefs",
+        knowledge=k,
+        kb_scope="default",
     )
     out = ws.clip_to_brain(read=lambda: "  The prod DB password rotates monthly.  ")
     assert "candidate #1" in out
@@ -336,8 +362,10 @@ def test_clip_to_brain_captures_clipboard_as_owner_reviewed_candidate(tmp_path):
 
     assert ws.clip_to_brain(read=lambda: "   ") == "the clipboard has no text to save"
     assert ws.clip_to_brain(read=lambda: "word") == "the clipboard has no text to save"
+
     def boom():
         raise OSError("clipboard locked")
+
     assert ws.clip_to_brain(read=boom) == "could not read the clipboard"
     k.close()
 
@@ -348,8 +376,12 @@ def test_clip_to_brain_truncates_an_over_length_clip(tmp_path):
 
     k = Knowledge(tmp_path / "k.sqlite")
     ws = Workspace(
-        "t", object(), Brain(tmp_path / "b.sqlite"),
-        root=tmp_path / "briefs", knowledge=k, kb_scope="default",
+        "t",
+        object(),
+        Brain(tmp_path / "b.sqlite"),
+        root=tmp_path / "briefs",
+        knowledge=k,
+        kb_scope="default",
     )
     huge = "word " * 5000  # ~25k chars
     ws.clip_to_brain(read=lambda: huge)
@@ -368,7 +400,10 @@ def test_export_then_import_shares_facts_as_reviewable_candidates(tmp_path):
     f1 = a.add_candidate("Deploys run on Fridays.", source="runbook", scope="team")
     a.approve(f1.fid)
     secret = a.add_candidate(
-        "Root password is hunter2.", source="vault", scope="team", sensitivity="sensitive"
+        "Root password is hunter2.",
+        source="vault",
+        scope="team",
+        sensitivity="sensitive",
     )
     a.approve(secret.fid)
     a.add_candidate("A draft nobody reviewed.", source="x", scope="team")  # candidate
@@ -377,7 +412,9 @@ def test_export_then_import_shares_facts_as_reviewable_candidates(tmp_path):
 
     snap = a.export_scope("team")
     texts = {f["text"] for f in snap["facts"]}
-    assert texts == {"Deploys run on Fridays."}  # usable only; sensitive + candidate excluded
+    assert texts == {
+        "Deploys run on Fridays."
+    }  # usable only; sensitive + candidate excluded
     assert len(snap["edges"]) == 1
 
     b = Knowledge(tmp_path / "b.sqlite")
@@ -391,6 +428,7 @@ def test_export_then_import_shares_facts_as_reviewable_candidates(tmp_path):
     assert b.import_scope(snap, "team")["facts_duplicate"] == 1
 
     import pytest as _p
+
     with _p.raises(ValueError):
         b.import_scope({"nope": True}, "team")
     a.close()
@@ -410,8 +448,12 @@ def test_know_export_import_console_roundtrip(tmp_path):
     dst = Knowledge(tmp_path / "dst.sqlite")
     out = know_command(dst, "default", ["import", path])
     assert "1 new" in out
-    assert dst.list(scope="default", status="candidate")[0].text == "Office is in Lisbon."
-    assert "could not import" in know_command(dst, "default", ["import", str(tmp_path / "no.json")])
+    assert (
+        dst.list(scope="default", status="candidate")[0].text == "Office is in Lisbon."
+    )
+    assert "could not import" in know_command(
+        dst, "default", ["import", str(tmp_path / "no.json")]
+    )
     src.close()
     dst.close()
 
@@ -444,8 +486,12 @@ def test_export_markdown_is_readable_and_hides_sensitive(kn):
     read exactly what will be shared."""
 
     ok = kn.add_candidate("Prod deploys on Friday.", source="runbook", scope="acme")
-    sec = kn.add_candidate("Root password is hunter2.", source="vault",
-                           scope="acme", sensitivity="sensitive")
+    sec = kn.add_candidate(
+        "Root password is hunter2.",
+        source="vault",
+        scope="acme",
+        sensitivity="sensitive",
+    )
     kn.approve(ok.fid)
     kn.approve(sec.fid)
     e = kn.relate("Acme", "uses", "PostgreSQL", source="arch", scope="acme")
@@ -473,6 +519,8 @@ def test_aging_surfaces_unverified_facts_without_excluding_them(kn):
     hits = kn.recall("vpn gateway", "acme")
     assert [h.fid for h in hits] == [f.fid]  # still recalled -- not expired
     assert [a.fid for a in kn.aging_among(hits)] == [f.fid]  # but flagged aging
+    assert [a.fid for a in kn.aging("acme")] == [f.fid]  # scope sweep sees it too
 
     kn.verify(f.fid)  # re-verify resets last_verified to now
     assert kn.aging_among(kn.recall("vpn gateway", "acme")) == []
+    assert kn.aging("acme") == []

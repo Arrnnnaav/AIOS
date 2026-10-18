@@ -592,6 +592,14 @@ function companyBrainCard() {
       row.append(label, rt); list.append(row);
     }
   }).catch(() => {});
+  api("know_aging").then((r) => {
+    for (const f of (r.aging || [])) {
+      const warn = el("div", "note"); warn.style.textAlign = "left";
+      warn.append(el("b", "", "Not verified lately — still used: "), document.createTextNode("#" + f.fid + " " + f.text + "  "));
+      const b = el("button", "pill go", "Verify"); b.onclick = () => act("know_verify", { fid: f.fid }, "Verified").then(renderBrain);
+      warn.append(b); card.append(warn);
+    }
+  }).catch(() => {});
   api("know_conflicts").then((r) => {
     for (const c of (r.conflicts || [])) {
       const warn = el("div", "note"); warn.style.textAlign = "left";

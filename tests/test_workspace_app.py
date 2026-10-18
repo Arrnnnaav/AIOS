@@ -298,3 +298,35 @@ def test_doctor_action_reports_every_capability(served):
         for c in checks
     )
     assert any("models" in c["name"] for c in checks)
+
+
+def test_know_aging_and_verify_over_http(tmp_path):
+    """Aging surfacing in the GUI (D186): the panel lists usable facts nobody
+    re-verified within the window, and the Verify button clears one."""
+    from ghostcursor.workspace.knowledge import Knowledge, STALE_AFTER_S
+
+    kb = Knowledge(tmp_path / "know.sqlite")
+    kb.now = 1000.0
+    kb.clock = lambda: kb.now
+    app = App(
+        "trip",
+        make_workspace=lambda: Workspace(
+            "trip", Gateway(), Brain(tmp_path / "kb.sqlite"),
+            root=tmp_path / "briefs", knowledge=kb, kb_scope="default",
+        ),
+    )
+    f = kb.add_candidate("Office VPN is 10.0.0.1.", source="net", scope="default")
+    kb.approve(f.fid)
+    kb.now = 1000.0 + STALE_AFTER_S + 1
+    server = make_server(app, "secret-token")
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        port = server.server_port
+        aging = json.loads(call(port, "/api/know_aging", {})[1])["aging"]
+        assert [a["fid"] for a in aging] == [f.fid]
+        assert call(port, "/api/know_verify", {"fid": f.fid})[0] == 200
+        assert json.loads(call(port, "/api/know_aging", {})[1])["aging"] == []
+    finally:
+        server.shutdown()
+        app.close()
+        kb.close()
