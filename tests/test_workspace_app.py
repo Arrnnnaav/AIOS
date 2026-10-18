@@ -283,3 +283,18 @@ def test_company_brain_gui_capture(tmp_path, monkeypatch):
         server.shutdown()
         app.close()
         kb.close()
+
+
+def test_doctor_action_reports_every_capability(served):
+    """Readiness over HTTP (D186): a list of named checks, each with a bool and
+    a hint, so the GUI card can show what is on and how to turn on the rest."""
+
+    _, port = served
+    status, body = call(port, "/api/doctor", {})
+    assert status == 200
+    checks = json.loads(body)["checks"]
+    assert checks and all(
+        set(c) == {"name", "ready", "hint"} and isinstance(c["ready"], bool)
+        for c in checks
+    )
+    assert any("models" in c["name"] for c in checks)

@@ -525,6 +525,7 @@ function renderBrain() {
   root.append(agentsCard());
   root.append(companyBrainCard());
   root.append(accountsCard());
+  root.append(doctorCard());
   const stats = el("div", "stats"); root.append(stats);
   api("stats").then((s) => { for (const [k, v] of Object.entries(s).slice(0, 6)) { const d = el("div", "stat"); d.append(el("b", "", String(v)), el("span", "", k.replace(/_/g, " "))); stats.append(d); } }).catch(() => {});
   if (S.memories.length) {
@@ -598,6 +599,23 @@ function companyBrainCard() {
       card.append(warn);
     }
   }).catch(() => {});
+  return card;
+}
+
+// ---- readiness: what is on, and how to turn on the rest (D186) --------
+function doctorCard() {
+  const card = el("div", "mem"); card.style.marginTop = "16px";
+  const meta = el("div", "meta"); meta.append(el("span", "kind", "readiness")); card.append(meta);
+  card.append(el("div", "", "What Orbyn can do on this computer, and the one thing to turn on each missing capability. Nothing leaves this computer; presence only."));
+  const list = el("div"); card.append(list);
+  api("doctor").then((r) => {
+    for (const c of (r.checks || [])) {
+      const row = el("div", "sheetrow");
+      const dot = el("span", "", c.ready ? "●" : "○"); dot.style.color = c.ready ? "#2a9d57" : "#b7b7b7";
+      const label = el("span", "", c.name); const hint = el("span", "note", c.hint); hint.style.marginLeft = "auto";
+      row.append(dot, label, hint); list.append(row);
+    }
+  }).catch(() => list.append(el("div", "note", "Readiness unavailable.")));
   return card;
 }
 

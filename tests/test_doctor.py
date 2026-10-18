@@ -42,3 +42,13 @@ def test_each_probe_swallows_its_own_failure(monkeypatch):
     monkeypatch.setattr(keys, "status", lambda: (_ for _ in ()).throw(OSError("x")))
     m = doctor._models()
     assert m.ready is False and "could not check" in m.hint
+
+
+def test_json_flag_emits_machine_readable_checks(capsys):
+    """`doctor --json` for the GUI card and tooling: one object per check with
+    the same fields, parseable, never a crash."""
+    import json
+
+    assert doctor.main(["--json"]) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data and all(set(c) == {"name", "ready", "hint"} for c in data)

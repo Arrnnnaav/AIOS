@@ -266,6 +266,15 @@ class App:
             if ws.knowledge is None:
                 raise ValueError("no Company Brain")
             return {"result": ws.clip_to_brain()}
+        if action == "doctor":  # readiness self-check as JSON (agent-reach idea)
+            from ghostcursor import doctor
+
+            return {
+                "checks": [
+                    {"name": c.name, "ready": c.ready, "hint": c.hint}
+                    for c in doctor.checks()
+                ]
+            }
         if action == "know_conflicts":
             if ws.knowledge is None:
                 return {"conflicts": []}

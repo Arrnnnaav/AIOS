@@ -132,6 +132,15 @@ def report() -> str:
 
 
 def main(argv=None) -> int:
+    import sys
+
+    argv = sys.argv[1:] if argv is None else argv
+    if "--json" in argv:
+        import json
+        from dataclasses import asdict
+
+        print(json.dumps([asdict(c) for c in checks()], indent=2))
+        return 0
     print(report())
     return 0
 
