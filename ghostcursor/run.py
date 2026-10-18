@@ -556,7 +556,18 @@ def main() -> int:
         type=int,
         help="receipt deadline from the start receipt to completion",
     )
+    parser.add_argument(
+        "--doctor",
+        action="store_true",
+        help="print what is ready and how to turn on the rest, then exit",
+    )
     args = parser.parse_args()
+
+    if args.doctor:
+        from ghostcursor import doctor
+
+        print(doctor.report())
+        return 0
 
     if args.manager:
         from ghostcursor.manager import launch_manager

@@ -398,3 +398,14 @@ def test_manager_cli_opens_the_native_product_shell_without_starting_a_tour(
 
     assert run_module.main() == 0
     assert launched == [True]
+
+
+def test_doctor_flag_prints_readiness_and_exits_zero(monkeypatch, capsys):
+    """`run --doctor` reports readiness from the main entry and exits before
+    any session starts (D186)."""
+    import sys
+
+    monkeypatch.setattr(sys, "argv", ["ghostcursor.run", "--doctor"])
+    assert run_module.main() == 0
+    out = capsys.readouterr().out
+    assert "readiness" in out and ("[ok " in out or "[off" in out)
