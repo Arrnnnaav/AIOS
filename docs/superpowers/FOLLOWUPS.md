@@ -5,17 +5,14 @@ why it was not blocking, and what it would cost to leave.
 
 ## From perception tier 2 (merged 429a85e, 2026-08-19)
 
-### 1. Merge-cap test counts words, not parts
-`tests/test_ocr_reassembly.py::test_at_most_three_reads_merge_into_one_candidate`
-asserts `len(read.text.split()) <= 3`, but `MERGE_MAX_PARTS` caps PARTS. The two
-coincide only because that fixture uses single-word reads. A merge of three
-multi-word reads would exceed three words and the test would not notice. The cap
-itself is enforced in code and covered by the geometry tests, so this is a gap in
-one assertion rather than in the behaviour. (Ruling P3.)
+### 1. Merge-cap test counts words, not parts — RESOLVED 2026-10-18
+The fixture now uses two-word reads and asserts `<= 2 * MERGE_MAX_PARTS`, so the
+assertion tracks the PART cap instead of coinciding with it only for single-word
+reads. A merge of more than `MERGE_MAX_PARTS` reads now fails the test.
 
-### 2. Vestigial parenthesised import in `run.py`
-A single-name import wrapped in parentheses, left over from an earlier edit.
-Cosmetic.
+### 2. Vestigial parenthesised import in `run.py` — RESOLVED (already gone)
+No single-name parenthesised import remains in `run.py`; the three paren imports
+left (session, plugins.platform, compiled_tour) are all multi-name and legitimate.
 
 ### 3. `_tier2_payload()` spends a run on a failed walk
 Placement is correct — a raising UIA walk cannot suppress OCR — but publication is

@@ -6,6 +6,7 @@ Fixtures are the spike's REAL reads, not invented strings.
 from ghostcursor.perception.ocr import (
     MERGE_CENTRE_TOLERANCE,
     MERGE_HORIZONTAL_GAP,
+    MERGE_MAX_PARTS,
     MERGE_VERTICAL_GAP,
     OcrRead,
     reassemble,
@@ -106,12 +107,15 @@ def test_a_wrapped_label_does_not_match_its_neighbour():
 
 
 def test_at_most_three_reads_merge_into_one_candidate():
+    # Two words per read, so the word budget tracks the PART cap: a merge of
+    # more than MERGE_MAX_PARTS reads would exceed 2*MERGE_MAX_PARTS words and
+    # this assertion would catch it. Single-word reads hid that (FOLLOWUPS #1).
     stack = [
-        OcrRead(text=f"w{i}", bbox=(100, 200 + i * 18, 140, 214 + i * 18))
+        OcrRead(text=f"w{i}a w{i}b", bbox=(100, 200 + i * 18, 140, 214 + i * 18))
         for i in range(6)
     ]
     for read in reassemble(stack):
-        assert len(read.text.split()) <= 3
+        assert len(read.text.split()) <= 2 * MERGE_MAX_PARTS
 
 
 def test_a_non_mergeable_middle_read_breaks_the_chain():
