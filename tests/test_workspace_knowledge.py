@@ -414,3 +414,25 @@ def test_know_export_import_console_roundtrip(tmp_path):
     assert "could not import" in know_command(dst, "default", ["import", str(tmp_path / "no.json")])
     src.close()
     dst.close()
+
+
+def test_connected_surfaces_an_n_hop_fact_the_query_never_named(kn):
+    """Graph-walk (Graphiti/Zep n-hop): a fact linked to a recall hit through a
+    reviewed edge is surfaced even when the query words never matched it, and
+    only once the edge is reviewed."""
+
+    a = kn.add_candidate("Project Zephyr ships in March.", source="s", scope="acme")
+    b = kn.add_candidate("Dana leads the platform team.", source="s", scope="acme")
+    kn.approve(a.fid)
+    kn.approve(b.fid)
+    e = kn.relate("Zephyr", "owned-by", "Dana", source="org", scope="acme")
+
+    assert kn.connected("zephyr", "acme") == []  # candidate edge: no walk yet
+    kn.review_edge(e.eid)
+
+    hop = kn.connected("zephyr", "acme")
+    assert [f.fid for f in hop] == [b.fid]  # reached Dana's fact via the edge
+    assert kn.connected("zephyr", "beta") == []  # scope-isolated
+
+    facts, _edges = kn.context("zephyr", "acme")
+    assert [f.fid for f in facts] == [a.fid, b.fid]  # direct hit first, hop appended

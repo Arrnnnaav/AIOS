@@ -317,3 +317,17 @@ Importing loads them into another Brain as CANDIDATES -- a teammate's facts are
 untrusted until this owner reviews them, exactly like a received mission
 handoff -- deduped against what is already there. No network, no cloud; just a
 file. /know export <path> and /know import <path>.
+
+## Company Brain n-hop graph-walk (D186, 2026-10-18)
+
+- **Comparables:** Zep/Graphiti (Python OSS graph memory). REA (`rea-agents`,
+  JS/Electron reverse-engineering) has nothing to mine for pure-Python OSS, so
+  research was reading the pattern, not binary analysis — stated honestly.
+- **Adopted:** n-hop retrieval. `Knowledge.connected()` walks reviewed edges
+  one hop from the top BM25 recall hits and pulls facts the query words never
+  named; `context()` appends them after the direct hits. Graphiti's value:
+  surface a connected fact (owner, dependency) a keyword query would miss.
+- **Rejected:** unbounded multi-hop traversal and automatic edge creation —
+  edges stay owner-reviewed (candidate edges never walked), hop is capped at
+  one and <=k facts, same scope/usable rules, direct hits ranked first so the
+  caller's token trim keeps them. No execution authority added.

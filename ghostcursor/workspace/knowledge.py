@@ -507,11 +507,51 @@ class Knowledge:
         scored.sort(key=lambda s: -s[0])
         return [e for _o, e in scored[:k]]
 
+    def connected(self, query: str, scope: str, *, k: int = 5) -> list[Fact]:
+        """Facts one hop out from the top recall hits over reviewed edges
+        (Graphiti/Zep n-hop): a fact linked to a hit through a shared entity,
+        even when the query words never named it. Bounded to <=k facts;
+        reviewed edges and usable facts only; same scope."""
+
+        seeds = self.recall(query, scope, k=k)
+        if not seeds:
+            return []
+        seen = {f.fid for f in seeds}
+        seed_words: set[str] = set()
+        for f in seeds:
+            seed_words |= _words(f.text)
+        rows = self._db.execute(
+            "SELECT * FROM edges WHERE scope=? AND status='reviewed' ORDER BY eid",
+            (scope,),
+        )
+        frontier: list[str] = []
+        for r in rows:
+            e = Edge(*r)
+            subj, obj = _words(e.subject), _words(e.object)
+            if subj and subj <= seed_words:  # subject named in a seed -> walk to object
+                frontier.append(e.object)
+            if obj and obj <= seed_words:  # object named in a seed -> walk to subject
+                frontier.append(e.subject)
+        out: list[Fact] = []
+        for entity in frontier:
+            for f in self.recall(entity, scope, k=k):
+                if f.fid not in seen:
+                    seen.add(f.fid)
+                    out.append(f)
+                    if len(out) >= k:
+                        return out
+        return out
+
     def context(
         self, query: str, scope: str, *, k: int = 5
     ) -> tuple[list[Fact], list[Edge]]:
         """Curated org facts and relations for ``query`` in ``scope``, for a
         caller that wants both at once (plan/research retrieval). Each carries
-        its own provenance; usable-state and scope rules already apply."""
+        its own provenance; usable-state and scope rules already apply. Direct
+        BM25 hits come first, then n-hop ``connected`` facts the query words
+        never named -- so a token-trimming caller keeps the direct matches."""
 
-        return self.recall(query, scope, k=k), self.related(query, scope, k=k)
+        facts = self.recall(query, scope, k=k)
+        seen = {f.fid for f in facts}
+        facts += [f for f in self.connected(query, scope, k=k) if f.fid not in seen]
+        return facts, self.related(query, scope, k=k)
