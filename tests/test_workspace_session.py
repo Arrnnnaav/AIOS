@@ -338,3 +338,29 @@ def test_company_brain_flags_aging_facts_at_retrieval(tmp_path):
     sent = ws.gateway.envelopes[-1].tainted_json()
     assert "company_aging" in sent
     kb.close()
+
+
+def test_company_brain_labels_an_n_hop_fact_with_why_it_surfaced(tmp_path):
+    """D186: a fact the query never named, reached via a reviewed edge, carries
+    linked_via naming the bridging entity -- so a plan shows it was linked, not
+    a direct match (Graphiti-style explainability)."""
+
+    from ghostcursor.workspace.knowledge import Knowledge
+
+    kb = Knowledge(tmp_path / "knowledge.sqlite")
+    a = kb.add_candidate("Project Zephyr ships in March.", source="s", scope="default")
+    b = kb.add_candidate("Dana leads the platform team.", source="s", scope="default")
+    kb.approve(a.fid)
+    kb.approve(b.fid)
+    e = kb.relate("Zephyr", "owned-by", "Dana", source="org", scope="default")
+    kb.review_edge(e.eid)
+
+    ws = Workspace(
+        "deck", FakeGateway(), Brain(tmp_path / "b.sqlite"),
+        root=tmp_path / "briefs", knowledge=kb, kb_scope="default",
+    )
+    ws.discuss("When does Zephyr ship?")  # names Zephyr, never Dana
+    sent = ws.gateway.envelopes[-1].tainted_json()
+    assert "Dana leads the platform team." in sent  # the n-hop fact surfaced
+    assert "linked_via" in sent and "Dana" in sent  # and why
+    kb.close()

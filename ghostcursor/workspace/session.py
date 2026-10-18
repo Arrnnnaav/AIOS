@@ -360,12 +360,25 @@ class Workspace:
             return
         facts = _within(facts, KNOWLEDGE_TOKENS)
         self._used_facts = tuple(f.fid for f in facts)
+        # Why an n-hop fact surfaced: the entity that bridged it in, so a plan
+        # can show it was linked, not a direct match (Graphiti explainability).
+        try:
+            bridges = {
+                f.fid: e for f, e in self.knowledge.connections(query, self.kb_scope)
+            }
+        except Exception:
+            bridges = {}
         if facts:
             context["company_facts"] = [
                 {
                     "text": Tainted.of("company_fact", f.text),
                     "source": Tainted.of("fact_source", f.source),
                     "status": Tainted.of("fact_status", f.status),
+                    **(
+                        {"linked_via": Tainted.of("company_fact", bridges[f.fid])}
+                        if f.fid in bridges
+                        else {}
+                    ),
                 }
                 for f in facts
             ]

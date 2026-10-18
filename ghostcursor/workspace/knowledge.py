@@ -575,11 +575,13 @@ class Knowledge:
         scored.sort(key=lambda s: -s[0])
         return [e for _o, e in scored[:k]]
 
-    def connected(self, query: str, scope: str, *, k: int = 5) -> list[Fact]:
-        """Facts one hop out from the top recall hits over reviewed edges
-        (Graphiti/Zep n-hop): a fact linked to a hit through a shared entity,
-        even when the query words never named it. Bounded to <=k facts;
-        reviewed edges and usable facts only; same scope."""
+    def connections(
+        self, query: str, scope: str, *, k: int = 5
+    ) -> list[tuple[Fact, str]]:
+        """``connected`` facts paired with the entity that bridged them in
+        (Graphiti-style explainability): a plan can then say a fact surfaced
+        because it links to <entity>, not because the query named it. Bounded
+        to <=k; reviewed edges and usable facts only; same scope."""
 
         seeds = self.recall(query, scope, k=k)
         if not seeds:
@@ -600,15 +602,21 @@ class Knowledge:
                 frontier.append(e.object)
             if obj and obj <= seed_words:  # object named in a seed -> walk to subject
                 frontier.append(e.subject)
-        out: list[Fact] = []
+        out: list[tuple[Fact, str]] = []
         for entity in frontier:
             for f in self.recall(entity, scope, k=k):
                 if f.fid not in seen:
                     seen.add(f.fid)
-                    out.append(f)
+                    out.append((f, entity))
                     if len(out) >= k:
                         return out
         return out
+
+    def connected(self, query: str, scope: str, *, k: int = 5) -> list[Fact]:
+        """Facts one hop out from the top recall hits over reviewed edges
+        (Graphiti/Zep n-hop), without the bridge. See ``connections``."""
+
+        return [f for f, _bridge in self.connections(query, scope, k=k)]
 
     def context(
         self, query: str, scope: str, *, k: int = 5

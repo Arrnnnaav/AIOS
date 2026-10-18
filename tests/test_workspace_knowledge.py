@@ -474,6 +474,9 @@ def test_connected_surfaces_an_n_hop_fact_the_query_never_named(kn):
 
     hop = kn.connected("zephyr", "acme")
     assert [f.fid for f in hop] == [b.fid]  # reached Dana's fact via the edge
+    # connections() names the entity that bridged the fact in (explainability).
+    conns = kn.connections("zephyr", "acme")
+    assert [(f.fid, bridge) for f, bridge in conns] == [(b.fid, "Dana")]
     assert kn.connected("zephyr", "beta") == []  # scope-isolated
 
     facts, _edges = kn.context("zephyr", "acme")
