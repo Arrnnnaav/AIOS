@@ -622,3 +622,28 @@ def test_list_edges_returns_candidates_and_reviewed_including_expired(kn):
     eids = {e.eid for e in kn.list_edges(scope="acme")}
     assert eids == {c.eid, r.eid}  # both shown despite candidate + expired
     assert kn.related("C", "acme") == []  # traversal still hides the expired one
+
+
+def test_a_sensitive_edge_stays_off_the_model_path(kn):
+    """FOLLOWUP (temporal-layer review): a sensitive relationship must not reach
+    the model via related/connected/connections/neighbors or a shared export,
+    mirroring sensitive facts -- but the owner's local list_edges still shows it."""
+
+    a = kn.add_candidate("Project Zephyr ships in March.", source="s", scope="acme")
+    b = kn.add_candidate("Dana leads the platform team.", source="s", scope="acme")
+    kn.approve(a.fid)
+    kn.approve(b.fid)
+    e = kn.relate("Zephyr", "owned-by", "Dana", source="org", scope="acme",
+                  sensitivity="sensitive")
+    kn.review_edge(e.eid)
+
+    assert kn.related("zephyr", "acme") == []  # not query-matched to the model
+    assert kn.neighbors("Zephyr", "acme") == []
+    assert kn.connected("zephyr", "acme") == []  # no n-hop walk over a sensitive edge
+    assert kn.connections("zephyr", "acme") == []
+    assert kn.export_scope("acme")["edges"] == []  # excluded from a shared snapshot
+    assert kn.export_scope("acme", include_sensitive=True)["edges"]  # unless asked
+    assert e.eid in {x.eid for x in kn.list_edges(scope="acme")}  # owner still sees it
+    import pytest
+    with pytest.raises(ValueError):
+        kn.relate("A", "x", "B", source="s", scope="acme", sensitivity="bogus")

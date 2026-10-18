@@ -60,7 +60,8 @@ CREATE TABLE IF NOT EXISTS edges (
     eid INTEGER PRIMARY KEY AUTOINCREMENT,
     subject TEXT NOT NULL, predicate TEXT NOT NULL, object TEXT NOT NULL,
     source TEXT NOT NULL, scope TEXT NOT NULL, status TEXT NOT NULL,
-    added REAL NOT NULL, valid_until REAL
+    added REAL NOT NULL, valid_until REAL,
+    sensitivity TEXT NOT NULL DEFAULT 'normal'
 );
 -- Full-text index over fact text for BM25-ranked recall (Zep/Mem0/Cognee all
 -- rank by relevance, not word count). rowid = fid; Porter stemming so a query
@@ -109,6 +110,7 @@ class Edge:
     status: str
     added: float
     valid_until: float | None = None  # world time end; None = never expires
+    sensitivity: str = "normal"  # 'sensitive' edges stay off the model path
 
     def expired(self, now: float) -> bool:
         """Past its validity -- a relationship that stopped being true (e.g. an
@@ -200,6 +202,10 @@ class Knowledge:
         cols = {r[1] for r in self._db.execute("PRAGMA table_info(edges)")}
         if "valid_until" not in cols:
             self._db.execute("ALTER TABLE edges ADD COLUMN valid_until REAL")
+        if "sensitivity" not in cols:
+            self._db.execute(
+                "ALTER TABLE edges ADD COLUMN sensitivity TEXT NOT NULL DEFAULT 'normal'"
+            )
         with (
             self._lock,
             self._db,
@@ -472,18 +478,22 @@ class Knowledge:
         source: str,
         scope: str,
         valid_until: float | None = None,
+        sensitivity: str = "normal",
     ) -> Edge:
         """Add a candidate relationship (subject --predicate--> object) with
         provenance. Like a fact, it is a candidate until an owner reviews it.
-        ``valid_until`` (world time) expires it from traversal after that time."""
+        ``valid_until`` (world time) expires it from traversal after that time.
+        A ``sensitive`` edge stays off the model path, like a sensitive fact."""
 
+        if sensitivity not in SENSITIVITIES:
+            raise ValueError(f"sensitivity is one of {SENSITIVITIES}")
         parts = [" ".join(str(x).split()) for x in (subject, predicate, obj, source)]
         if not all(parts) or not str(scope).strip():
             raise ValueError("an edge needs subject, predicate, object, source, scope")
         with self._lock, self._db:
             cur = self._db.execute(
                 "INSERT INTO edges (subject, predicate, object, source, scope, "
-                "status, added, valid_until) VALUES (?,?,?,?,?,?,?,?)",
+                "status, added, valid_until, sensitivity) VALUES (?,?,?,?,?,?,?,?,?)",
                 (
                     parts[0],
                     parts[1],
@@ -493,6 +503,7 @@ class Knowledge:
                     "candidate",
                     self.clock(),
                     valid_until,
+                    sensitivity,
                 ),
             )
         return self.edge(cur.lastrowid)
@@ -555,6 +566,7 @@ class Knowledge:
              "source": e.source}
             for e in (Edge(*r) for r in rows)
             if not e.expired(now)
+            and (include_sensitive or e.sensitivity != "sensitive")
         ]  # fmt: skip
         return {"version": 1, "scope": scope, "facts": facts, "edges": edges}
 
@@ -635,7 +647,9 @@ class Knowledge:
         return [
             e
             for e in edges
-            if key in (e.subject.casefold(), e.object.casefold()) and not e.expired(now)
+            if key in (e.subject.casefold(), e.object.casefold())
+            and not e.expired(now)
+            and e.sensitivity != "sensitive"  # a sensitive edge stays off this path
         ]
 
     def related(self, query: str, scope: str, *, k: int = 5) -> list[Edge]:
@@ -654,7 +668,7 @@ class Knowledge:
         scored = []
         for r in rows:
             e = Edge(*r)
-            if e.expired(now):
+            if e.expired(now) or e.sensitivity == "sensitive":
                 continue
             overlap = len(want & (_words(e.subject) | _words(e.object)))
             if overlap:
@@ -685,7 +699,7 @@ class Knowledge:
         frontier: list[str] = []
         for r in rows:
             e = Edge(*r)
-            if e.expired(now):  # a relationship that stopped being true: no walk
+            if e.expired(now) or e.sensitivity == "sensitive":  # off the model path
                 continue
             subj, obj = _words(e.subject), _words(e.object)
             if subj and subj <= seed_words:  # subject named in a seed -> walk to object
