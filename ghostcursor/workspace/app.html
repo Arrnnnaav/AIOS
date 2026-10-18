@@ -586,12 +586,14 @@ function companyBrainCard() {
     if (!r.facts || !r.facts.length) { list.append(el("div", "note", "No facts yet.")); return; }
     for (const f of r.facts) {
       const row = el("div", "sheetrow");
-      const label = el("span", "", "[" + f.status + "] " + f.text + " — " + f.source);
+      const tag = f.expired ? "expired" : f.status;
+      const label = el("span", "", "[" + tag + "] " + f.text + " — " + f.source);
+      if (f.expired) label.style.opacity = "0.55";
       const rt = el("span"); rt.style.marginLeft = "auto";
       if (f.status === "candidate") { const b = el("button", "pill go", "Review"); b.onclick = () => act("know_review", { fid: f.fid }, "Reviewed").then(renderBrain); rt.append(b); }
       if (f.status === "reviewed") { const b = el("button", "pill go", "Approve"); b.onclick = () => act("know_approve", { fid: f.fid }, "Approved").then(renderBrain); rt.append(b); }
       if (f.status !== "retired" && f.status !== "superseded") { const b = el("button", "secondary", "Retire"); b.style.marginLeft = "6px"; b.onclick = () => act("know_retire", { fid: f.fid }, "Retired").then(renderBrain); rt.append(b); }
-      if (f.status === "reviewed" || f.status === "approved") { const b = el("button", "secondary", "Expire"); b.style.marginLeft = "6px"; b.title = "Stopped being true now; kept as history"; b.onclick = () => act("know_expire", { fid: f.fid }, "Expired").then(renderBrain); rt.append(b); }
+      if ((f.status === "reviewed" || f.status === "approved") && !f.expired) { const b = el("button", "secondary", "Expire"); b.style.marginLeft = "6px"; b.title = "Stopped being true now; kept as history"; b.onclick = () => act("know_expire", { fid: f.fid }, "Expired").then(renderBrain); rt.append(b); }
       row.append(label, rt); list.append(row);
     }
   }).catch(() => {});

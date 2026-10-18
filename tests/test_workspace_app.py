@@ -415,6 +415,8 @@ def test_know_expire_over_http(tmp_path):
         assert call(port, "/api/know_expire", {"fid": f.fid})[0] == 200
         assert kb.recall("vpn", "default") == []  # expired, not recalled
         assert kb.get(f.fid) is not None  # kept as history
+        listed = json.loads(call(port, "/api/know_list", {})[1])["facts"]
+        assert [x["expired"] for x in listed if x["fid"] == f.fid] == [True]  # tagged
     finally:
         server.shutdown()
         app.close()

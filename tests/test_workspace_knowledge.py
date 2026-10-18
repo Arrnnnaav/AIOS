@@ -205,6 +205,7 @@ def test_know_command_owner_review_path(tmp_path):
     assert run("review-edge", "1").endswith("reviewed")
     assert "expires now" in run("expire-edge", "1")  # owner ends a relationship
     assert "expires now" in run("expire", "2")  # owner expires a live fact
+    assert "[expired]" in run("list")  # list tags it expired, not its old status
     assert "#2" not in run("recall", "prod")  # expired fact not recalled
     assert run("expire", "99") == "no such fact"
     k.close()

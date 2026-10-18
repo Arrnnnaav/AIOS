@@ -230,6 +230,7 @@ class App:
             if ws.knowledge is None:
                 return {"facts": []}
             status = body.get("status") or None
+            now = ws.knowledge.clock()
             return {
                 "facts": [
                     {
@@ -238,6 +239,7 @@ class App:
                         "status": f.status,
                         "source": f.source,
                         "superseded_by": f.superseded_by,
+                        "expired": f.stale(now),  # past valid_until: no longer true
                     }
                     for f in ws.knowledge.list(scope=ws.kb_scope, status=status)
                 ]

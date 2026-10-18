@@ -256,9 +256,11 @@ def know_command(knowledge, scope: str, args: list[str]) -> str:
     if verb == "list":
         status = args[1] if len(args) > 1 else None
         rows = knowledge.list(scope=scope, status=status)
+        now = knowledge.clock()
         return (
             "\n".join(
-                f"#{f.fid} [{f.status}] {f.text}  <- {f.source}"
+                f"#{f.fid} [{'expired' if f.stale(now) else f.status}] "
+                f"{f.text}  <- {f.source}"
                 + (f" (-> #{f.superseded_by})" if f.superseded_by else "")
                 for f in rows
             )
