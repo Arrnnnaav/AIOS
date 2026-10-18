@@ -390,6 +390,17 @@ class Workspace:
                 }
                 for a, b in disputes
             ]
+        # Aging facts are still used, but flagged so the owner can re-verify
+        # before a plan leans on a fact nobody has confirmed in months (D186).
+        aging = self.knowledge.aging_among(facts)
+        if aging:
+            context["company_aging"] = [
+                {
+                    "text": Tainted.of("company_fact", f.text),
+                    "source": Tainted.of("fact_source", f.source),
+                }
+                for f in aging
+            ]
 
     # --- the loop -------------------------------------------------------------
 

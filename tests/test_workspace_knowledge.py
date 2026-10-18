@@ -458,3 +458,21 @@ def test_export_markdown_is_readable_and_hides_sensitive(kn):
     assert "hunter2" not in md  # sensitive excluded
     assert "hunter2" in kn.export_markdown("acme", include_sensitive=True)
     assert "_(none)_" in kn.export_markdown("beta")  # empty scope renders cleanly
+
+
+def test_aging_surfaces_unverified_facts_without_excluding_them(kn):
+    """Zep-style decay: a usable fact not re-verified within STALE_AFTER_S is
+    still recalled but flagged aging; re-verifying it clears the flag."""
+    from ghostcursor.workspace.knowledge import STALE_AFTER_S
+
+    f = kn.add_candidate("VPN gateway is 10.0.0.1.", source="net", scope="acme")
+    kn.approve(f.fid)
+    assert kn.aging_among(kn.recall("vpn gateway", "acme")) == []  # fresh
+
+    kn.now = 1000.0 + STALE_AFTER_S + 1
+    hits = kn.recall("vpn gateway", "acme")
+    assert [h.fid for h in hits] == [f.fid]  # still recalled -- not expired
+    assert [a.fid for a in kn.aging_among(hits)] == [f.fid]  # but flagged aging
+
+    kn.verify(f.fid)  # re-verify resets last_verified to now
+    assert kn.aging_among(kn.recall("vpn gateway", "acme")) == []

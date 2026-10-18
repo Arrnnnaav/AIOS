@@ -34,6 +34,10 @@ ENV_PATH = "ORBYN_KNOWLEDGE_PATH"
 STATES = ("candidate", "reviewed", "approved", "superseded", "retired")
 USABLE = ("reviewed", "approved")  # what retrieval may return as a fact
 SENSITIVITIES = ("normal", "sensitive")
+#: A usable fact not re-verified within this window is AGING: still valid, so
+#: still recalled, but surfaced for a re-verify nudge (Zep's confidence decay).
+#: ponytail: one global window; a per-fact TTL only if owners ask.
+STALE_AFTER_S = 90 * 24 * 3600
 EDGE_STATES = ("candidate", "reviewed")
 
 
@@ -83,6 +87,12 @@ class Fact:
 
     def stale(self, now: float) -> bool:
         return self.valid_until is not None and now >= self.valid_until
+
+    def aging(self, now: float, *, max_age: float = STALE_AFTER_S) -> bool:
+        """Not expired, but not re-verified within ``max_age`` -- surfaced for a
+        re-verify nudge, never excluded (it is still valid)."""
+
+        return not self.stale(now) and (now - self.last_verified) > max_age
 
 
 @dataclass(frozen=True)
@@ -377,6 +387,14 @@ class Knowledge:
                 if _disagree(a.text, b.text):
                     out.append((a, b))
         return out
+
+    def aging_among(self, facts: list[Fact]) -> list[Fact]:
+        """Usable facts not re-verified within ``STALE_AFTER_S`` -- surfaced so
+        the owner can re-verify, never dropped. The retrieval path passes the
+        surfaced facts; uses the store's own clock."""
+
+        now = self.clock()
+        return [f for f in facts if f.aging(now)]
 
     def conflicts(self, scope: str) -> list[tuple[Fact, Fact]]:
         """Pairs of usable facts in ``scope`` that look like they disagree.

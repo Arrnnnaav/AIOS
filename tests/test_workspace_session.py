@@ -315,3 +315,26 @@ def test_company_brain_surfaces_conflicts_among_used_facts(tmp_path):
     sent = ws.gateway.envelopes[-1].tainted_json()
     assert "company_conflicts" in sent  # disagreement surfaced, not hidden
     kb.close()
+
+
+def test_company_brain_flags_aging_facts_at_retrieval(tmp_path):
+    """D186: a fact not re-verified in a long time is still surfaced but flagged
+    company_aging, so a plan does not silently lean on an unconfirmed fact."""
+
+    from ghostcursor.workspace.knowledge import STALE_AFTER_S, Knowledge
+
+    kb = Knowledge(tmp_path / "knowledge.sqlite")
+    kb.now = 1000.0
+    kb.clock = lambda: kb.now
+    f = kb.add_candidate("The DB host is db1.", source="runbook", scope="default")
+    kb.review(f.fid)
+    kb.now = 1000.0 + STALE_AFTER_S + 1  # age it past the window
+
+    ws = Workspace(
+        "deck", FakeGateway(), Brain(tmp_path / "b.sqlite"),
+        root=tmp_path / "briefs", knowledge=kb, kb_scope="default",
+    )
+    ws.discuss("What is the DB host?")
+    sent = ws.gateway.envelopes[-1].tainted_json()
+    assert "company_aging" in sent
+    kb.close()

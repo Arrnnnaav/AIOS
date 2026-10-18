@@ -442,3 +442,16 @@ file. /know export <path> and /know import <path>.
   Teach already verifies a step took effect before advancing. The one open gap
   is live region CAPTURE (drawn rectangle vs cursor point) -- tracked in
   FOLLOWUPS as an interactive-UI build, not rushed here.
+
+## Company Brain staleness surfacing (D186, 2026-10-18)
+
+- **Comparable:** Zep/Graphiti confidence decay -- a fact's trust drops the
+  longer it goes unconfirmed. (Research-grade; no binary to decompile.)
+- **Adopted:** a usable fact not re-verified within STALE_AFTER_S (90 days) is
+  AGING -- still valid, still recalled, but the retrieval path adds a
+  company_aging note so a plan does not silently lean on a fact nobody has
+  confirmed in months. Symmetric with conflict-surfacing; Fact.aging +
+  aging_among, using the store's own clock. `verify` resets it.
+- **Rejected:** dropping or auto-expiring aging facts -- they are still valid;
+  the owner decides. Hard expiry stays valid_until (already excluded). One
+  global window for now; per-fact TTL only if owners ask.
