@@ -5,6 +5,7 @@ from __future__ import annotations
 import http.client
 import json
 import threading
+from pathlib import Path
 
 import pytest
 
@@ -326,6 +327,35 @@ def test_know_aging_and_verify_over_http(tmp_path):
         assert [a["fid"] for a in aging] == [f.fid]
         assert call(port, "/api/know_verify", {"fid": f.fid})[0] == 200
         assert json.loads(call(port, "/api/know_aging", {})[1])["aging"] == []
+    finally:
+        server.shutdown()
+        app.close()
+        kb.close()
+
+
+def test_know_export_writes_markdown(tmp_path):
+    """GUI Brain export (D186): writes a readable Markdown file and returns its
+    path, mirroring the console /know export-md."""
+    from ghostcursor.workspace.knowledge import Knowledge
+
+    kb = Knowledge(tmp_path / "know.sqlite")
+    app = App(
+        "trip",
+        make_workspace=lambda: Workspace(
+            "trip", Gateway(), Brain(tmp_path / "kb.sqlite"),
+            root=tmp_path / "briefs", knowledge=kb, kb_scope="default",
+        ),
+    )
+    app.downloads = tmp_path / "dl"
+    f = kb.add_candidate("Launch is in Q3.", source="plan", scope="default")
+    kb.approve(f.fid)
+    server = make_server(app, "secret-token")
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        status, body = call(server.server_port, "/api/know_export", {})
+        assert status == 200
+        out = Path(json.loads(body)["path"])
+        assert out.exists() and "Launch is in Q3." in out.read_text(encoding="utf-8")
     finally:
         server.shutdown()
         app.close()

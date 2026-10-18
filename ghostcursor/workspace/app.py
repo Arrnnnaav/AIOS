@@ -284,6 +284,14 @@ class App:
                     for f in ws.knowledge.aging(ws.kb_scope)
                 ]
             }
+        if action == "know_export":  # readable Brain export to Downloads (D186)
+            if ws.knowledge is None:
+                raise ValueError("no Company Brain")
+            md = ws.knowledge.export_markdown(ws.kb_scope)
+            out = self.downloads / f"{ws.kb_scope}.company-brain.md"
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_text(md, encoding="utf-8", newline="\n")
+            return {"path": str(out)}
         if action == "know_conflicts":
             if ws.knowledge is None:
                 return {"conflicts": []}

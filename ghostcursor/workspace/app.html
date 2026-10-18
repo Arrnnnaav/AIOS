@@ -578,7 +578,9 @@ function companyBrainCard() {
   addB.onclick = () => { const t = inp.value.trim(); if (!t) return; act("know_add", { text: t }, "Added as candidate").then(() => { inp.value = ""; renderBrain(); }); };
   const clipB = el("button", "secondary", "Capture clipboard"); clipB.style.marginLeft = "6px";
   clipB.onclick = () => act("know_clip", {}, "Clipboard captured").then(renderBrain);
-  cap.append(inp, addB, clipB); card.append(cap);
+  const expB = el("button", "secondary", "Export"); expB.style.marginLeft = "6px";
+  expB.onclick = () => act("know_export", {}).then((r) => r && toast("Saved " + r.path, true));
+  cap.append(inp, addB, clipB, expB); card.append(cap);
   const list = el("div"); card.append(list);
   api("know_list").then((r) => {
     if (!r.facts || !r.facts.length) { list.append(el("div", "note", "No facts yet.")); return; }
