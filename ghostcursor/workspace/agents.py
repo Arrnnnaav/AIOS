@@ -173,6 +173,16 @@ def test_agent(spec: AgentSpec) -> list[str]:
         issues.append("the goal can delete/send/spend but names nothing to never touch")
     if not spec.goal_template.strip():
         issues.append("the goal is empty")
+    # A spec that tells the agent to do the very thing its deny list forbids can
+    # never finish: it would try every run and be blocked every run. Catch the
+    # contradiction at build time (deterministic, no model needed).
+    goal_words = set(re.findall(r"[a-z0-9]+", spec.goal_template.casefold()))
+    for d in spec.deny:
+        if d.casefold() in goal_words:
+            issues.append(
+                f"the goal names {d!r} but the deny list forbids it; "
+                "the agent could never finish"
+            )
     return issues
 
 

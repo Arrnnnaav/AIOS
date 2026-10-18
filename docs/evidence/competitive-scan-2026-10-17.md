@@ -366,3 +366,21 @@ file. /know export <path> and /know import <path>.
 - **Bounded:** checks only the <=k surfaced facts (not the whole scope), so the
   hot path stays cheap. Conflicts are surfaced, never auto-resolved -- the
   owner decides (vision: "conflicts surfaced not resolved").
+
+## Agent creator: deny/goal contradiction check (D186, 2026-10-18)
+
+- **Decompiled:** Antigravity (Google's agentic desktop app) `app.asar`
+  (`%LOCALAPPDATA%\Programs\Antigravity\`). Backend finding: the desktop shell
+  is an IDE host that talks to a server-side agent runner over a typed Connect
+  RPC proto contract (`host_bridge_pb`); an agent's capability is the explicit
+  set of MCP tools it is granted (it bundles `chrome-devtools-mcp`). The
+  trajectory/permission enforcement is server-side, so the shell itself is
+  low-signal -- stated honestly.
+- **Adopted (principle, not code):** an agent's capability should be an
+  explicit, validated allowlist. Orbyn's `AgentSpec` already has `skills`
+  (allowed guides) and `deny` (controls never to touch); `test_agent` now also
+  flags a spec whose goal_template instructs an action its own deny list
+  forbids -- a contradiction the agent could never satisfy. Deterministic,
+  build-time, no model (runs before dry_run's planner check).
+- **Rejected:** a remote agent runner and a cloud tool contract -- Orbyn runs
+  on-device and offline-first; capability stays local AgentSpec + guides.

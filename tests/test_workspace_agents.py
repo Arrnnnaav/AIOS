@@ -202,3 +202,13 @@ def test_dry_run_vets_the_plan_is_in_bounds():
             raise ProviderError(FailureKind.UNAVAILABLE, "down")
 
     assert "cannot vet" in dry_run(spec, Broken(), {"topic": "AI"})[0]
+
+
+def test_the_auto_test_catches_a_goal_that_names_a_denied_control():
+    """A spec whose goal instructs the very action its deny list forbids can
+    never finish; the build-time check flags the contradiction."""
+    bad = agents.parse_agent(json.dumps({
+        **GOOD, "goal_template": "Delete the old slides in PowerPoint",
+        "deny": ["Delete"],
+    }))
+    assert any("could never finish" in i for i in agents.test_agent(bad))
