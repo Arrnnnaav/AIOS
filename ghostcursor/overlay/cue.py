@@ -88,6 +88,27 @@ POINTER_GLYPH: tuple[tuple[int, int], ...] = (
 )
 
 
+#: The hint ring "breathes" to draw the eye to the control (HeyClicky's
+#: pulsing halo), without a timer: the live loop already repaints ~10x/s, so a
+#: time-based radius delta animates for free. Pure and bounded for the test.
+PULSE_PERIOD_S = 1.2
+PULSE_AMPLITUDE_PX = 6
+
+
+def pulse_delta(
+    t: float, *, period: float = PULSE_PERIOD_S, amplitude: int = PULSE_AMPLITUDE_PX
+) -> int:
+    """Extra ring radius at time ``t``: 0 at the cycle start, ``amplitude`` at
+    the half cycle, back to 0 -- a smooth breathe. Always in [0, amplitude], so
+    the ring never shrinks below its base or wanders onto a neighbour."""
+
+    import math
+
+    if period <= 0:
+        return 0
+    return round(amplitude * (1 - math.cos(2 * math.pi * (t % period) / period)) / 2)
+
+
 def pointer_polygon(x: int, y: int, *, scale: int = 1) -> tuple[tuple[int, int], ...]:
     """The glyph outline with its tip at ``(x, y)``."""
 
@@ -285,8 +306,11 @@ __all__ = [
     "CueScene",
     "LabelMetrics",
     "POINTER_GLYPH",
+    "PULSE_AMPLITUDE_PX",
+    "PULSE_PERIOD_S",
     "TRUST_COLOURS",
     "cue_colour",
     "label_box",
     "pointer_polygon",
+    "pulse_delta",
 ]

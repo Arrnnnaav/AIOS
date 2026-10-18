@@ -105,7 +105,12 @@ def ring_colour_for(freshness) -> int:
 
 
 def _paint_ring(hdc, x: int, y: int, radius: int, freshness) -> None:
+    import time
+
+    from ghostcursor.overlay.cue import pulse_delta
+
     colour = ring_colour_for(freshness)
+    radius += pulse_delta(time.monotonic())  # breathe to draw the eye (HeyClicky)
     pen = win32gui.CreatePen(win32con.PS_SOLID, RING_THICKNESS, colour)
     old_pen = win32gui.SelectObject(hdc, pen)
     old_brush = win32gui.SelectObject(hdc, win32gui.GetStockObject(win32con.NULL_BRUSH))
@@ -221,7 +226,6 @@ def clear_hint(hwnd: int) -> None:
     win32gui.UpdateWindow(hwnd)
 
 
-
 def _ensure_label_font():
     """The one font every cue label is drawn and measured in.
 
@@ -303,8 +307,7 @@ def _paint_cue(hdc, scene) -> None:
         return
 
     points = [
-        (x - ox, y - oy)
-        for x, y in cue_layout.pointer_polygon(*scene.pointer, scale=2)
+        (x - ox, y - oy) for x, y in cue_layout.pointer_polygon(*scene.pointer, scale=2)
     ]
     brush = win32gui.CreateSolidBrush(colour)
     pen = win32gui.CreatePen(win32con.PS_SOLID, 1, LABEL_PLATE_COLOR)
@@ -330,9 +333,7 @@ def _paint_label(hdc, box, text: str, colour: int) -> None:
 
     pen = win32gui.CreatePen(win32con.PS_SOLID, 1, colour)
     old_pen = win32gui.SelectObject(hdc, pen)
-    old_brush = win32gui.SelectObject(
-        hdc, win32gui.GetStockObject(win32con.NULL_BRUSH)
-    )
+    old_brush = win32gui.SelectObject(hdc, win32gui.GetStockObject(win32con.NULL_BRUSH))
     win32gui.Rectangle(hdc, *rect)
     win32gui.SelectObject(hdc, old_brush)
     win32gui.SelectObject(hdc, old_pen)
@@ -342,7 +343,10 @@ def _paint_label(hdc, box, text: str, colour: int) -> None:
     win32gui.SetBkMode(hdc, win32con.TRANSPARENT)
     win32gui.SetTextColor(hdc, LABEL_TEXT_COLOR)
     win32gui.DrawText(
-        hdc, text, -1, rect,
+        hdc,
+        text,
+        -1,
+        rect,
         win32con.DT_CENTER | win32con.DT_VCENTER | win32con.DT_SINGLELINE,
     )
     win32gui.SelectObject(hdc, old_font)

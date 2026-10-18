@@ -328,3 +328,18 @@ def test_a_malformed_scene_is_refused(kwargs):
 
     with pytest.raises(CueLayoutError):
         CueScene(**fields)
+
+
+def test_pulse_delta_breathes_within_bounds():
+    """The hint ring's radius delta is 0 at the cycle start, peaks at the half
+    cycle, and never leaves [0, amplitude] -- so the halo pulses without ever
+    shrinking below its base or blooming onto a neighbour."""
+    from ghostcursor.overlay.cue import PULSE_AMPLITUDE_PX, PULSE_PERIOD_S, pulse_delta
+
+    assert pulse_delta(0.0) == 0
+    assert pulse_delta(PULSE_PERIOD_S) == 0  # full cycle returns to base
+    assert pulse_delta(PULSE_PERIOD_S / 2) == PULSE_AMPLITUDE_PX  # peak
+    for i in range(240):  # two cycles, fine-grained: always in range
+        d = pulse_delta(i * PULSE_PERIOD_S / 100)
+        assert 0 <= d <= PULSE_AMPLITUDE_PX
+    assert pulse_delta(5.0, period=0) == 0  # degenerate period never divides

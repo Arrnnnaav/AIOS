@@ -396,3 +396,22 @@ file. /know export <path> and /know import <path>.
   (clipboard text stays local, never to a model before review).
 - **Bounded:** no file-picker/upload in the webview yet (document ingestion
   stays /know ingest in the console); add when owners ask.
+
+## Teach: pulsing hint ring, HeyClicky parity (D186, 2026-10-18)
+
+- **Comparable:** HeyClicky (Clicky, YC S2026, Farza Majeed) -- hotkey -> ask
+  aloud -> it explains the screen / walks the next step, an animated cursor
+  halo highlights the control; observes only while active, never stores
+  screenshots. macOS; Windows waitlisted.
+- **Checked Orbyn Teach against it:** already at parity on the substance --
+  screen observation, model-chosen next step, a NULL-brush outline halo
+  (`_paint_ring`) centred on the observed control, voice (wake word + hotkey),
+  the deny list (already credited to HeyClicky), and stronger privacy (tier-1:
+  no screenshots/HWND/PID leave the device; screen text only via Tainted.of).
+  No defect found; suites green (86 overlay/teach tests).
+- **One parity gap fixed:** HeyClicky's halo pulses to pull the eye; Orbyn's
+  ring was static. Added `cue.pulse_delta` (pure, bounded breathe) and applied
+  it in `_paint_ring`. No new timer -- the live loop already repaints ~10x/s
+  (TICK_S=0.1), so a time-based radius delta animates for free. Drawing stays
+  inside WM_PAINT (tier-1 rule 4); the delta is bounded to [0, 6px] so the halo
+  never shrinks below its base or blooms onto a neighbouring control.
