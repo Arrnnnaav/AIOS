@@ -1425,3 +1425,16 @@ to confirm where the cost actually is before changing anything else.
 
 ## Wake word KWS install (D185, 18 Oct 2026)
 - Streaming KWS install is now built: `py -3.12 -m ghostcursor.listen_kws install` downloads the sherpa-onnx gigaspeech KWS model and writes hey-bro.txt from the model's own BPE (keywords_text). Needs sherpa-onnx + sentencepiece + network on the user's machine; fail-open to Whisper throughout. Orchestration is tested with injected IO; the real download/tokenize is not CI-tested (no model/network in CI).
+
+## Spatial: live region capture for Teach (HeyClicky parity) — 2026-10-18
+
+Orbyn's spatial engine already resolves a REGION mark, not just a point:
+`harness/spatial.py::SpatialReference.from_mark(mark: Rect, frame)` scores
+candidates by area overlap/containment, and `mark_score` handles a non-zero
+`mark_area`. The gap vs HeyClicky's "draw/circle to mark" is only live CAPTURE:
+`teach_live.py` grabs `point(*cursor())` (a zero-size rect at the cursor), so a
+user can point but not drag a box. Closing it means letting the overlay capture
+a mouse drag and feeding the drawn rect to `from_mark` — an interactive UI
+feature (needs the overlay to briefly own the mouse + an interactive test lane),
+deliberately not rushed into an autonomous run. The ranking/resolution half is
+done and tested; only the capture gesture is outstanding.

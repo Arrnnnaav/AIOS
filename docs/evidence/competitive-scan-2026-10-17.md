@@ -415,3 +415,30 @@ file. /know export <path> and /know import <path>.
   (TICK_S=0.1), so a time-based radius delta animates for free. Drawing stays
   inside WM_PAINT (tier-1 rule 4); the delta is bounded to [0, 6px] so the halo
   never shrinks below its base or blooms onto a neighbouring control.
+
+## agent-reach research + Orbyn `doctor`, HeyClicky spatial (D186, 2026-10-18)
+
+- **Researched github.com/Panniantong/agent-reach:** gives AI agents internet
+  access (read/search Twitter, Reddit, YouTube, GitHub, web) via FREE OSS
+  backends, no API fees; multi-backend fallback per platform; a `doctor`
+  command that reports which channels work and the one thing to fix each
+  broken one. What users want (from its framing + HeyClicky/Cluely): no API
+  fees (Orbyn BYOK already), zero-setup that just works, graceful degradation,
+  "you keep it working / tell me what's missing." Known problems: ban risk on
+  cookie/session auth, unstable upstream CLIs, no zero-config for some sites.
+- **Built on top:** `ghostcursor/doctor.py` + `/doctor` + `py -3.12 -m
+  ghostcursor.doctor` -- one readiness self-check over models (BYOK), voice,
+  fast wake word, browser, Act/Teach, and REA, each with the single action to
+  enable a missing one. Presence only, no values, no network; every probe
+  swallows its own failure so one broken check never hides the rest. Mirrors
+  agent-reach's best idea for Orbyn's own graceful-degradation story.
+- **Rejected from agent-reach:** the scraper backends and cookie/session auth
+  (ban risk, Orbyn is on-device and privacy-bound); Orbyn's web path stays the
+  consented browser (D184), not headless site scraping.
+- **HeyClicky spatial context checked:** HeyClicky lets you hold a hotkey and
+  draw/circle on screen (paint trail) to mark focus, and injects skill files by
+  the program you're in, advancing when you click where it pointed. Orbyn's
+  spatial engine already resolves a REGION mark (from_mark scores area), and
+  Teach already verifies a step took effect before advancing. The one open gap
+  is live region CAPTURE (drawn rectangle vs cursor point) -- tracked in
+  FOLLOWUPS as an interactive-UI build, not rushed here.

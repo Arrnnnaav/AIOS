@@ -16,6 +16,7 @@ Type to discuss. Commands:
                     edit the plan; each edit is a new proposal
   /teach <n> [s]    guide plan step n onward on screen for s seconds (default 300)
   /providers [signin | signout]   who powers the harness (your accounts first)
+  /doctor           what's ready and the one thing to turn on each missing part
   /know [add <source> | <text> | ingest <path> | list | review <id> | approve <id> |
         retire <id> | supersede <old> <new> | conflicts | recall <q>]  org facts
   /brain [list | search <q> | forget <id> | correct <id> <text> |
@@ -462,6 +463,10 @@ def main(argv: list[str] | None = None) -> int:
                 print(brain_command(brain, rest.split()))
             elif command in ("/providers", "/accounts"):
                 print(providers_status(workspace.gateway, rest.split()))
+            elif command == "/doctor":
+                from ghostcursor import doctor
+
+                print(doctor.report())
             elif command == "/know":
                 print(
                     know_command(workspace.knowledge, workspace.kb_scope, rest.split())
