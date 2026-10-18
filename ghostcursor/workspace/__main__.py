@@ -160,7 +160,7 @@ KNOW_USAGE = (
     "approve <id>  |  retire <id>  |  verify <id>  |  supersede <old> <new>  |  "
     "export <path>  |  export-md <path>  |  import <path>  |  "
     "relate <subject> | <predicate> | <object> | <source>  |  "
-    "review-edge <id>  |  conflicts  |  recall <query>"
+    "review-edge <id>  |  expire <id>  |  expire-edge <id>  |  conflicts  |  recall <query>"
 )
 
 
@@ -286,6 +286,14 @@ def know_command(knowledge, scope: str, args: list[str]) -> str:
     if verb == "review-edge" and len(args) == 2 and fid(args[1]):
         e = knowledge.review_edge(int(args[1]))
         return "no such edge" if e is None else f"edge #{args[1]} {e.status}"
+    if verb == "expire" and len(args) == 2 and fid(args[1]):
+        f = knowledge.expire(int(args[1]))
+        return (
+            "no such fact" if f is None else f"#{args[1]} expires now (kept as history)"
+        )
+    if verb == "expire-edge" and len(args) == 2 and fid(args[1]):
+        e = knowledge.expire_edge(int(args[1]))
+        return "no such edge" if e is None else f"edge #{args[1]} expires now"
     if verb == "export" and rest:
         import json
 

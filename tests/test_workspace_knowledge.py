@@ -203,6 +203,10 @@ def test_know_command_owner_review_path(tmp_path):
 
     assert "edge #1 added" in run("relate", "Acme", "|", "uses", "|", "PG", "|", "doc")
     assert run("review-edge", "1").endswith("reviewed")
+    assert "expires now" in run("expire-edge", "1")  # owner ends a relationship
+    assert "expires now" in run("expire", "2")  # owner expires a live fact
+    assert "#2" not in run("recall", "prod")  # expired fact not recalled
+    assert run("expire", "99") == "no such fact"
     k.close()
 
 
@@ -534,13 +538,16 @@ def test_recall_excludes_sensitive_facts_from_the_model_path_by_default(kn):
     to a BYOK model is egress, rule 6): recall excludes it by default, the owner
     opts in, and the n-hop/context paths that reach the model never see it."""
 
-    s = kn.add_candidate("Root password is hunter2.", source="ops", scope="acme",
-                          sensitivity="sensitive")
+    s = kn.add_candidate(
+        "Root password is hunter2.", source="ops", scope="acme", sensitivity="sensitive"
+    )
     n = kn.add_candidate("The office opens at nine.", source="hr", scope="acme")
     kn.approve(s.fid)
     kn.approve(n.fid)
 
-    assert [f.fid for f in kn.recall("password office", "acme")] == [n.fid]  # model path
+    assert [f.fid for f in kn.recall("password office", "acme")] == [
+        n.fid
+    ]  # model path
     got = {f.fid for f in kn.recall("password office", "acme", include_sensitive=True)}
     assert got == {s.fid, n.fid}  # owner's explicit local view sees it
     facts, _edges = kn.context("password", "acme")  # context feeds the model
@@ -559,8 +566,9 @@ def test_an_expired_edge_drops_out_of_every_traversal(kn):
     b = kn.add_candidate("Dana leads the platform team.", source="s", scope="acme")
     kn.approve(a.fid)
     kn.approve(b.fid)
-    e = kn.relate("Zephyr", "owned-by", "Dana", source="org", scope="acme",
-                  valid_until=2000.0)
+    e = kn.relate(
+        "Zephyr", "owned-by", "Dana", source="org", scope="acme", valid_until=2000.0
+    )
     kn.review_edge(e.eid)
 
     assert [f.fid for f in kn.connected("zephyr", "acme")] == [b.fid]  # still valid
@@ -574,3 +582,27 @@ def test_an_expired_edge_drops_out_of_every_traversal(kn):
     assert kn.neighbors("Zephyr", "acme") == []
     assert kn.export_scope("acme")["edges"] == []
     assert kn.edge(e.eid) is not None  # not deleted: owner still governs it
+
+
+def test_owner_can_expire_an_existing_fact_and_edge(kn):
+    """The owner learns a fact/relationship stopped being true and expires it
+    as of now, keeping the window before as history (unlike retire's drop).
+    After expiry recall and traversal skip it; the rows survive."""
+
+    kn.now = 1000.0
+    kn.clock = lambda: kn.now
+    a = kn.add_candidate("Project Zephyr ships in March.", source="s", scope="acme")
+    b = kn.add_candidate("Dana leads the platform team.", source="s", scope="acme")
+    kn.approve(a.fid)
+    kn.approve(b.fid)
+    e = kn.relate("Zephyr", "owned-by", "Dana", source="org", scope="acme")
+    kn.review_edge(e.eid)
+
+    assert [f.fid for f in kn.recall("ships", "acme")] == [a.fid]
+    assert [f.fid for f in kn.connected("zephyr", "acme")] == [b.fid]
+
+    kn.expire(a.fid)  # fact stopped being true as of now
+    kn.expire_edge(e.eid)  # relationship ended
+    assert kn.recall("ships", "acme") == []  # expired fact not recalled
+    assert kn.connected("zephyr", "acme") == []  # dead edge not walked
+    assert kn.get(a.fid) is not None and kn.edge(e.eid) is not None  # kept as history

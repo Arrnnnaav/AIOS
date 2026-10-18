@@ -343,6 +343,32 @@ class Knowledge:
             )
         return self.get(fid)
 
+    def expire(self, fid: int, when: float | None = None) -> Fact | None:
+        """Set a fact's world-time end (the owner learned it stopped being true
+        at ``when``, default now). It stays as history with its validity window;
+        recall skips it once past ``when`` -- Graphiti temporal invalidation,
+        not a delete. Unlike retire (an immediate drop), this keeps the fact
+        valid for the window before ``when``."""
+
+        now = self.clock()
+        with self._lock, self._db:
+            self._db.execute(
+                "UPDATE facts SET valid_until=?, last_verified=? WHERE fid=?",
+                (now if when is None else when, now, fid),
+            )
+        return self.get(fid)
+
+    def expire_edge(self, eid: int, when: float | None = None) -> Edge | None:
+        """Set a relationship's world-time end (default now); traversal skips it
+        past ``when``. The counterpart to ``expire`` for the context graph."""
+
+        with self._lock, self._db:
+            self._db.execute(
+                "UPDATE edges SET valid_until=? WHERE eid=?",
+                (self.clock() if when is None else when, eid),
+            )
+        return self.edge(eid)
+
     # --- reads ----------------------------------------------------------
 
     def get(self, fid: int) -> Fact | None:
