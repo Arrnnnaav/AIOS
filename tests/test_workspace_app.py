@@ -227,7 +227,9 @@ def test_company_brain_review_panel_actions(tmp_path):
     try:
         port = server.server_port
         a = kb.add_candidate("DB is encrypted at rest.", source="s", scope="default")
-        b = kb.add_candidate("DB is not encrypted at rest.", source="t", scope="default")
+        b = kb.add_candidate(
+            "DB is not encrypted at rest.", source="t", scope="default"
+        )
 
         facts = json.loads(call(port, "/api/know_list")[1])["facts"]
         assert {f["status"] for f in facts} == {"candidate"}  # nothing usable yet
@@ -242,8 +244,13 @@ def test_company_brain_review_panel_actions(tmp_path):
         assert {conflicts[0]["a"]["fid"], conflicts[0]["b"]["fid"]} == {a.fid, b.fid}
 
         call(port, "/api/know_retire", {"fid": b.fid})
-        states = {f["fid"]: f["status"] for f in json.loads(call(port, "/api/know_list")[1])["facts"]}
+        states = {
+            f["fid"]: f["status"]
+            for f in json.loads(call(port, "/api/know_list")[1])["facts"]
+        }
         assert states[a.fid] == "approved" and states[b.fid] == "retired"
+        # Retiring one side clears the conflict -- the inline Retire loop closes.
+        assert json.loads(call(port, "/api/know_conflicts")[1])["conflicts"] == []
         assert call(port, "/api/know_review", {"fid": 999})[0] == 400  # no such fact
     finally:
         server.shutdown()
@@ -258,20 +265,28 @@ def test_company_brain_gui_capture(tmp_path, monkeypatch):
     from ghostcursor.workspace.knowledge import Knowledge
     from ghostcursor.harness import act
 
-    monkeypatch.setattr(act, "get_clipboard_text", lambda: "captured from the clipboard")
+    monkeypatch.setattr(
+        act, "get_clipboard_text", lambda: "captured from the clipboard"
+    )
     kb = Knowledge(tmp_path / "know.sqlite")
     app = App(
         "trip",
         make_workspace=lambda: Workspace(
-            "trip", Gateway(), Brain(tmp_path / "kb.sqlite"),
-            root=tmp_path / "briefs", knowledge=kb, kb_scope="default",
+            "trip",
+            Gateway(),
+            Brain(tmp_path / "kb.sqlite"),
+            root=tmp_path / "briefs",
+            knowledge=kb,
+            kb_scope="default",
         ),
     )
     server = make_server(app, "secret-token")
     threading.Thread(target=server.serve_forever, daemon=True).start()
     try:
         port = server.server_port
-        status, body = call(port, "/api/know_add", {"text": "Launch is in Q3", "source": "note"})
+        status, body = call(
+            port, "/api/know_add", {"text": "Launch is in Q3", "source": "note"}
+        )
         assert status == 200 and json.loads(body)["status"] == "candidate"
         assert call(port, "/api/know_add", {"text": "   "})[0] == 400  # empty refused
 
@@ -312,8 +327,12 @@ def test_know_aging_and_verify_over_http(tmp_path):
     app = App(
         "trip",
         make_workspace=lambda: Workspace(
-            "trip", Gateway(), Brain(tmp_path / "kb.sqlite"),
-            root=tmp_path / "briefs", knowledge=kb, kb_scope="default",
+            "trip",
+            Gateway(),
+            Brain(tmp_path / "kb.sqlite"),
+            root=tmp_path / "briefs",
+            knowledge=kb,
+            kb_scope="default",
         ),
     )
     f = kb.add_candidate("Office VPN is 10.0.0.1.", source="net", scope="default")
@@ -342,8 +361,12 @@ def test_know_export_writes_markdown(tmp_path):
     app = App(
         "trip",
         make_workspace=lambda: Workspace(
-            "trip", Gateway(), Brain(tmp_path / "kb.sqlite"),
-            root=tmp_path / "briefs", knowledge=kb, kb_scope="default",
+            "trip",
+            Gateway(),
+            Brain(tmp_path / "kb.sqlite"),
+            root=tmp_path / "briefs",
+            knowledge=kb,
+            kb_scope="default",
         ),
     )
     app.downloads = tmp_path / "dl"

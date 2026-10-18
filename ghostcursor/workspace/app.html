@@ -605,7 +605,13 @@ function companyBrainCard() {
   api("know_conflicts").then((r) => {
     for (const c of (r.conflicts || [])) {
       const warn = el("div", "note"); warn.style.textAlign = "left";
-      warn.append(el("b", "", "Conflict — review these: "), document.createTextNode("#" + c.a.fid + " " + c.a.text + "  vs  #" + c.b.fid + " " + c.b.text));
+      warn.append(el("b", "", "Conflict — keep one, retire the other: "));
+      for (const side of [c.a, c.b]) {
+        warn.append(document.createTextNode(" #" + side.fid + " " + side.text + " "));
+        const b = el("button", "secondary", "Retire this"); b.style.margin = "0 10px 0 2px";
+        b.onclick = () => act("know_retire", { fid: side.fid }, "Retired").then(renderBrain);
+        warn.append(b);
+      }
       card.append(warn);
     }
   }).catch(() => {});
