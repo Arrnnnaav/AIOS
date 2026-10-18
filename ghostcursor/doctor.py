@@ -57,7 +57,10 @@ def _rea() -> Check:
     from pathlib import Path
 
     try:
-        cfg = json.loads(Path(".mcp.json").read_text(encoding="utf-8"))
+        # Resolve against the repo root, not the cwd: readiness must not flip
+        # with the directory doctor is run from.
+        mcp = Path(__file__).resolve().parents[1] / ".mcp.json"
+        cfg = json.loads(mcp.read_text(encoding="utf-8"))
         configured = "rea" in cfg.get("mcpServers", cfg.get("servers", cfg))
     except Exception:
         configured = False
