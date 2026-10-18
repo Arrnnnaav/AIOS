@@ -353,3 +353,16 @@ file. /know export <path> and /know import <path>.
   store needs owner states, bi-temporal validity and provenance that a folder
   of Markdown cannot enforce. JSON stays the structured import format; Markdown
   is the human-readable view, not the system of record.
+
+## Company Brain conflict-surfacing at retrieval (D186, 2026-10-18)
+
+- **Comparable:** Zep/Graphiti temporal-KG conflict handling (invalidate, do
+  not delete) -- research-grade, not a desktop binary, so no decompile would
+  inform it; stated honestly rather than forcing an irrelevant one.
+- **Adopted:** the retrieval path now calls `conflicts_among(facts)` on the
+  facts actually surfaced and adds a `company_conflicts` note, so a plan built
+  on two disagreeing facts is flagged at the point of use. The disagreement
+  heuristic is factored into `_disagree`; `conflicts(scope)` reuses it.
+- **Bounded:** checks only the <=k surfaced facts (not the whole scope), so the
+  hot path stays cheap. Conflicts are surfaced, never auto-resolved -- the
+  owner decides (vision: "conflicts surfaced not resolved").

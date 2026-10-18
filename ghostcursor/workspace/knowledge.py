@@ -21,6 +21,7 @@ reviewed add here, with its own provenance.
 from __future__ import annotations
 
 import os
+import re
 import sqlite3
 import threading
 import time
@@ -103,6 +104,18 @@ def _words(text: str) -> set[str]:
     import re
 
     return set(re.findall(r"[a-z0-9]{2,}", text.casefold()))
+
+
+_NEG = re.compile(r"\b(no|not|never|cannot|can't|don't|isn't|aren't)\b", re.I)
+
+
+def _disagree(a: str, b: str) -> bool:
+    """Two fact texts look like they disagree: strong word overlap but exactly
+    one negates. A heuristic surfaced for the owner, never an auto-resolution."""
+
+    wa, wb = _words(a), _words(b)
+    overlap = len(wa & wb) / max(1, min(len(wa), len(wb)))
+    return overlap >= 0.6 and bool(_NEG.search(a)) != bool(_NEG.search(b))
 
 
 #: A document chunks into at most this many facts, each at most this long, so
@@ -352,25 +365,26 @@ class Knowledge:
                 break
         return out
 
-    def conflicts(self, scope: str) -> list[tuple[Fact, Fact]]:
-        """Pairs of usable facts in ``scope`` that look like they disagree:
-        strong word overlap but one negates (no/not/never) and the other does
-        not. Surfaced for an owner, never auto-resolved."""
+    def conflicts_among(self, facts: list[Fact]) -> list[tuple[Fact, Fact]]:
+        """Pairs within ``facts`` that look like they disagree: strong word
+        overlap but one negates (no/not/never) and the other does not. The
+        retrieval path passes just the surfaced facts (cheap); ``conflicts``
+        passes a whole scope. Surfaced for an owner, never auto-resolved."""
 
-        import re
-
-        usable = [f for f in self.list(scope=scope) if f.status in USABLE]
-        neg = re.compile(r"\b(no|not|never|cannot|can't|don't|isn't|aren't)\b", re.I)
         out = []
-        for i, a in enumerate(usable):
-            for b in usable[i + 1 :]:
-                wa, wb = _words(a.text), _words(b.text)
-                overlap = len(wa & wb) / max(1, min(len(wa), len(wb)))
-                if overlap >= 0.6 and bool(neg.search(a.text)) != bool(
-                    neg.search(b.text)
-                ):
+        for i, a in enumerate(facts):
+            for b in facts[i + 1 :]:
+                if _disagree(a.text, b.text):
                     out.append((a, b))
         return out
+
+    def conflicts(self, scope: str) -> list[tuple[Fact, Fact]]:
+        """Pairs of usable facts in ``scope`` that look like they disagree.
+        Surfaced for an owner, never auto-resolved."""
+
+        return self.conflicts_among(
+            [f for f in self.list(scope=scope) if f.status in USABLE]
+        )
 
     # --- Context Graph: entities and relationships ----------------------
 

@@ -293,3 +293,25 @@ def test_no_company_brain_keeps_the_workspace_personal_only(ws):
     ws.discuss("hello")  # knowledge defaults to None
     assert ws._used_facts == ()
     assert "company_fact" not in ws.gateway.envelopes[-1].tainted_json()
+
+
+def test_company_brain_surfaces_conflicts_among_used_facts(tmp_path):
+    """D186: when two facts the model is about to use disagree, the conflict is
+    surfaced (never auto-resolved) so a plan built on disputed facts is flagged
+    at the point of use."""
+
+    from ghostcursor.workspace.knowledge import Knowledge
+
+    kb = Knowledge(tmp_path / "knowledge.sqlite")
+    for text in ("The office is open on Fridays.", "The office is not open on Fridays."):
+        f = kb.add_candidate(text, source="hr", scope="default")
+        kb.review(f.fid)
+
+    ws = Workspace(
+        "deck", FakeGateway(), Brain(tmp_path / "b.sqlite"),
+        root=tmp_path / "briefs", knowledge=kb, kb_scope="default",
+    )
+    ws.discuss("Is the office open on Fridays?")
+    sent = ws.gateway.envelopes[-1].tainted_json()
+    assert "company_conflicts" in sent  # disagreement surfaced, not hidden
+    kb.close()

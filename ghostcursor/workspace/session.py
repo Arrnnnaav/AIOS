@@ -379,6 +379,17 @@ class Workspace:
                 }
                 for e in edges
             ]
+        # Surface (never resolve) disagreement among the facts being used, so a
+        # plan built on disputed facts is flagged at the point of use (D186).
+        disputes = self.knowledge.conflicts_among(facts)
+        if disputes:
+            context["company_conflicts"] = [
+                {
+                    "a": Tainted.of("company_fact", a.text),
+                    "b": Tainted.of("company_fact", b.text),
+                }
+                for a, b in disputes
+            ]
 
     # --- the loop -------------------------------------------------------------
 
