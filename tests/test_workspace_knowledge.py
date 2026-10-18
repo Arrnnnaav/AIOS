@@ -545,3 +545,32 @@ def test_recall_excludes_sensitive_facts_from_the_model_path_by_default(kn):
     assert got == {s.fid, n.fid}  # owner's explicit local view sees it
     facts, _edges = kn.context("password", "acme")  # context feeds the model
     assert s.fid not in {f.fid for f in facts}
+
+
+def test_an_expired_edge_drops_out_of_every_traversal(kn):
+    """Graphiti-style temporal edge (competitor research, Zep bi-temporal): a
+    relationship past its valid_until stops being walked by related/connected/
+    connections and leaves the export, mirroring how a stale fact drops from
+    recall. The row is never deleted -- the owner still governs it."""
+
+    kn.now = 1000.0
+    kn.clock = lambda: kn.now
+    a = kn.add_candidate("Project Zephyr ships in March.", source="s", scope="acme")
+    b = kn.add_candidate("Dana leads the platform team.", source="s", scope="acme")
+    kn.approve(a.fid)
+    kn.approve(b.fid)
+    e = kn.relate("Zephyr", "owned-by", "Dana", source="org", scope="acme",
+                  valid_until=2000.0)
+    kn.review_edge(e.eid)
+
+    assert [f.fid for f in kn.connected("zephyr", "acme")] == [b.fid]  # still valid
+    assert len(kn.related("zephyr", "acme")) == 1
+    assert len(kn.export_scope("acme")["edges"]) == 1
+
+    kn.now = 2001.0  # past the edge's validity -> relationship no longer true
+    assert kn.connected("zephyr", "acme") == []  # no n-hop walk over a dead edge
+    assert kn.connections("zephyr", "acme") == []
+    assert kn.related("zephyr", "acme") == []
+    assert kn.neighbors("Zephyr", "acme") == []
+    assert kn.export_scope("acme")["edges"] == []
+    assert kn.edge(e.eid) is not None  # not deleted: owner still governs it

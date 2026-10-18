@@ -60,7 +60,7 @@ CREATE TABLE IF NOT EXISTS edges (
     eid INTEGER PRIMARY KEY AUTOINCREMENT,
     subject TEXT NOT NULL, predicate TEXT NOT NULL, object TEXT NOT NULL,
     source TEXT NOT NULL, scope TEXT NOT NULL, status TEXT NOT NULL,
-    added REAL NOT NULL
+    added REAL NOT NULL, valid_until REAL
 );
 -- Full-text index over fact text for BM25-ranked recall (Zep/Mem0/Cognee all
 -- rank by relevance, not word count). rowid = fid; Porter stemming so a query
@@ -108,6 +108,14 @@ class Edge:
     scope: str
     status: str
     added: float
+    valid_until: float | None = None  # world time end; None = never expires
+
+    def expired(self, now: float) -> bool:
+        """Past its validity -- a relationship that stopped being true (e.g. an
+        owner moved teams). Mirrors Fact.stale: excluded from every traversal,
+        never deleted (Graphiti-style temporal edge, owner still governs it)."""
+
+        return self.valid_until is not None and now >= self.valid_until
 
 
 def _words(text: str) -> set[str]:
@@ -188,6 +196,10 @@ class Knowledge:
         self._db = sqlite3.connect(self.path, check_same_thread=False)
         self._db.execute("PRAGMA secure_delete = ON")  # retire overwrites on disk
         self._db.executescript(_SCHEMA)
+        # Migrate a pre-temporal-edge DB: add the edge validity column if absent.
+        cols = {r[1] for r in self._db.execute("PRAGMA table_info(edges)")}
+        if "valid_until" not in cols:
+            self._db.execute("ALTER TABLE edges ADD COLUMN valid_until REAL")
         with (
             self._lock,
             self._db,
@@ -426,10 +438,18 @@ class Knowledge:
     # --- Context Graph: entities and relationships ----------------------
 
     def relate(
-        self, subject: str, predicate: str, obj: str, *, source: str, scope: str
+        self,
+        subject: str,
+        predicate: str,
+        obj: str,
+        *,
+        source: str,
+        scope: str,
+        valid_until: float | None = None,
     ) -> Edge:
         """Add a candidate relationship (subject --predicate--> object) with
-        provenance. Like a fact, it is a candidate until an owner reviews it."""
+        provenance. Like a fact, it is a candidate until an owner reviews it.
+        ``valid_until`` (world time) expires it from traversal after that time."""
 
         parts = [" ".join(str(x).split()) for x in (subject, predicate, obj, source)]
         if not all(parts) or not str(scope).strip():
@@ -437,7 +457,7 @@ class Knowledge:
         with self._lock, self._db:
             cur = self._db.execute(
                 "INSERT INTO edges (subject, predicate, object, source, scope, "
-                "status, added) VALUES (?,?,?,?,?,?,?)",
+                "status, added, valid_until) VALUES (?,?,?,?,?,?,?,?)",
                 (
                     parts[0],
                     parts[1],
@@ -446,6 +466,7 @@ class Knowledge:
                     scope.strip(),
                     "candidate",
                     self.clock(),
+                    valid_until,
                 ),
             )
         return self.edge(cur.lastrowid)
@@ -483,10 +504,12 @@ class Knowledge:
             "SELECT * FROM edges WHERE scope=? AND status='reviewed' ORDER BY eid",
             (scope,),
         )
+        now = self.clock()
         edges = [
             {"subject": e.subject, "predicate": e.predicate, "object": e.object,
              "source": e.source}
             for e in (Edge(*r) for r in rows)
+            if not e.expired(now)
         ]  # fmt: skip
         return {"version": 1, "scope": scope, "facts": facts, "edges": edges}
 
@@ -562,8 +585,13 @@ class Knowledge:
             "SELECT * FROM edges WHERE scope=? AND status='reviewed' ORDER BY eid",
             (scope,),
         )
+        now = self.clock()
         edges = [Edge(*r) for r in rows]
-        return [e for e in edges if key in (e.subject.casefold(), e.object.casefold())]
+        return [
+            e
+            for e in edges
+            if key in (e.subject.casefold(), e.object.casefold()) and not e.expired(now)
+        ]
 
     def related(self, query: str, scope: str, *, k: int = 5) -> list[Edge]:
         """Reviewed edges in ``scope`` whose subject or object shares a word
@@ -573,6 +601,7 @@ class Knowledge:
         want = _words(query)
         if not want:
             return []
+        now = self.clock()
         rows = self._db.execute(
             "SELECT * FROM edges WHERE scope=? AND status='reviewed' ORDER BY eid",
             (scope,),
@@ -580,6 +609,8 @@ class Knowledge:
         scored = []
         for r in rows:
             e = Edge(*r)
+            if e.expired(now):
+                continue
             overlap = len(want & (_words(e.subject) | _words(e.object)))
             if overlap:
                 scored.append((overlap, e))
@@ -598,6 +629,7 @@ class Knowledge:
         if not seeds:
             return []
         seen = {f.fid for f in seeds}
+        now = self.clock()
         seed_words: set[str] = set()
         for f in seeds:
             seed_words |= _words(f.text)
@@ -608,6 +640,8 @@ class Knowledge:
         frontier: list[str] = []
         for r in rows:
             e = Edge(*r)
+            if e.expired(now):  # a relationship that stopped being true: no walk
+                continue
             subj, obj = _words(e.subject), _words(e.object)
             if subj and subj <= seed_words:  # subject named in a seed -> walk to object
                 frontier.append(e.object)
