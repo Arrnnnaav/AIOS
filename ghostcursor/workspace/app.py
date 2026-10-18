@@ -242,7 +242,13 @@ class App:
                     for f in ws.knowledge.list(scope=ws.kb_scope, status=status)
                 ]
             }
-        if action in ("know_review", "know_approve", "know_retire", "know_verify"):
+        if action in (
+            "know_review",
+            "know_approve",
+            "know_retire",
+            "know_verify",
+            "know_expire",
+        ):
             if ws.knowledge is None:
                 raise ValueError("no Company Brain")
             fid = int(body.get("fid", 0))

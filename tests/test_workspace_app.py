@@ -383,3 +383,39 @@ def test_know_export_writes_markdown(tmp_path):
         server.shutdown()
         app.close()
         kb.close()
+
+
+def test_know_expire_over_http(tmp_path):
+    """GUI Expire button (D186): posting know_expire ends a usable fact now, so
+    it drops from recall but survives as history -- the temporal counterpart to
+    Retire, driven from the panel."""
+    from ghostcursor.workspace.knowledge import Knowledge
+
+    kb = Knowledge(tmp_path / "know.sqlite")
+    kb.now = 1000.0
+    kb.clock = lambda: kb.now
+    app = App(
+        "trip",
+        make_workspace=lambda: Workspace(
+            "trip",
+            Gateway(),
+            Brain(tmp_path / "kb.sqlite"),
+            root=tmp_path / "briefs",
+            knowledge=kb,
+            kb_scope="default",
+        ),
+    )
+    f = kb.add_candidate("Office VPN is 10.0.0.1.", source="net", scope="default")
+    kb.approve(f.fid)
+    server = make_server(app, "secret-token")
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        port = server.server_port
+        assert [h.fid for h in kb.recall("vpn", "default")] == [f.fid]
+        assert call(port, "/api/know_expire", {"fid": f.fid})[0] == 200
+        assert kb.recall("vpn", "default") == []  # expired, not recalled
+        assert kb.get(f.fid) is not None  # kept as history
+    finally:
+        server.shutdown()
+        app.close()
+        kb.close()

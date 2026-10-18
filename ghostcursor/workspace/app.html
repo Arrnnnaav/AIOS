@@ -591,6 +591,7 @@ function companyBrainCard() {
       if (f.status === "candidate") { const b = el("button", "pill go", "Review"); b.onclick = () => act("know_review", { fid: f.fid }, "Reviewed").then(renderBrain); rt.append(b); }
       if (f.status === "reviewed") { const b = el("button", "pill go", "Approve"); b.onclick = () => act("know_approve", { fid: f.fid }, "Approved").then(renderBrain); rt.append(b); }
       if (f.status !== "retired" && f.status !== "superseded") { const b = el("button", "secondary", "Retire"); b.style.marginLeft = "6px"; b.onclick = () => act("know_retire", { fid: f.fid }, "Retired").then(renderBrain); rt.append(b); }
+      if (f.status === "reviewed" || f.status === "approved") { const b = el("button", "secondary", "Expire"); b.style.marginLeft = "6px"; b.title = "Stopped being true now; kept as history"; b.onclick = () => act("know_expire", { fid: f.fid }, "Expired").then(renderBrain); rt.append(b); }
       row.append(label, rt); list.append(row);
     }
   }).catch(() => {});
