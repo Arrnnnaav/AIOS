@@ -157,7 +157,7 @@ def brain_command(brain: Brain, args: list[str]) -> str:
 KNOW_USAGE = (
     "usage: /know add <source> | <text>  |  ingest <path>  |  list [status]  |  review <id>  |  "
     "approve <id>  |  retire <id>  |  verify <id>  |  supersede <old> <new>  |  "
-    "export <path>  |  import <path>  |  "
+    "export <path>  |  export-md <path>  |  import <path>  |  "
     "relate <subject> | <predicate> | <object> | <source>  |  "
     "review-edge <id>  |  conflicts  |  recall <query>"
 )
@@ -295,6 +295,13 @@ def know_command(knowledge, scope: str, args: list[str]) -> str:
         return (
             f"exported {len(data['facts'])} fact(s), {len(data['edges'])} relation(s) "
             f"to {rest.strip()} (sensitive facts excluded)"
+        )
+    if verb == "export-md" and rest:
+        text = knowledge.export_markdown(scope)
+        Path(rest.strip()).write_text(text, encoding="utf-8", newline="\n")
+        return (
+            f"exported readable Markdown to {rest.strip()} "
+            f"(sensitive facts excluded) -- read it before sharing"
         )
     if verb == "import" and rest:
         import json

@@ -439,6 +439,34 @@ class Knowledge:
         ]  # fmt: skip
         return {"version": 1, "scope": scope, "facts": facts, "edges": edges}
 
+    def export_markdown(self, scope: str, *, include_sensitive: bool = False) -> str:
+        """``export_scope`` rendered as human-readable Markdown so the owner can
+        READ exactly what a shared snapshot contains before sending it -- plain,
+        diffable, git-friendly (Obsidian's plain-file portability applied to a
+        governed store). Same privacy filter; sensitive excluded unless asked."""
+
+        data = self.export_scope(scope, include_sensitive=include_sensitive)
+        sens = "included" if include_sensitive else "excluded"
+        lines = [
+            f"# Company Brain export: {scope}",
+            "",
+            f"_{len(data['facts'])} fact(s), {len(data['edges'])} relation(s); "
+            f"sensitive {sens}._",
+            "",
+            "## Facts",
+            "",
+        ]
+        lines += [
+            f"- {f['text']}  \n  _source: {f['source']}_" for f in data["facts"]
+        ] or ["_(none)_"]
+        lines += ["", "## Relations", ""]
+        lines += [
+            f"- {e['subject']} → {e['predicate']} → {e['object']}  \n  "
+            f"_source: {e['source']}_"
+            for e in data["edges"]
+        ] or ["_(none)_"]
+        return "\n".join(lines) + "\n"
+
     def import_scope(self, data: dict, scope: str) -> dict:
         """Load a snapshot into ``scope`` as CANDIDATES (a teammate's facts are
         untrusted until this owner reviews them, like a received mission).

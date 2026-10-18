@@ -436,3 +436,25 @@ def test_connected_surfaces_an_n_hop_fact_the_query_never_named(kn):
 
     facts, _edges = kn.context("zephyr", "acme")
     assert [f.fid for f in facts] == [a.fid, b.fid]  # direct hit first, hop appended
+
+
+def test_export_markdown_is_readable_and_hides_sensitive(kn):
+    """Markdown export (Obsidian-style readable portability) renders usable
+    facts and reviewed relations, and omits sensitive facts so the owner can
+    read exactly what will be shared."""
+
+    ok = kn.add_candidate("Prod deploys on Friday.", source="runbook", scope="acme")
+    sec = kn.add_candidate("Root password is hunter2.", source="vault",
+                           scope="acme", sensitivity="sensitive")
+    kn.approve(ok.fid)
+    kn.approve(sec.fid)
+    e = kn.relate("Acme", "uses", "PostgreSQL", source="arch", scope="acme")
+    kn.review_edge(e.eid)
+
+    md = kn.export_markdown("acme")
+    assert "# Company Brain export: acme" in md
+    assert "Prod deploys on Friday." in md and "runbook" in md
+    assert "Acme → uses → PostgreSQL" in md
+    assert "hunter2" not in md  # sensitive excluded
+    assert "hunter2" in kn.export_markdown("acme", include_sensitive=True)
+    assert "_(none)_" in kn.export_markdown("beta")  # empty scope renders cleanly

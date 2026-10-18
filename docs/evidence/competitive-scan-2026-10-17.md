@@ -331,3 +331,25 @@ file. /know export <path> and /know import <path>.
   edges stay owner-reviewed (candidate edges never walked), hop is capped at
   one and <=k facts, same scope/usable rules, direct hits ranked first so the
   caller's token trim keeps them. No execution authority added.
+
+## Company Brain readable export (D186, 2026-10-18)
+
+- **Decompiled:** Obsidian `app.asar` (`C:\Program Files\Obsidian\resources\`)
+  via a stdlib asar reader; inspected the main process (`main.js`). REA MCP was
+  not live this session and its CLI needed a network fetch, so the asar was
+  read directly -- same information, stated honestly. The core renderer logic
+  is a separately-downloaded minified `app.js` (not in the installer), so the
+  shell exposes little -- consistent with the earlier finding that packaged
+  company binaries are low-signal.
+- **Backend finding:** Obsidian keeps all knowledge as plain `.md` + `.json`
+  files under `app.getPath('userData')` / the vault -- no database, no server.
+  Its portability strength is that the native format IS human-readable files
+  the owner can read, diff and git; there is nothing opaque to "export".
+- **Adopted:** `Knowledge.export_markdown()` + `/know export-md <path>` render a
+  scope as readable, diffable Markdown so the owner can READ exactly what a
+  shared snapshot contains before sending it. Same privacy filter as the JSON
+  export (sensitive excluded unless asked).
+- **Rejected:** storing the Brain as plain files like Obsidian -- a governed
+  store needs owner states, bi-temporal validity and provenance that a folder
+  of Markdown cannot enforce. JSON stays the structured import format; Markdown
+  is the human-readable view, not the system of record.
