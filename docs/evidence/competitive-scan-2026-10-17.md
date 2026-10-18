@@ -384,3 +384,15 @@ file. /know export <path> and /know import <path>.
   build-time, no model (runs before dry_run's planner check).
 - **Rejected:** a remote agent runner and a cloud tool contract -- Orbyn runs
   on-device and offline-first; capability stays local AgentSpec + guides.
+
+## Company Brain GUI capture (D186, 2026-10-18)
+
+- **Comparable:** Obsidian (decompiled earlier) -- capture is a single action,
+  knowledge is readable files the owner owns. No new decompile needed.
+- **Adopted:** the GUI Brain card now has one-action capture -- a text box +
+  "Add" (`know_add`) and "Capture clipboard" (`know_clip`). Both land as
+  candidates, not usable until the owner reviews them, matching the console
+  (/know add, /clip). know_clip reuses the already-reviewed clip_to_brain path
+  (clipboard text stays local, never to a model before review).
+- **Bounded:** no file-picker/upload in the webview yet (document ingestion
+  stays /know ingest in the console); add when owners ask.

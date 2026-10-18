@@ -570,7 +570,14 @@ function agentsCard() {
 function companyBrainCard() {
   const card = el("div", "mem"); card.style.marginTop = "16px";
   const meta = el("div", "meta"); meta.append(el("span", "kind", "company brain")); card.append(meta);
-  card.append(el("div", "", "Curated facts your team shares. New facts are candidates until you review them; approved facts guide plans, with their source. Add or ingest with /know in the console."));
+  card.append(el("div", "", "Curated facts your team shares. New facts are candidates until you review them; approved facts guide plans, with their source. Add one below, capture the clipboard, or ingest a document with /know in the console."));
+  const cap = el("div", "sheetrow"); cap.style.marginTop = "8px";
+  const inp = el("input"); inp.placeholder = "Add a fact to the Brain…"; inp.style.flex = "1";
+  const addB = el("button", "pill go", "Add");
+  addB.onclick = () => { const t = inp.value.trim(); if (!t) return; act("know_add", { text: t }, "Added as candidate").then(() => { inp.value = ""; renderBrain(); }); };
+  const clipB = el("button", "secondary", "Capture clipboard"); clipB.style.marginLeft = "6px";
+  clipB.onclick = () => act("know_clip", {}, "Clipboard captured").then(renderBrain);
+  cap.append(inp, addB, clipB); card.append(cap);
   const list = el("div"); card.append(list);
   api("know_list").then((r) => {
     if (!r.facts || !r.facts.length) { list.append(el("div", "note", "No facts yet.")); return; }

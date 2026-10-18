@@ -248,3 +248,38 @@ def test_company_brain_review_panel_actions(tmp_path):
         server.shutdown()
         app.close()
         kb.close()
+
+
+def test_company_brain_gui_capture(tmp_path, monkeypatch):
+    """GUI capture (D186): a typed note and the clipboard both land as
+    candidates over HTTP -- not usable until the owner reviews them."""
+
+    from ghostcursor.workspace.knowledge import Knowledge
+    from ghostcursor.harness import act
+
+    monkeypatch.setattr(act, "get_clipboard_text", lambda: "captured from the clipboard")
+    kb = Knowledge(tmp_path / "know.sqlite")
+    app = App(
+        "trip",
+        make_workspace=lambda: Workspace(
+            "trip", Gateway(), Brain(tmp_path / "kb.sqlite"),
+            root=tmp_path / "briefs", knowledge=kb, kb_scope="default",
+        ),
+    )
+    server = make_server(app, "secret-token")
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        port = server.server_port
+        status, body = call(port, "/api/know_add", {"text": "Launch is in Q3", "source": "note"})
+        assert status == 200 and json.loads(body)["status"] == "candidate"
+        assert call(port, "/api/know_add", {"text": "   "})[0] == 400  # empty refused
+
+        status, body = call(port, "/api/know_clip", {})
+        assert status == 200 and "candidate" in json.loads(body)["result"]
+
+        facts = json.loads(call(port, "/api/know_list")[1])["facts"]
+        assert len(facts) == 2 and {f["status"] for f in facts} == {"candidate"}
+    finally:
+        server.shutdown()
+        app.close()
+        kb.close()

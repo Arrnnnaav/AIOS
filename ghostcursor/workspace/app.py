@@ -250,6 +250,22 @@ class App:
                 raise ValueError("no such fact")
             getattr(ws.knowledge, action.split("_")[1])(fid)
             return {"status": ws.knowledge.get(fid).status}
+        if action == "know_add":  # GUI capture: one action to note a fact (D186)
+            if ws.knowledge is None:
+                raise ValueError("no Company Brain")
+            t = " ".join((body.get("text") or "").split())
+            if not t:
+                raise ValueError("nothing to add")
+            f = ws.knowledge.add_candidate(
+                t,
+                source=(body.get("source") or "note").strip() or "note",
+                scope=ws.kb_scope,
+            )
+            return {"fid": f.fid, "status": f.status}  # candidate until reviewed
+        if action == "know_clip":  # GUI capture of the clipboard (owner-initiated)
+            if ws.knowledge is None:
+                raise ValueError("no Company Brain")
+            return {"result": ws.clip_to_brain()}
         if action == "know_conflicts":
             if ws.knowledge is None:
                 return {"conflicts": []}
