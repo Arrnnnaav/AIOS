@@ -1438,3 +1438,31 @@ a mouse drag and feeding the drawn rect to `from_mark` — an interactive UI
 feature (needs the overlay to briefly own the mouse + an interactive test lane),
 deliberately not rushed into an autonomous run. The ranking/resolution half is
 done and tested; only the capture gesture is outstanding.
+
+## Company Brain + readiness-doctor milestone review (D186) — 2026-10-18
+
+Independent tier-2 review of 189b8f7^..7ab8343 (n-hop recall + linked_via
+explainability, Markdown export, conflict/aging surfacing, readiness doctor, GUI
+wiring). **Verdict: clean, no BLOCKING safety findings.** Four non-blocking items:
+
+### 1. Sensitive facts rode the model-bound retrieval path — RESOLVED 2026-10-18
+`recall()`/`context()` applied no sensitivity filter, so a fact marked
+`sensitive` flowed into the model envelope (BYOK gateway) while `export_scope`
+correctly excluded it. Sending a sensitive fact to a BYOK model is egress off
+the device (rule 6). Fixed: `recall(..., include_sensitive=False)` excludes
+sensitive facts by default; `context`/`connections` use the safe default and the
+owner's own local `/know recall` opts in (`include_sensitive=True`), mirroring
+export.
+
+### 2. `doctor._rea()` read `.mcp.json` by a cwd-relative path — RESOLVED 2026-10-18
+Readiness flipped with the directory doctor was run from. Now resolved against
+the repo root (`Path(__file__).resolve().parents[1]`).
+
+### 3. `retire` flips status but does not erase the row (secure_delete ON)
+Retired/sensitive fact text still lives in the DB and the FTS shadow table.
+Fine for governance history (states are auditable), but note it is not an erase
+if that was ever the intent — `erase_all` is the erase path.
+
+### 4. `connections()` runs a per-frontier-entity `recall()` (O(k·edges) FTS)
+Bounded by `k` but repeats FTS queries per bridged entity. Cap/dedupe the
+frontier if a scope's edge count grows large.

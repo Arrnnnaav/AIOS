@@ -352,10 +352,17 @@ class Knowledge:
             sql += " WHERE " + " AND ".join(where)
         return [Fact(*r) for r in self._db.execute(sql + " ORDER BY fid", args)]
 
-    def recall(self, query: str, scope: str, *, k: int = 5) -> list[Fact]:
+    def recall(
+        self, query: str, scope: str, *, k: int = 5, include_sensitive: bool = False
+    ) -> list[Fact]:
         """Usable facts for ``scope`` matching ``query``, ranked by BM25
         relevance (FTS5, Porter-stemmed), best first. Candidates and retired
-        facts are never returned; stale (past validity) facts are excluded."""
+        facts are never returned; stale (past validity) facts are excluded.
+
+        Sensitive facts are excluded by default: this is the model-bound
+        retrieval path, and sending a sensitive fact to a BYOK model is egress
+        off the device (rule 6), so the owner opts in explicitly (as export
+        does). The owner's own local ``/know recall`` passes True."""
 
         match = _fts_query(query)
         if match is None:
@@ -369,7 +376,11 @@ class Knowledge:
         out = []
         for row in rows:
             f = Fact(*row)
-            if f.status in USABLE and not f.stale(now):
+            if (
+                f.status in USABLE
+                and not f.stale(now)
+                and (include_sensitive or f.sensitivity != "sensitive")
+            ):
                 out.append(f)
             if len(out) >= k:
                 break

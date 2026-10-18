@@ -323,7 +323,9 @@ def know_command(knowledge, scope: str, args: list[str]) -> str:
             or "(no conflicts)"
         )
     if verb == "recall" and rest:
-        hits = knowledge.recall(rest, scope)
+        # Owner's local view on their own machine: sensitive facts are shown
+        # (unlike the model-bound retrieval path, which excludes them).
+        hits = knowledge.recall(rest, scope, include_sensitive=True)
         return (
             "\n".join(f"#{f.fid} {f.text}  <- {f.source}" for f in hits) or "(nothing)"
         )

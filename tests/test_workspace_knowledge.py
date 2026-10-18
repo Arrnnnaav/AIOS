@@ -527,3 +527,21 @@ def test_aging_surfaces_unverified_facts_without_excluding_them(kn):
     kn.verify(f.fid)  # re-verify resets last_verified to now
     assert kn.aging_among(kn.recall("vpn gateway", "acme")) == []
     assert kn.aging("acme") == []
+
+
+def test_recall_excludes_sensitive_facts_from_the_model_path_by_default(kn):
+    """A sensitive fact must not ride the model-bound retrieval path (sending it
+    to a BYOK model is egress, rule 6): recall excludes it by default, the owner
+    opts in, and the n-hop/context paths that reach the model never see it."""
+
+    s = kn.add_candidate("Root password is hunter2.", source="ops", scope="acme",
+                          sensitivity="sensitive")
+    n = kn.add_candidate("The office opens at nine.", source="hr", scope="acme")
+    kn.approve(s.fid)
+    kn.approve(n.fid)
+
+    assert [f.fid for f in kn.recall("password office", "acme")] == [n.fid]  # model path
+    got = {f.fid for f in kn.recall("password office", "acme", include_sensitive=True)}
+    assert got == {s.fid, n.fid}  # owner's explicit local view sees it
+    facts, _edges = kn.context("password", "acme")  # context feeds the model
+    assert s.fid not in {f.fid for f in facts}
