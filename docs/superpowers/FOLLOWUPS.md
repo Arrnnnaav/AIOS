@@ -1466,3 +1466,29 @@ if that was ever the intent — `erase_all` is the erase path.
 ### 4. `connections()` runs a per-frontier-entity `recall()` (O(k·edges) FTS)
 Bounded by `k` but repeats FTS queries per bridged entity. Cap/dedupe the
 frontier if a scope's edge count grows large.
+
+## Company Brain temporal-layer + relationships-GUI milestone review (D186) — 2026-10-18
+
+Independent tier-2 review of 7ab8343..b9f5a3f (temporal edges, owner expire,
+GUI Expire + Relationships panel, expired tags; plus the sensitive-facts and
+doctor-path fixes from the prior review). **Verdict: clean, no BLOCKING.**
+HTTP/auth boundary, scope isolation, migration idempotency, and expired-edge
+exclusion across every model-reachable traversal reader all confirmed. Three
+non-blocking items:
+
+### 1. Edges carry no sensitivity classification
+A sensitive *relationship* can still reach the model via related()/context(),
+even though facts are now filtered (8738f5c). Pre-existing (edges never had a
+sensitivity field), but the asymmetry is worth closing: add sensitivity to
+edges and exclude sensitive ones from related()/connected()/connections() by
+default, mirroring recall(include_sensitive=False).
+
+### 2. expire() also sets last_verified=now
+Expiring a fact marks it freshly verified, which is odd next to aging. Harmless
+(an expired fact is stale, so aging_among never surfaces it), but expire() need
+not touch last_verified.
+
+### 3. expire_edge() has no store-level "no such eid" signal
+Returns edge(eid) (None when absent) rather than raising. Console and app.py
+both guard with `edge(eid) is None` first, so fine in practice; tighten only if
+a caller ever skips that guard.
