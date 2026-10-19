@@ -1652,3 +1652,21 @@ caller does this; latent. Fix: effective = policy.redact_egress() or self.flag.
 ### 4. Free-text passwords not matched (documented residual gap)
 redact.py -- regex recognizers miss "the password is swordfish". Over-redaction-
 favouring, but a known false-negative class; needs NER to close.
+
+## Deck planner milestone review (D186) — 2026-10-19
+
+Independent tier-2 review of 402e8bd (SlideLayout/DeckSpec/parse_deck_spec +
+plan_deck). **Verdict: clean, no BLOCKING.** Verified: plan_deck grounds via
+knowledge.recall(goal, scope) with recall's default include_sensitive=False, so
+sensitive facts are structurally excluded from grounding sent to a model (not
+merely absent in the test); parse_deck_spec mirrors parse_teach_plan (strict_json
++ _exact + bounded types/lengths + closed SlideLayout enum), no path returns a
+DeckSpec from malformed input; DeckSpec/Slide/SlideLayout are frozen data with no
+Act/harness import -- inert, no execution authority; the goal in tainted is
+scrubbed by Tainted.of and carries no authority. One non-blocking item:
+
+### 1. Goal is placed in both trusted context and tainted
+deck.py -- the goal rides both trusted (authoritative, app-supplied) and tainted
+(Tainted.of). Harmless and sanitized, but redundant; the goal is user-supplied,
+not screen-observed, so trusted alone is the right channel. Drop the tainted copy
+for clarity when next touching deck.py.
