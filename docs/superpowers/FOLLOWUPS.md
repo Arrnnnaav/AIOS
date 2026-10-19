@@ -1492,3 +1492,30 @@ not touch last_verified.
 Returns edge(eid) (None when absent) rather than raising. Console and app.py
 both guard with `edge(eid) is None` first, so fine in practice; tighten only if
 a caller ever skips that guard.
+
+## Company Brain sensitivity-UI + add-relationship + time-scoped-recall milestone review (D186) — 2026-10-19
+
+Independent tier-2 review of d7824cd..882bc40 (mark fact/edge sensitive post-hoc
++ GUI/console UI; GUI add-relationship form; time-scoped recall `since=`).
+**Verdict: clean, no BLOCKING.** Rule 6 confirmed: `since` is ANDed into
+recall's existing sensitive/stale/status guard (narrows only, never bypasses);
+classify()/classify_edge() take effect immediately on every retrieval path
+(plain UPDATE, next read re-reads the row); know_relate files CANDIDATE edges
+(no reader walks a candidate, so a new edge can't reach the model before owner
+review); know_list/know_edges expose sensitive rows only to the local GUI panel.
+Prior review's FOLLOWUP #1 (edges had no sensitivity) is CLOSED by 0b8d8e1.
+Three non-blocking items:
+
+### 1. GUI add-link form has no sensitive toggle
+know_relate accepts a `sensitive` field but app.html's form never sends it, so
+the GUI only files normal (candidate) edges; owner must click Private after
+creation. Add a checkbox to the form if setting it at creation matters.
+
+### 2. `/know recall ... since:<days>` silently ignores a malformed token
+`since:` or `since:7d` folds back into the query text instead of erroring.
+Surface a parse error if the console grows stricter.
+
+### 3. classify()/classify_edge() UPDATE any id with no store-level existence check
+Return None when absent; every current caller guards first (app.py checks
+get()/edge()), so a direct store caller gets a silent no-op. Tighten only if a
+caller ever skips the guard.
