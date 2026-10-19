@@ -161,7 +161,7 @@ KNOW_USAGE = (
     "export <path>  |  export-md <path>  |  import <path>  |  "
     "relate <subject> | <predicate> | <object> | <source>  |  "
     "review-edge <id>  |  expire <id>  |  expire-edge <id>  |  "
-    "private[-edge] <id>  |  unmark[-edge] <id>  |  conflicts  |  recall <query>"
+    "private[-edge] <id>  |  unmark[-edge] <id>  |  conflicts  |  recall <query> [since:<days>]"
 )
 
 
@@ -347,8 +347,14 @@ def know_command(knowledge, scope: str, args: list[str]) -> str:
         )
     if verb == "recall" and rest:
         # Owner's local view on their own machine: sensitive facts are shown
-        # (unlike the model-bound retrieval path, which excludes them).
-        hits = knowledge.recall(rest, scope, include_sensitive=True)
+        # (unlike the model-bound retrieval path, which excludes them). A
+        # trailing ``since:<days>`` scopes to recently-learned facts.
+        since = None
+        words = rest.split()
+        if words and words[-1].startswith("since:") and words[-1][6:].isdigit():
+            since = knowledge.clock() - int(words[-1][6:]) * 86400.0
+            rest = " ".join(words[:-1])
+        hits = knowledge.recall(rest, scope, include_sensitive=True, since=since)
         return (
             "\n".join(f"#{f.fid} {f.text}  <- {f.source}" for f in hits) or "(nothing)"
         )

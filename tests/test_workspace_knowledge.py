@@ -534,6 +534,24 @@ def test_aging_surfaces_unverified_facts_without_excluding_them(kn):
     assert kn.aging("acme") == []
 
 
+def test_recall_since_scopes_to_recently_learned_facts(kn):
+    """Time-scoped recall (the privacy-safe answer to always-on-capture rivals):
+    ``since`` keeps only facts Orbyn learned at or after that system time."""
+
+    kn.now = 1_000_000.0
+    kn.clock = lambda: kn.now
+    old = kn.add_candidate("Billing uses Stripe.", source="s", scope="acme")
+    kn.approve(old.fid)
+    kn.now += 14 * 86400.0  # two weeks later
+    new = kn.add_candidate("Billing moved to Adyen.", source="s", scope="acme")
+    kn.approve(new.fid)
+
+    week_ago = kn.now - 7 * 86400.0
+    assert [f.fid for f in kn.recall("billing", "acme", since=week_ago)] == [new.fid]
+    got = {f.fid for f in kn.recall("billing", "acme")}  # no window: both
+    assert got == {old.fid, new.fid}
+
+
 def test_recall_excludes_sensitive_facts_from_the_model_path_by_default(kn):
     """A sensitive fact must not ride the model-bound retrieval path (sending it
     to a BYOK model is egress, rule 6): recall excludes it by default, the owner

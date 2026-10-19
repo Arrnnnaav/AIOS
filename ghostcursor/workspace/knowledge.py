@@ -422,11 +422,21 @@ class Knowledge:
         return [Fact(*r) for r in self._db.execute(sql + " ORDER BY fid", args)]
 
     def recall(
-        self, query: str, scope: str, *, k: int = 5, include_sensitive: bool = False
+        self,
+        query: str,
+        scope: str,
+        *,
+        k: int = 5,
+        include_sensitive: bool = False,
+        since: float | None = None,
     ) -> list[Fact]:
         """Usable facts for ``scope`` matching ``query``, ranked by BM25
         relevance (FTS5, Porter-stemmed), best first. Candidates and retired
         facts are never returned; stale (past validity) facts are excluded.
+
+        ``since`` (system time) keeps only facts Orbyn learned at or after it --
+        time-scoped recall ("what did I learn last week"), the privacy-safe
+        answer to always-on-capture rivals that time-travel over a screen log.
 
         Sensitive facts are excluded by default: this is the model-bound
         retrieval path, and sending a sensitive fact to a BYOK model is egress
@@ -449,6 +459,7 @@ class Knowledge:
                 f.status in USABLE
                 and not f.stale(now)
                 and (include_sensitive or f.sensitivity != "sensitive")
+                and (since is None or f.added >= since)
             ):
                 out.append(f)
             if len(out) >= k:
