@@ -160,7 +160,8 @@ KNOW_USAGE = (
     "approve <id>  |  retire <id>  |  verify <id>  |  supersede <old> <new>  |  "
     "export <path>  |  export-md <path>  |  import <path>  |  "
     "relate <subject> | <predicate> | <object> | <source>  |  "
-    "review-edge <id>  |  expire <id>  |  expire-edge <id>  |  conflicts  |  recall <query>"
+    "review-edge <id>  |  expire <id>  |  expire-edge <id>  |  "
+    "private[-edge] <id>  |  unmark[-edge] <id>  |  conflicts  |  recall <query>"
 )
 
 
@@ -259,7 +260,8 @@ def know_command(knowledge, scope: str, args: list[str]) -> str:
         now = knowledge.clock()
         return (
             "\n".join(
-                f"#{f.fid} [{'expired' if f.stale(now) else f.status}] "
+                f"#{f.fid} {'🔒 ' if f.sensitivity == 'sensitive' else ''}"
+                f"[{'expired' if f.stale(now) else f.status}] "
                 f"{f.text}  <- {f.source}"
                 + (f" (-> #{f.superseded_by})" if f.superseded_by else "")
                 for f in rows
@@ -296,6 +298,17 @@ def know_command(knowledge, scope: str, args: list[str]) -> str:
     if verb == "expire-edge" and len(args) == 2 and fid(args[1]):
         e = knowledge.expire_edge(int(args[1]))
         return "no such edge" if e is None else f"edge #{args[1]} expires now"
+    if (
+        verb in ("private", "unmark", "private-edge", "unmark-edge")
+        and len(args) == 2
+        and fid(args[1])
+    ):
+        sens = "sensitive" if verb.startswith("private") else "normal"
+        if verb.endswith("-edge"):
+            e = knowledge.classify_edge(int(args[1]), sens)
+            return "no such edge" if e is None else f"edge #{args[1]} {sens}"
+        f = knowledge.classify(int(args[1]), sens)
+        return "no such fact" if f is None else f"#{args[1]} {sens}"
     if verb == "export" and rest:
         import json
 

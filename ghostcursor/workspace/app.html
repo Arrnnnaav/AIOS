@@ -587,13 +587,14 @@ function companyBrainCard() {
     for (const f of r.facts) {
       const row = el("div", "sheetrow");
       const tag = f.expired ? "expired" : f.status;
-      const label = el("span", "", "[" + tag + "] " + f.text + " — " + f.source);
+      const label = el("span", "", (f.sensitive ? "🔒 " : "") + "[" + tag + "] " + f.text + " — " + f.source);
       if (f.expired) label.style.opacity = "0.55";
       const rt = el("span"); rt.style.marginLeft = "auto";
       if (f.status === "candidate") { const b = el("button", "pill go", "Review"); b.onclick = () => act("know_review", { fid: f.fid }, "Reviewed").then(renderBrain); rt.append(b); }
       if (f.status === "reviewed") { const b = el("button", "pill go", "Approve"); b.onclick = () => act("know_approve", { fid: f.fid }, "Approved").then(renderBrain); rt.append(b); }
       if (f.status !== "retired" && f.status !== "superseded") { const b = el("button", "secondary", "Retire"); b.style.marginLeft = "6px"; b.onclick = () => act("know_retire", { fid: f.fid }, "Retired").then(renderBrain); rt.append(b); }
       if ((f.status === "reviewed" || f.status === "approved") && !f.expired) { const b = el("button", "secondary", "Expire"); b.style.marginLeft = "6px"; b.title = "Stopped being true now; kept as history"; b.onclick = () => act("know_expire", { fid: f.fid }, "Expired").then(renderBrain); rt.append(b); }
+      { const b = el("button", "secondary", f.sensitive ? "Unmark" : "Private"); b.style.marginLeft = "6px"; b.title = f.sensitive ? "Allow this fact on the model path again" : "Keep this fact off the model path"; b.onclick = () => act("know_classify", { fid: f.fid, sensitive: !f.sensitive }, f.sensitive ? "Unmarked" : "Private").then(renderBrain); rt.append(b); }
       row.append(label, rt); list.append(row);
     }
   }).catch(() => {});
@@ -604,11 +605,12 @@ function companyBrainCard() {
     for (const e of r.edges) {
       const row = el("div", "sheetrow");
       const tag = e.expired ? "expired" : e.status;
-      const label = el("span", "", "[" + tag + "] " + e.subject + " " + e.predicate + " " + e.object + " — " + e.source);
+      const label = el("span", "", (e.sensitive ? "🔒 " : "") + "[" + tag + "] " + e.subject + " " + e.predicate + " " + e.object + " — " + e.source);
       if (e.expired) label.style.opacity = "0.55";
       const rt = el("span"); rt.style.marginLeft = "auto";
       if (e.status === "candidate") { const b = el("button", "pill go", "Review"); b.onclick = () => act("know_review_edge", { eid: e.eid }, "Reviewed").then(renderBrain); rt.append(b); }
       if (e.status === "reviewed" && !e.expired) { const b = el("button", "secondary", "Expire"); b.style.marginLeft = "6px"; b.title = "Relationship ended now; kept as history"; b.onclick = () => act("know_expire_edge", { eid: e.eid }, "Expired").then(renderBrain); rt.append(b); }
+      { const b = el("button", "secondary", e.sensitive ? "Unmark" : "Private"); b.style.marginLeft = "6px"; b.title = e.sensitive ? "Allow this relationship on the model path again" : "Keep this relationship off the model path"; b.onclick = () => act("know_classify_edge", { eid: e.eid, sensitive: !e.sensitive }, e.sensitive ? "Unmarked" : "Private").then(renderBrain); rt.append(b); }
       row.append(label, rt); edgeList.append(row);
     }
   }).catch(() => {});

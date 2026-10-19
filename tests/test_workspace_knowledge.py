@@ -633,8 +633,14 @@ def test_a_sensitive_edge_stays_off_the_model_path(kn):
     b = kn.add_candidate("Dana leads the platform team.", source="s", scope="acme")
     kn.approve(a.fid)
     kn.approve(b.fid)
-    e = kn.relate("Zephyr", "owned-by", "Dana", source="org", scope="acme",
-                  sensitivity="sensitive")
+    e = kn.relate(
+        "Zephyr",
+        "owned-by",
+        "Dana",
+        source="org",
+        scope="acme",
+        sensitivity="sensitive",
+    )
     kn.review_edge(e.eid)
 
     assert kn.related("zephyr", "acme") == []  # not query-matched to the model
@@ -645,5 +651,40 @@ def test_a_sensitive_edge_stays_off_the_model_path(kn):
     assert kn.export_scope("acme", include_sensitive=True)["edges"]  # unless asked
     assert e.eid in {x.eid for x in kn.list_edges(scope="acme")}  # owner still sees it
     import pytest
+
     with pytest.raises(ValueError):
         kn.relate("A", "x", "B", source="s", scope="acme", sensitivity="bogus")
+
+
+def test_owner_can_mark_a_fact_or_edge_sensitive_after_the_fact(kn):
+    """classify/classify_edge are the only way to set the flag post-hoc; marking
+    sensitive pulls the row off the model path, unmarking puts it back."""
+
+    import pytest
+
+    a = kn.add_candidate("Office wifi password is hunter2.", source="s", scope="acme")
+    b = kn.add_candidate("Dana leads the platform team.", source="s", scope="acme")
+    kn.approve(a.fid)
+    kn.approve(b.fid)
+    e = kn.relate("Zephyr", "owned-by", "Dana", source="org", scope="acme")
+    kn.review_edge(e.eid)
+
+    assert a.fid in {f.fid for f in kn.recall("password", "acme")}
+    assert kn.related("zephyr", "acme")  # normal edge is walked
+
+    kn.classify(a.fid, "sensitive")
+    kn.classify_edge(e.eid, "sensitive")
+    assert kn.recall("password", "acme") == []  # now off the model path
+    assert kn.related("zephyr", "acme") == []
+    assert kn.get(a.fid).sensitivity == "sensitive"
+    assert kn.edge(e.eid).sensitivity == "sensitive"
+
+    kn.classify(a.fid, "normal")  # unmark restores
+    kn.classify_edge(e.eid, "normal")
+    assert a.fid in {f.fid for f in kn.recall("password", "acme")}
+    assert kn.related("zephyr", "acme")
+
+    with pytest.raises(ValueError):
+        kn.classify(a.fid, "bogus")
+    with pytest.raises(ValueError):
+        kn.classify_edge(e.eid, "bogus")

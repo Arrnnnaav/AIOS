@@ -460,3 +460,48 @@ def test_know_edges_review_and_expire_over_http(tmp_path):
         server.shutdown()
         app.close()
         kb.close()
+
+
+def test_know_classify_marks_a_fact_and_edge_sensitive_over_http(tmp_path):
+    """GUI Private/Unmark button (D186): know_classify[_edge] flips the
+    sensitivity flag; sensitive rows leave the model path, unmark restores."""
+    from ghostcursor.workspace.knowledge import Knowledge
+
+    kb = Knowledge(tmp_path / "know.sqlite")
+    app = App(
+        "trip",
+        make_workspace=lambda: Workspace(
+            "trip",
+            Gateway(),
+            Brain(tmp_path / "kb.sqlite"),
+            root=tmp_path / "briefs",
+            knowledge=kb,
+            kb_scope="default",
+        ),
+    )
+    f = kb.add_candidate("wifi password is hunter2", source="s", scope="default")
+    kb.approve(f.fid)
+    e = kb.relate("Acme", "uses", "PG", source="doc", scope="default")
+    kb.review_edge(e.eid)
+    server = make_server(app, "secret-token")
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        port = server.server_port
+        body = json.loads(
+            call(port, "/api/know_classify", {"fid": f.fid, "sensitive": True})[1]
+        )
+        assert body["sensitive"] is True
+        assert kb.recall("password", "default") == []  # off the model path now
+        call(port, "/api/know_classify_edge", {"eid": e.eid, "sensitive": True})
+        assert kb.related("Acme", "default") == []
+        facts = json.loads(call(port, "/api/know_list", {})[1])["facts"]
+        assert facts[0]["sensitive"] is True  # panel shows the flag
+        call(port, "/api/know_classify", {"fid": f.fid, "sensitive": False})  # unmark
+        assert kb.recall("password", "default")  # back on the path
+        assert (
+            call(port, "/api/know_classify", {"fid": 99, "sensitive": True})[0] >= 400
+        )
+    finally:
+        server.shutdown()
+        app.close()
+        kb.close()

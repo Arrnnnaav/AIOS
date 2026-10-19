@@ -375,6 +375,31 @@ class Knowledge:
             )
         return self.edge(eid)
 
+    def classify(self, fid: int, sensitivity: str) -> Fact | None:
+        """Owner marks a fact sensitive/normal; sensitive keeps it off the
+        model path (recall/connections) -- the only way to set the flag after
+        the fact exists."""
+
+        if sensitivity not in SENSITIVITIES:
+            raise ValueError(f"sensitivity is one of {SENSITIVITIES}")
+        with self._lock, self._db:
+            self._db.execute(
+                "UPDATE facts SET sensitivity=? WHERE fid=?", (sensitivity, fid)
+            )
+        return self.get(fid)
+
+    def classify_edge(self, eid: int, sensitivity: str) -> Edge | None:
+        """Owner marks a relationship sensitive/normal; the edge counterpart of
+        ``classify``."""
+
+        if sensitivity not in SENSITIVITIES:
+            raise ValueError(f"sensitivity is one of {SENSITIVITIES}")
+        with self._lock, self._db:
+            self._db.execute(
+                "UPDATE edges SET sensitivity=? WHERE eid=?", (sensitivity, eid)
+            )
+        return self.edge(eid)
+
     # --- reads ----------------------------------------------------------
 
     def get(self, fid: int) -> Fact | None:

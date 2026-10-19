@@ -240,6 +240,7 @@ class App:
                         "source": f.source,
                         "superseded_by": f.superseded_by,
                         "expired": f.stale(now),  # past valid_until: no longer true
+                        "sensitive": f.sensitivity == "sensitive",
                     }
                     for f in ws.knowledge.list(scope=ws.kb_scope, status=status)
                 ]
@@ -258,6 +259,7 @@ class App:
                         "source": e.source,
                         "status": e.status,
                         "expired": e.expired(now),
+                        "sensitive": e.sensitivity == "sensitive",
                     }
                     for e in ws.knowledge.list_edges(scope=ws.kb_scope)
                 ]
@@ -271,6 +273,21 @@ class App:
             meth = "review_edge" if action == "know_review_edge" else "expire_edge"
             getattr(ws.knowledge, meth)(eid)
             return {"status": ws.knowledge.edge(eid).status}
+        if action in ("know_classify", "know_classify_edge"):
+            if ws.knowledge is None:
+                raise ValueError("no Company Brain")
+            sens = "sensitive" if body.get("sensitive") else "normal"
+            if action == "know_classify_edge":
+                eid = int(body.get("eid", 0))
+                if ws.knowledge.edge(eid) is None:
+                    raise ValueError("no such edge")
+                ws.knowledge.classify_edge(eid, sens)
+                return {"sensitive": ws.knowledge.edge(eid).sensitivity == "sensitive"}
+            fid = int(body.get("fid", 0))
+            if ws.knowledge.get(fid) is None:
+                raise ValueError("no such fact")
+            ws.knowledge.classify(fid, sens)
+            return {"sensitive": ws.knowledge.get(fid).sensitivity == "sensitive"}
         if action in (
             "know_review",
             "know_approve",
