@@ -611,6 +611,24 @@ function companyBrainCard() {
     act("know_relate", { subject: s, predicate: p, object: o, sensitive: sens.checked }, "Added as candidate").then(() => { subj.value = pred.value = obj.value = ""; sens.checked = false; renderBrain(); });
   };
   relCap.append(subj, pred, obj, sensL, relB); card.append(relCap);
+  // Private sources: new knowledge from a matching source is sensitive at entry (D186).
+  const psCap = el("div", "sheetrow"); psCap.style.marginTop = "8px";
+  const psIn = el("input"); psIn.placeholder = "private source (e.g. 1Password)"; psIn.style.flex = "1";
+  psIn.title = "New facts/links from a source matching this stay off the model path automatically";
+  const psB = el("button", "pill go", "Make private"); psB.style.marginLeft = "6px";
+  psB.onclick = () => { const p = psIn.value.trim(); if (!p) return; act("know_private_source", { pattern: p }, "Source is private").then(() => { psIn.value = ""; renderBrain(); }); };
+  psCap.append(psIn, psB); card.append(psCap);
+  api("know_private_source").then((r) => {
+    if (!r.patterns || !r.patterns.length) return;
+    const row = el("div", "note"); row.style.marginTop = "4px";
+    row.append(el("span", "", "private sources: "));
+    r.patterns.forEach((p) => {
+      const tag = el("button", "secondary", p + " ×"); tag.style.marginRight = "6px"; tag.title = "Stop treating this source as private";
+      tag.onclick = () => act("know_private_source", { pattern: p, remove: true }, "Removed").then(renderBrain);
+      row.append(tag);
+    });
+    card.append(row);
+  }).catch(() => {});
   const edgeList = el("div"); card.append(edgeList);
   api("know_edges").then((r) => {
     if (!r.edges || !r.edges.length) return;

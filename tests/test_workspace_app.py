@@ -557,3 +557,50 @@ def test_know_classify_marks_a_fact_and_edge_sensitive_over_http(tmp_path):
         server.shutdown()
         app.close()
         kb.close()
+
+
+def test_know_private_source_over_http(tmp_path):
+    """GUI private-source control (D186 FOLLOWUP #1): registering a source makes
+    new knowledge from it sensitive at entry; listing and removal round-trip."""
+    from ghostcursor.workspace.knowledge import Knowledge
+
+    kb = Knowledge(tmp_path / "know.sqlite")
+    app = App(
+        "trip",
+        make_workspace=lambda: Workspace(
+            "trip",
+            Gateway(),
+            Brain(tmp_path / "kb.sqlite"),
+            root=tmp_path / "briefs",
+            knowledge=kb,
+            kb_scope="default",
+        ),
+    )
+    server = make_server(app, "secret-token")
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        port = server.server_port
+        body = json.loads(
+            call(port, "/api/know_private_source", {"pattern": "1Password"})[1]
+        )
+        assert body["patterns"] == ["1Password"]
+        # a fact ingested from a matching source is sensitive without marking
+        f = kb.add_candidate("vault unlock", source="1Password app", scope="default")
+        assert f.sensitivity == "sensitive"
+        # listing (no pattern) just returns the set
+        assert json.loads(call(port, "/api/know_private_source", {})[1])[
+            "patterns"
+        ] == ["1Password"]
+        # removal round-trips
+        gone = json.loads(
+            call(
+                port,
+                "/api/know_private_source",
+                {"pattern": "1Password", "remove": True},
+            )[1]
+        )
+        assert gone["patterns"] == []
+    finally:
+        server.shutdown()
+        app.close()
+        kb.close()

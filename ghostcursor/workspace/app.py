@@ -331,6 +331,15 @@ class App:
                 sensitivity="sensitive" if body.get("sensitive") else "normal",
             )
             return {"eid": e.eid, "status": e.status}  # candidate until reviewed
+        if action == "know_private_source":  # register/list private sources (D186)
+            if ws.knowledge is None:
+                raise ValueError("no Company Brain")
+            pat = " ".join((body.get("pattern") or "").split())
+            if pat and body.get("remove"):
+                ws.knowledge.unmark_source_sensitive(pat)
+            elif pat:
+                ws.knowledge.mark_source_sensitive(pat)
+            return {"patterns": ws.knowledge.sensitive_sources()}
         if action == "know_clip":  # GUI capture of the clipboard (owner-initiated)
             if ws.knowledge is None:
                 raise ValueError("no Company Brain")

@@ -1536,9 +1536,11 @@ their ScreenUnderstanding pipeline gates capture at the source
 (ExcludeBasedOnAppIdTargetPath, deny-on-unknown sensitivity). Four non-blocking
 items:
 
-### 1. GUI has no private-source control
-Reactive per-row 🔒 toggle exists; the GUI Brain panel has no way to register a
-private-source pattern. Console-only for now; add a small input to the panel.
+### 1. GUI has no private-source control — RESOLVED 2026-10-19
+Added a private-source input + "Make private" button and a removable list of
+current patterns to the GUI Brain panel; `know_private_source` HTTP action
+(add/list/remove) backs it. New knowledge from a matching source is now private
+from the GUI, not console-only.
 
 ### 2. Marking a source does not retroactively tighten facts already ingested from it
 `mark_source_sensitive` gates future adds only. A reclassify-existing sweep on
