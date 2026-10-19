@@ -730,6 +730,83 @@ class Workspace:
         self._propose(plan)
         return f"loaded skill '{name}' ({len(plan.steps)} steps) as the plan; /teach 1 or /act 1"
 
+    def draft_skill(self, need: str, name: str = ""):
+        """Auto skill-creator (D186): from a stated NEED, plan it and save the
+        plan as a reusable task skill in one step -- the user describes what they
+        keep needing to do, and gets a replayable skill. Composes the planning
+        path + task_skills; the skill still replays through the gated Teach/Act.
+        Returns a message, or None if no model answered.
+
+        ponytail: drafts from an explicit need now. Learning a skill from
+        *recurring use* (noticing the same goal repeats and offering to save it)
+        is the next step and needs session-history tracking -- not built yet."""
+
+        from ghostcursor.workspace import skills, task_skills
+
+        need = " ".join(str(need).split())
+        if not need:
+            raise ValueError("a skill needs a stated need")
+        trusted = {"goal": need}
+        guides = skills.relevant(need)
+        if guides:
+            trusted["app_guidance"] = [{"app": n, "notes": b} for n, b in guides]
+        try:
+            plan = self.gateway.plan(
+                Envelope(task="teach", trusted=trusted, tainted={})
+            )
+        except ProviderError:
+            return None
+        path = task_skills.save_skill(name.strip() or need, plan)
+        return (
+            f"drafted skill '{path.stem}' from your need ({len(plan.steps)} steps); "
+            f"replay with /skill use {path.stem}"
+        )
+
+    # --- deck + deep research, grounded in the Company Brain (D186) -----------
+
+    def make_deck(self, topic: str = ""):
+        """A DeckSpec for the topic (or the goal), grounded in reviewed Brain
+        facts. None if no model answers."""
+
+        from ghostcursor.workspace.deck import plan_deck
+
+        try:
+            return plan_deck(
+                self.gateway,
+                topic.strip() or self.goal,
+                scope=self.kb_scope,
+                knowledge=self.knowledge,
+            )
+        except ProviderError:
+            return None
+
+    def deep_dive(self, question: str):
+        """Deep research: decompose -> cited research per sub-question -> file
+        cited claims into the Company Brain as reviewable candidates (#5/#3)."""
+
+        from ghostcursor.workspace.research import deep_research
+
+        return deep_research(
+            question,
+            self.gateway,
+            knowledge=self.knowledge,
+            scope=self.kb_scope,
+            file_to_brain=True,
+        )
+
+    def research_to_deck(self, topic: str):
+        """Research the topic then build a deck grounded on the cited claims
+        (rec #5). Returns (DeckSpec | None, report)."""
+
+        from ghostcursor.workspace.deck import research_deck
+
+        try:
+            return research_deck(
+                self.gateway, topic, knowledge=self.knowledge, scope=self.kb_scope
+            )
+        except ProviderError:
+            return None, None
+
     def create_agent(self, need: str):
         """Draft a reusable agent (D182) from a stated need; model output,
         strictly parsed, shown for the user to review before it is saved.

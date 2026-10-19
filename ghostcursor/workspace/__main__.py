@@ -15,8 +15,12 @@ Type to discuss. Commands:
   /web [url]        open Orbyn's browser, read the page's controls (read-only)
   /plan edit <n> <text> | drop <n> | add <text>
                     edit the plan; each edit is a new proposal
+  /deck [topic]     a slide-by-slide deck outline, grounded in Brain facts
+  /deepresearch <q> decompose, research each part (cited), file claims to Brain
+  /researchdeck <t> research the topic then build a grounded deck
   /guide            the current plan as a shareable step-by-step guide (SOP)
-  /skill save <name> | list | use <name>   save/replay the plan as a task skill
+  /skill save <name> | list | use <name> | from <need>   task skills; "from"
+                    drafts a reusable skill from a stated need (auto-creator)
   /teach <n> [s]    guide plan step n onward on screen for s seconds (default 300)
   /providers [signin | signout]   who powers the harness (your accounts first)
   /doctor           what's ready and the one thing to turn on each missing part
@@ -503,6 +507,42 @@ def main(argv: list[str] | None = None) -> int:
                         for n, s in enumerate(plan.steps, start=1)
                     )
                 )
+            elif command == "/deck":
+                from ghostcursor.workspace.deck import build_brief
+
+                deck = workspace.make_deck(rest)
+                print(
+                    build_brief(deck)
+                    if deck
+                    else "No deck: the model is not available."
+                )
+            elif command == "/deepresearch" and rest:
+                report = workspace.deep_dive(rest)
+                lines = [
+                    f"Researched '{report.question}' in {len(report.subquestions)} parts:"
+                ]
+                for sub, graph in zip(report.subquestions, report.graphs):
+                    cited = sum(
+                        c.status.value in ("supported", "partially_supported")
+                        for c in graph.claims
+                    )
+                    lines.append(f"  - {sub}: {cited} cited claim(s)")
+                lines.append(
+                    f"filed {report.filed_to_brain} claim(s) to the Brain (review: /know list candidate)"
+                )
+                print("\n".join(lines))
+            elif command == "/researchdeck" and rest:
+                from ghostcursor.workspace.deck import build_brief
+
+                deck, report = workspace.research_to_deck(rest)
+                if deck is None:
+                    print("No deck: the model is not available.")
+                else:
+                    print(build_brief(deck))
+                    if report:
+                        print(
+                            f"(filed {report.filed_to_brain} research claim(s) to the Brain)"
+                        )
             elif command == "/guide":
                 try:
                     print(workspace.guide())
@@ -520,8 +560,13 @@ def main(argv: list[str] | None = None) -> int:
                         print(exc)
                 elif verb == "use" and len(parts) >= 2:
                     print(workspace.use_skill(" ".join(parts[1:])))
+                elif verb == "from" and len(parts) >= 2:
+                    print(
+                        workspace.draft_skill(" ".join(parts[1:]))
+                        or "No skill: the model is not available."
+                    )
                 else:
-                    print("usage: /skill save <name> | list | use <name>")
+                    print("usage: /skill save <name> | list | use <name> | from <need>")
             elif command in ("/teach", "/act"):
                 parts = rest.split()
                 if not parts or not parts[0].isdigit():

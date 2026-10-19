@@ -319,3 +319,40 @@ def test_plan_to_guide_and_skill_round_trip(planned, tmp_path, monkeypatch):
     msg = planned.use_skill("My Task")
     assert "loaded skill" in msg and len(planned.plan.steps) == 2  # restored
     assert "no skill named" in planned.use_skill("ghost")
+
+
+def test_make_deck_builds_a_grounded_outline(planned):
+    planned.gateway.answer = {
+        "title": "Title Slide Plan",
+        "slides": [{"title": "Overview", "bullets": ["one"], "layout": "bullets"}],
+    }
+    deck = planned.make_deck("the plan")
+    assert deck is not None and deck.title == "Title Slide Plan"
+    assert deck.slides[0].layout.value == "bullets"
+
+
+def test_make_deck_none_when_model_unavailable(planned):
+    planned.gateway.fail = FailureKind.UNAVAILABLE.value
+    assert planned.make_deck("x") is None
+
+
+def test_draft_skill_auto_creates_a_skill_from_a_need(planned, tmp_path, monkeypatch):
+    """Auto skill-creator (D186): a stated need -> plan -> saved reusable skill."""
+    import ghostcursor.workspace.task_skills as ts
+
+    monkeypatch.setattr(ts, "_dir", lambda dest_dir=None: tmp_path / "skills")
+    planned.gateway.answer = {
+        "steps": [
+            {"instruction": "Open the export menu", "expected_change": "title_changes"},
+            {"instruction": "Choose PDF", "expected_change": "chosen_disappears"},
+        ]
+    }
+    msg = planned.draft_skill("export the report as PDF")
+    assert "drafted skill" in msg
+    assert "export-the-report-as-pdf" in ts.list_skills(dest_dir=tmp_path / "skills")
+    # the drafted skill replays through the closed loader
+    loaded = ts.load_skill("export the report as PDF", dest_dir=tmp_path / "skills")
+    assert loaded is not None and len(loaded.steps) == 2
+
+    planned.gateway.fail = FailureKind.UNAVAILABLE.value
+    assert planned.draft_skill("x") is None
