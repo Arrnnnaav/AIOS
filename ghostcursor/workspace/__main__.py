@@ -319,9 +319,11 @@ def know_command(knowledge, scope: str, args: list[str]) -> str:
         Path(rest.strip()).write_text(
             json.dumps(data, indent=1), encoding="utf-8", newline="\n"
         )
+        redn = sum(data["redacted"].values())
         return (
             f"exported {len(data['facts'])} fact(s), {len(data['edges'])} relation(s) "
-            f"to {rest.strip()} (sensitive facts excluded)"
+            f"to {rest.strip()} (sensitive facts excluded"
+            + (f"; {redn} secret(s) redacted before egress)" if redn else ")")
         )
     if verb == "export-md" and rest:
         text = knowledge.export_markdown(scope)

@@ -1,0 +1,142 @@
+"""Pre-egress DLP: scrub sensitive entities out of text before it leaves the
+device -- a shared export, or a prompt bound for a cloud/BYOK model -- and keep
+a reversible placeholder map *locally* so a model's reply can be rehydrated.
+
+This is Orbyn's answer to the enterprise "LLM gateway" pattern (redact before
+transmission, restore on the response): the method is grounded in a teardown of
+Microsoft Purview Endpoint DLP (endpointdlp.dll / MipDlp.dll, REA 2026-10-19 --
+regex content classification behind Allow/Block blanket policy) and Microsoft
+Presidio's recognizer set. D186.
+
+Rule 6: a raw value is NEVER logged or returned in the audit. The map that can
+restore values stays with the caller and is never part of what leaves. `audit`
+reports category counts only, so telemetry/logs carry no PII.
+
+ponytail: regex recognizers with a Luhn gate on card numbers -- a deliberate,
+known ceiling (no ML/NER, no checksum on SSN/IBAN). It favours over-redaction
+(a false positive only replaces a non-secret with a placeholder; a false
+negative leaks). Upgrade path: add Presidio/GLiNER as a second pass if recall
+ever matters more than staying local and dependency-free.
+"""
+
+from __future__ import annotations
+
+import re
+
+# (category, pattern). ORDER MATTERS: most specific first so a card is not
+# eaten by the loose phone pattern, etc. Each match becomes a stable
+# placeholder [CATEGORY_n] (n per distinct original value within one scrub).
+_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
+    ("EMAIL", re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b")),
+    ("KEY", re.compile(r"\b(?:sk|pk|rk|AKIA|ghp|gho|xox[baprs])[-_A-Za-z0-9]{16,}\b")),
+    ("IBAN", re.compile(r"\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b")),
+    ("SSN", re.compile(r"\b\d{3}-\d{2}-\d{4}\b")),
+    ("CARD", re.compile(r"\b(?:\d[ -]?){13,19}\b")),  # Luhn-gated below
+    ("IP", re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")),
+    ("PHONE", re.compile(r"\+?\d[\d ()-]{7,}\d")),
+]
+
+
+def _luhn_ok(digits: str) -> bool:
+    """Luhn checksum -- gates CARD so plain long digit runs (order numbers,
+    IDs) are not blanket-redacted as payment cards."""
+
+    ds = [int(c) for c in digits if c.isdigit()]
+    if not 13 <= len(ds) <= 19:
+        return False
+    total, parity = 0, len(ds) % 2
+    for i, d in enumerate(ds):
+        if i % 2 == parity:
+            d *= 2
+            if d > 9:
+                d -= 9
+        total += d
+    return total % 10 == 0
+
+
+def scrub(text: str) -> tuple[str, dict[str, str]]:
+    """Return (scrubbed_text, map). Every detected entity is replaced by a
+    stable ``[CATEGORY_n]`` placeholder; the map {placeholder: original} lets
+    the caller rehydrate a reply later. The same original gets the same
+    placeholder within one call. The map NEVER leaves with the text."""
+
+    mapping: dict[str, str] = {}
+    seen: dict[str, str] = {}  # original -> placeholder (dedupe within a scrub)
+    counts: dict[str, int] = {}
+
+    def _sub(category: str, m: re.Match[str]) -> str:
+        original = m.group(0)
+        if category == "CARD" and not _luhn_ok(original):
+            return original  # not a real card: leave it
+        if original in seen:
+            return seen[original]
+        counts[category] = counts.get(category, 0) + 1
+        placeholder = f"[{category}_{counts[category]}]"
+        seen[original] = placeholder
+        mapping[placeholder] = original
+        return placeholder
+
+    for category, pattern in _PATTERNS:
+        text = pattern.sub(lambda m, c=category: _sub(c, m), text)
+    return text, mapping
+
+
+def rehydrate(text: str, mapping: dict[str, str]) -> str:
+    """Inverse of ``scrub`` for a model's reply: put originals back where the
+    model echoed a placeholder. Unknown placeholders are left untouched."""
+
+    for placeholder, original in mapping.items():
+        text = text.replace(placeholder, original)
+    return text
+
+
+def audit(mapping: dict[str, str]) -> dict[str, int]:
+    """Category -> count of distinct values redacted. Safe to log/telemeter:
+    it carries no raw value, only how many of each kind were held back."""
+
+    out: dict[str, int] = {}
+    for placeholder in mapping:
+        category = placeholder[1:].rsplit("_", 1)[0]
+        out[category] = out.get(category, 0) + 1
+    return out
+
+
+def _demo() -> None:
+    sample = (
+        "Email ada@acme.io or ada@acme.io again, call +1 (415) 555-0100, "
+        "card 4111 1111 1111 1111, ssn 123-45-6789, key sk-ABCDEFGHIJKLMNOP1234, "
+        "ip 10.0.0.5, order number 1234567890123 (not a card)."
+    )
+    scrubbed, m = scrub(sample)
+    # nothing sensitive survives in the scrubbed text
+    for raw in (
+        "ada@acme.io",
+        "4111",
+        "123-45-6789",
+        "sk-ABCDEFGHIJKLMNOP1234",
+        "10.0.0.5",
+    ):
+        assert raw not in scrubbed, raw
+    # the same email twice -> one placeholder (dedupe)
+    assert scrubbed.count("[EMAIL_1]") == 2 and "[EMAIL_2]" not in scrubbed
+    # the real card is redacted under a CARD tag
+    assert m.get("[CARD_1]") == "4111 1111 1111 1111"
+    # Luhn gate: a real card passes, a random long run is not a valid card
+    assert _luhn_ok("4111111111111111") and not _luhn_ok("1234567890123")
+    # a non-card long run is only ever over-redacted (e.g. PHONE), never a CARD
+    assert not any(
+        v.replace(" ", "") == "1234567890123" and p.startswith("[CARD")
+        for p, v in m.items()
+    )
+    # round-trip restores exactly
+    assert rehydrate(scrubbed, m) == sample
+    # audit carries counts only, never a raw value
+    a = audit(m)
+    assert a["EMAIL"] == 1 and a["CARD"] == 1 and a["SSN"] == 1
+    assert all(isinstance(v, int) for v in a.values())
+    assert "ada@acme.io" not in str(a)
+    print("ok", a)
+
+
+if __name__ == "__main__":
+    _demo()

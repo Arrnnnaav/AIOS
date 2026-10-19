@@ -28,6 +28,8 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import redact
+
 ENV_PATH = "ORBYN_KNOWLEDGE_PATH"
 # superseded: replaced by a newer fact, kept as history (Graphiti/Zep's
 # "invalidate, never delete"). retired: removed by an owner.
@@ -662,16 +664,35 @@ class Knowledge:
 
     # --- offline team sharing (export / import) -------------------------
 
-    def export_scope(self, scope: str, *, include_sensitive: bool = False) -> dict:
+    def export_scope(
+        self, scope: str, *, include_sensitive: bool = False, redact_pii: bool = True
+    ) -> dict:
         """A shareable snapshot of ``scope``: usable facts and reviewed edges
         with their provenance, for the owner's "offline files first" sharing.
         Sensitive facts are left out unless asked for, so sharing cannot leak
-        them by accident. Candidates and retired/superseded facts are omitted."""
+        them by accident. Candidates and retired/superseded facts are omitted.
+
+        ``redact_pii`` (default on) additionally scrubs embedded secrets (email,
+        card, SSN, key, IP, phone, IBAN) out of the free-text content before it
+        leaves -- the enterprise "redact before egress" gate, so a *normal* fact
+        that happens to quote a credential still cannot leak it. The snapshot
+        carries a category-count ``redacted`` audit (never a raw value). Pass
+        ``redact_pii=False`` for the owner's own verbatim backup."""
+
+        tally: dict[str, int] = {}
+
+        def _s(value: str) -> str:  # scrub a content field, add to the audit
+            if not redact_pii:
+                return value
+            scrubbed, m = redact.scrub(value)
+            for cat, n in redact.audit(m).items():
+                tally[cat] = tally.get(cat, 0) + n
+            return scrubbed
 
         facts = [
             {
-                "text": f.text,
-                "source": f.source,
+                "text": _s(f.text),
+                "source": _s(f.source),
                 "sensitivity": f.sensitivity,
                 "valid_from": f.valid_from,
                 "valid_until": f.valid_until,
@@ -686,28 +707,39 @@ class Knowledge:
         )
         now = self.clock()
         edges = [
-            {"subject": e.subject, "predicate": e.predicate, "object": e.object,
-             "source": e.source}
+            {"subject": _s(e.subject), "predicate": e.predicate,
+             "object": _s(e.object), "source": _s(e.source)}
             for e in (Edge(*r) for r in rows)
             if not e.expired(now)
             and (include_sensitive or e.sensitivity != "sensitive")
         ]  # fmt: skip
-        return {"version": 1, "scope": scope, "facts": facts, "edges": edges}
+        return {
+            "version": 1, "scope": scope, "facts": facts, "edges": edges,
+            "redacted": tally,
+        }  # fmt: skip
 
-    def export_markdown(self, scope: str, *, include_sensitive: bool = False) -> str:
+    def export_markdown(
+        self, scope: str, *, include_sensitive: bool = False, redact_pii: bool = True
+    ) -> str:
         """``export_scope`` rendered as human-readable Markdown so the owner can
         READ exactly what a shared snapshot contains before sending it -- plain,
         diffable, git-friendly (Obsidian's plain-file portability applied to a
-        governed store). Same privacy filter; sensitive excluded unless asked."""
+        governed store). Same privacy filter; sensitive excluded unless asked,
+        embedded secrets redacted unless ``redact_pii=False``."""
 
-        data = self.export_scope(scope, include_sensitive=include_sensitive)
+        data = self.export_scope(
+            scope, include_sensitive=include_sensitive, redact_pii=redact_pii
+        )
         sens = "included" if include_sensitive else "excluded"
+        redn = ", ".join(
+            f"{n} {c.lower()}" for c, n in sorted(data["redacted"].items())
+        )
         lines = [
             f"# Company Brain export: {scope}",
             "",
             f"_{len(data['facts'])} fact(s), {len(data['edges'])} relation(s); "
             f"sensitive {sens}._",
-            "",
+            *([f"_redacted before egress: {redn}._", ""] if redn else [""]),
             "## Facts",
             "",
         ]

@@ -792,3 +792,24 @@ def test_private_by_default_denies_on_unknown(kn):
     kn.set_private_by_default(False)
     g = kn.add_candidate("later", source="random chat", scope="acme")
     assert g.sensitivity == "normal"  # posture off -> back to allow-by-default
+
+
+def test_export_redacts_embedded_secrets_before_egress(kn):
+    """A *normal* fact that quotes a secret must not leak it on export (the
+    enterprise redact-before-egress gate, D186). Default redacts; the audit
+    counts categories; redact_pii=False gives a verbatim owner backup."""
+
+    f = kn.add_candidate("Billing email is ada@acme.io", source="doc", scope="acme")
+    kn.approve(f.fid)
+
+    data = kn.export_scope("acme")
+    assert "ada@acme.io" not in data["facts"][0]["text"]  # scrubbed
+    assert "[EMAIL_1]" in data["facts"][0]["text"]
+    assert data["redacted"].get("EMAIL") == 1  # audited, count only
+
+    md = kn.export_markdown("acme")
+    assert "ada@acme.io" not in md and "redacted before egress" in md
+
+    raw = kn.export_scope("acme", redact_pii=False)
+    assert "ada@acme.io" in raw["facts"][0]["text"]  # owner's verbatim backup
+    assert raw["redacted"] == {}
