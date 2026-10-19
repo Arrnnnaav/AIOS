@@ -9,6 +9,7 @@ from ghostcursor.providers.gateway import Budget, Gateway
 from ghostcursor.providers.schemas import (
     ABSTAIN,
     DECK_SPEC_SCHEMA,
+    RESEARCH_PLAN_SCHEMA,
     Choice,
     DeckSpec,
     ExpectedChange,
@@ -18,6 +19,7 @@ from ghostcursor.providers.schemas import (
     TeachPlan,
     parse_choice,
     parse_deck_spec,
+    parse_research_plan,
     parse_teach_plan,
     strict_json,
 )
@@ -28,6 +30,7 @@ __all__ = [
     "Budget",
     "Choice",
     "DECK_SPEC_SCHEMA",
+    "RESEARCH_PLAN_SCHEMA",
     "DeckSpec",
     "Envelope",
     "ExpectedChange",
@@ -43,6 +46,7 @@ __all__ = [
     "TeachPlan",
     "parse_choice",
     "parse_deck_spec",
+    "parse_research_plan",
     "parse_teach_plan",
     "sanitize",
     "strict_json",

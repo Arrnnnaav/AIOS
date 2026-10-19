@@ -18,13 +18,17 @@ import os
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
 from ghostcursor.providers.envelope import Envelope, Tainted
 from ghostcursor.providers.errors import FailureKind, ProviderError
-from ghostcursor.providers.schemas import strict_json
+from ghostcursor.providers.schemas import (
+    RESEARCH_PLAN_SCHEMA,
+    parse_research_plan,
+    strict_json,
+)
 from ghostcursor.workspace.contracts import (
     Claim,
     ClaimStatus,
@@ -553,6 +557,101 @@ def research(
     except OSError:
         pass
     return graph, trace
+
+
+DEEP_PLAN_SYSTEM = (
+    "You are planning deep research. Decompose the question into a few focused, "
+    "non-overlapping sub-questions that together answer it. Return only JSON "
+    "matching the schema: 1-6 sub-questions, each a standalone searchable query."
+)
+
+
+@dataclass(frozen=True)
+class DeepResearchReport:
+    """A deep-research run: the plan, one evidence graph per sub-question, and
+    how many cited claims were filed into the Company Brain as candidates."""
+
+    question: str
+    subquestions: tuple[str, ...]
+    graphs: tuple[EvidenceGraph, ...]
+    filed_to_brain: int
+
+
+def plan_research(
+    question: str, gateway, *, deadline_s: float = 20.0, cancelled=lambda: False
+) -> tuple[str, ...]:
+    """Decompose ``question`` into sub-questions via a closed-schema completion.
+    Raises ProviderError if no System-Two provider answers validly."""
+
+    question = " ".join(str(question).split())
+    envelope = Envelope(
+        task="plan deep research for the question",
+        trusted={"question": question},
+        tainted={"question_text": Tainted.of("user_question", question)},
+    )
+    return gateway.complete(
+        envelope,
+        DEEP_PLAN_SYSTEM,
+        RESEARCH_PLAN_SCHEMA,
+        parse_research_plan,
+        deadline_s=deadline_s,
+        cancelled=cancelled,
+        purpose="research planning",
+    )
+
+
+def _file_cited_claims(graph: EvidenceGraph, knowledge, scope: str) -> int:
+    """File each SUPPORTED/PARTIAL (i.e. cited) claim into the Brain as a
+    CANDIDATE, sourced to the page it cites -- research becomes durable shared
+    context the owner reviews (rocket.new's "one shared context", D186). Uses
+    ingest so near-duplicates across sub-questions are not re-added."""
+
+    filed = 0
+    for claim in graph.claims:
+        if claim.status not in (ClaimStatus.SUPPORTED, ClaimStatus.PARTIAL):
+            continue
+        source = next(
+            (graph.source_of(pid) for pid in claim.evidence if graph.source_of(pid)),
+            None,
+        )
+        url = source.url if source else "research"
+        actions = knowledge.ingest([claim.text], source=url, scope=scope)
+        filed += sum(1 for action, _ in actions if action == "added")
+    return filed
+
+
+def deep_research(
+    question: str,
+    gateway,
+    *,
+    knowledge=None,
+    scope: str | None = None,
+    file_to_brain: bool = False,
+    **research_kw,
+) -> DeepResearchReport:
+    """Plan -> research each sub-question (cited) -> optionally file cited claims
+    into the Company Brain. The deep-research loop every tool runs (OpenAI/
+    Perplexity/Gemini), on Orbyn's rails: each sub-question uses the existing
+    research() (search + cited claims + Jev checks), nothing is invented, and
+    results become reviewable Brain candidates rather than a throwaway report.
+
+    Never raises for a plan failure: it falls back to a single-pass research of
+    the whole question. Filing needs both ``knowledge`` and ``scope``."""
+
+    question = " ".join(str(question).split())
+    if not question:
+        raise ValueError("deep research needs a question")
+    try:
+        subquestions = plan_research(question, gateway)
+    except ProviderError:
+        subquestions = (question,)  # plan unavailable -> one pass on the whole
+    graphs, filed = [], 0
+    for sub in subquestions:
+        graph, _trace = research(sub, gateway, **research_kw)
+        graphs.append(graph)
+        if file_to_brain and knowledge is not None and scope is not None:
+            filed += _file_cited_claims(graph, knowledge, scope)
+    return DeepResearchReport(question, tuple(subquestions), tuple(graphs), filed)
 
 
 def evidence_view(graph: EvidenceGraph) -> str:

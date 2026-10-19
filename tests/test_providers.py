@@ -232,6 +232,32 @@ def test_a_deck_outside_the_closed_schema_is_refused(value):
     assert raised.value.kind is FailureKind.INVALID_OUTPUT
 
 
+def test_a_valid_research_plan_parses_to_subquestions():
+    from ghostcursor.providers import parse_research_plan
+
+    subs = parse_research_plan(json.dumps({"subquestions": ["a", "b"]}))
+    assert subs == ("a", "b")
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        {"subquestions": []},
+        {"subquestions": ["x" * 201]},
+        {"subquestions": [""]},
+        {"subquestions": ["a"], "extra": 1},
+        {"subquestions": ["a"] * 7},
+        {"nope": ["a"]},
+    ],
+)
+def test_a_research_plan_outside_the_schema_is_refused(value):
+    from ghostcursor.providers import parse_research_plan
+
+    with pytest.raises(ProviderError) as raised:
+        parse_research_plan(json.dumps(value))
+    assert raised.value.kind is FailureKind.INVALID_OUTPUT
+
+
 def test_a_choice_must_be_an_offered_id_or_abstain():
     assert (
         parse_choice(

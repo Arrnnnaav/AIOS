@@ -23,6 +23,9 @@ MAX_SLIDES = 30
 MAX_BULLETS = 8
 MAX_SLIDE_TITLE = 120
 MAX_BULLET_CHARS = 200
+#: Deep research (D186): decompose a question into a few sub-questions.
+MAX_SUBQUESTIONS = 6
+MAX_SUBQUESTION_CHARS = 200
 
 
 class ExpectedChange(str, Enum):
@@ -314,3 +317,46 @@ def parse_deck_spec(text: str) -> DeckSpec:
             raise _invalid(f"slide {index} layout is not allowed") from exc
         parsed.append(Slide(" ".join(stitle.split()), tuple(clean_bullets), layout))
     return DeckSpec(" ".join(title.split()), tuple(parsed))
+
+
+# --- deep research (D186): decompose, then research each sub-question --------
+# The loop every "deep research" product runs (OpenAI/Perplexity/Gemini) is:
+# decompose the question into a plan, research each part, synthesise with
+# citations. This is the plan step as a closed schema; Orbyn's existing
+# research() does the cited per-part search, and the owner's Company Brain is
+# the durable "one shared context" (rocket.new's Solve pillar applied here).
+
+RESEARCH_PLAN_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["subquestions"],
+    "properties": {
+        "subquestions": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": MAX_SUBQUESTIONS,
+            "items": {"type": "string", "maxLength": MAX_SUBQUESTION_CHARS},
+        }
+    },
+}
+
+
+def parse_research_plan(text: str) -> tuple[str, ...]:
+    """Strict, closed parse of a decomposition -- 1..MAX_SUBQUESTIONS non-empty
+    sub-questions, else INVALID_OUTPUT (same discipline as parse_teach_plan)."""
+
+    value = strict_json(text)
+    _exact(value, {"subquestions"}, "research plan")
+    subs = value["subquestions"]
+    if not isinstance(subs, list) or not 1 <= len(subs) <= MAX_SUBQUESTIONS:
+        raise _invalid(f"a plan has 1..{MAX_SUBQUESTIONS} sub-questions")
+    out = []
+    for index, sub in enumerate(subs, start=1):
+        if (
+            not isinstance(sub, str)
+            or not sub.strip()
+            or len(sub) > MAX_SUBQUESTION_CHARS
+        ):
+            raise _invalid(f"sub-question {index} is invalid")
+        out.append(" ".join(sub.split()))
+    return tuple(out)
