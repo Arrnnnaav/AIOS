@@ -3,6 +3,7 @@
 Type to discuss. Commands:
   /point            bind windows, point at what you mean (Spatial, D171)
   /voice            say your message instead of typing (SayStride, D171)
+  /dictate [brain]  speak on demand; save the transcript to a file (or the Brain)
   /research <q>     a cited answer from web sources
   /evidence [n]     the passages behind research answer n (default: latest)
   /remember <n>     save research claim n to the Company Brain (owner reviews)
@@ -444,6 +445,25 @@ def main(argv: list[str] | None = None) -> int:
                 said = dictate_goal(time.monotonic() + 120)
                 if said:
                     print(workspace.discuss(said))
+            elif command == "/dictate":
+                # On-demand capture -> SAVE (rule 1: never types into an app).
+                # Default sinks to a file; "/dictate brain" files a Brain
+                # candidate the owner reviews. (D186)
+                from ghostcursor import dictation
+                from ghostcursor.voice import dictate_goal
+
+                said = dictate_goal(time.monotonic() + 120)
+                if not said:
+                    continue
+                if rest.strip() == "brain" and workspace.knowledge is not None:
+                    fid = dictation.to_brain(
+                        said, workspace.knowledge, workspace.kb_scope
+                    )
+                    print(
+                        f"saved to Company Brain as candidate #{fid} (review: /know list candidate)"
+                    )
+                else:
+                    print(f"saved transcript to {dictation.save_transcript(said)}")
             elif command == "/evidence":
                 print(workspace.evidence(int(rest) if rest.isdigit() else 0))
             elif command == "/remember" and rest.isdigit():
