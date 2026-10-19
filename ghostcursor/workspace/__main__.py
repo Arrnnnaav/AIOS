@@ -15,6 +15,8 @@ Type to discuss. Commands:
   /web [url]        open Orbyn's browser, read the page's controls (read-only)
   /plan edit <n> <text> | drop <n> | add <text>
                     edit the plan; each edit is a new proposal
+  /guide            the current plan as a shareable step-by-step guide (SOP)
+  /skill save <name> | list | use <name>   save/replay the plan as a task skill
   /teach <n> [s]    guide plan step n onward on screen for s seconds (default 300)
   /providers [signin | signout]   who powers the harness (your accounts first)
   /doctor           what's ready and the one thing to turn on each missing part
@@ -501,6 +503,25 @@ def main(argv: list[str] | None = None) -> int:
                         for n, s in enumerate(plan.steps, start=1)
                     )
                 )
+            elif command == "/guide":
+                try:
+                    print(workspace.guide())
+                except ValueError as exc:
+                    print(exc)
+            elif command == "/skill":
+                parts = rest.split()
+                verb = parts[0] if parts else ""
+                if verb == "list":
+                    print("\n".join(workspace.saved_skills()) or "(no saved skills)")
+                elif verb == "save" and len(parts) >= 2:
+                    try:
+                        print(workspace.save_skill(" ".join(parts[1:])))
+                    except ValueError as exc:
+                        print(exc)
+                elif verb == "use" and len(parts) >= 2:
+                    print(workspace.use_skill(" ".join(parts[1:])))
+                else:
+                    print("usage: /skill save <name> | list | use <name>")
             elif command in ("/teach", "/act"):
                 parts = rest.split()
                 if not parts or not parts[0].isdigit():

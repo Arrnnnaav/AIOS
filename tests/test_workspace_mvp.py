@@ -297,3 +297,25 @@ def test_a_chosen_alternative_stays_hidden_when_it_was_hidden():
 
     ref = SpatialContextReference("point", "OK", "Button", "x.exe", 0.6, (HIDDEN_NAME,))
     assert confirm_reference(ref, "1").name == HIDDEN_NAME
+
+
+def test_plan_to_guide_and_skill_round_trip(planned, tmp_path, monkeypatch):
+    """D186 on-top: the plan the owner built (/plan) renders as a guide (#1) and
+    saves/replays as a task skill (#2) through the existing Workspace."""
+    import ghostcursor.workspace.task_skills as ts
+
+    monkeypatch.setattr(ts, "_dir", lambda dest_dir=None: tmp_path / "skills")
+
+    g = planned.guide()
+    assert g.startswith("# How to:") and "Open Home" in g and "Click New Slide" in g
+
+    assert "saved skill" in planned.save_skill("My Task")
+    assert "my-task" in planned.saved_skills()
+
+    # replaying loads it back as the current plan (closed-schema validated)
+    planned._propose(parse_teach_plan(json.dumps({"steps": [
+        {"instruction": "scratch", "expected_change": "chosen_disappears"}]})))
+    assert len(planned.plan.steps) == 1  # plan changed
+    msg = planned.use_skill("My Task")
+    assert "loaded skill" in msg and len(planned.plan.steps) == 2  # restored
+    assert "no skill named" in planned.use_skill("ghost")

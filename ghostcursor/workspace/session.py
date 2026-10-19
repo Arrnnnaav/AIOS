@@ -690,6 +690,46 @@ class Workspace:
             raise ValueError("no such plan step")
         return TeachPlan(self.plan.steps[step - 1 :])
 
+    # --- reuse the current plan: guide (rec #1) and skills (rec #2), D186 -----
+
+    def guide(self) -> str:
+        """Render the current plan as a shareable step-by-step guide (SOP), with
+        embedded secrets scrubbed. Needs a plan (/plan first)."""
+
+        from ghostcursor.workspace.guide import render_guide
+
+        if self.plan is None:
+            raise ValueError("no plan yet: /plan first")
+        return render_guide(self.goal, self.plan)
+
+    def save_skill(self, name: str) -> str:
+        """Save the current plan as a reusable, replayable task skill (rec #2)."""
+
+        from ghostcursor.workspace import task_skills
+
+        if self.plan is None:
+            raise ValueError("no plan yet: /plan first")
+        path = task_skills.save_skill(name, self.plan)
+        return f"saved skill '{path.stem}' ({len(self.plan.steps)} steps)"
+
+    def saved_skills(self) -> list[str]:
+        from ghostcursor.workspace import task_skills
+
+        return task_skills.list_skills()
+
+    def use_skill(self, name: str) -> str:
+        """Load a saved skill as the current plan proposal, so /teach or /act can
+        replay it through the existing gated path. The closed parse refuses a
+        tampered skill."""
+
+        from ghostcursor.workspace import task_skills
+
+        plan = task_skills.load_skill(name)
+        if plan is None:
+            return f"no skill named '{name}' (see /skill list)"
+        self._propose(plan)
+        return f"loaded skill '{name}' ({len(plan.steps)} steps) as the plan; /teach 1 or /act 1"
+
     def create_agent(self, need: str):
         """Draft a reusable agent (D182) from a stated need; model output,
         strictly parsed, shown for the user to review before it is saved.
