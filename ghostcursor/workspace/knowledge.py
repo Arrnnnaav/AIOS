@@ -69,6 +69,13 @@ CREATE TABLE IF NOT EXISTS edges (
 -- for any pre-existing facts at open; status/validity are filtered after.
 CREATE VIRTUAL TABLE IF NOT EXISTS facts_fts
     USING fts5(text, tokenize='porter unicode61');
+-- Sources whose knowledge is private by default. A fact/edge whose provenance
+-- matches one of these patterns enters 'sensitive' without the owner marking
+-- it each time -- Orbyn's answer to Microsoft Recall's source-identity capture
+-- exclusion (CaptureExclusion_ExcludeBasedOnAppIdTargetPath, D186). Marking,
+-- not dropping: a sensitive source still records, it just stays off the model
+-- path until the owner opts in.
+CREATE TABLE IF NOT EXISTS sensitive_sources (pattern TEXT PRIMARY KEY);
 """
 
 
@@ -240,6 +247,7 @@ class Knowledge:
             raise ValueError("a candidate needs text, a source and a scope")
         if sensitivity not in SENSITIVITIES:
             raise ValueError(f"sensitivity is one of {SENSITIVITIES}")
+        sensitivity = self._resolve_sensitivity(source, sensitivity)
         now = self.clock()
         with self._lock, self._db:
             cur = self._db.execute(
@@ -404,6 +412,55 @@ class Knowledge:
             )
         return self.edge(eid)
 
+    # --- source-scoped sensitivity (private-by-default sources) ---------
+
+    def mark_source_sensitive(self, pattern: str) -> None:
+        """Register a source whose knowledge is private by default: any later
+        candidate whose ``source`` contains ``pattern`` (case-insensitive)
+        enters 'sensitive', so the owner need not mark each one. Ported from
+        Recall's source-identity capture exclusion (D186)."""
+
+        pattern = " ".join(str(pattern).split())
+        if not pattern:
+            raise ValueError("a sensitive-source pattern cannot be empty")
+        with self._lock, self._db:
+            self._db.execute(
+                "INSERT OR IGNORE INTO sensitive_sources (pattern) VALUES (?)",
+                (pattern,),
+            )
+
+    def unmark_source_sensitive(self, pattern: str) -> bool:
+        """Drop a sensitive-source pattern. Returns whether one was removed.
+        Existing facts/edges keep whatever sensitivity they were given."""
+
+        pattern = " ".join(str(pattern).split())
+        with self._lock, self._db:
+            cur = self._db.execute(
+                "DELETE FROM sensitive_sources WHERE pattern=?", (pattern,)
+            )
+        return cur.rowcount > 0
+
+    def sensitive_sources(self) -> list[str]:
+        return [
+            r[0]
+            for r in self._db.execute(
+                "SELECT pattern FROM sensitive_sources ORDER BY pattern"
+            )
+        ]
+
+    def _resolve_sensitivity(self, source: str, requested: str) -> str:
+        """Entry-time gate: an explicit 'sensitive' stays sensitive, and a
+        'normal' is lifted to 'sensitive' when the source matches a registered
+        private source. Only ever tightens, never loosens -- matches rule 6."""
+
+        if requested == "sensitive":
+            return requested
+        low = source.lower()
+        for pat in self.sensitive_sources():
+            if pat.lower() in low:
+                return "sensitive"
+        return requested
+
     # --- reads ----------------------------------------------------------
 
     def get(self, fid: int) -> Fact | None:
@@ -530,6 +587,7 @@ class Knowledge:
         parts = [" ".join(str(x).split()) for x in (subject, predicate, obj, source)]
         if not all(parts) or not str(scope).strip():
             raise ValueError("an edge needs subject, predicate, object, source, scope")
+        sensitivity = self._resolve_sensitivity(parts[3], sensitivity)
         with self._lock, self._db:
             cur = self._db.execute(
                 "INSERT INTO edges (subject, predicate, object, source, scope, "

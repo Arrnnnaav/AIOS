@@ -221,6 +221,15 @@ def test_know_command_owner_review_path(tmp_path):
     assert run("private-edge", "99") == "no such edge"
     assert k.classify(99, "sensitive") is None
     assert k.classify_edge(99, "sensitive") is None
+
+    # private-source: knowledge from a matching source is sensitive at entry
+    assert "private" in run("private-source", "1Password")
+    assert run("private-sources") == "1Password"
+    run("add", "1Password vault", "|", "unlock is hunter2")
+    assert k.get(6).sensitivity == "sensitive"  # matched source -> private at entry
+    assert run("unmark-source", "1Password") == "removed"
+    assert run("unmark-source", "1Password") == "no such sensitive-source pattern"
+    assert run("private-sources") == "(no private sources)"
     k.close()
 
 
@@ -719,3 +728,40 @@ def test_owner_can_mark_a_fact_or_edge_sensitive_after_the_fact(kn):
         kn.classify(a.fid, "bogus")
     with pytest.raises(ValueError):
         kn.classify_edge(e.eid, "bogus")
+
+
+def test_sensitive_source_marks_new_knowledge_private_at_entry(kn):
+    """A registered private source lifts a new fact/edge to 'sensitive' at
+    ingestion (Recall's source-identity exclusion, D186) without the owner
+    marking each one; it only tightens, and an explicit sensitivity is kept."""
+
+    import pytest
+
+    kn.mark_source_sensitive("1Password")
+    assert kn.sensitive_sources() == ["1Password"]
+
+    # Source contains the pattern (case-insensitive) -> sensitive at entry.
+    f = kn.add_candidate(
+        "Vault unlock is hunter2.", source="1password window", scope="acme"
+    )
+    assert f.sensitivity == "sensitive"
+    e = kn.relate("Dana", "uses", "1Password", source="1Password app", scope="acme")
+    assert e.sensitivity == "sensitive"
+
+    # Unmatched source stays normal.
+    g = kn.add_candidate("Dana leads platform.", source="chat", scope="acme")
+    assert g.sensitivity == "normal"
+
+    # Never loosens: an explicit sensitive request on an unmatched source holds.
+    s = kn.add_candidate("secret", source="chat", scope="acme", sensitivity="sensitive")
+    assert s.sensitivity == "sensitive"
+
+    # Removing the pattern stops tightening future adds; the rule persists across
+    # reopen until then.
+    assert kn.unmark_source_sensitive("1Password") is True
+    assert kn.unmark_source_sensitive("1Password") is False
+    h = kn.add_candidate("later note", source="1password window", scope="acme")
+    assert h.sensitivity == "normal"
+
+    with pytest.raises(ValueError):
+        kn.mark_source_sensitive("   ")

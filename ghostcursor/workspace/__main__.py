@@ -161,7 +161,9 @@ KNOW_USAGE = (
     "export <path>  |  export-md <path>  |  import <path>  |  "
     "relate <subject> | <predicate> | <object> | <source>  |  "
     "review-edge <id>  |  expire <id>  |  expire-edge <id>  |  "
-    "private[-edge] <id>  |  unmark[-edge] <id>  |  conflicts  |  recall <query> [since:<days>]"
+    "private[-edge] <id>  |  unmark[-edge] <id>  |  "
+    "private-source <pattern>  |  unmark-source <pattern>  |  private-sources  |  "
+    "conflicts  |  recall <query> [since:<days>]"
 )
 
 
@@ -339,6 +341,15 @@ def know_command(knowledge, scope: str, args: list[str]) -> str:
             f"imported as candidates: {r['facts_added']} new, {r['facts_duplicate']} "
             f"already known, {r['edges']} relation(s). Review before use: /know list candidate"
         )
+    if verb == "private-source" and rest:
+        knowledge.mark_source_sensitive(rest.strip())
+        return f"new knowledge from sources matching '{rest.strip()}' is private"
+    if verb == "unmark-source" and rest:
+        removed = knowledge.unmark_source_sensitive(rest.strip())
+        return "removed" if removed else "no such sensitive-source pattern"
+    if verb == "private-sources":
+        pats = knowledge.sensitive_sources()
+        return "\n".join(pats) or "(no private sources)"
     if verb == "conflicts":
         pairs = knowledge.conflicts(scope)
         return (
