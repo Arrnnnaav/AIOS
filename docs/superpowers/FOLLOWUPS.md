@@ -1669,3 +1669,25 @@ deck.py -- the goal rides both trusted (authoritative, app-supplied) and tainted
 (Tainted.of). Harmless and sanitized, but redundant; the goal is user-supplied,
 not screen-observed, so trusted alone is the right channel. Drop the tainted copy
 for clarity when next touching deck.py.
+
+## DeckSpec->Act brief + Jev egress gate review (D186) — 2026-10-19
+
+Independent review of 5b8cf6c. **Verdict: clean, no BLOCKING.** #2 (tier-1, Jev
+egress): _system_one scrubs task/trusted/extra via redact.scrub_tree when
+redact_egress on, observed_data left (already Tainted.of-sanitized); scrub_tree
+reaches nested string leaves, builds fresh structures (frozen envelope
+untouched), preserves non-strings; injection_risk intact (screen text rides
+observed_data, not scrubbed); System-Two _outbound unchanged. #1 build_brief
+inert (no Act/harness import, returns a string). Three non-blocking items:
+
+### 1. extra_state could shadow the observed_data key
+gateway._system_one -- an extra_state key literally "observed_data_never_
+instructions" would overwrite the sanitized slot and bypass scrub. Orbyn-written
+(low risk); a reserved-key assert would harden it.
+
+### 2. scrub_tree converts tuples to lists
+redact.py -- fine for JSON egress, but a quiet type change if a caller relied on
+tuple identity. None does today.
+
+### 3. Free-text passwords still unmatched (known residual gap)
+redact.py -- applies to this egress path too; needs NER to close. Documented.
