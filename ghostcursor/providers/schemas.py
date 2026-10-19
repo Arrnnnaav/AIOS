@@ -18,6 +18,11 @@ from ghostcursor.providers.errors import FailureKind, ProviderError
 ABSTAIN = "ABSTAIN"
 MAX_PLAN_STEPS = 20
 MAX_INSTRUCTION_CHARS = 200
+#: Deck planning (D186). Bounds keep one model answer small and a deck sane.
+MAX_SLIDES = 30
+MAX_BULLETS = 8
+MAX_SLIDE_TITLE = 120
+MAX_BULLET_CHARS = 200
 
 
 class ExpectedChange(str, Enum):
@@ -201,3 +206,111 @@ def parse_teach_plan(text: str) -> TeachPlan:
             raise _invalid(f"step {index} expected_change is not allowed") from exc
         parsed.append(PlanStep(" ".join(instruction.split()), change, action, text))
     return TeachPlan(tuple(parsed))
+
+
+# --- deck planning (D186): outline-first, a closed layout per slide ----------
+# The method every AI deck tool converges on (Gamma, Beautiful.ai): produce a
+# slide-by-slide OUTLINE, assign each slide a LAYOUT by its content type. This
+# is Orbyn's planner form of that -- a reviewable spec the Act-on-PowerPoint
+# path can later build, never execution authority on its own.
+
+
+class SlideLayout(str, Enum):
+    """The content-typed layouts a slide can take (the taxonomy Gamma/
+    Beautiful.ai expose as Smart Slides / card types)."""
+
+    TITLE = "title"  # title / cover slide
+    SECTION = "section"  # section divider
+    BULLETS = "bullets"  # a heading with bullet points
+    TWO_COLUMN = "two_column"  # two side-by-side lists
+    COMPARISON = "comparison"  # A-vs-B
+    TIMELINE = "timeline"  # ordered milestones
+    TABLE = "table"  # rows/columns of data
+    QUOTE = "quote"  # a pulled quotation
+    IMAGE = "image"  # image-led slide with a caption
+
+
+@dataclass(frozen=True)
+class Slide:
+    title: str
+    bullets: tuple[str, ...]
+    layout: SlideLayout
+
+
+@dataclass(frozen=True)
+class DeckSpec:
+    title: str
+    slides: tuple[Slide, ...]
+
+
+DECK_SPEC_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["title", "slides"],
+    "properties": {
+        "title": {"type": "string", "maxLength": MAX_SLIDE_TITLE},
+        "slides": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": MAX_SLIDES,
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["title", "bullets", "layout"],
+                "properties": {
+                    "title": {"type": "string", "maxLength": MAX_SLIDE_TITLE},
+                    "bullets": {
+                        "type": "array",
+                        "maxItems": MAX_BULLETS,
+                        "items": {"type": "string", "maxLength": MAX_BULLET_CHARS},
+                    },
+                    "layout": {"enum": [layout.value for layout in SlideLayout]},
+                },
+            },
+        },
+    },
+}
+
+
+def parse_deck_spec(text: str) -> DeckSpec:
+    """Strict, closed parse of a deck plan -- same rules as parse_teach_plan:
+    exact fields, bounded sizes, a layout from the closed enum, else INVALID."""
+
+    value = strict_json(text)
+    _exact(value, {"title", "slides"}, "deck")
+    title = value["title"]
+    if not isinstance(title, str) or not title.strip() or len(title) > MAX_SLIDE_TITLE:
+        raise _invalid("deck title is invalid")
+    slides = value["slides"]
+    if not isinstance(slides, list) or not 1 <= len(slides) <= MAX_SLIDES:
+        raise _invalid(f"deck must have 1..{MAX_SLIDES} slides")
+    parsed = []
+    for index, slide in enumerate(slides, start=1):
+        if not isinstance(slide, dict):
+            raise _invalid(f"slide {index} is not an object")
+        _exact(slide, {"title", "bullets", "layout"}, f"slide {index}")
+        stitle = slide["title"]
+        if (
+            not isinstance(stitle, str)
+            or not stitle.strip()
+            or len(stitle) > MAX_SLIDE_TITLE
+        ):
+            raise _invalid(f"slide {index} title is invalid")
+        bullets = slide["bullets"]
+        if not isinstance(bullets, list) or len(bullets) > MAX_BULLETS:
+            raise _invalid(f"slide {index} bullets are invalid")
+        clean_bullets = []
+        for bullet in bullets:
+            if (
+                not isinstance(bullet, str)
+                or not bullet.strip()
+                or len(bullet) > MAX_BULLET_CHARS
+            ):
+                raise _invalid(f"slide {index} has an invalid bullet")
+            clean_bullets.append(" ".join(bullet.split()))
+        try:
+            layout = SlideLayout(slide["layout"])
+        except ValueError as exc:
+            raise _invalid(f"slide {index} layout is not allowed") from exc
+        parsed.append(Slide(" ".join(stitle.split()), tuple(clean_bullets), layout))
+    return DeckSpec(" ".join(title.split()), tuple(parsed))

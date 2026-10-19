@@ -1,0 +1,70 @@
+"""Plan a presentation from a goal (D186): "build me a deck about X" -> a
+reviewable DeckSpec (an outline of slides, each with a content-typed layout).
+
+This is Orbyn's planner form of what Gamma / Beautiful.ai do (outline first,
+then a layout per slide); it is grounded, when a Company Brain is present, in
+the owner's own reviewed facts rather than invented content. The spec is DATA:
+the owner reviews it, and the existing Act-on-PowerPoint path builds it with
+approval. The plan never executes anything by itself.
+
+ponytail: one closed-schema completion produces the whole outline. A per-slide
+"swarm" of agents is deliberately NOT built -- it is unproven cost for a one-
+page deck; add it only if a measured deck needs per-slide expansion a single
+pass cannot give.
+"""
+
+from __future__ import annotations
+
+from ghostcursor.providers import DECK_SPEC_SCHEMA, DeckSpec, Envelope, parse_deck_spec
+from ghostcursor.providers.envelope import Tainted
+
+DECK_SYSTEM_PROMPT = (
+    "You plan a presentation as a slide-by-slide outline. Return only a JSON "
+    "object matching the schema you are given: a deck title and an ordered list "
+    "of slides. Each slide has a short title, 0-8 terse bullets, and a layout "
+    "chosen by its content type (title/section/bullets/two_column/comparison/"
+    "timeline/table/quote/image). Open with a title slide and group the deck "
+    "into a clear narrative. Use ONLY the facts in GROUNDING when it is present; "
+    "do not invent figures, names or quotes."
+)
+
+
+def plan_deck(
+    gateway,
+    goal: str,
+    *,
+    scope: str | None = None,
+    knowledge=None,
+    k: int = 8,
+    deadline_s: float = 45.0,
+    cancelled=lambda: False,
+) -> DeckSpec:
+    """A ``DeckSpec`` for ``goal`` from the first System-Two provider that
+    answers validly. When ``knowledge`` and ``scope`` are given, the owner's
+    reviewed (non-sensitive) facts for the goal are supplied as GROUNDING so the
+    deck is built from what they actually know. Grounding rides in trusted
+    context, which the gateway's egress-redaction gate scrubs before it leaves
+    (D186)."""
+
+    goal = " ".join(str(goal).split())
+    if not goal:
+        raise ValueError("a deck needs a goal")
+    trusted = {"goal": goal}
+    if knowledge is not None and scope is not None:
+        facts = knowledge.recall(goal, scope, k=k)  # non-sensitive, usable only
+        if facts:
+            trusted["grounding"] = [f"{f.text} (source: {f.source})" for f in facts]
+    envelope = Envelope(
+        task="plan a presentation for the goal",
+        trusted=trusted,
+        tainted={"goal_text": Tainted.of("user_goal", goal)},
+    )
+    return gateway.complete(
+        envelope,
+        DECK_SYSTEM_PROMPT,
+        DECK_SPEC_SCHEMA,
+        parse_deck_spec,
+        deadline_s=deadline_s,
+        cancelled=cancelled,
+        purpose="deck planning",
+    )

@@ -169,6 +169,69 @@ def test_a_plan_outside_the_closed_schema_is_refused(value):
     assert raised.value.kind is FailureKind.INVALID_OUTPUT
 
 
+DECK = json.dumps(
+    {
+        "title": "Q3 Review",
+        "slides": [
+            {"title": "Q3 Review", "bullets": [], "layout": "title"},
+            {
+                "title": "Wins",
+                "bullets": ["Shipped DLP", "Signed 3 accounts"],
+                "layout": "bullets",
+            },
+        ],
+    }
+)
+
+
+def test_a_valid_deck_parses_into_the_closed_layout_enum():
+    from ghostcursor.providers import SlideLayout, parse_deck_spec
+
+    deck = parse_deck_spec(DECK)
+    assert deck.title == "Q3 Review" and len(deck.slides) == 2
+    assert deck.slides[0].layout is SlideLayout.TITLE
+    assert deck.slides[1].bullets == ("Shipped DLP", "Signed 3 accounts")
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        {"title": "T", "slides": []},  # no slides
+        {"title": "", "slides": [{"title": "s", "bullets": [], "layout": "title"}]},
+        {"title": "T", "slides": [{"title": "s", "bullets": [], "layout": "bogus"}]},
+        {
+            "title": "T",
+            "slides": [{"title": "s", "bullets": [], "layout": "title", "x": 1}],
+        },
+        {
+            "title": "T",
+            "slides": [{"title": "s", "layout": "title"}],
+        },  # missing bullets
+        {"title": "T", "slides": [{"title": "", "bullets": [], "layout": "title"}]},
+        {
+            "title": "T",
+            "slides": [{"title": "s", "bullets": ["x" * 201], "layout": "title"}],
+        },
+        {"title": "T", "slides": [{"title": "s", "bullets": [""], "layout": "title"}]},
+        {
+            "title": "T",
+            "slides": [{"title": "s", "bullets": [], "layout": "title"}] * 31,
+        },
+        {
+            "title": "T",
+            "slides": [{"title": "s", "bullets": [], "layout": "title"}],
+            "x": 1,
+        },
+    ],
+)
+def test_a_deck_outside_the_closed_schema_is_refused(value):
+    from ghostcursor.providers import parse_deck_spec
+
+    with pytest.raises(ProviderError) as raised:
+        parse_deck_spec(json.dumps(value))
+    assert raised.value.kind is FailureKind.INVALID_OUTPUT
+
+
 def test_a_choice_must_be_an_offered_id_or_abstain():
     assert (
         parse_choice(
