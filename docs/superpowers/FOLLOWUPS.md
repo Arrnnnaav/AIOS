@@ -1553,3 +1553,32 @@ False silently. Make them symmetric for clearer console feedback.
 ### 4. _resolve_sensitivity re-queries sensitive_sources every add
 One SELECT per add_candidate/relate. Cache in memory or JOIN at insert if
 ingestion volume ever grows (local single-user, so not now).
+
+## Company Brain deny-on-unknown posture + GUI private-source milestone review (D186) — 2026-10-19
+
+Independent tier-2 review of 3b2f209 (GUI private-source control +
+know_private_source action) and e177a7f (deny-on-unknown "private by default"
+posture: brain_meta flag, set_private_by_default/private_by_default,
+know_private_default action, console /know private-default, GUI checkbox). The
+store core c215ede was reviewed clean earlier. **Verdict: clean, no BLOCKING.**
+Rule 6 confirmed: `_resolve_sensitivity` still tightens-only (the new
+private_by_default branch sits after the explicit-"sensitive" early return, so
+it can only raise normal->sensitive, never downgrade); set_private_by_default
+is an upsert only, so turning the posture off never retroactively loosens stored
+sensitive rows; know_private_source/know_private_default run on the same
+token+loopback-authenticated handler as every know_* action and return only a
+pattern list and a boolean (no fact/edge text crosses to a model path); the
+private_by_default() SELECT on the add_candidate/relate path is consistent with
+the store's documented read-without-lock model. Each new guard has a failing-
+without-it test. Driven by CoreAI deeper REA (block taxonomy:
+CaptureBlockedUnknownSensitivity = deny-on-unknown). Two non-blocking items:
+
+### 1. GUI private-by-default checkbox hydrates inside the source-list fetch
+app.html -- if the know_private_source fetch fails, the checkbox stays unchecked
+while the posture may be on (display-only, no egress effect). Hydrate it from
+its own fetch or show a load error.
+
+### 2. private_by_default() read is unguarded by _lock on the hot ingest path
+knowledge.py -- consistent with the existing read pattern but now runs on every
+add_candidate/relate. Apply the store's noted "guard reads if contention shows"
+upgrade only if throughput ever matters (local single user, so not now).
