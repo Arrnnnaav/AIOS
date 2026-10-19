@@ -1518,3 +1518,36 @@ query text.
 ### 3. classify()/classify_edge() UPDATE any id with no store-level existence check — RESOLVED 2026-10-19
 Both now short-circuit to None when the fid/eid is absent (no pointless UPDATE),
 so a direct store caller gets an explicit None signal rather than a silent miss.
+
+## Company Brain source-scoped auto-sensitivity milestone review (D186) — 2026-10-19
+
+Independent tier-2 review of c215ede (private sources mark new facts/edges
+sensitive at ingestion; console private-source verbs). **Verdict: clean, no
+BLOCKING.** Rule 6 confirmed: `_resolve_sensitivity` only tightens (early-return
+on explicit "sensitive"; SENSITIVITIES has no third value, so the only lift is
+normal->sensitive, never a downgrade); the two INSERT choke points
+(add_candidate, relate) both call the resolver, and ingest()/import_scope()
+route through them, so no direct-INSERT path bypasses the gate; pattern and
+source are both whitespace-normalized and lowercased, and import_scope's
+"shared: " prefix still contains the matched substring; recall/related/
+connected/neighbors/export_scope sensitive-exclusion guards untouched.
+Driven by REA target #6 (Microsoft Recall / CoreAI, AIContextService.dll):
+their ScreenUnderstanding pipeline gates capture at the source
+(ExcludeBasedOnAppIdTargetPath, deny-on-unknown sensitivity). Four non-blocking
+items:
+
+### 1. GUI has no private-source control
+Reactive per-row 🔒 toggle exists; the GUI Brain panel has no way to register a
+private-source pattern. Console-only for now; add a small input to the panel.
+
+### 2. Marking a source does not retroactively tighten facts already ingested from it
+`mark_source_sensitive` gates future adds only. A reclassify-existing sweep on
+mark would close the window between an earlier ingest and the mark.
+
+### 3. unmark_source_sensitive no-ops on blank; mark raises
+Asymmetric: `mark_source_sensitive("  ")` raises ValueError, `unmark` returns
+False silently. Make them symmetric for clearer console feedback.
+
+### 4. _resolve_sensitivity re-queries sensitive_sources every add
+One SELECT per add_candidate/relate. Cache in memory or JOIN at insert if
+ingestion volume ever grows (local single-user, so not now).
