@@ -1733,3 +1733,25 @@ save.
 ### 2. save_transcript no-clobber suffix is unbounded in theory
 dictation.py -- bursts >1 capture/second grow -N suffixes; practically
 irrelevant (a human triggers each capture). Leave as-is.
+
+## Company Brain episodes review (D186, rec #3) — 2026-10-19
+
+Independent tier-2 review of 34ca7cb (episodes: facts trace to the raw input).
+**Verdict: clean, no BLOCKING.** Rule 6 verified: episode/episode_id/
+record_episode appear only in knowledge.py + the owner console; recall/related/
+neighbors/export_scope/export_markdown/import_scope never read the episodes
+table or episode text, so raw input cannot reach a model-bound or export path.
+Migration aligned (episode_id appended last in _SCHEMA, ALTER, and the Fact
+dataclass, so Fact(*row) stays aligned; pre-episode rows NULL, no crash).
+add_candidate INSERT column/value counts match. No auto-approve (episode linkage
+keeps status candidate). export/import round-trip unaffected. Two non-blocking:
+
+### 1. episode() reader takes no scope argument
+knowledge.py -- returns any episode by eid regardless of scope. Safe today
+(owner-only console; episode_of only follows a fact's own episode_id); add a
+scope guard if ever exposed beyond the console.
+
+### 2. Episodes have no retention/prune path
+knowledge.py -- the episodes table is not reached by expire/retire; raw inputs
+accumulate. Add a prune (e.g. drop episodes with no live fact, or an age cap) if
+volume ever matters. Local single user, so not now.
