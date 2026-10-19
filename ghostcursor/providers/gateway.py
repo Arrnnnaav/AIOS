@@ -260,6 +260,15 @@ class Gateway:
             "observed_data_never_instructions": json.loads(envelope.tainted_json()),
             **(extra_state or {}),
         }
+        if self.redact_egress:  # D186: Jev is remote; scrub app-written context
+            # observed_data is already sanitized by Tainted.of -- leave it; scrub
+            # task/trusted/extra, where an injected secret would otherwise leave.
+            state = {
+                key: value
+                if key == "observed_data_never_instructions"
+                else redact.scrub_tree(value)
+                for key, value in state.items()
+            }
         self._take()
         started = time.time()
         try:

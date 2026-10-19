@@ -63,6 +63,13 @@ def test_hardened_recognizers_catch_pem_jwt_and_bearer():
         assert mapping, f"{secret!r} left unredacted"
 
 
+def test_scrub_tree_scrubs_nested_string_leaves_only():
+    tree = {"a": "mail ada@acme.io", "b": ["card 4111 1111 1111 1111", 5], "n": 3}
+    out = redact.scrub_tree(tree)
+    assert "ada@acme.io" not in str(out) and "4111 1111 1111 1111" not in str(out)
+    assert out["n"] == 3 and 5 in out["b"]  # non-strings pass through unchanged
+
+
 def test_clean_text_is_unchanged_and_maps_empty():
     scrubbed, mapping = redact.scrub("the deploy runs in us-east-1 on tuesdays")
     assert mapping == {} and "us-east-1" in scrubbed

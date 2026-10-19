@@ -1631,12 +1631,11 @@ policy.redact_egress fails ON for unreadable/garbage on a managed machine, off
 only when absent; attribution logs digest only. D018 mutation-valid guard test
 present. Four non-blocking items:
 
-### 1. System-One/Jev path is a second un-redacted remote egress
-gateway.py _system_one (judge/injection_risk) sends envelope.trusted (app-
-written context, e.g. an injected Brain fact) raw to the remote TypeSafe
-endpoint even with redact_egress on. Scoped out of D186 (System Two only);
-tainted screen text is pre-scrubbed by Tainted.of, but trusted context is not.
-Gate this channel in a follow-on tier-1 slice.
+### 1. System-One/Jev path is a second un-redacted remote egress — RESOLVED 2026-10-19
+gateway._system_one now scrubs task/trusted/extra via redact.scrub_tree when
+redact_egress is on (observed_data left as-is -- already sanitized by
+Tainted.of). Added redact.scrub_tree (recursive string-leaf scrub for one-way
+paths). Tests: Jev trusted-context scrubbed-on / raw-off; scrub_tree unit.
 
 ### 2. redact_egress captured once at construction, not re-read per request
 gateway.py -- default_factory=policy.redact_egress runs at Gateway build; a

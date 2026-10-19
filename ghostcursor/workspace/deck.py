@@ -18,6 +18,28 @@ from __future__ import annotations
 from ghostcursor.providers import DECK_SPEC_SCHEMA, DeckSpec, Envelope, parse_deck_spec
 from ghostcursor.providers.envelope import Tainted
 
+
+def build_brief(spec: DeckSpec) -> str:
+    """Render a DeckSpec as an ordered, unambiguous build brief -- the goal the
+    EXISTING approved Teach/Act loop runs against real PowerPoint (the powerpoint
+    skill + observed controls decide the clicks; this says only WHAT to build).
+
+    This is the DeckSpec -> Act bridge and it is DATA: a string goal. It mints no
+    input, selects no control, and carries no execution authority. Act still asks
+    the user to approve the whole plan and acts only on observed controls."""
+
+    lines = [
+        f"Build this {len(spec.slides)}-slide PowerPoint deck titled "
+        f'"{spec.title}", one slide per item below, in order. For each slide set '
+        "its title and add its bullet points; use the slide layout named.",
+        "",
+    ]
+    for index, slide in enumerate(spec.slides, start=1):
+        lines.append(f"Slide {index} [{slide.layout.value}]: {slide.title}")
+        lines += [f"  - {bullet}" for bullet in slide.bullets]
+    return "\n".join(lines) + "\n"
+
+
 DECK_SYSTEM_PROMPT = (
     "You plan a presentation as a slide-by-slide outline. Return only a JSON "
     "object matching the schema you are given: a deck title and an ordered list "

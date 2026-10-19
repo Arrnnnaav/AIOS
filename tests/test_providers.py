@@ -451,6 +451,42 @@ def test_redact_egress_does_not_touch_a_local_provider(tmp_path):
     assert "4111 1111 1111 1111" in body and "ada@acme.io" in body  # local: unchanged
 
 
+def test_redact_egress_scrubs_jev_trusted_context(tmp_path):
+    """Egress FOLLOWUP #1: the System-One/Jev channel also sends app-written
+    trusted context to a remote endpoint; with RedactEgress on, a secret there
+    is scrubbed too (observed/tainted data was already sanitized by Tainted.of)."""
+
+    transport, calls = _transport(_jev({"choice": "c1"}))
+    gateway = Gateway(
+        transport=transport,
+        key_lookup=_keys(typesafe="k"),
+        log_path=tmp_path / "l",
+        redact_egress=True,
+    )
+    env = Envelope(
+        task="choose the control",
+        trusted={"context": "card 4111 1111 1111 1111 to ada@acme.io"},
+        tainted={"c1": Tainted.of("uia_name", "Save")},
+    )
+    gateway.choose(env, ("c1",), question="q")
+    body = calls[0].content.decode()
+    assert "4111 1111 1111 1111" not in body and "ada@acme.io" not in body
+
+
+def test_redact_egress_off_leaves_jev_trusted_context(tmp_path):
+    transport, calls = _transport(_jev({"choice": "c1"}))
+    gateway = Gateway(
+        transport=transport, key_lookup=_keys(typesafe="k"), log_path=tmp_path / "l"
+    )
+    env = Envelope(
+        task="choose the control",
+        trusted={"context": "mail ada@acme.io"},
+        tainted={"c1": Tainted.of("uia_name", "Save")},
+    )
+    gateway.choose(env, ("c1",), question="q")
+    assert "ada@acme.io" in calls[0].content.decode()
+
+
 # --- budget, attribution, cancellation -----------------------------------------------
 
 

@@ -105,6 +105,22 @@ def rehydrate(text: str, mapping: dict[str, str]) -> str:
     return text
 
 
+def scrub_tree(value):
+    """Scrub every string leaf of a JSON-like structure (str / dict / list /
+    tuple), returning a scrubbed copy; non-strings pass through. For a one-way
+    egress path (no rehydrate), e.g. the System-One/Jev state object -- the
+    placeholder map is dropped. Keys are left alone (they are field names, not
+    content)."""
+
+    if isinstance(value, str):
+        return scrub(value)[0]
+    if isinstance(value, dict):
+        return {k: scrub_tree(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [scrub_tree(v) for v in value]
+    return value
+
+
 def audit(mapping: dict[str, str]) -> dict[str, int]:
     """Category -> count of distinct values redacted. Safe to log/telemeter:
     it carries no raw value, only how many of each kind were held back."""

@@ -85,3 +85,26 @@ def test_plan_deck_rejects_an_empty_goal(tmp_path):
 
     with pytest.raises(ValueError):
         plan_deck(_gateway([], log_path=tmp_path / "l"), "   ")
+
+
+def test_build_brief_renders_every_slide_in_order():
+    """The DeckSpec -> Act bridge: a plain-string build goal the existing Teach/
+    Act loop runs. Data only -- it names what to build, not which control."""
+
+    from ghostcursor.providers import DeckSpec, Slide, SlideLayout
+    from ghostcursor.workspace.deck import build_brief
+
+    spec = DeckSpec(
+        title="Q3 Review",
+        slides=(
+            Slide("Q3 Review", (), SlideLayout.TITLE),
+            Slide("Wins", ("Shipped DLP", "3 accounts"), SlideLayout.BULLETS),
+        ),
+    )
+    brief = build_brief(spec)
+    assert "Q3 Review" in brief
+    assert "Slide 1 [title]: Q3 Review" in brief
+    assert "Slide 2 [bullets]: Wins" in brief
+    # bullets kept, in order, under their slide
+    assert brief.index("Shipped DLP") < brief.index("3 accounts")
+    assert "- Shipped DLP" in brief
