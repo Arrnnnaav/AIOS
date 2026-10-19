@@ -493,6 +493,20 @@ def test_know_relate_adds_a_candidate_edge_over_http(tmp_path):
         assert body["status"] == "candidate"
         e = kb.edge(body["eid"])
         assert (e.subject, e.predicate, e.object) == ("Acme", "uses", "PG")
+        assert e.sensitivity == "normal"  # unticked box -> normal
+        sb = json.loads(
+            call(
+                port,
+                "/api/know_relate",
+                {
+                    "subject": "Root",
+                    "predicate": "pw",
+                    "object": "x",
+                    "sensitive": True,
+                },
+            )[1]
+        )
+        assert kb.edge(sb["eid"]).sensitivity == "sensitive"  # private checkbox honored
         assert call(port, "/api/know_relate", {"subject": "A", "object": "B"})[0] >= 400
     finally:
         server.shutdown()

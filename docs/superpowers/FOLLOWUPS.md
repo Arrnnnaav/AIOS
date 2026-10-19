@@ -1506,10 +1506,9 @@ review); know_list/know_edges expose sensitive rows only to the local GUI panel.
 Prior review's FOLLOWUP #1 (edges had no sensitivity) is CLOSED by 0b8d8e1.
 Three non-blocking items:
 
-### 1. GUI add-link form has no sensitive toggle
-know_relate accepts a `sensitive` field but app.html's form never sends it, so
-the GUI only files normal (candidate) edges; owner must click Private after
-creation. Add a checkbox to the form if setting it at creation matters.
+### 1. GUI add-link form has no sensitive toggle — RESOLVED 2026-10-19
+Added a `private` checkbox to the add-link form; know_relate now carries
+`sensitive` so an edge can be born sensitive without a follow-up Private click.
 
 ### 2. `/know recall ... since:<days>` silently ignores a malformed token
 `since:` or `since:7d` folds back into the query text instead of erroring.
