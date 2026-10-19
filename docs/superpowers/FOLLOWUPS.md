@@ -1616,3 +1616,39 @@ test_export_redacts_embedded_secrets_before_egress asserts the raw email is
 absent from both the exported fact text and that redacted["EMAIL"]==1 (count),
 and test_workspace_redact asserts no raw value appears in str(audit). Removing
 the scrub call fails these. No action; recorded for the reviewer's open question.
+
+## Live-model egress DLP redaction TIER-1 review (D186) — 2026-10-19
+
+Independent tier-1 review of 6e14a8a (Gateway._outbound scrubs outbound
+System-Two text for remote providers; policy.redact_egress gate). **Verdict:
+clean, no BLOCKING.** Rule 6 verified: complete() is the only System-Two send
+site and plan() + all 6 real callers route through it, so no raw-messages path
+survives; _outbound re-runs per provider so a local->remote fallthrough still
+scrubs the remote leg; remote/local split fails safe (any provider not in
+LOCAL_PROVIDERS is scrubbed); no outbound field bypasses the scrub (schema is
+folded into the scrubbed system message; auth header carries only the key);
+policy.redact_egress fails ON for unreadable/garbage on a managed machine, off
+only when absent; attribution logs digest only. D018 mutation-valid guard test
+present. Four non-blocking items:
+
+### 1. System-One/Jev path is a second un-redacted remote egress
+gateway.py _system_one (judge/injection_risk) sends envelope.trusted (app-
+written context, e.g. an injected Brain fact) raw to the remote TypeSafe
+endpoint even with redact_egress on. Scoped out of D186 (System Two only);
+tainted screen text is pre-scrubbed by Tainted.of, but trusted context is not.
+Gate this channel in a follow-on tier-1 slice.
+
+### 2. redact_egress captured once at construction, not re-read per request
+gateway.py -- default_factory=policy.redact_egress runs at Gateway build; a
+RedactEgress policy pushed mid-session won't apply until a new Gateway (unlike
+max_egress, re-read per request). Benign (one Gateway per session) but
+inconsistent with policy._value's read-on-every-call intent.
+
+### 3. redact_egress field can be set below policy
+gateway.py -- Gateway(redact_egress=False) would override an enterprise
+RedactEgress=1, against "policy may only lower what leaves". No production
+caller does this; latent. Fix: effective = policy.redact_egress() or self.flag.
+
+### 4. Free-text passwords not matched (documented residual gap)
+redact.py -- regex recognizers miss "the password is swordfish". Over-redaction-
+favouring, but a known false-negative class; needs NER to close.
