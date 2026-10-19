@@ -76,6 +76,11 @@ CREATE VIRTUAL TABLE IF NOT EXISTS facts_fts
 -- not dropping: a sensitive source still records, it just stays off the model
 -- path until the owner opts in.
 CREATE TABLE IF NOT EXISTS sensitive_sources (pattern TEXT PRIMARY KEY);
+-- Small owner-settable store flags. 'private_by_default'='1' makes every new
+-- candidate sensitive at entry (deny-on-unknown) -- Orbyn's port of Recall's
+-- EnterpriseContext::CaptureBlockedUnknownSensitivity (D186): max-privacy
+-- posture where nothing reaches a model without an explicit unmark.
+CREATE TABLE IF NOT EXISTS brain_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
 
 
@@ -448,13 +453,34 @@ class Knowledge:
             )
         ]
 
+    def set_private_by_default(self, on: bool) -> None:
+        """Owner posture: when on, every new candidate enters 'sensitive' (deny-
+        on-unknown). Ported from Recall's CaptureBlockedUnknownSensitivity
+        (D186) -- nothing reaches a model without an explicit unmark."""
+
+        with self._lock, self._db:
+            self._db.execute(
+                "INSERT INTO brain_meta (key, value) VALUES ('private_by_default', ?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                ("1" if on else "0",),
+            )
+
+    def private_by_default(self) -> bool:
+        row = self._db.execute(
+            "SELECT value FROM brain_meta WHERE key='private_by_default'"
+        ).fetchone()
+        return row is not None and row[0] == "1"
+
     def _resolve_sensitivity(self, source: str, requested: str) -> str:
-        """Entry-time gate: an explicit 'sensitive' stays sensitive, and a
-        'normal' is lifted to 'sensitive' when the source matches a registered
-        private source. Only ever tightens, never loosens -- matches rule 6."""
+        """Entry-time gate: an explicit 'sensitive' stays sensitive; otherwise a
+        'normal' is lifted to 'sensitive' when the owner is private-by-default
+        or the source matches a registered private source. Only ever tightens,
+        never loosens -- matches rule 6."""
 
         if requested == "sensitive":
             return requested
+        if self.private_by_default():
+            return "sensitive"
         low = source.lower()
         for pat in self.sensitive_sources():
             if pat.lower() in low:

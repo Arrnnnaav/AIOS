@@ -339,7 +339,16 @@ class App:
                 ws.knowledge.unmark_source_sensitive(pat)
             elif pat:
                 ws.knowledge.mark_source_sensitive(pat)
-            return {"patterns": ws.knowledge.sensitive_sources()}
+            return {
+                "patterns": ws.knowledge.sensitive_sources(),
+                "private_by_default": ws.knowledge.private_by_default(),
+            }
+        if action == "know_private_default":  # deny-on-unknown posture (D186)
+            if ws.knowledge is None:
+                raise ValueError("no Company Brain")
+            if "on" in body:
+                ws.knowledge.set_private_by_default(bool(body.get("on")))
+            return {"private_by_default": ws.knowledge.private_by_default()}
         if action == "know_clip":  # GUI capture of the clipboard (owner-initiated)
             if ws.knowledge is None:
                 raise ValueError("no Company Brain")

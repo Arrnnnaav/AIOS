@@ -163,6 +163,7 @@ KNOW_USAGE = (
     "review-edge <id>  |  expire <id>  |  expire-edge <id>  |  "
     "private[-edge] <id>  |  unmark[-edge] <id>  |  "
     "private-source <pattern>  |  unmark-source <pattern>  |  private-sources  |  "
+    "private-default [on|off]  |  "
     "conflicts  |  recall <query> [since:<days>]"
 )
 
@@ -350,6 +351,15 @@ def know_command(knowledge, scope: str, args: list[str]) -> str:
     if verb == "private-sources":
         pats = knowledge.sensitive_sources()
         return "\n".join(pats) or "(no private sources)"
+    if verb == "private-default":
+        arg = rest.strip().lower()
+        if arg in ("on", "off"):
+            knowledge.set_private_by_default(arg == "on")
+        elif arg:
+            return "private-default wants 'on' or 'off' (or nothing to show state)"
+        return (
+            f"private-by-default is {'on' if knowledge.private_by_default() else 'off'}"
+        )
     if verb == "conflicts":
         pairs = knowledge.conflicts(scope)
         return (

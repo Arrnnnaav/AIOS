@@ -230,6 +230,14 @@ def test_know_command_owner_review_path(tmp_path):
     assert run("unmark-source", "1Password") == "removed"
     assert run("unmark-source", "1Password") == "no such sensitive-source pattern"
     assert run("private-sources") == "(no private sources)"
+
+    # private-default posture: deny-on-unknown toggle
+    assert run("private-default") == "private-by-default is off"
+    assert run("private-default", "on") == "private-by-default is on"
+    assert "candidate #7" in run("add", "chat", "|", "another note")  # candidate...
+    assert k.get(7).sensitivity == "sensitive"  # ...sensitive at entry under posture
+    assert run("private-default", "off") == "private-by-default is off"
+    assert run("private-default", "maybe").startswith("private-default wants")
     k.close()
 
 
@@ -765,3 +773,22 @@ def test_sensitive_source_marks_new_knowledge_private_at_entry(kn):
 
     with pytest.raises(ValueError):
         kn.mark_source_sensitive("   ")
+
+
+def test_private_by_default_denies_on_unknown(kn):
+    """Deny-on-unknown posture (D186, Recall port): when on, every new candidate
+    enters sensitive regardless of source; off restores normal. Only tightens --
+    an explicit sensitive is unaffected either way."""
+
+    assert kn.private_by_default() is False
+    kn.set_private_by_default(True)
+    assert kn.private_by_default() is True
+
+    f = kn.add_candidate("anything", source="random chat", scope="acme")
+    assert f.sensitivity == "sensitive"  # unmatched source, but posture is deny
+    e = kn.relate("A", "rel", "B", source="random", scope="acme")
+    assert e.sensitivity == "sensitive"
+
+    kn.set_private_by_default(False)
+    g = kn.add_candidate("later", source="random chat", scope="acme")
+    assert g.sensitivity == "normal"  # posture off -> back to allow-by-default
