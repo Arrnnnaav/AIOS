@@ -1691,3 +1691,31 @@ tuple identity. None does today.
 
 ### 3. Free-text passwords still unmatched (known residual gap)
 redact.py -- applies to this egress path too; needs NER to close. Documented.
+
+## Deep research -> Company Brain review (D186) — 2026-10-19
+
+Independent tier-2 review of 8c51a98 (deep_research: decompose -> cited research
+per sub-question -> file cited claims to the Brain). **Verdict: clean, no
+BLOCKING.** Verified: _file_cited_claims files only SUPPORTED/PARTIAL (cited)
+claims (UNRESOLVED/CONTRADICTED skipped); research()'s citation discipline
+(parse_claims offered-ids + graph.validate) untouched; filed facts are
+CANDIDATES only (never auto-approved; recall excludes candidates, so web content
+can't be model-recalled without owner review); provenance = cited page URL;
+plan_research adds no new egress channel (reuses gateway.complete + the research
+envelope under existing policy gates); planning failure falls back to one pass,
+empty question raises, file_to_brain without knowledge/scope is a no-op. Items:
+
+### 1. A cited Source with an empty url filed a blank source — RESOLVED 2026-10-19
+_file_cited_claims now requires `source and source.url` before using it, else the
+"research" fallback.
+
+### 2. No test that UNRESOLVED/CONTRADICTED claims are not filed — RESOLVED 2026-10-19
+Added test_only_cited_claims_are_filed_not_unresolved_or_contradicted: a mixed
+supported+unresolved answer files only the supported claim (guards the status
+gate per hard-rule 8).
+
+### 3. Filed candidates default to sensitivity "normal"
+research.py -- fine today (recall excludes candidates), but when a candidate is
+promoted to reviewed/approved it should respect the deny-on-unknown posture /
+source-sensitivity rules. Revisit if deep-research filing feeds an auto-promote
+path.

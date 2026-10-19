@@ -614,7 +614,7 @@ def _file_cited_claims(graph: EvidenceGraph, knowledge, scope: str) -> int:
             (graph.source_of(pid) for pid in claim.evidence if graph.source_of(pid)),
             None,
         )
-        url = source.url if source else "research"
+        url = source.url if source and source.url else "research"
         actions = knowledge.ingest([claim.text], source=url, scope=scope)
         filed += sum(1 for action, _ in actions if action == "added")
     return filed

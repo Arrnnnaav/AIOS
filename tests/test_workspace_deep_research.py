@@ -78,6 +78,44 @@ def test_deep_research_files_cited_claims_into_the_brain(tmp_path):
     kb.close()
 
 
+def test_only_cited_claims_are_filed_not_unresolved_or_contradicted(tmp_path):
+    """Guard (hard-rule 8): only SUPPORTED/PARTIAL (cited) claims become Brain
+    candidates; an UNRESOLVED or CONTRADICTED claim is never filed."""
+
+    kb = Knowledge(tmp_path / "k.sqlite")
+
+    class MixedClaimsGateway(PlanThenClaimsGateway):
+        def complete(self, envelope, system, schema, parse, **kw):
+            if "subquestions" in schema.get("properties", {}):
+                return parse(json.dumps({"subquestions": ["only one"]}))
+            return parse(
+                json.dumps(
+                    {
+                        "claims": [
+                            {
+                                "text": "Prod runs in us-east-1.",
+                                "status": "supported",
+                                "evidence": ["p1"],
+                            },
+                            {
+                                "text": "It is the fastest cloud.",
+                                "status": "unresolved",
+                                "evidence": [],
+                            },
+                        ]
+                    }
+                )
+            )
+
+    report = _deep(
+        MixedClaimsGateway([]), tmp_path, knowledge=kb, scope="acme", file_to_brain=True
+    )
+    assert report.filed_to_brain == 1  # only the supported claim
+    texts = [f.text for f in kb.list(scope="acme", status="candidate")]
+    assert texts == ["Prod runs in us-east-1."]  # the unresolved one is absent
+    kb.close()
+
+
 def test_deep_research_falls_back_to_one_pass_when_planning_fails(tmp_path):
     from ghostcursor.providers.errors import FailureKind, ProviderError
 
