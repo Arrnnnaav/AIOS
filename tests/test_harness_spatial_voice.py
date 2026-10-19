@@ -22,7 +22,7 @@ from ghostcursor.harness import (
 from ghostcursor.harness.spatial import SpatialReference, mark_score, point
 from ghostcursor.harness.teach import ModelTeachSession, Verdict, gate
 from ghostcursor.providers import ABSTAIN, Choice
-from ghostcursor.voice import filter_whisper, strip_fillers
+from ghostcursor.voice import apply_numbers, filter_whisper, strip_fillers
 
 IDS = {11: Identity(1, "powerpnt.exe", "16")}
 (W1,) = bind([11], identify_window=IDS.get, own_pid=999)
@@ -123,6 +123,18 @@ def test_voice_cleanup_drops_hallucinations_and_fillers():
     assert strip_fillers("um, add add a uh slide") == "add a slide"
 
 
+def test_spoken_numbers_become_digits_in_the_goal():
+    """apply_numbers cleans a spoken GOAL (rule-safe string transform, ported
+    from SayStride): spoken numbers -> digits, with % and $ units."""
+
+    assert apply_numbers("resize to twenty five percent") == "resize to 25%"
+    assert apply_numbers("charge twenty dollars") == "charge $20"
+    assert apply_numbers("two thousand twenty four rows") == "2024 rows"
+    assert apply_numbers("about fifty thousand users") == "about 50,000 users"
+    # small bare numbers under ten are left as words (not every "one" is a digit)
+    assert apply_numbers("click the one button") == "click the one button"
+
+
 def test_a_mark_in_one_window_never_matches_a_twin_id_in_another():
     ids = {11: Identity(1, "powerpnt.exe", "16"), 22: Identity(2, "chrome.exe", "1")}
     w1, w2 = bind([11, 22], identify_window=ids.get, own_pid=999)
@@ -131,8 +143,20 @@ def test_a_mark_in_one_window_never_matches_a_twin_id_in_another():
         1,
         0.0,
         [
-            WindowObservation(w1, (0, 0, 400, 400), (RawControl(same, "Insert", "TabItem", (10, 10, 60, 40), True, False),)),
-            WindowObservation(w2, (500, 0, 900, 400), (RawControl(same, "Insert", "TabItem", (510, 10, 560, 40), True, False),)),
+            WindowObservation(
+                w1,
+                (0, 0, 400, 400),
+                (RawControl(same, "Insert", "TabItem", (10, 10, 60, 40), True, False),),
+            ),
+            WindowObservation(
+                w2,
+                (500, 0, 900, 400),
+                (
+                    RawControl(
+                        same, "Insert", "TabItem", (510, 10, 560, 40), True, False
+                    ),
+                ),
+            ),
         ],
     )
     mark = SpatialReference.from_mark(point(30, 25), frame)
@@ -164,8 +188,12 @@ def test_esc_during_the_point_prompt_aborts_the_session():
     from ghostcursor.harness.teach_live import ABORTED, take_mark
 
     result = take_mark(
-        _Observer(_frame()), 100.0, escape=lambda: True, enter=lambda: True,
-        cursor=lambda: (100, 25), clock=_ticks(),
+        _Observer(_frame()),
+        100.0,
+        escape=lambda: True,
+        enter=lambda: True,
+        cursor=lambda: (100, 25),
+        clock=_ticks(),
     )
     assert result is ABORTED
 
@@ -175,8 +203,12 @@ def test_the_session_deadline_bounds_the_point_prompt(monkeypatch):
 
     monkeypatch.setattr(teach_live.time, "sleep", lambda _: None)
     result = teach_live.take_mark(
-        _Observer(_frame()), 5.0, escape=lambda: False, enter=lambda: False,
-        cursor=lambda: (100, 25), clock=_ticks(),
+        _Observer(_frame()),
+        5.0,
+        escape=lambda: False,
+        enter=lambda: False,
+        cursor=lambda: (100, 25),
+        clock=_ticks(),
     )
     assert result is teach_live.ABORTED
 
@@ -189,13 +221,21 @@ def test_enter_marks_the_control_under_the_cursor(monkeypatch):
 
     frame = _frame()
     mark = take_mark(
-        _Observer(frame), 100.0, escape=lambda: False, enter=lambda: True,
-        cursor=lambda: (100, 25), clock=_ticks(),
+        _Observer(frame),
+        100.0,
+        escape=lambda: False,
+        enter=lambda: True,
+        cursor=lambda: (100, 25),
+        clock=_ticks(),
     )
     assert [c.name for c in mark.current(frame)] == ["Insert"]
     nothing = take_mark(
-        _Observer(frame), 100.0, escape=lambda: False, enter=lambda: True,
-        cursor=lambda: (800, 500), clock=_ticks(),
+        _Observer(frame),
+        100.0,
+        escape=lambda: False,
+        enter=lambda: True,
+        cursor=lambda: (800, 500),
+        clock=_ticks(),
     )
     assert nothing is teach_live.ABORTED  # asked again until the deadline
 
@@ -213,11 +253,15 @@ def test_run_model_teach_uses_one_deadline_and_stops_on_abort(monkeypatch):
 
     monkeypatch.setattr(teach_live, "take_mark", fake_take_mark)
     monkeypatch.setattr(
-        teach_live.window, "create_overlay_window",
+        teach_live.window,
+        "create_overlay_window",
         lambda **k: (_ for _ in ()).throw(AssertionError("overlay after abort")),
     )
     monkeypatch.setattr(teach_live.time, "monotonic", lambda: 1000.0)
-    assert teach_live.run_model_teach("g", [11], seconds=60, gateway=object(), point=True) == 0
+    assert (
+        teach_live.run_model_teach("g", [11], seconds=60, gateway=object(), point=True)
+        == 0
+    )
     assert seen["deadline"] == 1060.0
 
 
@@ -242,7 +286,9 @@ def test_time_spent_pointing_counts_against_the_session(monkeypatch):
     monkeypatch.setattr(teach_live.time, "sleep", lambda _: None)
     monkeypatch.setattr(teach_live, "_escape_pressed", lambda: False)
     monkeypatch.setattr(teach_live, "_console_enter", lambda: False)
-    monkeypatch.setattr(teach_live.window, "create_overlay_window", lambda **k: "overlay")
+    monkeypatch.setattr(
+        teach_live.window, "create_overlay_window", lambda **k: "overlay"
+    )
     monkeypatch.setattr(teach_live.window, "destroy_overlay_window", lambda o: None)
     monkeypatch.setattr(teach_live.window, "pump_messages_nonblocking", lambda: None)
     monkeypatch.setattr(teach_live.window, "clear_hint", lambda o: drawn.append(o))
@@ -251,7 +297,8 @@ def test_time_spent_pointing_counts_against_the_session(monkeypatch):
 
 
 @pytest.mark.parametrize(
-    "esc, stop, late", [(True, False, False), (False, True, False), (False, False, True)]
+    "esc, stop, late",
+    [(True, False, False), (False, True, False), (False, False, True)],
 )
 def test_the_guidance_loop_ends_on_esc_its_stop_hook_or_the_deadline(
     monkeypatch, esc, stop, late
@@ -279,12 +326,19 @@ def test_the_guidance_loop_ends_on_esc_its_stop_hook_or_the_deadline(
     monkeypatch.setattr(teach_live, "ModelTeachSession", Session)
     monkeypatch.setattr(teach_live.time, "monotonic", lambda: next(times))
     monkeypatch.setattr(teach_live, "_escape_pressed", lambda: esc)
-    monkeypatch.setattr(teach_live.window, "create_overlay_window", lambda **k: "overlay")
+    monkeypatch.setattr(
+        teach_live.window, "create_overlay_window", lambda **k: "overlay"
+    )
     monkeypatch.setattr(teach_live.window, "destroy_overlay_window", lambda o: None)
     said = []
     teach_live.run_model_teach(
-        "g", [11], seconds=60, gateway=object(), say=said.append,
-        confirm=lambda: False, stop=lambda: stop,
+        "g",
+        [11],
+        seconds=60,
+        gateway=object(),
+        say=said.append,
+        confirm=lambda: False,
+        stop=lambda: stop,
     )
     assert said[-1] in ("Stopped - exiting.", "Time limit reached - exiting.")
 
@@ -322,8 +376,14 @@ def _enter_never(limit=5):
 
 def test_esc_or_the_deadline_cancels_dictation():
     assert _voice(escape=lambda: True, enter=_enter_never()) is None  # before speaking
-    assert _voice(escape=lambda: True, record=lambda stop: (stop(), [0.1])[1],
-                  enter=iter([True, False, False]).__next__) is None  # while speaking
+    assert (
+        _voice(
+            escape=lambda: True,
+            record=lambda stop: (stop(), [0.1])[1],
+            enter=iter([True, False, False]).__next__,
+        )
+        is None
+    )  # while speaking
     assert _voice(clock=lambda: 200.0, enter=_enter_never()) is None
     now = [0.0]
 
@@ -331,16 +391,25 @@ def test_esc_or_the_deadline_cancels_dictation():
         now[0] = 200.0
         return ""
 
-    assert _voice(clock=lambda: now[0], ask=slow_confirm) is None  # passed while confirming
+    assert (
+        _voice(clock=lambda: now[0], ask=slow_confirm) is None
+    )  # passed while confirming
 
 
 def test_the_confirm_prompt_stops_on_esc_or_deadline_without_input():
     from ghostcursor.voice import read_line
 
     keys = iter("ab\b\r")
-    assert read_line("p", lambda: False, getch=lambda: next(keys), kbhit=lambda: True) == "a"
-    assert read_line("p", lambda: False, getch=lambda: "\x1b", kbhit=lambda: True) is None
-    assert read_line("p", lambda: True, getch=_enter_never(), kbhit=_enter_never()) is None
+    assert (
+        read_line("p", lambda: False, getch=lambda: next(keys), kbhit=lambda: True)
+        == "a"
+    )
+    assert (
+        read_line("p", lambda: False, getch=lambda: "\x1b", kbhit=lambda: True) is None
+    )
+    assert (
+        read_line("p", lambda: True, getch=_enter_never(), kbhit=_enter_never()) is None
+    )
 
 
 def test_dictation_uses_the_polling_prompt_by_default(monkeypatch):

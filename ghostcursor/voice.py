@@ -62,6 +62,135 @@ def strip_fillers(text: str) -> str:
     return re.sub(r"^[,\s]+", "", re.sub(r"[ \t]{2,}", " ", text)).strip()
 
 
+# Spoken-number conversion ("twenty five percent" -> "25%"), ported from
+# SayStride (rules.apply_numbers/_parse_number, same author). Deterministic
+# string cleanup of the spoken GOAL -- it never types into another application
+# (rule 1): the transcript only becomes Orbyn's own goal string.
+_SMALL = dict(
+    zip(
+        "zero one two three four five six seven eight nine ten eleven twelve "
+        "thirteen fourteen fifteen sixteen seventeen eighteen nineteen".split(),
+        range(20),
+    )
+)
+_SMALL.update(
+    {"twenty": 20, "thirty": 30, "forty": 40, "fifty": 50,
+     "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90}
+)  # fmt: skip
+_SCALES = {"hundred": 100, "thousand": 1000, "million": 1_000_000,
+           "billion": 1_000_000_000, "trillion": 1_000_000_000_000}  # fmt: skip
+_BIG = {"million", "billion", "trillion"}
+
+
+def _parse_number(tokens: list[str], start: int):
+    def clean(i):
+        return tokens[i].lower().strip(",.!?")
+
+    first = clean(start)
+    try:
+        value = float(first.replace(",", ""))
+        n = 1
+        scale = clean(start + 1) if start + 1 < len(tokens) else ""
+        if scale in _BIG:
+            value *= _SCALES[scale]
+            n += 1
+        return value, "." in first, scale if scale in _BIG else None, n
+    except ValueError:
+        pass
+    total = current = 0.0
+    i, decimal, factor, scale, seen = start, False, 0.1, None, False
+    while i < len(tokens):
+        w = clean(i)
+        if decimal:
+            if w in _SMALL and _SMALL[w] < 10:
+                total += _SMALL[w] * factor
+                factor /= 10
+                i += 1
+                continue
+            if w in _BIG:
+                total *= _SCALES[w]
+                scale = w
+                i += 1
+            break
+        if w in {"a", "an"} and i + 1 < len(tokens) and clean(i + 1) in _SCALES:
+            current = 1
+            seen = True
+        elif w in _SMALL:
+            current += _SMALL[w]
+            seen = True
+        elif w in _SCALES and seen:
+            if w == "hundred":
+                current = (current or 1) * 100
+            else:
+                total += (current or 1) * _SCALES[w]
+                current = 0
+                scale = w if w in _BIG else None
+        elif (
+            w == "and"
+            and seen
+            and i + 1 < len(tokens)
+            and clean(i + 1) in _SMALL | _SCALES
+        ):
+            pass
+        elif (
+            w == "point"
+            and seen
+            and i + 1 < len(tokens)
+            and clean(i + 1) in _SMALL
+            and _SMALL[clean(i + 1)] < 10
+        ):
+            decimal = True
+            total += current
+            current = 0
+        else:
+            break
+        i += 1
+    return (total + current, decimal, scale, i - start) if seen else None
+
+
+def apply_numbers(text: str) -> str:
+    """Spoken numbers -> digits, with $ and % units. From SayStride."""
+
+    tokens = text.split(" ")
+    i = 0
+    while i < len(tokens):
+        parsed = _parse_number(tokens, i)
+        if not parsed:
+            i += 1
+            continue
+        value, decimal, scale, count = parsed
+        end = i + count
+        nxt = tokens[end].lower().strip(",.!?") if end < len(tokens) else ""
+        unit = (
+            "$"
+            if nxt in {"dollar", "dollars", "bucks"}
+            else "%"
+            if nxt == "percent"
+            else ""
+        )
+        if unit:
+            end += 1
+        if not (value >= 10 or decimal or unit or scale):
+            i += 1
+            continue
+        if not unit and not scale and tokens[i][:1].isdigit():
+            i += 1
+            continue
+        if scale in _BIG:
+            body = f"{value / _SCALES[scale]:g} {scale}"
+        elif decimal:
+            body = f"{value:g}"
+        else:
+            body = f"{int(value):,}" if value >= 10_000 else str(int(value))
+        punct = re.search(r"[,.!?]+$", tokens[end - 1])
+        replacement = ("$" + body if unit == "$" else body + unit) + (
+            punct.group() if punct else ""
+        )
+        tokens[i:end] = [replacement]
+        i += 1
+    return " ".join(tokens)
+
+
 def record_until(stop) -> "object":
     """Microphone samples (float32 mono, 16 kHz) until ``stop()`` is true or
     MAX_SECONDS pass."""
@@ -98,8 +227,10 @@ def transcribe(samples) -> str:
     segments, _ = model.transcribe(samples, language="en", beam_size=1, vad_filter=True)
     segments = list(segments)
     text = " ".join(s.text.strip() for s in segments)
-    return strip_fillers(
-        filter_whisper(text, [vars(s) for s in segments], len(samples) / RATE)
+    return apply_numbers(
+        strip_fillers(
+            filter_whisper(text, [vars(s) for s in segments], len(samples) / RATE)
+        )
     )
 
 
