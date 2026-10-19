@@ -1755,3 +1755,17 @@ scope guard if ever exposed beyond the console.
 knowledge.py -- the episodes table is not reached by expire/retire; raw inputs
 accumulate. Add a prune (e.g. drop episodes with no live fact, or an age cap) if
 volume ever matters. Local single user, so not now.
+
+## Auto-guide renderer review (D186, rec #1) — 2026-10-19
+
+Independent tier-2 review of the guide.py commit. **Verdict: clean, no
+BLOCKING.** Inert data (imports only redact; no Act/harness/synthesis; returns a
+string, executes nothing). Rule 6 on the share path: title + instruction + text
+all routed through redact.scrub when redact_pii=True; the action-phrasing line
+uses the already-scrubbed text; no field bypasses. Default is redact_pii=True
+(verbatim only on explicit False). Empty plan raises; text/action via getattr
+defaults. One non-blocking item:
+
+### 1. _step_line reads step.instruction directly (not getattr)
+guide.py -- a duck-typed step lacking `instruction` would AttributeError instead
+of a clean message. Real TeachPlan always has it; robustness only.
