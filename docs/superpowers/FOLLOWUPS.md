@@ -1582,3 +1582,37 @@ its own fetch or show a load error.
 knowledge.py -- consistent with the existing read pattern but now runs on every
 add_candidate/relate. Apply the store's noted "guard reads if contention shows"
 upgrade only if throughput ever matters (local single user, so not now).
+
+## Company Brain pre-egress DLP redaction milestone review (D186) — 2026-10-19
+
+Independent review of 8e748d7 (redact.py scrub/rehydrate/audit + redact-by-
+default on export_scope/export_markdown). **Verdict: clean, no BLOCKING.** Rule 6
+confirmed: audit() and the export `redacted` field carry category names + int
+counts only (built purely from redact.audit().items()); the reversible mapping
+holding raw originals is local to scrub and discarded by export_scope (not
+stored, logged, or rendered); scrub is tighten-only (replaces a matched
+substring or leaves a non-Luhn card unchanged, never injects originals into
+clean text); sensitive facts/edges still excluded entirely, independent of
+redaction; no ReDoS (each recognizer has at most one unbounded quantifier with a
+following anchor/literal, no nesting); Luhn gate correct. Driven by REA target #7
+(Microsoft Purview / Defender Endpoint DLP, endpointdlp.dll + MipDlp.dll:
+regex classification behind Allow/Block blanket policy; MS ships PII classifiers
+as policy, not in the client). Three non-blocking items:
+
+### 1. KEY recognizer recall ceiling (harden before the tier-1 BYOK-prompt wiring)
+redact.py -- the KEY pattern catches common provider-prefixed tokens (sk-/ghp_/
+xox...) but not generic bearer tokens, passwords, or PEM blocks; those leak
+verbatim. Acceptable on the owner-initiated export path; MUST be hardened before
+scrub/rehydrate is wired into the live BYOK model prompt (where egress is to a
+cloud model). Noted as a deliberate ceiling in the module docstring.
+
+### 2. Edge predicate is not scrubbed
+knowledge.py export -- only subject/object/source are redacted; predicate is
+left verbatim. Fine while predicates are a controlled relation vocabulary; add a
+scrub if predicates can ever carry free text.
+
+### 3. (rule 8) test pins no-raw-value in the export -- CONFIRMED PRESENT
+test_export_redacts_embedded_secrets_before_egress asserts the raw email is
+absent from both the exported fact text and that redacted["EMAIL"]==1 (count),
+and test_workspace_redact asserts no raw value appears in str(audit). Removing
+the scrub call fails these. No action; recorded for the reviewer's open question.
