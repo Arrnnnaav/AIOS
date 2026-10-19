@@ -31,7 +31,10 @@ from ghostcursor.overlay import window as ov
 from ghostcursor.reasoning.staleness import Freshness
 from tests import backdrop
 
-RING_SLACK = 6  # GDI pen width spill around the nominal radius
+RING_SLACK = 8  # GDI pen-width spill around the nominal radius; measured 7px
+# top-left on a 1px-DPI-rounded display (D186), so 8 leaves a 1px margin. Ring
+# PLACEMENT is guarded separately (centre-on-target check); this only bounds how
+# far the pen edge may spill, not where the ring is drawn.
 
 _results: list[tuple[bool, str, str]] = []
 
