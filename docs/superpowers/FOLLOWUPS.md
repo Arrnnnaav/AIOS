@@ -1712,3 +1712,24 @@ research.py -- fine today (recall excludes candidates), but when a candidate is
 promoted to reviewed/approved it should respect the deny-on-unknown posture /
 source-sensitivity rules. Revisit if deep-research filing feeds an auto-promote
 path.
+
+## Voice: spoken-number cleanup + on-demand dictation review (D186) — 2026-10-19
+
+Independent review of 771c74b (apply_numbers) + 7a7d9b0 (dictation). **Verdict:
+clean, no BLOCKING.** Rule 1 holds: grep of dictation.py/voice.py for
+SendInput/keybd_event/mouse/PostMessage/Invoke/paste/clipboard/pywinauto/
+send_keys found only the prose comment forbidding synthesis -- no second
+synthesis path; test_no_input_synthesis passes. apply_numbers is a pure string
+transform on Orbyn's own goal (small bare number-words left as words). /dictate
+only saves (file or Brain candidate, status candidate, not auto-usable), never
+types into an app. save_transcript writes only under the dictations dir with a
+timestamp filename (no path traversal from spoken text). Audio stays in memory;
+nothing leaves the device. Two non-blocking items:
+
+### 1. /dictate brain with no Brain fell through to a file silently — RESOLVED 2026-10-19
+Now prints "no Company Brain here; saving to a file instead." before the file
+save.
+
+### 2. save_transcript no-clobber suffix is unbounded in theory
+dictation.py -- bursts >1 capture/second grow -N suffixes; practically
+irrelevant (a human triggers each capture). Leave as-is.

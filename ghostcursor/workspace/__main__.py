@@ -455,6 +455,8 @@ def main(argv: list[str] | None = None) -> int:
                 said = dictate_goal(time.monotonic() + 120)
                 if not said:
                     continue
+                if rest.strip() == "brain" and workspace.knowledge is None:
+                    print("no Company Brain here; saving to a file instead.")
                 if rest.strip() == "brain" and workspace.knowledge is not None:
                     fid = dictation.to_brain(
                         said, workspace.knowledge, workspace.kb_scope
