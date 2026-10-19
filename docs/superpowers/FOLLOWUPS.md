@@ -1599,12 +1599,12 @@ following anchor/literal, no nesting); Luhn gate correct. Driven by REA target #
 regex classification behind Allow/Block blanket policy; MS ships PII classifiers
 as policy, not in the client). Three non-blocking items:
 
-### 1. KEY recognizer recall ceiling (harden before the tier-1 BYOK-prompt wiring)
-redact.py -- the KEY pattern catches common provider-prefixed tokens (sk-/ghp_/
-xox...) but not generic bearer tokens, passwords, or PEM blocks; those leak
-verbatim. Acceptable on the owner-initiated export path; MUST be hardened before
-scrub/rehydrate is wired into the live BYOK model prompt (where egress is to a
-cloud model). Noted as a deliberate ceiling in the module docstring.
+### 1. KEY recognizer recall ceiling — RESOLVED 2026-10-19
+Before wiring redaction into the live model path, added PEM private-key blocks,
+JWTs, and bearer/authorization credentials to the recognizers (ghostcursor/
+redact.py; moved to core from workspace so providers may import it without a
+layering cycle). Free-text passwords remain the documented residual gap (no
+reliable regex). Wired into the gateway egress path in the same milestone.
 
 ### 2. Edge predicate is not scrubbed
 knowledge.py export -- only subject/object/source are redacted; predicate is

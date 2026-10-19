@@ -28,7 +28,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import redact
+from ghostcursor import redact
 
 ENV_PATH = "ORBYN_KNOWLEDGE_PATH"
 # superseded: replaced by a newer fact, kept as history (Graphiti/Zep's

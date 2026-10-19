@@ -2,7 +2,7 @@
 every entity category is caught, the audit never carries a raw value, and the
 round-trip is exact."""
 
-from ghostcursor.workspace import redact
+from ghostcursor import redact
 
 
 def test_scrub_catches_every_category_and_never_leaks_in_the_audit():
@@ -42,6 +42,25 @@ def test_luhn_gate_keeps_plain_long_numbers_off_the_card_tag():
     # a non-Luhn run is never recorded under a CARD placeholder
     _, mapping = redact.scrub("order 1234567890123")
     assert not any(p.startswith("[CARD") for p in mapping)
+
+
+def test_hardened_recognizers_catch_pem_jwt_and_bearer():
+    """FOLLOWUP #1 before the live-model egress path: PEM private-key blocks,
+    JWTs, and bearer/authorization credentials must not leak verbatim."""
+
+    pem = (
+        "-----BEGIN RSA PRIVATE KEY-----\nMIIBOgIBAAJBAK\n-----END RSA PRIVATE KEY-----"
+    )
+    jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NSJ9.dozjgNryP4J3jVmNHl0w5N"
+    bearer = "Authorization: Bearer abcDEF123456xyz789"
+    for secret, leak in (
+        (pem, "MIIBOgIBAAJBAK"),  # key body must not survive
+        (jwt, jwt),
+        (bearer, "abcDEF123456xyz789"),
+    ):
+        scrubbed, mapping = redact.scrub(f"here: {secret} end")
+        assert leak not in scrubbed, f"{leak!r} leaked"
+        assert mapping, f"{secret!r} left unredacted"
 
 
 def test_clean_text_is_unchanged_and_maps_empty():

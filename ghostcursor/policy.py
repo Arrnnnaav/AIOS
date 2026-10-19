@@ -6,6 +6,9 @@ lowers what the user may switch on; with no policy, behaviour is unchanged.
 
 - ``MaxEgress`` (DWORD): 0 local only -- nothing leaves, only the local model
   answers; 1 text -- the redacted model view; 2 text and pictures (D179).
+- ``RedactEgress`` (DWORD): 0 off (default); 1 on -- scrub embedded secrets
+  (email/card/SSN/key/...) out of text bound for a remote model (D186). Absent
+  leaves it off (unchanged behaviour); present but unreadable fails safe to on.
 - ``BlockedApps`` (REG_SZ): executables never bound, ``;``-separated.
 """
 
@@ -44,6 +47,23 @@ def max_egress() -> int:
         return min(PICTURES, max(LOCAL, int(value)))
     except (TypeError, ValueError):
         return LOCAL  # an unreadable policy fails closed
+
+
+def redact_egress() -> bool:
+    """Should embedded secrets be scrubbed from text bound for a REMOTE model?
+    Default off (no policy -> unchanged behaviour); present but unreadable fails
+    safe to on, since a managed machine asked for the guard."""
+
+    value = _value("RedactEgress")
+    if value is None:
+        return False
+    if value == "unreadable":
+        return True  # policy present but unreadable: fail safe to redacting
+    try:
+        return int(value) >= 1
+    except (TypeError, ValueError):
+        return True  # garbage value on a managed machine: fail safe
+    return False
 
 
 def blocked_apps() -> frozenset[str]:

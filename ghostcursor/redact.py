@@ -13,10 +13,13 @@ restore values stays with the caller and is never part of what leaves. `audit`
 reports category counts only, so telemetry/logs carry no PII.
 
 ponytail: regex recognizers with a Luhn gate on card numbers -- a deliberate,
-known ceiling (no ML/NER, no checksum on SSN/IBAN). It favours over-redaction
-(a false positive only replaces a non-secret with a placeholder; a false
-negative leaks). Upgrade path: add Presidio/GLiNER as a second pass if recall
-ever matters more than staying local and dependency-free.
+known ceiling (no ML/NER, no checksum on SSN/IBAN). Covers email, card, SSN,
+provider/bearer keys, PEM private-key blocks, JWTs, IBAN, IP, phone. Free-text
+passwords ("the password is swordfish") stay out of reach of regex and are the
+known residual gap. It favours over-redaction (a false positive only replaces a
+non-secret with a placeholder; a false negative leaks). Upgrade path: add
+Presidio/GLiNER as a second pass if recall ever matters more than staying local
+and dependency-free.
 """
 
 from __future__ import annotations
@@ -27,8 +30,20 @@ import re
 # eaten by the loose phone pattern, etc. Each match becomes a stable
 # placeholder [CATEGORY_n] (n per distinct original value within one scrub).
 _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
+    # PEM FIRST so the whole key block goes before EMAIL eats an address inside
+    # it. `.*?` is lazy and bounded by the END anchor -> linear, no ReDoS.
+    (
+        "PEM",
+        re.compile(
+            r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----",
+            re.DOTALL,
+        ),
+    ),
+    ("JWT", re.compile(r"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b")),
     ("EMAIL", re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b")),
     ("KEY", re.compile(r"\b(?:sk|pk|rk|AKIA|ghp|gho|xox[baprs])[-_A-Za-z0-9]{16,}\b")),
+    # explicit bearer/authorization credential (case-insensitive prefix)
+    ("KEY", re.compile(r"(?i)\b(?:bearer|authorization:?)\s+[A-Za-z0-9._~+/=-]{8,}")),
     ("IBAN", re.compile(r"\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b")),
     ("SSN", re.compile(r"\b\d{3}-\d{2}-\d{4}\b")),
     ("CARD", re.compile(r"\b(?:\d[ -]?){13,19}\b")),  # Luhn-gated below

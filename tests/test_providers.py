@@ -319,6 +319,75 @@ def test_no_planning_provider_configured_is_its_own_failure(tmp_path):
     assert raised.value.kind is FailureKind.NOT_CONFIGURED
 
 
+# --- egress redaction (D186, rule 6) -------------------------------------------------
+
+
+def _secret_envelope():
+    # The secret rides in TRUSTED context (app-written, e.g. an injected Company
+    # Brain fact), which is sent raw -- unlike tainted screen text, which
+    # Tainted.of already sanitizes. This is the path the egress scrub guards.
+    return Envelope(
+        task="plan the step",
+        trusted={
+            "goal": "email the receipt",
+            "context": "card 4111 1111 1111 1111 to ada@acme.io",
+        },
+        tainted={"screen": Tainted.of("uia_name", "Send")},
+    )
+
+
+def test_redact_egress_scrubs_secrets_bound_for_a_remote_model(tmp_path):
+    """Rule 6: with RedactEgress on, embedded secrets never leave in a request
+    to a remote System-Two provider -- they are replaced by placeholders. This
+    is the guard; removing gateway._outbound makes the raw card/email appear in
+    the sent body and fails this test (D018)."""
+
+    transport, calls = _transport(_chat(PLAN))
+    gateway = Gateway(
+        system_two=("openrouter",),
+        transport=transport,
+        key_lookup=_keys(openrouter="k"),
+        log_path=tmp_path / "l",
+        redact_egress=True,
+    )
+    gateway.plan(_secret_envelope())
+    body = calls[0].content.decode()
+    assert "4111 1111 1111 1111" not in body  # card scrubbed
+    assert "ada@acme.io" not in body  # email scrubbed
+    assert "[CARD_1]" in body and "[EMAIL_1]" in body  # placeholders sent instead
+
+
+def test_redact_egress_off_sends_text_unchanged(tmp_path):
+    transport, calls = _transport(_chat(PLAN))
+    gateway = Gateway(
+        system_two=("openrouter",),
+        transport=transport,
+        key_lookup=_keys(openrouter="k"),
+        log_path=tmp_path / "l",
+        redact_egress=False,
+    )
+    gateway.plan(_secret_envelope())
+    body = calls[0].content.decode()
+    assert "4111 1111 1111 1111" in body and "ada@acme.io" in body  # verbatim
+
+
+def test_redact_egress_does_not_touch_a_local_provider(tmp_path):
+    """A local model is on-device -- no egress -- so redaction (which only costs
+    model fidelity) is not applied even when the flag is on."""
+
+    transport, calls = _transport(_chat(PLAN))
+    gateway = Gateway(
+        system_two=("ollama",),
+        transport=transport,
+        key_lookup=_keys(),  # ollama needs no key
+        log_path=tmp_path / "l",
+        redact_egress=True,
+    )
+    gateway.plan(_secret_envelope())
+    body = calls[0].content.decode()
+    assert "4111 1111 1111 1111" in body and "ada@acme.io" in body  # local: unchanged
+
+
 # --- budget, attribution, cancellation -----------------------------------------------
 
 

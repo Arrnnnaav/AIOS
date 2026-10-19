@@ -21,7 +21,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ghostcursor import policy
+from ghostcursor import policy, redact
 from ghostcursor.providers import clients, keys
 from ghostcursor.providers.envelope import Envelope
 from ghostcursor.providers.errors import FailureKind, ProviderError
@@ -100,6 +100,10 @@ class Gateway:
     #: The provider that answered the last request, for "who powers this" --
     #: so a BYOK user can see their own account is in use (one slot, benign).
     last_provider: str | None = field(default=None, repr=False)
+    #: D186: scrub embedded secrets out of text bound for a REMOTE System-Two
+    #: model before it leaves. Defaults from enterprise policy (off unless IT
+    #: sets RedactEgress); a caller may force it on for a privacy-max session.
+    redact_egress: bool = field(default_factory=policy.redact_egress)
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     def available(self) -> dict[str, bool]:
@@ -337,7 +341,7 @@ class Gateway:
                 content, reply = call(
                     config,
                     key,
-                    messages,
+                    self._outbound(messages, name),  # D186 rule-6 egress scrub
                     schema,
                     transport=self.transport,
                     deadline_s=deadline_s,
@@ -369,6 +373,26 @@ class Gateway:
         )
 
     # --- internals ------------------------------------------------------
+
+    def _outbound(self, messages: list[dict], provider: str) -> list[dict]:
+        """Rule 6 egress gate (D186): when ``redact_egress`` is on and the
+        provider is REMOTE, scrub embedded secrets (email/card/SSN/key/PEM/JWT/
+        IBAN/IP/phone) out of every outbound message before it leaves. A local
+        provider and the policy-off case pass the messages through unchanged.
+        One-way here: the closed-schema reply is structure, not the raw secret,
+        so it is not rehydrated on this path."""
+
+        if not self.redact_egress or provider in policy.LOCAL_PROVIDERS:
+            return messages
+        out = []
+        for m in messages:
+            content = m.get("content")
+            if isinstance(content, str):
+                scrubbed, _ = redact.scrub(content)
+                out.append({**m, "content": scrubbed})
+            else:
+                out.append(m)
+        return out
 
     def _take(self) -> None:
         with self._lock:
