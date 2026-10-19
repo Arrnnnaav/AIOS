@@ -794,6 +794,32 @@ def test_private_by_default_denies_on_unknown(kn):
     assert g.sensitivity == "normal"  # posture off -> back to allow-by-default
 
 
+def test_facts_trace_back_to_the_episode_they_came_from(kn):
+    """Episodes (D186, Graphiti's non-lossy input layer): ingest records the raw
+    input once and every fact extracted from it links back via episode_of."""
+
+    doc = "Prod runs in us-east-1. The cache uses Redis."
+    actions = kn.ingest(
+        ["Prod runs in us-east-1.", "The cache uses Redis."],
+        source="runbook",
+        scope="acme",
+        episode=doc,
+    )
+    fids = [fid for action, fid in actions if action == "added"]
+    assert len(fids) == 2
+    ep = kn.episode_of(fids[0])
+    assert ep is not None and ep.text == doc and ep.source == "runbook"
+    # both facts point at the SAME episode (recorded once)
+    assert kn.episode_of(fids[0]).eid == kn.episode_of(fids[1]).eid
+
+    # a plain add_candidate (no episode) has no episode link
+    f = kn.add_candidate("standalone fact", source="chat", scope="acme")
+    assert kn.episode_of(f.fid) is None
+    # ingest without an episode links nothing
+    (a,) = kn.ingest(["another"], source="chat", scope="acme")
+    assert kn.get(a[1]).episode_id is None
+
+
 def test_export_redacts_embedded_secrets_before_egress(kn):
     """A *normal* fact that quotes a secret must not leak it on export (the
     enterprise redact-before-egress gate, D186). Default redacts; the audit

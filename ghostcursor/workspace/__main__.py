@@ -164,7 +164,7 @@ KNOW_USAGE = (
     "review-edge <id>  |  expire <id>  |  expire-edge <id>  |  "
     "private[-edge] <id>  |  unmark[-edge] <id>  |  "
     "private-source <pattern>  |  unmark-source <pattern>  |  private-sources  |  "
-    "private-default [on|off]  |  "
+    "private-default [on|off]  |  episode <id>  |  "
     "conflicts  |  recall <query> [since:<days>]"
 )
 
@@ -354,6 +354,9 @@ def know_command(knowledge, scope: str, args: list[str]) -> str:
     if verb == "private-sources":
         pats = knowledge.sensitive_sources()
         return "\n".join(pats) or "(no private sources)"
+    if verb == "episode" and len(args) == 2 and fid(args[1]):
+        ep = knowledge.episode_of(int(args[1]))
+        return ep.text if ep else "no episode recorded for that fact"
     if verb == "private-default":
         arg = rest.strip().lower()
         if arg in ("on", "off"):

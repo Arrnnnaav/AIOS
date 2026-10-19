@@ -56,7 +56,17 @@ CREATE TABLE IF NOT EXISTS facts (
     text TEXT NOT NULL, source TEXT NOT NULL, scope TEXT NOT NULL,
     status TEXT NOT NULL, sensitivity TEXT NOT NULL,
     added REAL NOT NULL, last_verified REAL NOT NULL, valid_until REAL,
-    valid_from REAL NOT NULL DEFAULT 0, superseded_by INTEGER
+    valid_from REAL NOT NULL DEFAULT 0, superseded_by INTEGER,
+    episode_id INTEGER
+);
+-- The raw input a fact was extracted from (Graphiti's "episode": a non-lossy
+-- record so a fact traces back to the document/message it came from, not just a
+-- source string). D186. Episodes are never model-recalled; they are provenance
+-- the owner can open.
+CREATE TABLE IF NOT EXISTS episodes (
+    eid INTEGER PRIMARY KEY AUTOINCREMENT,
+    text TEXT NOT NULL, source TEXT NOT NULL, scope TEXT NOT NULL,
+    added REAL NOT NULL
 );
 CREATE TABLE IF NOT EXISTS edges (
     eid INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -99,6 +109,7 @@ class Fact:
     valid_until: float | None  # world time end; None = no expiry
     valid_from: float = 0.0  # world time start (bi-temporal)
     superseded_by: int | None = None  # the fact that replaced this one
+    episode_id: int | None = None  # the raw input this fact was extracted from
 
     def stale(self, now: float) -> bool:
         return self.valid_until is not None and now >= self.valid_until
@@ -108,6 +119,18 @@ class Fact:
         re-verify nudge, never excluded (it is still valid)."""
 
         return not self.stale(now) and (now - self.last_verified) > max_age
+
+
+@dataclass(frozen=True)
+class Episode:
+    """The raw input a fact was extracted from -- provenance the owner can open,
+    never a model-recalled fact itself (D186)."""
+
+    eid: int
+    text: str
+    source: str
+    scope: str
+    added: float
 
 
 @dataclass(frozen=True)
@@ -220,6 +243,9 @@ class Knowledge:
             self._db.execute(
                 "ALTER TABLE edges ADD COLUMN sensitivity TEXT NOT NULL DEFAULT 'normal'"
             )
+        fact_cols = {r[1] for r in self._db.execute("PRAGMA table_info(facts)")}
+        if "episode_id" not in fact_cols:  # pre-episode DB: add the provenance link
+            self._db.execute("ALTER TABLE facts ADD COLUMN episode_id INTEGER")
         with (
             self._lock,
             self._db,
@@ -243,9 +269,11 @@ class Knowledge:
         sensitivity: str = "normal",
         valid_from: float | None = None,
         valid_until: float | None = None,
+        episode_id: int | None = None,
     ) -> Fact:
         """Record an untrusted candidate. It is NOT a usable fact until an
-        owner reviews it. ``source`` is required provenance; empty is refused."""
+        owner reviews it. ``source`` is required provenance; empty is refused.
+        ``episode_id`` links it to the raw input it was extracted from."""
 
         text = " ".join(str(text).split())
         source = " ".join(str(source).split())
@@ -259,15 +287,44 @@ class Knowledge:
         with self._lock, self._db:
             cur = self._db.execute(
                 "INSERT INTO facts (text, source, scope, status, sensitivity, "
-                "added, last_verified, valid_until, valid_from, superseded_by) "
-                "VALUES (?,?,?,?,?,?,?,?,?,NULL)",
+                "added, last_verified, valid_until, valid_from, superseded_by, "
+                "episode_id) VALUES (?,?,?,?,?,?,?,?,?,NULL,?)",
                 (text, source, scope, "candidate", sensitivity, now, now,
-                 valid_until, now if valid_from is None else valid_from),
+                 valid_until, now if valid_from is None else valid_from, episode_id),
             )  # fmt: skip
             self._db.execute(
                 "INSERT INTO facts_fts(rowid, text) VALUES (?,?)", (cur.lastrowid, text)
             )
         return self.get(cur.lastrowid)
+
+    def record_episode(self, text: str, *, source: str, scope: str) -> int:
+        """Store a raw input (a document, message, meeting note) and return its
+        eid, so facts extracted from it can link back to it. Never recalled to a
+        model -- it is provenance the owner can open."""
+
+        text = str(text).strip()
+        source, scope = " ".join(str(source).split()), str(scope).strip()
+        if not text or not source or not scope:
+            raise ValueError("an episode needs text, a source and a scope")
+        with self._lock, self._db:
+            cur = self._db.execute(
+                "INSERT INTO episodes (text, source, scope, added) VALUES (?,?,?,?)",
+                (text, source, scope, self.clock()),
+            )
+        return cur.lastrowid
+
+    def episode(self, eid: int) -> Episode | None:
+        row = self._db.execute("SELECT * FROM episodes WHERE eid=?", (eid,)).fetchone()
+        return Episode(*row) if row else None
+
+    def episode_of(self, fid: int) -> Episode | None:
+        """The raw input a fact was extracted from, or None (older facts, or a
+        fact added without an episode)."""
+
+        fact = self.get(fid)
+        if fact is None or fact.episode_id is None:
+            return None
+        return self.episode(fact.episode_id)
 
     #: Two incoming texts this similar (word Jaccard) are the same fact, so the
     #: second is not added again. High on purpose: only near-identical wording
@@ -281,6 +338,7 @@ class Knowledge:
         source: str,
         scope: str,
         sensitivity: str = "normal",
+        episode: str | None = None,
     ) -> list[tuple[str, int]]:
         """Connector ingestion (Mem0's two-phase extract-then-reconcile, made
         owner-safe): each text that is not already present is added as a
@@ -293,6 +351,12 @@ class Knowledge:
         existing = [
             f for f in self.list(scope=scope) if f.status != "retired"
         ]  # dedup against live candidates and facts, not retired history
+        # Record the raw input once; every fact added from it links back (D186).
+        episode_id = (
+            self.record_episode(episode, source=source, scope=scope)
+            if episode and str(episode).strip()
+            else None
+        )
         results: list[tuple[str, int]] = []
         for text in texts:
             norm = " ".join(str(text).split())
@@ -310,8 +374,9 @@ class Knowledge:
                 continue
             try:
                 f = self.add_candidate(
-                    norm, source=source, scope=scope, sensitivity=sensitivity
-                )
+                    norm, source=source, scope=scope, sensitivity=sensitivity,
+                    episode_id=episode_id,
+                )  # fmt: skip
             except ValueError:
                 results.append(("skipped", 0))
                 continue
