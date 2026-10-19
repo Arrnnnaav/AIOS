@@ -1510,11 +1510,11 @@ Three non-blocking items:
 Added a `private` checkbox to the add-link form; know_relate now carries
 `sensitive` so an edge can be born sensitive without a follow-up Private click.
 
-### 2. `/know recall ... since:<days>` silently ignores a malformed token
-`since:` or `since:7d` folds back into the query text instead of erroring.
-Surface a parse error if the console grows stricter.
+### 2. `/know recall ... since:<days>` silently ignores a malformed token — RESOLVED 2026-10-19
+A `since:`-prefixed trailing token with non-digit days now returns
+"since: wants a whole number of days, e.g. since:7" instead of folding into the
+query text.
 
-### 3. classify()/classify_edge() UPDATE any id with no store-level existence check
-Return None when absent; every current caller guards first (app.py checks
-get()/edge()), so a direct store caller gets a silent no-op. Tighten only if a
-caller ever skips the guard.
+### 3. classify()/classify_edge() UPDATE any id with no store-level existence check — RESOLVED 2026-10-19
+Both now short-circuit to None when the fid/eid is absent (no pointless UPDATE),
+so a direct store caller gets an explicit None signal rather than a silent miss.

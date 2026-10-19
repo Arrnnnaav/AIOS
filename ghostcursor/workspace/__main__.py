@@ -351,8 +351,11 @@ def know_command(knowledge, scope: str, args: list[str]) -> str:
         # trailing ``since:<days>`` scopes to recently-learned facts.
         since = None
         words = rest.split()
-        if words and words[-1].startswith("since:") and words[-1][6:].isdigit():
-            since = knowledge.clock() - int(words[-1][6:]) * 86400.0
+        if words and words[-1].startswith("since:"):
+            val = words[-1][6:]
+            if not val.isdigit():
+                return "since: wants a whole number of days, e.g. since:7"
+            since = knowledge.clock() - int(val) * 86400.0
             rest = " ".join(words[:-1])
         hits = knowledge.recall(rest, scope, include_sensitive=True, since=since)
         return (

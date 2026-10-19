@@ -208,6 +208,19 @@ def test_know_command_owner_review_path(tmp_path):
     assert "[expired]" in run("list")  # list tags it expired, not its old status
     assert "#2" not in run("recall", "prod")  # expired fact not recalled
     assert run("expire", "99") == "no such fact"
+
+    # time-scoped recall: a valid since: window narrows; a malformed one errors
+    run("add", "src", "|", "Cache uses Redis.")
+    run("approve", "5")
+    assert "#5" in run("recall", "cache", "since:1")  # learned now, in a 1-day window
+    assert run("recall", "cache", "since:7d").startswith("since:")  # malformed -> error
+    assert run("recall", "cache", "since:").startswith("since:")
+
+    # classify a missing id is a visible no-op (None signal), not a silent miss
+    assert run("private", "99") == "no such fact"
+    assert run("private-edge", "99") == "no such edge"
+    assert k.classify(99, "sensitive") is None
+    assert k.classify_edge(99, "sensitive") is None
     k.close()
 
 

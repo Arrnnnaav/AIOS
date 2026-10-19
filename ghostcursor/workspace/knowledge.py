@@ -382,6 +382,8 @@ class Knowledge:
 
         if sensitivity not in SENSITIVITIES:
             raise ValueError(f"sensitivity is one of {SENSITIVITIES}")
+        if self.get(fid) is None:  # no row: no-op is a None signal, not a silent miss
+            return None
         with self._lock, self._db:
             self._db.execute(
                 "UPDATE facts SET sensitivity=? WHERE fid=?", (sensitivity, fid)
@@ -394,6 +396,8 @@ class Knowledge:
 
         if sensitivity not in SENSITIVITIES:
             raise ValueError(f"sensitivity is one of {SENSITIVITIES}")
+        if self.edge(eid) is None:  # no row: no-op is a None signal, not a silent miss
+            return None
         with self._lock, self._db:
             self._db.execute(
                 "UPDATE edges SET sensitivity=? WHERE eid=?", (sensitivity, eid)
