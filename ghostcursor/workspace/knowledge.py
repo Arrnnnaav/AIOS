@@ -707,7 +707,7 @@ class Knowledge:
         )
         now = self.clock()
         edges = [
-            {"subject": _s(e.subject), "predicate": e.predicate,
+            {"subject": _s(e.subject), "predicate": _s(e.predicate),
              "object": _s(e.object), "source": _s(e.source)}
             for e in (Edge(*r) for r in rows)
             if not e.expired(now)

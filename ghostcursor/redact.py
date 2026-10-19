@@ -116,7 +116,9 @@ def scrub_tree(value):
         return scrub(value)[0]
     if isinstance(value, dict):
         return {k: scrub_tree(v) for k, v in value.items()}
-    if isinstance(value, (list, tuple)):
+    if isinstance(value, tuple):
+        return tuple(scrub_tree(v) for v in value)
+    if isinstance(value, list):
         return [scrub_tree(v) for v in value]
     return value
 

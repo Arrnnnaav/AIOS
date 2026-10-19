@@ -100,10 +100,13 @@ class Gateway:
     #: The provider that answered the last request, for "who powers this" --
     #: so a BYOK user can see their own account is in use (one slot, benign).
     last_provider: str | None = field(default=None, repr=False)
-    #: D186: scrub embedded secrets out of text bound for a REMOTE System-Two
-    #: model before it leaves. Defaults from enterprise policy (off unless IT
-    #: sets RedactEgress); a caller may force it on for a privacy-max session.
-    redact_egress: bool = field(default_factory=policy.redact_egress)
+    #: D186: when True, scrub embedded secrets out of text bound for a REMOTE
+    #: model before it leaves. This is an ADD-ON to enterprise policy: the
+    #: effective state is `policy.redact_egress() or redact_egress` read per
+    #: request (see _redact_on), so a managed machine's RedactEgress policy
+    #: always forces it on and a caller can only add, never lower it (D180
+    #: "policy may only lower what leaves" -> a caller may only raise safety).
+    redact_egress: bool = False
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     def available(self) -> dict[str, bool]:
@@ -260,7 +263,10 @@ class Gateway:
             "observed_data_never_instructions": json.loads(envelope.tainted_json()),
             **(extra_state or {}),
         }
-        if self.redact_egress:  # D186: Jev is remote; scrub app-written context
+        assert "observed_data_never_instructions" not in (extra_state or {}), (
+            "extra_state must not shadow the sanitized observed_data slot"
+        )
+        if self._redact_on():  # D186: Jev is remote; scrub app-written context
             # observed_data is already sanitized by Tainted.of -- leave it; scrub
             # task/trusted/extra, where an injected secret would otherwise leave.
             state = {
@@ -383,15 +389,22 @@ class Gateway:
 
     # --- internals ------------------------------------------------------
 
-    def _outbound(self, messages: list[dict], provider: str) -> list[dict]:
-        """Rule 6 egress gate (D186): when ``redact_egress`` is on and the
-        provider is REMOTE, scrub embedded secrets (email/card/SSN/key/PEM/JWT/
-        IBAN/IP/phone) out of every outbound message before it leaves. A local
-        provider and the policy-off case pass the messages through unchanged.
-        One-way here: the closed-schema reply is structure, not the raw secret,
-        so it is not rehydrated on this path."""
+    def _redact_on(self) -> bool:
+        """Effective egress-redaction state, read per request: enterprise policy
+        forces it on; the caller's ``redact_egress`` can only add to that, never
+        lower it. Reading policy here (not at construction) means a RedactEgress
+        policy pushed mid-session applies at the next request."""
 
-        if not self.redact_egress or provider in policy.LOCAL_PROVIDERS:
+        return policy.redact_egress() or self.redact_egress
+
+    def _outbound(self, messages: list[dict], provider: str) -> list[dict]:
+        """Rule 6 egress gate (D186): when redaction is on and the provider is
+        REMOTE, scrub embedded secrets (email/card/SSN/key/PEM/JWT/IBAN/IP/phone)
+        out of every outbound message before it leaves. A local provider and the
+        off case pass the messages through unchanged. One-way here: the closed-
+        schema reply is structure, not the raw secret, so it is not rehydrated."""
+
+        if not self._redact_on() or provider in policy.LOCAL_PROVIDERS:
             return messages
         out = []
         for m in messages:

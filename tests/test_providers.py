@@ -446,6 +446,29 @@ def test_redact_egress_scrubs_secrets_bound_for_a_remote_model(tmp_path):
     assert "[CARD_1]" in body and "[EMAIL_1]" in body  # placeholders sent instead
 
 
+def test_policy_forces_egress_redaction_on_regardless_of_the_field(
+    tmp_path, monkeypatch
+):
+    """Egress FOLLOWUPS #2/#3: redaction state is read per request and policy
+    may only RAISE it -- an enterprise RedactEgress forces scrubbing on even
+    when the caller's field is False (a caller can add, never lower)."""
+
+    from ghostcursor import policy
+
+    monkeypatch.setattr(policy, "redact_egress", lambda: True)
+    transport, calls = _transport(_chat(PLAN))
+    gateway = Gateway(
+        system_two=("openrouter",),
+        transport=transport,
+        key_lookup=_keys(openrouter="k"),
+        log_path=tmp_path / "l",
+        redact_egress=False,  # caller says off; policy still forces it on
+    )
+    gateway.plan(_secret_envelope())
+    body = calls[0].content.decode()
+    assert "4111 1111 1111 1111" not in body and "ada@acme.io" not in body
+
+
 def test_redact_egress_off_sends_text_unchanged(tmp_path):
     transport, calls = _transport(_chat(PLAN))
     gateway = Gateway(

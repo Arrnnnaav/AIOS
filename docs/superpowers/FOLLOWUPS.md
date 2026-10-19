@@ -1606,10 +1606,9 @@ redact.py; moved to core from workspace so providers may import it without a
 layering cycle). Free-text passwords remain the documented residual gap (no
 reliable regex). Wired into the gateway egress path in the same milestone.
 
-### 2. Edge predicate is not scrubbed
-knowledge.py export -- only subject/object/source are redacted; predicate is
-left verbatim. Fine while predicates are a controlled relation vocabulary; add a
-scrub if predicates can ever carry free text.
+### 2. Edge predicate is not scrubbed — RESOLVED 2026-10-19
+export_scope now scrubs the edge predicate too (same _s() as subject/object/
+source), so a predicate carrying free text can't leak on export.
 
 ### 3. (rule 8) test pins no-raw-value in the export -- CONFIRMED PRESENT
 test_export_redacts_embedded_secrets_before_egress asserts the raw email is
@@ -1637,16 +1636,13 @@ redact_egress is on (observed_data left as-is -- already sanitized by
 Tainted.of). Added redact.scrub_tree (recursive string-leaf scrub for one-way
 paths). Tests: Jev trusted-context scrubbed-on / raw-off; scrub_tree unit.
 
-### 2. redact_egress captured once at construction, not re-read per request
-gateway.py -- default_factory=policy.redact_egress runs at Gateway build; a
-RedactEgress policy pushed mid-session won't apply until a new Gateway (unlike
-max_egress, re-read per request). Benign (one Gateway per session) but
-inconsistent with policy._value's read-on-every-call intent.
+### 2. redact_egress captured once at construction, not re-read per request — RESOLVED 2026-10-19
+gateway._redact_on() now reads policy.redact_egress() per request; the field no
+longer snapshots policy at construction.
 
-### 3. redact_egress field can be set below policy
-gateway.py -- Gateway(redact_egress=False) would override an enterprise
-RedactEgress=1, against "policy may only lower what leaves". No production
-caller does this; latent. Fix: effective = policy.redact_egress() or self.flag.
+### 3. redact_egress field can be set below policy — RESOLVED 2026-10-19
+_redact_on() = policy.redact_egress() or self.redact_egress, so policy forces it
+on and a caller can only raise it, never lower it. Test pins this.
 
 ### 4. Free-text passwords not matched (documented residual gap)
 redact.py -- regex recognizers miss "the password is swordfish". Over-redaction-
@@ -1664,11 +1660,9 @@ DeckSpec from malformed input; DeckSpec/Slide/SlideLayout are frozen data with n
 Act/harness import -- inert, no execution authority; the goal in tainted is
 scrubbed by Tainted.of and carries no authority. One non-blocking item:
 
-### 1. Goal is placed in both trusted context and tainted
-deck.py -- the goal rides both trusted (authoritative, app-supplied) and tainted
-(Tainted.of). Harmless and sanitized, but redundant; the goal is user-supplied,
-not screen-observed, so trusted alone is the right channel. Drop the tainted copy
-for clarity when next touching deck.py.
+### 1. Goal is placed in both trusted context and tainted — RESOLVED 2026-10-19
+plan_deck now passes tainted={}; the user goal rides trusted context only (it is
+user-supplied, not screen-observed).
 
 ## DeckSpec->Act brief + Jev egress gate review (D186) — 2026-10-19
 
@@ -1680,14 +1674,13 @@ untouched), preserves non-strings; injection_risk intact (screen text rides
 observed_data, not scrubbed); System-Two _outbound unchanged. #1 build_brief
 inert (no Act/harness import, returns a string). Three non-blocking items:
 
-### 1. extra_state could shadow the observed_data key
-gateway._system_one -- an extra_state key literally "observed_data_never_
-instructions" would overwrite the sanitized slot and bypass scrub. Orbyn-written
-(low risk); a reserved-key assert would harden it.
+### 1. extra_state could shadow the observed_data key — RESOLVED 2026-10-19
+gateway._system_one now asserts "observed_data_never_instructions" is not in
+extra_state before building state, so the sanitized slot cannot be shadowed.
 
-### 2. scrub_tree converts tuples to lists
-redact.py -- fine for JSON egress, but a quiet type change if a caller relied on
-tuple identity. None does today.
+### 2. scrub_tree converts tuples to lists — RESOLVED 2026-10-19
+redact.scrub_tree now returns a tuple for tuple input (and a list for list),
+preserving the container type.
 
 ### 3. Free-text passwords still unmatched (known residual gap)
 redact.py -- applies to this egress path too; needs NER to close. Documented.

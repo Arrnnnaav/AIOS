@@ -16,7 +16,6 @@ pass cannot give.
 from __future__ import annotations
 
 from ghostcursor.providers import DECK_SPEC_SCHEMA, DeckSpec, Envelope, parse_deck_spec
-from ghostcursor.providers.envelope import Tainted
 
 
 def build_brief(spec: DeckSpec) -> str:
@@ -76,10 +75,10 @@ def plan_deck(
         facts = knowledge.recall(goal, scope, k=k)  # non-sensitive, usable only
         if facts:
             trusted["grounding"] = [f"{f.text} (source: {f.source})" for f in facts]
+    # The goal is user-supplied, not screen-observed, so it is authoritative
+    # trusted context; no tainted copy (deck review FOLLOWUP #1).
     envelope = Envelope(
-        task="plan a presentation for the goal",
-        trusted=trusted,
-        tainted={"goal_text": Tainted.of("user_goal", goal)},
+        task="plan a presentation for the goal", trusted=trusted, tainted={}
     )
     return gateway.complete(
         envelope,
