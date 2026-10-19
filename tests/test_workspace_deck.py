@@ -87,6 +87,68 @@ def test_plan_deck_rejects_an_empty_goal(tmp_path):
         plan_deck(_gateway([], log_path=tmp_path / "l"), "   ")
 
 
+def test_research_deck_grounds_the_deck_in_cited_research_claims(tmp_path):
+    """#5 chain: research the topic -> plan a deck grounded on the cited claims
+    (not recall, so a fresh run needs no prior review), and file the claims to
+    the Brain as candidates. The gateway answers three schemas: plan, claims,
+    deck."""
+    from ghostcursor.workspace.deck import research_deck
+    from ghostcursor.workspace.knowledge import Knowledge
+
+    CLAIMS = {
+        "claims": [
+            {
+                "text": "Prod runs in us-east-1.",
+                "status": "supported",
+                "evidence": ["p1"],
+            }
+        ]
+    }
+    HITS = [
+        {
+            "url": "https://docs.example.com/a",
+            "title": "A",
+            "passages": ["Prod runs in us-east-1 with three replicas."],
+        }
+    ]
+
+    class ThreeSchemaGateway:
+        def __init__(self):
+            self.grounding_seen = None
+
+        def complete(self, envelope, system, schema, parse, **kw):
+            props = schema.get("properties", {})
+            if "subquestions" in props:
+                return parse(json.dumps({"subquestions": ["where does prod run"]}))
+            if "claims" in props:
+                return parse(json.dumps(CLAIMS))
+            # deck schema: capture the grounding the deck was given
+            self.grounding_seen = envelope.trusted.get("grounding")
+            return parse(json.dumps(DECK))
+
+    kb = Knowledge(tmp_path / "k.sqlite")
+    gw = ThreeSchemaGateway()
+    deck, report = research_deck(
+        gw,
+        "how does prod run",
+        knowledge=kb,
+        scope="acme",
+        search=lambda q: HITS,
+        key_lookup=lambda n: None,
+        trace_path=tmp_path / "t.jsonl",
+    )
+    assert deck.title == "Platform Review"  # a deck came back
+    # the deck was grounded on the cited research claim, sourced to the page
+    assert gw.grounding_seen and "Prod runs in us-east-1." in gw.grounding_seen[0]
+    assert "docs.example.com" in gw.grounding_seen[0]
+    # and the claim was filed into the Brain as a reviewable candidate
+    assert report.filed_to_brain == 1
+    assert (
+        kb.list(scope="acme", status="candidate")[0].text == "Prod runs in us-east-1."
+    )
+    kb.close()
+
+
 def test_build_brief_renders_every_slide_in_order():
     """The DeckSpec -> Act bridge: a plain-string build goal the existing Teach/
     Act loop runs. Data only -- it names what to build, not which control."""

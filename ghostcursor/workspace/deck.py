@@ -56,22 +56,26 @@ def plan_deck(
     *,
     scope: str | None = None,
     knowledge=None,
+    grounding: list[str] | None = None,
     k: int = 8,
     deadline_s: float = 45.0,
     cancelled=lambda: False,
 ) -> DeckSpec:
     """A ``DeckSpec`` for ``goal`` from the first System-Two provider that
-    answers validly. When ``knowledge`` and ``scope`` are given, the owner's
-    reviewed (non-sensitive) facts for the goal are supplied as GROUNDING so the
-    deck is built from what they actually know. Grounding rides in trusted
-    context, which the gateway's egress-redaction gate scrubs before it leaves
-    (D186)."""
+    answers validly. Grounding (so the deck is built from known facts, not
+    invented) comes from, in order: explicit ``grounding`` lines if given (e.g.
+    this session's cited research claims), else the owner's reviewed non-
+    sensitive Brain facts for the goal when ``knowledge`` + ``scope`` are set.
+    Grounding rides trusted context, which the gateway's egress-redaction gate
+    scrubs before it leaves (D186)."""
 
     goal = " ".join(str(goal).split())
     if not goal:
         raise ValueError("a deck needs a goal")
     trusted = {"goal": goal}
-    if knowledge is not None and scope is not None:
+    if grounding:
+        trusted["grounding"] = list(grounding)
+    elif knowledge is not None and scope is not None:
         facts = knowledge.recall(goal, scope, k=k)  # non-sensitive, usable only
         if facts:
             trusted["grounding"] = [f"{f.text} (source: {f.source})" for f in facts]
@@ -89,3 +93,50 @@ def plan_deck(
         cancelled=cancelled,
         purpose="deck planning",
     )
+
+
+def research_deck(
+    gateway,
+    topic: str,
+    *,
+    knowledge=None,
+    scope: str | None = None,
+    file_to_brain: bool = True,
+    **research_kw,
+):
+    """ "Research X and make a deck": deep-research the topic, then plan a deck
+    grounded on this session's cited research claims. The rocket.new research ->
+    build "one shared context" chain on Orbyn's rails -- each deck bullet traces
+    to a cited, Jev-checked claim, nothing invented. With a Brain + scope the
+    cited claims are also filed as reviewable candidates (durable context).
+
+    Returns (DeckSpec, DeepResearchReport). Grounding uses the research claims
+    directly (not recall), so a fresh run needs no prior owner review."""
+
+    from ghostcursor.workspace.contracts import ClaimStatus
+    from ghostcursor.workspace.research import deep_research
+
+    report = deep_research(
+        topic,
+        gateway,
+        knowledge=knowledge,
+        scope=scope,
+        file_to_brain=file_to_brain,
+        **research_kw,
+    )
+    grounding = []
+    for graph in report.graphs:
+        for claim in graph.claims:
+            if claim.status in (ClaimStatus.SUPPORTED, ClaimStatus.PARTIAL):
+                source = next(
+                    (
+                        graph.source_of(pid)
+                        for pid in claim.evidence
+                        if graph.source_of(pid)
+                    ),
+                    None,
+                )
+                src = source.url if source and source.url else "research"
+                grounding.append(f"{claim.text} (source: {src})")
+    deck = plan_deck(gateway, topic, grounding=grounding or None)
+    return deck, report
