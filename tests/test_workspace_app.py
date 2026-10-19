@@ -462,6 +462,44 @@ def test_know_edges_review_and_expire_over_http(tmp_path):
         kb.close()
 
 
+def test_know_relate_adds_a_candidate_edge_over_http(tmp_path):
+    """GUI add-relationship form (D186): know_relate creates a candidate edge;
+    missing a part is rejected."""
+    from ghostcursor.workspace.knowledge import Knowledge
+
+    kb = Knowledge(tmp_path / "know.sqlite")
+    app = App(
+        "trip",
+        make_workspace=lambda: Workspace(
+            "trip",
+            Gateway(),
+            Brain(tmp_path / "kb.sqlite"),
+            root=tmp_path / "briefs",
+            knowledge=kb,
+            kb_scope="default",
+        ),
+    )
+    server = make_server(app, "secret-token")
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        port = server.server_port
+        body = json.loads(
+            call(
+                port,
+                "/api/know_relate",
+                {"subject": "Acme", "predicate": "uses", "object": "PG"},
+            )[1]
+        )
+        assert body["status"] == "candidate"
+        e = kb.edge(body["eid"])
+        assert (e.subject, e.predicate, e.object) == ("Acme", "uses", "PG")
+        assert call(port, "/api/know_relate", {"subject": "A", "object": "B"})[0] >= 400
+    finally:
+        server.shutdown()
+        app.close()
+        kb.close()
+
+
 def test_know_classify_marks_a_fact_and_edge_sensitive_over_http(tmp_path):
     """GUI Private/Unmark button (D186): know_classify[_edge] flips the
     sensitivity flag; sensitive rows leave the model path, unmark restores."""

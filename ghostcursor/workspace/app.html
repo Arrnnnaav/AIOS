@@ -598,6 +598,17 @@ function companyBrainCard() {
       row.append(label, rt); list.append(row);
     }
   }).catch(() => {});
+  const relCap = el("div", "sheetrow"); relCap.style.marginTop = "8px";
+  const subj = el("input"); subj.placeholder = "subject"; subj.style.flex = "1";
+  const pred = el("input"); pred.placeholder = "predicate"; pred.style.flex = "1"; pred.style.marginLeft = "6px";
+  const obj = el("input"); obj.placeholder = "object"; obj.style.flex = "1"; obj.style.marginLeft = "6px";
+  const relB = el("button", "pill go", "Add link"); relB.style.marginLeft = "6px";
+  relB.onclick = () => {
+    const s = subj.value.trim(), p = pred.value.trim(), o = obj.value.trim();
+    if (!s || !p || !o) return;
+    act("know_relate", { subject: s, predicate: p, object: o }, "Added as candidate").then(() => { subj.value = pred.value = obj.value = ""; renderBrain(); });
+  };
+  relCap.append(subj, pred, obj, relB); card.append(relCap);
   const edgeList = el("div"); card.append(edgeList);
   api("know_edges").then((r) => {
     if (!r.edges || !r.edges.length) return;

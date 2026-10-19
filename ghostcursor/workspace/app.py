@@ -314,6 +314,23 @@ class App:
                 scope=ws.kb_scope,
             )
             return {"fid": f.fid, "status": f.status}  # candidate until reviewed
+        if action == "know_relate":  # GUI: add a relationship (candidate edge)
+            if ws.knowledge is None:
+                raise ValueError("no Company Brain")
+            s = " ".join((body.get("subject") or "").split())
+            p = " ".join((body.get("predicate") or "").split())
+            o = " ".join((body.get("object") or "").split())
+            if not (s and p and o):
+                raise ValueError("need subject, predicate and object")
+            e = ws.knowledge.relate(
+                s,
+                p,
+                o,
+                source=(body.get("source") or "note").strip() or "note",
+                scope=ws.kb_scope,
+                sensitivity="sensitive" if body.get("sensitive") else "normal",
+            )
+            return {"eid": e.eid, "status": e.status}  # candidate until reviewed
         if action == "know_clip":  # GUI capture of the clipboard (owner-initiated)
             if ws.knowledge is None:
                 raise ValueError("no Company Brain")
