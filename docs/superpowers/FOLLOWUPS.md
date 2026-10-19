@@ -1769,3 +1769,24 @@ defaults. One non-blocking item:
 ### 1. _step_line reads step.instruction directly (not getattr)
 guide.py -- a duck-typed step lacking `instruction` would AttributeError instead
 of a clean message. Real TeachPlan always has it; robustness only.
+
+## Record->skill review (D186, rec #2) — 2026-10-19
+
+Independent tier-2 review of task_skills.py. **Verdict: clean, no BLOCKING.** No
+execution authority (serialize/deserialize only; no Act/harness import, runs
+nothing). load_skill is the only TeachPlan construction path and routes through
+the closed parse_teach_plan, so a hand-edited out-of-schema / unknown-action /
+too-many-steps skill is refused (ProviderError) rather than replayed -- no
+bypass. _slug maps to [a-z0-9-] only, so no name can traverse out of the skills
+dir ("../../etc/x" -> "etc-x"); an all-punctuation name raises. Saved JSON holds
+only the four TeachPlan fields. Two non-blocking:
+
+### 1. step.text persisted in cleartext
+task_skills.py -- a typed/pasted value (possibly a secret) is saved to the skill
+JSON in cleartext. Fine on the owner's machine (local file, not egress); apply
+DLP/Tainted if skills ever sync or are shared.
+
+### 2. list_skills is lossy (slug collisions)
+task_skills.py -- two distinct names can slug to the same file and silently
+overwrite; list returns slugs, not original names. Fine for MVP; store the
+original name if it must round-trip.
