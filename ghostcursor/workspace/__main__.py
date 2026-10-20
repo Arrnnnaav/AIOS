@@ -34,6 +34,12 @@ Type to discuss. Commands:
   /brain [list | search <q> | forget <id> | correct <id> <text> |
           pause | resume | export <file> | erase]
   /stats            counts from this machine's records (no text)
+  /clips [n [brain]]  recent clipboard history; n puts it back, "brain" files it
+  /snippet save <name> <text> | <name> | list | rm <name>   reusable text; a
+                    recalled snippet is copied to the clipboard (never typed)
+  /capture          Ctrl+Alt+C grabs the clipboard to a log from anywhere
+  (a plain sum like  3 * (4 + 1)  is answered on the spot; a mistyped
+   /command gets a "did you mean" instead of the whole help)
   /act <n> [s]      Orbyn does plan step n onward itself, after you approve
                     the plan (Enter); ESC stops (D182)
   /quit
@@ -414,6 +420,9 @@ def main(argv: list[str] | None = None) -> int:
     brain = Brain()
     workspace = Workspace(argv[0], Gateway(), brain, knowledge=Knowledge())
     from ghostcursor.workspace import tips
+    from ghostcursor.workspace.clips import Clips
+
+    clips = Clips()
 
     print(
         f"Workspace '{argv[0]}'"
@@ -430,6 +439,13 @@ def main(argv: list[str] | None = None) -> int:
                 break
             if not line:
                 continue
+            # Fill clipboard history without a watcher: snapshot once per prompt.
+            try:
+                from ghostcursor.harness import act
+
+                clips.offer(act.get_clipboard_text())
+            except Exception:
+                pass
             command, _, rest = line.partition(" ")
             if command == "/quit":
                 break
@@ -624,6 +640,67 @@ def main(argv: list[str] | None = None) -> int:
                     else (),
                 )
                 print(workspace.record_teach(int(parts[0]), outcome, code))
+            elif command == "/clips":
+                # clipboard history: list; "<n>" puts entry n back on the
+                # clipboard; "<n> brain" files it as a Brain candidate (D186).
+                parts = rest.split()
+                if not parts:
+                    rows = clips.list()
+                    print(
+                        "\n".join(
+                            f"  {n}. {_preview(t)}" for n, t in enumerate(rows, 1)
+                        )
+                        or "(clipboard history is empty -- copy something, then /clips)"
+                    )
+                elif parts[0].isdigit():
+                    text = clips.get(int(parts[0]))
+                    if text is None:
+                        print("no such entry")
+                    elif len(parts) > 1 and parts[1] == "brain":
+                        print(workspace.clip_to_brain(read=lambda: text))
+                    else:
+                        from ghostcursor.harness import act
+
+                        act.set_clipboard_text(text)
+                        print(f"copied entry {parts[0]} back to the clipboard")
+                else:
+                    print("usage: /clips  |  /clips <n>  |  /clips <n> brain")
+            elif command == "/snippet":
+                from ghostcursor.workspace import snippets
+
+                parts = rest.split(maxsplit=1)
+                verb = parts[0] if parts else ""
+                if verb == "list":
+                    print("\n".join(snippets.names(workspace.root)) or "(no snippets)")
+                elif verb == "save" and len(parts) == 2 and len(parts[1].split()) >= 2:
+                    name, text = parts[1].split(maxsplit=1)
+                    try:
+                        print(
+                            f"saved snippet '{snippets.save(workspace.root, name, text)}'"
+                        )
+                    except ValueError as exc:
+                        print(exc)
+                elif verb == "rm" and len(parts) == 2:
+                    ok = snippets.remove(workspace.root, parts[1])
+                    print("removed" if ok else "no such snippet")
+                elif verb and verb not in ("save", "rm"):
+                    text = snippets.get(workspace.root, rest)
+                    if text is None:
+                        print(f"no snippet '{rest}' (/snippet list)")
+                    else:
+                        from ghostcursor.harness import act
+
+                        act.set_clipboard_text(text)
+                        print(f"'{rest}' copied to the clipboard:\n{text}")
+                else:
+                    print(
+                        "usage: /snippet save <name> <text> | <name> | list | rm <name>"
+                    )
+            elif command == "/capture":
+                from ghostcursor.workspace import capture
+
+                log = capture.start()
+                print(f"Ctrl+Alt+C now captures the clipboard to {log}")
             elif command == "/stats":
                 from ghostcursor.workspace.research import _trace_path
                 from ghostcursor.workspace.session import measures
@@ -698,9 +775,19 @@ def main(argv: list[str] | None = None) -> int:
                 except Exception as exc:
                     print(f"browser unavailable: {exc}")
             elif command.startswith("/"):
-                print(__doc__)
+                from ghostcursor.workspace import palette
+
+                near = palette.suggest(command)
+                if near:
+                    shown = ", ".join(palette.highlight(command, c) for c in near)
+                    print(f"Unknown command {command}. Did you mean {shown}?")
+                else:
+                    print(__doc__)
             else:
-                print(workspace.discuss(line))
+                from ghostcursor.workspace import palette
+
+                sum_ = palette.calc(line)
+                print(sum_ if sum_ is not None else workspace.discuss(line))
     finally:
         if web["browser"] is not None:
             web["browser"].close()

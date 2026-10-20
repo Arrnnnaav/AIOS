@@ -18,6 +18,10 @@ TIPS = (
     "/researchdeck <topic>  researches, then builds a grounded slide outline.",
     "Press ESC any time Orbyn is acting -- it stops cleanly between steps.",
     "/doctor  shows what's ready and the one thing to switch on for each gap.",
+    "Mistype a /command and Orbyn suggests the closest one -- no manual needed.",
+    "/clips  shows recent clipboard history; /clips 2 puts entry 2 back.",
+    "/snippet save sig <text>  then  /snippet sig  copies it to the clipboard.",
+    "/capture  makes Ctrl+Alt+C grab the clipboard to a log from any app.",
 )
 
 
