@@ -49,6 +49,7 @@ COMMANDS = (
     "/snippet",
     "/capture",
     "/x",
+    "/crew",
 )
 
 

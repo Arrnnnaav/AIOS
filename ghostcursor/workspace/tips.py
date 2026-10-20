@@ -24,6 +24,7 @@ TIPS = (
     "/capture  makes Ctrl+Alt+C grab the clipboard to a log from any app.",
     "/x uuid, /x pass 24, /x hex2rgb #ff8800 -- quick offline utilities.",
     "/convert photo.png pdf  turns an image into a one-page PDF, all local.",
+    "/crew <goal>  has a manager split the goal into steps and run them in order.",
 )
 
 

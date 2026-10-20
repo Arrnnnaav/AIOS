@@ -771,7 +771,14 @@ class Workspace:
             )
         except ProviderError:
             return self.discuss(task)  # model unavailable -> just talk
-        arg = arg or task
+        return self._run_intent(intent, arg or task, fallback=task)
+
+    def _run_intent(self, intent: str, arg: str, *, fallback: str = "") -> str:
+        """Dispatch one (intent, argument) to the existing reviewed capability
+        and return its one-line result. Shared by the one-step router (do) and
+        the crew orchestrator so both run the same tested paths. A 'plan' intent
+        only PROPOSES (rule 2); it never acts."""
+
         if intent == "research":
             report = self.deep_dive(arg)
             return (
@@ -794,9 +801,7 @@ class Workspace:
             return f"📊 [research+deck] {deck.title} ({len(deck.slides)} slides); filed {filed} claim(s)"
         if intent == "remember" and self.knowledge is not None:
             f = self.knowledge.add_candidate(arg, source="task", scope=self.kb_scope)
-            return (
-                f"🧠 [remember] saved as candidate #{f.fid} (review: /know review {f.fid})"
-            )
+            return f"🧠 [remember] saved as candidate #{f.fid} (review: /know review {f.fid})"
         if intent == "skill":
             return "🛠 [skill] " + (self.draft_skill(arg) or "model unavailable")
         if intent == "plan":
@@ -812,7 +817,7 @@ class Workspace:
                 "Approve and run with /teach 1 (guide on screen) or /act 1 (Orbyn "
                 "does it, after you approve; ESC stops)."
             )
-        return self.discuss(task)  # chat / remember-without-a-brain
+        return self.discuss(fallback or arg)  # chat / remember-without-a-brain
 
     def _plan_for(self, need: str):
         """A TeachPlan toward an arbitrary need (not the session goal), with any
@@ -901,6 +906,15 @@ class Workspace:
             )
         except ProviderError:
             return None, None
+
+    def crew(self, goal: str):
+        """Agent crew (D186): decompose a goal into ordered capability steps and
+        run them in sequence, chaining through the Company Brain. Returns a
+        CrewResult. A 'plan' step only proposes -- the crew never acts (rule 2)."""
+
+        from ghostcursor.workspace.crew import run_crew
+
+        return run_crew(self, goal)
 
     def create_agent(self, need: str):
         """Draft a reusable agent (D182) from a stated need; model output,

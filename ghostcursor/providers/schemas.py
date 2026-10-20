@@ -404,3 +404,55 @@ def parse_intent(text: str) -> tuple[str, str]:
     if not isinstance(argument, str) or len(argument) > MAX_TASK_ARG_CHARS:
         raise _invalid("intent argument is invalid")
     return intent, " ".join(argument.split())
+
+
+# --- crew orchestration (D186): decompose a goal into ordered capability steps
+# The manager pattern (CrewAI/OpenAI-Swarm), governed the Orbyn way: a closed
+# list of intent-tagged subtasks run in order through the existing reviewed
+# capabilities. Results chain through the Company Brain (research files facts,
+# later steps recall them). An "act"/"plan" step still only PROPOSES (rule 2).
+MAX_CREW_STEPS = 6
+
+CREW_PLAN_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["steps"],
+    "properties": {
+        "steps": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": MAX_CREW_STEPS,
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["intent", "argument"],
+                "properties": {
+                    "intent": {"enum": list(TASK_INTENTS)},
+                    "argument": {"type": "string", "maxLength": MAX_TASK_ARG_CHARS},
+                },
+            },
+        }
+    },
+}
+
+
+def parse_crew_plan(text: str) -> tuple[tuple[str, str], ...]:
+    """Strict, closed parse of a crew plan -> ordered ((intent, argument), ...),
+    1..MAX_CREW_STEPS steps, each intent in TASK_INTENTS. INVALID_OUTPUT else."""
+
+    value = strict_json(text)
+    _exact(value, {"steps"}, "crew plan")
+    steps = value["steps"]
+    if not isinstance(steps, list) or not 1 <= len(steps) <= MAX_CREW_STEPS:
+        raise _invalid(f"a crew plan has 1..{MAX_CREW_STEPS} steps")
+    out = []
+    for index, step in enumerate(steps, start=1):
+        if not isinstance(step, dict) or set(step) != {"intent", "argument"}:
+            raise _invalid(f"crew step {index} has wrong fields")
+        intent, argument = step["intent"], step["argument"]
+        if intent not in TASK_INTENTS:
+            raise _invalid(f"crew step {index} intent is not a capability")
+        if not isinstance(argument, str) or len(argument) > MAX_TASK_ARG_CHARS:
+            raise _invalid(f"crew step {index} argument is invalid")
+        out.append((intent, " ".join(argument.split())))
+    return tuple(out)

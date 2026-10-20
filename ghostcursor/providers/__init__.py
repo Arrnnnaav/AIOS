@@ -8,6 +8,7 @@ from ghostcursor.providers.errors import FailureKind, ProviderError
 from ghostcursor.providers.gateway import Budget, Gateway
 from ghostcursor.providers.schemas import (
     ABSTAIN,
+    CREW_PLAN_SCHEMA,
     DECK_SPEC_SCHEMA,
     INTENT_SCHEMA,
     RESEARCH_PLAN_SCHEMA,
@@ -19,6 +20,7 @@ from ghostcursor.providers.schemas import (
     SlideLayout,
     TeachPlan,
     parse_choice,
+    parse_crew_plan,
     parse_deck_spec,
     parse_intent,
     parse_research_plan,
@@ -31,6 +33,7 @@ __all__ = [
     "ABSTAIN",
     "Budget",
     "Choice",
+    "CREW_PLAN_SCHEMA",
     "DECK_SPEC_SCHEMA",
     "INTENT_SCHEMA",
     "RESEARCH_PLAN_SCHEMA",
@@ -48,6 +51,7 @@ __all__ = [
     "Tainted",
     "TeachPlan",
     "parse_choice",
+    "parse_crew_plan",
     "parse_deck_spec",
     "parse_intent",
     "parse_research_plan",

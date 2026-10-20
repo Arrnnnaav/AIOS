@@ -20,6 +20,9 @@ Type to discuss. Commands:
   /do <task>        ONE STEP: state any task, Orbyn picks the capability and runs
                     it (research/deck/plan/remember/skill); a "do X in an app"
                     task becomes a plan you approve with /teach or /act
+  /crew <goal>      MANY STEPS: a manager breaks the goal into ordered capability
+                    steps (research -> deck/plan ...) and runs them, chaining
+                    through the Brain; a plan step only proposes (never acts)
   /deck [topic]     a slide-by-slide deck outline, grounded in Brain facts
   /deepresearch <q> decompose, research each part (cited), file claims to Brain
   /researchdeck <t> research the topic then build a grounded deck
@@ -539,6 +542,11 @@ def main(argv: list[str] | None = None) -> int:
                 print(tips.tip())
             elif command == "/do" and rest:
                 print(workspace.do(rest))
+            elif command == "/crew" and rest:
+                # Agent crew (D186): a manager decomposes the goal into ordered
+                # capability steps and runs them, chaining through the Brain. A
+                # plan step only proposes; the crew never acts (rule 2).
+                print(workspace.crew(rest).as_text())
             elif command == "/convert" and len(rest.split()) >= 2:
                 # Local file conversion (Open-Tangerine ported): <src> <format>.
                 from ghostcursor.workspace import convert as _convert
