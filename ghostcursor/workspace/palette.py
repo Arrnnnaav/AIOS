@@ -54,6 +54,7 @@ COMMANDS = (
     "/ask",
     "/related",
     "/find",
+    "/todo",
 )
 
 

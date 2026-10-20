@@ -29,6 +29,7 @@ TIPS = (
     "Copy some text, then /ask <question> to get an answer grounded on it.",
     "/related <query>  shows Brain facts linked to it, not just word matches.",
     "/find <query>  searches your saved snippets, crews, agents and skills.",
+    "/todo add <task>  keeps a local checklist for this workspace.",
     "Run the same /do task twice and Orbyn offers to save it as a skill.",
 )
 

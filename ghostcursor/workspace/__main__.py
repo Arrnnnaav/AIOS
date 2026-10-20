@@ -28,6 +28,8 @@ Type to discuss. Commands:
   /deck [topic]     a slide-by-slide deck outline, grounded in Brain facts
   /deck build [topic]  plan to BUILD that deck in PowerPoint; proposes a plan you
                     run with /act (Orbyn never builds it unasked; ESC stops)
+  /todo add <task> | done <id> | undone <id> | rm <id> | list   a local
+                    per-workspace checklist (done items stay, struck through)
   /find <query>     search everything you've saved -- snippets, crews, agents,
                     skills -- by name (substring or close fuzzy match)
   /related <query>  Brain facts matching the query, plus facts one hop away over
@@ -556,6 +558,33 @@ def main(argv: list[str] | None = None) -> int:
                 from ghostcursor.workspace import tips
 
                 print(tips.tip())
+            elif command == "/todo":
+                from ghostcursor.workspace import todos
+
+                parts = rest.split(maxsplit=1)
+                verb = parts[0] if parts else "list"
+                if verb == "add" and len(parts) == 2:
+                    try:
+                        print(f"added todo {todos.add(workspace.root, parts[1])}")
+                    except ValueError as exc:
+                        print(exc)
+                elif (
+                    verb in ("done", "undone", "rm")
+                    and len(parts) == 2
+                    and parts[1].isdigit()
+                ):
+                    tid = int(parts[1])
+                    if verb == "rm":
+                        ok = todos.remove(workspace.root, tid)
+                    else:
+                        ok = todos.mark(workspace.root, tid, done=verb == "done")
+                    print("ok" if ok else "no such todo")
+                elif verb == "list":
+                    print(todos.render(workspace.root))
+                else:
+                    print(
+                        "usage: /todo add <task> | done <id> | undone <id> | rm <id> | list"
+                    )
             elif command == "/find" and rest:
                 # Unified search across saved snippets, crews, agents, skills.
                 from ghostcursor.workspace import library
