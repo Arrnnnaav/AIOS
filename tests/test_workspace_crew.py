@@ -92,3 +92,40 @@ def test_run_crew_degrades_to_one_research_step_without_a_model():
     result = crew.run_crew(ws, "some goal")
     assert ws.dispatched == [("research", "some goal")]
     assert len(result.results) == 1
+
+
+def test_saved_crew_round_trips_and_replays_without_a_model(tmp_path):
+    steps = (("research", "market"), ("deck", "pitch"))
+    path = crew.save_crew(tmp_path, "Pitch Builder", steps)
+    assert path.stem == "pitch-builder"
+    assert crew.list_crews(tmp_path) == ["pitch-builder"]
+    assert crew.load_crew(tmp_path, "pitch-builder") == steps
+
+    # replaying a saved crew must NOT call the model (steps supplied verbatim)
+    class _NoModel:
+        def complete(self, *a, **k):
+            raise AssertionError("a saved crew must not re-plan")
+
+    ws = _FakeWorkspace(_NoModel())
+    result = crew.run_crew(
+        ws, "pitch-builder", steps=crew.load_crew(tmp_path, "pitch-builder")
+    )
+    assert ws.dispatched == list(steps)
+    assert len(result.results) == 2
+
+
+def test_crew_name_and_missing_and_corrupt_are_handled(tmp_path):
+    # traversal chars are stripped to a clean slug under the crews dir, not escaped
+    path = crew.save_crew(tmp_path, "../escape", (("chat", "x"),))
+    assert path.stem == "escape" and path.parent == crew._dir(tmp_path)
+    with pytest.raises(ValueError):
+        crew.save_crew(tmp_path, "!!!", (("chat", "x"),))  # slugs to empty
+    with pytest.raises(ValueError):
+        crew.save_crew(tmp_path, "ok", ())  # empty crew
+    with pytest.raises(ValueError):
+        crew.load_crew(tmp_path, "nope")  # missing
+    bad = crew._dir(tmp_path)
+    bad.mkdir(parents=True, exist_ok=True)
+    (bad / "rot.json").write_text('{"steps": [{"intent": "bad"}]}', encoding="utf-8")
+    with pytest.raises(ValueError):
+        crew.load_crew(tmp_path, "rot")  # re-validated, refused

@@ -23,6 +23,8 @@ Type to discuss. Commands:
   /crew <goal>      MANY STEPS: a manager breaks the goal into ordered capability
                     steps (research -> deck/plan ...) and runs them, chaining
                     through the Brain; a plan step only proposes (never acts)
+  /crew save <name> <goal> | run <name> | list   reusable named crews: save
+                    plans the goal once; run replays it without asking a model
   /deck [topic]     a slide-by-slide deck outline, grounded in Brain facts
   /deepresearch <q> decompose, research each part (cited), file claims to Brain
   /researchdeck <t> research the topic then build a grounded deck
@@ -546,7 +548,41 @@ def main(argv: list[str] | None = None) -> int:
                 # Agent crew (D186): a manager decomposes the goal into ordered
                 # capability steps and runs them, chaining through the Brain. A
                 # plan step only proposes; the crew never acts (rule 2).
-                print(workspace.crew(rest).as_text())
+                # Verbs save/run/list manage reusable named crews; anything else
+                # is an ad-hoc goal run once.
+                from ghostcursor.workspace import crew as _crew
+
+                parts = rest.split(maxsplit=2)
+                verb = parts[0]
+                if verb == "list":
+                    print(
+                        "\n".join(_crew.list_crews(workspace.root))
+                        or "(no saved crews)"
+                    )
+                elif verb == "save" and len(parts) == 3:
+                    steps = _crew.plan_crew(workspace.gateway, parts[2])
+                    if not steps:
+                        print("could not plan that goal (model unavailable)")
+                    else:
+                        try:
+                            path = _crew.save_crew(workspace.root, parts[1], steps)
+                            print(
+                                f"saved crew '{path.stem}' ({len(steps)} steps); "
+                                f"replay with /crew run {path.stem}"
+                            )
+                        except ValueError as exc:
+                            print(exc)
+                elif verb == "run" and len(parts) >= 2:
+                    try:
+                        steps = _crew.load_crew(workspace.root, parts[1])
+                    except ValueError as exc:
+                        print(exc)
+                    else:
+                        print(
+                            _crew.run_crew(workspace, parts[1], steps=steps).as_text()
+                        )
+                else:
+                    print(workspace.crew(rest).as_text())  # ad-hoc goal
             elif command == "/convert" and len(rest.split()) >= 2:
                 # Local file conversion (Open-Tangerine ported): <src> <format>.
                 from ghostcursor.workspace import convert as _convert
