@@ -40,9 +40,9 @@ Type to discuss. Commands:
                     relations, each with the entity that links them
   /ask <question>   answer grounded on the clipboard (or: /ask file <path> | <q>);
                     reads nothing else, records nothing
-  /notes [brain] <rough notes>  tidy your own notes into a titled summary with
-                    key points and action items, locally (no recording); "brain"
-                    files the summary as a reviewable Brain candidate
+  /notes [brain] <rough notes | file <path>>  tidy your own notes (inline or
+                    from a file) into a titled summary with key points and action
+                    items, locally (no recording); "brain" files the summary
   /deepresearch <q> decompose, research each part (cited), file claims to Brain
   /researchdeck <t> research the topic then build a grounded deck
   /guide            the current plan as a shareable step-by-step guide (SOP)
@@ -661,9 +661,19 @@ def main(argv: list[str] | None = None) -> int:
             elif command == "/notes" and rest:
                 # Granola-style: tidy the user's OWN rough notes into a
                 # structured summary, locally, no recording. "brain" also files
-                # the summary as a reviewable Brain candidate.
-                to_brain = rest.split()[:1] == ["brain"]
-                raw = rest.split(maxsplit=1)[1] if to_brain else rest
+                # the summary; "file <path>" reads the notes from a file.
+                words = rest.split()
+                to_brain = words[:1] == ["brain"]
+                body = rest.split(maxsplit=1)[1] if to_brain else rest
+                if body.split()[:1] == ["file"] and len(body.split()) >= 2:
+                    path = body.split(maxsplit=1)[1].strip().strip('"')
+                    try:
+                        raw = Path(path).read_text(encoding="utf-8", errors="replace")
+                    except OSError as exc:
+                        print(f"could not read {path}: {exc}")
+                        continue
+                else:
+                    raw = body
                 _summary, message = workspace.enhance_notes(raw, to_brain=to_brain)
                 print(message)
             elif command == "/do" and rest:
