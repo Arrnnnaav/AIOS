@@ -1790,3 +1790,18 @@ DLP/Tainted if skills ever sync or are shared.
 task_skills.py -- two distinct names can slug to the same file and silently
 overwrite; list returns slugs, not original names. Fine for MVP; store the
 original name if it must round-trip.
+
+## One-step task router (/do) review (D186) — 2026-10-20
+
+Independent tier-2 review of 1fcfd4b (Workspace.do + _plan_for + /do). **Verdict:
+clean, no BLOCKING, no FOLLOWUPS.** Rule 2 verified: the "plan" intent only
+builds a plan (_plan_for -> gateway.plan, a closed-schema completion) and
+_propose()s it, returning text that points the user at /teach or /act -- no call
+into harness/act, teach runtime, or input synthesis anywhere in do()/_plan_for;
+/do never executes. parse_intent is strict/closed (enum + bounded arg,
+INVALID_OUTPUT otherwise); a model failure falls back to discuss() (no crash, no
+guessed action). Dispatched capabilities are the already-reviewed ones;
+"remember" files a CANDIDATE, not auto-approved. _plan_for builds from the passed
+need (not self.goal), returns None on failure. Rule 6: the classify call goes
+through gateway.complete -> _outbound egress scrub; no new channel. Guards have
+tests (plan-stays-approvable, chat fallback).
