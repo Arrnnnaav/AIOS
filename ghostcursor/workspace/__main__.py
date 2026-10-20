@@ -28,6 +28,9 @@ Type to discuss. Commands:
   /deck [topic]     a slide-by-slide deck outline, grounded in Brain facts
   /deck build [topic]  plan to BUILD that deck in PowerPoint; proposes a plan you
                     run with /act (Orbyn never builds it unasked; ESC stops)
+  /notes [brain] <rough notes>  tidy your own notes into a titled summary with
+                    key points and action items, locally (no recording); "brain"
+                    files the summary as a reviewable Brain candidate
   /deepresearch <q> decompose, research each part (cited), file claims to Brain
   /researchdeck <t> research the topic then build a grounded deck
   /guide            the current plan as a shareable step-by-step guide (SOP)
@@ -544,6 +547,14 @@ def main(argv: list[str] | None = None) -> int:
                 from ghostcursor.workspace import tips
 
                 print(tips.tip())
+            elif command == "/notes" and rest:
+                # Granola-style: tidy the user's OWN rough notes into a
+                # structured summary, locally, no recording. "brain" also files
+                # the summary as a reviewable Brain candidate.
+                to_brain = rest.split()[:1] == ["brain"]
+                raw = rest.split(maxsplit=1)[1] if to_brain else rest
+                _summary, message = workspace.enhance_notes(raw, to_brain=to_brain)
+                print(message)
             elif command == "/do" and rest:
                 print(workspace.do(rest))
             elif command == "/crew" and rest:

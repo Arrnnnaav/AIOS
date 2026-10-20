@@ -25,6 +25,7 @@ TIPS = (
     "/x uuid, /x pass 24, /x hex2rgb #ff8800 -- quick offline utilities.",
     "/convert photo.png pdf  turns an image into a one-page PDF, all local.",
     "/crew <goal>  has a manager split the goal into steps and run them in order.",
+    "/notes <rough notes>  tidies them into a titled summary -- no recording.",
     "Run the same /do task twice and Orbyn offers to save it as a skill.",
 )
 

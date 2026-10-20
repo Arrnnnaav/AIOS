@@ -922,6 +922,30 @@ class Workspace:
             "observes and asks before any risky one (rule 2)."
         )
 
+    def enhance_notes(self, raw: str, *, to_brain: bool = False):
+        """Note enhancement (D186, Granola's core, no recording): tidy the user's
+        own rough notes into a structured summary. Returns (NotesSummary | None,
+        message). With to_brain, files the summary as a reviewable Brain
+        candidate (owner-gated). Local; nothing is recorded."""
+
+        from ghostcursor.workspace.notes import enhance_notes, render_notes
+
+        try:
+            summary = enhance_notes(self.gateway, raw)
+        except ValueError as exc:
+            return None, str(exc)
+        except ProviderError:
+            return None, "No summary: the model is not available."
+        text = render_notes(summary)
+        if to_brain and self.knowledge is not None:
+            f = self.knowledge.add_candidate(
+                summary.summary, source="notes", scope=self.kb_scope
+            )
+            text += f"\nfiled the summary to the Brain as candidate #{f.fid} (review: /know review {f.fid})"
+        elif to_brain:
+            text += "\n(no Company Brain configured; not filed)"
+        return summary, text
+
     def deep_dive(self, question: str):
         """Deep research: decompose -> cited research per sub-question -> file
         cited claims into the Company Brain as reviewable candidates (#5/#3)."""

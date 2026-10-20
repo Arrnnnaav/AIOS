@@ -50,6 +50,7 @@ COMMANDS = (
     "/capture",
     "/x",
     "/crew",
+    "/notes",
 )
 
 

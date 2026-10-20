@@ -456,3 +456,70 @@ def parse_crew_plan(text: str) -> tuple[tuple[str, str], ...]:
             raise _invalid(f"crew step {index} argument is invalid")
         out.append((intent, " ".join(argument.split())))
     return tuple(out)
+
+
+# --- note enhancement (D186): rough notes -> a structured summary -------------
+# Granola's core value (clean up the user's OWN notes) without recording audio
+# or joining a call: one closed-schema completion turns messy notes into a
+# title, a short summary, key points, and action items. All local.
+MAX_NOTE_POINTS = 15
+MAX_NOTE_LINE = 300
+
+NOTES_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["title", "summary", "key_points", "action_items"],
+    "properties": {
+        "title": {"type": "string", "maxLength": 120},
+        "summary": {"type": "string", "maxLength": 1000},
+        "key_points": {
+            "type": "array",
+            "maxItems": MAX_NOTE_POINTS,
+            "items": {"type": "string", "maxLength": MAX_NOTE_LINE},
+        },
+        "action_items": {
+            "type": "array",
+            "maxItems": MAX_NOTE_POINTS,
+            "items": {"type": "string", "maxLength": MAX_NOTE_LINE},
+        },
+    },
+}
+
+
+@dataclass(frozen=True)
+class NotesSummary:
+    title: str
+    summary: str
+    key_points: tuple[str, ...]
+    action_items: tuple[str, ...]
+
+
+def _note_list(value, field: str) -> tuple[str, ...]:
+    if not isinstance(value, list) or len(value) > MAX_NOTE_POINTS:
+        raise _invalid(f"notes {field} is invalid")
+    out = []
+    for item in value:
+        if not isinstance(item, str) or len(item) > MAX_NOTE_LINE:
+            raise _invalid(f"notes {field} has an invalid item")
+        cleaned = " ".join(item.split())
+        if cleaned:
+            out.append(cleaned)
+    return tuple(out)
+
+
+def parse_notes(text: str) -> NotesSummary:
+    """Strict closed parse of enhanced notes (same discipline as the others)."""
+
+    value = strict_json(text)
+    _exact(value, {"title", "summary", "key_points", "action_items"}, "notes")
+    for field in ("title", "summary"):
+        if not isinstance(value[field], str) or len(value[field]) > (
+            120 if field == "title" else 1000
+        ):
+            raise _invalid(f"notes {field} is invalid")
+    return NotesSummary(
+        title=" ".join(value["title"].split()),
+        summary=" ".join(value["summary"].split()),
+        key_points=_note_list(value["key_points"], "key_points"),
+        action_items=_note_list(value["action_items"], "action_items"),
+    )
