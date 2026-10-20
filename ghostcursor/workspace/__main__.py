@@ -26,6 +26,8 @@ Type to discuss. Commands:
   /crew save <name> <goal> | run <name> | list   reusable named crews: save
                     plans the goal once; run replays it without asking a model
   /deck [topic]     a slide-by-slide deck outline, grounded in Brain facts
+  /deck build [topic]  plan to BUILD that deck in PowerPoint; proposes a plan you
+                    run with /act (Orbyn never builds it unasked; ESC stops)
   /deepresearch <q> decompose, research each part (cited), file claims to Brain
   /researchdeck <t> research the topic then build a grounded deck
   /guide            the current plan as a shareable step-by-step guide (SOP)
@@ -597,6 +599,12 @@ def main(argv: list[str] | None = None) -> int:
                     print(f"converted -> {out}")
                 except (ValueError, RuntimeError, OSError) as exc:
                     print(f"could not convert: {exc}")
+            elif command == "/deck" and rest.split()[:1] == ["build"]:
+                # Plan to BUILD the deck in PowerPoint via the gated Act path.
+                # Proposes a plan; the user runs /act to execute (never auto-acts).
+                topic = rest.split(maxsplit=1)[1] if len(rest.split()) > 1 else ""
+                _deck, message = workspace.build_deck(topic)
+                print(message)
             elif command == "/deck":
                 from ghostcursor.workspace.deck import build_brief
 

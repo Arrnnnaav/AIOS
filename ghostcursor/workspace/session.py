@@ -887,6 +887,41 @@ class Workspace:
         except ProviderError:
             return None
 
+    def build_deck(self, topic: str = ""):
+        """Propose a plan to BUILD a reviewed deck in PowerPoint through the
+        existing gated Act path (D186). Makes a grounded DeckSpec, renders it to
+        a build goal (deck.build_brief -- pure data, no authority), plans that
+        goal against the PowerPoint skill, and PROPOSES the plan. It never acts:
+        the user approves the whole plan and runs /act (ESC stops); Act works
+        only on controls it observes and asks before risky ones (rule 2).
+
+        Returns (DeckSpec | None, message). ponytail: a plan is capped at 20
+        steps, so a very large deck proposes only the slides that fit one plan;
+        chunking a big deck into several build plans is the upgrade if needed."""
+
+        from ghostcursor.workspace.deck import build_brief
+
+        deck = self.make_deck(topic)
+        if deck is None:
+            return None, "No deck: the model is not available."
+        plan = self._plan_for(build_brief(deck))
+        if plan is None:
+            return deck, (
+                f"Planned the deck '{deck.title}' ({len(deck.slides)} slides) but "
+                "could not plan its build (model unavailable)."
+            )
+        self._propose(plan)
+        steps = "\n".join(
+            f"  {n}. {s.instruction}" for n, s in enumerate(plan.steps, 1)
+        )
+        return deck, (
+            f"Deck '{deck.title}' ({len(deck.slides)} slides). Proposed a "
+            f"{len(plan.steps)}-step build plan:\n{steps}\n"
+            "Review it, then build it in PowerPoint with /act 1 -- you approve the "
+            "whole plan first and ESC stops it. Orbyn acts only on controls it "
+            "observes and asks before any risky one (rule 2)."
+        )
+
     def deep_dive(self, question: str):
         """Deep research: decompose -> cited research per sub-question -> file
         cited claims into the Company Brain as reviewable candidates (#5/#3)."""
