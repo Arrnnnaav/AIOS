@@ -28,6 +28,8 @@ Type to discuss. Commands:
   /deck [topic]     a slide-by-slide deck outline, grounded in Brain facts
   /deck build [topic]  plan to BUILD that deck in PowerPoint; proposes a plan you
                     run with /act (Orbyn never builds it unasked; ESC stops)
+  /ask <question>   answer grounded on the clipboard (or: /ask file <path> | <q>);
+                    reads nothing else, records nothing
   /notes [brain] <rough notes>  tidy your own notes into a titled summary with
                     key points and action items, locally (no recording); "brain"
                     files the summary as a reviewable Brain candidate
@@ -547,6 +549,30 @@ def main(argv: list[str] | None = None) -> int:
                 from ghostcursor.workspace import tips
 
                 print(tips.tip())
+            elif command == "/ask" and rest:
+                # Attach-context Q&A (Highlight AI's core): answer grounded on
+                # the clipboard by default, or on a file via
+                #   /ask file <path> | <question>
+                # Read-only; records nothing to the brief or Brain.
+                if rest.split()[:1] == ["file"] and "|" in rest:
+                    spec, _, question = rest.partition("|")
+                    path = spec.split(maxsplit=1)[1].strip().strip('"')
+                    try:
+                        material = Path(path).read_text(
+                            encoding="utf-8", errors="replace"
+                        )
+                    except OSError as exc:
+                        print(f"could not read {path}: {exc}")
+                        continue
+                else:
+                    from ghostcursor.harness import act
+
+                    question = rest
+                    try:
+                        material = act.get_clipboard_text() or ""
+                    except Exception:
+                        material = ""
+                print(workspace.ask(question, material))
             elif command == "/notes" and rest:
                 # Granola-style: tidy the user's OWN rough notes into a
                 # structured summary, locally, no recording. "brain" also files
