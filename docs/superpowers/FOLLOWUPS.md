@@ -1825,3 +1825,18 @@ still works by calling convert_media directly if ever needed.
 ### 3. /convert parsing is brittle (trailing space / embedded quotes)
 __main__.py -- rsplit(" ",1) + a single quote-strip mis-parses odd paths. Not a
 safety issue (no shell); tighten the arg parse if it bites.
+
+## /deck build -- DeckSpec -> Act build (c561bed) -- tier-1 review clean, no BLOCKING
+build_deck proposes a plan to build a reviewed DeckSpec in PowerPoint; the user
+runs /act. Verified: no input synthesis, no new authority, never auto-acts, no
+model-supplied geometry, no new egress; act.py/act_runtime not in the diff.
+Both items below are pre-existing patterns, not introduced by this commit.
+
+### 1. _plan_for puts build_brief (model/Brain-derived) text in trusted, not tainted
+session.py:~841 -- shared with draft_skill + the one-step router. The DeckSpec
+text becomes the plan goal via the trusted channel. Confirm grounding provenance
+stays scrubbed; not a rule-6 egress change here.
+
+### 2. /deck build topic parse couples to the ["build"] guard
+__main__.py -- rest.split(maxsplit=1)[1] is safe only because the guard implies
+>=1 token; a bare "/deck build" falls through to the goal-based deck (intended).
