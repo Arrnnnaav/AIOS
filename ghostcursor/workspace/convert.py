@@ -99,7 +99,6 @@ def convert_media(src, to: str, *, dest_dir=None) -> Path:
     return out
 
 
-
 #: One cue timestamp, either SRT ("," ms) or VTT ("." ms).
 _CUE = re.compile(
     r"(\d{2}:\d{2}:\d{2})[.,](\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2})[.,](\d{3})"
@@ -190,6 +189,26 @@ def text_to_pdf(src, *, dest_dir=None) -> Path:
     return out
 
 
+def image_to_pdf(src, *, dest_dir=None) -> Path:
+    """Save an image as a one-page PDF with Pillow (no extra dependency).
+    A frame with alpha is flattened onto white, since PDF has no transparency."""
+
+    from PIL import Image
+
+    src = Path(src)
+    with Image.open(src) as im:
+        if im.mode in ("RGBA", "LA", "P"):
+            background = Image.new("RGB", im.size, (255, 255, 255))
+            frame = im.convert("RGBA")
+            background.paste(frame, mask=frame.split()[-1])
+            im = background
+        elif im.mode != "RGB":
+            im = im.convert("RGB")
+        out = _dest(src, "pdf", Path(dest_dir) if dest_dir else None)
+        im.save(out, "PDF")
+    return out
+
+
 def convert(src, to: str, *, dest_dir=None) -> Path:
     """Convert ``src`` to format ``to``: images (Pillow), media (FFmpeg),
     subtitles (SRT/VTT/txt, pure Python), and PDF<->text (optional pypdf/
@@ -203,6 +222,8 @@ def convert(src, to: str, *, dest_dir=None) -> Path:
         return convert_media(src, to, dest_dir=dest_dir)
     if to in _SUBTITLE:
         return convert_subtitle(src, to, dest_dir=dest_dir)
+    if to == "pdf" and src_ext in _IMAGE:
+        return image_to_pdf(src, dest_dir=dest_dir)
     if to == "pdf" and src_ext in ({"txt"} | _SUBTITLE):
         return text_to_pdf(src, dest_dir=dest_dir)
     if to == "txt":

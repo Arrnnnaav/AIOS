@@ -16,6 +16,12 @@ def _png(tmp_path, name="src.png", mode="RGBA", color=(255, 0, 0, 128)):
     return p
 
 
+def test_image_to_pdf_via_router(tmp_path):
+    out = convert.convert(_png(tmp_path), "pdf", dest_dir=tmp_path)
+    assert out.suffix == ".pdf" and out.exists()
+    assert out.read_bytes().startswith(b"%PDF")  # Pillow writes but can't read PDF
+
+
 def test_convert_image_png_to_jpeg_flattens_alpha(tmp_path):
     from PIL import Image
 

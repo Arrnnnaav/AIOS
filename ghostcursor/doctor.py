@@ -128,9 +128,12 @@ def checks() -> list[Check]:
 
 
 def report() -> str:
+    found = checks()
     lines = ["Orbyn readiness -- what is on, and how to turn on the rest:"]
-    for c in checks():
+    for c in found:
         lines.append(f"  [{'ok ' if c.ready else 'off'}] {c.name}: {c.hint}")
+    if all(c.ready for c in found):
+        lines.append("\N{ROCKET} all systems go -- every capability is on.")
     return "\n".join(lines)
 
 

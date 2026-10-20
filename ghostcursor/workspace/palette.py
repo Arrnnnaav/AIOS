@@ -48,6 +48,7 @@ COMMANDS = (
     "/clips",
     "/snippet",
     "/capture",
+    "/x",
 )
 
 

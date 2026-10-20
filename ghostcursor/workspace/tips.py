@@ -22,6 +22,8 @@ TIPS = (
     "/clips  shows recent clipboard history; /clips 2 puts entry 2 back.",
     "/snippet save sig <text>  then  /snippet sig  copies it to the clipboard.",
     "/capture  makes Ctrl+Alt+C grab the clipboard to a log from any app.",
+    "/x uuid, /x pass 24, /x hex2rgb #ff8800 -- quick offline utilities.",
+    "/convert photo.png pdf  turns an image into a one-page PDF, all local.",
 )
 
 
