@@ -38,6 +38,7 @@ from ghostcursor.workspace.contracts import (
     SpatialContextReference,
 )
 from ghostcursor.workspace.research import evidence_view, render, research
+from ghostcursor.workspace.usage import Usage
 
 #: Brief turns a request carries (most recent first kept).
 HISTORY_TURNS = 20
@@ -286,6 +287,9 @@ class Workspace:
     draft_agent: object = None
     #: The deny list of the agent in use this session (D183); Act prefers it.
     active_deny: tuple = ()
+    #: Recurring-use learning (D186): a session tally that offers to save a task
+    #: once it repeats. In-memory only; never persisted (rule 6).
+    usage: Usage = field(default_factory=Usage)
 
     def __post_init__(self) -> None:
         brief_path(self.root, self.topic)  # validates the topic name
@@ -771,7 +775,10 @@ class Workspace:
             )
         except ProviderError:
             return self.discuss(task)  # model unavailable -> just talk
-        return self._run_intent(intent, arg or task, fallback=task)
+        result = self._run_intent(intent, arg or task, fallback=task)
+        # Recurring-use learning: offer to save a task that repeats (once).
+        nudge = self.usage.nudge(task, kind="skill")
+        return f"{result}\n{nudge}" if nudge else result
 
     def _run_intent(self, intent: str, arg: str, *, fallback: str = "") -> str:
         """Dispatch one (intent, argument) to the existing reviewed capability

@@ -583,6 +583,9 @@ def main(argv: list[str] | None = None) -> int:
                         )
                 else:
                     print(workspace.crew(rest).as_text())  # ad-hoc goal
+                    nudge = workspace.usage.nudge(rest, kind="crew")
+                    if nudge:
+                        print(nudge)
             elif command == "/convert" and len(rest.split()) >= 2:
                 # Local file conversion (Open-Tangerine ported): <src> <format>.
                 from ghostcursor.workspace import convert as _convert
