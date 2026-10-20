@@ -775,14 +775,14 @@ class Workspace:
         if intent == "research":
             report = self.deep_dive(arg)
             return (
-                f"[research] {len(report.subquestions)} part(s); filed "
+                f"🔎 [research] {len(report.subquestions)} part(s); filed "
                 f"{report.filed_to_brain} cited claim(s) to the Brain (review: "
                 "/know list candidate). See /evidence."
             )
         if intent == "deck":
             deck = self.make_deck(arg)
             return (
-                f"[deck] {deck.title} ({len(deck.slides)} slides)"
+                f"📊 [deck] {deck.title} ({len(deck.slides)} slides)"
                 if deck
                 else "[deck] model unavailable"
             )
@@ -791,14 +791,14 @@ class Workspace:
             if deck is None:
                 return "[research_deck] model unavailable"
             filed = report.filed_to_brain if report else 0
-            return f"[research+deck] {deck.title} ({len(deck.slides)} slides); filed {filed} claim(s)"
+            return f"📊 [research+deck] {deck.title} ({len(deck.slides)} slides); filed {filed} claim(s)"
         if intent == "remember" and self.knowledge is not None:
             f = self.knowledge.add_candidate(arg, source="task", scope=self.kb_scope)
             return (
-                f"[remember] saved as candidate #{f.fid} (review: /know review {f.fid})"
+                f"🧠 [remember] saved as candidate #{f.fid} (review: /know review {f.fid})"
             )
         if intent == "skill":
-            return "[skill] " + (self.draft_skill(arg) or "model unavailable")
+            return "🛠 [skill] " + (self.draft_skill(arg) or "model unavailable")
         if intent == "plan":
             plan = self._plan_for(arg)
             if plan is None:
@@ -808,7 +808,7 @@ class Workspace:
                 f"  {n}. {s.instruction}" for n, s in enumerate(plan.steps, 1)
             )
             return (
-                f"[plan] to do: {arg}\n{steps}\n"
+                f"✨ [plan] to do: {arg}\n{steps}\n"
                 "Approve and run with /teach 1 (guide on screen) or /act 1 (Orbyn "
                 "does it, after you approve; ESC stops)."
             )

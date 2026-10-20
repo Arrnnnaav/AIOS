@@ -413,11 +413,14 @@ def main(argv: list[str] | None = None) -> int:
 
     brain = Brain()
     workspace = Workspace(argv[0], Gateway(), brain, knowledge=Knowledge())
+    from ghostcursor.workspace import tips
+
     print(
         f"Workspace '{argv[0]}'"
         + (f" -- goal: {workspace.goal}" if workspace.goal else "")
         + ". /quit to leave; type a message or a command."
     )
+    print(f"\N{ELECTRIC LIGHT BULB} Tip: {tips.tip()}")  # quiet discoverability
     web = {"browser": None}
     try:
         while True:
@@ -512,6 +515,10 @@ def main(argv: list[str] | None = None) -> int:
                         for n, s in enumerate(plan.steps, start=1)
                     )
                 )
+            elif command == "/tip":
+                from ghostcursor.workspace import tips
+
+                print(tips.tip())
             elif command == "/do" and rest:
                 print(workspace.do(rest))
             elif command == "/convert" and len(rest.split()) >= 2:
