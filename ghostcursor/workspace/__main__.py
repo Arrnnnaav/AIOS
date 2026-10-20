@@ -28,6 +28,7 @@ Type to discuss. Commands:
   /deck [topic]     a slide-by-slide deck outline, grounded in Brain facts
   /deck build [topic]  plan to BUILD that deck in PowerPoint; proposes a plan you
                     run with /act (Orbyn never builds it unasked; ESC stops)
+  /diff <a> <b>     a unified diff of two local files (stdlib; nothing uploaded)
   /export [file]    a shareable Markdown snapshot of this workspace (goal, plan,
                     todos, saved library); prints it, or writes it to <file>
   /todo add <task> | from plan | done <id> | undone <id> | rm <id> | list
@@ -561,6 +562,23 @@ def main(argv: list[str] | None = None) -> int:
                 from ghostcursor.workspace import tips
 
                 print(tips.tip())
+            elif command == "/diff" and len(rest.split()) >= 2:
+                # Local unified diff of two files. Nothing leaves the machine.
+                from ghostcursor.workspace import diffs
+
+                a, b = (
+                    rest.rsplit(" ", 1)
+                    if rest.count(" ") == 1
+                    else (rest.split()[0], rest.split()[1])
+                )
+                a, b = a.strip().strip('"'), b.strip().strip('"')
+                try:
+                    at = Path(a).read_text(encoding="utf-8", errors="replace")
+                    bt = Path(b).read_text(encoding="utf-8", errors="replace")
+                except OSError as exc:
+                    print(f"could not read a file: {exc}")
+                else:
+                    print(diffs.unified(at, bt, a, b))
             elif command == "/export":
                 # A shareable Markdown snapshot of the workspace. No arg prints
                 # it; a path writes it there.

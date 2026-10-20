@@ -31,6 +31,7 @@ TIPS = (
     "/find <query>  searches your saved snippets, crews, agents and skills.",
     "/todo add <task>  keeps a local checklist for this workspace.",
     "/export handoff.md  writes a shareable snapshot of your whole workspace.",
+    "/diff old.txt new.txt  shows what changed between two files, all local.",
     "Run the same /do task twice and Orbyn offers to save it as a skill.",
 )
 

@@ -56,6 +56,7 @@ COMMANDS = (
     "/find",
     "/todo",
     "/export",
+    "/diff",
 )
 
 
