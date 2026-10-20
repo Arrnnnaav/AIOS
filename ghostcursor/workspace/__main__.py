@@ -435,6 +435,35 @@ def know_command(knowledge, scope: str, args: list[str]) -> str:
     return KNOW_USAGE
 
 
+def _startup_status(root) -> str:
+    """A one-line reminder of what's waiting in this workspace, or "" if it's
+    empty -- shown once at startup so your own state is visible. Each store is
+    read defensively; a missing one is just skipped."""
+
+    from ghostcursor.workspace import crew, snippets, todos
+
+    bits = []
+    try:
+        pending = sum(1 for _i, done, _t in todos.items(root) if not done)
+        if pending:
+            bits.append(f"{pending} todo{'s' if pending != 1 else ''} to do")
+    except Exception:
+        pass
+    try:
+        n = len(snippets.names(root))
+        if n:
+            bits.append(f"{n} snippet{'s' if n != 1 else ''}")
+    except Exception:
+        pass
+    try:
+        n = len(crew.list_crews(root))
+        if n:
+            bits.append(f"{n} saved crew{'s' if n != 1 else ''}")
+    except Exception:
+        pass
+    return ", ".join(bits)
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     if len(argv) != 1:
@@ -457,6 +486,9 @@ def main(argv: list[str] | None = None) -> int:
         + ". /quit to leave; type a message or a command."
     )
     print(f"\N{ELECTRIC LIGHT BULB} Tip: {tips.tip()}")  # quiet discoverability
+    _status = _startup_status(workspace.root)
+    if _status:
+        print(f"\N{CLIPBOARD} {_status}")
     web = {"browser": None}
     try:
         while True:
