@@ -30,8 +30,9 @@ Type to discuss. Commands:
                     run with /act (Orbyn never builds it unasked; ESC stops)
   /export [file]    a shareable Markdown snapshot of this workspace (goal, plan,
                     todos, saved library); prints it, or writes it to <file>
-  /todo add <task> | done <id> | undone <id> | rm <id> | list   a local
-                    per-workspace checklist (done items stay, struck through)
+  /todo add <task> | from plan | done <id> | undone <id> | rm <id> | list
+                    a local per-workspace checklist (done items stay, struck
+                    through); "from plan" turns the current plan into todos
   /find <query>     search everything you've saved -- snippets, crews, agents,
                     skills -- by name (substring or close fuzzy match)
   /related <query>  Brain facts matching the query, plus facts one hop away over
@@ -578,7 +579,9 @@ def main(argv: list[str] | None = None) -> int:
 
                 parts = rest.split(maxsplit=1)
                 verb = parts[0] if parts else "list"
-                if verb == "add" and len(parts) == 2:
+                if verb == "from" and parts[1:] == ["plan"]:
+                    print(workspace.todos_from_plan())
+                elif verb == "add" and len(parts) == 2:
                     try:
                         print(f"added todo {todos.add(workspace.root, parts[1])}")
                     except ValueError as exc:

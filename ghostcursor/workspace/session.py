@@ -958,6 +958,25 @@ class Workspace:
             "observes and asks before any risky one (rule 2)."
         )
 
+    def todos_from_plan(self) -> str:
+        """Turn the current plan's steps into checklist items (D186), so an
+        approved plan becomes something to tick off. Secrets in a step are
+        scrubbed before they are written. Needs a plan (/plan or /do first)."""
+
+        from ghostcursor import redact
+        from ghostcursor.workspace import todos
+
+        plan = self.plan
+        if plan is None or not plan.steps:
+            return "no plan to turn into todos (/plan or /do first)"
+        added = 0
+        for step in plan.steps:
+            text = redact.scrub(step.instruction)[0].strip()
+            if text:
+                todos.add(self.root, text)
+                added += 1
+        return f"added {added} todo(s) from the plan (/todo list)"
+
     def export_md(self) -> str:
         """A shareable Markdown snapshot of the workspace (D186): goal, current
         plan, todos, and the saved library (names). Local; reads only what's
