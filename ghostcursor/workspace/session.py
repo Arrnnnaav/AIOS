@@ -730,6 +730,108 @@ class Workspace:
         self._propose(plan)
         return f"loaded skill '{name}' ({len(plan.steps)} steps) as the plan; /teach 1 or /act 1"
 
+    def do(self, task: str) -> str:
+        """One-step router (D186): state any task, Orbyn picks the capability and
+        runs it. A model classifies the task into one intent + its core argument;
+        this dispatches to the existing (reviewed) capability. An action task
+        becomes a PLAN the user then approves with /teach or /act -- do() never
+        acts on its own (rule 2). Falls back to chat if the model is unavailable
+        or unsure."""
+
+        from ghostcursor.providers import INTENT_SCHEMA, Envelope, parse_intent
+
+        task = " ".join(str(task).split())
+        if not task:
+            return "say what you want to do"
+        envelope = Envelope(
+            task="route the user's task to one capability",
+            trusted={
+                "task": task,
+                "capabilities": (
+                    "research: answer a question from web sources; "
+                    "deck: make a slide outline; "
+                    "research_deck: research then make a deck; "
+                    "plan: step-by-step plan to do something in an app; "
+                    "remember: save a fact to the Company Brain; "
+                    "skill: create a reusable task skill from a need; "
+                    "chat: anything else / just talk"
+                ),
+            },
+            tainted={},
+        )
+        try:
+            intent, arg = self.gateway.complete(
+                envelope,
+                "Pick the single capability that best fits the task. Return only "
+                "JSON matching the schema: intent (one of the listed names) and "
+                "argument (the task's core topic/question/need/fact).",
+                INTENT_SCHEMA,
+                parse_intent,
+                purpose="task routing",
+            )
+        except ProviderError:
+            return self.discuss(task)  # model unavailable -> just talk
+        arg = arg or task
+        if intent == "research":
+            report = self.deep_dive(arg)
+            return (
+                f"[research] {len(report.subquestions)} part(s); filed "
+                f"{report.filed_to_brain} cited claim(s) to the Brain (review: "
+                "/know list candidate). See /evidence."
+            )
+        if intent == "deck":
+            deck = self.make_deck(arg)
+            return (
+                f"[deck] {deck.title} ({len(deck.slides)} slides)"
+                if deck
+                else "[deck] model unavailable"
+            )
+        if intent == "research_deck":
+            deck, report = self.research_to_deck(arg)
+            if deck is None:
+                return "[research_deck] model unavailable"
+            filed = report.filed_to_brain if report else 0
+            return f"[research+deck] {deck.title} ({len(deck.slides)} slides); filed {filed} claim(s)"
+        if intent == "remember" and self.knowledge is not None:
+            f = self.knowledge.add_candidate(arg, source="task", scope=self.kb_scope)
+            return (
+                f"[remember] saved as candidate #{f.fid} (review: /know review {f.fid})"
+            )
+        if intent == "skill":
+            return "[skill] " + (self.draft_skill(arg) or "model unavailable")
+        if intent == "plan":
+            plan = self._plan_for(arg)
+            if plan is None:
+                return "[plan] model unavailable"
+            self._propose(plan)  # becomes the current plan for /teach or /act
+            steps = "\n".join(
+                f"  {n}. {s.instruction}" for n, s in enumerate(plan.steps, 1)
+            )
+            return (
+                f"[plan] to do: {arg}\n{steps}\n"
+                "Approve and run with /teach 1 (guide on screen) or /act 1 (Orbyn "
+                "does it, after you approve; ESC stops)."
+            )
+        return self.discuss(task)  # chat / remember-without-a-brain
+
+    def _plan_for(self, need: str):
+        """A TeachPlan toward an arbitrary need (not the session goal), with any
+        matching app skill as guidance. None if no model answers. Shared by the
+        one-step router and the skill drafter."""
+
+        from ghostcursor.workspace import skills
+
+        trusted = {"goal": need}
+        guides = skills.relevant(need)
+        if guides:
+            trusted["app_guidance"] = [{"app": n, "notes": b} for n, b in guides]
+        try:
+            return self.gateway.plan(
+                Envelope(task="teach", trusted=trusted, tainted={})
+            )
+        except ProviderError:
+            return None
+
     def draft_skill(self, need: str, name: str = ""):
         """Auto skill-creator (D186): from a stated NEED, plan it and save the
         plan as a reusable task skill in one step -- the user describes what they
@@ -741,20 +843,13 @@ class Workspace:
         *recurring use* (noticing the same goal repeats and offering to save it)
         is the next step and needs session-history tracking -- not built yet."""
 
-        from ghostcursor.workspace import skills, task_skills
+        from ghostcursor.workspace import task_skills
 
         need = " ".join(str(need).split())
         if not need:
             raise ValueError("a skill needs a stated need")
-        trusted = {"goal": need}
-        guides = skills.relevant(need)
-        if guides:
-            trusted["app_guidance"] = [{"app": n, "notes": b} for n, b in guides]
-        try:
-            plan = self.gateway.plan(
-                Envelope(task="teach", trusted=trusted, tainted={})
-            )
-        except ProviderError:
+        plan = self._plan_for(need)
+        if plan is None:
             return None
         path = task_skills.save_skill(name.strip() or need, plan)
         return (

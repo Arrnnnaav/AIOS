@@ -26,6 +26,17 @@ MAX_BULLET_CHARS = 200
 #: Deep research (D186): decompose a question into a few sub-questions.
 MAX_SUBQUESTIONS = 6
 MAX_SUBQUESTION_CHARS = 200
+#: One-step task router (D186): which capability a stated task needs.
+TASK_INTENTS = (
+    "research",
+    "deck",
+    "research_deck",
+    "plan",
+    "remember",
+    "skill",
+    "chat",
+)
+MAX_TASK_ARG_CHARS = 400
 
 
 class ExpectedChange(str, Enum):
@@ -360,3 +371,36 @@ def parse_research_plan(text: str) -> tuple[str, ...]:
             raise _invalid(f"sub-question {index} is invalid")
         out.append(" ".join(sub.split()))
     return tuple(out)
+
+
+# --- one-step task router (D186): classify a task into a capability ----------
+# "Anyone types their task; Orbyn runs the right capability." A closed-schema
+# classification picks one intent and the core argument; the session dispatches
+# to the existing (reviewed) capability. An action task ("do X in an app")
+# becomes a PLAN the user approves -- the router never auto-acts (rule 2).
+
+INTENT_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["intent", "argument"],
+    "properties": {
+        "intent": {"enum": list(TASK_INTENTS)},
+        "argument": {"type": "string", "maxLength": MAX_TASK_ARG_CHARS},
+    },
+}
+
+
+def parse_intent(text: str) -> tuple[str, str]:
+    """Strict parse of the router's answer -> (intent, argument). intent must be
+    one of TASK_INTENTS; argument is the task's core (topic/question/need/fact),
+    trimmed. INVALID_OUTPUT otherwise."""
+
+    value = strict_json(text)
+    _exact(value, {"intent", "argument"}, "intent")
+    intent = value["intent"]
+    if intent not in TASK_INTENTS:
+        raise _invalid("intent is not an allowed capability")
+    argument = value["argument"]
+    if not isinstance(argument, str) or len(argument) > MAX_TASK_ARG_CHARS:
+        raise _invalid("intent argument is invalid")
+    return intent, " ".join(argument.split())

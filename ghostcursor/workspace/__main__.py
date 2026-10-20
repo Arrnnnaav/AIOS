@@ -15,6 +15,9 @@ Type to discuss. Commands:
   /web [url]        open Orbyn's browser, read the page's controls (read-only)
   /plan edit <n> <text> | drop <n> | add <text>
                     edit the plan; each edit is a new proposal
+  /do <task>        ONE STEP: state any task, Orbyn picks the capability and runs
+                    it (research/deck/plan/remember/skill); a "do X in an app"
+                    task becomes a plan you approve with /teach or /act
   /deck [topic]     a slide-by-slide deck outline, grounded in Brain facts
   /deepresearch <q> decompose, research each part (cited), file claims to Brain
   /researchdeck <t> research the topic then build a grounded deck
@@ -507,6 +510,8 @@ def main(argv: list[str] | None = None) -> int:
                         for n, s in enumerate(plan.steps, start=1)
                     )
                 )
+            elif command == "/do" and rest:
+                print(workspace.do(rest))
             elif command == "/deck":
                 from ghostcursor.workspace.deck import build_brief
 

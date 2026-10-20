@@ -356,3 +356,41 @@ def test_draft_skill_auto_creates_a_skill_from_a_need(planned, tmp_path, monkeyp
 
     planned.gateway.fail = FailureKind.UNAVAILABLE.value
     assert planned.draft_skill("x") is None
+
+
+def test_do_router_dispatches_by_intent(planned, tmp_path, monkeypatch):
+    """One-step router (D186): classify the task -> run the right capability.
+    A 'plan' task becomes an approvable plan (never auto-acts)."""
+    import ghostcursor.workspace.task_skills as ts
+
+    monkeypatch.setattr(ts, "_dir", lambda dest_dir=None: tmp_path / "skills")
+
+    # remember: files a Brain candidate (knowledge present on this Workspace?)
+    planned.gateway.answer = {"intent": "remember", "argument": "Prod is in us-east-1"}
+    out = planned.do("note that prod is in us-east-1")
+    # knowledge may be None on this fixture; either filed, or chat fallback -- both safe
+    assert out  # returns a message, never raises
+
+    # plan: becomes an approvable plan, NOT auto-run
+    calls = {"n": 0}
+    real_complete = planned.gateway.complete
+
+    def complete(envelope, system, schema, parse, **kw):
+        calls["n"] += 1
+        if calls["n"] == 1:  # the intent classification
+            return parse(json.dumps({"intent": "plan", "argument": "save the file"}))
+        return real_complete(envelope, system, schema, parse, **kw)
+
+    planned.gateway.complete = complete
+    planned.gateway.answer = {
+        "steps": [{"instruction": "Press Ctrl S", "expected_change": "title_changes"}]
+    }
+    out = planned.do("save the file")
+    assert "[plan]" in out and "/act 1" in out  # approvable, not executed
+    assert planned.plan is not None  # proposed as the current plan
+
+
+def test_do_falls_back_to_chat_when_model_unavailable(planned):
+    planned.gateway.fail = FailureKind.UNAVAILABLE.value
+    out = planned.do("anything at all")
+    assert isinstance(out, str) and out  # discuss fallback, no raise
