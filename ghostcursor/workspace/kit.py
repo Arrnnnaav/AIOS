@@ -12,6 +12,9 @@ from __future__ import annotations
 
 import base64
 import binascii
+import hashlib
+import json as _json_mod
+import re
 import secrets
 import string
 import urllib.parse
@@ -88,6 +91,28 @@ def _count(text: str) -> str:
     )
 
 
+def _json(text: str) -> str:
+    """Pretty-print and validate JSON; a clear error if it doesn't parse."""
+
+    try:
+        return _json_mod.dumps(
+            _json_mod.loads(text), indent=2, ensure_ascii=False, sort_keys=False
+        )
+    except ValueError as exc:
+        raise ValueError(f"not valid JSON: {exc}")
+
+
+def _slug(text: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", text.strip().casefold()).strip("-")
+    if not slug:
+        raise ValueError("nothing to slugify")
+    return slug
+
+
+def _sha256(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
 OPS = {
     "b64": _b64,
     "unb64": _unb64,
@@ -99,6 +124,9 @@ OPS = {
     "pass": _password,
     "time": _time,
     "count": _count,
+    "json": _json,
+    "slug": _slug,
+    "sha256": _sha256,
 }
 
 
@@ -131,5 +159,12 @@ if __name__ == "__main__":  # ponytail: round-trips + the parsers that can fail
     assert run("time", "0") == "1970-01-01 00:00:00 UTC"
     assert run("time", "x").startswith("want a whole")
     assert run("count", "a b c") == "3 words, 5 chars, 1 lines"
+    assert run("json", '{"b":1,"a":2}').splitlines()[0] == "{"
+    assert run("json", "{bad}").startswith("not valid JSON")
+    assert run("slug", "Hello, World!") == "hello-world"
+    assert run("slug", "!!!").startswith("nothing to")
+    assert run("sha256", "") == (
+        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    )
     assert run("nope", "").startswith("unknown op")
     print("kit ok")

@@ -37,3 +37,14 @@ def test_time_and_count_and_unknown():
     assert kit.run("count", "a b c") == "3 words, 5 chars, 1 lines"
     assert kit.run("count", "") == "0 words, 0 chars, 0 lines"
     assert kit.run("bogus", "").startswith("unknown op")
+
+
+def test_json_slug_sha256():
+    assert kit.run("json", '{"a":1}').splitlines()[0] == "{"
+    assert kit.run("json", "nope").startswith("not valid JSON")
+    assert kit.run("slug", "Hello, World!") == "hello-world"
+    assert kit.run("slug", "   ").startswith("nothing to")
+    # known SHA-256 of the empty string
+    assert kit.run("sha256", "") == (
+        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    )

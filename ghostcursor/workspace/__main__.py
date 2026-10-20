@@ -53,7 +53,8 @@ Type to discuss. Commands:
                     recalled snippet is copied to the clipboard (never typed)
   /capture          Ctrl+Alt+C grabs the clipboard to a log from anywhere
   /x <op> [text]    quick utilities: b64/unb64, urlenc/urldec, hex2rgb/rgb2hex,
-                    uuid, pass [n], time [epoch], count -- all local, offline
+                    uuid, pass [n], time [epoch], count, json, slug, sha256 --
+                    all local, offline; with no text it uses the clipboard
   (a plain sum like  3 * (4 + 1)  is answered on the spot; a mistyped
    /command gets a "did you mean" instead of the whole help)
   /act <n> [s]      Orbyn does plan step n onward itself, after you approve
@@ -803,6 +804,14 @@ def main(argv: list[str] | None = None) -> int:
                 if not op:
                     print(f"usage: /x <op> [text] -- ops: {', '.join(kit.OPS)}")
                 else:
+                    # No inline text -> operate on the clipboard (Raycast-style).
+                    if not arg.strip() and op.lower() not in ("uuid", "pass", "time"):
+                        from ghostcursor.harness import act
+
+                        try:
+                            arg = act.get_clipboard_text() or ""
+                        except Exception:
+                            arg = ""
                     print(kit.run(op, arg))
             elif command == "/capture":
                 from ghostcursor.workspace import capture
