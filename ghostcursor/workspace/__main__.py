@@ -28,6 +28,8 @@ Type to discuss. Commands:
   /deck [topic]     a slide-by-slide deck outline, grounded in Brain facts
   /deck build [topic]  plan to BUILD that deck in PowerPoint; proposes a plan you
                     run with /act (Orbyn never builds it unasked; ESC stops)
+  /related <query>  Brain facts matching the query, plus facts one hop away over
+                    relations, each with the entity that links them
   /ask <question>   answer grounded on the clipboard (or: /ask file <path> | <q>);
                     reads nothing else, records nothing
   /notes [brain] <rough notes>  tidy your own notes into a titled summary with
@@ -549,6 +551,10 @@ def main(argv: list[str] | None = None) -> int:
                 from ghostcursor.workspace import tips
 
                 print(tips.tip())
+            elif command == "/related" and rest:
+                # Backlinks (Reflect/Mem): matching facts + one-hop connected
+                # facts with the bridging entity. Owner's local Brain view.
+                print(workspace.related(rest))
             elif command == "/ask" and rest:
                 # Attach-context Q&A (Highlight AI's core): answer grounded on
                 # the clipboard by default, or on a file via

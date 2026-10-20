@@ -52,6 +52,7 @@ COMMANDS = (
     "/crew",
     "/notes",
     "/ask",
+    "/related",
 )
 
 

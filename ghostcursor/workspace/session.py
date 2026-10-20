@@ -958,6 +958,28 @@ class Workspace:
             "observes and asks before any risky one (rule 2)."
         )
 
+    def related(self, query: str) -> str:
+        """Backlinks view (D186, Reflect/Mem): for a query, the owner's facts
+        that match it, plus facts reached one hop out over reviewed relations,
+        each with the entity that bridged them (Graphiti-style explainability).
+        Owner's local view, so sensitive facts are shown (never a model path)."""
+
+        if self.knowledge is None:
+            return "no Company Brain configured"
+        query = " ".join(str(query).split())
+        if not query:
+            return "related to what? usage: /related <query>"
+        hits = self.knowledge.recall(query, self.kb_scope, include_sensitive=True)
+        conns = self.knowledge.connections(query, self.kb_scope)
+        lines = []
+        if hits:
+            lines.append("Matches:")
+            lines += [f"  #{f.fid} {f.text}" for f in hits]
+        if conns:
+            lines.append("Connected (one hop):")
+            lines += [f"  #{f.fid} {f.text}  (via {bridge})" for f, bridge in conns]
+        return "\n".join(lines) or "(nothing related)"
+
     def enhance_notes(self, raw: str, *, to_brain: bool = False):
         """Note enhancement (D186, Granola's core, no recording): tidy the user's
         own rough notes into a structured summary. Returns (NotesSummary | None,

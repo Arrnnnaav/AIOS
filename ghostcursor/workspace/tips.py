@@ -27,6 +27,7 @@ TIPS = (
     "/crew <goal>  has a manager split the goal into steps and run them in order.",
     "/notes <rough notes>  tidies them into a titled summary -- no recording.",
     "Copy some text, then /ask <question> to get an answer grounded on it.",
+    "/related <query>  shows Brain facts linked to it, not just word matches.",
     "Run the same /do task twice and Orbyn offers to save it as a skill.",
 )
 
