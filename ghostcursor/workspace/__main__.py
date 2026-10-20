@@ -49,8 +49,9 @@ Type to discuss. Commands:
           pause | resume | export <file> | erase]
   /stats            counts from this machine's records (no text)
   /clips [n [brain]]  recent clipboard history; n puts it back, "brain" files it
-  /snippet save <name> <text> | <name> | list | rm <name>   reusable text; a
-                    recalled snippet is copied to the clipboard (never typed)
+  /snippet save <name> [text] | <name> | list | rm <name>   reusable text; save
+                    with no text stores the clipboard; a recalled snippet is
+                    copied to the clipboard (never typed)
   /capture          Ctrl+Alt+C grabs the clipboard to a log from anywhere
   /x <op> [text]    quick utilities: b64/unb64, urlenc/urldec, hex2rgb/rgb2hex,
                     uuid, pass [n], time [epoch], count, json, slug, sha256 --
@@ -773,8 +774,20 @@ def main(argv: list[str] | None = None) -> int:
                 verb = parts[0] if parts else ""
                 if verb == "list":
                     print("\n".join(snippets.names(workspace.root)) or "(no snippets)")
-                elif verb == "save" and len(parts) == 2 and len(parts[1].split()) >= 2:
-                    name, text = parts[1].split(maxsplit=1)
+                elif verb == "save" and len(parts) == 2:
+                    # "<name> <text>" saves the text; "<name>" alone saves the
+                    # current clipboard as that snippet (Raycast-style).
+                    bits = parts[1].split(maxsplit=1)
+                    name = bits[0]
+                    if len(bits) == 2:
+                        text = bits[1]
+                    else:
+                        from ghostcursor.harness import act
+
+                        try:
+                            text = act.get_clipboard_text() or ""
+                        except Exception:
+                            text = ""
                     try:
                         print(
                             f"saved snippet '{snippets.save(workspace.root, name, text)}'"
