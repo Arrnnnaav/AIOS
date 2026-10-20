@@ -47,6 +47,15 @@ def test_todos_from_plan_scrubs_and_counts(tmp_path):
     brain.close()
 
 
+def test_clear_done_removes_only_completed(tmp_path):
+    todos.add(tmp_path, "done one")
+    todos.add(tmp_path, "still open")
+    todos.mark(tmp_path, 1)
+    assert todos.clear_done(tmp_path) == 1
+    assert [t for _i, _d, t in todos.items(tmp_path)] == ["still open"]
+    assert todos.clear_done(tmp_path) == 0  # nothing left to clear
+
+
 def test_render_and_empty_text(tmp_path):
     assert "no todos" in todos.render(tmp_path)
     todos.add(tmp_path, "ship it")

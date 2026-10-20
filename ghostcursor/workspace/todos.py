@@ -65,6 +65,16 @@ def remove(root: Path, tid: int) -> bool:
     return True
 
 
+def clear_done(root: Path) -> int:
+    """Remove every done item; return how many were cleared."""
+
+    kept = [i for i in _load(root) if not i.get("done")]
+    cleared = len(_load(root)) - len(kept)
+    if cleared:
+        _save(root, kept)
+    return cleared
+
+
 def items(root: Path) -> list[tuple[int, bool, str]]:
     return [(i["id"], bool(i["done"]), i["text"]) for i in _load(root)]
 

@@ -33,9 +33,10 @@ Type to discuss. Commands:
   /diff <a> <b>     a unified diff of two local files (stdlib; nothing uploaded)
   /export [file]    a shareable Markdown snapshot of this workspace (goal, plan,
                     todos, saved library); prints it, or writes it to <file>
-  /todo add <task> | from plan | done <id> | undone <id> | rm <id> | list
+  /todo add <task> | from plan | done <id> | undone <id> | rm <id> | clear | list
                     a local per-workspace checklist (done items stay, struck
-                    through); "from plan" turns the current plan into todos
+                    through); "from plan" turns the current plan into todos,
+                    "clear" removes the done ones
   /find <query>     search everything you've saved -- snippets, crews, agents,
                     skills -- by name (substring or close fuzzy match)
   /related <query>  Brain facts matching the query, plus facts one hop away over
@@ -633,6 +634,9 @@ def main(argv: list[str] | None = None) -> int:
                 verb = parts[0] if parts else "list"
                 if verb == "from" and parts[1:] == ["plan"]:
                     print(workspace.todos_from_plan())
+                elif verb == "clear":
+                    n = todos.clear_done(workspace.root)
+                    print(f"cleared {n} done todo(s)")
                 elif verb == "add" and len(parts) == 2:
                     try:
                         print(f"added todo {todos.add(workspace.root, parts[1])}")
