@@ -28,6 +28,8 @@ Type to discuss. Commands:
   /deck [topic]     a slide-by-slide deck outline, grounded in Brain facts
   /deck build [topic]  plan to BUILD that deck in PowerPoint; proposes a plan you
                     run with /act (Orbyn never builds it unasked; ESC stops)
+  /export [file]    a shareable Markdown snapshot of this workspace (goal, plan,
+                    todos, saved library); prints it, or writes it to <file>
   /todo add <task> | done <id> | undone <id> | rm <id> | list   a local
                     per-workspace checklist (done items stay, struck through)
   /find <query>     search everything you've saved -- snippets, crews, agents,
@@ -558,6 +560,19 @@ def main(argv: list[str] | None = None) -> int:
                 from ghostcursor.workspace import tips
 
                 print(tips.tip())
+            elif command == "/export":
+                # A shareable Markdown snapshot of the workspace. No arg prints
+                # it; a path writes it there.
+                md = workspace.export_md()
+                target = rest.strip().strip('"')
+                if target:
+                    try:
+                        Path(target).write_text(md, encoding="utf-8", newline="\n")
+                        print(f"exported to {target}")
+                    except OSError as exc:
+                        print(f"could not write {target}: {exc}")
+                else:
+                    print(md)
             elif command == "/todo":
                 from ghostcursor.workspace import todos
 

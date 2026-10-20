@@ -30,6 +30,7 @@ TIPS = (
     "/related <query>  shows Brain facts linked to it, not just word matches.",
     "/find <query>  searches your saved snippets, crews, agents and skills.",
     "/todo add <task>  keeps a local checklist for this workspace.",
+    "/export handoff.md  writes a shareable snapshot of your whole workspace.",
     "Run the same /do task twice and Orbyn offers to save it as a skill.",
 )
 

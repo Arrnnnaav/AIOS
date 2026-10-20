@@ -55,6 +55,7 @@ COMMANDS = (
     "/related",
     "/find",
     "/todo",
+    "/export",
 )
 
 

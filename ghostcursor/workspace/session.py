@@ -958,6 +958,41 @@ class Workspace:
             "observes and asks before any risky one (rule 2)."
         )
 
+    def export_md(self) -> str:
+        """A shareable Markdown snapshot of the workspace (D186): goal, current
+        plan, todos, and the saved library (names). Local; reads only what's
+        already here. A plan's step text is scrubbed of any embedded secret
+        (same redaction the guide uses)."""
+
+        from ghostcursor.workspace import crew as crew_mod
+        from ghostcursor.workspace import snippets, task_skills, todos
+
+        lines = [f"# Workspace: {self.topic}"]
+        if self.goal:
+            lines += ["", f"**Goal:** {self.goal}"]
+        plan = self.plan
+        lines += ["", "## Plan"]
+        if plan and plan.steps:
+            from ghostcursor import redact
+
+            lines += [
+                f"{n}. {redact.scrub(s.instruction)[0]}"
+                for n, s in enumerate(plan.steps, 1)
+            ]
+        else:
+            lines.append("_(no plan yet)_")
+        lines += ["", "## Todos", todos.render(self.root)]
+        saved = []
+        for label, names in (
+            ("Snippets", snippets.names(self.root)),
+            ("Crews", crew_mod.list_crews(self.root)),
+            ("Skills", task_skills.list_skills()),
+        ):
+            if names:
+                saved.append(f"- **{label}:** {', '.join(names)}")
+        lines += ["", "## Saved", *(saved or ["_(nothing saved yet)_"])]
+        return "\n".join(lines) + "\n"
+
     def related(self, query: str) -> str:
         """Backlinks view (D186, Reflect/Mem): for a query, the owner's facts
         that match it, plus facts reached one hop out over reviewed relations,
