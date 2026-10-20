@@ -23,7 +23,7 @@ _IMAGE = {
     "tiff": ("TIFF", False),
     "gif": ("GIF", False),
 }
-_MEDIA = {"mp3", "wav", "m4a", "flac", "ogg", "mp4", "mov", "mkv", "webm", "gif"}
+_MEDIA = {"mp3", "wav", "m4a", "flac", "ogg", "mp4", "mov", "mkv", "webm"}
 
 
 def _dest(src: Path, ext: str, dest_dir: Path | None) -> Path:
@@ -49,7 +49,7 @@ def convert_image(src, to: str, *, dest_dir=None, quality: int | None = None) ->
     from PIL import Image
 
     src = Path(src)
-    to = to.lower().lstrip(".")
+    to = to.lower().removeprefix(".")
     if to not in _IMAGE:
         raise ValueError(f"image target must be one of {sorted(_IMAGE)}")
     fmt, needs_rgb = _IMAGE[to]
@@ -78,7 +78,7 @@ def convert_media(src, to: str, *, dest_dir=None) -> Path:
     Open-Tangerine). Raises a clear error if FFmpeg is not on PATH. Local only."""
 
     src = Path(src)
-    to = to.lower().lstrip(".")
+    to = to.lower().removeprefix(".")
     if to not in _MEDIA:
         raise ValueError(f"media target must be one of {sorted(_MEDIA)}")
     if not ffmpeg_available():
@@ -101,7 +101,7 @@ def convert(src, to: str, *, dest_dir=None) -> Path:
     """Convert ``src`` to format ``to``, routing images to Pillow and media to
     FFmpeg. Returns the output path."""
 
-    to = to.lower().lstrip(".")
+    to = to.lower().removeprefix(".")
     if to in _IMAGE:
         return convert_image(src, to, dest_dir=dest_dir)
     if to in _MEDIA:

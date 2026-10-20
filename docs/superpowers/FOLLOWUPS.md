@@ -1805,3 +1805,23 @@ guessed action). Dispatched capabilities are the already-reviewed ones;
 need (not self.goal), returns None on failure. Rule 6: the classify call goes
 through gateway.complete -> _outbound egress scrub; no new channel. Guards have
 tests (plan-stays-approvable, chat fallback).
+
+## Local file converter review (D186) — 2026-10-20
+
+Independent review of 62d750c (convert.py, Open-Tangerine core). **Verdict:
+clean, no BLOCKING.** No shell injection (subprocess list argv, no shell=True,
+target allowlisted before run); no path traversal (output = src.stem +
+allowlisted ext, never from content); local only (no network); FFmpeg-absent ->
+clear RuntimeError; /convert surfaces errors as a message; no harness/act import
+(rules 1-5 unaffected). Items (#1/#2 fixed now):
+
+### 1. lstrip(".") stripped a char set, not a prefix — RESOLVED 2026-10-20
+Replaced the three `to.lower().lstrip(".")` with `.removeprefix(".")`.
+
+### 2. "gif" was in both _IMAGE and _MEDIA (video->gif unreachable via convert) — RESOLVED 2026-10-20
+Dropped "gif" from _MEDIA; gif is an image target (router -> Pillow). A video->gif
+still works by calling convert_media directly if ever needed.
+
+### 3. /convert parsing is brittle (trailing space / embedded quotes)
+__main__.py -- rsplit(" ",1) + a single quote-strip mis-parses odd paths. Not a
+safety issue (no shell); tighten the arg parse if it bites.
