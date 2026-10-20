@@ -16,6 +16,25 @@ def _png(tmp_path, name="src.png", mode="RGBA", color=(255, 0, 0, 128)):
     return p
 
 
+def test_clipboard_image_saves_when_present_and_errors_when_not(tmp_path):
+    from PIL import Image
+
+    img = Image.new("RGBA", (8, 8), (0, 128, 255, 200))
+    out = convert.clipboard_image("png", dest_dir=tmp_path, grab=lambda: img)
+    assert out.name == "clipboard.png" and out.exists()
+    with Image.open(out) as im:
+        assert im.format == "PNG"
+
+    # second save does not clobber the first
+    out2 = convert.clipboard_image("png", dest_dir=tmp_path, grab=lambda: img)
+    assert out2 != out and out2.exists()
+
+    import pytest
+
+    with pytest.raises(RuntimeError):  # nothing (or a file list) on the clipboard
+        convert.clipboard_image("png", dest_dir=tmp_path, grab=lambda: None)
+
+
 def test_image_to_pdf_via_router(tmp_path):
     out = convert.convert(_png(tmp_path), "pdf", dest_dir=tmp_path)
     assert out.suffix == ".pdf" and out.exists()

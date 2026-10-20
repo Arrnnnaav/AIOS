@@ -32,6 +32,7 @@ TIPS = (
     "/todo add <task>  keeps a local checklist for this workspace.",
     "/export handoff.md  writes a shareable snapshot of your whole workspace.",
     "/diff old.txt new.txt  shows what changed between two files, all local.",
+    "Screenshot something, then /convert clip png to save it to a file.",
     "Run the same /do task twice and Orbyn offers to save it as a skill.",
 )
 

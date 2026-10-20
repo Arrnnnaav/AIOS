@@ -17,6 +17,8 @@ Type to discuss. Commands:
                     edit the plan; each edit is a new proposal
   /convert <src> <fmt>  convert a file locally (image via Pillow; media via
                     FFmpeg if installed) -- no upload, output beside the source
+  /convert clip <fmt>   save an image on the clipboard (e.g. a screenshot) to a
+                    file (default png), all local
   /do <task>        ONE STEP: state any task, Orbyn picks the capability and runs
                     it (research/deck/plan/remember/skill); a "do X in an app"
                     task becomes a plan you approve with /teach or /act
@@ -752,6 +754,16 @@ def main(argv: list[str] | None = None) -> int:
                     nudge = workspace.usage.nudge(rest, kind="crew")
                     if nudge:
                         print(nudge)
+            elif command == "/convert" and rest.split()[:1] == ["clip"]:
+                # Save an image on the clipboard (e.g. a screenshot) to a file.
+                from ghostcursor.workspace import convert as _convert
+
+                fmt = rest.split()[1] if len(rest.split()) > 1 else "png"
+                try:
+                    out = _convert.clipboard_image(fmt)
+                    print(f"saved clipboard image -> {out}")
+                except (ValueError, RuntimeError, OSError) as exc:
+                    print(f"could not save clipboard image: {exc}")
             elif command == "/convert" and len(rest.split()) >= 2:
                 # Local file conversion (Open-Tangerine ported): <src> <format>.
                 from ghostcursor.workspace import convert as _convert

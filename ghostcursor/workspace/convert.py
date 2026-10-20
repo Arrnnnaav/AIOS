@@ -209,6 +209,41 @@ def image_to_pdf(src, *, dest_dir=None) -> Path:
     return out
 
 
+def clipboard_image(to: str = "png", *, dest_dir=None, grab=None) -> Path:
+    """Save an image currently on the clipboard (a screenshot, a copied picture)
+    to a file and return its path. ``to`` is an image format; local only. Raises
+    RuntimeError when the clipboard holds no image. ``grab`` is injectable for
+    tests; by default Pillow's ImageGrab reads the clipboard."""
+
+    from PIL import Image
+
+    to = to.lower().removeprefix(".")
+    if to not in _IMAGE:
+        raise ValueError(f"image target must be one of {sorted(_IMAGE)}")
+    if grab is None:
+        from PIL import ImageGrab
+
+        grab = ImageGrab.grabclipboard
+    im = grab()
+    if not isinstance(im, Image.Image):  # None, or a list of file paths
+        raise RuntimeError("no image on the clipboard")
+    fmt, needs_rgb = _IMAGE[to]
+    if needs_rgb and im.mode in ("RGBA", "LA", "P"):
+        background = Image.new("RGB", im.size, (255, 255, 255))
+        frame = im.convert("RGBA")
+        background.paste(frame, mask=frame.split()[-1])
+        im = background
+    directory = Path(dest_dir) if dest_dir else Path.cwd()
+    directory.mkdir(parents=True, exist_ok=True)
+    out = directory / f"clipboard.{to}"
+    n = 1
+    while out.exists():
+        n += 1
+        out = directory / f"clipboard ({n}).{to}"
+    im.save(out, fmt, **({"quality": 90} if fmt in ("JPEG", "WEBP") else {}))
+    return out
+
+
 def convert(src, to: str, *, dest_dir=None) -> Path:
     """Convert ``src`` to format ``to``: images (Pillow), media (FFmpeg),
     subtitles (SRT/VTT/txt, pure Python), and PDF<->text (optional pypdf/
