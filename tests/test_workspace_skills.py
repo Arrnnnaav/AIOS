@@ -16,6 +16,7 @@ def test_app_goals_pull_the_matching_skill():
     assert "excel" in names("build a spreadsheet with a SUM formula")
     assert "browser" in names("open the website in a new tab")
     assert "powerpoint" in names("make a slide deck")
+    assert "photoshop" in names("add a layer mask in Photoshop")
 
 
 def test_an_unrelated_goal_pulls_no_skill():

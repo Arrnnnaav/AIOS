@@ -721,10 +721,10 @@ def open_window(url: str) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
-    if len(argv) != 1:
+    if len(argv) > 1:  # at most one topic; no arg opens the default workspace
         print(__doc__)
         return 2
-    app = App(argv[0])
+    app = App(argv[0] if argv else "workspace")
     token = secrets.token_urlsafe(32)
     server = make_server(app, token)
     threading.Thread(target=server.serve_forever, daemon=True).start()
