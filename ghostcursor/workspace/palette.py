@@ -53,6 +53,7 @@ COMMANDS = (
     "/notes",
     "/ask",
     "/related",
+    "/find",
 )
 
 

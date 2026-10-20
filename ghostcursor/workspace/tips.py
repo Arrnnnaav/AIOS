@@ -28,6 +28,7 @@ TIPS = (
     "/notes <rough notes>  tidies them into a titled summary -- no recording.",
     "Copy some text, then /ask <question> to get an answer grounded on it.",
     "/related <query>  shows Brain facts linked to it, not just word matches.",
+    "/find <query>  searches your saved snippets, crews, agents and skills.",
     "Run the same /do task twice and Orbyn offers to save it as a skill.",
 )
 

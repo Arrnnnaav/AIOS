@@ -28,6 +28,8 @@ Type to discuss. Commands:
   /deck [topic]     a slide-by-slide deck outline, grounded in Brain facts
   /deck build [topic]  plan to BUILD that deck in PowerPoint; proposes a plan you
                     run with /act (Orbyn never builds it unasked; ESC stops)
+  /find <query>     search everything you've saved -- snippets, crews, agents,
+                    skills -- by name (substring or close fuzzy match)
   /related <query>  Brain facts matching the query, plus facts one hop away over
                     relations, each with the entity that links them
   /ask <question>   answer grounded on the clipboard (or: /ask file <path> | <q>);
@@ -554,6 +556,15 @@ def main(argv: list[str] | None = None) -> int:
                 from ghostcursor.workspace import tips
 
                 print(tips.tip())
+            elif command == "/find" and rest:
+                # Unified search across saved snippets, crews, agents, skills.
+                from ghostcursor.workspace import library
+
+                hits = library.find(workspace.root, rest)
+                print(
+                    "\n".join(f"  [{kind}] {name}" for kind, name in hits)
+                    or f"(nothing saved matches '{rest}')"
+                )
             elif command == "/related" and rest:
                 # Backlinks (Reflect/Mem): matching facts + one-hop connected
                 # facts with the bridging entity. Owner's local Brain view.
