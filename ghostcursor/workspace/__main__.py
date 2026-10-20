@@ -48,7 +48,8 @@ Type to discuss. Commands:
   /brain [list | search <q> | forget <id> | correct <id> <text> |
           pause | resume | export <file> | erase]
   /stats            counts from this machine's records (no text)
-  /clips [n [brain]]  recent clipboard history; n puts it back, "brain" files it
+  /clips [n [brain]]  recent clipboard history; n puts it back, "brain" files it;
+                    /clips save <n> <name> keeps an entry as a named snippet
   /snippet save <name> [text] | <name> | list | rm <name>   reusable text; save
                     with no text stores the clipboard; a recalled snippet is
                     copied to the clipboard (never typed)
@@ -754,6 +755,21 @@ def main(argv: list[str] | None = None) -> int:
                         )
                         or "(clipboard history is empty -- copy something, then /clips)"
                     )
+                elif parts[0] == "save" and len(parts) >= 3 and parts[1].isdigit():
+                    # promote a history entry to a named snippet
+                    from ghostcursor.workspace import snippets
+
+                    text = clips.get(int(parts[1]))
+                    if text is None:
+                        print("no such entry")
+                    else:
+                        try:
+                            saved = snippets.save(
+                                workspace.root, " ".join(parts[2:]), text
+                            )
+                            print(f"saved entry {parts[1]} as snippet '{saved}'")
+                        except ValueError as exc:
+                            print(exc)
                 elif parts[0].isdigit():
                     text = clips.get(int(parts[0]))
                     if text is None:
@@ -766,7 +782,10 @@ def main(argv: list[str] | None = None) -> int:
                         act.set_clipboard_text(text)
                         print(f"copied entry {parts[0]} back to the clipboard")
                 else:
-                    print("usage: /clips  |  /clips <n>  |  /clips <n> brain")
+                    print(
+                        "usage: /clips  |  /clips <n>  |  /clips <n> brain  |  "
+                        "/clips save <n> <name>"
+                    )
             elif command == "/snippet":
                 from ghostcursor.workspace import snippets
 
