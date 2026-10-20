@@ -15,6 +15,8 @@ Type to discuss. Commands:
   /web [url]        open Orbyn's browser, read the page's controls (read-only)
   /plan edit <n> <text> | drop <n> | add <text>
                     edit the plan; each edit is a new proposal
+  /convert <src> <fmt>  convert a file locally (image via Pillow; media via
+                    FFmpeg if installed) -- no upload, output beside the source
   /do <task>        ONE STEP: state any task, Orbyn picks the capability and runs
                     it (research/deck/plan/remember/skill); a "do X in an app"
                     task becomes a plan you approve with /teach or /act
@@ -512,6 +514,17 @@ def main(argv: list[str] | None = None) -> int:
                 )
             elif command == "/do" and rest:
                 print(workspace.do(rest))
+            elif command == "/convert" and len(rest.split()) >= 2:
+                # Local file conversion (Open-Tangerine ported): <src> <format>.
+                from ghostcursor.workspace import convert as _convert
+
+                parts = rest.rsplit(" ", 1)
+                src, fmt = parts[0].strip().strip('"'), parts[1].strip()
+                try:
+                    out = _convert.convert(src, fmt)
+                    print(f"converted -> {out}")
+                except (ValueError, RuntimeError, OSError) as exc:
+                    print(f"could not convert: {exc}")
             elif command == "/deck":
                 from ghostcursor.workspace.deck import build_brief
 
