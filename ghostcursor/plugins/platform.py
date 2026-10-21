@@ -11,6 +11,7 @@ from typing import Mapping
 
 from ghostcursor.memory.store import default_db_path
 from ghostcursor.plugins.store import PluginStore, PluginStoreError
+from ghostcursor.plugins.trust import load_trust_policy
 
 
 CORE_VERSION = "1.0.0"
@@ -19,6 +20,13 @@ _MODULE_ROOT = Path(__file__).resolve().parent
 _REPO_ROOT = _MODULE_ROOT.parent.parent
 _TRUST_PATH = _MODULE_ROOT / "trusted_keys.json"
 _BUNDLED_ROOT = _REPO_ROOT / "plugins" / "bundled"
+#: Optional root-signed trust policy. When this directory exists it MUST hold a
+#: pinned root key and a valid, root-signed key manifest + revocation list; the
+#: revocation list's revoked bundle digests then feed PluginStore.revoked_digests.
+#: Absent = not configured (flat trusted_keys.json stays the key source, no
+#: bundle revocations). Present-but-invalid = fail closed (raise), never a
+#: silent fall-back that would un-revoke a bundle. (D186 Bucket-2 wiring.)
+_TRUST_POLICY_DIR = _MODULE_ROOT / "trust"
 
 
 def default_plugin_root() -> Path:
@@ -82,12 +90,50 @@ def _bootstrap(store: PluginStore) -> None:
             store.enable(installed.plugin_id, installed.version)
 
 
+def signed_revoked_digests(trust_dir: Path | None = None) -> frozenset[str]:
+    """Revoked bundle digests from a root-signed revocation policy.
+
+    If ``trust_dir`` (default ``_TRUST_POLICY_DIR``) does not exist, the policy
+    is simply not configured and no bundle is revoked (empty set). If it DOES
+    exist it must contain ``root.b64`` and a valid, root-signed ``key-manifest
+    .json``/``.sig`` and ``revocations.json``/``.sig``; anything missing or not
+    verifying raises (fail closed) rather than silently returning an empty set,
+    which would un-revoke every bundle. Verification is `load_trust_policy`.
+
+    ponytail: the monotonic sequence floor defaults to 0 here (first load). A
+    restart-persistent floor (so a validly-signed OLDER revocation list cannot
+    be swapped back in by someone with write access to the trust dir) is the
+    recorded next slice.
+    """
+
+    trust_dir = trust_dir or _TRUST_POLICY_DIR
+    if not trust_dir.exists():
+        return frozenset()
+    try:
+        root = base64.b64decode(
+            (trust_dir / "root.b64").read_text(encoding="utf-8").strip(), validate=True
+        )
+    except (OSError, ValueError) as exc:
+        raise PluginStoreError(
+            "trust policy is configured but its root key is unreadable"
+        ) from exc
+    policy = load_trust_policy(
+        key_manifest_bytes=(trust_dir / "key-manifest.json").read_bytes(),
+        key_manifest_signature=(trust_dir / "key-manifest.sig").read_bytes(),
+        revocations_bytes=(trust_dir / "revocations.json").read_bytes(),
+        revocations_signature=(trust_dir / "revocations.sig").read_bytes(),
+        root_public_key=root,
+    )
+    return policy.revoked_bundle_digests
+
+
 def production_store(*, bootstrap: bool = True) -> PluginStore:
     store = PluginStore(
         default_plugin_root(),
         trusted_keys=trusted_release_keys(),
         core_version=CORE_VERSION,
         observation_store_path=default_db_path(),
+        revoked_digests=signed_revoked_digests(),
     )
     if bootstrap:
         _bootstrap(store)
