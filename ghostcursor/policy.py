@@ -66,6 +66,22 @@ def redact_egress() -> bool:
     return False
 
 
+def telemetry_enabled() -> bool:
+    """Local, events-not-content telemetry (D141). OFF by default AND off when
+    absent or unreadable -- it is opt-in local diagnostics, not a safety guard,
+    so anything but an explicit ``1`` means off. Even when on, NOTHING leaves
+    the device (rule 6): it only permits counting allowlisted event NAMES in a
+    local file for the owner's own view."""
+
+    value = _value("Telemetry")
+    if value is None or value == "unreadable":
+        return False
+    try:
+        return int(value) >= 1
+    except (TypeError, ValueError):
+        return False
+
+
 def blocked_apps() -> frozenset[str]:
     value = _value("BlockedApps")
     if not isinstance(value, str):
