@@ -23,7 +23,13 @@ def _canonical(value: object) -> bytes:
     return (json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n").encode()
 
 
-def _signed_policy(*, revoked: bool = False, sequence: int = 1, revoked_bundles=None):
+def _signed_policy(
+    *,
+    revoked: bool = False,
+    sequence: int = 1,
+    revoked_bundles=None,
+    revocation_extra=None,
+):
     root = Ed25519PrivateKey.generate()
     releases = [Ed25519PrivateKey.generate(), Ed25519PrivateKey.generate()]
     publics = [
@@ -75,6 +81,8 @@ def _signed_policy(*, revoked: bool = False, sequence: int = 1, revoked_bundles=
     }
     if revoked_bundles is not None:
         revocations["revoked_bundles"] = revoked_bundles
+    if revocation_extra is not None:
+        revocations.update(revocation_extra)
     key_bytes, revoke_bytes = _canonical(keys), _canonical(revocations)
     return (
         root.public_key().public_bytes(
@@ -194,6 +202,35 @@ def test_revoked_bundles_are_exposed_as_digests():
 def test_revoked_bundles_bad_shapes_are_rejected(bundles, match):
     root, keys, key_sig, rev, rev_sig, _ = _signed_policy(revoked_bundles=bundles)
     with pytest.raises(ReleaseTrustError, match=match):
+        load_trust_policy(
+            key_manifest_bytes=keys,
+            key_manifest_signature=key_sig,
+            revocations_bytes=rev,
+            revocations_signature=rev_sig,
+            root_public_key=root,
+            now=NOW,
+        )
+
+
+def test_revoked_bundles_must_be_a_list():
+    # a string is non-list and would not iterate into dict items either
+    root, keys, key_sig, rev, rev_sig, _ = _signed_policy(revoked_bundles="nope")
+    with pytest.raises(ReleaseTrustError, match="must be a list"):
+        load_trust_policy(
+            key_manifest_bytes=keys,
+            key_manifest_signature=key_sig,
+            revocations_bytes=rev,
+            revocations_signature=rev_sig,
+            root_public_key=root,
+            now=NOW,
+        )
+
+
+def test_revocation_doc_rejects_unknown_extra_fields():
+    root, keys, key_sig, rev, rev_sig, _ = _signed_policy(
+        revocation_extra={"surprise": 1}
+    )
+    with pytest.raises(ReleaseTrustError, match="revocation list schema is invalid"):
         load_trust_policy(
             key_manifest_bytes=keys,
             key_manifest_signature=key_sig,

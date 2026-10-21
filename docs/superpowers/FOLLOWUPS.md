@@ -489,6 +489,20 @@ Remaining Bucket-2 work, each its own reviewed slice with tests + D018 mutation:
      doc, so "blocked" is a signed decision, not an unsigned catalog hint.
 Ratings/install-counts stay OUT (require telemetry/egress; rule 6).
 
+**SHIPPED 2026-10-21 (03a7a89 + tests): digest-level signed bundle revocation.**
+The root-signed revocation doc now accepts an optional `revoked_bundles`
+([{manifest_sha256,revoked_at,reason_code}]), backward-compatible, under the
+same root signature + monotonic sequence floor, exposed as
+`ReleaseTrustPolicy.revoked_bundle_digests`. Tier-1 gate completed: independent
+tier1-reviewer (own worktree) returned **no BLOCKING** (all 5 points confirmed);
+D018 mutation sweep **7 mutants, 7 killed**. Two non-blocking review FOLLOWUPS:
+(a) digest revocation isn't cross-checked against revoked key_ids / key manifest
+(standalone primitive, fine; revisit at the install-time slice); (b) duplicate-
+digest check precedes reason/timestamp validation (cosmetic; both reject).
+STILL TODO (store-wiring slice): enforce `revoked_bundle_digests` in
+`PluginStore.install`/activate, which first needs `load_trust_policy` wired into
+the store (it currently verifies via the flat `trusted_keys.json` map).
+
 **Precondition found 2026-10-21:** `trust.py`'s `load_trust_policy` /
 `ReleaseTrustPolicy` is built but **not wired into `PluginStore`/`platform`** —
 production verification uses the simpler `trusted_keys.json` pinned public-key
