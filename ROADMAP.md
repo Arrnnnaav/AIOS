@@ -553,7 +553,7 @@ a new boundary, and it is the reason the program can be sequenced at all.
 | 4 | Skills and expert modules | Not started |
 | 5 | Structured agent executor | Not started |
 | 6 | MCP connectors and side-effecting integrations | Not started; cloud *reasoning* left this stage under D147 and may be built with the provider gateway; connectors that mutate external services stay here with scoped tokens, vault, audit and revocation |
-| 7 | First-party marketplace | Not started; requires the D144 signing-identity design (key manifest, revocation, re-sign provenance) |
+| 7 | First-party marketplace | **MVP started (D186, owner lifted the hold 21 Oct 2026).** Read-only catalog built: `ghostcursor plugins catalog <dir>` verifies each `.ghostplugin` through the SAME `verify_bundle` the store installs through and lists what is installable (id, version, signed, compatible, digest) + a local revocation denylist check (refuse-only). Install stays `PluginStore.install`. **Still gated (D144, next, tier-1):** publisher-key identity in the manifest, a SIGNED revocation list (not just a local denylist), and re-sign provenance — each needs tests + D018 mutation + independent review before it changes the trust path. |
 | 8 | Cross-application agents | Deferred; requires a reviewed D087/D090 amendment |
 | 9 | Restricted general computer use | Deferred; requires a reviewed D006 amendment |
 

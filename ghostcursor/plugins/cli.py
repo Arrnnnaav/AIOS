@@ -32,6 +32,8 @@ def main(argv: list[str] | None = None) -> int:
     uninstall.add_argument("plugin_id")
     uninstall.add_argument("version")
     commands.add_parser("list")
+    cat = commands.add_parser("catalog")
+    cat.add_argument("directory", type=Path)
     args = parser.parse_args(argv)
 
     store = _store(args.developer)
@@ -48,8 +50,23 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "uninstall":
             store.uninstall(args.plugin_id, args.version)
             print(f"uninstalled {args.plugin_id} {args.version}")
+        elif args.command == "catalog":
+            from ghostcursor.plugins.marketplace import catalog
+
+            entries = catalog(
+                args.directory,
+                trusted_keys=store.trusted_keys,
+                core_version=store.core_version,
+            )
+            print(f"Available plugins in {args.directory}:")
+            for entry in entries:
+                print(f"  {entry.as_line()}")
+            if not entries:
+                print("  (no .ghostplugin bundles found)")
         else:
-            marker = " [DEVELOPER STORE: unsigned plugins allowed]" if args.developer else ""
+            marker = (
+                " [DEVELOPER STORE: unsigned plugins allowed]" if args.developer else ""
+            )
             print(f"GhostCursor plugins{marker}")
             for item in store.list_installed():
                 signature = "signed" if item.signed else "UNSIGNED-DEVELOPER"
