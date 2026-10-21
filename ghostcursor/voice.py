@@ -191,6 +191,34 @@ def apply_numbers(text: str) -> str:
     return " ".join(tokens)
 
 
+#: Spoken punctuation/formatting commands -> symbols, the dictation-app
+#: convention (dictation.io, Wispr, Dragon). Applied after numbers so number
+#: words are untouched. ponytail: these words are RESERVED commands, so a
+#: literally spoken "comma" also converts -- the standard dictation tradeoff.
+_SPOKEN_COMMANDS = [
+    (re.compile(r"\bnew paragraph\b", re.I), "\n\n"),
+    (re.compile(r"\bnew line\b", re.I), "\n"),
+    (re.compile(r"\b(?:full stop|period)\b", re.I), "."),
+    (re.compile(r"\bcomma\b", re.I), ","),
+    (re.compile(r"\bquestion mark\b", re.I), "?"),
+    (re.compile(r"\bexclamation (?:mark|point)\b", re.I), "!"),
+    (re.compile(r"\bcolon\b", re.I), ":"),
+    (re.compile(r"\bsemicolon\b", re.I), ";"),
+]
+
+
+def apply_spoken_commands(text: str) -> str:
+    """Turn spoken punctuation/formatting commands into symbols:
+    "hello comma world new line bye" -> "hello, world\nbye". Local, deterministic."""
+
+    for pattern, replacement in _SPOKEN_COMMANDS:
+        text = pattern.sub(replacement, text)
+    text = re.sub(r"\s+([,.;:!?])", r"\1", text)  # punctuation hugs prior word
+    text = re.sub(r"[ \t]*\n[ \t]*", "\n", text)  # tidy spaces around newlines
+    text = re.sub(r"[ \t]{2,}", " ", text)
+    return text.strip()
+
+
 def record_until(stop) -> "object":
     """Microphone samples (float32 mono, 16 kHz) until ``stop()`` is true or
     MAX_SECONDS pass."""
@@ -227,9 +255,11 @@ def transcribe(samples) -> str:
     segments, _ = model.transcribe(samples, language="en", beam_size=1, vad_filter=True)
     segments = list(segments)
     text = " ".join(s.text.strip() for s in segments)
-    return apply_numbers(
-        strip_fillers(
-            filter_whisper(text, [vars(s) for s in segments], len(samples) / RATE)
+    return apply_spoken_commands(
+        apply_numbers(
+            strip_fillers(
+                filter_whisper(text, [vars(s) for s in segments], len(samples) / RATE)
+            )
         )
     )
 

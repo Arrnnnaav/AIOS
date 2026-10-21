@@ -22,7 +22,12 @@ from ghostcursor.harness import (
 from ghostcursor.harness.spatial import SpatialReference, mark_score, point
 from ghostcursor.harness.teach import ModelTeachSession, Verdict, gate
 from ghostcursor.providers import ABSTAIN, Choice
-from ghostcursor.voice import apply_numbers, filter_whisper, strip_fillers
+from ghostcursor.voice import (
+    apply_numbers,
+    apply_spoken_commands,
+    filter_whisper,
+    strip_fillers,
+)
 
 IDS = {11: Identity(1, "powerpnt.exe", "16")}
 (W1,) = bind([11], identify_window=IDS.get, own_pid=999)
@@ -133,6 +138,26 @@ def test_spoken_numbers_become_digits_in_the_goal():
     assert apply_numbers("about fifty thousand users") == "about 50,000 users"
     # small bare numbers under ten are left as words (not every "one" is a digit)
     assert apply_numbers("click the one button") == "click the one button"
+
+
+def test_spoken_punctuation_commands_become_symbols():
+    """apply_spoken_commands: spoken punctuation/formatting -> symbols, the
+    dictation-app convention (local, deterministic)."""
+
+    assert apply_spoken_commands("hello comma world") == "hello, world"
+    assert apply_spoken_commands("done period") == "done."
+    assert apply_spoken_commands("line one new line line two") == "line one\nline two"
+    assert (
+        apply_spoken_commands("part one new paragraph part two")
+        == "part one\n\npart two"
+    )
+    assert apply_spoken_commands("really question mark") == "really?"
+    assert apply_spoken_commands("wow exclamation mark") == "wow!"
+    # combines with number conversion in the transcribe path
+    assert (
+        apply_spoken_commands(apply_numbers("charge twenty dollars period"))
+        == "charge $20."
+    )
 
 
 def test_a_mark_in_one_window_never_matches_a_twin_id_in_another():
