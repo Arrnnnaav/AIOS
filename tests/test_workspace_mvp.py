@@ -259,9 +259,11 @@ def test_the_manager_opens_a_valid_workspace_topic(goal, topic, tmp_path):
     brief_path(tmp_path, topic)  # a valid topic name
 
 
-def test_measures_count_without_text(planned):
+def test_measures_count_without_text(planned, monkeypatch):
+    from ghostcursor import telemetry
     from ghostcursor.workspace.session import measures
 
+    monkeypatch.setattr(telemetry, "counts", lambda path=None: {"crew_run": 2})
     planned.edit_plan("drop", ["2"])
     planned.record_teach(1, [(1, "you confirmed")], 0)
     planned.gateway.answer = {"reply": "ok", "memories": []}
@@ -279,6 +281,7 @@ def test_measures_count_without_text(planned):
     assert got["research_answers"] == 1 and got["provider_failures"] == {"model": 1}
     assert (got["plan_proposals"], got["plan_revisions"]) == (2, 1)
     assert (got["teach_runs"], got["teach_steps_done"]) == (1, 1)
+    assert got["events"] == {"crew_run": 2}  # opt-in local counts surface in /stats
     sent = json.dumps(got)
     assert "secret" not in sent and "title slide" not in sent.lower()
 
@@ -313,8 +316,20 @@ def test_plan_to_guide_and_skill_round_trip(planned, tmp_path, monkeypatch):
     assert "my-task" in planned.saved_skills()
 
     # replaying loads it back as the current plan (closed-schema validated)
-    planned._propose(parse_teach_plan(json.dumps({"steps": [
-        {"instruction": "scratch", "expected_change": "chosen_disappears"}]})))
+    planned._propose(
+        parse_teach_plan(
+            json.dumps(
+                {
+                    "steps": [
+                        {
+                            "instruction": "scratch",
+                            "expected_change": "chosen_disappears",
+                        }
+                    ]
+                }
+            )
+        )
+    )
     assert len(planned.plan.steps) == 1  # plan changed
     msg = planned.use_skill("My Task")
     assert "loaded skill" in msg and len(planned.plan.steps) == 2  # restored

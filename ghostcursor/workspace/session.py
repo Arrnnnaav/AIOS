@@ -1241,4 +1241,6 @@ def measures(brain: Brain, briefs: Path, traces: Path) -> dict:
         "plan_revisions": sum(not p.startswith("[plan r1,") for p in plans),
         "teach_runs": len(teach),
         "teach_steps_done": sum(t.count(" done (") for t in teach),
+        # Opt-in local event counts (D141); {} unless telemetry was switched on.
+        "events": telemetry.counts(),
     }
