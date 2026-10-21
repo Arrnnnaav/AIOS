@@ -38,24 +38,23 @@ what they state; nothing to change.
 
 ## Separate milestone, already scoped
 
-### Chromium warm-up retry
-Electron apps are blind-until-asked, not blind: Chromium enables its accessibility
-tree on demand and the first UIA probe switches it on. A first walk returning window
-furniture but no document content is NOT-YET-READY rather than empty, and currently
-reads as a successful observation. Cheaper than OCR and fixes a real bug. Deliberately
-excluded from tier 2 — see the tier-2 design doc section 1.
+### Chromium warm-up retry — CLOSED WON'T-BUILD 2026-10-22
+Original idea: Electron apps are blind-until-asked; a first walk returning window
+furniture but no document content is NOT-YET-READY rather than empty, so retry
+instead of escalating to OCR. Cheaper than OCR, looked like a real-bug fix.
 
-**IN TENSION WITH A MEASURED DECISION (noted 2026-10-22).** This item proposes a
-content-readiness classifier ("furniture but no content" ⇒ NOT-YET-READY). The
-shipped warm-up (`ghostcursor/perception/warmup.py:9-13`) records that exactly this
-approach was ruled out by measurement: furniture-but-no-content is transient in VS
-Code and TERMINAL in Acrobat, and the element count is non-monotonic even in steady
-state, so comparing consecutive observations is unsound. The shipped design uses
-patience keyed on grounding success instead. So this is not a free build — it
-contradicts a measured decision, and deciding it needs fresh real-Electron
-measurement (does a reliable content signal exist that warmup.py's sweep missed?).
-Not buildable blind; a readiness heuristic the codebase measured as unsound must not
-be re-introduced without new evidence on a desktop lane.
+Closed after reading the shipped code: it proposes a content-readiness classifier
+("furniture but no content" ⇒ NOT-YET-READY), and `ghostcursor/perception/warmup.py:9-13`
+records that *this exact approach* was ruled out by measurement — furniture-but-no-content
+is transient (VS Code, Acrobat TERMINAL) and the element count is non-monotonic even in
+steady state, so comparing consecutive observations is unsound. The shipped design
+deliberately detects nothing and instead grants patience keyed on grounding success
+(the one sound readiness signal). Building the classifier would re-introduce a heuristic
+the codebase already measured as unsound.
+
+Decision: do not build. Reopen ONLY with new real-Electron measurement showing a content
+signal that warmup.py's sweep missed — that is a desktop-lane experiment (D025), not a
+blind code change, and there is no evidence to justify it today.
 
 ## Deferred infrastructure — revisit on a second occurrence
 
