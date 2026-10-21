@@ -395,7 +395,13 @@ built but not yet exercised by a caller or a live run.
 - [x] Store proposal separately from approved plan (`TaskGraphProposal` vs
       `act_runtime.approve_action_graph`; proposal carries no authority)
 
-**9. Semantic PowerPoint capabilities (D111)**
+**9. Semantic PowerPoint capabilities (D111) — SUPERSEDED by D161/D164/D186.**
+These are the retired hand-written-pack deterministic ops. The model-driven path
+replaces them: `ghostcursor.workspace` plans a grounded DeckSpec (`make_deck`) and
+builds it in PowerPoint through the gated Act path (`build_deck`, D186), with
+PowerPoint now a test fixture (D164), not a hand-authored capability set (D161
+retired packs). Left unchecked as historical; building these would re-introduce
+the retired approach.
 - [ ] `create_deck`, `apply_theme`, `create_title_slide`, `create_problem_slide`,
       `create_comparison_slide`, `create_timeline_slide`, `create_metric_cards`,
       `create_chart_slide`, `add_speaker_notes`, `apply_restrained_motion`,
