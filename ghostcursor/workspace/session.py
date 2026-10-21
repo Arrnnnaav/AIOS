@@ -19,6 +19,7 @@ import os
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
+from ghostcursor import telemetry
 from ghostcursor.brief import append_turn, brief_path, load_brief
 from ghostcursor.providers.envelope import Envelope, Tainted
 from ghostcursor.providers.errors import FailureKind, ProviderError
@@ -900,6 +901,7 @@ class Workspace:
         if plan is None:
             return None
         path = task_skills.save_skill(name.strip() or need, plan)
+        telemetry.record("skill_drafted")
         return (
             f"drafted skill '{path.stem}' from your need ({len(plan.steps)} steps); "
             f"replay with /skill use {path.stem}"
@@ -914,12 +916,14 @@ class Workspace:
         from ghostcursor.workspace.deck import plan_deck
 
         try:
-            return plan_deck(
+            deck = plan_deck(
                 self.gateway,
                 topic.strip() or self.goal,
                 scope=self.kb_scope,
                 knowledge=self.knowledge,
             )
+            telemetry.record("deck_made")
+            return deck
         except ProviderError:
             return None
 
@@ -947,6 +951,7 @@ class Workspace:
                 "could not plan its build (model unavailable)."
             )
         self._propose(plan)
+        telemetry.record("deck_build_proposed")
         steps = "\n".join(
             f"  {n}. {s.instruction}" for n, s in enumerate(plan.steps, 1)
         )
@@ -968,7 +973,9 @@ class Workspace:
         if plan is None or not plan.steps:
             return "no plan to critique (/plan or /do first)"
         try:
-            return render(critique_plan(self.gateway, plan))
+            text = render(critique_plan(self.gateway, plan))
+            telemetry.record("critique_run")
+            return text
         except ProviderError:
             return "No critique: the model is not available."
 
@@ -1062,6 +1069,7 @@ class Workspace:
             return None, str(exc)
         except ProviderError:
             return None, "No summary: the model is not available."
+        telemetry.record("notes_made")
         text = render_notes(summary)
         if to_brain and self.knowledge is not None:
             f = self.knowledge.add_candidate(
@@ -1078,13 +1086,15 @@ class Workspace:
 
         from ghostcursor.workspace.research import deep_research
 
-        return deep_research(
+        result = deep_research(
             question,
             self.gateway,
             knowledge=self.knowledge,
             scope=self.kb_scope,
             file_to_brain=True,
         )
+        telemetry.record("research_done")
+        return result
 
     def research_to_deck(self, topic: str):
         """Research the topic then build a deck grounded on the cited claims
@@ -1106,7 +1116,9 @@ class Workspace:
 
         from ghostcursor.workspace.crew import run_crew
 
-        return run_crew(self, goal)
+        result = run_crew(self, goal)
+        telemetry.record("crew_run")
+        return result
 
     def create_agent(self, need: str):
         """Draft a reusable agent (D182) from a stated need; model output,
