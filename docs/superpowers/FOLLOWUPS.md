@@ -45,6 +45,18 @@ furniture but no document content is NOT-YET-READY rather than empty, and curren
 reads as a successful observation. Cheaper than OCR and fixes a real bug. Deliberately
 excluded from tier 2 — see the tier-2 design doc section 1.
 
+**IN TENSION WITH A MEASURED DECISION (noted 2026-10-22).** This item proposes a
+content-readiness classifier ("furniture but no content" ⇒ NOT-YET-READY). The
+shipped warm-up (`ghostcursor/perception/warmup.py:9-13`) records that exactly this
+approach was ruled out by measurement: furniture-but-no-content is transient in VS
+Code and TERMINAL in Acrobat, and the element count is non-monotonic even in steady
+state, so comparing consecutive observations is unsound. The shipped design uses
+patience keyed on grounding success instead. So this is not a free build — it
+contradicts a measured decision, and deciding it needs fresh real-Electron
+measurement (does a reliable content signal exist that warmup.py's sweep missed?).
+Not buildable blind; a readiness heuristic the codebase measured as unsound must not
+be re-introduced without new evidence on a desktop lane.
+
 ## Deferred infrastructure — revisit on a second occurrence
 
 ### Mechanical enforcement of D032 and D034
