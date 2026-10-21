@@ -33,6 +33,7 @@ TIPS = (
     "/export handoff.md  writes a shareable snapshot of your whole workspace.",
     "/diff old.txt new.txt  shows what changed between two files, all local.",
     "Screenshot something, then /convert clip png to save it to a file.",
+    "/pin add <note>  keeps a reference (a URL, an id) in view at startup.",
     "Run the same /do task twice and Orbyn offers to save it as a skill.",
 )
 

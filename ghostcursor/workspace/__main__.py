@@ -33,6 +33,8 @@ Type to discuss. Commands:
   /diff <a> <b>     a unified diff of two local files (stdlib; nothing uploaded)
   /export [file]    a shareable Markdown snapshot of this workspace (goal, plan,
                     todos, saved library); prints it, or writes it to <file>
+  /pin add <note> | rm <id> | list   sticky reference notes shown at startup
+                    (a URL, an id, who's on call) -- reference, not tasks
   /todo add <task> | from plan | done <id> | undone <id> | rm <id> | clear | list
                     a local per-workspace checklist (done items stay, struck
                     through); "from plan" turns the current plan into todos,
@@ -492,6 +494,12 @@ def main(argv: list[str] | None = None) -> int:
     _status = _startup_status(workspace.root)
     if _status:
         print(f"\N{CLIPBOARD} {_status}")
+    from ghostcursor.workspace import pins as _pins
+
+    _pin_rows = _pins.items(workspace.root)
+    if _pin_rows:
+        print("\N{PUSHPIN} Pins:")
+        print(_pins.render(workspace.root))
     web = {"browser": None}
     try:
         while True:
@@ -627,6 +635,26 @@ def main(argv: list[str] | None = None) -> int:
                         print(f"could not write {target}: {exc}")
                 else:
                     print(md)
+            elif command == "/pin":
+                from ghostcursor.workspace import pins
+
+                parts = rest.split(maxsplit=1)
+                verb = parts[0] if parts else "list"
+                if verb == "add" and len(parts) == 2:
+                    try:
+                        print(f"pinned {pins.add(workspace.root, parts[1])}")
+                    except ValueError as exc:
+                        print(exc)
+                elif verb == "rm" and len(parts) == 2 and parts[1].isdigit():
+                    print(
+                        "ok"
+                        if pins.remove(workspace.root, int(parts[1]))
+                        else "no such pin"
+                    )
+                elif verb == "list":
+                    print(pins.render(workspace.root))
+                else:
+                    print("usage: /pin add <note> | rm <id> | list")
             elif command == "/todo":
                 from ghostcursor.workspace import todos
 

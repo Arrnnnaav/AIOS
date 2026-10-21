@@ -57,6 +57,7 @@ COMMANDS = (
     "/todo",
     "/export",
     "/diff",
+    "/pin",
 )
 
 
