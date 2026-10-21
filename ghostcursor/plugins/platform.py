@@ -90,7 +90,27 @@ def _bootstrap(store: PluginStore) -> None:
             store.enable(installed.plugin_id, installed.version)
 
 
-def signed_revoked_digests(trust_dir: Path | None = None) -> frozenset[str]:
+def _read_sequence_floor(path: Path) -> tuple[int, int]:
+    """The highest (key_manifest, revocation) sequences accepted so far, or
+    (0, 0) if there is no usable record. A missing or malformed floor file is
+    treated as no floor -- the root SIGNATURE still proves authenticity; the
+    floor only adds rollback protection, and corrupting it cannot admit an
+    unsigned document, only lose rollback protection (which local FS integrity
+    is the OS's job to provide)."""
+
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+        km, rev = value["key_manifest"], value["revocations"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return (0, 0)
+    if type(km) is not int or type(rev) is not int or km < 0 or rev < 0:
+        return (0, 0)
+    return (km, rev)
+
+
+def signed_revoked_digests(
+    trust_dir: Path | None = None, *, floor_path: Path | None = None
+) -> frozenset[str]:
     """Revoked bundle digests from a root-signed revocation policy.
 
     If ``trust_dir`` (default ``_TRUST_POLICY_DIR``) does not exist, the policy
@@ -100,15 +120,17 @@ def signed_revoked_digests(trust_dir: Path | None = None) -> frozenset[str]:
     verifying raises (fail closed) rather than silently returning an empty set,
     which would un-revoke every bundle. Verification is `load_trust_policy`.
 
-    ponytail: the monotonic sequence floor defaults to 0 here (first load). A
-    restart-persistent floor (so a validly-signed OLDER revocation list cannot
-    be swapped back in by someone with write access to the trust dir) is the
-    recorded next slice.
+    Anti-rollback: the highest accepted document sequences are persisted to
+    ``floor_path`` and passed back as the floor, so a validly-signed but OLDER
+    revocation list (which could drop a revocation) is refused across restarts,
+    not just within one process.
     """
 
     trust_dir = trust_dir or _TRUST_POLICY_DIR
     if not trust_dir.exists():
         return frozenset()
+    floor_path = floor_path or (default_plugin_root() / "trust-floor.json")
+    km_floor, rev_floor = _read_sequence_floor(floor_path)
     try:
         root = base64.b64decode(
             (trust_dir / "root.b64").read_text(encoding="utf-8").strip(), validate=True
@@ -123,7 +145,22 @@ def signed_revoked_digests(trust_dir: Path | None = None) -> frozenset[str]:
         revocations_bytes=(trust_dir / "revocations.json").read_bytes(),
         revocations_signature=(trust_dir / "revocations.sig").read_bytes(),
         root_public_key=root,
+        key_manifest_floor=km_floor,
+        revocations_floor=rev_floor,
     )
+    # Raise the floor to what we just accepted (monotonic; never lower it).
+    new_floor = {
+        "key_manifest": max(km_floor, policy.key_manifest_sequence),
+        "revocations": max(rev_floor, policy.revocations_sequence),
+    }
+    if (new_floor["key_manifest"], new_floor["revocations"]) != (km_floor, rev_floor):
+        try:
+            floor_path.parent.mkdir(parents=True, exist_ok=True)
+            floor_path.write_text(
+                json.dumps(new_floor, separators=(",", ":")), encoding="utf-8"
+            )
+        except OSError:
+            pass  # a read-only FS loses rollback persistence, not authenticity
     return policy.revoked_bundle_digests
 
 
