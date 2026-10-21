@@ -28,9 +28,13 @@ cancel reintroduces the defect where an abandoned step's request is serviced
 forever (found and fixed as finding 1 of the threading review). The worker cannot
 enforce it because it does not know the current step.
 
-### 5. `test_persistence_e2e` allows rung 2 or 3 where FLOW says rung 2
-FLOW.md states the second process grounds at rung 2; the test accepts rung 2 or 3.
-One of the two should be tightened.
+### 5. `test_persistence_e2e` allows rung 2 or 3 where FLOW says rung 2 — RESOLVED 2026-10-22
+No defect. FLOW.md:972 documents the one measured run on the production compiled
+launcher (rung 2); the test's wider `in (2, 3)` is deliberate tolerance, because
+rung 3 is the legitimate OCR-fallback path on a machine where the UIA name match
+is stale. Tightening the assertion to `== 2` would make a desktop-lane test flaky
+across environments for no correctness gain. Doc and test are each correct for
+what they state; nothing to change.
 
 ## Separate milestone, already scoped
 
