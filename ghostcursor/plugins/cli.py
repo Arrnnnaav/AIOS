@@ -66,10 +66,15 @@ def main(argv: list[str] | None = None) -> int:
                 sort_entries,
             )
 
+            # Mark bundles the signed revocation policy revokes (empty set when
+            # no policy is configured), so browsing reflects revocation.
+            from ghostcursor.plugins.platform import signed_revoked_digests
+
             entries = catalog(
                 args.directory,
                 trusted_keys=store.trusted_keys,
                 core_version=store.core_version,
+                revoked=signed_revoked_digests(),
             )
             shown = search(entries, args.search) if args.search else entries
             shown = filter_entries(
