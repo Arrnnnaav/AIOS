@@ -23,7 +23,7 @@ def _canonical(value: object) -> bytes:
     return (json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n").encode()
 
 
-def _signed_policy(*, revoked: bool = False, sequence: int = 1):
+def _signed_policy(*, revoked: bool = False, sequence: int = 1, revoked_bundles=None):
     root = Ed25519PrivateKey.generate()
     releases = [Ed25519PrivateKey.generate(), Ed25519PrivateKey.generate()]
     publics = [
@@ -62,11 +62,19 @@ def _signed_policy(*, revoked: bool = False, sequence: int = 1):
         "generated_at": "2026-09-24T00:00:00Z",
         "sequence": sequence,
         "revoked": (
-            [{"key_id": "release-1", "revoked_at": "2026-09-24T00:00:00Z", "reason_code": "retired"}]
+            [
+                {
+                    "key_id": "release-1",
+                    "revoked_at": "2026-09-24T00:00:00Z",
+                    "reason_code": "retired",
+                }
+            ]
             if revoked
             else []
         ),
     }
+    if revoked_bundles is not None:
+        revocations["revoked_bundles"] = revoked_bundles
     key_bytes, revoke_bytes = _canonical(keys), _canonical(revocations)
     return (
         root.public_key().public_bytes(
@@ -94,6 +102,121 @@ def _load(*, revoked: bool = False, **overrides):
     }
     values.update(overrides)
     return load_trust_policy(**values)
+
+
+_DIGEST_A = "a" * 64
+_DIGEST_B = "b" * 64
+
+
+def test_revoked_bundles_are_exposed_as_digests():
+    # a backward-compatible doc with no revoked_bundles -> empty set
+    assert _load().revoked_bundle_digests == frozenset()
+
+    root, keys, key_sig, rev, rev_sig, _ = _signed_policy(
+        revoked_bundles=[
+            {
+                "manifest_sha256": _DIGEST_A,
+                "revoked_at": "2026-09-24T00:00:00Z",
+                "reason_code": "compromised",
+            },
+            {
+                "manifest_sha256": _DIGEST_B,
+                "revoked_at": "2026-09-20T00:00:00Z",
+                "reason_code": "superseded",
+            },
+        ]
+    )
+    policy = load_trust_policy(
+        key_manifest_bytes=keys,
+        key_manifest_signature=key_sig,
+        revocations_bytes=rev,
+        revocations_signature=rev_sig,
+        root_public_key=root,
+        now=NOW,
+    )
+    assert policy.revoked_bundle_digests == frozenset({_DIGEST_A, _DIGEST_B})
+
+
+@pytest.mark.parametrize(
+    "bundles, match",
+    [
+        (
+            [
+                {
+                    "manifest_sha256": "tooshort",
+                    "revoked_at": "2026-09-24T00:00:00Z",
+                    "reason_code": "retired",
+                }
+            ],
+            "digest is invalid",
+        ),
+        (
+            [
+                {
+                    "manifest_sha256": _DIGEST_A,
+                    "revoked_at": "2026-09-24T00:00:00Z",
+                    "reason_code": "nope",
+                }
+            ],
+            "reason code is invalid",
+        ),
+        (
+            [
+                {
+                    "manifest_sha256": _DIGEST_A,
+                    "revoked_at": "2099-01-01T00:00:00Z",
+                    "reason_code": "retired",
+                }
+            ],
+            "dated in the future",
+        ),
+        (
+            [{"manifest_sha256": _DIGEST_A, "revoked_at": "2026-09-24T00:00:00Z"}],
+            "record schema is invalid",
+        ),
+        (
+            [
+                {
+                    "manifest_sha256": _DIGEST_A,
+                    "revoked_at": "2026-09-24T00:00:00Z",
+                    "reason_code": "retired",
+                },
+                {
+                    "manifest_sha256": _DIGEST_A,
+                    "revoked_at": "2026-09-24T00:00:00Z",
+                    "reason_code": "retired",
+                },
+            ],
+            "repeated",
+        ),
+    ],
+)
+def test_revoked_bundles_bad_shapes_are_rejected(bundles, match):
+    root, keys, key_sig, rev, rev_sig, _ = _signed_policy(revoked_bundles=bundles)
+    with pytest.raises(ReleaseTrustError, match=match):
+        load_trust_policy(
+            key_manifest_bytes=keys,
+            key_manifest_signature=key_sig,
+            revocations_bytes=rev,
+            revocations_signature=rev_sig,
+            root_public_key=root,
+            now=NOW,
+        )
+
+
+def test_revoked_bundles_tamper_breaks_the_signature():
+    # adding revoked_bundles after signing (not re-signed) must be rejected
+    root, keys, key_sig, rev, rev_sig, _ = _signed_policy()
+    tampered = rev[:-2] + b',"revoked_bundles":[]}\n'  # not canonical / not signed
+    with pytest.raises(ReleaseTrustError):
+        load_trust_policy(
+            key_manifest_bytes=keys,
+            key_manifest_signature=key_sig,
+            revocations_bytes=tampered,
+            revocations_signature=rev_sig,
+            root_public_key=root,
+            now=NOW,
+        )
 
 
 def test_signed_policy_loads_only_in_window_unrevoked_keys():

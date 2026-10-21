@@ -48,6 +48,11 @@ class ReleaseTrustPolicy:
     revocations_sha256: str
     key_manifest_sequence: int
     revocations_sequence: int
+    #: manifest_sha256 digests of individually revoked bundles (D186 Bucket-2):
+    #: a bundle whose manifest digest is here must not install or activate, even
+    #: though its signing key is still trusted. Root-signed in the same
+    #: revocation document, under the same monotonic sequence floor.
+    revoked_bundle_digests: frozenset[str] = frozenset()
 
 
 def _canonical(value: object) -> bytes:
@@ -143,8 +148,10 @@ def load_trust_policy(
         or key_doc["schema_version"] != 1
     ):
         raise ReleaseTrustError("key manifest schema is invalid")
+    _revocation_base = {"schema_version", "generated_at", "sequence", "revoked"}
     if (
-        set(revocation_doc) != {"schema_version", "generated_at", "sequence", "revoked"}
+        set(revocation_doc)
+        not in (_revocation_base, _revocation_base | {"revoked_bundles"})
         or type(revocation_doc["schema_version"]) is not int
         or revocation_doc["schema_version"] != 1
     ):
@@ -264,6 +271,31 @@ def load_trust_policy(
             raise ReleaseTrustError("revocation is dated in the future")
         revoked.add(key_id)
 
+    revoked_bundles: set[str] = set()
+    bundle_items = revocation_doc.get("revoked_bundles", [])
+    if not isinstance(bundle_items, list):
+        raise ReleaseTrustError("revoked_bundles must be a list")
+    for item in bundle_items:
+        if not isinstance(item, dict) or set(item) != {
+            "manifest_sha256",
+            "revoked_at",
+            "reason_code",
+        }:
+            raise ReleaseTrustError("revoked-bundle record schema is invalid")
+        digest = item["manifest_sha256"]
+        if not isinstance(digest, str) or not _SHA256_RE.fullmatch(digest):
+            raise ReleaseTrustError("revoked-bundle digest is invalid")
+        if digest in revoked_bundles:
+            raise ReleaseTrustError("revoked-bundle digest is repeated")
+        if (
+            not isinstance(item["reason_code"], str)
+            or item["reason_code"] not in _REASONS
+        ):
+            raise ReleaseTrustError("revoked-bundle reason code is invalid")
+        if _timestamp(item["revoked_at"], "revoked-bundle revoked_at") > current:
+            raise ReleaseTrustError("revoked-bundle entry is dated in the future")
+        revoked_bundles.add(digest)
+
     active = {
         key_id: record.public_key
         for key_id, record in records.items()
@@ -278,6 +310,7 @@ def load_trust_policy(
         hashlib.sha256(revocations_bytes).hexdigest(),
         key_doc["sequence"],
         revocation_doc["sequence"],
+        frozenset(revoked_bundles),
     )
 
 
