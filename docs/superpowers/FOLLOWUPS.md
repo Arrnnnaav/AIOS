@@ -489,6 +489,15 @@ Remaining Bucket-2 work, each its own reviewed slice with tests + D018 mutation:
      doc, so "blocked" is a signed decision, not an unsigned catalog hint.
 Ratings/install-counts stay OUT (require telemetry/egress; rule 6).
 
+**PENDING FORMAL GATE (memory-interrupted) 2026-10-21:** d2cbda5 (anti-rollback
+sequence floor) and 15c5740 (catalog marks signed-policy revocations) have
+targeted tests + D018 mutation (2/2) and a SCOPED lane green (113 tests over all
+plugin/trust/store/platform/marketplace/bundle + schema + inventory + real-user)
+-- but the FULL hermetic lane was OS-killed for low memory mid-run and the
+independent tier1-reviewer was not spawned (avoided piling processes under
+memory pressure). Re-run the full lane + a tier1-reviewer on d2cbda5..15c5740
+when memory allows before calling these two slices gate-complete.
+
 **SHIPPED 2026-10-21 (6f1c77a): publisher identity in the signed key manifest.**
 `ReleaseKey.publisher` (optional, root-signed, <=100 chars, normalised).
 Independent tier1-reviewer: no BLOCKING (display/provenance only, grants no
