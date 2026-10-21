@@ -489,14 +489,18 @@ Remaining Bucket-2 work, each its own reviewed slice with tests + D018 mutation:
      doc, so "blocked" is a signed decision, not an unsigned catalog hint.
 Ratings/install-counts stay OUT (require telemetry/egress; rule 6).
 
-**PENDING FORMAL GATE (memory-interrupted) 2026-10-21:** d2cbda5 (anti-rollback
-sequence floor) and 15c5740 (catalog marks signed-policy revocations) have
-targeted tests + D018 mutation (2/2) and a SCOPED lane green (113 tests over all
-plugin/trust/store/platform/marketplace/bundle + schema + inventory + real-user)
--- but the FULL hermetic lane was OS-killed for low memory mid-run and the
-independent tier1-reviewer was not spawned (avoided piling processes under
-memory pressure). Re-run the full lane + a tier1-reviewer on d2cbda5..15c5740
-when memory allows before calling these two slices gate-complete.
+**GATE COMPLETE 2026-10-21 (d2cbda5..4bfb635):** anti-rollback sequence floor +
+catalog revocation wiring + end-to-end activation test. Full hermetic lane green
+at **3589**; independent tier1-reviewer **no BLOCKING** (anti-rollback sound,
+signature-before-floor so a corrupt floor cannot admit unsigned docs,
+fail-closed, best-effort write cannot weaken the current load, catalog
+display-only); D018 mutation 2/2. Two operator-note FOLLOWUPS (local-FS integrity
+is the OS's job, not blocking):
+  - trust-floor.json lives under the local-user-writable plugin root; deleting
+    it resets rollback protection to 0 (OS FS integrity's job).
+  - a floor file corrupted to a huge int fail-closes production_store() creation
+    (raises) until removed -- acceptable, but a manual-recovery DoS worth an
+    operator note.
 
 **SHIPPED 2026-10-21 (6f1c77a): publisher identity in the signed key manifest.**
 `ReleaseKey.publisher` (optional, root-signed, <=100 chars, normalised).
