@@ -499,9 +499,21 @@ D018 mutation sweep **7 mutants, 7 killed**. Two non-blocking review FOLLOWUPS:
 (a) digest revocation isn't cross-checked against revoked key_ids / key manifest
 (standalone primitive, fine; revisit at the install-time slice); (b) duplicate-
 digest check precedes reason/timestamp validation (cosmetic; both reject).
-STILL TODO (store-wiring slice): enforce `revoked_bundle_digests` in
-`PluginStore.install`/activate, which first needs `load_trust_policy` wired into
-the store (it currently verifies via the flat `trusted_keys.json` map).
+STORE ENFORCEMENT SHIPPED (ffba6ab): `PluginStore.revoked_digests` +
+`_install`/`_enable` refuse a revoked `manifest_sha256`. Independent
+tier1-reviewer: **no BLOCKING** (fail-closed, additive, verified-digest, same
+error class). D018 mutation 2/2 killed.
+  Review FOLLOWUP: `load_active_catalog`/`_prospective_plugins` do NOT consult
+  `revoked_digests`, so a bundle already in active.json BEFORE revocation stays
+  served until a re-enable. MUST be fixed in the wiring slice: when the signed
+  revocation doc populates `revoked_digests`, the active-catalog load must also
+  drop/refuse revoked digests (not only install/enable).
+STILL TODO (platform wiring slice, owner-gated): load the root-signed
+revocation list in `platform.production_store()` to populate `revoked_digests`
+(+ filter the active catalog per the FOLLOWUP above). Needs a committed
+production-signed revocation document -> requires the owner's root private key
+(`~/.ghostcursor-keys`); the code path is complete and tested with self-signed
+fixtures, only the signed artifact is missing.
 
 **Precondition found 2026-10-21:** `trust.py`'s `load_trust_policy` /
 `ReleaseTrustPolicy` is built but **not wired into `PluginStore`/`platform`** —

@@ -633,3 +633,26 @@ def test_a_revoked_digest_cannot_be_reactivated(tmp_path):
     )
     with pytest.raises(PluginStoreError, match="revoked"):
         revoked.enable("ghostcursor.one", "1.0.0")
+
+
+def test_a_revoked_digest_drops_from_the_active_catalog(tmp_path):
+    private, trusted = _key()
+    bundle = _bundle(tmp_path, private)
+    base = tmp_path / "store"
+    live = PluginStore(base, trusted_keys=trusted, core_version="0.1.0")
+    live.install(bundle)
+    live.enable("ghostcursor.one", "1.0.0")
+    assert tuple(live.load_active_catalog().plugins) == ("ghostcursor.one",)
+
+    digest = PluginStore(
+        tmp_path / "probe", trusted_keys=trusted, core_version="0.1.0"
+    ).inspect(bundle).manifest_sha256
+    # a store that knows the digest is revoked serves it from NO active catalog,
+    # even though it is still recorded active in active.json
+    revoked = PluginStore(
+        base,
+        trusted_keys=trusted,
+        core_version="0.1.0",
+        revoked_digests=frozenset({digest}),
+    )
+    assert tuple(revoked.load_active_catalog().plugins) == ()

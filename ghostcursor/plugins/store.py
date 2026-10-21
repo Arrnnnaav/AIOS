@@ -460,6 +460,11 @@ class PluginStore:
                 raise PluginStoreError(
                     "active plugin digest disagrees with installed bundle"
                 )
+            # A bundle revoked after it was already activated is dropped from the
+            # prospective active set, not just refused at install/enable (D186
+            # Bucket-2 review FOLLOWUP). With an empty revoked set this is a no-op.
+            if bundle.manifest_sha256 in self.revoked_digests:  # drop from active set
+                continue
             compatibility = check_core_compatibility(bundle.manifest, self.core_version)
             if not compatibility.compatible:
                 continue
