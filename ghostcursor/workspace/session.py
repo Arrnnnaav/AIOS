@@ -958,6 +958,20 @@ class Workspace:
             "observes and asks before any risky one (rule 2)."
         )
 
+    def critique(self) -> str:
+        """Advisory review of the current plan before Act (D186): concerns +
+        a ready/caution verdict. Never blocks. Needs a plan (/plan or /do)."""
+
+        from ghostcursor.workspace.critic import critique_plan, render
+
+        plan = self.plan
+        if plan is None or not plan.steps:
+            return "no plan to critique (/plan or /do first)"
+        try:
+            return render(critique_plan(self.gateway, plan))
+        except ProviderError:
+            return "No critique: the model is not available."
+
     def todos_from_plan(self) -> str:
         """Turn the current plan's steps into checklist items (D186), so an
         approved plan becomes something to tick off. Secrets in a step are

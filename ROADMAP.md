@@ -678,17 +678,55 @@ against it, not scheduled.
 `02_modular_ideation_execution.md` §11 lists attachable modules. Current state:
 
 **Built:** Personal/Project Memory (local), Workflow Builder (declarative
-compiler), Artifact Intelligence (verification of saved artifacts).
+compiler), Artifact Intelligence (verification of saved artifacts),
+Ideation (`session.ideate`), Voice (`voice.py`, `/dictate`), Company Knowledge
+(`workspace/knowledge.py` Company Brain + backlinks), Learning/Skill Tracking
+(`workspace/usage.py` recurring-use), Agent Orchestration (`workspace/crew.py`,
+`/crew` + saved crews), Multiplayer/Handoff (mission-file handoff, D180 slice 4),
+Enterprise Policy (`policy.py`, D180), Critic/Evaluation (`workspace/critic.py`,
+`/critique` — advisory plan review). See the D186 workspace section below.
 
-**Partial:** Autonomous Execution (Act v1, in flight).
+**Partial:** Autonomous Execution (Act v1, in flight); Analytics (`/stats`
+counts only).
 
-**Not started:** Ideation, Expert Reasoning, Voice, Company Knowledge,
-Multiplayer, Handoff, Dynamic UI, Learning/Skill Tracking, Analytics,
-Enterprise Policy, Agent Orchestration, Critic/Evaluation.
+**Not started:** Expert Reasoning (deep multi-step reasoning mode), Dynamic UI
+(a generated interface surface) — neither specified yet.
 
 **Available under D147:** cloud reasoning through the provider gateway.
 **Still gated:** Telemetry, Sync, and side-effecting connectors — D141/D144
 record those boundaries; build only in a reviewed slice.
+
+---
+
+## Workspace feature wave (D186) — built
+
+The console workspace (`python -m ghostcursor.workspace`, D173) grew a full
+solo-MVP feature set. All tier-2/3, each its own commit with tests, hermetic
+lane green (~3550). None adds input synthesis or egress; the tier-1 Act
+boundary is untouched (every slice verified against
+`tests/test_no_input_synthesis.py`).
+
+| Area | What | Entry |
+|---|---|---|
+| One-step | classify a task → run the right capability | `/do` |
+| Orchestration | manager decomposes a goal into ordered capability steps, chained through the Brain; saved/replayable | `/crew`, `/crew save\|run\|list` |
+| Deck | outline-first DeckSpec, Brain-grounded; propose a PowerPoint build plan (reviewed, propose-only) | `/deck`, `/deck build` |
+| Research | decompose → cited per-part → file claims to Brain | `/deepresearch`, `/research` |
+| Notes | tidy rough notes/file into a structured summary (Granola, no recording) | `/notes` |
+| Attach-context Q&A | answer grounded on clipboard/file, records nothing (Highlight) | `/ask` |
+| Company Brain | facts/edges, sensitivity, review gate, backlinks | `/know`, `/related` |
+| Skills + learning | draft/replay skills; offer to save a recurring task (Attention Engineering) | `/skill`, recurring-use nudge |
+| Checklist | per-workspace todos; from an approved plan | `/todo`, `/todo from plan` |
+| Library + export | find across saved items; shareable Markdown snapshot (secrets scrubbed) | `/find`, `/export` |
+| Local utilities | file convert (+PDF/subtitle/clipboard image), diff, b64/url/hex/uuid/pass/time/json/slug/sha256 | `/convert`, `/diff`, `/x` |
+| Delight | fuzzy did-you-mean, inline calculator, clipboard history, snippets, global capture hotkey, tips, startup status, sticky pins | palette, `/clips`, `/snippet`, `/capture`, `/pin` |
+
+Critic/Evaluation (`/critique`) reviews the current plan for gaps and risks
+before Act — advisory, read-only.
+
+**Not yet (recorded, not built):** `/crew` emitting a `/deck build` step for a
+one-goal research→outline→propose chain; dictation→`act.py` typing (tier-1,
+D006 amendment); capture→steps recording. These stay named, not faked.
 
 ---
 

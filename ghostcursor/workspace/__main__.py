@@ -50,6 +50,8 @@ Type to discuss. Commands:
                     items, locally (no recording); "brain" files the summary
   /deepresearch <q> decompose, research each part (cited), file claims to Brain
   /researchdeck <t> research the topic then build a grounded deck
+  /critique         an advisory review of the current plan before you /act --
+                    concerns + a ready/caution verdict; never blocks
   /guide            the current plan as a shareable step-by-step guide (SOP)
   /skill save <name> | list | use <name> | from <need>   task skills; "from"
                     drafts a reusable skill from a stated need (auto-creator)
@@ -849,6 +851,9 @@ def main(argv: list[str] | None = None) -> int:
                         print(
                             f"(filed {report.filed_to_brain} research claim(s) to the Brain)"
                         )
+            elif command == "/critique":
+                # Advisory review of the current plan before Act (never blocks).
+                print(workspace.critique())
             elif command == "/guide":
                 try:
                     print(workspace.guide())

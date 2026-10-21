@@ -34,6 +34,7 @@ TIPS = (
     "/diff old.txt new.txt  shows what changed between two files, all local.",
     "Screenshot something, then /convert clip png to save it to a file.",
     "/pin add <note>  keeps a reference (a URL, an id) in view at startup.",
+    "/critique  gives a second opinion on your plan before you /act.",
     "Run the same /do task twice and Orbyn offers to save it as a skill.",
 )
 

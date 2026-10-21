@@ -58,6 +58,7 @@ COMMANDS = (
     "/export",
     "/diff",
     "/pin",
+    "/critique",
 )
 
 

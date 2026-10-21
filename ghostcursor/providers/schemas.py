@@ -523,3 +523,52 @@ def parse_notes(text: str) -> NotesSummary:
         key_points=_note_list(value["key_points"], "key_points"),
         action_items=_note_list(value["action_items"], "action_items"),
     )
+
+
+# --- plan critique (D186): advisory review of a plan before Act ---------------
+# The Critic/Evaluation capability: a model reads a step plan the user is about
+# to run and lists concerns (missing steps, risky/destructive steps, ambiguous
+# targets, wrong order). Advisory only -- it never blocks; Act's own gates
+# (approval, deny-list, observed-control, ESC) remain the enforcement.
+MAX_CONCERNS = 10
+CRITIQUE_VERDICTS = ("ready", "caution")
+
+CRITIQUE_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["verdict", "concerns"],
+    "properties": {
+        "verdict": {"enum": list(CRITIQUE_VERDICTS)},
+        "concerns": {
+            "type": "array",
+            "maxItems": MAX_CONCERNS,
+            "items": {"type": "string", "maxLength": 200},
+        },
+    },
+}
+
+
+@dataclass(frozen=True)
+class Critique:
+    verdict: str
+    concerns: tuple[str, ...]
+
+
+def parse_critique(text: str) -> Critique:
+    """Strict closed parse of a plan critique; INVALID_OUTPUT otherwise."""
+
+    value = strict_json(text)
+    _exact(value, {"verdict", "concerns"}, "critique")
+    if value["verdict"] not in CRITIQUE_VERDICTS:
+        raise _invalid("critique verdict is not allowed")
+    raw = value["concerns"]
+    if not isinstance(raw, list) or len(raw) > MAX_CONCERNS:
+        raise _invalid("critique concerns are invalid")
+    concerns = []
+    for item in raw:
+        if not isinstance(item, str) or len(item) > 200:
+            raise _invalid("a critique concern is invalid")
+        cleaned = " ".join(item.split())
+        if cleaned:
+            concerns.append(cleaned)
+    return Critique(value["verdict"], tuple(concerns))
