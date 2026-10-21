@@ -143,12 +143,18 @@ class PluginStore:
         core_version: str,
         developer_mode: bool = False,
         observation_store_path: Path | None = None,
+        revoked_digests: frozenset[str] = frozenset(),
     ) -> None:
         self.base_root = Path(base_root).resolve()
         self.developer_mode = developer_mode
         self.root = self.base_root / ("developer" if developer_mode else "production")
         self.trusted_keys = MappingProxyType(dict(trusted_keys))
         self.core_version = core_version
+        #: manifest_sha256 digests the root-signed revocation list revokes
+        #: (D186 Bucket-2). A revoked bundle must not install or (re)activate,
+        #: even if its signing key is still trusted. Empty until a signed
+        #: revocation document is wired in (load_trust_policy.revoked_bundle_digests).
+        self.revoked_digests = frozenset(revoked_digests)
         self.observation_store_path = observation_store_path
         root_identity = str(self.root).casefold().encode("utf-8")
         self._mutex_name = (
@@ -394,6 +400,8 @@ class PluginStore:
 
     def _install(self, bundle_path: Path) -> InstalledPlugin:
         bundle = self.inspect(bundle_path)
+        if bundle.manifest_sha256 in self.revoked_digests:
+            raise PluginStoreError("bundle is revoked and must not be installed")
         self._ensure_layout()
         relative = PurePosixPath(
             "installed",
@@ -641,6 +649,8 @@ class PluginStore:
 
     def _enable(self, plugin_id: str, version: str) -> InstalledPlugin:
         bundle = self._installed_bundle(plugin_id, version)
+        if bundle.manifest_sha256 in self.revoked_digests:
+            raise PluginStoreError("bundle is revoked and must not be activated")
         compatibility = check_core_compatibility(bundle.manifest, self.core_version)
         if not compatibility.compatible:
             raise PluginStoreError(compatibility.reason)

@@ -594,3 +594,42 @@ def test_a_crashed_process_cannot_strand_the_plugin_store(tmp_path):
         if child.is_alive():
             child.terminate()
         child.join(5.0)
+
+
+def test_a_revoked_digest_is_refused_at_install(tmp_path):
+    private, trusted = _key()
+    bundle = _bundle(tmp_path, private)
+    digest = PluginStore(
+        tmp_path / "probe", trusted_keys=trusted, core_version="0.1.0"
+    ).inspect(bundle).manifest_sha256
+
+    store = PluginStore(
+        tmp_path / "store",
+        trusted_keys=trusted,
+        core_version="0.1.0",
+        revoked_digests=frozenset({digest}),
+    )
+    with pytest.raises(PluginStoreError, match="revoked"):
+        store.install(bundle)
+    assert store.list_installed() == ()
+
+
+def test_a_revoked_digest_cannot_be_reactivated(tmp_path):
+    private, trusted = _key()
+    bundle = _bundle(tmp_path, private)
+    base = tmp_path / "store"
+    # install while not revoked
+    PluginStore(base, trusted_keys=trusted, core_version="0.1.0").install(bundle)
+    digest = PluginStore(
+        tmp_path / "probe", trusted_keys=trusted, core_version="0.1.0"
+    ).inspect(bundle).manifest_sha256
+
+    # a later store that knows the digest is revoked refuses to enable it
+    revoked = PluginStore(
+        base,
+        trusted_keys=trusted,
+        core_version="0.1.0",
+        revoked_digests=frozenset({digest}),
+    )
+    with pytest.raises(PluginStoreError, match="revoked"):
+        revoked.enable("ghostcursor.one", "1.0.0")
