@@ -489,6 +489,15 @@ Remaining Bucket-2 work, each its own reviewed slice with tests + D018 mutation:
      doc, so "blocked" is a signed decision, not an unsigned catalog hint.
 Ratings/install-counts stay OUT (require telemetry/egress; rule 6).
 
+**SHIPPED 2026-10-21 (6f1c77a): publisher identity in the signed key manifest.**
+`ReleaseKey.publisher` (optional, root-signed, <=100 chars, normalised).
+Independent tier1-reviewer: no BLOCKING (display/provenance only, grants no
+trust, signature-covered, fail-closed when present); its one FOLLOWUP (no test
+for the >100 bound) is closed. D018 mutation 2/2 killed. Catalog surfacing of
+publisher is a later read-only step. Real-user E2E coverage added in
+tests/test_real_user_flows.py (messy input across kit/palette/snippets/todos/
+pins/convert/diffs + workspace no-model guards + marketplace revoked-at-install).
+
 **SHIPPED 2026-10-21 (03a7a89 + tests): digest-level signed bundle revocation.**
 The root-signed revocation doc now accepts an optional `revoked_bundles`
 ([{manifest_sha256,revoked_at,reason_code}]), backward-compatible, under the

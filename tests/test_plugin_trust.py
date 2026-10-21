@@ -240,6 +240,7 @@ def test_publisher_is_parsed_and_optional():
         ("", None, "publisher is invalid"),  # empty string
         ("   ", None, "publisher is invalid"),  # whitespace only
         (123, None, "publisher is invalid"),  # wrong type
+        ("x" * 101, None, "publisher is invalid"),  # over the 100-char bound
         (None, {"surprise": 1}, "record schema is invalid"),  # unknown extra field
     ],
 )
