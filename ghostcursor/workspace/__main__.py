@@ -915,8 +915,8 @@ def main(argv: list[str] | None = None) -> int:
                     if command == "/act"
                     else (),
                 )
-                if command == "/teach":
-                    telemetry.record("teach_run")  # act_run stays for a tier-1 commit
+                # Name-only local count; observational, touches no Act authority.
+                telemetry.record("act_run" if command == "/act" else "teach_run")
                 print(workspace.record_teach(int(parts[0]), outcome, code))
             elif command == "/clips":
                 # clipboard history: list; "<n>" puts entry n back on the

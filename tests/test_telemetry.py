@@ -61,6 +61,42 @@ def test_telemetry_has_no_network_import():
     assert not leaked, f"telemetry.py must not import network modules: {leaked}"
 
 
+def test_every_allowlisted_event_has_exactly_one_emitter_set():
+    """No dangling allowlist name, and no record() of an unlisted name: the set
+    of names passed to telemetry.record(...) across the package must equal
+    EVENTS. Keeps the allowlist honest as emitters are added/removed."""
+
+    import ast
+
+    emitted = set()
+    for path in Path("ghostcursor").rglob("*.py"):
+        if path.name == "telemetry.py":
+            continue  # its __main__ self-check uses throwaway names on purpose
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "record"
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == "telemetry"
+                and node.args
+            ):
+                # The arg is a string literal or a ternary of them
+                # (record("act_run" if ... else "teach_run")) -- take the
+                # branches, never the ternary's condition.
+                arg = node.args[0]
+                branches = (
+                    [arg.body, arg.orelse] if isinstance(arg, ast.IfExp) else [arg]
+                )
+                for b in branches:
+                    if isinstance(b, ast.Constant) and isinstance(b.value, str):
+                        emitted.add(b.value)
+    assert emitted == set(telemetry.EVENTS), {
+        "unlisted_but_emitted": emitted - set(telemetry.EVENTS),
+        "listed_but_never_emitted": set(telemetry.EVENTS) - emitted,
+    }
+
+
 def test_policy_gate_defaults_off(monkeypatch):
     # with no registry policy value, telemetry is off (opt-in)
     from ghostcursor import policy
