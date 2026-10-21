@@ -35,6 +35,9 @@ def main(argv: list[str] | None = None) -> int:
     cat = commands.add_parser("catalog")
     cat.add_argument("directory", type=Path)
     cat.add_argument("--search", default="", help="filter by id/app/metadata substring")
+    cat.add_argument("--sort", choices=("id", "version", "latest"), default="id")
+    cat.add_argument("--only", choices=("signed", "compatible", "latest"))
+    cat.add_argument("--app", help="only plugins targeting this application")
     cat.add_argument("--write", type=Path, help="write a read-only index.json here")
     args = parser.parse_args(argv)
 
@@ -55,7 +58,13 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "catalog":
             import json
 
-            from ghostcursor.plugins.marketplace import build_index, catalog, search
+            from ghostcursor.plugins.marketplace import (
+                build_index,
+                catalog,
+                filter_entries,
+                search,
+                sort_entries,
+            )
 
             entries = catalog(
                 args.directory,
@@ -63,6 +72,14 @@ def main(argv: list[str] | None = None) -> int:
                 core_version=store.core_version,
             )
             shown = search(entries, args.search) if args.search else entries
+            shown = filter_entries(
+                shown,
+                signed=True if args.only == "signed" else None,
+                compatible=True if args.only == "compatible" else None,
+                latest=True if args.only == "latest" else None,
+                app=args.app,
+            )
+            shown = sort_entries(shown, by=args.sort)
             print(f"Available plugins in {args.directory}:")
             for entry in shown:
                 print(f"  {entry.as_line()}")

@@ -16,7 +16,9 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from ghostcursor.plugins.marketplace import (
     build_index,
     catalog,
+    filter_entries,
     search,
+    sort_entries,
     updates_available,
 )
 
@@ -138,6 +140,36 @@ def test_is_latest_updates_and_index(tmp_path):
     assert one_latest["verified"]["status"] == "active"
     # author text is a separate untrusted block, verified facts are recomputed
     assert "publisher_provided" in one_latest and "verified" in one_latest
+
+
+def test_sort_and_filter(tmp_path):
+    private, trusted = _key()
+    _bundle(tmp_path, private, plugin_id="ghostcursor.one", version="1.0.0")
+    _bundle(tmp_path, private, plugin_id="ghostcursor.one", version="1.2.0")
+    # incompatible (maximum below core)
+    _bundle(
+        tmp_path, private, plugin_id="ghostcursor.two", version="1.0.0", maximum="0.9.0"
+    )
+    entries = catalog(tmp_path, trusted_keys=trusted, core_version=CORE)
+
+    # sort by version: highest semver first
+    assert sort_entries(entries, by="version")[0].version == "1.2.0"
+    # sort by latest: an is_latest entry leads
+    assert sort_entries(entries, by="latest")[0].is_latest is True
+
+    # filter: only compatible drops the incompatible .two
+    compat = filter_entries(entries, compatible=True)
+    assert {e.plugin_id for e in compat} == {"ghostcursor.one"}
+    # filter: only latest keeps the highest version per plugin_id (each id's own
+    # latest -- .two is the sole/highest of its id even though incompatible)
+    latest = {(e.plugin_id, e.version) for e in filter_entries(entries, latest=True)}
+    assert latest == {("ghostcursor.one", "1.2.0"), ("ghostcursor.two", "1.0.0")}
+    # latest AND compatible narrows to the one usable newest
+    both = filter_entries(entries, latest=True, compatible=True)
+    assert [(e.plugin_id, e.version) for e in both] == [("ghostcursor.one", "1.2.0")]
+    # filter by targeted app
+    assert filter_entries(entries, app="one.exe")  # case-insensitive match
+    assert filter_entries(entries, app="nope.exe") == []
 
 
 def test_search_matches_id_and_presentation(tmp_path):

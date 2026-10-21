@@ -191,6 +191,47 @@ def search(
     return hits
 
 
+def sort_entries(entries: Iterable[CatalogEntry], by: str = "id") -> list[CatalogEntry]:
+    """Sort a catalog like Open VSX's sortBy: 'id' (alpha), 'version' (semver,
+    high first), or 'latest' (is_latest first, then id). Stable, pure."""
+
+    items = list(entries)
+    if by == "version":
+        return sorted(items, key=lambda e: _semver_key(e.version), reverse=True)
+    if by == "latest":
+        return sorted(items, key=lambda e: (not e.is_latest, e.plugin_id, e.version))
+    return sorted(items, key=lambda e: (e.plugin_id, e.version))
+
+
+def filter_entries(
+    entries: Iterable[CatalogEntry],
+    *,
+    signed: bool | None = None,
+    compatible: bool | None = None,
+    latest: bool | None = None,
+    app: str | None = None,
+) -> list[CatalogEntry]:
+    """Keep catalog entries matching every supplied constraint (Open VSX's
+    category/filter intent, over the facts we already verify). ``app`` matches
+    a targeted application case-insensitively. Error rows are dropped."""
+
+    app_l = app.casefold() if app else None
+    out = []
+    for e in entries:
+        if e.error:
+            continue
+        if signed is not None and e.signed != signed:
+            continue
+        if compatible is not None and e.compatible != compatible:
+            continue
+        if latest is not None and e.is_latest != latest:
+            continue
+        if app_l is not None and not any(app_l in a.casefold() for a in e.applications):
+            continue
+        out.append(e)
+    return out
+
+
 def build_index(
     entries: Iterable[CatalogEntry],
     *,
