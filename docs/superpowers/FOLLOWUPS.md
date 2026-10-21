@@ -489,6 +489,18 @@ Remaining Bucket-2 work, each its own reviewed slice with tests + D018 mutation:
      doc, so "blocked" is a signed decision, not an unsigned catalog hint.
 Ratings/install-counts stay OUT (require telemetry/egress; rule 6).
 
+**Precondition found 2026-10-21:** `trust.py`'s `load_trust_policy` /
+`ReleaseTrustPolicy` is built but **not wired into `PluginStore`/`platform`** —
+production verification uses the simpler `trusted_keys.json` pinned public-key
+map (`trusted_release_keys()`), and no signed key-manifest/revocation documents
+are committed. So Bucket-2 item 1 first requires a reviewed slice that **wires
+the signed trust-policy path into the store** (load the root-signed key
+manifest + revocation list at catalog admission, replacing/augmenting the flat
+key map), and only then extends it with digest revocation. That is a larger
+tier-1 integration than a schema change; it does NOT need the owner's root
+private key (no production signed docs exist yet; fixtures self-sign), but it
+does need its own D162 gate (tests + D018 mutation + independent review).
+
 ### Legacy observation quarantine has no retention policy
 
 The plugin-store migration moves pre-plugin observation rows into
