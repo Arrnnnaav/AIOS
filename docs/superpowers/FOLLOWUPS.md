@@ -38,6 +38,29 @@ what they state; nothing to change.
 
 ## Separate milestone, already scoped
 
+### `/web` WebMCP tool discovery — DEFERRED with a named trigger 2026-10-22
+Candidate feature from the AFFiNE decompile: a read-only `/web` probe that detects
+agent-callable tools a web page exposes, for Orbyn's model-driven harness. Agent-reach
+research (2026-10-22) decided **don't build now**:
+- **W3C WebMCP** (`github.com/webmachinelearning/webmcp`, Google/Microsoft CG) is an early
+  draft, not standards-track. Its entry-point global renamed twice in ~6 months
+  (`window.agent` → `navigator.modelContext` → `document.modelContext`), needs the Chrome
+  `enable-webmcp-testing` flag / an origin-trial token even to observe (trial Chrome 149–156,
+  Edge 150), has **no CDP domain** and **no `.well-known`/manifest/header** — discovery is
+  runtime `Runtime.evaluate` of a JS global whose shape is itself unstable. **Zero verifiable
+  production sites** expose tools today.
+- **The AFFiNE signal is a DIFFERENT thing:** `/.webmcp/bridge.js` + `MCP-Session-Id` is an
+  in-page MCP-over-HTTP bridge (Streamable-HTTP transport session header), vendor-specific,
+  not the W3C API. A detector keyed on it won't generalise; the two share almost no surface.
+- Building now = a demo-only detector needing a re-pin every quarter. YAGNI.
+
+**Reopen trigger:** the Chrome WebMCP origin trial graduates AND ≥1 non-demo site ships
+`document.modelContext` tools. Then the MVP is a ~1-day flag-gated read-only probe:
+headless-Chrome `Runtime.evaluate` testing `typeof document.modelContext` (legacy fallback
+`navigator.modelContext`), then `getTools()` to enumerate names/descriptions/schemas — one
+canonical artifact; the declarative `<form toolname>` scan is secondary and unsettled.
+First check what REA's own `discover_webmcp_tools` keys on before writing ours.
+
 ### Chromium warm-up retry — CLOSED WON'T-BUILD 2026-10-22
 Original idea: Electron apps are blind-until-asked; a first walk returning window
 furniture but no document content is NOT-YET-READY rather than empty, so retry
