@@ -468,6 +468,27 @@ author, network update channel, or customer deployment that requires key
 rotation. Define signed revocation metadata and startup behavior through one
 reviewed decision; do not scatter date/key checks across installer and runtime.
 
+**UPDATE 2026-10-21 (D186, marketplace Bucket-2 — next tier-1 slice, scoped):**
+key-rotation + key_id revocation already exist in `trust.py`
+(`load_trust_policy`: root-signed key manifest + lineage + monotonic-sequence
+anti-rollback + `validate_resigning_provenance`). The marketplace Bucket-1
+catalog (`plugins/marketplace.py`) only has an UNSIGNED local digest denylist.
+Remaining Bucket-2 work, each its own reviewed slice with tests + D018 mutation:
+  1. **Per-bundle (digest) signed revocation.** Extend the root-signed
+     revocation doc schema from `{schema_version,generated_at,sequence,revoked}`
+     to also allow `revoked_bundles: [{manifest_sha256, revoked_at, reason_code}]`
+     (reuse `_REASONS` + the same sequence floor). Return a frozenset of revoked
+     digests on `ReleaseTrustPolicy`; `PluginStore.install`/activate refuse a
+     bundle whose `manifest_sha256` is revoked. NOTE: the schema-equality checks
+     are strict, so this re-signs the pinned trust fixtures — mutation must
+     cover the new signature + sequence-floor + schema checks.
+  2. **Publisher identity in the signed key manifest.** Add a signed `publisher`
+     field to each `ReleaseKey` record so "who signed this" is trustworthy, not
+     catalog text; surface it (and existing re-sign provenance) in the catalog.
+  3. **Graduated `status`** (active→deprecated→revoked) carried in the signed
+     doc, so "blocked" is a signed decision, not an unsigned catalog hint.
+Ratings/install-counts stay OUT (require telemetry/egress; rule 6).
+
 ### Legacy observation quarantine has no retention policy
 
 The plugin-store migration moves pre-plugin observation rows into
