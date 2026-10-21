@@ -29,6 +29,8 @@ def _signed_policy(
     sequence: int = 1,
     revoked_bundles=None,
     revocation_extra=None,
+    publisher=None,
+    key_extra=None,
 ):
     root = Ed25519PrivateKey.generate()
     releases = [Ed25519PrivateKey.generate(), Ed25519PrivateKey.generate()]
@@ -79,6 +81,10 @@ def _signed_policy(
             else []
         ),
     }
+    if publisher is not None:
+        keys["keys"][0]["publisher"] = publisher
+    if key_extra is not None:
+        keys["keys"][0].update(key_extra)
     if revoked_bundles is not None:
         revocations["revoked_bundles"] = revoked_bundles
     if revocation_extra is not None:
@@ -201,6 +207,46 @@ def test_revoked_bundles_are_exposed_as_digests():
 )
 def test_revoked_bundles_bad_shapes_are_rejected(bundles, match):
     root, keys, key_sig, rev, rev_sig, _ = _signed_policy(revoked_bundles=bundles)
+    with pytest.raises(ReleaseTrustError, match=match):
+        load_trust_policy(
+            key_manifest_bytes=keys,
+            key_manifest_signature=key_sig,
+            revocations_bytes=rev,
+            revocations_signature=rev_sig,
+            root_public_key=root,
+            now=NOW,
+        )
+
+
+def test_publisher_is_parsed_and_optional():
+    # omitted -> None on every record (backward compatible)
+    assert _load().key_records["release-1"].publisher is None
+
+    root, keys, key_sig, rev, rev_sig, _ = _signed_policy(publisher="  Orbyn  Labs ")
+    policy = load_trust_policy(
+        key_manifest_bytes=keys,
+        key_manifest_signature=key_sig,
+        revocations_bytes=rev,
+        revocations_signature=rev_sig,
+        root_public_key=root,
+        now=NOW,
+    )
+    assert policy.key_records["release-1"].publisher == "Orbyn Labs"  # normalised
+
+
+@pytest.mark.parametrize(
+    "publisher, key_extra, match",
+    [
+        ("", None, "publisher is invalid"),  # empty string
+        ("   ", None, "publisher is invalid"),  # whitespace only
+        (123, None, "publisher is invalid"),  # wrong type
+        (None, {"surprise": 1}, "record schema is invalid"),  # unknown extra field
+    ],
+)
+def test_publisher_bad_shapes_are_rejected(publisher, key_extra, match):
+    root, keys, key_sig, rev, rev_sig, _ = _signed_policy(
+        publisher=publisher, key_extra=key_extra
+    )
     with pytest.raises(ReleaseTrustError, match=match):
         load_trust_policy(
             key_manifest_bytes=keys,

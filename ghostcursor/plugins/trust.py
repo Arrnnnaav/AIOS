@@ -38,6 +38,11 @@ class ReleaseKey:
     not_after: datetime
     successor_key_ids: tuple[str, ...]
     predecessor_key_id: str | None
+    #: Human publisher name, root-signed in the key manifest (D186 Bucket-2).
+    #: Trustworthy (it is inside the root-signed document), unlike catalog text;
+    #: None when the manifest omits it. "who signed this bundle" = the publisher
+    #: of records[bundle.signing_key_id].
+    publisher: str | None = None
 
 
 @dataclass(frozen=True)
@@ -187,7 +192,10 @@ def load_trust_policy(
             "successor_key_ids",
             "predecessor_key_id",
         }
-        if not isinstance(item, dict) or set(item) != fields:
+        if not isinstance(item, dict) or set(item) not in (
+            fields,
+            fields | {"publisher"},
+        ):
             raise ReleaseTrustError("release-key record schema is invalid")
         key_id = item["key_id"]
         if not isinstance(key_id, str) or not _KEY_ID_RE.fullmatch(key_id):
@@ -215,8 +223,21 @@ def load_trust_policy(
             or key_id in successors
         ):
             raise ReleaseTrustError("release-key lineage is invalid")
+        publisher = item.get("publisher")
+        if publisher is not None and (
+            not isinstance(publisher, str)
+            or not publisher.strip()
+            or len(publisher) > 100
+        ):
+            raise ReleaseTrustError("release-key publisher is invalid")
         records[key_id] = ReleaseKey(
-            key_id, public, starts, ends, tuple(successors), predecessor
+            key_id,
+            public,
+            starts,
+            ends,
+            tuple(successors),
+            predecessor,
+            " ".join(publisher.split()) if publisher else None,
         )
 
     for record in records.values():
