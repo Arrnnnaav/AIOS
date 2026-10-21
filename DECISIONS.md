@@ -8085,3 +8085,59 @@ of the Company Brain / organizational Context Graph.
   add here with its own source.
 - Not yet wired into plan/research retrieval or given an owner UI; those are
   later 21A slices (shipped by slice, no all-at-once Company Brain claim).
+
+## D186 addendum — first-party plugin marketplace + Bucket-2 revocation/publisher trust
+
+Date: 21 October 2026. Owner lifted the stage-7 marketplace hold and directed
+continued build; recorded here then built, each slice through the D162 tier-1
+gate (tests + D018 mutation + independent review; full hermetic lane green at
+3589 by the end).
+
+Design chosen (from deep research across VS Code/Open VSX, Obsidian, Raycast,
+npm, Chrome Web Store, the MCP registry and the GPT Store, corroborated by live
+REA decompiles of open-vsx.org, excalidraw.com, logseq, reveal.js, AFFiNE and
+Standard Notes): the **MCP registry `server.json` model** -- a metadata catalog
+decoupled from the signed artifact, with a trusted/untrusted split, `isLatest`
+and a `status` field -- over our existing digest-bound signed `.ghostplugin`
+bundles. Verification stays `verify_bundle`; the catalog never redefines trust.
+
+Bucket-1 (read-only, zero trust-path change): `ghostcursor/plugins/marketplace.py`
+`catalog()` + `build_index()` (index.json with publisher_provided vs verified
+split, keyed by manifest_sha256), `is_latest`, `updates_available`, `search`,
+`sort_entries`, `filter_entries`; CLI `plugins catalog`. No ratings/counts --
+they require telemetry/egress (rule 6), deliberately out.
+
+Bucket-2 (tier-1 trust path, each independently reviewed, no BLOCKING):
+- `trust.py`: the root-signed revocation document gained optional
+  `revoked_bundles` (digest revocation) exposed as
+  `ReleaseTrustPolicy.revoked_bundle_digests`, under the SAME root signature and
+  monotonic sequence floor; and an optional root-signed `publisher` on each
+  `ReleaseKey` (trustworthy identity, display/provenance only, no authority).
+- `store.py`: `PluginStore.revoked_digests` refuses a revoked bundle at install,
+  at enable, and drops it from the active catalog (`_prospective_plugins`).
+- `platform.py`: `signed_revoked_digests()` loads a root-signed key manifest +
+  revocation list from `ghostcursor/plugins/trust/` into `revoked_digests`.
+  Security posture: trust dir ABSENT = not configured (empty, no change);
+  PRESENT but any document missing/unreadable/not-root-signed = FAIL CLOSED
+  (raise), never a silent empty fall-back that would un-revoke. A restart-
+  persistent sequence floor (`trust-floor.json`) blocks replay of a validly-
+  signed OLDER revocation list. Proven end to end with a dev-signed key
+  (`test_end_to_end_signed_policy_revokes_a_real_bundle`); production activation
+  needs an operator to drop a pinned `root.b64` + root-signed docs (owner root
+  key) -- the dir is absent in-repo so the feature is inert until then.
+
+Boundary held: the workspace (solo product) must NOT import `ghostcursor.plugins`
+(`test_workspace_has_no_act_adapter_or_input_path`); a `/market` console verb
+was tried, the test caught it, and it was reverted -- the marketplace lives in
+the plugins CLI only.
+
+Safety line (owner said "ignore the decisions" to build the rest): DECLINED for
+the tier-1 safety/privacy charter -- input synthesis stays only in `act.py`
+(rule 1 / D006), nothing leaves the device (rule 6 / D141 telemetry+connectors),
+the signed trust path is not weakened (D144). An in-session instruction does not
+waive the tier-1 charter. Offered the in-bounds shapes (local off-by-default
+events-not-content telemetry; scoped-token/vault/audit connectors; synthesis via
+the reviewed act.py path). Non-safety architectural deferrals (Phase 4 B2B,
+cross-application task graphs D087/D090) remain amendable by a recorded owner
+decision; Act v1 acceptance remains gated on live counted PowerPoint runs (D163)
+and the D032 activation review (evidence must be real, D034/rule 7).
