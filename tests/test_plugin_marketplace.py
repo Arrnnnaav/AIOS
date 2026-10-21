@@ -13,7 +13,12 @@ import zipfile
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from ghostcursor.plugins.marketplace import catalog
+from ghostcursor.plugins.marketplace import (
+    build_index,
+    catalog,
+    search,
+    updates_available,
+)
 
 CORE = "1.0.0"
 
@@ -108,3 +113,41 @@ def test_catalog_does_not_trust_an_unsigned_bundle(tmp_path):
     entries = catalog(tmp_path, trusted_keys=trusted, core_version=CORE)
     # unsigned bundle fails verification in the production trust path -> error row
     assert entries and entries[0].error
+
+
+def test_is_latest_updates_and_index(tmp_path):
+    private, trusted = _key()
+    _bundle(tmp_path, private, plugin_id="ghostcursor.one", version="1.0.0")
+    _bundle(tmp_path, private, plugin_id="ghostcursor.one", version="1.2.0")
+    entries = catalog(tmp_path, trusted_keys=trusted, core_version=CORE)
+
+    latest = {
+        e.version: e.is_latest for e in entries if e.plugin_id == "ghostcursor.one"
+    }
+    assert latest == {"1.0.0": False, "1.2.0": True}  # highest semver wins
+
+    # installed 1.0.0 -> an update to 1.2.0 is offered
+    ups = updates_available(entries, {"ghostcursor.one": "1.0.0"})
+    assert ups == [("ghostcursor.one", "1.0.0", "1.2.0")]
+    assert updates_available(entries, {"ghostcursor.one": "1.2.0"}) == []  # current
+
+    index = build_index(entries)
+    assert index["index_schema_version"] == 1
+    one_latest = [e for e in index["entries"] if e["version"] == "1.2.0"][0]
+    assert one_latest["verified"]["is_latest"] is True
+    assert one_latest["verified"]["status"] == "active"
+    # author text is a separate untrusted block, verified facts are recomputed
+    assert "publisher_provided" in one_latest and "verified" in one_latest
+
+
+def test_search_matches_id_and_presentation(tmp_path):
+    private, trusted = _key()
+    path = _bundle(tmp_path, private, plugin_id="ghostcursor.slides")
+    entries = catalog(tmp_path, trusted_keys=trusted, core_version=CORE)
+    digest = entries[0].manifest_sha256
+    pres = {digest: {"display_name": "Deck Helper", "keywords": ["powerpoint"]}}
+
+    assert search(entries, "slides")  # matches plugin_id
+    assert search(entries, "deck", presentation=pres)  # matches display_name
+    assert search(entries, "powerpoint", presentation=pres)  # matches a keyword
+    assert search(entries, "nomatch", presentation=pres) == []

@@ -21,11 +21,15 @@ tier-1 step and needs its own review.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Iterable, Mapping
 
-from ghostcursor.plugins.bundle import BundleVerificationError, verify_bundle
+from ghostcursor.plugins.bundle import (
+    _SEMVER_RE,
+    BundleVerificationError,
+    verify_bundle,
+)
 
 
 @dataclass(frozen=True)
@@ -38,6 +42,8 @@ class CatalogEntry:
     applications: tuple[str, ...]
     revoked: bool
     error: str  # "" when the bundle verified
+    signing_key_id: str = ""
+    is_latest: bool = False  # highest semver for this plugin_id in the catalog
 
     def as_line(self) -> str:
         if self.error:
@@ -46,6 +52,8 @@ class CatalogEntry:
             "signed" if self.signed else "UNSIGNED",
             "compatible" if self.compatible else "INCOMPATIBLE",
         ]
+        if self.is_latest:
+            flags.append("latest")
         if self.revoked:
             flags.append("REVOKED")
         apps = ", ".join(self.applications) or "no apps"
@@ -103,7 +111,138 @@ def catalog(
                 applications=_applications(bundle.manifest),
                 revoked=bundle.manifest_sha256 in revoked_set,
                 error="",
+                signing_key_id=str(bundle.manifest.get("signing_key_id") or ""),
             )
         )
     entries.sort(key=lambda e: (e.plugin_id, e.version))
-    return entries
+    return _mark_latest(entries)
+
+
+def _semver_key(version: str) -> tuple[int, int, int]:
+    """(major, minor, patch) for comparison; (-1,-1,-1) if not plain semver."""
+
+    m = _SEMVER_RE.fullmatch(version or "")
+    return (int(m[1]), int(m[2]), int(m[3])) if m else (-1, -1, -1)
+
+
+def _mark_latest(entries: list[CatalogEntry]) -> list[CatalogEntry]:
+    """Flag the highest-semver verified entry per plugin_id as is_latest
+    (MCP's latest rule). Error/unversioned rows never win."""
+
+    best: dict[str, tuple[int, int, int]] = {}
+    for e in entries:
+        if e.error:
+            continue
+        key = _semver_key(e.version)
+        if key > best.get(e.plugin_id, (-2, -2, -2)):
+            best[e.plugin_id] = key
+    out = []
+    for e in entries:
+        latest = (not e.error) and _semver_key(e.version) == best.get(e.plugin_id)
+        out.append(replace(e, is_latest=latest))
+    return out
+
+
+def updates_available(
+    entries: Iterable[CatalogEntry], installed: Mapping[str, str]
+) -> list[tuple[str, str, str]]:
+    """(plugin_id, installed_version, latest_version) for each installed plugin
+    the catalog has a strictly-higher semver for. Pure local compare."""
+
+    latest: dict[str, str] = {}
+    for e in entries:
+        if not e.error and e.is_latest:
+            latest[e.plugin_id] = e.version
+    out = []
+    for plugin_id, have in installed.items():
+        newest = latest.get(plugin_id)
+        if newest and _semver_key(newest) > _semver_key(have):
+            out.append((plugin_id, have, newest))
+    return sorted(out)
+
+
+def search(
+    entries: Iterable[CatalogEntry],
+    query: str,
+    *,
+    presentation: Mapping[str, Mapping] | None = None,
+) -> list[CatalogEntry]:
+    """Entries whose id, applications, signing key, or presentation text
+    (display_name/summary/keywords/publisher, keyed by digest) match ``query``
+    as a case-insensitive substring. Local only; no network."""
+
+    q = " ".join(str(query).split()).casefold()
+    if not q:
+        return list(entries)
+    presentation = presentation or {}
+    hits = []
+    for e in entries:
+        hay = [e.plugin_id, e.signing_key_id, *e.applications]
+        p = presentation.get(e.manifest_sha256, {})
+        hay += [
+            str(p.get("display_name", "")),
+            str(p.get("summary", "")),
+            str(p.get("publisher", "")),
+            str(p.get("category", "")),
+            " ".join(str(k) for k in p.get("keywords", []) if isinstance(k, str)),
+        ]
+        if any(q in str(h).casefold() for h in hay):
+            hits.append(e)
+    return hits
+
+
+def build_index(
+    entries: Iterable[CatalogEntry],
+    *,
+    presentation: Mapping[str, Mapping] | None = None,
+    revoked_digests: Iterable[str] = (),
+    generated_at: str | None = None,
+) -> dict:
+    """A read-only catalog ``index.json`` (MCP-style trusted/untrusted split):
+    author presentation text is untrusted display; the ``verified`` block is the
+    facts this run recomputed with verify_bundle. Keyed by manifest_sha256 so
+    the catalog text can never point at a different bundle than the one
+    verified. Carries no ratings/counts (those would need egress)."""
+
+    import time
+
+    presentation = presentation or {}
+    out_entries = []
+    for e in entries:
+        if e.error:
+            continue
+        p = presentation.get(e.manifest_sha256, {})
+        out_entries.append(
+            {
+                "plugin_id": e.plugin_id,
+                "version": e.version,
+                "manifest_sha256": e.manifest_sha256,
+                "publisher_provided": {
+                    k: p[k]
+                    for k in (
+                        "display_name",
+                        "summary",
+                        "publisher",
+                        "homepage",
+                        "keywords",
+                        "category",
+                    )
+                    if k in p
+                },
+                "verified": {
+                    "signed": e.signed,
+                    "signing_key_id": e.signing_key_id,
+                    "compatible": e.compatible,
+                    "applications": list(e.applications),
+                    "is_latest": e.is_latest,
+                    "status": "revoked" if e.revoked else "active",
+                },
+            }
+        )
+    return {
+        "index_schema_version": 1,
+        "generated_at": generated_at
+        or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "entries": out_entries,
+        "revoked_digests": sorted(set(revoked_digests)),
+    }

@@ -34,6 +34,8 @@ def main(argv: list[str] | None = None) -> int:
     commands.add_parser("list")
     cat = commands.add_parser("catalog")
     cat.add_argument("directory", type=Path)
+    cat.add_argument("--search", default="", help="filter by id/app/metadata substring")
+    cat.add_argument("--write", type=Path, help="write a read-only index.json here")
     args = parser.parse_args(argv)
 
     store = _store(args.developer)
@@ -51,18 +53,28 @@ def main(argv: list[str] | None = None) -> int:
             store.uninstall(args.plugin_id, args.version)
             print(f"uninstalled {args.plugin_id} {args.version}")
         elif args.command == "catalog":
-            from ghostcursor.plugins.marketplace import catalog
+            import json
+
+            from ghostcursor.plugins.marketplace import build_index, catalog, search
 
             entries = catalog(
                 args.directory,
                 trusted_keys=store.trusted_keys,
                 core_version=store.core_version,
             )
+            shown = search(entries, args.search) if args.search else entries
             print(f"Available plugins in {args.directory}:")
-            for entry in entries:
+            for entry in shown:
                 print(f"  {entry.as_line()}")
-            if not entries:
-                print("  (no .ghostplugin bundles found)")
+            if not shown:
+                print("  (no matching .ghostplugin bundles found)")
+            if args.write:
+                args.write.write_text(
+                    json.dumps(build_index(entries), indent=1),
+                    encoding="utf-8",
+                    newline="\n",
+                )
+                print(f"wrote catalog index -> {args.write}")
         else:
             marker = (
                 " [DEVELOPER STORE: unsigned plugins allowed]" if args.developer else ""
