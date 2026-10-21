@@ -800,10 +800,13 @@ def main(argv: list[str] | None = None) -> int:
                     print(f"could not save clipboard image: {exc}")
             elif command == "/convert" and len(rest.split()) >= 2:
                 # Local file conversion (Open-Tangerine ported): <src> <format>.
+                # Robust parse: the format is the last whitespace-separated token;
+                # the source is everything before it, so a path with spaces works
+                # (quote it, or not). Trailing whitespace never splits wrong.
                 from ghostcursor.workspace import convert as _convert
 
-                parts = rest.rsplit(" ", 1)
-                src, fmt = parts[0].strip().strip('"'), parts[1].strip()
+                src, fmt = rest.strip().rsplit(None, 1)
+                src = src.strip().strip('"').strip("'")
                 try:
                     out = _convert.convert(src, fmt)
                     print(f"converted -> {out}")

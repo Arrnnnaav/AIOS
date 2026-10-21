@@ -1822,9 +1822,9 @@ Replaced the three `to.lower().lstrip(".")` with `.removeprefix(".")`.
 Dropped "gif" from _MEDIA; gif is an image target (router -> Pillow). A video->gif
 still works by calling convert_media directly if ever needed.
 
-### 3. /convert parsing is brittle (trailing space / embedded quotes)
-__main__.py -- rsplit(" ",1) + a single quote-strip mis-parses odd paths. Not a
-safety issue (no shell); tighten the arg parse if it bites.
+### 3. /convert parsing is brittle (trailing space / embedded quotes) — RESOLVED 2026-10-21
+`rest.strip().rsplit(None, 1)` now splits the format off the last whitespace
+token (so a spaced path works) and strips surrounding `"`/`'` from the source.
 
 ## /deck build -- DeckSpec -> Act build (c561bed) -- tier-1 review clean, no BLOCKING
 build_deck proposes a plan to build a reviewed DeckSpec in PowerPoint; the user
