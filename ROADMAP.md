@@ -382,10 +382,18 @@ built but not yet exercised by a caller or a live run.
       (`ghostcursor/brief.py`)
 - [x] Bind a brief's digest to each proposal — re-read at bind time,
       so an appended-to brief refuses rather than binding a stale digest
-- [ ] `ClarificationRequired` vs `PlanProposal` as mutually exclusive outputs
-- [ ] Keep asking until required fields resolve
-- [ ] Pass only the active plugin's capability catalog to the model
-- [ ] Store proposal separately from approved plan
+- [x] `ClarificationRequired` vs `PlanProposal` as mutually exclusive outputs
+      (`task_planner.py`: `ClarificationRequired` is a separate type from
+      `TaskGraphProposal`, "impossible to confuse"; outcomes are "clarification"
+      | "plan", validated exclusive)
+- [x] Keep asking until required fields resolve (`planning_session.py`: "ask
+      until the model knows enough to plan, then stop asking", capped at
+      `MAX_CLARIFY_QUESTIONS`)
+- [x] Pass only the active plugin's capability catalog to the model
+      (`task_plan_steps(validated, registry)` is scoped to the given
+      `CapabilityRegistry`)
+- [x] Store proposal separately from approved plan (`TaskGraphProposal` vs
+      `act_runtime.approve_action_graph`; proposal carries no authority)
 
 **9. Semantic PowerPoint capabilities (D111)**
 - [ ] `create_deck`, `apply_theme`, `create_title_slide`, `create_problem_slide`,
