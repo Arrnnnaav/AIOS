@@ -125,3 +125,53 @@ def test_revocation_sequence_floor_is_enforced_independently(tmp_path):
     _write_trust_dir(trust, sequence=3, rev_sequence=2)  # only revocation older
     with pytest.raises(ReleaseTrustError, match="older than one already accepted"):
         signed_revoked_digests(trust, floor_path=floor)
+
+
+def _signed_bundle(root_dir, *, plugin_id="ghostcursor.one", version="1.0.0"):
+    """A minimal signed .ghostplugin + its release trusted-keys map."""
+    release = Ed25519PrivateKey.generate()
+    trusted = {"release": release.public_key().public_bytes(
+        serialization.Encoding.Raw, serialization.PublicFormat.Raw)}
+    files = {"ghostcursor/packs/index.json": b'{"packs":[],"schema_version":2}\n'}
+    manifest = {
+        "schema_version": 1, "plugin_id": plugin_id, "version": version,
+        "plugin_api_version": 1,
+        "core_compatibility": {"minimum": "0.1.0", "maximum_exclusive": "2.0.0"},
+        "applications": [{"kind": "executable", "value": "One.exe"}],
+        "signing_key_id": "release", "adapter_api": None,
+        "files": {n: __import__("hashlib").sha256(r).hexdigest() for n, r in files.items()},
+    }
+    raw = json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode()
+    path = root_dir / f"{plugin_id}-{version}.ghostplugin"
+    import zipfile
+    with zipfile.ZipFile(path, "w") as a:
+        a.writestr("plugin.json", raw)
+        a.writestr("signature.ed25519", release.sign(raw))
+        for n, r in files.items():
+            a.writestr(n, r)
+    return path, trusted
+
+
+def test_end_to_end_signed_policy_revokes_a_real_bundle(tmp_path):
+    from ghostcursor.plugins.store import PluginStore, PluginStoreError
+
+    bundle, trusted = _signed_bundle(tmp_path)
+    digest = PluginStore(
+        tmp_path / "probe", trusted_keys=trusted, core_version="1.0.0"
+    ).inspect(bundle).manifest_sha256
+
+    # a dev-signed trust policy revokes exactly that bundle digest
+    trust = tmp_path / "trust"
+    _write_trust_dir(trust, digests=(digest,))
+    revoked = signed_revoked_digests(trust, floor_path=tmp_path / "floor.json")
+    assert digest in revoked
+
+    # the store built from that policy refuses to install the real bundle
+    store = PluginStore(
+        tmp_path / "store",
+        trusted_keys=trusted,
+        core_version="1.0.0",
+        revoked_digests=revoked,
+    )
+    with pytest.raises(PluginStoreError, match="revoked"):
+        store.install(bundle)
