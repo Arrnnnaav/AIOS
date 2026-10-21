@@ -571,6 +571,7 @@ def main(argv: list[str] | None = None) -> int:
                     )
                 else:
                     print(f"saved transcript to {dictation.save_transcript(said)}")
+                telemetry.record("dictation_saved")
             elif command == "/evidence":
                 print(workspace.evidence(int(rest) if rest.isdigit() else 0))
             elif command == "/remember" and rest.isdigit():
@@ -796,6 +797,7 @@ def main(argv: list[str] | None = None) -> int:
                 try:
                     out = _convert.clipboard_image(fmt)
                     print(f"saved clipboard image -> {out}")
+                    telemetry.record("convert_done")
                 except (ValueError, RuntimeError, OSError) as exc:
                     print(f"could not save clipboard image: {exc}")
             elif command == "/convert" and len(rest.split()) >= 2:
@@ -810,6 +812,7 @@ def main(argv: list[str] | None = None) -> int:
                 try:
                     out = _convert.convert(src, fmt)
                     print(f"converted -> {out}")
+                    telemetry.record("convert_done")
                 except (ValueError, RuntimeError, OSError) as exc:
                     print(f"could not convert: {exc}")
             elif command == "/deck" and rest.split()[:1] == ["build"]:
@@ -912,6 +915,8 @@ def main(argv: list[str] | None = None) -> int:
                     if command == "/act"
                     else (),
                 )
+                if command == "/teach":
+                    telemetry.record("teach_run")  # act_run stays for a tier-1 commit
                 print(workspace.record_teach(int(parts[0]), outcome, code))
             elif command == "/clips":
                 # clipboard history: list; "<n>" puts entry n back on the
