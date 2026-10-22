@@ -482,7 +482,9 @@ class Workspace:
                 purpose="discussion",
             )
         except ProviderError as exc:
-            return f"(no reply: the model is not available -- {exc.kind.value})"
+            reply = f"(no reply: the model is not available -- {exc.kind.value})"
+            self._say("assistant", reply)  # show the failure, don't vanish silently
+            return reply
         self.suggestion, candidates = self._check(message, answer.memories)
         for kind, text, confidence in candidates:
             # origin is what the model claims; the Brain's rule checks the

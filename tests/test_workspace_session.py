@@ -107,6 +107,10 @@ def test_a_plan_is_a_proposal_teach_can_start_from(ws):
 def test_model_failure_is_reported_never_guessed(ws):
     ws.gateway.fail = ProviderError(FailureKind.UNAVAILABLE)
     assert ws.discuss("hello").startswith("(no reply")
+    # the failure must be VISIBLE in the thread, not vanish: an assistant turn
+    # carrying it is appended, so the UI (which renders from the turn list) shows it
+    assert [t.speaker for t in ws.turns] == ["user", "assistant"]
+    assert ws.turns[-1].text.startswith("(no reply")
     assert ws.make_plan() is None and ws.plan is None
 
 
