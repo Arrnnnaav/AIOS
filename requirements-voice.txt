@@ -1,0 +1,10 @@
+# Optional voice extras (dictation + "Hey Bro" wake word). Install on top of
+# requirements.txt only if voice is wanted; Orbyn falls back cleanly without it.
+#
+#   py -3.12 -m pip install -r requirements-voice.txt
+#
+# The fast wake word additionally wants sherpa-onnx + the KWS model under
+# %LOCALAPPDATA%\GhostCursor\kws\ (Orbyn falls back to Whisper without it).
+
+faster-whisper==1.2.1     # local speech-to-text
+sounddevice==0.5.6        # microphone capture
