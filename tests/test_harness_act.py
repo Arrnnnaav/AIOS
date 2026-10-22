@@ -139,9 +139,22 @@ def test_perform_clicks_the_observed_centre_then_sends_the_action():
     assert run("none") == "nothing to do" and not clicks
 
 
-@pytest.mark.parametrize("chord", ["esc", "ctrl+escape", "", "ctrl+banana"])
-def test_bad_or_stop_key_chords_are_refused(chord):
+@pytest.mark.parametrize("chord", ["", "ctrl+banana"])
+def test_bad_key_chords_are_refused(chord):
     with pytest.raises(ValueError):
+        act.chord_events(chord)
+
+
+# The stop key is refused by chord_events' OWN guard, not incidentally by an
+# unknown-key lookup -- so assert the guard's message fires, and in any case
+# (an uppercase ESC must not slip past casefold). This is the model being
+# unable to synthesize the user's stop key (D020).
+@pytest.mark.parametrize(
+    "chord",
+    ["esc", "ESC", "escape", "ESCAPE", "ctrl+escape", "Ctrl+Escape", "shift+ESC"],
+)
+def test_the_stop_key_is_refused_by_the_guard_in_any_case(chord):
+    with pytest.raises(ValueError, match="refused key chord"):
         act.chord_events(chord)
 
 
@@ -214,7 +227,9 @@ def test_act_audit_writes_a_screen_text_free_line(tmp_path, monkeypatch):
         class identity:
             executable = "powerpnt.exe"
 
-    teach_live._audit([B()], [(1, "observed chosen_state_changes"), (2, "you confirmed")], 0)
+    teach_live._audit(
+        [B()], [(1, "observed chosen_state_changes"), (2, "you confirmed")], 0
+    )
     path = tmp_path / "GhostCursor" / "act-audit.jsonl"
     line = json.loads(path.read_text(encoding="utf-8").strip())
     assert line["apps"] == ["powerpnt.exe"] and line["code"] == 0
@@ -230,14 +245,18 @@ def test_step_verification_relooks_on_a_confident_no(monkeypatch):
     session, done, clock = _session(
         [PlanStep("Click Insert", E.CHOSEN_STATE_CHANGES)], [_choice("c1")]
     )
-    session.gateway.judge = lambda env, qs, **k: {"happened": Choice("no", {"no": 0.95, "yes": 0.05})}
+    session.gateway.judge = lambda env, qs, **k: {
+        "happened": Choice("no", {"no": 0.95, "yes": 0.05})
+    }
     frame = lambda fid=1: _frame([_c(1, state="selected=0")], frame_id=fid)
-    session.tick(frame())                 # APPROVE
-    session.tick(frame(), confirm=True)   # approve -> act
+    session.tick(frame())  # APPROVE
+    session.tick(frame(), confirm=True)  # approve -> act
     assert done == [("click", "Insert")]
     clock.now = ACT_SETTLE_S
-    out = session.tick(frame(fid=2))      # settle, no change: Jev says no
-    assert out.phase is Phase.CHOOSING and session.completed == []  # re-looked, not done
+    out = session.tick(frame(fid=2))  # settle, no change: Jev says no
+    assert (
+        out.phase is Phase.CHOOSING and session.completed == []
+    )  # re-looked, not done
 
 
 def test_step_verification_lets_the_step_stand_when_jev_is_unsure(monkeypatch):
@@ -246,7 +265,9 @@ def test_step_verification_lets_the_step_stand_when_jev_is_unsure(monkeypatch):
     session, done, clock = _session(
         [PlanStep("Click Insert", E.CHOSEN_STATE_CHANGES)], [_choice("c1")]
     )
-    session.gateway.judge = lambda env, qs, **k: {"happened": Choice("unsure", {"unsure": 0.9})}
+    session.gateway.judge = lambda env, qs, **k: {
+        "happened": Choice("unsure", {"unsure": 0.9})
+    }
     frame = lambda fid=1: _frame([_c(1, state="selected=0")], frame_id=fid)
     session.tick(frame())
     session.tick(frame(), confirm=True)
@@ -264,7 +285,9 @@ def test_paste_text_carries_known_text_then_restores_the_clipboard():
     clicks, sent, clip_writes = [], [], []
 
     out = act.perform(
-        PlanStep("Paste the address", E.CHOSEN_STATE_CHANGES, "paste_text", "221B Baker St"),
+        PlanStep(
+            "Paste the address", E.CHOSEN_STATE_CHANGES, "paste_text", "221B Baker St"
+        ),
         target,
         send=sent.append,
         click=lambda x, y: clicks.append((x, y)),
