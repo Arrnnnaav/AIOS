@@ -85,6 +85,21 @@ def test_text_level_refuses_pictures_but_not_text(monkeypatch, tmp_path):
     assert len(calls) == 1
 
 
+def test_a_local_provider_is_still_refused_pictures_below_the_picture_level(
+    monkeypatch,
+):
+    """A local model may answer text at any level, but a picture (a screenshot --
+    the sensitive artifact) is refused unless the policy allows PICTURES, even for
+    the on-device provider. Below PICTURES, allows(local, images=1) must be False."""
+
+    for level in (policy.LOCAL, policy.TEXT):
+        monkeypatch.setattr(policy, "max_egress", lambda level=level: level)
+        assert policy.allows("ollama") is True  # text is always fine locally
+        assert policy.allows("ollama", images=1) is False  # but not a picture
+    monkeypatch.setattr(policy, "max_egress", lambda: policy.PICTURES)
+    assert policy.allows("ollama", images=1) is True  # allowed only at PICTURES
+
+
 def test_the_users_picture_switch_is_off_under_a_lower_policy(monkeypatch):
     settings.set_jev_vision(True)
     assert settings.jev_vision()
