@@ -769,6 +769,14 @@ def _clear_lock() -> None:
 
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
+    if argv and argv[0] in ("--version", "-v"):
+        from ghostcursor import __version__
+
+        print(f"Orbyn {__version__}")
+        return 0
+    if argv and argv[0] in ("--help", "-h"):
+        print(__doc__)
+        return 0
     if len(argv) > 1:  # at most one topic; no arg opens the default workspace
         print(__doc__)
         return 2

@@ -75,6 +75,14 @@ def call(
     return resp.status, payload
 
 
+def test_version_and_help_flags_do_not_start_a_server(capsys):
+    import ghostcursor
+
+    assert appmod.main(["--version"]) == 0
+    assert ghostcursor.__version__ in capsys.readouterr().out
+    assert appmod.main(["-h"]) == 0  # help prints, no server
+
+
 def test_single_instance_guard_detects_a_live_instance_only(tmp_path, monkeypatch):
     """Double-clicking Orbyn while it runs must re-open its window, not start a
     second server behind a locked Edge profile (which showed nothing). The guard
