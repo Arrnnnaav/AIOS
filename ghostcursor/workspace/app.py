@@ -19,6 +19,7 @@ import hmac
 import json
 import os
 import secrets
+import shutil
 import socket
 import subprocess
 import sys
@@ -767,6 +768,30 @@ def _clear_lock() -> None:
         pass
 
 
+def _ensure_ollama() -> None:
+    """Best-effort: if the local model server is installed but not answering,
+    start it so planning/Teach work on first launch instead of reporting
+    'model unavailable'. Local only (127.0.0.1:11434); never fatal, never waits."""
+
+    try:
+        with socket.create_connection(("127.0.0.1", 11434), timeout=1):
+            return  # already serving
+    except OSError:
+        pass
+
+    exe = shutil.which("ollama")
+    if not exe:
+        return  # not installed; the UI already reports model-unavailable cleanly
+    try:
+        subprocess.Popen(
+            [exe, "serve"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except OSError:
+        pass
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     if argv and argv[0] in ("--version", "-v"):
@@ -784,6 +809,7 @@ def main(argv: list[str] | None = None) -> int:
     if existing is not None:  # already running: re-open its window, don't double-start
         open_window(existing)
         return 0
+    _ensure_ollama()  # start the local model if it is installed but not running
     app = App(argv[0] if argv else "workspace")
     token = secrets.token_urlsafe(32)
     server = make_server(app, token)

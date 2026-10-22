@@ -75,6 +75,40 @@ def call(
     return resp.status, payload
 
 
+def test_ensure_ollama_starts_it_only_when_installed_and_down(monkeypatch):
+    import socket
+
+    calls = []
+    monkeypatch.setattr(appmod.subprocess, "Popen", lambda *a, **k: calls.append(a[0]))
+
+    # already serving -> never spawn
+    srv = socket.socket()
+    srv.bind(("127.0.0.1", 0))
+    srv.listen(1)
+    monkeypatch.setattr(
+        appmod.socket,
+        "create_connection",
+        lambda *a, **k: srv,  # pretend 11434 is up
+    )
+    appmod._ensure_ollama()
+    assert calls == []
+    srv.close()
+
+    # down, and not installed -> never spawn
+    def _refuse(*a, **k):
+        raise OSError
+
+    monkeypatch.setattr(appmod.socket, "create_connection", _refuse)
+    monkeypatch.setattr(appmod.shutil, "which", lambda name: None)
+    appmod._ensure_ollama()
+    assert calls == []
+
+    # down, and installed -> spawn `ollama serve`
+    monkeypatch.setattr(appmod.shutil, "which", lambda name: r"C:\ollama.exe")
+    appmod._ensure_ollama()
+    assert calls and calls[-1][0].endswith("ollama.exe") and calls[-1][1] == "serve"
+
+
 def test_version_and_help_flags_do_not_start_a_server(capsys):
     import ghostcursor
 
