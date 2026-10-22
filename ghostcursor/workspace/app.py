@@ -19,6 +19,7 @@ import hmac
 import json
 import os
 import secrets
+import socket
 import subprocess
 import sys
 import threading
@@ -719,16 +720,68 @@ def open_window(url: str) -> None:
     )
 
 
+def _lock_path() -> Path:
+    base = os.environ.get("LOCALAPPDATA") or str(Path.home())
+    return Path(base) / "GhostCursor" / "app.lock"
+
+
+def _live_instance_url() -> str | None:
+    """The URL of an Orbyn already serving on this machine, or None.
+
+    Single-instance guard: double-clicking the app while it is running must
+    re-open its window, not silently start a second server behind a locked Edge
+    profile (which showed nothing). The lock holds the running instance's URL;
+    an instance is "live" only if its port still accepts a connection -- a stale
+    lock from a crashed run fails the check and a fresh instance takes over.
+    """
+    try:
+        url = _lock_path().read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    if not url.startswith("http://127.0.0.1:"):
+        return None
+    try:
+        port = int(url.split(":")[2].split("/")[0])
+    except (ValueError, IndexError):
+        return None
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=1):
+            return url
+    except OSError:
+        return None
+
+
+def _write_lock(url: str) -> None:
+    try:
+        p = _lock_path()
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(url, encoding="utf-8")
+    except OSError:
+        pass  # a read-only FS just loses the single-instance guard; never fatal
+
+
+def _clear_lock() -> None:
+    try:
+        _lock_path().unlink()
+    except OSError:
+        pass
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     if len(argv) > 1:  # at most one topic; no arg opens the default workspace
         print(__doc__)
         return 2
+    existing = _live_instance_url()
+    if existing is not None:  # already running: re-open its window, don't double-start
+        open_window(existing)
+        return 0
     app = App(argv[0] if argv else "workspace")
     token = secrets.token_urlsafe(32)
     server = make_server(app, token)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     url = f"http://127.0.0.1:{server.server_port}/?t={token}"
+    _write_lock(url)
     open_window(url)
     listener = None
     wake, hotkey = settings.listening()
@@ -754,6 +807,7 @@ def main(argv: list[str] | None = None) -> int:
             listener.stop()
         server.shutdown()
         app.close()
+        _clear_lock()
     return 0
 
 

@@ -9,7 +9,10 @@ from pathlib import Path
 
 import pytest
 
+from ghostcursor.workspace import app as appmod
 from ghostcursor.workspace.app import App, make_server
+
+_ = appmod  # used by the single-instance guard test below
 from ghostcursor.workspace.brain import Brain
 from ghostcursor.workspace.session import Workspace
 
@@ -70,6 +73,37 @@ def call(
     payload = resp.read()
     conn.close()
     return resp.status, payload
+
+
+def test_single_instance_guard_detects_a_live_instance_only(tmp_path, monkeypatch):
+    """Double-clicking Orbyn while it runs must re-open its window, not start a
+    second server behind a locked Edge profile (which showed nothing). The guard
+    reports a live instance only when its port actually accepts a connection."""
+
+    import socket
+
+    lock = tmp_path / "app.lock"
+    monkeypatch.setattr(appmod, "_lock_path", lambda: lock)
+
+    assert appmod._live_instance_url() is None  # no lock yet
+    lock.write_text("http://127.0.0.1:1/?t=x", encoding="utf-8")  # nobody on port 1
+    assert appmod._live_instance_url() is None  # stale lock -> fresh start
+
+    srv = socket.socket()
+    srv.bind(("127.0.0.1", 0))
+    srv.listen(1)
+    port = srv.getsockname()[1]
+    try:
+        url = f"http://127.0.0.1:{port}/?t=tok"
+        lock.write_text(url, encoding="utf-8")
+        assert appmod._live_instance_url() == url  # live -> re-open this one
+    finally:
+        srv.close()
+
+    appmod._write_lock("http://127.0.0.1:9/?t=z")
+    assert lock.read_text(encoding="utf-8").startswith("http://127.0.0.1:")
+    appmod._clear_lock()
+    assert not lock.exists()
 
 
 def test_page_needs_the_token_and_carries_it(served):
