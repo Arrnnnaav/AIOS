@@ -159,14 +159,14 @@ def test_the_scan_actually_covers_the_devtools_package():
 @pytest.mark.parametrize(
     "source,scan",
     [
-        ('import pyautogui\npyautogui.click()\n', 'import'),
-        ('import pyautogui as p\np.click()\n', 'import'),
-        ('from pynput import mouse\n', 'import'),
-        ('from pynput.mouse import Controller\n', 'import'),
-        ('import mouse.wheel\n', 'import'),
-        ('from ghostcursor.x import y\ny.send_keys(1)\n', 'call'),
-        ('ctrl.click_input()\n', 'call'),
-        ('SetCursorPos(10, 10)\n', 'call'),
+        ("import pyautogui\npyautogui.click()\n", "import"),
+        ("import pyautogui as p\np.click()\n", "import"),
+        ("from pynput import mouse\n", "import"),
+        ("from pynput.mouse import Controller\n", "import"),
+        ("import mouse.wheel\n", "import"),
+        ("from ghostcursor.x import y\ny.send_keys(1)\n", "call"),
+        ("ctrl.click_input()\n", "call"),
+        ("SetCursorPos(10, 10)\n", "call"),
     ],
 )
 def test_the_scans_detect_what_they_claim_to(source, scan):
@@ -182,12 +182,60 @@ def test_the_scans_detect_what_they_claim_to(source, scan):
     assert detector(tree), f"the {scan} scan missed a known violation"
 
 
+def test_the_ban_lists_have_not_quietly_shrunk():
+    """Pin the ban-list CONTENTS against a literal.
+
+    The parametrized samples exercise only a few names and the actuator test
+    pins only the names act.py actually calls, so silently dropping, say,
+    `keybd_event` from `_BANNED_CALLS` passes every other test here. A loop over
+    `_BANNED_CALLS` would not catch it either -- a dropped name leaves the loop
+    with it. Only an independent literal does: removing or adding a name fails
+    this and forces a deliberate, reviewed change to the safety boundary.
+    """
+    assert _BANNED_CALLS == {
+        "SendInput",
+        "SetCursorPos",
+        "click_input",
+        "keybd_event",
+        "mouse_event",
+        "send_keys",
+        "type_keys",
+    }
+    assert _BANNED_IMPORTS == {
+        "pyautogui",
+        "pydirectinput",
+        "pynput",
+        "keyboard",
+        "mouse",
+        "autoit",
+        "win32com.client.Dispatch",
+    }
+
+
+def test_every_banned_name_is_detected_by_the_scanner():
+    """And the scanner actually catches each listed name/import on its own --
+    so the list above is not a dead literal but every entry is enforced."""
+    for name in _BANNED_CALLS:
+        assert banned_calls_in(ast.parse(f"x.{name}()")) == [f"1:{name}"], name
+        assert banned_calls_in(ast.parse(f"{name}()")) == [f"1:{name}"], name
+    for mod in _BANNED_IMPORTS:
+        if "." in mod:
+            package, symbol = mod.rsplit(".", 1)
+            source = f"from {package} import {symbol}"
+        else:
+            source = f"import {mod}"
+        assert banned_imports_in(ast.parse(source)), mod
+
+
 def test_a_clean_module_trips_neither_scan():
     """The other half: the scans must not flag ordinary code.
 
     Without this, "always report a violation" would pass every test above.
     """
-    tree = ast.parse('import json\nfrom pathlib import Path\nPath(x).read_text()\n', filename="clean.py")
+    tree = ast.parse(
+        "import json\nfrom pathlib import Path\nPath(x).read_text()\n",
+        filename="clean.py",
+    )
     assert banned_calls_in(tree) == []
     assert banned_imports_in(tree) == []
 
@@ -213,7 +261,9 @@ def test_a_clean_module_trips_neither_scan():
 #: one build too late.
 ADAPTER_ROOTS = sorted(
     [Path(__file__).resolve().parents[1] / "plugins" / "shared"]
-    + list((Path(__file__).resolve().parents[1] / "plugins" / "sources").glob("*/payload"))
+    + list(
+        (Path(__file__).resolve().parents[1] / "plugins" / "sources").glob("*/payload")
+    )
 )
 
 #: The core list minus `win32com.client.Dispatch`. Core may not drive an Office
@@ -260,9 +310,9 @@ def test_the_adapter_scan_actually_reaches_a_shipped_adapter():
     """
     scanned = [path for path, _tree in _adapter_trees()]
     assert scanned, f"the adapter scan found no files under {ADAPTER_ROOTS}"
-    assert any(
-        "adapter" in path.name for path in scanned
-    ), f"no adapter module among {[p.name for p in scanned]}"
+    assert any("adapter" in path.name for path in scanned), (
+        f"no adapter module among {[p.name for p in scanned]}"
+    )
 
 
 def test_the_adapter_scan_still_permits_the_sanctioned_object_model():
