@@ -20,6 +20,17 @@ def test_the_package_reports_a_semver_version():
     assert _SEMVER.match(ghostcursor.__version__), ghostcursor.__version__
 
 
+def test_the_desktop_entry_passes_args_through():
+    """orbyn_app.py (the exe entry) must forward sys.argv to main(), not hardcode
+    main([]) -- that dropped --version/--help/a topic and the exe just hung."""
+
+    src = (ROOT / "tools" / "orbyn_app.py").read_text(encoding="utf-8")
+    assert "main([])" not in src, (
+        "the entry hardcodes empty args -> exe ignores --version"
+    )
+    assert "main()" in src
+
+
 def test_requirements_are_pinned_and_cover_the_runtime_deps():
     """Every runtime dep is pinned to an exact version (== ), not a floating
     range, so two builds of the same release install the same bytes."""

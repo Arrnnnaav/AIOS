@@ -26,7 +26,7 @@ if __name__ == "__main__":
     # Windowed build has no console, so an unhandled crash is invisible. Log it
     # (redacted, local) and show a message box instead of vanishing.
     try:
-        _code = main([])
+        _code = main()  # read sys.argv so --version / --help / a topic work
     except SystemExit:
         raise
     except BaseException as _exc:  # noqa: BLE001 -- last-resort visibility
