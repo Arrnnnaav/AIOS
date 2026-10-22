@@ -32,6 +32,21 @@ def test_counts_only_allowlisted_event_names(tmp_path):
     assert telemetry.counts(p) == {"act_run": 1, "teach_run": 2}
 
 
+def test_counts_drops_unlisted_keys_from_a_tampered_file(tmp_path):
+    """The disk-side containment layer: a telemetry.json that somehow holds a
+    non-allowlisted key (hand-edited, or an older/forged file) must not read it
+    back -- counts() filters to EVENTS, so smuggled content cannot re-enter."""
+
+    import json
+
+    p = tmp_path / "t.json"
+    p.write_text(
+        json.dumps({"teach_run": 2, "note: password is hunter2": 5}),
+        encoding="utf-8",
+    )
+    assert telemetry.counts(p) == {"teach_run": 2}  # unlisted key dropped on load
+
+
 def test_telemetry_has_no_network_import():
     """The no-egress invariant: telemetry.py must import nothing that could send
     data off the device. If someone adds egress, this fails."""
