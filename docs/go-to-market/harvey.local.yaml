@@ -1,0 +1,80 @@
+# Orbyn cohort config for Harvey (github.com/ethanplusai/harvey).
+# Copy into a Harvey checkout as `harvey.local.yaml` (gitignored there).
+# Fill the <PLACEHOLDERS>. Sends REQUIRE your approval — nothing goes out alone.
+#
+# NOTE on DISCOVER: Harvey's free discovery (OpenStreetMap) and its signals
+# (agency-footer, Google-Ads, NO_WEBSITE) are tuned for LOCAL SMBs/agencies, not
+# regulated enterprises. For this ICP, feed DISCOVER from the public directories
+# in docs/go-to-market/ICP-and-ship-readiness.md (NCUA locator, FDIC BankFind,
+# state insurance licensee lists, Big "I"/IIABA) and import that cohort, rather
+# than relying on OSM. Use Harvey mainly for PROFILE -> ENRICH -> VERIFY -> write.
+
+persona:
+  name: "<YOUR NAME>"
+  company: "Orbyn"
+  role: "<YOUR TITLE, e.g. Founder>"
+  email: "<you@orbyn...>"            # the sending address; run `harvey warmup` first
+  tone: "plain, concrete, no hype; respects a busy compliance/ops reader"
+
+product:
+  name: "Orbyn"
+  description: >
+    A local-first Windows desktop guide. It watches the screen and shows a
+    back-office worker where to click next in a complex legacy desktop app, and
+    can perform narrow approved steps. Nothing leaves the device — no cloud, no
+    screenshots off-box, pre-egress DLP redaction — so it can be piloted in a
+    regulated team without a data-egress security review.
+  pricing: "Team plans ~$30-75/seat/mo (seat minimum); org/expansion priced against the DAP line."
+  key_benefits:
+    - "Cuts back-office errors on legacy desktop apps by guiding the next real control, live."
+    - "Pilotable WITHOUT a cloud security review — nothing leaves the device (GLBA/HIPAA-friendly)."
+    - "Narrow, auditable action: approve the whole plan, acts only on observed controls, ESC always stops."
+    - "A private knowledge graph (Company Brain) with provenance, scope isolation, and conflict surfacing."
+  objection_responses:
+    walkme_whatfix: "Those are cloud six-figure DAPs behind a long RFP. Orbyn runs on-device, pilots now, and acts — not just guides."
+    recall_risk: "Opposite by design: no screenshots/HWND/PID leave the box; org policy can only lower egress."
+    trust_ai_to_act: "Whole-plan approval, observed controls only (never a guessed position), asks before risky steps, signed/auditable bundles — narrower and more auditable than RPA."
+  offer: "A 2-week local-only pilot for one back-office team — no data leaves your network, no IT security review to start."
+
+icp:
+  industries:
+    - "credit unions"
+    - "community and regional banks (under $50B assets)"
+    - "insurance carriers"
+    - "independent insurance agencies"
+    - "claims BPOs / third-party administrators"
+    - "healthcare revenue-cycle / claims administration"
+  titles:
+    - "VP Operations"
+    - "Director of Operations"
+    - "Director / Head of Digital Adoption"
+    - "Director of Enablement"
+    - "VP Member Experience"
+    - "Chief Compliance Officer"
+    - "VP Back Office / Servicing Operations"
+    - "Director of Learning & Development (Operations)"
+  company_size: "200-5000 employees"
+  geography: "United States"
+  hiring_signals:
+    - "hiring back-office / operations / claims / servicing roles (turnover = training pain)"
+    - "runs a named legacy core/claims/EHR desktop app"
+
+channels:
+  email:
+    provider: gmail            # or microsoft | smtp | instantly
+    max_daily_sends: 20        # start low; raise after warmup is clean
+    require_approval: true     # REVIEW every send — do not set false
+    send_to_risky: false       # deliverable addresses only
+    max_bounce_rate: 0.03
+
+usage:
+  max_daily_claude_percent: 40
+  heartbeat_interval_minutes: 15
+  quiet_hours: "20:00-07:00"
+
+brain:
+  provider: claude
+  reasoning_effort: medium
+
+writer:
+  humanizer: true
