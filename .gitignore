@@ -46,3 +46,8 @@ kb.sqlite*
 # in the tracked Word document and repository documentation.
 /My_idea.md
 /build_doc.txt
+
+# Packaged desktop-app build output (PyInstaller via tools/build_orbyn.ps1).
+/dist/
+/build/
+*.spec.bak
