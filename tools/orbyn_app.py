@@ -23,4 +23,15 @@ if _ROOT not in sys.path:
 from ghostcursor.workspace.app import main
 
 if __name__ == "__main__":
-    raise SystemExit(main([]))
+    # Windowed build has no console, so an unhandled crash is invisible. Log it
+    # (redacted, local) and show a message box instead of vanishing.
+    try:
+        _code = main([])
+    except SystemExit:
+        raise
+    except BaseException as _exc:  # noqa: BLE001 -- last-resort visibility
+        from ghostcursor.workspace.crashlog import report
+
+        report(_exc)
+        _code = 1
+    raise SystemExit(_code)
