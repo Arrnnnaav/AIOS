@@ -92,9 +92,10 @@ def _v2_files(*, adapter: bytes | None = None, operations: bytes | None = None):
         "plugin_version": "1.0.0",
         "schema_version": 1,
     }
-    operations = operations or json.dumps(
-        operation_value, sort_keys=True, separators=(",", ":")
-    ).encode()
+    operations = (
+        operations
+        or json.dumps(operation_value, sort_keys=True, separators=(",", ":")).encode()
+    )
     plan_path = "ghostcursor/action-plans/create-test.json"
     plan = json.dumps(
         {
@@ -206,33 +207,49 @@ def test_unsigned_bundles_exist_only_in_explicit_developer_mode(tmp_path):
     path, trusted = _write_bundle(tmp_path, manifest=manifest, files=files, sign=False)
     with pytest.raises(BundleVerificationError, match="forbidden in production"):
         verify_bundle(path, trusted_keys=trusted, core_version=CORE_VERSION)
-    assert verify_bundle(
-        path,
-        trusted_keys=trusted,
-        core_version=CORE_VERSION,
-        developer_mode=True,
-    ).signed is False
+    assert (
+        verify_bundle(
+            path,
+            trusted_keys=trusted,
+            core_version=CORE_VERSION,
+            developer_mode=True,
+        ).signed
+        is False
+    )
+
+
+def test_a_bundle_signed_by_an_untrusted_key_is_refused(tmp_path):
+    """A valid Ed25519 signature under a key_id the caller does not trust is
+    rejected cleanly (BundleVerificationError, not a raw KeyError) before any
+    file is read -- the signing-key allowlist is the trust boundary."""
+
+    path, _trusted = _write_bundle(tmp_path)  # signed as "release-1"
+    with pytest.raises(BundleVerificationError, match="signing key is not trusted"):
+        verify_bundle(path, trusted_keys={}, core_version=CORE_VERSION)
+    # and a different trusted id does not launder it in
+    other = {"release-2": b"\0" * 32}
+    with pytest.raises(BundleVerificationError, match="signing key is not trusted"):
+        verify_bundle(path, trusted_keys=other, core_version=CORE_VERSION)
 
 
 def test_a_signed_v2_bundle_binds_adapter_and_closed_operation_registry(tmp_path):
     files, adapter_sha = _v2_files()
-    path, trusted = _write_bundle(
-        tmp_path, files=files, manifest=_v2_manifest(files)
-    )
+    path, trusted = _write_bundle(tmp_path, files=files, manifest=_v2_manifest(files))
 
     bundle = verify_bundle(path, trusted_keys=trusted, core_version=CORE_VERSION)
 
     assert bundle.manifest["plugin_api_version"] == 2
-    assert hashlib.sha256(bundle.files["ghostcursor/adapter/test_adapter.py"]).hexdigest() == adapter_sha
+    assert (
+        hashlib.sha256(bundle.files["ghostcursor/adapter/test_adapter.py"]).hexdigest()
+        == adapter_sha
+    )
 
 
 def test_an_executable_adapter_is_forbidden_even_in_unsigned_developer_mode(tmp_path):
     files, _ = _v2_files()
     manifest = _v2_manifest(files)
     manifest["signing_key_id"] = None
-    path, trusted = _write_bundle(
-        tmp_path, files=files, manifest=manifest, sign=False
-    )
+    path, trusted = _write_bundle(tmp_path, files=files, manifest=manifest, sign=False)
 
     with pytest.raises(BundleVerificationError, match="adapters must be signed"):
         verify_bundle(
@@ -267,9 +284,7 @@ def test_adapter_registry_identity_and_adapter_bytes_are_independently_bound(tmp
     manifest = _v2_manifest(files)
     changed = dict(files)
     changed["ghostcursor/adapter/test_adapter.py"] = b"print('after')\n"
-    path, trusted = _write_bundle(
-        tmp_path, files=changed, manifest=manifest
-    )
+    path, trusted = _write_bundle(tmp_path, files=changed, manifest=manifest)
 
     with pytest.raises(BundleVerificationError, match="digest mismatch"):
         verify_bundle(path, trusted_keys=trusted, core_version=CORE_VERSION)
