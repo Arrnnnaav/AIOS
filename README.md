@@ -1,227 +1,109 @@
-# GhostCursor
+# Orbyn
 
-GhostCursor is a local Windows AI guide for unfamiliar software. A user states
-a goal, GhostCursor observes the live application, points at one trusted next
-control, waits for the human to act, and verifies the resulting application
-state. It never moves the mouse or sends keyboard input.
+Orbyn is a **local-first Windows desktop guide** that watches the screen, works
+out the next step toward your stated goal, and shows you **where to act** with a
+transparent overlay. It can also, down a narrow and signed path, **perform
+approved steps for you** in approved applications — only after you approve the
+whole plan, only on a control it actually observed, and ESC always stops it.
 
-The first real user is a new developer learning VS Code. Three validated
-real-app workflows guide `Open a folder in VS Code`, `Open the integrated
-terminal in VS Code`, and `Open Extensions in VS Code`. A signed Excel plugin
-adds `Select cell B2` and `Add a worksheet`; both passed three successful
-human-driven desktop runs on Excel `16.0.20326.20112`. Synthetic Export passed
-the same 3/3 gate. The same natural-language planner is used by the CLI and the
-middle-right Ask control rail.
+Nothing leaves your machine by default. (Code name and package: `ghostcursor`.)
 
-## What makes the AI bounded
+> Status: pre-1.0 (`0.1.0`). Production Act ships for **PowerPoint**; Teach is
+> application-agnostic. See **Honest scope** at the end.
 
-- Local Ollama/Qwen classifies a goal only into registered intent IDs.
-- Executable authority comes only from the indexed schema-v2 catalog: exact
-  digest-bound artifacts plus an active, reviewed adoption record.
-- The screen-aware hint model may select only an observed, recipe-approved UI
-  AutomationId.
-- Model-generated paths, coordinates, code, and actions are rejected.
-- A model-selected executable intent must also match the deterministic
-  classifier's grounded intent; registration alone cannot authorize a recipe.
-- If Ollama is unavailable, deterministic matching is reported as a fallback;
-  invalid model output has a separate status.
-- Deterministic perception, wrong-action feedback, verification, and safety
-  remain in control.
+## The two modes
 
-The tested local model is `qwen3:4b-instruct`. Both inference paths now use one
-non-retrying Ollama adapter with strict dynamic JSON Schemas, deterministic-ish
-request options (`temperature: 0`, seed 42), bounded context/output, and a
-15-minute session keep-alive. These settings improve consistency; they do not
-promise bit-identical output across Ollama versions or hardware.
+**Teach** — you state a goal, Orbyn observes the live application, points at one
+real, observed control, and waits for you to act, then verifies the resulting
+state. It draws only at a control it actually saw — never a model-guessed
+position — and a pointer that is shown is a pointer at a real control.
 
-Schema conformance is not treated as semantic correctness. A versioned 30-case
-gate separately records raw model quality and final execution authority. Its
-first complete draft measured 86.7% raw semantic accuracy and 100% on exact
-supported goals; four high-confidence over-commitments were denied authority by
-the deterministic D058 policy. Owner-reviewed dataset 1.0.0 is frozen, and the
-same 86.7% result plus every hard gate passed in two consecutive post-freeze
-interactive runs. This is the accepted Qwen incumbent baseline. The pre-plugin
-compiler recertification against the four-workflow catalog passed twice and
-measured 90% (27/30) raw intent accuracy, 100% on exact supported goals, and
-zero unauthorized plans.
+**Act** — the same plan, but Orbyn performs the steps. It acts **only after you
+approve the whole plan**, only on controls the harness observed, still asks
+before risky controls (delete, send, pay, overwrite), and ESC/Stop halts a
+running session within half a second. All input synthesis lives in **one
+auditable module** (`ghostcursor/harness/act.py`); a test fails if any other
+module can synthesize input. Act ships today for PowerPoint through a signed,
+verifiable plugin.
 
-Raw semantic accuracy is **not** a capability claim. D068 measured the model's
-influence on the executable outcome directly: across 30 frozen cases x 2 passes,
-zero of 60 runs changed which recipe executes. Deterministic grounding decides
-that in every case; the model varies status, named intent, confidence,
-explanation, and latency. Model quality is therefore an explanation-and-latency
-property here, not a measure of what GhostCursor can do.
+## What else is in the box
 
-## Run the validated workflows
+- **Company Brain** — a private, local knowledge graph. Facts carry their
+  source, are scoped per tenant (one tenant's facts never leak to another),
+  age, and surface conflicts instead of silently resolving them. Candidates
+  stay candidates until you review them.
+- **Models, your choice** — local-first on Ollama by default; bring your own
+  key for a cloud model if you want one. An organization policy can only ever
+  *lower* what may leave the machine.
+- **Voice dictation** — speak text with spoken punctuation and formatting
+  commands; it saves to a file or the Brain, and never types into an app on its
+  own (that stays behind the Act gate).
+- **Signed plugin marketplace** — a catalog decoupled from the signed artifact,
+  with digest-level revocation and publisher identity. Unsigned plugins are
+  refused in production; a bundle signed by an untrusted key is refused.
 
-Requirements: Windows, Python 3.12, VS Code or Excel for the corresponding
-real-app workflow, and an optional local Ollama server.
+## Privacy and safety, by construction
 
-Synthetic Export:
+- No window handles, process IDs, credentials, keys, executable paths, or
+  screenshots leave the device. `kb.sqlite` and `sessions.sqlite` never sync.
+- Text bound for a remote model goes through a scrub that masks emails, keys,
+  card/account numbers and the like; a managed machine can force redaction on.
+- Signed-bundle verification, a monotonic anti-rollback floor on signed trust
+  documents, and a content-name-only local telemetry that is **off by default**
+  and never sends anything off the box.
+- The kill switch (ESC, Stop/Pause, and a `--seconds` budget) always stops a
+  session; the model can never synthesize ESC to defeat your stop key.
 
-```powershell
-py -3.12 -m ghostcursor.demo.synthetic_export_app
-py -3.12 -m ghostcursor.run `
-  --goal "Export this table as CSV" `
-  --target "Synthetic Export" `
-  --seconds 60
-```
+## Install
 
-Real VS Code:
+Windows, system Python 3.12 (`py -3.12`).
 
 ```powershell
-code --new-window
-py -3.12 -m ghostcursor.run `
-  --goal "Open a folder in VS Code" `
-  --target "Visual Studio Code" `
-  --seconds 120
+py -3.12 -m pip install -r requirements.txt
+py -3.12 -m pip install -r requirements-voice.txt   # optional: voice/dictation
 ```
 
-The user clicks the highlighted `Open Folder...` action and handles the native
-Windows folder picker. GhostCursor verifies the resulting VS Code workspace
-title before printing `Tour complete.`
-
-Open the integrated terminal:
+A packaged desktop build (PyInstaller onedir) is produced with:
 
 ```powershell
-py -3.12 -m ghostcursor.run `
-  --goal "Open the integrated terminal in VS Code" `
-  --target "Visual Studio Code" `
-  --seconds 60
+pwsh -File tools/build_orbyn.ps1          # -> dist/Orbyn/Orbyn.exe
 ```
 
-GhostCursor highlights VS Code's Toggle Panel location and tells the user to
-press `Ctrl+\``. It does not send the shortcut. The tour completes only after
-VS Code exposes the `Terminal Section` application state. If the terminal is
-already visible, the goal completes without showing a shortcut that could
-close it; otherwise the verified transition has a 20-second first-hint
-deadline.
-
-Open Extensions:
+## Run
 
 ```powershell
-py -3.12 -m ghostcursor.run `
-  --goal "Open Extensions in VS Code" `
-  --target "AIOS" `
-  --seconds 60
+py -3.12 -m ghostcursor.workspace.app <topic>   # the workspace app
+py -3.12 -m ghostcursor.run --manager           # the manager window
+py -3.12 -m ghostcursor.run --goal "<goal>"     # Teach from the CLI; ESC quits
+py -3.12 -m ghostcursor.plugins list            # installed plugins
 ```
 
-GhostCursor highlights the pinned `Extensions (Ctrl+Shift+X)` Activity Bar
-item and completes only after VS Code exposes `Installed Section`. The accepted
-configuration used VS Code `1.135.0.0`, Extensions pinned, no temporary restart
-badge, and Explorer selected. Hidden/unpinned or badge-altered controls fail
-closed rather than selecting a different action.
-
-Excel on the accepted proof workbook:
-
-```powershell
-py -3.12 -m ghostcursor.run `
-  --goal "Select cell B2 in Excel" `
-  --target "plugin-excel-proof.xlsx - Excel" `
-  --seconds 60
-
-py -3.12 -m ghostcursor.run `
-  --goal "Add a worksheet in Excel" `
-  --target "plugin-excel-proof.xlsx - Excel" `
-  --seconds 60
-```
-
-The Excel plugin uses declarative `DataItem`, `Button`, and `TabItem`
-selectors over the already-authorized workbook window. It contains no
-executable adapter or Excel-specific production Python.
-
-`--target` narrows matching titles; it never authorizes choosing among several
-remaining windows. If more than one VS Code window matches, use a title fragment
-unique to the intended workspace or close the extra window. GhostCursor lists
-the ambiguous handles and refuses before creating an overlay.
-
-## Implemented safety and reliability
-
-- UI Automation with executable-bounded HWND identity
-- DPI-correct OCR fallback and visible inferred confidence
-- Perception worker stage/heartbeat diagnostics with one bounded restart
-- Focus-safe SPACE arbitration and always-available ESC/Stop
-- Pause without losing the current step or overlay
-- Wrong-action feedback and bounded re-hinting
-- Strict indexed application packs, artifact digests, adoption history, and
-  path containment
-- Local SQLite observations scoped by application/version/step
-- Explicit unsupported and unavailable planner states
-- Tested never-fabricate behavior for unsupported and close-but-unavailable goals
+Orbyn.cmd launches the docked workspace window (local, behind a per-launch
+token). `--target` narrows which window Orbyn binds; when several windows still
+match it lists them and refuses rather than guessing.
 
 ## Tests
 
-The suite is split by environment so a deliberately hung window or a slow
-pixel/UIA walk cannot contaminate the fast lane:
+The suite is split by environment so a hung window or a slow pixel/UIA walk
+cannot contaminate the fast lane. The hermetic lane runs before every commit:
 
 ```powershell
 py -3.12 -m pytest tests -m "not interactive and not pixel and not hung" `
   --basetemp=.tmp\pytest-hermetic -p no:cacheprovider
-
-py -3.12 -m pytest tests -m interactive `
-  --basetemp=.tmp\pytest-interactive -p no:cacheprovider
-
-py -3.12 -m pytest tests -m pixel `
-  --basetemp=.tmp\pytest-pixel -p no:cacheprovider
-py -3.12 -m tests.test_overlay
-py -3.12 -m tests.test_end_to_end
 ```
 
-Desktop/UIA and pixel tests require an interactive Windows desktop. Hung-window
-tests create a deliberately non-pumping window and must run one file at a time,
-with no other test session active. The exact hung-lane commands are documented
-in `CLAUDE.md`.
-
-Every model/digest, prompt, schema, parser, adapter, or inference-policy change
-also requires the three-lane model gate. Dataset 1.0.0 is owner-reviewed, so
-the standing post-freeze command is:
-
-```powershell
-py -3.12 -m ghostcursor.evaluation.model_gate `
-  --model qwen3:4b-instruct `
-  --endpoint http://127.0.0.1:11434 `
-  --unavailable-endpoint http://127.0.0.1:1 `
-  --interactive
-```
-
-The interactive lane reads a real Synthetic Export UIA tree but cannot launch
-a tour or synthesize input. Omitting `--interactive` is reported as a skip and
-cannot close the milestone.
-
-## Evidence
-
-- The submission release was re-certified after isolating deferred model-call
-  work: 23 focused planner/hint tests, all 361 hermetic tests, and the complete
-  eight-cell available/unavailable never-fabricate matrix passed against the
-  actual release code. The model was `qwen3:4b-instruct` digest
-  `0edcdef34593eac1aa2be9c7d06c432dcf81945adca5eca2f27662c18f168ba0`.
-- `docs/evidence/vscode-open-terminal.md` records the real-desktop terminal
-  acceptance gate and its limitations.
-- `docs/evidence/schema-v2-candidate-acceptance.md` and
-  `docs/evidence/open-extensions-candidate-acceptance.md` record all twelve
-  successful schema-v2 acceptance runs against the activated bytes.
-- `plugins/sources/excel/payload/docs/evidence/excel-plugin-acceptance.md`
-  records the six successful Excel runs and two excluded attempts; the signed
-  activation binds that independently reviewed evidence.
-- `docs/evidence/plugin-platform-v1-closure.md` records signed-bundle digests,
-  the platform mutation audit, and the final serial regression lanes.
-- `docs/evidence/never-fabricate-matrix.md` records supported and unsupported
-  planner behavior with Qwen available and unavailable.
-- `docs/evidence/novice-vscode-study.md` is the fixed participant protocol;
-  its results remain blank until real sessions are completed.
-- `docs/evidence/model-durability-draft.md` records the first 30-case local
-  model diagnostic before label freeze; it remains historical evidence.
-- `docs/evidence/model-durability-baseline.md` records the owner-reviewed,
-  two-consecutive-pass incumbent baseline and layered no-action evidence.
-- `docs/submission/demo-video-script.md` is the protected 4:45 demo sequence.
+Desktop lanes (`interactive`, `pixel`) need a real Windows desktop; the
+hung-window lane runs one file at a time with nothing else active. Exact
+commands are in `CLAUDE.md`.
 
 ## Honest scope
 
-Open Folder, Open Terminal, and Open Extensions are the three proven real VS
-Code workflows. Select Cell B2 and Add Worksheet are the two proven Excel
-workflows, version-bound to `16.0.20326.20112`. The terminal controls expose no
-stable AutomationIds, so GhostCursor deliberately does not persist them or
-claim ID-based wrong-action feedback for that flow. Open Extensions currently
-requires the measured pinned Activity Bar configuration described above.
-Installer, tray, startup automation, web retrieval, filesystem verification,
-VLM tier 3, and additional application packs are deliberately deferred.
+- **Production Act is PowerPoint only.** VS Code and Excel are installed but
+  disabled (D130). Teach itself is application-agnostic.
+- Orbyn is becoming an app-agnostic, model-driven harness; PowerPoint is the
+  test fixture that proves the path, not the product's limit.
+- Deferred: a signed installer and auto-update, tray/startup automation, the
+  VLM pointing tier, and broader counted Act acceptance across applications.
+- This is pre-1.0 software under active development. Measured results and their
+  limitations live under `docs/evidence/`; architecture in `FLOW.md`; the rules
+  that bind every change in `CLAUDE.md`.
