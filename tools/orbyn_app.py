@@ -9,6 +9,17 @@ This is also the PyInstaller entry (tools/orbyn.spec, tools/build_orbyn.ps1) for
 a packaged Orbyn.exe.
 """
 
+import sys
+from pathlib import Path
+
+# Running this file by path puts tools/ on sys.path, not the repo root, so a
+# source checkout cannot import ghostcursor. Add the repo root (parent of tools/)
+# so `Orbyn.cmd` / `py -3.12 tools/orbyn_app.py` work without installing the
+# package. Harmless when frozen by PyInstaller (the bundled modules win).
+_ROOT = str(Path(__file__).resolve().parent.parent)
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
+
 from ghostcursor.workspace.app import main
 
 if __name__ == "__main__":
