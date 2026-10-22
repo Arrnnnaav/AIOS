@@ -39,6 +39,9 @@ def test_round_trip_restores_originals_and_dedupes():
 def test_luhn_gate_keeps_plain_long_numbers_off_the_card_tag():
     assert redact._luhn_ok("4111111111111111")
     assert not redact._luhn_ok("1234567890123")
+    # the length floor rejects a short run even when it passes the mod-10 sum
+    # ("0000" sums to 0, 0 % 10 == 0) -- a 4-digit number is not a card
+    assert not redact._luhn_ok("0000")
     # a non-Luhn run is never recorded under a CARD placeholder
     _, mapping = redact.scrub("order 1234567890123")
     assert not any(p.startswith("[CARD") for p in mapping)
