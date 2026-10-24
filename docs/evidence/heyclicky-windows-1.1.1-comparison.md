@@ -40,4 +40,5 @@ The follow-up AIOS change adds only generic Work status history. No HeyClicky in
 
 - `py -3.12 -m pytest tests\test_workspace_app.py tests\test_no_input_synthesis.py -m "not interactive and not pixel and not hung" --basetemp=.tmp\pytest-workspace-activity -p no:cacheprovider -q`: 49 passed.
 - JavaScript syntax: `node --check` on the script extracted from `app.html` passed. A local Playwright smoke opened the Work tab and observed the saved state card and interruption note.
-- Full hermetic run before staging this edited evidence file: 3,615 passed, 85 deselected, and the signed-payload index check failed because the file's staged bytes still matched the previous commit. The check will be rerun after staging.
+- Full hermetic run before staging this edited evidence file: 3,615 passed, 85 deselected, and the signed-payload index check failed because the file's staged bytes still matched the previous commit. After staging, `tests\test_signed_payload_bytes.py` passed 3 tests.
+- D018 privacy mutation: temporarily replaced the fixed-label guard with raw `label` in `App.run()`; `test_recent_work_persists_only_generic_labels_and_recovers_interrupted` failed on the private label as intended. Restored the guard and the same test passed (1 test). The mutation was not committed.
