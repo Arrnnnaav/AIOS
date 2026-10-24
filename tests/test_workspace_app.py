@@ -263,7 +263,7 @@ def test_invalid_recent_work_file_is_not_overwritten(tmp_path):
 def test_recent_work_save_does_not_overwrite_neighboring_files(tmp_path):
     root = tmp_path / "briefs"
     root.mkdir()
-    neighbors = [root / "trip.tmp", root / "trip.activity.json.tmp"]
+    neighbors = [root / "trip.tmp", root / "trip.activity.tmp", root / "trip.activity.json.tmp"]
     for path in neighbors:
         path.write_text("keep", encoding="utf-8")
     app = App(
