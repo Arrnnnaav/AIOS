@@ -1,6 +1,6 @@
 # HeyClicky Windows 1.1.1 versus this AIOS checkout
 
-25 October 2026. Initial read-only investigation, followed by focused decompilation and a workspace Work-tab update; **not independently reviewed under D032**. This compares the supplied installer and the already-running installed app with source in this checkout. It is a capability map, not an acceptance test or a security verdict.
+25 October 2026. Initial read-only investigation, followed by focused decompilation and a workspace Work-tab update. The Work-tab slice has an independent D032 review; **the HeyClicky findings have not been independently reviewed**. This compares the supplied installer and the already-running installed app with source in this checkout. It is a capability map, not an acceptance test or a security verdict.
 
 ## Identity and evidence boundary
 
@@ -34,7 +34,7 @@ Follow-up decompilation used the official ILSpy 11.1 self-contained Windows buil
 3. Decide whether persistent job cards and scheduled routines belong in the product plan. They are materially different from the current sequential `/crew` and reusable goal templates.
 4. Keep side-effecting connectors and broader agent execution behind their existing roadmap and approval gates. The HeyClicky binary does not supply evidence to relax those boundaries.
 
-The follow-up AIOS change adds only generic Work status history. No HeyClicky installer execution, connector login, agent launch, input action, voice session or scheduled routine was performed. A current-build live UI comparison and independent D032 review remain open.
+The follow-up AIOS change adds only generic Work status history. No HeyClicky installer execution, connector login, agent launch, input action, voice session or scheduled routine was performed. A current-build live UI comparison and independent review of the HeyClicky findings remain open.
 
 ## Work-tab verification
 
@@ -44,3 +44,4 @@ The follow-up AIOS change adds only generic Work status history. No HeyClicky in
 - D018 privacy mutation: temporarily replaced the fixed-label guard with raw `label` in `App.run()`; `test_recent_work_persists_only_generic_labels_and_recovers_interrupted` failed on the private label as intended. Restored the guard and the same test passed (1 test). The mutation was not committed.
 - Independent review found that a fixed temporary filename could overwrite a neighboring file and that deeply nested JSON could abort startup. The follow-up change uses an exclusive unique temporary file and treats parser recursion as an invalid history file; 51 focused workspace and input-boundary tests passed. Multi-process writers for one topic remain a documented limit.
 - D018 neighboring-file mutation: the first guard test missed the actual `trip.activity.tmp` filename, so it was strengthened. Replacing unique temporary creation with fixed `with_suffix(".tmp")` then made that test fail on the missing neighboring file; the restored implementation passed. The mutant was not committed.
+- Independent D032 reviewer inspected committed Work-tab code through `b8b738a` in a separate detached worktree and reported READY with no BLOCKING safety finding. Four focused `recent_work` tests passed in that worktree. The review did not validate the HeyClicky reverse-engineering conclusions or live desktop acceptance.
