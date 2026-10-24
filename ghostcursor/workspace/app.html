@@ -205,6 +205,7 @@ select { font: inherit; color: var(--text); background: var(--bg); border: 1px s
   <button role="tab" data-tab="chat" aria-selected="true">Chat</button>
   <button role="tab" data-tab="plan" aria-selected="false">Plan<span class="count" id="planCount"></span></button>
   <button role="tab" data-tab="brain" aria-selected="false">Brain<span class="count" id="memCount"></span></button>
+  <button role="tab" data-tab="work" aria-selected="false">Work<span class="count" id="workCount"></span></button>
 </nav>
 <div id="live" role="status" aria-live="polite">
   <div class="row">
@@ -218,6 +219,7 @@ select { font: inherit; color: var(--text); background: var(--bg); border: 1px s
   <section id="tab-chat"><div id="thread"></div></section>
   <section id="tab-plan" hidden></section>
   <section id="tab-brain" hidden></section>
+  <section id="tab-work" hidden></section>
 </main>
 <footer>
   <div class="composer" id="composer">
@@ -298,10 +300,28 @@ function render(busyChanged) {
   $("goal").textContent = S.goal || "Tell Orbyn what you want to get done";
   $("planCount").textContent = S.plan ? S.plan.steps.length : "";
   $("memCount").textContent = S.memories.length || "";
+  $("workCount").textContent = S.activity.length || "";
   renderLive();
   ["pointBtn", "voiceBtn", "researchBtn", "sendBtn"].forEach((id) => ($(id).disabled = !!S.busy));
   $("input").disabled = !!S.busy && S.busy !== "Listening";
-  if (tab === "chat") renderChat(busyChanged); else if (tab === "plan") renderPlan(); else renderBrain();
+  if (tab === "chat") renderChat(busyChanged);
+  else if (tab === "plan") renderPlan();
+  else if (tab === "brain") renderBrain();
+  else renderWork();
+}
+
+function renderWork() {
+  const root = $("tab-work"); root.replaceChildren(el("h3", "", "Recent work"));
+  if (!S.activity.length) {
+    root.append(el("p", "note", "Tasks started in this workspace appear here."));
+    return;
+  }
+  for (const item of S.activity) {
+    const card = el("div", "mem");
+    card.append(el("b", "", item.label), el("div", "meta", item.state));
+    root.append(card);
+  }
+  root.append(el("p", "note", "The latest 20 states are saved locally. Interrupted work is not resumed after restart."));
 }
 
 function renderLive() {
@@ -825,7 +845,7 @@ document.addEventListener("keydown", (e) => {
 function setTab(name) {
   tab = name;
   document.querySelectorAll("nav button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === name)));
-  for (const t of ["chat", "plan", "brain"]) $("tab-" + t).hidden = t !== name;
+  for (const t of ["chat", "plan", "brain", "work"]) $("tab-" + t).hidden = t !== name;
   if (S) render(name === "chat");
 }
 document.querySelectorAll("nav button").forEach((b) => (b.onclick = () => setTab(b.dataset.tab)));

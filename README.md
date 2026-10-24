@@ -40,6 +40,9 @@ release acceptance is still pending.
 - **Voice dictation** — speak text with spoken punctuation and formatting
   commands; it saves to a file or the Brain, and never types into an app on its
   own (that stays behind the Act gate).
+- **Recent work** — the workspace's Work tab keeps the latest 20 generic task
+  states locally and marks unfinished work interrupted after restart. It does
+  not schedule or resume tasks on its own.
 - **Signed plugins** — bundle verification and a read-only catalog exist.
   Publisher identity and signed revocation for the marketplace still have
   release gates.
@@ -109,7 +112,7 @@ commands are in `CLAUDE.md`.
 - Orbyn is becoming an app-agnostic, model-driven harness; PowerPoint is the
   test fixture for that path, not the product's limit.
 - Reusable agents and `/crew` are foreground, sequential workspace operations;
-  there is no timed routine scheduler or general background worker service.
+  the Work tab is a history, not a timed scheduler or background worker service.
 - Deferred: a signed installer and auto-update, tray/startup automation, the
   VLM pointing tier, and broader counted Act acceptance across applications.
 - This is pre-1.0 software under active development. Measured results and their

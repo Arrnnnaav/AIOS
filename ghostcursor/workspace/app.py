@@ -33,6 +33,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from ghostcursor import policy, settings
+from ghostcursor.brief import brief_path
 from ghostcursor.workspace.contracts import POINT_PREFIX
 
 PAGE = Path(__file__).with_name("app.html")
@@ -43,6 +44,32 @@ QUIT_AFTER_S = (
 APP_TITLE = "Orbyn"  # the page's <title>; its window is never offered for binding
 EDGE = Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")) / (
     r"Microsoft\Edge\Application\msedge.exe"
+)
+ACTIVITY_LABELS = frozenset(
+    {
+        "Signing in",
+        "Thinking",
+        "Researching",
+        "Exploring",
+        "Planning",
+        "Designing the agent",
+        "Saving the agent",
+        "Starting the agent",
+        "Handing off",
+        "Opening",
+        "Editing plan",
+        "Pointing",
+        "Saving point",
+        "Acting",
+        "Guiding",
+        "Listening",
+        "Brain",
+        "Counting",
+        "Work",
+    }
+)
+ACTIVITY_STATES = frozenset(
+    {"running", "finished", "stopped", "failed", "interrupted"}
 )
 
 
@@ -66,9 +93,53 @@ class App:
         self.ws = self.jobs.submit(
             make_workspace or (lambda: _default_workspace(topic))
         ).result()
+        self.activity_path = brief_path(self.ws.root, self.ws.topic).with_suffix(
+            ".activity.json"
+        )
+        self.activity = self._load_activity()
+        if any(row["state"] == "running" for row in self.activity):
+            for row in self.activity:
+                if row["state"] == "running":
+                    row["state"] = "interrupted"
+            self._save_activity()
         self.jobs.submit(self._refresh).result()
 
     # --- worker-side ------------------------------------------------------------
+
+    def _load_activity(self) -> list[dict[str, str]]:
+        try:
+            if self.activity_path.stat().st_size > 64 * 1024:
+                raise ValueError("activity history too large")
+            rows = json.loads(self.activity_path.read_text(encoding="utf-8"))
+            if not isinstance(rows, list) or any(
+                not isinstance(row, dict)
+                or not isinstance(row.get("label"), str)
+                or not isinstance(row.get("state"), str)
+                or row.get("label") not in ACTIVITY_LABELS
+                or row.get("state") not in ACTIVITY_STATES
+                or set(row) != {"label", "state"}
+                for row in rows
+            ):
+                raise ValueError("invalid activity history")
+            return rows[-20:]
+        except FileNotFoundError:
+            return []
+        except (OSError, ValueError, UnicodeError):
+            self.activity_path = None  # keep an unreadable file intact
+            self.say("Activity history could not be read; this session stays in memory.")
+            return []
+
+    def _save_activity(self) -> None:
+        if self.activity_path is None:
+            return
+        try:
+            self.activity_path.parent.mkdir(parents=True, exist_ok=True)
+            partial = self.activity_path.with_suffix(".tmp")
+            partial.write_text(json.dumps(self.activity), encoding="utf-8")
+            os.replace(partial, self.activity_path)
+        except OSError:
+            self.activity_path = None
+            self.say("Activity history could not be saved; this session stays in memory.")
 
     def _refresh(self) -> None:
         brain = self.ws.brain
@@ -95,6 +166,11 @@ class App:
         self.busy = label
         self.signal.clear()
         self.stop.clear()
+        safe_label = label if isinstance(label, str) and label in ACTIVITY_LABELS else "Work"
+        row = {"label": safe_label, "state": "running"}
+        self.activity.append(row)
+        self.activity = self.activity[-20:]
+        self._save_activity()
 
         def job():
             try:
@@ -103,8 +179,14 @@ class App:
                 self._refresh()
 
         try:
-            return self.jobs.submit(job).result()
+            result = self.jobs.submit(job).result()
+            row["state"] = "stopped" if self.stop.is_set() else "finished"
+            return result
+        except BaseException:
+            row["state"] = "failed"
+            raise
         finally:
+            self._save_activity()
             self.busy = ""
             self._claim.release()
 
@@ -177,6 +259,7 @@ class App:
             "draft_agent": ws.draft_agent.as_text() if ws.draft_agent else "",
             "paused": self.paused,
             "busy": self.busy,
+            "activity": list(reversed(self.activity)),
             "status": list(self.status),
             "research": len(ws.research_graphs),
             "point_prefix": POINT_PREFIX,

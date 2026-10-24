@@ -1,6 +1,6 @@
 # HeyClicky Windows 1.1.1 versus this AIOS checkout
 
-25 October 2026. Read-only investigation; **not independently reviewed under D032**. This compares the supplied installer and the already-running installed app with source in this checkout. It is a capability map, not an acceptance test or a security verdict.
+25 October 2026. Initial read-only investigation, followed by focused decompilation and a workspace Work-tab update; **not independently reviewed under D032**. This compares the supplied installer and the already-running installed app with source in this checkout. It is a capability map, not an acceptance test or a security verdict.
 
 ## Identity and evidence boundary
 
@@ -12,12 +12,14 @@
 
 REA's Windows native-UI observation command was unavailable because its provider supports macOS for that operation. The installer exceeds REA's 128 MiB managed-snapshot and 64 MiB PE-resource limits. `HeyClicky.dll` member enumeration exceeded REA's 64 MiB metadata representation budget; its identity inspection succeeded. Type and method names establish shipped code surfaces, not successful user flows or safety properties.
 
+Follow-up decompilation used the official ILSpy 11.1 self-contained Windows build (download SHA-256 `d339789c62bbe23b157e528b89131bfc5b2ebbdd5303fa9357b1eb9d4db49313`) on selected installed types: `ClickyScreenActuator`, `OverlayWindow`, `ScreenDrawingCanvas`, `ScreenPenMath`, `ClickyJobStore`, and `RoutineScheduler`. The reconstructed C# showed an interactive pointer window with press/release capture, a separate desktop actuator, a locally saved job store, and a separate routine scheduler. Decompiled source was kept in ignored local working files and was not copied into AIOS. REA's native `decompile` command rejected the managed PE target on Windows; its managed metadata Evidence above anchors the selected types.
+
 ## Capability map
 
 | Area | HeyClicky 1.1.1 evidence | AIOS current checkout | Reading |
 |---|---|---|---|
 | Desktop surface | Native .NET/WinUI assembly and a running Agents board; separate drawing, cursor, highlight and other native windows were enumerated. | The workspace is an Edge app-mode page with Chat, Plan and Brain tabs (`ghostcursor/workspace/app.py`, `app.html`); a separate native manager and Teach overlay exist (`FLOW.md`). | HeyClicky has a more integrated native desktop shell; AIOS has the broader workspace content in a browser shell. Visual polish was not measured. |
-| Agent work | `AgentService` has launch, steer, stop, thread and task-detail methods. `ClickyJobStore` has run, waiting, result-card, archive and dock methods. The live board shows task cards and results. | Reusable agent specs fill a goal template, then require planning and approval (`workspace/session.py::use_agent`). `/crew` executes existing capabilities sequentially (`workspace/crew.py::run_crew`). | HeyClicky exposes persistent background jobs as the main UI. AIOS has agent templates and ordered capability runs but no comparable persistent job board. |
+| Agent work | `AgentService` has launch, steer, stop, thread and task-detail methods. `ClickyJobStore` has run, waiting, result-card, archive and dock methods. The live board shows task cards and results. | Reusable agent specs fill a goal template, then require planning and approval (`workspace/session.py::use_agent`). `/crew` executes existing capabilities sequentially (`workspace/crew.py::run_crew`). The Work tab now retains generic status history. | HeyClicky exposes persistent background jobs as the main UI. AIOS records recent work but does not yet keep background jobs running or show their results as cards. |
 | Routines | `RoutineScheduler` includes interval/schedule, pause, run-now, wake and unfinished-run reconciliation methods. | No routine scheduler is listed in the current workspace wave or agent program (`ROADMAP.md`). | Scheduled recurring agent work is a clear HeyClicky breadth advantage. Actual scheduling reliability was not tested. |
 | Browser and connected apps | `CodexSession` has MCP server, OAuth, thread and turn methods; `AgentService` includes Chrome-connection and integration methods. A browser extension and host are installed. | An owned Chrome/Edge CDP path exists (`harness/browser.py`). Side-effecting connectors and the structured agent executor remain roadmap items. | HeyClicky ships connector and browser-integration code that AIOS does not currently expose. Authentication, permission prompts and data flow were not traced. |
 | Desktop input | `ClickyScreenActuator` includes click, drag, scroll, type, key and cursor methods; platform code also has capture, UIA text and highlights. | `harness/act.py` is the sole input-synthesis module; model Teach observes controls and Act requires the approved plan and observed target (`CLAUDE.md`, `harness/teach_live.py`). | Both ship desktop-action code, but with different authority designs. The installed HeyClicky methods do not by themselves prove what its live permission flow allows. |
@@ -32,4 +34,10 @@ REA's Windows native-UI observation command was unavailable because its provider
 3. Decide whether persistent job cards and scheduled routines belong in the product plan. They are materially different from the current sequential `/crew` and reusable goal templates.
 4. Keep side-effecting connectors and broader agent execution behind their existing roadmap and approval gates. The HeyClicky binary does not supply evidence to relax those boundaries.
 
-No AIOS behavior was changed. No HeyClicky installer execution, connector login, agent launch, input action, voice session or scheduled routine was performed. A current-build live UI comparison and independent D032 review remain open.
+The follow-up AIOS change adds only generic Work status history. No HeyClicky installer execution, connector login, agent launch, input action, voice session or scheduled routine was performed. A current-build live UI comparison and independent D032 review remain open.
+
+## Work-tab verification
+
+- `py -3.12 -m pytest tests\test_workspace_app.py tests\test_no_input_synthesis.py -m "not interactive and not pixel and not hung" --basetemp=.tmp\pytest-workspace-activity -p no:cacheprovider -q`: 49 passed.
+- JavaScript syntax: `node --check` on the script extracted from `app.html` passed. A local Playwright smoke opened the Work tab and observed the saved state card and interruption note.
+- Full hermetic run before staging this edited evidence file: 3,615 passed, 85 deselected, and the signed-payload index check failed because the file's staged bytes still matched the previous commit. The check will be rerun after staging.

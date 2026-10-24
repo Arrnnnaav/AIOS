@@ -205,6 +205,61 @@ def test_a_busy_workspace_refuses_new_work_but_takes_signals(served):
     app.busy = ""
 
 
+def test_recent_work_persists_only_generic_labels_and_recovers_interrupted(tmp_path):
+    root = tmp_path / "briefs"
+
+    def make_workspace():
+        return Workspace("trip", Gateway(), Brain(tmp_path / "kb.sqlite"), root=root)
+
+    app = App("trip", make_workspace=make_workspace)
+    try:
+        assert app.run("Researching", lambda: "answer") == "answer"
+        assert app.run("private goal text", lambda: None) is None
+
+        def fail():
+            raise ValueError("private error text")
+
+        with pytest.raises(ValueError):
+            app.run("Planning", fail)
+        assert [(r["label"], r["state"]) for r in app.state()["activity"]] == [
+            ("Planning", "failed"), ("Work", "finished"), ("Researching", "finished")
+        ]
+    finally:
+        app.close()
+
+    path = root / "trip.activity.json"
+    assert "private" not in path.read_text(encoding="utf-8")
+    rows = json.loads(path.read_text(encoding="utf-8"))
+    rows.append({"label": "Guiding", "state": "running"})
+    path.write_text(json.dumps(rows), encoding="utf-8")
+    reopened = App("trip", make_workspace=make_workspace)
+    try:
+        assert reopened.state()["activity"][0] == {
+            "label": "Guiding", "state": "interrupted"
+        }
+    finally:
+        reopened.close()
+
+
+def test_invalid_recent_work_file_is_not_overwritten(tmp_path):
+    root = tmp_path / "briefs"
+    root.mkdir()
+    path = root / "trip.activity.json"
+    path.write_text('{"not": "a list"}', encoding="utf-8")
+    app = App(
+        "trip",
+        make_workspace=lambda: Workspace(
+            "trip", Gateway(), Brain(tmp_path / "kb.sqlite"), root=root
+        ),
+    )
+    try:
+        app.run("Researching", lambda: None)
+        assert app.state()["activity"][0]["state"] == "finished"
+        assert path.read_text(encoding="utf-8") == '{"not": "a list"}'
+    finally:
+        app.close()
+
+
 def test_the_page_names_windows_by_number_only(served):
     app, port = served
 

@@ -197,6 +197,21 @@ the bottom shows exactly what's being built/modified right now.
 
 ---
 
+## Workspace app (current)
+
+`ghostcursor.workspace.app.App` serves the token-protected Chat, Plan, Brain
+and Work page on loopback. Its one worker owns `Workspace` and Brain; request
+threads refuse overlapping work while Stop and Done can signal that worker.
+The Work tab reads the latest 20 generic operation labels and terminal states
+from a per-topic local activity file. `App.run()` writes a running record before
+the worker starts and a terminal record afterward; startup changes stale
+running records to interrupted. The file contains no goal, screen text, result,
+window identity or error details. A malformed file remains untouched and the
+current session continues with in-memory history. This is a job history, not
+an autonomous worker or scheduler.
+
+---
+
 ## Historical milestone: Open Track submission readiness — two VS Code workflows green
 
 The certified baseline and accepted terminal slice are now merged on

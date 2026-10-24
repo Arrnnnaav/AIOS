@@ -1476,6 +1476,9 @@ to confirm where the cost actually is before changing anything else.
 
 ## D178 workspace app follow-ups
 
+- Work tab records status only. Background continuation, result artifacts,
+  retries and timed routines still need an owner-approved lifecycle and
+  cancellation design before they become product features.
 - Live run: discuss, research, plan and a Teach session from the app with a real model; record in docs/evidence.
 - Edge app windows have a minimum width near 500 px; the 460 px dock may be clamped. Check on a real display.
 - The app window covers part of the screen during Teach; consider collapsing it to a slim bar while guiding (Copilot-style).
