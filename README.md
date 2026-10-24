@@ -6,10 +6,12 @@ transparent overlay. It can also, down a narrow and signed path, **perform
 approved steps for you** in approved applications — only after you approve the
 whole plan, only on a control it actually observed, and ESC always stops it.
 
-Nothing leaves your machine by default. (Code name and package: `ghostcursor`.)
+Local data stays on the machine; configured cloud models and web research can
+receive scrubbed request text. (Code name and package: `ghostcursor`.)
 
-> Status: pre-1.0 (`0.1.0`). Production Act ships for **PowerPoint**; Teach is
-> application-agnostic. See **Honest scope** at the end.
+> Status: pre-1.0 (`0.1.0`). Teach works across observed Windows applications.
+> Act code and a signed PowerPoint path exist, but Act activation and packaged
+> release acceptance remain open. See **Honest scope** below.
 
 ## The two modes
 
@@ -20,11 +22,11 @@ position — and a pointer that is shown is a pointer at a real control.
 
 **Act** — the same plan, but Orbyn performs the steps. It acts **only after you
 approve the whole plan**, only on controls the harness observed, still asks
-before risky controls (delete, send, pay, overwrite), and ESC/Stop halts a
-running session within half a second. All input synthesis lives in **one
+before risky controls (delete, send, pay, overwrite), and ESC/Stop are required
+to halt a running session promptly. All input synthesis lives in **one
 auditable module** (`ghostcursor/harness/act.py`); a test fails if any other
-module can synthesize input. Act ships today for PowerPoint through a signed,
-verifiable plugin.
+module can synthesize input. The PowerPoint path is a signed test fixture;
+release acceptance is still pending.
 
 ## What else is in the box
 
@@ -32,15 +34,15 @@ verifiable plugin.
   source, are scoped per tenant (one tenant's facts never leak to another),
   age, and surface conflicts instead of silently resolving them. Candidates
   stay candidates until you review them.
-- **Models, your choice** — local-first on Ollama by default; bring your own
-  key for a cloud model if you want one. An organization policy can only ever
-  *lower* what may leave the machine.
+- **Models, your choice** — a configured cloud provider may be the default;
+  local Ollama remains supported. An organization policy can only *lower* what
+  may leave the machine.
 - **Voice dictation** — speak text with spoken punctuation and formatting
   commands; it saves to a file or the Brain, and never types into an app on its
   own (that stays behind the Act gate).
-- **Signed plugin marketplace** — a catalog decoupled from the signed artifact,
-  with digest-level revocation and publisher identity. Unsigned plugins are
-  refused in production; a bundle signed by an untrusted key is refused.
+- **Signed plugins** — bundle verification and a read-only catalog exist.
+  Publisher identity and signed revocation for the marketplace still have
+  release gates.
 
 ## Privacy and safety, by construction
 
@@ -48,9 +50,8 @@ verifiable plugin.
   screenshots leave the device. `kb.sqlite` and `sessions.sqlite` never sync.
 - Text bound for a remote model goes through a scrub that masks emails, keys,
   card/account numbers and the like; a managed machine can force redaction on.
-- Signed-bundle verification, a monotonic anti-rollback floor on signed trust
-  documents, and a content-name-only local telemetry that is **off by default**
-  and never sends anything off the box.
+- Signed-bundle verification and a monotonic anti-rollback floor protect signed
+  trust documents. Telemetry and sync are not production paths in this build.
 - The kill switch (ESC, Stop/Pause, and a `--seconds` budget) always stops a
   session; the model can never synthesize ESC to defeat your stop key.
 
@@ -68,6 +69,9 @@ A packaged desktop build (PyInstaller onedir) is produced with:
 ```powershell
 pwsh -File tools/build_orbyn.ps1          # -> dist/Orbyn/Orbyn.exe
 ```
+
+`tools/Install-Orbyn.ps1` creates a user-level launcher for that build. The app
+and installer are not yet code-signed or on an automatic update channel.
 
 ## Run
 
@@ -98,10 +102,14 @@ commands are in `CLAUDE.md`.
 
 ## Honest scope
 
-- **Production Act is PowerPoint only.** VS Code and Excel are installed but
-  disabled (D130). Teach itself is application-agnostic.
+- **Act is not release-accepted yet.** The signed PowerPoint path has test and
+  diagnostic evidence, but the activation review has not returned READY. The
+  bundled plugin index in this checkout does not include a PowerPoint bundle;
+  VS Code and Excel are disabled for production Act.
 - Orbyn is becoming an app-agnostic, model-driven harness; PowerPoint is the
-  test fixture that proves the path, not the product's limit.
+  test fixture for that path, not the product's limit.
+- Reusable agents and `/crew` are foreground, sequential workspace operations;
+  there is no timed routine scheduler or general background worker service.
 - Deferred: a signed installer and auto-update, tray/startup automation, the
   VLM pointing tier, and broader counted Act acceptance across applications.
 - This is pre-1.0 software under active development. Measured results and their

@@ -8,7 +8,8 @@ Trust boundary: any local process or web page can reach 127.0.0.1, so every
 request must carry the per-launch token and the exact Host (no DNS
 rebinding), and every API call is a JSON POST (a cross-site form cannot send
 one without a preflight this server never answers). Window handles stay in
-this process; the page sees window numbers only. There is no Act path here.
+this process; the page sees window numbers only. Act uses the same approved
+plan and observed-control harness as the console path.
 """
 
 from __future__ import annotations
