@@ -208,7 +208,8 @@ the worker starts and a terminal record afterward; startup changes stale
 running records to interrupted. The file contains no goal, screen text, result,
 window identity or error details. A malformed file remains untouched and the
 current session continues with in-memory history. This is a job history, not
-an autonomous worker or scheduler.
+an autonomous worker or scheduler. Each topic file has one intended writer;
+concurrent workspace app processes for the same topic are not coordinated.
 
 ---
 

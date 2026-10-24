@@ -260,6 +260,44 @@ def test_invalid_recent_work_file_is_not_overwritten(tmp_path):
         app.close()
 
 
+def test_recent_work_save_does_not_overwrite_neighboring_files(tmp_path):
+    root = tmp_path / "briefs"
+    root.mkdir()
+    neighbors = [root / "trip.tmp", root / "trip.activity.json.tmp"]
+    for path in neighbors:
+        path.write_text("keep", encoding="utf-8")
+    app = App(
+        "trip",
+        make_workspace=lambda: Workspace(
+            "trip", Gateway(), Brain(tmp_path / "kb.sqlite"), root=root
+        ),
+    )
+    try:
+        app.run("Researching", lambda: None)
+        assert all(path.read_text(encoding="utf-8") == "keep" for path in neighbors)
+    finally:
+        app.close()
+
+
+def test_deeply_nested_recent_work_file_does_not_block_startup(tmp_path):
+    root = tmp_path / "briefs"
+    root.mkdir()
+    path = root / "trip.activity.json"
+    text = "[" * 20000 + "]" * 20000
+    path.write_text(text, encoding="utf-8")
+    app = App(
+        "trip",
+        make_workspace=lambda: Workspace(
+            "trip", Gateway(), Brain(tmp_path / "kb.sqlite"), root=root
+        ),
+    )
+    try:
+        assert app.state()["activity"] == []
+        assert path.read_text(encoding="utf-8") == text
+    finally:
+        app.close()
+
+
 def test_the_page_names_windows_by_number_only(served):
     app, port = served
 

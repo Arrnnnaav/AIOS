@@ -24,6 +24,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from collections import deque
@@ -124,7 +125,7 @@ class App:
             return rows[-20:]
         except FileNotFoundError:
             return []
-        except (OSError, ValueError, UnicodeError):
+        except (OSError, ValueError, UnicodeError, RecursionError):
             self.activity_path = None  # keep an unreadable file intact
             self.say("Activity history could not be read; this session stays in memory.")
             return []
@@ -132,14 +133,29 @@ class App:
     def _save_activity(self) -> None:
         if self.activity_path is None:
             return
+        partial = None
         try:
             self.activity_path.parent.mkdir(parents=True, exist_ok=True)
-            partial = self.activity_path.with_suffix(".tmp")
-            partial.write_text(json.dumps(self.activity), encoding="utf-8")
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                dir=self.activity_path.parent,
+                prefix=self.activity_path.name + ".",
+                suffix=".tmp",
+                delete=False,
+            ) as output:
+                partial = Path(output.name)
+                json.dump(self.activity, output)
             os.replace(partial, self.activity_path)
         except OSError:
             self.activity_path = None
             self.say("Activity history could not be saved; this session stays in memory.")
+        finally:
+            if partial is not None:
+                try:
+                    partial.unlink(missing_ok=True)
+                except OSError:
+                    pass
 
     def _refresh(self) -> None:
         brain = self.ws.brain
