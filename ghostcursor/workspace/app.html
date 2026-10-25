@@ -359,8 +359,11 @@ function renderWork() {
 }
 
 function openFileAsk() {
+  sheetOpener = document.activeElement;
   const sheet = $("sheet");
-  sheet.replaceChildren(el("h3", "", "Ask about a file"), el("p", "", "Choose a small text file and ask one question. Its text may go to your configured model provider; Orbyn does not save the question or file contents."));
+  const heading = el("h3", "", "Ask about a file"); heading.id = "fileAskTitle";
+  sheet.setAttribute("aria-labelledby", heading.id);
+  sheet.replaceChildren(heading, el("p", "", "Choose a small text file and ask one question. Its text may go to your configured model provider; Orbyn does not save the question or file contents."));
   const form = el("div", "fileask");
   const file = el("input"); file.type = "file"; file.accept = ".txt,.md,.csv,.json,.py,.js,.ts,.yaml,.yml,.html,.css";
   const fileLabel = el("label", "", "Text file"); fileLabel.append(file);
@@ -807,7 +810,14 @@ function accountsCard() {
 }
 
 // ---- sheets: windows, point, teach -----------------------------------
-function closeSheet() { $("scrim").classList.remove("open"); $("sheet").replaceChildren(); }
+let sheetOpener = null;
+function closeSheet() {
+  $("scrim").classList.remove("open"); $("sheet").replaceChildren(); $("sheet").removeAttribute("aria-labelledby");
+  if (sheetOpener) {
+    const target = sheetOpener.isConnected ? sheetOpener : $("tab-work").querySelector(".workhead button");
+    sheetOpener = null; target?.focus();
+  }
+}
 $("scrim").onclick = (e) => e.target === $("scrim") && closeSheet();
 
 async function windowSheet(title, sub, startLabel, extra, onStart) {

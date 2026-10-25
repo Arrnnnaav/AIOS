@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import json
 
+from ghostcursor import policy
 from ghostcursor.providers.errors import FailureKind, ProviderError
+from ghostcursor.providers.gateway import Gateway
 from ghostcursor.workspace.brain import Brain
 from ghostcursor.workspace.session import Workspace
 
@@ -66,7 +68,21 @@ def test_ask_sends_later_file_text_in_bounded_scrubbed_chunks(tmp_path):
     assert all(len(chunk.text) <= 300 for chunk in chunks)
     assert "MARKER_AT_END" in combined
     assert "alice@example.com" not in combined
-    assert "[email]" in combined
+    assert "[EMAIL_1]" in combined
+    brain.close()
+
+
+def test_ask_redacts_enterprise_key_before_a_chunk_boundary(tmp_path, monkeypatch):
+    monkeypatch.setattr(policy, "redact_egress", lambda: True)
+    gw = AskGateway()
+    ws, brain = _ws(tmp_path, gw)
+    ws.ask("what is after the key?", "a" * 294 + ":sk-abcdefghijklmnop later text")
+    envelope = gw.envelopes[0]
+    outbound = Gateway(system_two=())._outbound(envelope.messages("system"), "openai")
+    sent = json.dumps(outbound)
+    assert "[KEY_1]" in "".join(chunk.text for chunk in envelope.tainted["material"])
+    assert "sk-ab" not in sent
+    assert "cdefghijklmnop" not in sent
     brain.close()
 
 

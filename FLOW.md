@@ -219,9 +219,10 @@ Work also offers a one-off file question: the browser reads an explicitly
 selected text file (at most 32 KiB and 8,000 characters) and sends its contents
 and the question to the token-protected `ask_file` API. That action validates
 both fields and calls `Workspace.ask()` on the worker. That path scrubs the
-bounded material before splitting it into 300-character tainted values, so
-patterns crossing chunk boundaries are masked; the gateway still enforces
-organisation egress policy. Stop is passed to the gateway cancellation hook.
+bounded material with both the tainted-text and full DLP recognizers before
+splitting it into at most 300-character tainted values, so patterns crossing
+chunk boundaries are masked; the gateway still enforces organisation egress
+policy. Stop is passed to the gateway cancellation hook.
 The answer stays in the open sheet, which is cleared on close; only the generic
 “Asking file” state is written to activity history.
 

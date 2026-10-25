@@ -19,7 +19,7 @@ import os
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from ghostcursor import telemetry
+from ghostcursor import redact, telemetry
 from ghostcursor.brief import append_turn, brief_path, load_brief
 from ghostcursor.providers.envelope import (
     MAX_TAINTED_CHARS,
@@ -453,17 +453,19 @@ class Workspace:
         question = " ".join(str(question).split())
         if not question:
             return "ask what? usage: /ask <question> (grounds on the clipboard)"
-        # Scrub before splitting so a secret across a chunk boundary stays masked.
-        material = scrub(
-            sanitize(
-                (material or "").strip()[: self.MAX_CLIP_CHARS * 4],
-                limit=self.MAX_CLIP_CHARS * 4,
-            )
+        # Run both recognizers before splitting: full DLP cannot see across JSON chunks.
+        material = sanitize(
+            (material or "").strip()[: self.MAX_CLIP_CHARS * 4],
+            limit=self.MAX_CLIP_CHARS * 4,
         )
-        chunks = [
-            Tainted.of("attached", material[i : i + MAX_TAINTED_CHARS])
-            for i in range(0, len(material), MAX_TAINTED_CHARS)
-        ]
+        material = scrub(redact.scrub(material)[0])
+        chunks = []
+        while material:
+            part = material[:MAX_TAINTED_CHARS]
+            if len(material) > MAX_TAINTED_CHARS and " " in part:
+                part = part[: part.rfind(" ")]
+            chunks.append(Tainted.of("attached", part))
+            material = material[len(part) :].lstrip()
         envelope = Envelope(
             task="answer the question using the attached material",
             trusted={"question": question},
