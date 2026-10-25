@@ -734,7 +734,7 @@ boundary is untouched (every slice verified against
 | Library + export | find across saved items; shareable Markdown snapshot (secrets scrubbed) | `/find`, `/export` |
 | Local utilities | file convert (+PDF/subtitle/clipboard image), diff, b64/url/hex/uuid/pass/time/json/slug/sha256 | `/convert`, `/diff`, `/x` |
 | Delight | fuzzy did-you-mean, inline calculator, clipboard history, snippets, global capture hotkey, tips, startup status, sticky pins | palette, `/clips`, `/snippet`, `/capture`, `/pin` |
-| Work hub | Work tab shows the latest 20 locally saved generic task states, links to Chat/Plan, and exposes reusable agents; stale running work becomes interrupted on restart | workspace app |
+| Work hub | Work card board previews the current run, latest answer and plan with direct navigation/Stop; the latest 20 locally saved generic task states and reusable agents remain below it; stale running work becomes interrupted on restart | workspace app |
 
 Critic/Evaluation (`/critique`) reviews the current plan for gaps and risks
 before Act — advisory, read-only.

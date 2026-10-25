@@ -40,10 +40,11 @@ release acceptance is still pending.
 - **Voice dictation** — speak text with spoken punctuation and formatting
   commands; it saves to a file or the Brain, and never types into an app on its
   own (that stays behind the Act gate).
-- **Work hub** — the workspace's Work tab keeps the latest 20 generic task
-  states locally, links back to Chat or Plan, and puts reusable agents beside
-  the work they start. Unfinished work is marked interrupted after restart;
-  Orbyn does not schedule or resume it on its own.
+- **Work hub** — a card board opens the current run, latest answer or current
+  plan, with keyboard navigation and a Stop control for live work. The tab
+  also keeps the latest 20 generic task states locally and holds reusable
+  agents. Unfinished work is marked interrupted after restart; Orbyn does not
+  schedule or resume it on its own.
 - **Ask a file** — choose a small text or code file in Work and ask one
   question about it. The answer stays in that sheet; the file and question are
   not added to the Brief or Brain. Text may go to the configured model provider.

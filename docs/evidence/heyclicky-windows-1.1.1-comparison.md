@@ -1,5 +1,7 @@
 # HeyClicky Windows 1.1.1 versus this AIOS checkout
 
+Live UI follow-up: [26 October desktop and workspace comparison](heyclicky-live-ui-2026-10-26.md).
+
 25 October 2026. Initial read-only investigation, followed by focused decompilation and a workspace Work-tab update. The Work-tab slice has an independent D032 review; **the HeyClicky findings have not been independently reviewed**. This compares the supplied installer and the already-running installed app with source in this checkout. It is a capability map, not an acceptance test or a security verdict.
 
 ## Identity and evidence boundary

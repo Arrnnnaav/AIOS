@@ -202,7 +202,11 @@ the bottom shows exactly what's being built/modified right now.
 `ghostcursor.workspace.app.App` serves the token-protected Chat, Plan, Brain
 and Work page on loopback. Its one worker owns `Workspace` and Brain; request
 threads refuse overlapping work while Stop and Done can signal that worker.
-The Work tab reads the latest 20 generic operation labels and terminal states
+The Work tab's card board previews only current in-memory turn text and plan
+steps, plus the current run. Its controls open Chat or Plan or call the existing
+Stop API; they add no execution authority or persisted result. The board is a
+focusable region with keyboard card navigation. The Work tab reads the latest
+20 generic operation labels and terminal states
 from a per-topic local activity file. `App.run()` writes a running record before
 the worker starts and a terminal record afterward; startup changes stale
 running records to interrupted. The file contains no goal, screen text, result,
