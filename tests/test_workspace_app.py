@@ -241,6 +241,25 @@ def test_recent_work_persists_only_generic_labels_and_recovers_interrupted(tmp_p
         reopened.close()
 
 
+def test_file_question_is_one_off_and_keeps_material_out_of_history(served):
+    app, port = served
+    status, payload = call(
+        port, "/api/ask_file", {"text": "Where?", "material": "Private file: east"}
+    )
+    assert status == 200
+    assert json.loads(payload) == {"answer": "Sure."}
+    assert app.ws.turns == ()
+    saved = app.activity_path.read_text(encoding="utf-8")
+    assert "Private file" not in saved and "Where?" not in saved
+    assert json.loads(saved)[-1] == {"label": "Asking file", "state": "finished"}
+
+    for material in (["wrong type"], "x" * 8001, "\0binary"):
+        status, _ = call(port, "/api/ask_file", {"text": "Where?", "material": material})
+        assert status == 400
+    status, _ = call(port, "/api/ask_file", {"text": ["wrong type"], "material": "text"})
+    assert status == 400
+
+
 def test_invalid_recent_work_file_is_not_overwritten(tmp_path):
     root = tmp_path / "briefs"
     root.mkdir()

@@ -44,6 +44,9 @@ release acceptance is still pending.
   states locally, links back to Chat or Plan, and puts reusable agents beside
   the work they start. Unfinished work is marked interrupted after restart;
   Orbyn does not schedule or resume it on its own.
+- **Ask a file** — choose a small text or code file in Work and ask one
+  question about it. The answer stays in that sheet; the file and question are
+  not added to the Brief or Brain. Text may go to the configured model provider.
 - **Signed plugins** — bundle verification and a read-only catalog exist.
   Publisher identity and signed revocation for the marketplace still have
   release gates.

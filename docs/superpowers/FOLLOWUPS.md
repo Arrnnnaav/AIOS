@@ -1482,6 +1482,8 @@ to confirm where the cost actually is before changing anything else.
 - Work history is a single-writer per-topic file. If multiple app processes
   for one topic become supported, add coordinated persistence and live-run
   ownership before treating the cards as complete history.
+- Work “Ask a file” accepts one small text file. Larger files need chunked
+  retrieval and a clear source/answer presentation before the limit rises.
 - Live run: discuss, research, plan and a Teach session from the app with a real model; record in docs/evidence.
 - Edge app windows have a minimum width near 500 px; the 460 px dock may be clamped. Check on a real display.
 - The app window covers part of the screen during Teach; consider collapsing it to a slim bar while guiding (Copilot-style).

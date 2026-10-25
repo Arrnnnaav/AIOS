@@ -51,6 +51,7 @@ ACTIVITY_LABELS = frozenset(
         "Signing in",
         "Thinking",
         "Researching",
+        "Asking file",
         "Exploring",
         "Planning",
         "Designing the agent",
@@ -509,6 +510,19 @@ class App:
             if not text:
                 raise ValueError("ask a question")
             return {"answer": self.run("Researching", lambda: ws.research(text))}
+        if action == "ask_file":
+            material = body.get("material")
+            if not isinstance(body.get("text"), str) or not text or len(text) > 500:
+                raise ValueError("ask a question under 500 characters")
+            # shortcut: small text files only; add chunked retrieval for larger documents.
+            if (
+                not isinstance(material, str)
+                or not material.strip()
+                or len(material) > 8000
+                or "\0" in material
+            ):
+                raise ValueError("choose a text file under 8,000 characters")
+            return {"answer": self.run("Asking file", lambda: ws.ask(text, material))}
         if action == "evidence":
             return {"text": ws.evidence(int(body.get("n", 0)))}
         if action == "ideate":

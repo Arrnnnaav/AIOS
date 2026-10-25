@@ -727,7 +727,7 @@ boundary is untouched (every slice verified against
 | Deck | outline-first DeckSpec, Brain-grounded; propose a PowerPoint build plan (reviewed, propose-only) | `/deck`, `/deck build` |
 | Research | decompose → cited per-part → file claims to Brain | `/deepresearch`, `/research` |
 | Notes | tidy rough notes/file into a structured summary (Granola, no recording) | `/notes` |
-| Attach-context Q&A | answer grounded on clipboard/file, records nothing (Highlight) | `/ask` |
+| Attach-context Q&A | answer grounded on clipboard/file, records nothing (Highlight) | `/ask`, Work “Ask a file” for small text files |
 | Company Brain | facts/edges, sensitivity, review gate, backlinks | `/know`, `/related` |
 | Skills + learning | draft/replay skills; offer to save a recurring task (Attention Engineering) | `/skill`, recurring-use nudge |
 | Checklist | per-workspace todos; from an approved plan | `/todo`, `/todo from plan` |

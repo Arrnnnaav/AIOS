@@ -215,6 +215,12 @@ status cards. Those cards route to the existing Chat or Plan view; an active
 card's Stop control uses the same `stop` API as the live bar. Card links only
 navigate; history holds no result identity. The tabs have keyboard arrow,
 Home and End navigation. Deleting a saved agent asks for confirmation.
+Work also offers a one-off file question: the browser reads an explicitly
+selected text file (at most 32 KiB and 8,000 characters) and sends its contents
+and the question to the token-protected `ask_file` API. That action validates
+both fields and calls the existing tainted-material `Workspace.ask()` path on
+the worker. The answer stays in the open sheet; only the generic “Asking file”
+state is written to activity history.
 
 ---
 
