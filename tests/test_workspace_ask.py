@@ -76,13 +76,13 @@ def test_ask_redacts_enterprise_key_before_a_chunk_boundary(tmp_path, monkeypatc
     monkeypatch.setattr(policy, "redact_egress", lambda: True)
     gw = AskGateway()
     ws, brain = _ws(tmp_path, gw)
-    ws.ask("what is after the key?", "a" * 294 + ":sk-abcdefghijklmnop later text")
+    ws.ask("what is after the key?", "." * 295 + "sk-abcdefghijklmnop later text")
     envelope = gw.envelopes[0]
     outbound = Gateway(system_two=())._outbound(envelope.messages("system"), "openai")
     sent = json.dumps(outbound)
-    assert "[KEY_1]" in "".join(chunk.text for chunk in envelope.tainted["material"])
     assert "sk-ab" not in sent
     assert "cdefghijklmnop" not in sent
+    assert "[KEY_1]" in "".join(chunk.text for chunk in envelope.tainted["material"])
     brain.close()
 
 
