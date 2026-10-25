@@ -365,7 +365,7 @@ function openFileAsk() {
   const file = el("input"); file.type = "file"; file.accept = ".txt,.md,.csv,.json,.py,.js,.ts,.yaml,.yml,.html,.css";
   const fileLabel = el("label", "", "Text file"); fileLabel.append(file);
   const question = el("textarea"); question.rows = 3; question.maxLength = 500; question.placeholder = "What do you want to know?"; question.setAttribute("aria-label", "Question about the file");
-  const answer = el("div", "mem"); answer.hidden = true;
+  const answer = el("div", "mem"); answer.hidden = true; answer.tabIndex = -1; answer.setAttribute("role", "status");
   const row = el("div", "sheetrow");
   const cancel = el("button", "secondary", "Close"); cancel.onclick = closeSheet;
   const ask = el("button", "pill go", "Ask file"); ask.style.marginLeft = "auto";
@@ -378,7 +378,7 @@ function openFileAsk() {
       const material = await selected.text();
       if (!material.trim() || material.length > 8000 || material.includes("\0")) throw new Error("Choose a text file under 8,000 characters.");
       const result = await api("ask_file", { text, material });
-      answer.textContent = result.answer; answer.hidden = false;
+      answer.hidden = false; answer.textContent = result.answer; answer.focus();
       await poll(true);
     } catch (e) { toast(e.message); }
     finally { ask.disabled = false; ask.textContent = "Ask file"; }
@@ -807,7 +807,7 @@ function accountsCard() {
 }
 
 // ---- sheets: windows, point, teach -----------------------------------
-function closeSheet() { $("scrim").classList.remove("open"); }
+function closeSheet() { $("scrim").classList.remove("open"); $("sheet").replaceChildren(); }
 $("scrim").onclick = (e) => e.target === $("scrim") && closeSheet();
 
 async function windowSheet(title, sub, startLabel, extra, onStart) {

@@ -522,7 +522,7 @@ class App:
                 or "\0" in material
             ):
                 raise ValueError("choose a text file under 8,000 characters")
-            return {"answer": self.run("Asking file", lambda: ws.ask(text, material))}
+            return {"answer": self.run("Asking file", lambda: ws.ask(text, material, cancelled=self.stop.is_set))}
         if action == "evidence":
             return {"text": ws.evidence(int(body.get("n", 0)))}
         if action == "ideate":

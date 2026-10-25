@@ -260,6 +260,32 @@ def test_file_question_is_one_off_and_keeps_material_out_of_history(served):
     assert status == 400
 
 
+def test_stop_reaches_file_question_provider_in_order(tmp_path):
+    seen = []
+
+    class StopGateway(Gateway):
+        def complete(self, envelope, system, schema, parse, **kw):
+            seen.append(kw["cancelled"]())
+            app.handle("stop", {})
+            seen.append(kw["cancelled"]())
+            return super().complete(envelope, system, schema, parse, **kw)
+
+    app = App(
+        "trip",
+        make_workspace=lambda: Workspace(
+            "trip", StopGateway(), Brain(tmp_path / "kb.sqlite"), root=tmp_path / "briefs"
+        ),
+    )
+    try:
+        assert app.handle("ask_file", {"text": "Where?", "material": "a file"}) == {
+            "answer": "Sure."
+        }
+        assert seen == [False, True]
+        assert app.activity[-1] == {"label": "Asking file", "state": "stopped"}
+    finally:
+        app.close()
+
+
 def test_invalid_recent_work_file_is_not_overwritten(tmp_path):
     root = tmp_path / "briefs"
     root.mkdir()

@@ -21,7 +21,13 @@ from pathlib import Path
 
 from ghostcursor import telemetry
 from ghostcursor.brief import append_turn, brief_path, load_brief
-from ghostcursor.providers.envelope import Envelope, Tainted
+from ghostcursor.providers.envelope import (
+    MAX_TAINTED_CHARS,
+    Envelope,
+    Tainted,
+    sanitize,
+    scrub,
+)
 from ghostcursor.providers.errors import FailureKind, ProviderError
 from ghostcursor.providers.schemas import (
     MAX_INSTRUCTION_CHARS,
@@ -436,7 +442,7 @@ class Workspace:
 
         self._say("user", reference.as_text())
 
-    def ask(self, question: str, material: str) -> str:
+    def ask(self, question: str, material: str, *, cancelled=lambda: False) -> str:
         """Attach-context Q&A (D186, Highlight AI's core): answer a question
         grounded on attached MATERIAL (clipboard text or a file), without
         recording anything to the brief or the Brain -- a one-off query, not a
@@ -447,17 +453,26 @@ class Workspace:
         question = " ".join(str(question).split())
         if not question:
             return "ask what? usage: /ask <question> (grounds on the clipboard)"
-        material = (material or "").strip()[: self.MAX_CLIP_CHARS * 4]
+        # Scrub before splitting so a secret across a chunk boundary stays masked.
+        material = scrub(
+            sanitize(
+                (material or "").strip()[: self.MAX_CLIP_CHARS * 4],
+                limit=self.MAX_CLIP_CHARS * 4,
+            )
+        )
+        chunks = [
+            Tainted.of("attached", material[i : i + MAX_TAINTED_CHARS])
+            for i in range(0, len(material), MAX_TAINTED_CHARS)
+        ]
         envelope = Envelope(
             task="answer the question using the attached material",
             trusted={"question": question},
-            tainted=(
-                {"material": Tainted.of("attached", material)} if material else {}
-            ),
+            tainted={"material": chunks} if chunks else {},
         )
         try:
             answer = self.gateway.complete(
-                envelope, ASK_SYSTEM, DISCUSS_SCHEMA, parse_discussed, purpose="ask"
+                envelope, ASK_SYSTEM, DISCUSS_SCHEMA, parse_discussed,
+                purpose="ask", cancelled=cancelled,
             )
         except ProviderError as exc:
             return f"(no answer: the model is not available -- {exc.kind.value})"

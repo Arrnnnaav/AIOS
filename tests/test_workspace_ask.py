@@ -56,6 +56,20 @@ def test_ask_without_material_sends_no_tainted(tmp_path):
     brain.close()
 
 
+def test_ask_sends_later_file_text_in_bounded_scrubbed_chunks(tmp_path):
+    gw = AskGateway()
+    ws, brain = _ws(tmp_path, gw)
+    ws.ask("where is the marker?", "prefix " * 41 + "alice@example.com " + "middle " * 60 + "MARKER_AT_END")
+    chunks = gw.envelopes[0].tainted["material"]
+    combined = "".join(chunk.text for chunk in chunks)
+    assert len(chunks) > 1
+    assert all(len(chunk.text) <= 300 for chunk in chunks)
+    assert "MARKER_AT_END" in combined
+    assert "alice@example.com" not in combined
+    assert "[email]" in combined
+    brain.close()
+
+
 def test_ask_empty_question_and_no_model(tmp_path):
     ws, brain = _ws(tmp_path, AskGateway())
     assert "ask what" in ws.ask("   ", "material")
