@@ -213,8 +213,13 @@ from a per-topic local activity file. `App.run()` writes a running record before
 the worker starts and a terminal record afterward; startup changes stale
 running records to interrupted. The file contains no goal, screen text, result,
 window identity or error details. A malformed file remains untouched and the
-current session continues with in-memory history. This is a job history, not
-an autonomous worker or scheduler. Each topic file has one intended writer;
+current session continues with in-memory history. A separate per-topic
+`.jobs.json` inbox stores explicitly started read-only research questions,
+terminal state, and bounded result locally. It uses the same single workspace
+worker, claim lock, provider policy, and Stop event as foreground work. The
+server stays alive while that worker is busy even if the page closes; after a
+restart, a stale running entry becomes interrupted with no retry. It cannot
+launch Teach, Act, an agent, or a connector. Each topic file has one intended writer;
 concurrent workspace app processes for the same topic are not coordinated.
 The page places reusable agent creation and launch in Work, beside recent
 status cards. Those cards route to the existing Chat or Plan view; an active

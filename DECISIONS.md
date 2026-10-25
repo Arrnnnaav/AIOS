@@ -7835,6 +7835,19 @@ named Orbyn. This is window geometry, not screen targeting or input authority.
 The observed launch and test record are in
 `docs/evidence/floating-workspace-2026-10-26.md`.
 
+### D178 addendum — Background research lifecycle
+
+Date: 26 October 2026. Owner requested HeyClicky-style background jobs. The
+first supported job is read-only cited research, started explicitly from Work.
+It uses the existing single workspace worker and Stop event; a second job is
+refused while one is active. The browser may close while the job finishes.
+The bounded question and answer are stored only in a local per-topic inbox,
+separate from generic activity history. A crash changes a running entry to
+interrupted on next open; there is no automatic retry or resumed execution.
+The question is scrubbed before search/model egress and local persistence.
+Routines may later schedule only this same read-only job path; they cannot
+inherit Act authority. Evidence: `docs/evidence/background-research-2026-10-26.md`.
+
 ## D179 — Jev across the product, and redacted pictures for Teach
 
 Date: 16 October 2026. Owner decision: let Jev see the screen, with the best

@@ -1476,9 +1476,10 @@ to confirm where the cost actually is before changing anything else.
 
 ## D178 workspace app follow-ups
 
-- Work tab records status only. Background continuation, result artifacts,
-  retries and timed routines still need an owner-approved lifecycle and
-  cancellation design before they become product features.
+- Work has an explicitly started, read-only research job with a local result
+  inbox and cooperative Stop. Timed routines, other job types, retries, and
+  side-effecting connectors still need their own lifecycle and authority
+  design; generic activity history does not imply them.
 - Work history is a single-writer per-topic file. If multiple app processes
   for one topic become supported, add coordinated persistence and live-run
   ownership before treating the cards as complete history.

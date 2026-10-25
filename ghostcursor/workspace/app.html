@@ -155,6 +155,13 @@ section[hidden] { display: none !important; }
 .workcard.running .workstate { color: var(--amber); }
 .workcard button { color: var(--cyan); font-size: 12px; font-weight: 600; }
 .workcard button:hover { text-decoration: underline; }
+.joblist { display: grid; gap: 8px; margin-bottom: 18px; }
+.jobcard { padding: 11px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.jobcard .meta { display: flex; justify-content: space-between; gap: 8px; color: var(--dim); font-size: 12px; }
+.jobcard p { margin: 6px 0; overflow-wrap: anywhere; }
+.jobcard .sheetrow { margin-top: 8px; }
+.jobcard .sheetrow button { color: var(--cyan); font-size: 12px; font-weight: 600; }
+.jobanswer { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 50vh; overflow-y: auto; }
 .workstage { background: #131a2a; color: #f5f3ed; border-radius: 20px; padding: 15px; margin: 4px 0 22px; overflow: hidden; position: relative; }
 .workstage:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
 .workstage::before { content: ""; position: absolute; width: 230px; height: 230px; border: 1px solid rgba(245,181,68,.18); border-radius: 50%; right: -105px; top: -125px; pointer-events: none; }
@@ -311,7 +318,7 @@ async function act(action, body, quietOk) {
 }
 
 // ---- state ------------------------------------------------------------
-let S = null, lastJson = "", tab = "chat", researchMode = false, pending = "", workCardIndex = 0;
+let S = null, lastJson = "", tab = "chat", researchMode = false, pending = "", workCardIndex = 0, backgroundStarting = false;
 let chosen = new Set(), editing = null;
 
 async function poll(force) {
@@ -355,6 +362,7 @@ function renderWork() {
   fresh.onclick = () => { setTab("chat"); $("input").focus(); };
   head.append(fresh); root.append(head);
   const stage = workStage(); root.append(stage);
+  root.append(backgroundJobs());
   root.append(el("h3", "", "Recent work"));
   if (!S.activity.length) {
     root.append(el("p", "note", "Tasks started here appear below. Create a task or run a saved agent."));
@@ -382,6 +390,64 @@ function renderWork() {
     const target = root.querySelector('[data-work-focus="' + focusedCardControl + '"]');
     (target && !target.disabled ? target : stage).focus({ preventScroll: true });
   }
+}
+
+function backgroundJobs() {
+  const wrap = el("div");
+  const head = el("div", "workhead");
+  head.append(el("h3", "", "Background jobs"));
+  const start = el("button", "secondary", "Research in background"); start.dataset.workFocus = "background"; start.disabled = !!S.busy; start.onclick = openBackgroundResearch;
+  head.append(start); wrap.append(head);
+  if (!S.jobs.length) { wrap.append(el("p", "note", "Start cited research here. It can finish after you close this window.")); return wrap; }
+  const list = el("div", "joblist");
+  for (const job of S.jobs) {
+    const card = el("article", "jobcard");
+    const meta = el("div", "meta"); meta.append(el("b", "", job.routine ? "Routine research" : "Research"), el("span", "", job.state));
+    card.append(meta, el("p", "", job.question));
+    const actions = el("div", "sheetrow");
+    if (job.state === "running") {
+      const stop = el("button", "", "Stop"); stop.dataset.workFocus = "job-" + job.id;
+      stop.onclick = () => act("job_cancel", { id: job.id }); actions.append(stop);
+    } else {
+      if (job.answer) {
+        const open = el("button", "", "View result"); open.dataset.workFocus = "job-" + job.id;
+        open.onclick = () => openJobResult(job); actions.append(open);
+      }
+      const remove = el("button", "", "Remove"); remove.classList.add("danger"); remove.style.marginLeft = "auto";
+      remove.onclick = () => { if (confirm("Remove this saved job result?")) act("job_delete", { id: job.id }, "Job removed"); };
+      actions.append(remove);
+    }
+    card.append(actions); list.append(card);
+  }
+  wrap.append(list); return wrap;
+}
+
+function openBackgroundResearch() {
+  sheetOpener = document.activeElement;
+  const sheet = $("sheet"); const heading = el("h3", "", "Research in background"); heading.id = "backgroundTitle";
+  sheet.setAttribute("aria-labelledby", heading.id);
+  sheet.replaceChildren(heading, el("p", "", "Research uses web search and your configured model. The question and answer are saved locally in this workspace; the job keeps running if you close the window."));
+  const question = el("textarea"); question.maxLength = 500; question.rows = 3; question.placeholder = "What should Orbyn research?"; question.setAttribute("aria-label", "Research question");
+  const row = el("div", "sheetrow");
+  const cancel = el("button", "secondary", "Close"); cancel.onclick = closeSheet;
+  const start = el("button", "pill go", "Start research"); start.style.marginLeft = "auto";
+  start.onclick = async () => {
+    const text = question.value.trim(); if (!text) return toast("Enter a research question.");
+    start.disabled = true; backgroundStarting = true;
+    try { await api("job_start", { question: text }); closeSheet(); await poll(true); }
+    catch (e) { toast(e.message); }
+    finally { backgroundStarting = false; start.disabled = false; }
+  };
+  row.append(cancel, start); sheet.append(question, row); $("scrim").classList.add("open"); question.focus();
+}
+
+function openJobResult(job) {
+  sheetOpener = document.activeElement;
+  const sheet = $("sheet"); const heading = el("h3", "", "Research result"); heading.id = "jobResultTitle";
+  sheet.setAttribute("aria-labelledby", heading.id);
+  const close = el("button", "secondary", "Close"); close.onclick = closeSheet;
+  sheet.replaceChildren(heading, el("p", "", job.question), el("div", "jobanswer", job.answer), close);
+  $("scrim").classList.add("open"); close.focus();
 }
 
 function workStage() {
@@ -878,7 +944,8 @@ let sheetOpener = null;
 function closeSheet() {
   $("scrim").classList.remove("open"); $("sheet").replaceChildren(); $("sheet").removeAttribute("aria-labelledby");
   if (sheetOpener) {
-    const target = sheetOpener.isConnected ? sheetOpener : $("tab-work").querySelector(".workhead button");
+    const key = sheetOpener.dataset.workFocus;
+    const target = sheetOpener.isConnected ? sheetOpener : $("tab-work").querySelector('[data-work-focus="' + (key || "askfile") + '"]');
     sheetOpener = null; target?.focus();
   }
 }
@@ -971,7 +1038,7 @@ $("doneBtn").onclick = () => api("signal").catch(() => {});
 $("stopBtn").onclick = () => api("stop").catch(() => {});
 // Closing the window mid-session stops it (ESC and the deadline do anyway).
 addEventListener("pagehide", () => {
-  if (S && S.busy) fetch("/api/stop", { method: "POST", keepalive: true, headers: { "Content-Type": "application/json", "X-Orbyn-Token": TOKEN }, body: "{}" });
+  if (S && S.busy && !S.background_id && !backgroundStarting) fetch("/api/stop", { method: "POST", keepalive: true, headers: { "Content-Type": "application/json", "X-Orbyn-Token": TOKEN }, body: "{}" });
 });
 document.addEventListener("keydown", (e) => {
   if (!S || !S.busy) { if (e.key === "Escape") closeSheet(); return; }

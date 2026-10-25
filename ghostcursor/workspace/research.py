@@ -17,7 +17,7 @@ import html
 import os
 import re
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import CancelledError, ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
@@ -468,6 +468,7 @@ def research(
     key_lookup=None,
     context: dict | None = None,
     trace_path: Path | None = None,
+    cancelled=lambda: False,
 ) -> tuple[EvidenceGraph, ResearchTrace]:
     """Search, build the graph, ask for cited claims, validate. Never raises
     for a search or model failure: the graph then carries no claims and the
@@ -475,6 +476,9 @@ def research(
 
     from ghostcursor import policy
     from ghostcursor.providers import keys
+
+    if cancelled():
+        raise CancelledError()
 
     timings, failures = {}, []
     started = time.monotonic()
@@ -493,6 +497,8 @@ def research(
             hits = duckduckgo_search(question)
     except Exception as exc:  # network: record, never guess
         hits, failures = [], [f"search: {type(exc).__name__}"]
+    if cancelled():
+        raise CancelledError()
     timings["search"] = round((time.monotonic() - started) * 1000)
     graph = build_graph(question, hits)
     model = "none"
@@ -503,6 +509,8 @@ def research(
             reranked = True
         except ProviderError as exc:  # the rerank is extra; keep the full graph
             failures.append(f"rerank: {exc.kind.value}")
+    if cancelled():
+        raise CancelledError()
     if graph.passages:
         started = time.monotonic()
         envelope = research_envelope(question, graph, context)
@@ -514,12 +522,15 @@ def research(
                 CLAIMS_SCHEMA,
                 lambda content: parse_claims(content, offered),
                 purpose="research",
+                cancelled=cancelled,
             )
             graph = EvidenceGraph(question, graph.sources, graph.passages, claims)
             graph.validate()
             model = "jev-rerank+system-two" if reranked else "system-two"
         except ProviderError as exc:
             failures.append(f"model: {exc.kind.value}")
+        if cancelled():
+            raise CancelledError()
         if graph.claims and hasattr(gateway, "judge"):
             try:
                 graph = EvidenceGraph(
@@ -532,6 +543,8 @@ def research(
             except ProviderError as exc:  # the check is extra; its absence is not
                 failures.append(f"check: {exc.kind.value}")
         timings["answer"] = round((time.monotonic() - started) * 1000)
+    if cancelled():
+        raise CancelledError()
     trace = ResearchTrace(
         question_sha256=digest(question),
         context_sha256=digest(sorted((context or {}).keys())),

@@ -5,6 +5,8 @@ from __future__ import annotations
 import http.client
 import json
 import threading
+import time
+from concurrent.futures import CancelledError
 from pathlib import Path
 
 import pytest
@@ -145,6 +147,105 @@ def test_window_launch_supports_floating_and_docked_geometry(tmp_path, monkeypat
     monkeypatch.setattr(appmod, "_edge_app_windows", lambda: {5} if not launches or len(launches) == 2 else {5, 8, 9})
     appmod.open_window("http://127.0.0.1:1/?t=test")
     assert len(moves) == 2  # two concurrent new windows: move neither
+
+
+def _wait_for_job(app, state):
+    deadline = time.monotonic() + 3
+    while time.monotonic() < deadline:
+        if app.state()["jobs"][0]["state"] == state:
+            return app.state()["jobs"][0]
+        time.sleep(0.01)
+    pytest.fail(f"background job did not reach {state}")
+
+
+def test_background_research_finishes_and_keeps_a_local_result(served):
+    app, port = served
+    started, release = threading.Event(), threading.Event()
+
+    def research(question, *, cancelled):
+        started.set()
+        assert release.wait(2)
+        assert not cancelled()
+        return "Cited result [1]"
+
+    app.ws.research = research
+    status, payload = call(port, "/api/job_start", {"question": "Find a source"})
+    assert status == 200 and len(json.loads(payload)["id"]) == 16
+    assert started.wait(1)
+    assert app.state()["jobs"][0]["state"] == "running"
+    assert call(port, "/api/job_start", {"question": "Another task"})[0] == 400
+    assert len(app.state()["jobs"]) == 1
+    release.set()
+    job = _wait_for_job(app, "finished")
+    assert job["answer"] == "Cited result [1]"
+    assert "Find a source" in app.job_path.read_text(encoding="utf-8")
+    assert call(port, "/api/job_delete", {"id": job["id"]})[0] == 200
+    assert app.state()["jobs"] == []
+
+
+def test_background_stop_and_secret_scrub_before_research(served):
+    app, port = served
+    started, release = threading.Event(), threading.Event()
+    seen = []
+
+    def research(question, *, cancelled):
+        seen.append(question)
+        started.set()
+        assert release.wait(2)
+        if cancelled():
+            raise CancelledError()
+        return "should not be kept"
+
+    app.ws.research = research
+    secret = "sk-abcdefghijklmnop"
+    status, payload = call(port, "/api/job_start", {"question": "Check " + secret})
+    assert status == 200 and started.wait(1)
+    jid = json.loads(payload)["id"]
+    assert secret not in seen[0]
+    assert secret not in app.job_path.read_text(encoding="utf-8")
+    assert call(port, "/api/job_cancel", {"id": "wrong"})[0] == 400
+    assert call(port, "/api/job_cancel", {"id": jid})[0] == 200
+    release.set()
+    job = _wait_for_job(app, "stopped")
+    assert job["answer"] == ""
+    assert secret not in app.job_path.read_text(encoding="utf-8")
+
+
+def test_stale_background_job_becomes_interrupted(tmp_path):
+    root = tmp_path / "briefs"
+    make = lambda: Workspace("trip", Gateway(), Brain(tmp_path / "kb.sqlite"), root=root)
+    app = App("trip", make_workspace=make, clock=lambda: 100)
+    path = app.job_path
+    app.close()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps([{
+        "id": "0123456789abcdef", "question": "Old question", "answer": "",
+        "state": "running", "created": 10, "ended": None, "routine": "",
+    }]), encoding="utf-8")
+    reopened = App("trip", make_workspace=make, clock=lambda: 100)
+    try:
+        assert reopened.state()["jobs"][0]["state"] == "interrupted"
+        assert reopened.state()["jobs"][0]["ended"] == 100
+        assert json.loads(path.read_text(encoding="utf-8"))[0]["state"] == "interrupted"
+    finally:
+        reopened.close()
+
+
+def test_malformed_job_inbox_stays_untouched(tmp_path):
+    root = tmp_path / "briefs"
+    make = lambda: Workspace("trip", Gateway(), Brain(tmp_path / "kb.sqlite"), root=root)
+    first = App("trip", make_workspace=make)
+    path = first.job_path
+    first.close()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text('[{"id":"bad","question":"x"}]', encoding="utf-8")
+    reopened = App("trip", make_workspace=make)
+    try:
+        assert reopened.state()["jobs"] == []
+        assert reopened.job_path is None
+        assert path.read_text(encoding="utf-8") == '[{"id":"bad","question":"x"}]'
+    finally:
+        reopened.close()
 
 
 def test_single_instance_guard_detects_a_live_instance_only(tmp_path, monkeypatch):

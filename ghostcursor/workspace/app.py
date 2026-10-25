@@ -33,7 +33,7 @@ from dataclasses import asdict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from ghostcursor import policy, settings
+from ghostcursor import policy, redact, settings
 from ghostcursor.brief import brief_path
 from ghostcursor.workspace.contracts import POINT_PREFIX
 
@@ -79,7 +79,8 @@ class App:
     """One worker thread owns the Workspace and its Brain (sqlite is
     single-thread); request threads only queue jobs and set events."""
 
-    def __init__(self, topic: str, *, make_workspace=None):
+    def __init__(self, topic: str, *, make_workspace=None, clock=time.time):
+        self.clock = clock
         self.jobs = ThreadPoolExecutor(1, thread_name_prefix="orbyn-workspace")
         self.signal = threading.Event()  # Enter / "Done" from the page
         self.stop = threading.Event()  # the page's Stop button
@@ -104,6 +105,15 @@ class App:
                 if row["state"] == "running":
                     row["state"] = "interrupted"
             self._save_activity()
+        self._job_lock = threading.RLock()
+        self.background_id: str | None = None
+        self.job_path = brief_path(self.ws.root, self.ws.topic).with_suffix(".jobs.json")
+        self.background_jobs = self._load_background_jobs()
+        if any(row["state"] == "running" for row in self.background_jobs):
+            for row in self.background_jobs:
+                if row["state"] == "running":
+                    row["state"], row["ended"] = "interrupted", self.clock()
+            self._save_background_jobs()
         self.jobs.submit(self._refresh).result()
 
     # --- worker-side ------------------------------------------------------------
@@ -158,6 +168,62 @@ class App:
                 except OSError:
                     pass
 
+    def _load_background_jobs(self) -> list[dict]:
+        try:
+            if self.job_path.stat().st_size > 1024 * 1024:
+                raise ValueError("job inbox too large")
+            rows = json.loads(self.job_path.read_text(encoding="utf-8"))
+            keys = {"id", "question", "answer", "state", "created", "ended", "routine"}
+            if not isinstance(rows, list) or any(
+                not isinstance(row, dict)
+                or set(row) != keys
+                or not isinstance(row["id"], str)
+                or len(row["id"]) != 16
+                or any(c not in "0123456789abcdef" for c in row["id"])
+                or not isinstance(row["question"], str)
+                or len(row["question"]) > 500
+                or not isinstance(row["answer"], str)
+                or len(row["answer"]) > 24_000
+                or not isinstance(row["state"], str)
+                or row["state"] not in ACTIVITY_STATES
+                or not isinstance(row["created"], (int, float))
+                or row["ended"] is not None and not isinstance(row["ended"], (int, float))
+                or not isinstance(row["routine"], str)
+                or len(row["routine"]) > 16
+                for row in rows
+            ):
+                raise ValueError("invalid job inbox")
+            return rows[-20:]
+        except FileNotFoundError:
+            return []
+        except (OSError, ValueError, UnicodeError, RecursionError):
+            self.job_path = None
+            self.say("Job inbox could not be read; this session stays in memory.")
+            return []
+
+    def _save_background_jobs(self) -> None:
+        if self.job_path is None:
+            return
+        partial = None
+        try:
+            self.job_path.parent.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", dir=self.job_path.parent,
+                prefix=self.job_path.name + ".", suffix=".tmp", delete=False,
+            ) as output:
+                partial = Path(output.name)
+                json.dump(self.background_jobs, output)
+            os.replace(partial, self.job_path)
+        except OSError:
+            self.job_path = None
+            self.say("Job inbox could not be saved; this session stays in memory.")
+        finally:
+            if partial is not None:
+                try:
+                    partial.unlink(missing_ok=True)
+                except OSError:
+                    pass
+
     def _refresh(self) -> None:
         brain = self.ws.brain
         self.memories = [
@@ -173,9 +239,7 @@ class App:
         ]
         self.paused = brain.paused
 
-    def run(self, label: str, fn):
-        """Run ``fn`` on the worker; one long job at a time (the page waits)."""
-
+    def _begin_run(self, label: str, fn):
         # Claimed on the request thread, so a second request is refused, not
         # queued, and a Stop pressed before the job starts is kept.
         if not self._claim.acquire(blocking=False):
@@ -196,16 +260,66 @@ class App:
                 self._refresh()
 
         try:
-            result = self.jobs.submit(job).result()
+            return self.jobs.submit(job), row
+        except BaseException:
+            row["state"] = "failed"
+            self._save_activity()
+            self.busy = ""
+            self._claim.release()
+            raise
+
+    def _finish_run(self, future, row):
+        try:
+            result = future.result()
             row["state"] = "stopped" if self.stop.is_set() else "finished"
             return result
         except BaseException:
-            row["state"] = "failed"
+            row["state"] = "stopped" if self.stop.is_set() else "failed"
             raise
         finally:
             self._save_activity()
             self.busy = ""
+            self.background_id = None
             self._claim.release()
+
+    def run(self, label: str, fn):
+        """Run ``fn`` on the worker; one long job at a time (the page waits)."""
+
+        future, row = self._begin_run(label, fn)
+        return self._finish_run(future, row)
+
+    def start_research_job(self, question: str, *, routine: str = "") -> str:
+        question = " ".join(question.split())
+        if not question or len(question) > 500 or "\0" in question:
+            raise ValueError("ask a research question under 500 characters")
+        question = redact.scrub(question)[0][:500]
+        jid = secrets.token_hex(8)
+        entry = {
+            "id": jid, "question": question, "answer": "", "state": "running",
+            "created": self.clock(), "ended": None, "routine": routine,
+        }
+        future, row = self._begin_run(
+            "Researching", lambda: self.ws.research(question, cancelled=self.stop.is_set)
+        )
+        self.background_id = jid
+        with self._job_lock:
+            self.background_jobs.append(entry)
+            self.background_jobs = self.background_jobs[-20:]
+            self._save_background_jobs()
+
+        def done(_):
+            try:
+                answer = self._finish_run(future, row)
+            except BaseException:
+                answer = ""
+            with self._job_lock:
+                entry["state"] = row["state"]
+                entry["answer"] = redact.scrub(str(answer))[0][:24_000] if row["state"] == "finished" else ""
+                entry["ended"] = self.clock()
+                self._save_background_jobs()
+
+        future.add_done_callback(done)
+        return jid
 
     def say(self, line: str) -> None:
         self.status.append(str(line)[:300])
@@ -248,6 +362,8 @@ class App:
     def state(self) -> dict:
         ws = self.ws
         proposal = ws.proposal
+        with self._job_lock:
+            background_jobs = [dict(row) for row in reversed(self.background_jobs)]
         return {
             "topic": ws.topic,
             "goal": ws.goal,
@@ -277,6 +393,8 @@ class App:
             "paused": self.paused,
             "busy": self.busy,
             "activity": list(reversed(self.activity)),
+            "jobs": background_jobs,
+            "background_id": self.background_id,
             "status": list(self.status),
             "research": len(ws.research_graphs),
             "point_prefix": POINT_PREFIX,
@@ -298,6 +416,25 @@ class App:
             return {}
         if action == "stop":
             self.stop.set()
+            return {}
+        if action == "job_start":
+            question = body.get("question")
+            if not isinstance(question, str):
+                raise ValueError("ask a research question under 500 characters")
+            return {"id": self.start_research_job(question)}
+        if action == "job_cancel":
+            if body.get("id") != self.background_id or not self.background_id:
+                raise ValueError("no such running job")
+            self.stop.set()
+            return {}
+        if action == "job_delete":
+            jid = body.get("id")
+            with self._job_lock:
+                row = next((item for item in self.background_jobs if item["id"] == jid), None)
+                if row is None or row["state"] == "running":
+                    raise ValueError("no such finished job")
+                self.background_jobs.remove(row)
+                self._save_background_jobs()
             return {}
         if action == "vision":
             # The user's own switch (D179); read when the next Teach starts.

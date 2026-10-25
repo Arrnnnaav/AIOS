@@ -736,6 +736,7 @@ boundary is untouched (every slice verified against
 | Delight | fuzzy did-you-mean, inline calculator, clipboard history, snippets, global capture hotkey, tips, startup status, sticky pins | palette, `/clips`, `/snippet`, `/capture`, `/pin` |
 | Work hub | Work card board previews the current run, latest answer and plan with direct navigation/Stop; the latest 20 locally saved generic task states and reusable agents remain below it; stale running work becomes interrupted on restart | workspace app |
 | Floating workspace | Edge app-mode window opens near the upper center with native drag/resize; `--dock` preserves the previous right-side position | workspace app |
+| Background research | Explicit read-only research on the existing single worker; local result inbox, Stop, interrupted-on-restart; no automatic retry | workspace app |
 
 Critic/Evaluation (`/critique`) reviews the current plan for gaps and risks
 before Act — advisory, read-only.

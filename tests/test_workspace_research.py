@@ -5,6 +5,7 @@ question text."""
 from __future__ import annotations
 
 import json
+from concurrent.futures import CancelledError
 
 import pytest
 
@@ -64,6 +65,25 @@ def _run(answer, tmp_path, hits=HITS):
         trace_path=tmp_path / "t.jsonl",
     )
     return graph, trace, gateway
+
+
+def test_cancel_after_search_refuses_the_model_call(tmp_path):
+    gateway = FakeGateway({"claims": []})
+    stopped = False
+
+    def search(_):
+        nonlocal stopped
+        stopped = True
+        return HITS
+
+    with pytest.raises(CancelledError):
+        research(
+            "what is sqlite", gateway, search=search,
+            key_lookup=lambda _: None, cancelled=lambda: stopped,
+            trace_path=tmp_path / "trace.jsonl",
+        )
+    assert gateway.envelopes == []
+    assert not (tmp_path / "trace.jsonl").exists()
 
 
 def test_a_cited_answer_builds_a_valid_graph_and_a_trace_without_text(tmp_path):

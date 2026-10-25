@@ -1,0 +1,11 @@
+# Background research slice
+
+26 October 2026. Scope: explicit cited-research jobs from the Work tab. A job uses the same single `Workspace` worker and claim lock as Chat, Plan and Teach. A second job or foreground operation cannot overlap it. The question is scrubbed before web/model egress and before it is saved in a local per-topic `.jobs.json` inbox; the bounded answer is saved there for reopening. The generic activity file still holds no prompt or result. Only research is admitted; no UIA, Act, connector or file-writing action is reachable from the job API.
+
+Lifecycle: start returns an opaque job id before research completes. Stop sets the existing event; research checks it between search, passage/model and result phases and passes it to the model gateway. An in-flight web request may take its network timeout before Stop settles. Closing the page leaves an explicitly started background job running, while closing during a foreground action keeps the existing Stop behavior. The app process remains alive during a job; a restart marks a stale running record interrupted, without retrying it. Finished results can be opened or removed from Work. An unreadable inbox file is left untouched and the session continues in memory.
+
+Focused tests exercised immediate start, one-job ownership, result persistence/removal, invalid cancellation id, cooperative Stop, secret scrubbing before the research call and disk write, and interrupted-on-restart reconciliation. A seeded 500 px Playwright flow started a job, viewed its saved result, and reported no console errors. A second browser check dispatched `pagehide`: the background job did not call Stop, while a foreground busy state did. The HTML script passed `node --check`. No live provider call was made in these UI checks.
+
+D018 privacy mutation: removing the full `redact.scrub()` before job start made `test_background_stop_and_secret_scrub_before_research` fail with a provider-key string present in the research call. Restoring the call made the same test pass. The mutant was not committed.
+
+Full hermetic lane: `py -3.12 -m pytest tests -m "not interactive and not pixel and not hung" --basetemp=.tmp\pytest-hermetic-background-final -p no:cacheprovider -q` — 3628 passed, 85 deselected in 197.11 s. Captured output: `.tmp\pytest-background-full.log` (local, ignored).
