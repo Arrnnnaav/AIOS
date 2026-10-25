@@ -343,15 +343,18 @@ function render(busyChanged) {
 }
 
 function renderWork() {
-  const root = $("tab-work"); root.replaceChildren();
+  const root = $("tab-work");
+  const focusedCardControl = root.contains(document.activeElement) ? document.activeElement.dataset.workFocus : null;
+  root.replaceChildren();
   const head = el("div", "workhead");
   head.append(el("h3", "", "Work"));
-  const fileAsk = el("button", "secondary", "Ask a file"); fileAsk.disabled = !!S.busy; fileAsk.onclick = openFileAsk;
+  const fileAsk = el("button", "secondary", "Ask a file"); fileAsk.dataset.workFocus = "askfile"; fileAsk.disabled = !!S.busy; fileAsk.onclick = openFileAsk;
   head.append(fileAsk);
   const fresh = el("button", "pill go", "New task");
+  fresh.dataset.workFocus = "newtask";
   fresh.onclick = () => { setTab("chat"); $("input").focus(); };
   head.append(fresh); root.append(head);
-  root.append(workStage());
+  const stage = workStage(); root.append(stage);
   root.append(el("h3", "", "Recent work"));
   if (!S.activity.length) {
     root.append(el("p", "note", "Tasks started here appear below. Create a task or run a saved agent."));
@@ -375,6 +378,10 @@ function renderWork() {
     root.append(el("p", "note", "The latest 20 states are saved locally. Interrupted work is not resumed after restart."));
   }
   root.append(agentsCard());
+  if (focusedCardControl) {
+    const target = root.querySelector('[data-work-focus="' + focusedCardControl + '"]');
+    (target && !target.disabled ? target : stage).focus({ preventScroll: true });
+  }
 }
 
 function workStage() {
@@ -382,7 +389,7 @@ function workStage() {
   const card = (kind, title, detail, action, run) => {
     const item = el("article", "workstagecard");
     item.append(el("span", "eyebrow", kind), el("h4", "", title), el("p", "", detail));
-    const button = el("button", "stageaction", action); button.onclick = run; item.append(button);
+    const button = el("button", "stageaction", action); button.dataset.workFocus = "action"; button.onclick = run; item.append(button);
     cards.push(item);
   };
   if (S.busy) card("IN PROGRESS", S.busy, "Orbyn is working in this session. Stop is available here and in the live bar.", "Stop work", () => api("stop").catch((e) => toast(e.message)));
@@ -391,24 +398,25 @@ function workStage() {
   if (S.plan && S.plan.steps.length) card("CURRENT PLAN", "Plan revision " + S.plan.revision, S.plan.steps.slice(0, 2).join("\n") + (S.plan.steps.length > 2 ? "\n…and " + (S.plan.steps.length - 2) + " more steps" : ""), "Review plan", () => setTab("plan"));
   if (!cards.length) card("START HERE", "What should Orbyn help with?", "Ask a question, make a plan, or point to a control on your screen.", "Start a task", () => { setTab("chat"); $("input").focus(); });
   workCardIndex = Math.min(workCardIndex, cards.length - 1);
-  const stage = el("div", "workstage"); stage.setAttribute("role", "region"); stage.setAttribute("aria-label", "Current work cards"); stage.tabIndex = 0;
+  const stage = el("div", "workstage"); stage.setAttribute("role", "region"); stage.setAttribute("aria-label", "Current work cards"); stage.tabIndex = 0; stage.dataset.workFocus = "stage";
   const bar = el("div", "workstagebar");
   bar.append(el("strong", "", "At a glance"));
   const count = el("span");
-  const previous = el("button", "", "‹"); previous.setAttribute("aria-label", "Previous card");
-  const next = el("button", "", "›"); next.setAttribute("aria-label", "Next card");
-  const view = el("div"); view.setAttribute("aria-live", "polite");
-  const show = () => {
+  const previous = el("button", "", "‹"); previous.setAttribute("aria-label", "Previous card"); previous.dataset.workFocus = "previous";
+  const next = el("button", "", "›"); next.setAttribute("aria-label", "Next card"); next.dataset.workFocus = "next";
+  const view = el("div");
+  const show = (announce = false) => {
+    view.setAttribute("aria-live", announce ? "polite" : "off");
     count.textContent = (workCardIndex + 1) + " / " + cards.length;
     previous.disabled = workCardIndex === 0; next.disabled = workCardIndex === cards.length - 1;
     view.replaceChildren(cards[workCardIndex]);
   };
-  previous.onclick = () => { workCardIndex--; show(); };
-  next.onclick = () => { workCardIndex++; show(); };
+  previous.onclick = () => { workCardIndex--; show(true); };
+  next.onclick = () => { workCardIndex++; show(true); };
   stage.onkeydown = (e) => {
-    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
+    if (e.target !== stage || !["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
     workCardIndex = e.key === "Home" ? 0 : e.key === "End" ? cards.length - 1 : Math.max(0, Math.min(cards.length - 1, workCardIndex + (e.key === "ArrowRight" ? 1 : -1)));
-    show(); e.preventDefault();
+    show(true); e.preventDefault();
   };
   bar.append(count, previous, next); stage.append(bar, view); show();
   return stage;
