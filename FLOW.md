@@ -210,6 +210,9 @@ window identity or error details. A malformed file remains untouched and the
 current session continues with in-memory history. This is a job history, not
 an autonomous worker or scheduler. Each topic file has one intended writer;
 concurrent workspace app processes for the same topic are not coordinated.
+The page places reusable agent creation and launch in Work, beside recent
+status cards. Those cards route to the existing Chat or Plan view; an active
+card's Stop control uses the same `stop` API as the live bar.
 
 ---
 

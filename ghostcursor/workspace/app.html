@@ -16,7 +16,7 @@
 }
 :root[data-theme="light"] {
     --bg: #f6f6f3; --surface: #ffffff; --raise: #f0f0ec; --line: #e2e2dc;
-    --text: #1a1c22; --dim: #5b6070; --faint: #9aa0ad;
+    --text: #1a1c22; --dim: #5b6070; --faint: #686f7c;
     --amber: #c9840f; --amber-soft: rgba(201,132,15,.12);
     --cyan: #1b74c4; --cyan-soft: rgba(27,116,196,.10);
     color-scheme: light;
@@ -145,6 +145,16 @@ section[hidden] { display: none !important; }
 .mem .acts button { color: var(--faint); font-size: 12px; padding: 1px 6px; border-radius: 6px; }
 .mem .acts button:hover { color: var(--text); background: var(--raise); }
 .danger { color: var(--red) !important; }
+.workhead { display: flex; align-items: center; gap: 10px; margin: 8px 0 12px; }
+.workhead h3 { margin: 0; flex: 1; font-size: 16px; }
+.worklist { display: grid; gap: 8px; }
+.workcard { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); }
+.workcard.running { border-color: var(--amber); background: var(--amber-soft); }
+.workcard b { flex: 1; min-width: 0; }
+.workstate { color: var(--dim); font-size: 12px; }
+.workcard.running .workstate { color: var(--amber); }
+.workcard button { color: var(--cyan); font-size: 12px; font-weight: 600; }
+.workcard button:hover { text-decoration: underline; }
 .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 16px; }
 .stat { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; }
 .stat b { display: block; font-size: 17px; }
@@ -311,17 +321,33 @@ function render(busyChanged) {
 }
 
 function renderWork() {
-  const root = $("tab-work"); root.replaceChildren(el("h3", "", "Recent work"));
+  const root = $("tab-work"); root.replaceChildren();
+  const head = el("div", "workhead");
+  head.append(el("h3", "", "Work"));
+  const fresh = el("button", "pill go", "New task");
+  fresh.onclick = () => { setTab("chat"); $("input").focus(); };
+  head.append(fresh); root.append(head);
+  root.append(el("h3", "", "Recent work"));
   if (!S.activity.length) {
-    root.append(el("p", "note", "Tasks started in this workspace appear here."));
-    return;
+    root.append(el("p", "note", "Tasks started here appear below. Create a task or run a saved agent."));
+  } else {
+    const list = el("div", "worklist");
+    for (const item of S.activity) {
+      const card = el("div", "workcard" + (item.state === "running" ? " running" : ""));
+      card.append(el("b", "", item.label), el("span", "workstate", item.state));
+      if (item.state === "running" && S.busy) {
+        const stop = el("button", "", "Stop"); stop.onclick = () => api("stop").catch((e) => toast(e.message)); card.append(stop);
+      } else if (item.state === "finished") {
+        const destination = ["Planning", "Editing plan", "Guiding", "Acting"].includes(item.label) ? "plan" : "chat";
+        const open = el("button", "", destination === "plan" ? "Open plan" : "Open chat");
+        open.onclick = () => setTab(destination); card.append(open);
+      }
+      list.append(card);
+    }
+    root.append(list);
+    root.append(el("p", "note", "The latest 20 states are saved locally. Interrupted work is not resumed after restart."));
   }
-  for (const item of S.activity) {
-    const card = el("div", "mem");
-    card.append(el("b", "", item.label), el("div", "meta", item.state));
-    root.append(card);
-  }
-  root.append(el("p", "note", "The latest 20 states are saved locally. Interrupted work is not resumed after restart."));
+  root.append(agentsCard());
 }
 
 function renderLive() {
@@ -542,7 +568,6 @@ function renderBrain() {
   if (S.managed) priv.append(el("div", "note", ["Set by your organization: nothing leaves this computer.", "Set by your organization: text only, no pictures.", "Your organization allows pictures."][S.egress]));
   priv.lastChild.style.textAlign = "left";
   root.append(priv);
-  root.append(agentsCard());
   root.append(companyBrainCard());
   root.append(accountsCard());
   root.append(doctorCard());
@@ -557,9 +582,9 @@ function renderBrain() {
 
 // ---- agents: create, save, use reusable helpers (D183) ----------------
 function agentsCard() {
-  const card = el("div", "mem"); card.style.marginTop = "16px";
-  const meta = el("div", "meta"); meta.append(el("span", "kind", "agents")); card.append(meta);
-  card.append(el("div", "", "Describe a job once; Orbyn drafts a reusable agent, tests it, and saves it. Running one still shows you the plan and asks before risky steps."));
+  const card = el("div", "mem"); card.style.marginBottom = "16px";
+  card.append(el("b", "", "Reusable agents"));
+  card.append(el("div", "", "Save a job you repeat. Run it here, then review its plan before any action."));
   for (const a of (S.agents || [])) {
     const row = el("div", "sheetrow");
     const use = el("button", "pill go", "Use"); use.disabled = !!S.busy;
@@ -864,7 +889,7 @@ $("pointBtn").innerHTML = ICON.point + "Point";
 $("voiceBtn").innerHTML = ICON.mic + "Voice";
 $("researchBtn").innerHTML = ICON.globe + "Research";
 $("sendBtn").innerHTML = ICON.send;
-if (["plan", "brain"].includes(location.hash.slice(1))) setTab(location.hash.slice(1));
+if (["plan", "brain", "work"].includes(location.hash.slice(1))) setTab(location.hash.slice(1));
 poll(true);
 </script>
 </body>

@@ -40,9 +40,10 @@ release acceptance is still pending.
 - **Voice dictation** — speak text with spoken punctuation and formatting
   commands; it saves to a file or the Brain, and never types into an app on its
   own (that stays behind the Act gate).
-- **Recent work** — the workspace's Work tab keeps the latest 20 generic task
-  states locally and marks unfinished work interrupted after restart. It does
-  not schedule or resume tasks on its own.
+- **Work hub** — the workspace's Work tab keeps the latest 20 generic task
+  states locally, links back to Chat or Plan, and puts reusable agents beside
+  the work they start. Unfinished work is marked interrupted after restart;
+  Orbyn does not schedule or resume it on its own.
 - **Signed plugins** — bundle verification and a read-only catalog exist.
   Publisher identity and signed revocation for the marketplace still have
   release gates.
