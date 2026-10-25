@@ -737,6 +737,7 @@ boundary is untouched (every slice verified against
 | Work hub | Work card board previews the current run, latest answer and plan with direct navigation/Stop; the latest 20 locally saved generic task states and reusable agents remain below it; stale running work becomes interrupted on restart | workspace app |
 | Floating workspace | Edge app-mode window opens near the upper center with native drag/resize; `--dock` preserves the previous right-side position | workspace app |
 | Background research | Explicit read-only research on the existing single worker; local result inbox, Stop, interrupted-on-restart; no automatic retry | workspace app |
+| Research routines | Hourly/daily/weekly read-only research on the same worker; local schedules, pause/resume/run now/delete, one missed run after wake, explicit Quit | workspace app |
 
 Critic/Evaluation (`/critique`) reviews the current plan for gaps and risks
 before Act — advisory, read-only.

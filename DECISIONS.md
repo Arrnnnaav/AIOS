@@ -7845,8 +7845,21 @@ The bounded question and answer are stored only in a local per-topic inbox,
 separate from generic activity history. A crash changes a running entry to
 interrupted on next open; there is no automatic retry or resumed execution.
 The question is scrubbed before search/model egress and local persistence.
-Routines may later schedule only this same read-only job path; they cannot
-inherit Act authority. Evidence: `docs/evidence/background-research-2026-10-26.md`.
+The next addendum extends only this read-only job path; it cannot inherit Act
+authority. Evidence: `docs/evidence/background-research-2026-10-26.md`.
+
+### D178 addendum — Scheduled research routines
+
+Date: 26 October 2026. Owner asked for HeyClicky-style routines. A routine is
+an explicit hourly, daily or weekly schedule for the same read-only research
+job. It stays local, can be paused, resumed, run now or deleted, and keeps the
+app process alive after its window closes. It runs while the PC is awake;
+after sleep or downtime, only one missed occurrence starts. Each start moves
+the next due time forward from the actual start, so there is no catch-up
+burst or automatic retry of a failed job. Quit ends the resident process.
+The question is scrubbed before local storage and before web/model egress.
+No Act, Teach, agent, file-write or connector authority is scheduled.
+Evidence: `docs/evidence/research-routines-2026-10-26.md`.
 
 ## D179 — Jev across the product, and redacted pictures for Teach
 

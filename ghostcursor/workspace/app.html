@@ -363,6 +363,7 @@ function renderWork() {
   head.append(fresh); root.append(head);
   const stage = workStage(); root.append(stage);
   root.append(backgroundJobs());
+  root.append(routinesCard());
   root.append(el("h3", "", "Recent work"));
   if (!S.activity.length) {
     root.append(el("p", "note", "Tasks started here appear below. Create a task or run a saved agent."));
@@ -448,6 +449,42 @@ function openJobResult(job) {
   const close = el("button", "secondary", "Close"); close.onclick = closeSheet;
   sheet.replaceChildren(heading, el("p", "", job.question), el("div", "jobanswer", job.answer), close);
   $("scrim").classList.add("open"); close.focus();
+}
+
+function routinesCard() {
+  const wrap = el("div"); const head = el("div", "workhead");
+  head.append(el("h3", "", "Routines"));
+  const add = el("button", "secondary", "New routine"); add.dataset.workFocus = "routine-add"; add.onclick = openRoutine;
+  head.append(add); wrap.append(head);
+  wrap.append(el("p", "note", "Scheduled research runs while Orbyn and this PC are awake. Closing the window keeps enabled routines active. One missed run starts after wake; no catch-up burst or automatic retry."));
+  for (const item of S.routines) {
+    const card = el("article", "jobcard");
+    const meta = el("div", "meta"); meta.append(el("b", "", item.cadence + " research"), el("span", "", item.enabled ? "Next " + new Date(item.next_due * 1000).toLocaleString() : "Paused"));
+    card.append(meta, el("p", "", item.question));
+    const row = el("div", "sheetrow");
+    const run = el("button", "secondary", "Run now"); run.disabled = !!S.busy; run.onclick = () => act("routine_run", { id: item.id }, "Research started"); row.append(run);
+    const toggle = el("button", "secondary", item.enabled ? "Pause" : "Resume"); toggle.onclick = () => act(item.enabled ? "routine_pause" : "routine_resume", { id: item.id }); row.append(toggle);
+    const remove = el("button", "danger", "Delete"); remove.style.marginLeft = "auto"; remove.onclick = () => { if (confirm("Delete this routine? Saved results stay in Background jobs.")) act("routine_delete", { id: item.id }); }; row.append(remove);
+    card.append(row); wrap.append(card);
+  }
+  if (S.routines.length) {
+    const quit = el("button", "secondary", "Quit Orbyn"); quit.onclick = async () => { if (confirm("Quit Orbyn and stop scheduled routines until you reopen it?")) { try { await api("quit"); window.close(); } catch (e) { toast(e.message); } } }; wrap.append(quit);
+  }
+  return wrap;
+}
+
+function openRoutine() {
+  sheetOpener = document.activeElement;
+  const sheet = $("sheet"); const heading = el("h3", "", "Schedule research"); heading.id = "routineTitle";
+  sheet.setAttribute("aria-labelledby", heading.id);
+  sheet.replaceChildren(heading, el("p", "", "At each due time, Orbyn sends this question to web search and your configured model and saves the result locally. Orbyn stays running after you close this window."));
+  const question = el("textarea"); question.maxLength = 500; question.rows = 3; question.placeholder = "What should Orbyn research?"; question.setAttribute("aria-label", "Research question");
+  const cadence = el("select"); cadence.setAttribute("aria-label", "Schedule");
+  for (const name of ["hourly", "daily", "weekly"]) { const option = el("option", "", name[0].toUpperCase() + name.slice(1)); option.value = name; cadence.append(option); }
+  const row = el("div", "sheetrow"); const close = el("button", "secondary", "Close"); close.onclick = closeSheet;
+  const save = el("button", "pill go", "Create routine"); save.style.marginLeft = "auto";
+  save.onclick = async () => { if (!question.value.trim()) return toast("Enter a research question."); save.disabled = true; try { await api("routine_create", { question: question.value, cadence: cadence.value }); closeSheet(); await poll(true); } catch (e) { toast(e.message); } finally { save.disabled = false; } };
+  row.append(close, save); sheet.append(question, cadence, row); $("scrim").classList.add("open"); question.focus();
 }
 
 function workStage() {

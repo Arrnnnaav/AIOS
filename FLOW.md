@@ -217,10 +217,19 @@ current session continues with in-memory history. A separate per-topic
 `.jobs.json` inbox stores explicitly started read-only research questions,
 terminal state, and bounded result locally. It uses the same single workspace
 worker, claim lock, provider policy, and Stop event as foreground work. The
+background call suppresses Brief turns, research history and trace writes; it
+scrubs the returned answer before writing the inbox. Stop reaches search-phase
+checks, both Jev calls and the System Two gateway. The
 server stays alive while that worker is busy even if the page closes; after a
 restart, a stale running entry becomes interrupted with no retry. It cannot
 launch Teach, Act, an agent, or a connector. Each topic file has one intended writer;
 concurrent workspace app processes for the same topic are not coordinated.
+The per-topic `.routines.json` file stores hourly, daily, or weekly research
+questions and next-due times. A due routine enters the same single-worker
+research job path; an idle tick coalesces missed intervals into one run and
+reschedules from the actual start. Enabled routines keep the app process alive
+after its window closes; Quit stops the process and active job. Pausing a
+routine prevents future starts, and restart never retries an interrupted job.
 The page places reusable agent creation and launch in Work, beside recent
 status cards. Those cards route to the existing Chat or Plan view; an active
 card's Stop control uses the same `stop` API as the live bar. Card links only

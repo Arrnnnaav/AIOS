@@ -561,14 +561,16 @@ class Workspace:
             kept.append((kind, text, confidence))
         return suggestion, tuple(kept)
 
-    def research(self, question: str, **kw) -> str:
-        """RESEARCH: a cited answer, appended to the brief with its digest."""
+    def research(self, question: str, *, record: bool = True, **kw) -> str:
+        """RESEARCH: a cited answer; foreground work enters the brief."""
 
-        self._say("user", f"[research] {question}")
-        graph, trace = research(question, self.gateway, **kw)
-        self.research_graphs.append(graph)
+        if record:
+            self._say("user", f"[research] {question}")
+        graph, trace = research(question, self.gateway, save_trace=record, **kw)
         shown = render(graph)
-        self._say("assistant", f"{shown}\n(evidence {graph.digest()[:12]})")
+        if record:
+            self.research_graphs.append(graph)
+            self._say("assistant", f"{shown}\n(evidence {graph.digest()[:12]})")
         return f"{shown}\n({trace.privacy})"
 
     #: A clipboard capture longer than this is truncated into the candidate.

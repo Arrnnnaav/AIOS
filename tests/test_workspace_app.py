@@ -162,7 +162,8 @@ def test_background_research_finishes_and_keeps_a_local_result(served):
     app, port = served
     started, release = threading.Event(), threading.Event()
 
-    def research(question, *, cancelled):
+    def research(question, *, cancelled, record):
+        assert record is False
         started.set()
         assert release.wait(2)
         assert not cancelled()
@@ -188,7 +189,8 @@ def test_background_stop_and_secret_scrub_before_research(served):
     started, release = threading.Event(), threading.Event()
     seen = []
 
-    def research(question, *, cancelled):
+    def research(question, *, cancelled, record):
+        assert record is False
         seen.append(question)
         started.set()
         assert release.wait(2)
@@ -209,6 +211,31 @@ def test_background_stop_and_secret_scrub_before_research(served):
     job = _wait_for_job(app, "stopped")
     assert job["answer"] == ""
     assert secret not in app.job_path.read_text(encoding="utf-8")
+
+
+def test_background_answer_is_scrubbed_and_never_enters_brief(served, monkeypatch):
+    from types import SimpleNamespace
+    from ghostcursor.brief import brief_path
+    from ghostcursor.workspace import session
+
+    app, port = served
+    secret = "sk-abcdefghijklmnop"
+    seen = []
+
+    def fake_research(question, gateway, **kw):
+        seen.append(kw)
+        return object(), SimpleNamespace(privacy="local test")
+
+    monkeypatch.setattr(session, "research", fake_research)
+    monkeypatch.setattr(session, "render", lambda graph: "Result " + secret)
+    status, _ = call(port, "/api/job_start", {"question": "Safe question"})
+    assert status == 200
+    job = _wait_for_job(app, "finished")
+    assert secret not in job["answer"]
+    assert secret not in app.job_path.read_text(encoding="utf-8")
+    assert not brief_path(app.ws.root, app.ws.topic).exists()
+    assert app.ws.research_graphs == []
+    assert seen[0]["save_trace"] is False
 
 
 def test_stale_background_job_becomes_interrupted(tmp_path):
@@ -246,6 +273,62 @@ def test_malformed_job_inbox_stays_untouched(tmp_path):
         assert path.read_text(encoding="utf-8") == '[{"id":"bad","question":"x"}]'
     finally:
         reopened.close()
+
+
+def test_routine_runs_once_after_sleep_and_can_pause_resume_delete(served):
+    app, port = served
+    now = [100.0]
+    app.clock = lambda: now[0]
+    seen = []
+    app.ws.research = lambda question, *, cancelled, record: seen.append(question) or "Cited answer [1]"
+    secret = "sk-abcdefghijklmnop"
+    status, payload = call(port, "/api/routine_create", {"question": "Check " + secret, "cadence": "hourly"})
+    assert status == 200
+    rid = json.loads(payload)["id"]
+    assert app.has_enabled_routines()
+    assert secret not in app.routine_path.read_text(encoding="utf-8")
+    app.tick_routines()
+    assert not seen
+    now[0] += 3600 * 10  # missed intervals coalesce into one due run
+    app.tick_routines()
+    _wait_for_job(app, "finished")
+    assert len(seen) == 1 and secret not in seen[0]
+    app.tick_routines()
+    assert len(seen) == 1
+    assert app.state()["routines"][0]["next_due"] == now[0] + 3600
+    assert call(port, "/api/routine_pause", {"id": rid})[0] == 200
+    assert not app.has_enabled_routines()
+    now[0] += 3600 * 10
+    app.tick_routines()
+    assert len(seen) == 1
+    assert call(port, "/api/routine_resume", {"id": rid})[0] == 200
+    assert app.state()["routines"][0]["next_due"] == now[0] + 3600
+    assert call(port, "/api/routine_delete", {"id": rid})[0] == 200
+    assert not app.has_enabled_routines()
+    assert app.state()["routines"] == []
+
+
+def test_routines_survive_restart_and_malformed_file_is_preserved(tmp_path):
+    root = tmp_path / "briefs"
+    make = lambda: Workspace("trip", Gateway(), Brain(tmp_path / "kb.sqlite"), root=root)
+    first = App("trip", make_workspace=make, clock=lambda: 100)
+    first.handle("routine_create", {"question": "Find updates", "cadence": "daily"})
+    path = first.routine_path
+    first.close()
+    second = App("trip", make_workspace=make, clock=lambda: 200)
+    try:
+        assert second.has_enabled_routines()
+        assert second.state()["routines"][0]["next_due"] == 100 + 86400
+    finally:
+        second.close()
+    path.write_text('{"invalid":true}', encoding="utf-8")
+    third = App("trip", make_workspace=make)
+    try:
+        assert third.routine_path is None
+        assert third.state()["routines"] == []
+        assert path.read_text(encoding="utf-8") == '{"invalid":true}'
+    finally:
+        third.close()
 
 
 def test_single_instance_guard_detects_a_live_instance_only(tmp_path, monkeypatch):

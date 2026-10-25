@@ -18,6 +18,7 @@ import ghostcursor.overlay.dpi  # noqa: F401  (rule 4: before any overlay)
 
 import hmac
 import json
+import math
 import os
 import secrets
 import shutil
@@ -73,6 +74,7 @@ ACTIVITY_LABELS = frozenset(
 ACTIVITY_STATES = frozenset(
     {"running", "finished", "stopped", "failed", "interrupted"}
 )
+ROUTINE_SECONDS = {"hourly": 3600, "daily": 86400, "weekly": 604800}
 
 
 class App:
@@ -107,6 +109,7 @@ class App:
             self._save_activity()
         self._job_lock = threading.RLock()
         self.background_id: str | None = None
+        self.quit_requested = threading.Event()
         self.job_path = brief_path(self.ws.root, self.ws.topic).with_suffix(".jobs.json")
         self.background_jobs = self._load_background_jobs()
         if any(row["state"] == "running" for row in self.background_jobs):
@@ -114,6 +117,8 @@ class App:
                 if row["state"] == "running":
                     row["state"], row["ended"] = "interrupted", self.clock()
             self._save_background_jobs()
+        self.routine_path = brief_path(self.ws.root, self.ws.topic).with_suffix(".routines.json")
+        self.routines = self._load_routines()
         self.jobs.submit(self._refresh).result()
 
     # --- worker-side ------------------------------------------------------------
@@ -224,6 +229,76 @@ class App:
                 except OSError:
                     pass
 
+    def _load_routines(self) -> list[dict]:
+        try:
+            if self.routine_path.stat().st_size > 64 * 1024:
+                raise ValueError("routine file too large")
+            rows = json.loads(self.routine_path.read_text(encoding="utf-8"))
+            if not isinstance(rows, list) or len(rows) > 20 or any(
+                not isinstance(row, dict)
+                or set(row) != {"id", "question", "cadence", "next_due", "enabled"}
+                or not isinstance(row["id"], str)
+                or len(row["id"]) != 16
+                or any(c not in "0123456789abcdef" for c in row["id"])
+                or not isinstance(row["question"], str)
+                or not 1 <= len(row["question"]) <= 500
+                or row["cadence"] not in ROUTINE_SECONDS
+                or not isinstance(row["next_due"], (int, float))
+                or not math.isfinite(row["next_due"])
+                or not isinstance(row["enabled"], bool)
+                for row in rows
+            ):
+                raise ValueError("invalid routine file")
+            return rows
+        except FileNotFoundError:
+            return []
+        except (OSError, ValueError, TypeError, UnicodeError, RecursionError):
+            self.routine_path = None
+            self.say("Routines could not be read; this session stays in memory.")
+            return []
+
+    def _save_routines(self) -> None:
+        if self.routine_path is None:
+            return
+        partial = None
+        try:
+            self.routine_path.parent.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", dir=self.routine_path.parent,
+                prefix=self.routine_path.name + ".", suffix=".tmp", delete=False,
+            ) as output:
+                partial = Path(output.name)
+                json.dump(self.routines, output)
+            os.replace(partial, self.routine_path)
+        except OSError:
+            self.routine_path = None
+            self.say("Routines could not be saved; this session stays in memory.")
+        finally:
+            if partial is not None:
+                try:
+                    partial.unlink(missing_ok=True)
+                except OSError:
+                    pass
+
+    def has_enabled_routines(self) -> bool:
+        with self._job_lock:
+            return any(row["enabled"] for row in self.routines)
+
+    def tick_routines(self) -> None:
+        if self.busy or self.quit_requested.is_set():
+            return
+        now = self.clock()
+        with self._job_lock:
+            due = next((row for row in self.routines if row["enabled"] and row["next_due"] <= now), None)
+            if due is None:
+                return
+            try:
+                self.start_research_job(due["question"], routine=due["id"])
+            except ValueError:  # another request claimed the worker
+                return
+            due["next_due"] = now + ROUTINE_SECONDS[due["cadence"]]
+            self._save_routines()
+
     def _refresh(self) -> None:
         brain = self.ws.brain
         self.memories = [
@@ -299,7 +374,9 @@ class App:
             "created": self.clock(), "ended": None, "routine": routine,
         }
         future, row = self._begin_run(
-            "Researching", lambda: self.ws.research(question, cancelled=self.stop.is_set)
+            "Researching", lambda: self.ws.research(
+                question, cancelled=self.stop.is_set, record=False
+            )
         )
         self.background_id = jid
         with self._job_lock:
@@ -364,6 +441,7 @@ class App:
         proposal = ws.proposal
         with self._job_lock:
             background_jobs = [dict(row) for row in reversed(self.background_jobs)]
+            routines = [dict(row) for row in self.routines]
         return {
             "topic": ws.topic,
             "goal": ws.goal,
@@ -394,6 +472,7 @@ class App:
             "busy": self.busy,
             "activity": list(reversed(self.activity)),
             "jobs": background_jobs,
+            "routines": routines,
             "background_id": self.background_id,
             "status": list(self.status),
             "research": len(ws.research_graphs),
@@ -435,6 +514,45 @@ class App:
                     raise ValueError("no such finished job")
                 self.background_jobs.remove(row)
                 self._save_background_jobs()
+            return {}
+        if action == "routine_create":
+            question, cadence = body.get("question"), body.get("cadence")
+            if not isinstance(question, str) or cadence not in ROUTINE_SECONDS:
+                raise ValueError("choose a research question and schedule")
+            question = " ".join(question.split())
+            if not question or len(question) > 500 or "\0" in question:
+                raise ValueError("ask a research question under 500 characters")
+            question = redact.scrub(question)[0][:500]
+            with self._job_lock:
+                if len(self.routines) >= 20:
+                    raise ValueError("this workspace already has 20 routines")
+                item = {
+                    "id": secrets.token_hex(8), "question": question,
+                    "cadence": cadence, "next_due": self.clock() + ROUTINE_SECONDS[cadence],
+                    "enabled": True,
+                }
+                self.routines.append(item)
+                self._save_routines()
+            return {"id": item["id"]}
+        if action in ("routine_pause", "routine_resume", "routine_delete", "routine_run"):
+            with self._job_lock:
+                item = next((row for row in self.routines if row["id"] == body.get("id")), None)
+                if item is None:
+                    raise ValueError("no such routine")
+                if action == "routine_delete":
+                    self.routines.remove(item)
+                elif action == "routine_pause":
+                    item["enabled"] = False
+                elif action == "routine_resume":
+                    item["enabled"] = True
+                    item["next_due"] = self.clock() + ROUTINE_SECONDS[item["cadence"]]
+                else:
+                    return {"id": self.start_research_job(item["question"], routine=item["id"])}
+                self._save_routines()
+            return {}
+        if action == "quit":
+            self.quit_requested.set()
+            self.stop.set()
             return {}
         if action == "vision":
             # The user's own switch (D179); read when the next Teach starts.
@@ -1126,9 +1244,11 @@ def main(argv: list[str] | None = None) -> int:
             + " to talk to Orbyn."
         )
     try:
-        # The page polls while it is open; closing it ends the app. A long
-        # job (Teach) keeps it alive until the job ends.
-        while app.busy or time.monotonic() - app.seen < QUIT_AFTER_S:
+        # Enabled routines keep the process alive after the window closes.
+        while not app.quit_requested.is_set() and (
+            app.busy or app.has_enabled_routines() or time.monotonic() - app.seen < QUIT_AFTER_S
+        ):
+            app.tick_routines()
             time.sleep(1)
     except KeyboardInterrupt:
         pass

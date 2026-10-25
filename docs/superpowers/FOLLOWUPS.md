@@ -1476,9 +1476,9 @@ to confirm where the cost actually is before changing anything else.
 
 ## D178 workspace app follow-ups
 
-- Work has an explicitly started, read-only research job with a local result
-  inbox and cooperative Stop. Timed routines, other job types, retries, and
-  side-effecting connectors still need their own lifecycle and authority
+- Work has read-only background research and timed hourly/daily/weekly research
+  routines on the same worker. Other job types, retries, sleeping-PC service,
+  and side-effecting connectors still need their own lifecycle and authority
   design; generic activity history does not imply them.
 - Work history is a single-writer per-topic file. If multiple app processes
   for one topic become supported, add coordinated persistence and live-run

@@ -1,0 +1,9 @@
+# Research routines slice
+
+26 October 2026. A per-topic local `.routines.json` file stores explicit hourly, daily and weekly research questions, an opaque id, enabled state and next due time. The main app loop ticks while the process is awake; an enabled routine keeps that process resident after the window closes. Due work uses the same single-worker, scrubbed, cancellable research path and local result inbox as an explicitly started background job. No schedule can invoke Teach, Act, a saved agent, file write or connector.
+
+An injected-clock test advanced ten hourly intervals and observed one run, then a next-due time one hour after the actual start. It also checked pause, resume, delete, secret scrubbing before disk and research, and persistence across restart. A malformed routine file was left untouched. Focused `tests/test_workspace_app.py` passed 41 tests. The extracted page script passed `node --check`. No real provider call or sleeping-PC wake trial was made.
+
+D018 privacy mutation: replacing the routine-create `redact.scrub()` call with raw question storage made `test_routine_runs_once_after_sleep_and_can_pause_resume_delete` fail because a provider-key string was present in `.routines.json`. Restoring the call made that test pass. The mutant was not committed.
+
+The full hermetic lane before the background-job review repair passed 3630 tests with 85 deselected in 202.81 s (`.tmp\pytest-routines-full.log`, local ignored output). After the repair and staging the signed evidence bytes, the final lane passed 3633 tests with 85 deselected in 200.02 s (`py -3.12 -m pytest tests -m "not interactive and not pixel and not hung" --basetemp=.tmp\pytest-hermetic-routine-staged -p no:cacheprovider -q`; `.tmp\pytest-routine-staged-full.log`, local ignored output).

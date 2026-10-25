@@ -354,7 +354,7 @@ RERANK_KEEP = 6
 RERANK_FLOOR = 0.5  # P(relevant) below this is dropped, unless all are below
 
 
-def rerank_passages(graph: EvidenceGraph, gateway) -> EvidenceGraph:
+def rerank_passages(graph: EvidenceGraph, gateway, *, cancelled=lambda: False) -> EvidenceGraph:
     """Jev scores each passage's relevance to the question (yes/no per passage,
     one request); keep the best, drop the irrelevant, order by relevance before
     System Two. Raises ProviderError when Jev cannot answer (the caller then
@@ -372,6 +372,7 @@ def rerank_passages(graph: EvidenceGraph, gateway) -> EvidenceGraph:
             )
             for p in graph.passages
         },
+        cancelled=cancelled,
     )
     scored = [
         (verdicts[p.pid].probabilities.get("yes", 0.0), p) for p in graph.passages
@@ -386,7 +387,7 @@ def rerank_passages(graph: EvidenceGraph, gateway) -> EvidenceGraph:
     return EvidenceGraph(graph.question, sources, passages)
 
 
-def check_claims(graph: EvidenceGraph, gateway) -> tuple[Claim, ...]:
+def check_claims(graph: EvidenceGraph, gateway, *, cancelled=lambda: False) -> tuple[Claim, ...]:
     """Jev reads each supported claim against the passages it cites, all in
     one request. A confident 'contradicts' or 'says nothing' lowers the
     claim; Jev never raises one. Raises ProviderError when Jev cannot answer."""
@@ -419,6 +420,7 @@ def check_claims(graph: EvidenceGraph, gateway) -> tuple[Claim, ...]:
             )
             for n, _c in checked
         },
+        cancelled=cancelled,
     )
     claims = list(graph.claims)
     for n, c in checked:
@@ -468,6 +470,7 @@ def research(
     key_lookup=None,
     context: dict | None = None,
     trace_path: Path | None = None,
+    save_trace: bool = True,
     cancelled=lambda: False,
 ) -> tuple[EvidenceGraph, ResearchTrace]:
     """Search, build the graph, ask for cited claims, validate. Never raises
@@ -505,7 +508,7 @@ def research(
     reranked = False
     if graph.passages and hasattr(gateway, "judge"):
         try:
-            graph = rerank_passages(graph, gateway)
+            graph = rerank_passages(graph, gateway, cancelled=cancelled)
             reranked = True
         except ProviderError as exc:  # the rerank is extra; keep the full graph
             failures.append(f"rerank: {exc.kind.value}")
@@ -537,7 +540,7 @@ def research(
                     question,
                     graph.sources,
                     graph.passages,
-                    check_claims(graph, gateway),
+                    check_claims(graph, gateway, cancelled=cancelled),
                 )
                 model += "+jev-check"
             except ProviderError as exc:  # the check is extra; its absence is not
@@ -562,13 +565,14 @@ def research(
         timings_ms=timings,
         failures=tuple(failures),
     )
-    try:
-        path = trace_path or _trace_path()
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("a", encoding="utf-8", newline="\n") as handle:
-            handle.write(trace.as_json() + "\n")
-    except OSError:
-        pass
+    if save_trace:
+        try:
+            path = trace_path or _trace_path()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open("a", encoding="utf-8", newline="\n") as handle:
+                handle.write(trace.as_json() + "\n")
+        except OSError:
+            pass
     return graph, trace
 
 

@@ -43,11 +43,14 @@ release acceptance is still pending.
 - **Work hub** — a card board opens the current run, latest answer or current
   plan, with keyboard navigation and a Stop control for live work. The tab
   also keeps the latest 20 generic task states locally and holds reusable
-  agents. Unfinished work is marked interrupted after restart; Orbyn does not
-  schedule or resume it on its own.
+  agents. Unfinished work is marked interrupted after restart.
 - **Background research** — start cited research in Work, close the window,
   and return to a locally saved answer. One workspace job runs at a time;
   Stop cancels it cooperatively. A crash marks it interrupted without retry.
+- **Routines** — schedule hourly, daily or weekly research from Work. Enabled
+  routines run while Orbyn and the PC are awake, even with the window closed;
+  pause, resume, run now, delete or Quit Orbyn there. A missed time runs once
+  after wake, with no catch-up burst. Results land in the local job inbox.
 - **Ask a file** — choose a small text or code file in Work and ask one
   question about it. The answer stays in that sheet; the file and question are
   not added to the Brief or Brain. Text may go to the configured model provider.
@@ -121,8 +124,8 @@ commands are in `CLAUDE.md`.
 - Orbyn is becoming an app-agnostic, model-driven harness; PowerPoint is the
   test fixture for that path, not the product's limit.
 - Reusable agents and `/crew` are foreground, sequential workspace operations.
-  Work can continue a read-only research job after the window closes; it does
-  not yet schedule routines or run autonomous desktop actions.
+  Work can continue a read-only research job or scheduled routine after the
+  window closes. Neither can run desktop actions.
 - Deferred: a signed installer and auto-update, tray/startup automation, the
   VLM pointing tier, and broader counted Act acceptance across applications.
 - This is pre-1.0 software under active development. Measured results and their

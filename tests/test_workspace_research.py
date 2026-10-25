@@ -86,6 +86,51 @@ def test_cancel_after_search_refuses_the_model_call(tmp_path):
     assert not (tmp_path / "trace.jsonl").exists()
 
 
+def test_stop_during_jev_rerank_reaches_gateway(tmp_path):
+    stopped = False
+
+    class Gateway:
+        def judge(self, envelope, questions, *, cancelled):
+            nonlocal stopped
+            assert envelope.task == "rerank" and not cancelled()
+            stopped = True
+            assert cancelled()
+            raise CancelledError()
+
+    with pytest.raises(CancelledError):
+        research(
+            "what is sqlite", Gateway(), search=lambda _: HITS,
+            key_lookup=lambda _: None, cancelled=lambda: stopped,
+            trace_path=tmp_path / "trace.jsonl",
+        )
+    assert not (tmp_path / "trace.jsonl").exists()
+
+
+def test_stop_during_jev_claim_check_reaches_gateway(tmp_path):
+    stopped = False
+
+    class Gateway:
+        def complete(self, envelope, system, schema, parse, **kw):
+            return parse(json.dumps({"claims": [{
+                "text": "SQLite is a C library", "status": "supported", "evidence": ["p1"],
+            }]}))
+
+        def judge(self, envelope, questions, *, cancelled):
+            nonlocal stopped
+            assert envelope.task == "citation_check" and not cancelled()
+            stopped = True
+            assert cancelled()
+            raise CancelledError()
+
+    with pytest.raises(CancelledError):
+        research(
+            "what is sqlite", Gateway(), search=lambda _: HITS[:1],
+            key_lookup=lambda _: None, cancelled=lambda: stopped,
+            trace_path=tmp_path / "trace.jsonl",
+        )
+    assert not (tmp_path / "trace.jsonl").exists()
+
+
 def test_a_cited_answer_builds_a_valid_graph_and_a_trace_without_text(tmp_path):
     answer = {
         "claims": [
