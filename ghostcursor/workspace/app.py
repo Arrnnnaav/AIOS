@@ -1,6 +1,6 @@
-"""The workspace app (D178):  py -3.12 -m ghostcursor.workspace.app <topic>
+"""The workspace app (D178):  py -3.12 -m ghostcursor.workspace.app [--dock] <topic>
 
-The console workspace (D173) as a docked window: a local page served on
+The console workspace (D173) as a movable floating window: a local page served on
 127.0.0.1 and shown by Edge in app mode, so no new dependency. The page is a
 view; everything it does goes through the same ``Workspace`` the console uses.
 
@@ -806,8 +806,36 @@ def make_server(app: App, token: str, port: int = 0) -> ThreadingHTTPServer:
     return ThreadingHTTPServer(("127.0.0.1", port), Handler)
 
 
-def open_window(url: str) -> None:
-    """Edge in app mode, docked right like a sidebar; any browser otherwise."""
+def _edge_app_windows() -> set[int]:
+    import win32api
+    import win32con
+    import win32gui
+    import win32process
+
+    found = set()
+
+    def collect(hwnd, _):
+        if win32gui.GetWindowText(hwnd) != APP_TITLE:
+            return
+        pid = win32process.GetWindowThreadProcessId(hwnd)[1]
+        try:
+            process = win32api.OpenProcess(
+                win32con.PROCESS_QUERY_INFORMATION | win32con.PROCESS_VM_READ, False, pid
+            )
+            try:
+                if Path(win32process.GetModuleFileNameEx(process, 0)).resolve() == EDGE.resolve():
+                    found.add(hwnd)
+            finally:
+                process.Close()
+        except OSError:
+            pass
+
+    win32gui.EnumWindows(collect, None)
+    return found
+
+
+def open_window(url: str, *, docked: bool = False) -> None:
+    """Edge app window with native drag and resize; any browser otherwise."""
 
     if not EDGE.exists():
         import webbrowser
@@ -815,17 +843,23 @@ def open_window(url: str) -> None:
         webbrowser.open(url)
         return
     import win32api
+    import win32gui
 
-    width = 460
+    width, height = (460, 860) if docked else (640, 720)
     screen_w = win32api.GetSystemMetrics(0)
+    screen_h = win32api.GetSystemMetrics(1)
+    left = max(0, screen_w - width - 16) if docked else max(0, (screen_w - width) // 2)
+    top = 24 if docked else max(0, (screen_h - height) // 4)
     base = os.environ.get("LOCALAPPDATA") or str(Path.home())
+    before = _edge_app_windows()
     subprocess.Popen(
         [
             str(EDGE),
+            "--new-window",
             f"--app={url}",
             f"--user-data-dir={Path(base) / 'GhostCursor' / 'app-profile'}",
-            f"--window-size={width},860",
-            f"--window-position={max(0, screen_w - width - 16)},24",
+            f"--window-size={width},{height}",
+            f"--window-position={left},{top}",
             "--no-first-run",
             "--no-default-browser-check",
             "--disable-features=Translate",
@@ -833,6 +867,13 @@ def open_window(url: str) -> None:
             "--disable-renderer-backgrounding",
         ]
     )
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        new = _edge_app_windows() - before
+        if new:
+            win32gui.MoveWindow(next(iter(new)), left, top, width, height, True)
+            break
+        time.sleep(0.05)
 
 
 def _lock_path() -> Path:
@@ -916,12 +957,15 @@ def main(argv: list[str] | None = None) -> int:
     if argv and argv[0] in ("--help", "-h"):
         print(__doc__)
         return 0
+    docked = bool(argv and argv[0] == "--dock")
+    if docked:
+        argv = argv[1:]
     if len(argv) > 1:  # at most one topic; no arg opens the default workspace
         print(__doc__)
         return 2
     existing = _live_instance_url()
     if existing is not None:  # already running: re-open its window, don't double-start
-        open_window(existing)
+        open_window(existing, docked=docked)
         return 0
     _ensure_ollama()  # start the local model if it is installed but not running
     app = App(argv[0] if argv else "workspace")
@@ -930,7 +974,7 @@ def main(argv: list[str] | None = None) -> int:
     threading.Thread(target=server.serve_forever, daemon=True).start()
     url = f"http://127.0.0.1:{server.server_port}/?t={token}"
     _write_lock(url)
-    open_window(url)
+    open_window(url, docked=docked)
     listener = None
     wake, hotkey = settings.listening()
     if wake or hotkey:

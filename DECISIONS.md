@@ -7825,6 +7825,16 @@ token, window index, erase confirmation). Not run live with a model or on a
 real Teach session yet; screenshots of Chat, Plan and the live bar taken
 from a seeded local server (Brain tab not captured).
 
+### D178 addendum — Floating workspace window
+
+Date: 26 October 2026. Owner asked for HeyClicky-style floating movement. The
+workspace opens as a movable Edge app window near the upper center by default;
+`--dock` retains the right-side layout. Edge reused old saved bounds despite
+launch flags, so the launcher positions only a newly observed Edge window
+named Orbyn. This is window geometry, not screen targeting or input authority.
+The observed launch and test record are in
+`docs/evidence/floating-workspace-2026-10-26.md`.
+
 ## D179 — Jev across the product, and redacted pictures for Teach
 
 Date: 16 October 2026. Owner decision: let Jev see the screen, with the best

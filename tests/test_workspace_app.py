@@ -117,6 +117,32 @@ def test_version_and_help_flags_do_not_start_a_server(capsys):
     assert appmod.main(["-h"]) == 0  # help prints, no server
 
 
+def test_window_launch_supports_floating_and_docked_geometry(tmp_path, monkeypatch):
+    import win32api
+    import win32gui
+
+    edge = tmp_path / "msedge.exe"
+    edge.touch()
+    launches = []
+    moves = []
+    monkeypatch.setattr(appmod, "EDGE", edge)
+    monkeypatch.setattr(win32api, "GetSystemMetrics", lambda axis: (1920, 1080)[axis])
+    monkeypatch.setattr(appmod.subprocess, "Popen", lambda args: launches.append(args))
+    windows = iter(({5}, {5, 6}, {5, 6}, {5, 6, 7}))
+    monkeypatch.setattr(appmod, "_edge_app_windows", lambda: next(windows))
+    monkeypatch.setattr(win32gui, "MoveWindow", lambda *args: moves.append(args))
+
+    appmod.open_window("http://127.0.0.1:1/?t=test")
+    assert "--window-size=640,720" in launches[-1]
+    assert "--window-position=640,90" in launches[-1]
+    assert moves[-1] == (6, 640, 90, 640, 720, True)
+
+    appmod.open_window("http://127.0.0.1:1/?t=test", docked=True)
+    assert "--window-size=460,860" in launches[-1]
+    assert "--window-position=1444,24" in launches[-1]
+    assert moves[-1] == (7, 1444, 24, 460, 860, True)
+
+
 def test_single_instance_guard_detects_a_live_instance_only(tmp_path, monkeypatch):
     """Double-clicking Orbyn while it runs must re-open its window, not start a
     second server behind a locked Edge profile (which showed nothing). The guard

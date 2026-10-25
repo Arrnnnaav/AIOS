@@ -8,7 +8,8 @@ exposed off-device. A model is used only when you have switched on a BYOK key
 ## The desktop app (GUI)
 
 - **Double-click `Orbyn.cmd`** at the repo root — opens the workspace in a
-  docked Edge app-mode window (falls back to your browser if Edge is absent).
+  floating, draggable Edge app-mode window (falls back to your browser if Edge
+  is absent). Add `--dock` before the topic to keep the right-side layout.
 - Or: `py -3.12 -m ghostcursor.workspace.app` (no argument opens the default
   workspace; pass a topic to name one: `... app "q3 review"`).
 

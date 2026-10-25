@@ -200,7 +200,9 @@ the bottom shows exactly what's being built/modified right now.
 ## Workspace app (current)
 
 `ghostcursor.workspace.app.App` serves the token-protected Chat, Plan, Brain
-and Work page on loopback. Its one worker owns `Workspace` and Brain; request
+and Work page on loopback. Edge app mode opens a movable, resizable floating
+window by default; `--dock` keeps the previous right-side position. This
+changes window geometry only, not input or execution authority. Its one worker owns `Workspace` and Brain; request
 threads refuse overlapping work while Stop and Done can signal that worker.
 The Work tab's card board previews only current in-memory turn text and plan
 steps, plus the current run. Its controls open Chat or Plan or call the existing

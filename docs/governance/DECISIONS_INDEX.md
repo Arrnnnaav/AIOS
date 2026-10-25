@@ -211,7 +211,7 @@ with the script named at the bottom; edit the curated table by hand.
 - D175 — MVP workspace: inspect, correct, revise, record, replay
 - D176 — Act: a minimized target is restored; a failed run names its reason
 - D177 — Sign in with ChatGPT: the user's own plan powers System Two
-- D178 — The workspace app: a docked window over the same Workspace
+- D178 — The workspace app; 26 October addendum makes floating the default
 - D179 — Jev across the product, and redacted pictures for Teach
 - D180 — Organisation policy and scrubbed screen text: less leaves the machine
 - D181 — Ideate, Jev in the workspace, and handoff as the Multiplayer seed

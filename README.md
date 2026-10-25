@@ -84,13 +84,14 @@ and installer are not yet code-signed or on an automatic update channel.
 ## Run
 
 ```powershell
-py -3.12 -m ghostcursor.workspace.app <topic>   # the workspace app
+py -3.12 -m ghostcursor.workspace.app <topic>          # floating workspace
+py -3.12 -m ghostcursor.workspace.app --dock <topic>   # right-side workspace
 py -3.12 -m ghostcursor.run --manager           # the manager window
 py -3.12 -m ghostcursor.run --goal "<goal>"     # Teach from the CLI; ESC quits
 py -3.12 -m ghostcursor.plugins list            # installed plugins
 ```
 
-Orbyn.cmd launches the docked workspace window (local, behind a per-launch
+Orbyn.cmd launches the movable workspace window (local, behind a per-launch
 token). `--target` narrows which window Orbyn binds; when several windows still
 match it lists them and refuses rather than guessing.
 
