@@ -142,6 +142,10 @@ def test_window_launch_supports_floating_and_docked_geometry(tmp_path, monkeypat
     assert "--window-position=1444,24" in launches[-1]
     assert moves[-1] == (7, 1444, 24, 460, 860, True)
 
+    monkeypatch.setattr(appmod, "_edge_app_windows", lambda: {5} if not launches or len(launches) == 2 else {5, 8, 9})
+    appmod.open_window("http://127.0.0.1:1/?t=test")
+    assert len(moves) == 2  # two concurrent new windows: move neither
+
 
 def test_single_instance_guard_detects_a_live_instance_only(tmp_path, monkeypatch):
     """Double-clicking Orbyn while it runs must re-open its window, not start a

@@ -871,7 +871,8 @@ def open_window(url: str, *, docked: bool = False) -> None:
     while time.monotonic() < deadline:
         new = _edge_app_windows() - before
         if new:
-            win32gui.MoveWindow(next(iter(new)), left, top, width, height, True)
+            if len(new) == 1:
+                win32gui.MoveWindow(new.pop(), left, top, width, height, True)
             break
         time.sleep(0.05)
 
