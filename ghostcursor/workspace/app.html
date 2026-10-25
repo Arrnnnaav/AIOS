@@ -212,10 +212,10 @@ select { font: inherit; color: var(--text); background: var(--bg); border: 1px s
   <button class="iconbtn" id="themeBtn" title="Switch light/dark" aria-label="Switch theme"></button>
 </header>
 <nav role="tablist">
-  <button role="tab" data-tab="chat" aria-selected="true">Chat</button>
-  <button role="tab" data-tab="plan" aria-selected="false">Plan<span class="count" id="planCount"></span></button>
-  <button role="tab" data-tab="brain" aria-selected="false">Brain<span class="count" id="memCount"></span></button>
-  <button role="tab" data-tab="work" aria-selected="false">Work<span class="count" id="workCount"></span></button>
+  <button id="nav-chat" role="tab" data-tab="chat" aria-controls="tab-chat" aria-selected="true" tabindex="0">Chat</button>
+  <button id="nav-plan" role="tab" data-tab="plan" aria-controls="tab-plan" aria-selected="false" tabindex="-1">Plan<span class="count" id="planCount"></span></button>
+  <button id="nav-brain" role="tab" data-tab="brain" aria-controls="tab-brain" aria-selected="false" tabindex="-1">Brain<span class="count" id="memCount"></span></button>
+  <button id="nav-work" role="tab" data-tab="work" aria-controls="tab-work" aria-selected="false" tabindex="-1">Work<span class="count" id="workCount"></span></button>
 </nav>
 <div id="live" role="status" aria-live="polite">
   <div class="row">
@@ -226,10 +226,10 @@ select { font: inherit; color: var(--text); background: var(--bg); border: 1px s
   <div id="liveStatus"></div>
 </div>
 <main id="main">
-  <section id="tab-chat"><div id="thread"></div></section>
-  <section id="tab-plan" hidden></section>
-  <section id="tab-brain" hidden></section>
-  <section id="tab-work" hidden></section>
+  <section id="tab-chat" role="tabpanel" aria-labelledby="nav-chat"><div id="thread"></div></section>
+  <section id="tab-plan" role="tabpanel" aria-labelledby="nav-plan" hidden></section>
+  <section id="tab-brain" role="tabpanel" aria-labelledby="nav-brain" hidden></section>
+  <section id="tab-work" role="tabpanel" aria-labelledby="nav-work" hidden></section>
 </main>
 <footer>
   <div class="composer" id="composer">
@@ -339,7 +339,7 @@ function renderWork() {
         const stop = el("button", "", "Stop"); stop.onclick = () => api("stop").catch((e) => toast(e.message)); card.append(stop);
       } else if (item.state === "finished") {
         const destination = ["Planning", "Editing plan", "Guiding", "Acting"].includes(item.label) ? "plan" : "chat";
-        const open = el("button", "", destination === "plan" ? "Open plan" : "Open chat");
+        const open = el("button", "", destination === "plan" ? "Go to Plan" : "Go to Chat");
         open.onclick = () => setTab(destination); card.append(open);
       }
       list.append(card);
@@ -588,9 +588,9 @@ function agentsCard() {
   for (const a of (S.agents || [])) {
     const row = el("div", "sheetrow");
     const use = el("button", "pill go", "Use"); use.disabled = !!S.busy;
-    use.onclick = () => act("agent_use", { name: a.name }, "Agent started").then(() => setTab("chat"));
+    use.onclick = () => act("agent_use", { name: a.name }, "Agent started").then((r) => { if (r) setTab("chat"); });
     const del = el("button", "secondary", "Delete"); del.disabled = !!S.busy;
-    del.onclick = () => act("agent_delete", { name: a.name }, "Agent deleted").then(() => renderBrain());
+    del.onclick = () => { if (confirm('Delete saved agent "' + a.name + '"?')) act("agent_delete", { name: a.name }, "Agent deleted"); };
     del.style.marginLeft = "6px";
     const label = el("span", "", a.name + " — " + a.description);
     const rt = el("span"); rt.style.marginLeft = "auto"; rt.append(use, del);
@@ -601,12 +601,12 @@ function agentsCard() {
     draft.append(el("b", "", "Draft: "), document.createTextNode(S.draft_agent));
     card.append(draft);
     const save = el("button", "pill go", "Save this agent"); save.disabled = !!S.busy;
-    save.onclick = () => act("agent_save", {}, "Agent saved").then(() => renderBrain());
+    save.onclick = () => act("agent_save", {}, "Agent saved");
     card.append(save);
   }
   const inp = el("input"); inp.placeholder = "what should the new agent do?"; inp.disabled = !!S.busy;
   const make = el("button", "secondary", "Create agent"); make.disabled = !!S.busy;
-  make.onclick = () => inp.value.trim() && act("agent_create", { text: inp.value.trim() }, "Agent drafted").then(() => renderBrain());
+  make.onclick = () => inp.value.trim() && act("agent_create", { text: inp.value.trim() }, "Agent drafted");
   inp.onkeydown = (e) => { if (e.key === "Enter") make.onclick(); };
   const row = el("div", "sheetrow"); row.append(inp, make); card.append(row);
   return card;
@@ -869,11 +869,21 @@ document.addEventListener("keydown", (e) => {
 
 function setTab(name) {
   tab = name;
-  document.querySelectorAll("nav button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === name)));
+  document.querySelectorAll("nav button").forEach((b) => {
+    const active = b.dataset.tab === name;
+    b.setAttribute("aria-selected", String(active)); b.tabIndex = active ? 0 : -1;
+  });
   for (const t of ["chat", "plan", "brain", "work"]) $("tab-" + t).hidden = t !== name;
   if (S) render(name === "chat");
 }
 document.querySelectorAll("nav button").forEach((b) => (b.onclick = () => setTab(b.dataset.tab)));
+document.querySelector("nav").addEventListener("keydown", (e) => {
+  const tabs = [...document.querySelectorAll('nav button[role="tab"]')];
+  const i = tabs.indexOf(document.activeElement);
+  if (i < 0 || !["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
+  const next = e.key === "Home" ? 0 : e.key === "End" ? tabs.length - 1 : (i + (e.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+  setTab(tabs[next].dataset.tab); tabs[next].focus(); e.preventDefault();
+});
 
 // theme
 function applyTheme(t) { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }

@@ -212,7 +212,9 @@ an autonomous worker or scheduler. Each topic file has one intended writer;
 concurrent workspace app processes for the same topic are not coordinated.
 The page places reusable agent creation and launch in Work, beside recent
 status cards. Those cards route to the existing Chat or Plan view; an active
-card's Stop control uses the same `stop` API as the live bar.
+card's Stop control uses the same `stop` API as the live bar. Card links only
+navigate; history holds no result identity. The tabs have keyboard arrow,
+Home and End navigation. Deleting a saved agent asks for confirmation.
 
 ---
 
