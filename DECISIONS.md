@@ -7872,6 +7872,9 @@ of the authenticated user's bounded repository list and selected open issues
 are supported. Disconnect removes the local credential; GitHub-side
 revocation remains under the user's control. Repository text is untrusted,
 rendered as text, and never added to a Brief, Brain, routine, or model request.
+Every GitHub request rechecks the D180 egress policy and is refused under
+LOCAL. Credential deletion reports an error unless Credential Manager confirms
+success or "not found"; an unreadable verification read cannot prove removal.
 No GitHub write endpoint, scheduling or Act bridge is enabled. Side-effecting
 connectors keep the D144 gates. Evidence: `docs/evidence/github-readonly-2026-10-26.md`.
 

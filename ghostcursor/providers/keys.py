@@ -78,8 +78,12 @@ def delete_key(name: str) -> None:
 
     try:
         win32cred.CredDelete(TARGET_PREFIX + name, win32cred.CRED_TYPE_GENERIC)
-    except Exception:
-        pass
+    except Exception as exc:
+        code = getattr(exc, "winerror", None)
+        if code is None and exc.args:
+            code = exc.args[0]
+        if code != 1168:  # ERROR_NOT_FOUND is idempotent; other errors must surface
+            raise
 
 
 def status() -> dict[str, bool]:

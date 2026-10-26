@@ -12,6 +12,9 @@ exposed off-device. A model is used only when you have switched on a BYOK key
   is absent). Add `--dock` before the topic to keep the right-side layout.
 - Or: `py -3.12 -m ghostcursor.workspace.app` (no argument opens the default
   workspace; pass a topic to name one: `... app "q3 review"`).
+- In Work, enabled research routines keep Orbyn running after the window
+  closes; reopen with `Orbyn.cmd`, or use **Quit Orbyn** in Work to stop it.
+  GitHub's read-only repository and issue view is also in Work.
 
 ## The console
 

@@ -239,6 +239,9 @@ Credential Manager stores it; `github_repos` and `github_issues` send fixed
 GET requests to `api.github.com` and project bounded fields for the page;
 `github_disconnect` removes the local token. It cannot enter the worker,
 Brief, Brain, model context, routine scheduler or Act authority chain.
+Each request checks the organisation's current egress policy before sending;
+Credential Manager deletion errors other than "not found" are surfaced, so
+an unreadable credential cannot be reported as successfully disconnected.
 The page places reusable agent creation and launch in Work, beside recent
 status cards. Those cards route to the existing Chat or Plan view; an active
 card's Stop control uses the same `stop` API as the live bar. Card links only

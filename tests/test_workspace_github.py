@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import json
+import sys
+from types import SimpleNamespace
 
 import httpx
 import pytest
 
 from ghostcursor.brief import brief_path
+from ghostcursor import policy
 from ghostcursor.providers import keys
 from ghostcursor.workspace.app import App
 from ghostcursor.workspace.brain import Brain
@@ -81,5 +84,49 @@ def test_github_rejects_bad_token_and_failed_disconnect(tmp_path, monkeypatch):
     with pytest.raises(ValueError):
         connector.connect("short")
     connector.connect("github_pat_abcdefghijklmnopqrstuvwxyz")
+    with pytest.raises(ValueError, match="could not be removed"):
+        connector.disconnect()
+
+
+def test_github_policy_blocks_connect_and_reads_before_network(monkeypatch):
+    stored = {"value": None}
+    monkeypatch.setattr(keys, "get_key", lambda name, *, allow_env=True: stored["value"])
+    monkeypatch.setattr(keys, "set_key", lambda name, value: stored.update(value=value))
+    calls = []
+
+    def respond(request):
+        calls.append(request.url.path)
+        if request.url.path == "/user":
+            return httpx.Response(200, json={"login": "octocat"})
+        if request.url.path == "/user/repos":
+            return httpx.Response(200, json=[{"full_name": "octocat/repo"}])
+        return httpx.Response(200, json=[])
+
+    connector = GitHubConnector(transport=httpx.MockTransport(respond))
+    token = "github_pat_abcdefghijklmnopqrstuvwxyz"
+    monkeypatch.setattr(policy, "max_egress", lambda: policy.LOCAL)
+    with pytest.raises(ValueError, match="egress policy"):
+        connector.connect(token)
+    assert calls == [] and stored["value"] is None
+    monkeypatch.setattr(policy, "max_egress", lambda: policy.TEXT)
+    connector.connect(token)
+    connector.repos()
+    assert calls == ["/user", "/user/repos"]
+    monkeypatch.setattr(policy, "max_egress", lambda: policy.LOCAL)
+    with pytest.raises(ValueError, match="egress policy"):
+        connector.repos()
+    with pytest.raises(ValueError, match="egress policy"):
+        connector.issues("octocat/repo")
+    assert calls == ["/user", "/user/repos"]
+
+
+def test_disconnect_reports_delete_error_even_when_read_also_fails(monkeypatch):
+    def denied(*args):
+        raise OSError(5, "Credential Manager unavailable")
+
+    fake = SimpleNamespace(CRED_TYPE_GENERIC=1, CredDelete=denied, CredRead=denied)
+    monkeypatch.setitem(sys.modules, "win32cred", fake)
+    connector = GitHubConnector()
+    assert connector.connected() is False  # unreadable is not proof of deletion
     with pytest.raises(ValueError, match="could not be removed"):
         connector.disconnect()

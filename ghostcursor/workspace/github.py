@@ -7,6 +7,7 @@ import threading
 
 import httpx
 
+from ghostcursor import policy
 from ghostcursor.providers import keys
 
 API = "https://api.github.com"
@@ -23,6 +24,8 @@ class GitHubConnector:
         return keys.get_key("github", allow_env=False) is not None
 
     def _get(self, path: str, token: str):
+        if not policy.allows("github"):
+            raise ValueError("GitHub is blocked by the organisation's egress policy")
         if not path.startswith(("/user", "/repos/")):
             raise ValueError("unsupported GitHub read")
         try:
@@ -60,7 +63,10 @@ class GitHubConnector:
 
     def disconnect(self) -> None:
         with self._lock:
-            keys.delete_key("github")
+            try:
+                keys.delete_key("github")
+            except Exception:
+                raise ValueError("the GitHub token could not be removed from Windows Credential Manager") from None
             if self.connected():
                 raise ValueError("the GitHub token could not be removed from Windows Credential Manager")
             self._repos.clear()
