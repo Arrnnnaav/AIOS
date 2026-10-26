@@ -179,14 +179,30 @@ def test_island_bounds_on_real_and_emulated_monitor_layouts(monkeypatch):
 
 
 @pytest.mark.interactive
+def test_initial_island_placement_respects_a_top_taskbar(monkeypatch):
+    import win32api
+    import win32gui
+
+    monkeypatch.setattr(win32api, "MonitorFromWindow", lambda *args: 1)
+    monkeypatch.setattr(win32api, "GetMonitorInfo", lambda monitor: {"Work": (0, 64, 1920, 1080)})
+    island = Island(StubApp(), "http://127.0.0.1:1/?t=local", lambda url: None)
+    try:
+        left, top, right, bottom = win32gui.GetWindowRect(island.hwnd)
+        assert top == 64 and bottom <= 1080
+        assert 0 <= left and right <= 1920
+    finally:
+        win32gui.DestroyWindow(island.hwnd)
+
+
+@pytest.mark.interactive
 def test_shortcut_conflict_keeps_hide_unavailable():
     import win32con
     import win32gui
 
     user32 = ctypes.windll.user32
     modifiers = win32con.MOD_CONTROL | win32con.MOD_ALT | win32con.MOD_NOREPEAT
-    if not user32.RegisterHotKey(None, 99, modifiers, win32con.VK_SPACE):
-        pytest.skip("another application already owns Ctrl+Alt+Space")
+    if not user32.RegisterHotKey(None, 99, modifiers, ord("O")):
+        pytest.skip("another application already owns Ctrl+Alt+O")
     try:
         island = Island(StubApp(), "http://127.0.0.1:1/?t=local", lambda url: None)
         try:
@@ -198,3 +214,18 @@ def test_shortcut_conflict_keeps_hide_unavailable():
             win32gui.DestroyWindow(island.hwnd)
     finally:
         user32.UnregisterHotKey(None, 99)
+
+
+@pytest.mark.interactive
+def test_voice_hotkey_keeps_priority_over_island_recall():
+    import win32con
+    import win32gui
+
+    island = Island(StubApp(), "http://127.0.0.1:1/?t=local", lambda url: None, voice_hotkey="ctrl+alt+o")
+    try:
+        assert not island.hotkey_available
+        assert not win32gui.IsWindowVisible(island.hide_button)
+        assert ctypes.windll.user32.RegisterHotKey(None, 98, win32con.MOD_CONTROL | win32con.MOD_ALT | win32con.MOD_NOREPEAT, ord("O"))
+        ctypes.windll.user32.UnregisterHotKey(None, 98)
+    finally:
+        win32gui.DestroyWindow(island.hwnd)

@@ -7852,7 +7852,7 @@ and `--dock` preserve direct access to the full workspace. Evidence:
 ### D178 addendum — On-demand island and monitor placement
 
 Date: 26 October 2026. A comparison of current companion windows and user
-reports led to an explicit idle Hide control and Ctrl+Alt+Space recall rather
+reports led to an explicit idle Hide control and Ctrl+Alt+O recall rather
 than a compulsory topmost presence. If Windows cannot register the shortcut,
 Hide is unavailable. Work keeps Stop visible; a hidden island automatically
 returns for a running task or a new research result, then returns to its hidden

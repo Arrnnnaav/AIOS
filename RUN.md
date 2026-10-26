@@ -10,7 +10,7 @@ exposed off-device. A model is used only when you have switched on a BYOK key
 - **Double-click `Orbyn.cmd`** at the repo root — opens a compact, draggable
   desktop island. It expands during work and for a new result. **Open** opens
   the full Edge workspace (or your browser if Edge is absent); **Stop** stops
-  the current run; **Hide** dismisses the idle island, and **Ctrl+Alt+Space**
+  the current run; **Hide** dismisses the idle island, and **Ctrl+Alt+O**
   recalls it. A new job/result reveals it automatically; Open on a new research
   result goes to Work. **Quit** exits. If the shortcut is occupied, Hide is
   unavailable. Use `--window` to start with the full floating

@@ -1279,15 +1279,15 @@ def main(argv: list[str] | None = None) -> int:
     threading.Thread(target=server.serve_forever, daemon=True).start()
     url = f"http://127.0.0.1:{server.server_port}/?t={token}"
     _write_lock(url)
+    wake, hotkey = settings.listening()
     island = None
     if windowed:
         open_window(url, docked=docked)
     else:
         from ghostcursor.workspace.island import Island
 
-        island = Island(app, url, open_window)
+        island = Island(app, url, open_window, voice_hotkey=hotkey)
     listener = None
-    wake, hotkey = settings.listening()
     if wake or hotkey:
         from ghostcursor.listen import Listener
 

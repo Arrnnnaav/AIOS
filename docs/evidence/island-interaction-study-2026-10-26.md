@@ -11,7 +11,7 @@ it was not used as evidence.
 
 | Pattern | Observed product evidence | Orbyn decision |
 |---|---|---|
-| Summonable companion | [ChatGPT for Windows](https://help.openai.com/en/articles/9982051-using-the-chatgpt-windows-app) uses Alt+Space, remembers its window position, and reopens by shortcut. [Claude quick entry](https://academy.claude.com/tutorials/navigating-the-claude-desktop-app) puts a small prompt over the current app by shortcut. [Copilot on Windows](https://learn.microsoft.com/en-us/copilot/windows) lets its key launch either quick view or the full app. | Add a Hide control and Ctrl+Alt+Space recall. Keep the existing full workspace available through Open. If Windows refuses that shortcut, leave Hide unavailable so the user cannot lose the island. |
+| Summonable companion | [ChatGPT for Windows](https://help.openai.com/en/articles/9982051-using-the-chatgpt-windows-app) uses Alt+Space, remembers its window position, and reopens by shortcut. [Claude quick entry](https://academy.claude.com/tutorials/navigating-the-claude-desktop-app) puts a small prompt over the current app by shortcut. [Copilot on Windows](https://learn.microsoft.com/en-us/copilot/windows) lets its key launch either quick view or the full app. | Add a Hide control and Ctrl+Alt+O recall, leaving the default voice Ctrl+Alt+Space intact. Keep the existing full workspace available through Open. If Windows refuses that shortcut, leave Hide unavailable so the user cannot lose the island. |
 | Brief status and direct result | [Apple Live Activities guidance](https://developer.apple.com/design/human-interface-guidelines/live-activities) favors compact state, essential actions, innocuous summaries in prominent locations, and a link to related details. The installed HeyClicky result card opened its detail view in the [local UI comparison](heyclicky-live-ui-2026-10-26.md). | Keep generic status only; automatically show a hidden island for active work or a new research result, then hide it again after the result interval. Open a fresh research result in Orbyn's existing Work tab. |
 | Quick entry plus durable workspace | [Raycast AI Chat](https://manual.raycast.com/ai/ai-chat) separates Quick AI from a durable chat workspace and can continue a quick query in that workspace. [Raycast Windows](https://www.raycast.com/changelog/windows/2) added focused-window context through an explicit command. | Use the island for status and essential controls and the full workspace for history, results and planning. Do not add automatic screen capture or another agent authority path. |
 | Explicit context sharing | [Copilot Vision](https://support.microsoft.com/en-au/microsoft-365-copilot/get-started-vision-microsoft-365-copilot) requires starting voice and choosing screen sharing; it shows the shared scope and a Stop-sharing control. | Keep Orbyn's existing observed-control Teach flow and approval boundaries. The island does not silently start perception or share the screen. |
@@ -21,13 +21,14 @@ The Agent Reach sample included a [ChatGPT companion complaint](https://www.redd
 
 ## Implemented trial
 
-The island now offers Hide while idle and registers Ctrl+Alt+Space for show/hide.
+The island now offers Hide while idle and registers Ctrl+Alt+O for show/hide.
 It refuses Hide during work so Stop remains available. If the user hides the
 island, a running task or new research result reveals it automatically; a new
 result opens directly in Work and the auto-revealed island hides after its
 short result interval. A second default launcher invocation recalls an
 existing hidden island. A shortcut conflict leaves the island visible and
-disables Hide; it does not seize another application's key. The full workspace
+disables Hide; it does not seize another application's key. A configured voice
+key using Ctrl+Alt+O has priority and also disables Hide. The full workspace
 and existing Stop/Quit signals remain unchanged.
 
 Windows exposed one active monitor during this trial: one 1920×1080 physical

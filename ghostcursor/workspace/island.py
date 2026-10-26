@@ -124,7 +124,7 @@ def _wnd_proc(hwnd, msg, wparam, lparam):
 class Island:
     """The Win32 UI thread owns this window; jobs stay on the existing worker."""
 
-    def __init__(self, app, url, open_window, *, clock=time.monotonic):
+    def __init__(self, app, url, open_window, *, clock=time.monotonic, voice_hotkey=None):
         global _brush
         self.app, self.url, self.open_window = app, url, open_window
         self.clock = clock
@@ -149,10 +149,21 @@ class Island:
             None, None, win32api.GetModuleHandle(None), None,
         )
         _windows[self.hwnd] = self
-        self.hotkey_available = bool(ctypes.windll.user32.RegisterHotKey(
+        voice_owns_hotkey = False
+        if voice_hotkey:
+            from ghostcursor.listen import parse_hotkey
+
+            try:
+                voice_owns_hotkey = parse_hotkey(voice_hotkey) == (
+                    win32con.MOD_CONTROL | win32con.MOD_ALT | win32con.MOD_NOREPEAT,
+                    ord("O"),
+                )
+            except ValueError:
+                pass  # Listener reports a malformed configured shortcut.
+        self.hotkey_available = not voice_owns_hotkey and bool(ctypes.windll.user32.RegisterHotKey(
             self.hwnd, HOTKEY_ID,
             win32con.MOD_CONTROL | win32con.MOD_ALT | win32con.MOD_NOREPEAT,
-            win32con.VK_SPACE,
+            ord("O"),
         ))
         win32gui.SetWindowRgn(self.hwnd, win32gui.CreateRoundRectRgn(0, 0, width, height, 30, 30), True)
         style = win32con.WS_CHILD | win32con.WS_VISIBLE | win32con.WS_TABSTOP | win32con.BS_PUSHBUTTON
@@ -164,6 +175,7 @@ class Island:
         win32gui.ShowWindow(self.stop_button, win32con.SW_HIDE)
         if not self.hotkey_available:
             win32gui.ShowWindow(self.hide_button, win32con.SW_HIDE)
+        self._resize(False)  # initial placement must respect a top/side taskbar
         win32gui.ShowWindow(self.hwnd, win32con.SW_SHOWNOACTIVATE)
         win32gui.UpdateWindow(self.hwnd)
 
