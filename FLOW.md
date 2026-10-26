@@ -206,7 +206,12 @@ research-job state without goal, question, answer or credential text. It grows
 while work runs and for twelve seconds when a new result arrives. Its native
 Open, Stop and Quit controls use the existing full-window launcher, Stop event
 and Quit action. Open launches Edge from a background thread so its positioning
-wait cannot hold the island's Stop control. `--window` opens the movable Edge workspace directly;
+wait cannot hold the island's Stop control. Hide is allowed only while idle;
+Ctrl+Alt+Space or a second default launch restores it. Work or a new research
+result reveals a hidden island automatically, and a new result's Open goes
+directly to the existing Work tab. Resize and display-change handling clamp
+the capsule to the current monitor's work area. A shortcut conflict leaves
+Hide unavailable. `--window` opens the movable Edge workspace directly;
 `--dock` opens its right-side position. This is presentation only and does not
 share the click-through Teach overlay or add input authority. Its one worker owns `Workspace` and Brain; request
 threads refuse overlapping work while Stop and Done can signal that worker.

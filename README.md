@@ -108,9 +108,12 @@ py -3.12 -m ghostcursor.plugins list            # installed plugins
 ```
 
 Orbyn.cmd launches a small, draggable, always-on-top island. It expands while
-work runs and briefly when a background result arrives. **Open** shows the full
-workspace; **Stop** signals the current run; **Quit** exits Orbyn. The full
-workspace remains local behind a per-launch token. `--target` narrows which window Orbyn binds; when several windows still
+work runs and briefly when a background result arrives. **Hide** dismisses it
+while idle; **Ctrl+Alt+Space** recalls it. Work and new results reveal a hidden
+island, and **Open** on a new research result goes to Work. **Stop** signals the
+current run; **Quit** exits Orbyn. If the shortcut is already taken, Hide stays
+unavailable. The full workspace remains local behind a per-launch token.
+`--target` narrows which window Orbyn binds; when several windows still
 match it lists them and refuses rather than guessing.
 
 ## Tests

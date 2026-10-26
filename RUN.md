@@ -10,7 +10,10 @@ exposed off-device. A model is used only when you have switched on a BYOK key
 - **Double-click `Orbyn.cmd`** at the repo root — opens a compact, draggable
   desktop island. It expands during work and for a new result. **Open** opens
   the full Edge workspace (or your browser if Edge is absent); **Stop** stops
-  the current run; **Quit** exits. Use `--window` to start with the full floating
+  the current run; **Hide** dismisses the idle island, and **Ctrl+Alt+Space**
+  recalls it. A new job/result reveals it automatically; Open on a new research
+  result goes to Work. **Quit** exits. If the shortcut is occupied, Hide is
+  unavailable. Use `--window` to start with the full floating
   workspace, or `--dock` for its right-side layout.
 - Or: `py -3.12 -m ghostcursor.workspace.app` (no argument opens the default
   workspace; pass a topic to name one: `... app "q3 review"`).

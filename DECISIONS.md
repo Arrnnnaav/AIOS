@@ -7849,6 +7849,19 @@ overlay and has no target selection or input-synthesis authority. `--window`
 and `--dock` preserve direct access to the full workspace. Evidence:
 `docs/evidence/workspace-island-2026-10-26.md`.
 
+### D178 addendum — On-demand island and monitor placement
+
+Date: 26 October 2026. A comparison of current companion windows and user
+reports led to an explicit idle Hide control and Ctrl+Alt+Space recall rather
+than a compulsory topmost presence. If Windows cannot register the shortcut,
+Hide is unavailable. Work keeps Stop visible; a hidden island automatically
+returns for a running task or a new research result, then returns to its hidden
+state after the short result interval. Open on that result deep-links to the
+existing Work tab. Monitor movement and display changes clamp to the selected
+monitor's work area, without turning screen geometry into action authority.
+The source comparison and one-real-monitor/emulated-secondary trial are in
+`docs/evidence/island-interaction-study-2026-10-26.md`.
+
 ### D178 addendum — Background research lifecycle
 
 Date: 26 October 2026. Owner requested HeyClicky-style background jobs. The

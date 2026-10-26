@@ -166,13 +166,17 @@ def test_window_launch_supports_floating_and_docked_geometry(tmp_path, monkeypat
 
 def test_second_default_launch_keeps_existing_island_instead_of_opening_full_window(monkeypatch):
     import win32gui
+    from ghostcursor.workspace.island import SHOW_MESSAGE
 
     opened = []
     monkeypatch.setattr(appmod, "_live_instance_url", lambda: "http://127.0.0.1:1234/?t=local")
     monkeypatch.setattr(win32gui, "FindWindow", lambda name, title: 42)
+    revealed = []
+    monkeypatch.setattr(win32gui, "PostMessage", lambda *args: revealed.append(args))
     monkeypatch.setattr(appmod, "open_window", lambda url, **kw: opened.append((url, kw)))
     assert appmod.main([]) == 0
     assert opened == []
+    assert revealed == [(42, SHOW_MESSAGE, 0, 0)]
     assert appmod.main(["--window"]) == 0
     assert opened == [("http://127.0.0.1:1234/?t=local", {"docked": False})]
 

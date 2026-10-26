@@ -1264,9 +1264,12 @@ def main(argv: list[str] | None = None) -> int:
     if existing is not None:  # already running: re-open its window, don't double-start
         if not windowed:
             import win32gui
+            from ghostcursor.workspace.island import CLASS, SHOW_MESSAGE
 
-            if win32gui.FindWindow("OrbynWorkspaceIsland", None):
-                return 0  # the topmost island is already on screen
+            island_hwnd = win32gui.FindWindow(CLASS, None)
+            if island_hwnd:
+                win32gui.PostMessage(island_hwnd, SHOW_MESSAGE, 0, 0)
+                return 0  # reveal the existing island, including after Hide
         open_window(existing, docked=docked)
         return 0
     _ensure_ollama()  # start the local model if it is installed but not running

@@ -1493,7 +1493,7 @@ to confirm where the cost actually is before changing anything else.
   see `docs/evidence/workspace-live-acceptance-2026-10-26.md`. A real packaged
   Teach session remains to be measured under its separate acceptance gate.
 - Edge app windows have a minimum width near 500 px; the 460 px dock may be clamped. Check on a real display.
-- The default launcher now shows a slim topmost island, including during Teach. Check placement and overlap against real guided targets on multiple monitor/DPI layouts; the full window is still available from Open.
+- The default launcher shows a slim topmost island until the user hides it; active work keeps Stop visible. Real primary-edge and emulated left/right-monitor geometry passed, but a physical second display and cross-DPI move remain unmeasured. Check overlap against real Teach targets. The full window remains available from Open.
 - Island buttons have Tab stops and dialog-key dispatch, but physical keyboard and screen-reader use have not been measured. Quit immediately after Open can still leave an Edge window opening against a stopped local server; close that window if the race matters in daily use.
 - Brain tab not captured in screenshots; check visually.
 - The page polls state every 700 ms; switch to a long poll if CPU shows up.
