@@ -1,7 +1,7 @@
-"""The workspace app (D178):  py -3.12 -m ghostcursor.workspace.app [--dock] <topic>
+"""The workspace app (D178):  py -3.12 -m ghostcursor.workspace.app [--window|--dock] <topic>
 
-The console workspace (D173) as a movable floating window: a local page served on
-127.0.0.1 and shown by Edge in app mode, so no new dependency. The page is a
+The console workspace (D173) as a small desktop island with an optional full
+window: a local page served on 127.0.0.1 and shown by Edge in app mode. The page is a
 view; everything it does goes through the same ``Workspace`` the console uses.
 
 Trust boundary: any local process or web page can reach 127.0.0.1, so every
@@ -1254,7 +1254,8 @@ def main(argv: list[str] | None = None) -> int:
         print(__doc__)
         return 0
     docked = bool(argv and argv[0] == "--dock")
-    if docked:
+    windowed = bool(argv and argv[0] in ("--dock", "--window"))
+    if windowed:
         argv = argv[1:]
     if len(argv) > 1:  # at most one topic; no arg opens the default workspace
         print(__doc__)
@@ -1270,7 +1271,13 @@ def main(argv: list[str] | None = None) -> int:
     threading.Thread(target=server.serve_forever, daemon=True).start()
     url = f"http://127.0.0.1:{server.server_port}/?t={token}"
     _write_lock(url)
-    open_window(url, docked=docked)
+    island = None
+    if windowed:
+        open_window(url, docked=docked)
+    else:
+        from ghostcursor.workspace.island import Island
+
+        island = Island(app, url, open_window)
     listener = None
     wake, hotkey = settings.listening()
     if wake or hotkey:
@@ -1286,13 +1293,20 @@ def main(argv: list[str] | None = None) -> int:
     try:
         # Enabled routines keep the process alive after the window closes.
         while not app.quit_requested.is_set() and (
-            app.busy or app.has_enabled_routines() or time.monotonic() - app.seen < QUIT_AFTER_S
+            (island is not None and not island.closed)
+            or app.busy or app.has_enabled_routines() or time.monotonic() - app.seen < QUIT_AFTER_S
         ):
             app.tick_routines()
-            time.sleep(1)
+            if island is not None and not island.closed:
+                island.tick()
+            time.sleep(0.25 if island is not None else 1)
     except KeyboardInterrupt:
         pass
     finally:
+        if island is not None and not island.closed:
+            import win32gui
+
+            win32gui.DestroyWindow(island.hwnd)
         if listener is not None:
             listener.stop()
         server.shutdown()

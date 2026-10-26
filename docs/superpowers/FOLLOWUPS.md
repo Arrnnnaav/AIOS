@@ -1493,7 +1493,7 @@ to confirm where the cost actually is before changing anything else.
   see `docs/evidence/workspace-live-acceptance-2026-10-26.md`. A real packaged
   Teach session remains to be measured under its separate acceptance gate.
 - Edge app windows have a minimum width near 500 px; the 460 px dock may be clamped. Check on a real display.
-- The app window covers part of the screen during Teach; consider collapsing it to a slim bar while guiding (Copilot-style).
+- The default launcher now shows a slim topmost island, including during Teach. Check placement and overlap against real guided targets on multiple monitor/DPI layouts; the full window is still available from Open.
 - Brain tab not captured in screenshots; check visually.
 - The page polls state every 700 ms; switch to a long poll if CPU shows up.
 

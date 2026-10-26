@@ -7835,6 +7835,20 @@ named Orbyn. This is window geometry, not screen targeting or input authority.
 The observed launch and test record are in
 `docs/evidence/floating-workspace-2026-10-26.md`.
 
+### D178 addendum — Compact workspace island
+
+Date: 26 October 2026. Owner asked for a dynamic-island-style presence on the
+screen instead of opening the whole workspace at startup. The default launcher
+now creates a small native topmost capsule with accessible Windows buttons.
+It grows while the existing worker runs and briefly when a new research job
+finishes, fails or stops. Open launches the existing token-protected full
+workspace; Stop and Quit use the existing App signals. Only generic task state
+is painted and put in the window title. The capsule receives clicks as a
+normal application window; it is separate from the click-through Teach/Act
+overlay and has no target selection or input-synthesis authority. `--window`
+and `--dock` preserve direct access to the full workspace. Evidence:
+`docs/evidence/workspace-island-2026-10-26.md`.
+
 ### D178 addendum — Background research lifecycle
 
 Date: 26 October 2026. Owner requested HeyClicky-style background jobs. The

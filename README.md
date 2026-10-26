@@ -99,15 +99,18 @@ in `docs/evidence/workspace-live-acceptance-2026-10-26.md`.
 ## Run
 
 ```powershell
-py -3.12 -m ghostcursor.workspace.app <topic>          # floating workspace
+py -3.12 -m ghostcursor.workspace.app <topic>          # compact desktop island
+py -3.12 -m ghostcursor.workspace.app --window <topic> # full floating workspace
 py -3.12 -m ghostcursor.workspace.app --dock <topic>   # right-side workspace
 py -3.12 -m ghostcursor.run --manager           # the manager window
 py -3.12 -m ghostcursor.run --goal "<goal>"     # Teach from the CLI; ESC quits
 py -3.12 -m ghostcursor.plugins list            # installed plugins
 ```
 
-Orbyn.cmd launches the movable workspace window (local, behind a per-launch
-token). `--target` narrows which window Orbyn binds; when several windows still
+Orbyn.cmd launches a small, draggable, always-on-top island. It expands while
+work runs and briefly when a background result arrives. **Open** shows the full
+workspace; **Stop** signals the current run; **×** quits Orbyn. The full
+workspace remains local behind a per-launch token. `--target` narrows which window Orbyn binds; when several windows still
 match it lists them and refuses rather than guessing.
 
 ## Tests

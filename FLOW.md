@@ -200,9 +200,14 @@ the bottom shows exactly what's being built/modified right now.
 ## Workspace app (current)
 
 `ghostcursor.workspace.app.App` serves the token-protected Chat, Plan, Brain
-and Work page on loopback. Edge app mode opens a movable, resizable floating
-window by default; `--dock` keeps the previous right-side position. This
-changes window geometry only, not input or execution authority. Its one worker owns `Workspace` and Brain; request
+and Work page on loopback. By default, a native topmost workspace island is
+shown at the top of the desktop. It is draggable and shows generic worker and
+research-job state without goal, question, answer or credential text. It grows
+while work runs and for twelve seconds when a new result arrives. Its native
+Open, Stop and Quit controls use the existing full-window launcher, Stop event
+and Quit action. `--window` opens the movable Edge workspace directly;
+`--dock` opens its right-side position. This is presentation only and does not
+share the click-through Teach overlay or add input authority. Its one worker owns `Workspace` and Brain; request
 threads refuse overlapping work while Stop and Done can signal that worker.
 The Work tab's card board previews only current in-memory turn text and plan
 steps, plus the current run. Its controls open Chat or Plan or call the existing
