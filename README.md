@@ -50,7 +50,12 @@ release acceptance is still pending.
 - **Routines** — schedule hourly, daily or weekly research from Work. Enabled
   routines run while Orbyn and the PC are awake, even with the window closed;
   pause, resume, run now, delete or Quit Orbyn there. A missed time runs once
-  after wake, with no catch-up burst. Results land in the local job inbox.
+  after wake, with no catch-up burst. A crash may skip an occurrence rather
+  than repeat it. Results land in the local job inbox.
+- **GitHub, read only** — connect a fine-grained token in Work to view a
+  bounded repository list and open issues. The token stays in Windows
+  Credential Manager; disconnect removes it locally. Repository text does
+  not enter model prompts or routines. Orbyn cannot change GitHub content.
 - **Ask a file** — choose a small text or code file in Work and ask one
   question about it. The answer stays in that sheet; the file and question are
   not added to the Brief or Brain. Text may go to the configured model provider.

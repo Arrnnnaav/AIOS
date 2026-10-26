@@ -319,6 +319,7 @@ async function act(action, body, quietOk) {
 
 // ---- state ------------------------------------------------------------
 let S = null, lastJson = "", tab = "chat", researchMode = false, pending = "", workCardIndex = 0, backgroundStarting = false;
+let githubRepos = [], githubIssues = {}, githubLoading = false;
 let chosen = new Set(), editing = null;
 
 async function poll(force) {
@@ -364,6 +365,7 @@ function renderWork() {
   const stage = workStage(); root.append(stage);
   root.append(backgroundJobs());
   root.append(routinesCard());
+  root.append(githubCard());
   root.append(el("h3", "", "Recent work"));
   if (!S.activity.length) {
     root.append(el("p", "note", "Tasks started here appear below. Create a task or run a saved agent."));
@@ -485,6 +487,59 @@ function openRoutine() {
   const save = el("button", "pill go", "Create routine"); save.style.marginLeft = "auto";
   save.onclick = async () => { if (!question.value.trim()) return toast("Enter a research question."); save.disabled = true; try { await api("routine_create", { question: question.value, cadence: cadence.value }); closeSheet(); await poll(true); } catch (e) { toast(e.message); } finally { save.disabled = false; } };
   row.append(close, save); sheet.append(question, cadence, row); $("scrim").classList.add("open"); question.focus();
+}
+
+function githubCard() {
+  const wrap = el("div"); const head = el("div", "workhead"); head.append(el("h3", "", "GitHub · read only"));
+  if (!S.github_connected) {
+    const connect = el("button", "secondary", "Connect"); connect.dataset.workFocus = "github-connect"; connect.onclick = openGithubConnect; head.append(connect);
+    wrap.append(head, el("p", "note", "View repositories and open issues using a fine-grained token. GitHub data stays out of Orbyn's model context.")); return wrap;
+  }
+  const refresh = el("button", "secondary", "Load repositories"); refresh.dataset.workFocus = "github-load"; refresh.disabled = githubLoading; refresh.onclick = loadGithubRepos; head.append(refresh);
+  wrap.append(head);
+  const note = el("p", "note", "Up to 30 repositories and 20 open issues per repository. Token is stored in Windows Credential Manager; no GitHub changes are available here."); wrap.append(note);
+  for (const repo of githubRepos) {
+    const card = el("article", "jobcard");
+    const meta = el("div", "meta"); meta.append(el("b", "", repo.name), el("span", "", repo.private ? "Private" : "Public"));
+    card.append(meta);
+    if (repo.description) card.append(el("p", "", repo.description));
+    const row = el("div", "sheetrow"); const issues = el("button", "secondary", "Open issues"); issues.dataset.workFocus = "github-" + repo.name; issues.onclick = () => loadGithubIssues(repo.name); row.append(issues); card.append(row);
+    if (githubIssues[repo.name]) {
+      if (!githubIssues[repo.name].length) card.append(el("p", "note", "No open issues in this view."));
+      for (const issue of githubIssues[repo.name]) card.append(el("p", "", "#" + issue.number + " " + issue.title));
+    }
+    wrap.append(card);
+  }
+  const disconnect = el("button", "secondary", "Disconnect GitHub"); disconnect.onclick = async () => {
+    if (!confirm("Remove Orbyn's GitHub token from Windows Credential Manager? Revoke the token on GitHub if you also want to disable it there.")) return;
+    const result = await act("github_disconnect", {}, "GitHub disconnected");
+    if (result) { githubRepos = []; githubIssues = {}; await poll(true); }
+  }; wrap.append(disconnect);
+  return wrap;
+}
+
+function openGithubConnect() {
+  sheetOpener = document.activeElement;
+  const sheet = $("sheet"); const heading = el("h3", "", "Connect GitHub"); heading.id = "githubTitle";
+  sheet.setAttribute("aria-labelledby", heading.id);
+  sheet.replaceChildren(heading, el("p", "", "Create a fine-grained GitHub token for selected repositories with Metadata read and Issues read permissions. Orbyn only sends GET requests to GitHub and stores the token in Windows Credential Manager."));
+  const token = el("input"); token.type = "password"; token.autocomplete = "off"; token.placeholder = "GitHub access token"; token.setAttribute("aria-label", "GitHub access token");
+  const row = el("div", "sheetrow"); const close = el("button", "secondary", "Close"); close.onclick = closeSheet;
+  const connect = el("button", "pill go", "Connect"); connect.style.marginLeft = "auto";
+  connect.onclick = async () => { connect.disabled = true; try { const r = await api("github_connect", { token: token.value }); token.value = ""; closeSheet(); githubRepos = []; githubIssues = {}; toast("Connected as " + r.login, true); await poll(true); } catch (e) { toast(e.message); } finally { connect.disabled = false; } };
+  row.append(close, connect); sheet.append(token, row); $("scrim").classList.add("open"); token.focus();
+}
+
+async function loadGithubRepos() {
+  githubLoading = true;
+  try { const r = await api("github_repos"); githubRepos = r.repos; githubIssues = {}; await poll(true); }
+  catch (e) { toast(e.message); }
+  finally { githubLoading = false; await poll(true); }
+}
+
+async function loadGithubIssues(name) {
+  try { const r = await api("github_issues", { name }); githubIssues[name] = r.issues; await poll(true); }
+  catch (e) { toast(e.message); }
 }
 
 function workStage() {

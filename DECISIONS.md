@@ -7855,11 +7855,25 @@ an explicit hourly, daily or weekly schedule for the same read-only research
 job. It stays local, can be paused, resumed, run now or deleted, and keeps the
 app process alive after its window closes. It runs while the PC is awake;
 after sleep or downtime, only one missed occurrence starts. Each start moves
-the next due time forward from the actual start, so there is no catch-up
-burst or automatic retry of a failed job. Quit ends the resident process.
+the next due time forward and saves it before any scheduled request begins,
+so a crash may skip an occurrence but cannot retry one automatically. Quit
+ends the resident process; the worker rechecks Quit after clearing an old
+Stop event and before submitting work, so Quit cannot be lost by a due tick.
 The question is scrubbed before local storage and before web/model egress.
 No Act, Teach, agent, file-write or connector authority is scheduled.
 Evidence: `docs/evidence/research-routines-2026-10-26.md`.
+
+### D178 addendum — Read-only GitHub connector
+
+Date: 26 October 2026. Owner chose GitHub read-only as the first connected
+app. Work accepts a fine-grained personal access token, validates it with
+GitHub, and stores it in Windows Credential Manager. Only explicit GET views
+of the authenticated user's bounded repository list and selected open issues
+are supported. Disconnect removes the local credential; GitHub-side
+revocation remains under the user's control. Repository text is untrusted,
+rendered as text, and never added to a Brief, Brain, routine, or model request.
+No GitHub write endpoint, scheduling or Act bridge is enabled. Side-effecting
+connectors keep the D144 gates. Evidence: `docs/evidence/github-readonly-2026-10-26.md`.
 
 ## D179 — Jev across the product, and redacted pictures for Teach
 

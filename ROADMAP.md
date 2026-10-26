@@ -738,6 +738,7 @@ boundary is untouched (every slice verified against
 | Floating workspace | Edge app-mode window opens near the upper center with native drag/resize; `--dock` preserves the previous right-side position | workspace app |
 | Background research | Explicit read-only research on the existing single worker; local result inbox, Stop, interrupted-on-restart; no automatic retry | workspace app |
 | Research routines | Hourly/daily/weekly read-only research on the same worker; local schedules, pause/resume/run now/delete, one missed run after wake, explicit Quit | workspace app |
+| GitHub read-only connector | Explicit fine-grained token in Windows Credential Manager; bounded repository and issue views, local disconnect; no write authority or model/routine bridge | workspace app |
 
 Critic/Evaluation (`/critique`) reviews the current plan for gaps and risks
 before Act — advisory, read-only.

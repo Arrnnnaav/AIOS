@@ -37,6 +37,7 @@ from pathlib import Path
 from ghostcursor import policy, redact, settings
 from ghostcursor.brief import brief_path
 from ghostcursor.workspace.contracts import POINT_PREFIX
+from ghostcursor.workspace.github import GitHubConnector
 
 PAGE = Path(__file__).with_name("app.html")
 MAX_BODY = 64 * 1024
@@ -110,6 +111,7 @@ class App:
         self._job_lock = threading.RLock()
         self.background_id: str | None = None
         self.quit_requested = threading.Event()
+        self.github = GitHubConnector()
         self.job_path = brief_path(self.ws.root, self.ws.topic).with_suffix(".jobs.json")
         self.background_jobs = self._load_background_jobs()
         if any(row["state"] == "running" for row in self.background_jobs):
@@ -257,9 +259,9 @@ class App:
             self.say("Routines could not be read; this session stays in memory.")
             return []
 
-    def _save_routines(self) -> None:
+    def _save_routines(self) -> bool:
         if self.routine_path is None:
-            return
+            return False
         partial = None
         try:
             self.routine_path.parent.mkdir(parents=True, exist_ok=True)
@@ -270,9 +272,11 @@ class App:
                 partial = Path(output.name)
                 json.dump(self.routines, output)
             os.replace(partial, self.routine_path)
+            return True
         except OSError:
             self.routine_path = None
             self.say("Routines could not be saved; this session stays in memory.")
+            return False
         finally:
             if partial is not None:
                 try:
@@ -292,12 +296,15 @@ class App:
             due = next((row for row in self.routines if row["enabled"] and row["next_due"] <= now), None)
             if due is None:
                 return
+            due["next_due"] = now + ROUTINE_SECONDS[due["cadence"]]
+            if not self._save_routines():
+                due["enabled"] = False
+                self.say("A routine was paused because its next time could not be saved.")
+                return
             try:
                 self.start_research_job(due["question"], routine=due["id"])
             except ValueError:  # another request claimed the worker
                 return
-            due["next_due"] = now + ROUTINE_SECONDS[due["cadence"]]
-            self._save_routines()
 
     def _refresh(self) -> None:
         brain = self.ws.brain
@@ -319,9 +326,12 @@ class App:
         # queued, and a Stop pressed before the job starts is kept.
         if not self._claim.acquire(blocking=False):
             raise ValueError(f"busy: {self.busy}")
+        self.stop.clear()
+        if self.quit_requested.is_set():
+            self._claim.release()
+            raise ValueError("Orbyn is quitting")
         self.busy = label
         self.signal.clear()
-        self.stop.clear()
         safe_label = label if isinstance(label, str) and label in ACTIVITY_LABELS else "Work"
         row = {"label": safe_label, "state": "running"}
         self.activity.append(row)
@@ -473,6 +483,7 @@ class App:
             "activity": list(reversed(self.activity)),
             "jobs": background_jobs,
             "routines": routines,
+            "github_connected": self.github.connected(),
             "background_id": self.background_id,
             "status": list(self.status),
             "research": len(ws.research_graphs),
@@ -532,13 +543,16 @@ class App:
                     "enabled": True,
                 }
                 self.routines.append(item)
-                self._save_routines()
+                if not self._save_routines():
+                    self.routines.remove(item)
+                    raise ValueError("routine could not be saved")
             return {"id": item["id"]}
         if action in ("routine_pause", "routine_resume", "routine_delete", "routine_run"):
             with self._job_lock:
                 item = next((row for row in self.routines if row["id"] == body.get("id")), None)
                 if item is None:
                     raise ValueError("no such routine")
+                previous = dict(item)
                 if action == "routine_delete":
                     self.routines.remove(item)
                 elif action == "routine_pause":
@@ -548,12 +562,29 @@ class App:
                     item["next_due"] = self.clock() + ROUTINE_SECONDS[item["cadence"]]
                 else:
                     return {"id": self.start_research_job(item["question"], routine=item["id"])}
-                self._save_routines()
+                if not self._save_routines():
+                    if action == "routine_delete":
+                        self.routines.append(item)
+                    else:
+                        item.update(previous)
+                    raise ValueError("routine change could not be saved")
             return {}
         if action == "quit":
             self.quit_requested.set()
             self.stop.set()
             return {}
+        if action == "github_connect":
+            return {"login": self.github.connect(body.get("token"))}
+        if action == "github_disconnect":
+            self.github.disconnect()
+            return {}
+        if action == "github_repos":
+            return {"repos": self.github.repos()}
+        if action == "github_issues":
+            name = body.get("name")
+            if not isinstance(name, str):
+                raise ValueError("choose a repository")
+            return {"issues": self.github.issues(name)}
         if action == "vision":
             # The user's own switch (D179); read when the next Teach starts.
             settings.set_jev_vision(body.get("on") is True)

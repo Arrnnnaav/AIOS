@@ -331,6 +331,76 @@ def test_routines_survive_restart_and_malformed_file_is_preserved(tmp_path):
         third.close()
 
 
+def test_quit_during_due_tick_cannot_start_research(served):
+    app, port = served
+    now = [100.0]
+    app.clock = lambda: now[0]
+    rid = app.handle("routine_create", {"question": "Find updates", "cadence": "hourly"})["id"]
+    assert rid
+    now[0] = 3700.0
+    entered, release = threading.Event(), threading.Event()
+
+    def blocked_clock():
+        entered.set()
+        assert release.wait(2)
+        return now[0]
+
+    app.clock = blocked_clock
+    called = []
+    app.ws.research = lambda *a, **kw: called.append(a)
+    tick = threading.Thread(target=app.tick_routines)
+    tick.start()
+    assert entered.wait(1)  # after the outer quit check
+    assert call(port, "/api/quit")[0] == 200
+    release.set()
+    tick.join(2)
+    assert not tick.is_alive()
+    assert called == []
+    assert app.quit_requested.is_set()
+
+
+def test_due_time_is_durable_before_scheduled_job_starts(tmp_path):
+    root = tmp_path / "briefs"
+    make = lambda: Workspace("trip", Gateway(), Brain(tmp_path / "kb.sqlite"), root=root)
+    now = [100.0]
+    app = App("trip", make_workspace=make, clock=lambda: now[0])
+    app.handle("routine_create", {"question": "Find updates", "cadence": "hourly"})
+    now[0] = 3700.0
+
+    def crash_window(*args, **kwargs):
+        assert json.loads(app.routine_path.read_text(encoding="utf-8"))[0]["next_due"] == 7300.0
+        raise RuntimeError("simulated process death before work starts")
+
+    app.start_research_job = crash_window
+    try:
+        with pytest.raises(RuntimeError, match="simulated process death"):
+            app.tick_routines()
+    finally:
+        app.close()
+    reopened = App("trip", make_workspace=make, clock=lambda: now[0])
+    try:
+        calls = []
+        reopened.start_research_job = lambda *a, **kw: calls.append(a)
+        reopened.tick_routines()
+        assert calls == []  # no automatic retry of the same occurrence
+    finally:
+        reopened.close()
+
+
+def test_failed_schedule_save_prevents_unattended_run(served, monkeypatch):
+    app, _ = served
+    now = [100.0]
+    app.clock = lambda: now[0]
+    app.handle("routine_create", {"question": "Find updates", "cadence": "hourly"})
+    now[0] = 3700.0
+    monkeypatch.setattr(app, "_save_routines", lambda: False)
+    called = []
+    app.start_research_job = lambda *a, **kw: called.append(a)
+    app.tick_routines()
+    assert called == []
+    assert not app.has_enabled_routines()
+
+
 def test_single_instance_guard_detects_a_live_instance_only(tmp_path, monkeypatch):
     """Double-clicking Orbyn while it runs must re-open its window, not start a
     second server behind a locked Edge profile (which showed nothing). The guard

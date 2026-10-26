@@ -27,10 +27,10 @@ def _env_name(name: str) -> str:
     return f"ORBYN_{name.upper()}_API_KEY"
 
 
-def get_key(name: str) -> str | None:
+def get_key(name: str, *, allow_env: bool = True) -> str | None:
     """The key for ``name``, or None. Never logs or returns a partial key."""
 
-    override = os.environ.get(_env_name(name))
+    override = os.environ.get(_env_name(name)) if allow_env else None
     if override:
         return override.strip()
     if name == "chatgpt":  # an OAuth token from Sign in with ChatGPT, not a key

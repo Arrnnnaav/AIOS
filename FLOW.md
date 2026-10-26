@@ -230,6 +230,15 @@ research job path; an idle tick coalesces missed intervals into one run and
 reschedules from the actual start. Enabled routines keep the app process alive
 after its window closes; Quit stops the process and active job. Pausing a
 routine prevents future starts, and restart never retries an interrupted job.
+The next-due update is persisted before the worker starts; a failed save
+pauses that routine in memory. `_begin_run` checks Quit after clearing a stale
+Stop event, before a worker is submitted.
+Work's GitHub connector is a separate explicit read path:
+`github_connect` validates a supplied token against GitHub before Windows
+Credential Manager stores it; `github_repos` and `github_issues` send fixed
+GET requests to `api.github.com` and project bounded fields for the page;
+`github_disconnect` removes the local token. It cannot enter the worker,
+Brief, Brain, model context, routine scheduler or Act authority chain.
 The page places reusable agent creation and launch in Work, beside recent
 status cards. Those cards route to the existing Chat or Plan view; an active
 card's Stop control uses the same `stop` API as the live bar. Card links only

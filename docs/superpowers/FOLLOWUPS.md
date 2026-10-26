@@ -1480,6 +1480,9 @@ to confirm where the cost actually is before changing anything else.
   routines on the same worker. Other job types, retries, sleeping-PC service,
   and side-effecting connectors still need their own lifecycle and authority
   design; generic activity history does not imply them.
+- GitHub has an explicit read-only Work view. Live credential/permission and
+  private-repository acceptance remains unrun; other connectors and any
+  GitHub writes require separate reviewed authority and revocation design.
 - Work history is a single-writer per-topic file. If multiple app processes
   for one topic become supported, add coordinated persistence and live-run
   ownership before treating the cards as complete history.
