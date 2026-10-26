@@ -740,6 +740,12 @@ boundary is untouched (every slice verified against
 | Research routines | Hourly/daily/weekly read-only research on the same worker; local schedules, pause/resume/run now/delete, one missed run after wake, explicit Quit | workspace app |
 | GitHub read-only connector | Explicit fine-grained token in Windows Credential Manager; bounded repository and issue views, local disconnect; no write authority or model/routine bridge | workspace app |
 
+The packaged Work interface had a live Chat/Plan/Brain/Work and GitHub run on
+26 October 2026 (`docs/evidence/workspace-live-acceptance-2026-10-26.md`). A
+restart-and-time-jump test covered one missed routine after downtime; actual
+PC sleep was not run at the user's choice. This does not close Teach/Act
+release acceptance.
+
 Critic/Evaluation (`/critique`) reviews the current plan for gaps and risks
 before Act — advisory, read-only.
 

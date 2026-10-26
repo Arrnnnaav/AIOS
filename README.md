@@ -92,6 +92,9 @@ pwsh -File tools/build_orbyn.ps1          # -> dist/Orbyn/Orbyn.exe
 
 `tools/Install-Orbyn.ps1` creates a user-level launcher for that build. The app
 and installer are not yet code-signed or on an automatic update channel.
+The packaged Work interface, including Chat, Plan, Brain, background research,
+routines and a live read-only GitHub connection, has a recorded functional run
+in `docs/evidence/workspace-live-acceptance-2026-10-26.md`.
 
 ## Run
 

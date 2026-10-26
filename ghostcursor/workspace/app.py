@@ -1224,6 +1224,12 @@ def _ensure_ollama() -> None:
     exe = shutil.which("ollama")
     if not exe:
         return  # not installed; the UI already reports model-unavailable cleanly
+    dll_dir = None
+    if getattr(sys, "frozen", False) and sys.platform == "win32":
+        import ctypes
+
+        dll_dir = ctypes.windll.kernel32.SetDllDirectoryW
+        dll_dir(None)  # PyInstaller's bundled DLL path must not reach Ollama.
     try:
         subprocess.Popen(
             [exe, "serve"],
@@ -1232,6 +1238,9 @@ def _ensure_ollama() -> None:
         )
     except OSError:
         pass
+    finally:
+        if dll_dir is not None:
+            dll_dir(sys._MEIPASS)
 
 
 def main(argv: list[str] | None = None) -> int:

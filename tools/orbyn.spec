@@ -17,7 +17,7 @@ binaries = []
 # pywin32 / UIA / winsdk and the local Whisper stack are imported dynamically.
 hiddenimports = [
     "win32clipboard", "win32gui", "win32process", "win32api", "win32con",
-    "comtypes.gen.UIAutomationClient", "winsdk",
+    "comtypes.gen.UIAutomationClient", "winsdk", "win32timezone",
 ]
 
 # Voice (faster_whisper/ctranslate2) is an OPTIONAL extra (requirements-voice.txt)

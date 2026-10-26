@@ -1480,7 +1480,8 @@ to confirm where the cost actually is before changing anything else.
   routines on the same worker. Other job types, retries, sleeping-PC service,
   and side-effecting connectors still need their own lifecycle and authority
   design; generic activity history does not imply them.
-- GitHub has an explicit read-only Work view. Live credential/permission and
+- GitHub has an explicit read-only Work view. A live account, bounded repo
+  listing, and empty issues view passed in the packaged UI. An issue-containing
   private-repository acceptance remains unrun; other connectors and any
   GitHub writes require separate reviewed authority and revocation design.
 - Work history is a single-writer per-topic file. If multiple app processes
@@ -1488,7 +1489,9 @@ to confirm where the cost actually is before changing anything else.
   ownership before treating the cards as complete history.
 - Work “Ask a file” accepts one small text file. Larger files need chunked
   retrieval and a clear source/answer presentation before the limit rises.
-- Live run: discuss, research, plan and a Teach session from the app with a real model; record in docs/evidence.
+- Packaged Chat, Plan, Brain and Work controls, live research and GitHub ran;
+  see `docs/evidence/workspace-live-acceptance-2026-10-26.md`. A real packaged
+  Teach session remains to be measured under its separate acceptance gate.
 - Edge app windows have a minimum width near 500 px; the 460 px dock may be clamped. Check on a real display.
 - The app window covers part of the screen during Teach; consider collapsing it to a slim bar while guiding (Copilot-style).
 - Brain tab not captured in screenshots; check visually.

@@ -111,6 +111,21 @@ def test_ensure_ollama_starts_it_only_when_installed_and_down(monkeypatch):
     assert calls and calls[-1][0].endswith("ollama.exe") and calls[-1][1] == "serve"
 
 
+def test_frozen_ollama_launch_does_not_export_bundle_dll_path(monkeypatch):
+    import ctypes
+
+    events = []
+    monkeypatch.setattr(appmod.socket, "create_connection", lambda *a, **k: (_ for _ in ()).throw(OSError()))
+    monkeypatch.setattr(appmod.shutil, "which", lambda name: r"C:\ollama.exe")
+    monkeypatch.setattr(appmod.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(appmod.sys, "_MEIPASS", r"C:\bundle\_internal", raising=False)
+    monkeypatch.setattr(ctypes.windll.kernel32, "SetDllDirectoryW", lambda path: events.append(path))
+    monkeypatch.setattr(appmod.subprocess, "Popen", lambda *a, **kw: events.append("spawn"))
+
+    appmod._ensure_ollama()
+    assert events == [None, "spawn", r"C:\bundle\_internal"]
+
+
 def test_version_and_help_flags_do_not_start_a_server(capsys):
     import ghostcursor
 
@@ -383,6 +398,36 @@ def test_due_time_is_durable_before_scheduled_job_starts(tmp_path):
         reopened.start_research_job = lambda *a, **kw: calls.append(a)
         reopened.tick_routines()
         assert calls == []  # no automatic retry of the same occurrence
+    finally:
+        reopened.close()
+
+
+def test_missed_routine_after_downtime_replays_once(tmp_path):
+    root = tmp_path / "briefs"
+    make = lambda: Workspace("trip", Gateway(), Brain(tmp_path / "kb.sqlite"), root=root)
+    now = [100.0]
+    first = App("trip", make_workspace=make, clock=lambda: now[0])
+    first.handle("routine_create", {"question": "Find updates", "cadence": "hourly"})
+    first.close()
+
+    now[0] += 10 * 3600  # PC was unavailable across ten due times
+    resumed = App("trip", make_workspace=make, clock=lambda: now[0])
+    calls = []
+    resumed.ws.research = lambda question, *, cancelled, record: calls.append(question) or "Cited answer [1]"
+    try:
+        resumed.tick_routines()
+        assert _wait_for_job(resumed, "finished")["routine"] == resumed.routines[0]["id"]
+        assert calls == ["Find updates"]
+        assert resumed.routines[0]["next_due"] == now[0] + 3600
+    finally:
+        resumed.close()
+
+    reopened = App("trip", make_workspace=make, clock=lambda: now[0])
+    try:
+        reopened.ws.research = lambda *a, **kw: calls.append("unexpected")
+        reopened.tick_routines()
+        assert calls == ["Find updates"]
+        assert reopened.state()["jobs"][0]["state"] == "finished"
     finally:
         reopened.close()
 

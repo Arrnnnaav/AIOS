@@ -242,6 +242,10 @@ Brief, Brain, model context, routine scheduler or Act authority chain.
 Each request checks the organisation's current egress policy before sending;
 Credential Manager deletion errors other than "not found" are surfaced, so
 an unreadable credential cannot be reported as successfully disconnected.
+The PyInstaller build includes `win32timezone` because frozen pywin32
+Credential Manager reads require it. Before a frozen app launches the external
+Ollama server, `_ensure_ollama()` temporarily clears PyInstaller's DLL search
+directory, then restores it, so Ollama does not hold or load Orbyn's binaries.
 The page places reusable agent creation and launch in Work, beside recent
 status cards. Those cards route to the existing Chat or Plan view; an active
 card's Stop control uses the same `stop` API as the live bar. Card links only
