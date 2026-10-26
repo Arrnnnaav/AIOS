@@ -68,8 +68,22 @@ The repaired slice passed 73 focused tests, including the interactive blocked
 Open check and signed-byte/no-input-synthesis gates. The full hermetic lane
 passed 3,644 tests with 87 deselected in 372.95 seconds; its local output is
 `.tmp/hermetic-island-review.log` (ignored). The packaged acceptance lines
-above predate the repaired Open and relaunch code; a rebuilt packaged check
-follows this commit.
+above predate the repaired Open and relaunch code.
+
+After commit `004d625`, the D018 mutation check changed the island's Stop
+event setter to a clear and its Quit command to a wrong action, one mutation
+at a time. The native handler test failed on each mutant. The committed bytes
+were restored after each run. The earlier privacy-label mutation was also
+killed by its generic-state test.
+
+The frozen app was rebuilt (`.tmp/build-island-review.log`, ignored). The same
+packaged lifecycle check passed on the repaired bytes: one island at startup,
+one full Edge window after Open, then no island or server after Quit. A second
+default executable launch while the island was already up left one island and
+zero full Edge windows; an explicit `--window` launch then opened one full
+workspace window. Those windows were closed and the token-protected Quit API
+returned 200. This confirms the frozen entry and lifecycle, not a live model,
+Teach or Act session.
 
 After `island.py` became tracked, the first post-commit hermetic rerun found a
 stale workspace module count in `test_devtools_stay_out_of_production.py` and

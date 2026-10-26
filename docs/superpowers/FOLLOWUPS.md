@@ -1494,6 +1494,7 @@ to confirm where the cost actually is before changing anything else.
   Teach session remains to be measured under its separate acceptance gate.
 - Edge app windows have a minimum width near 500 px; the 460 px dock may be clamped. Check on a real display.
 - The default launcher now shows a slim topmost island, including during Teach. Check placement and overlap against real guided targets on multiple monitor/DPI layouts; the full window is still available from Open.
+- Island buttons have Tab stops and dialog-key dispatch, but physical keyboard and screen-reader use have not been measured. Quit immediately after Open can still leave an Edge window opening against a stopped local server; close that window if the race matters in daily use.
 - Brain tab not captured in screenshots; check visually.
 - The page polls state every 700 ms; switch to a long poll if CPU shows up.
 
