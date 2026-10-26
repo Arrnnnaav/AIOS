@@ -10,12 +10,12 @@ exposed off-device. A model is used only when you have switched on a BYOK key
 - **Double-click `Orbyn.cmd`** at the repo root — opens a compact, draggable
   desktop island. It expands during work and for a new result. **Open** opens
   the full Edge workspace (or your browser if Edge is absent); **Stop** stops
-  the current run; **×** quits. Use `--window` to start with the full floating
+  the current run; **Quit** exits. Use `--window` to start with the full floating
   workspace, or `--dock` for its right-side layout.
 - Or: `py -3.12 -m ghostcursor.workspace.app` (no argument opens the default
   workspace; pass a topic to name one: `... app "q3 review"`).
 - Enabled research routines keep Orbyn running while the island is open or
-  after a full workspace window closes. Use **×** or **Quit Orbyn** in Work to
+  after a full workspace window closes. Use **Quit** or **Quit Orbyn** in Work to
   stop the process and active job.
   GitHub's read-only repository and issue view is also in Work.
 

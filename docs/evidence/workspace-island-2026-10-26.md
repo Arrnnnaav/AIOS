@@ -46,6 +46,31 @@ launcher and window lifecycle; the earlier packaged Chat/Plan/Brain/Work and
 GitHub run is in `workspace-live-acceptance-2026-10-26.md`. Teach/Act release
 acceptance and multi-monitor placement were not rerun here.
 
+A relaunch check then found that running the default launcher again while the
+island was already visible opened a full window. The live-instance branch now
+leaves the visible island in place; `--window` still opens the full workspace.
+Focused tests for both branches passed. This follow-up source change has not
+yet been rebuilt into the packaged artifact above.
+
+Independent D032 review found that Open's five-second Edge positioning wait
+ran inside the capsule window procedure. If the user pressed Open during work,
+Stop could be delayed until Edge appeared. Open now starts that wait on a
+background thread. An interactive injected-blocking-open test called Stop
+before releasing Open and observed the existing Stop event set within the
+test's half-second bound. Review also found `Orbyn.cmd`'s old “nothing leaves
+the box” comment contradicted the configured provider and connector paths;
+it now describes the local UI and possible chosen outbound requests separately.
+The native buttons now have Tab stops, Windows dialog-key dispatch and a
+spoken-text Quit name. Keyboard navigation was not measured with a physical
+keyboard in this run.
+
+The repaired slice passed 73 focused tests, including the interactive blocked
+Open check and signed-byte/no-input-synthesis gates. The full hermetic lane
+passed 3,644 tests with 87 deselected in 372.95 seconds; its local output is
+`.tmp/hermetic-island-review.log` (ignored). The packaged acceptance lines
+above predate the repaired Open and relaunch code; a rebuilt packaged check
+follows this commit.
+
 After `island.py` became tracked, the first post-commit hermetic rerun found a
 stale workspace module count in `test_devtools_stay_out_of_production.py` and
 the signed-bytes gate correctly flagged this unstaged evidence edit. The count

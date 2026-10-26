@@ -1262,6 +1262,11 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     existing = _live_instance_url()
     if existing is not None:  # already running: re-open its window, don't double-start
+        if not windowed:
+            import win32gui
+
+            if win32gui.FindWindow("OrbynWorkspaceIsland", None):
+                return 0  # the topmost island is already on screen
         open_window(existing, docked=docked)
         return 0
     _ensure_ollama()  # start the local model if it is installed but not running

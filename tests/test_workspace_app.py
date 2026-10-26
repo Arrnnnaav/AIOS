@@ -164,6 +164,19 @@ def test_window_launch_supports_floating_and_docked_geometry(tmp_path, monkeypat
     assert len(moves) == 2  # two concurrent new windows: move neither
 
 
+def test_second_default_launch_keeps_existing_island_instead_of_opening_full_window(monkeypatch):
+    import win32gui
+
+    opened = []
+    monkeypatch.setattr(appmod, "_live_instance_url", lambda: "http://127.0.0.1:1234/?t=local")
+    monkeypatch.setattr(win32gui, "FindWindow", lambda name, title: 42)
+    monkeypatch.setattr(appmod, "open_window", lambda url, **kw: opened.append((url, kw)))
+    assert appmod.main([]) == 0
+    assert opened == []
+    assert appmod.main(["--window"]) == 0
+    assert opened == [("http://127.0.0.1:1234/?t=local", {"docked": False})]
+
+
 def _wait_for_job(app, state):
     deadline = time.monotonic() + 3
     while time.monotonic() < deadline:

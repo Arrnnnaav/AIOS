@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import ctypes
 import time
+import threading
 
 import win32api
 import win32con
@@ -12,14 +14,36 @@ from ghostcursor.overlay.window import ensure_class
 
 CLASS = "OrbynWorkspaceIsland"
 ID_OPEN, ID_STOP, ID_QUIT = 1, 2, 3
-COMPACT = (252, 56)
-EXPANDED = (410, 72)
+COMPACT = (280, 56)
+EXPANDED = (440, 72)
 BG = win32api.RGB(25, 27, 34)
 TEXT = win32api.RGB(245, 247, 250)
 MUTED = win32api.RGB(172, 181, 195)
 ACCENT = win32api.RGB(106, 188, 255)
 _windows = {}
 _brush = None
+
+
+class _Point(ctypes.Structure):
+    _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
+
+
+class _Message(ctypes.Structure):
+    _fields_ = [
+        ("hwnd", ctypes.c_void_p), ("message", ctypes.c_uint),
+        ("wParam", ctypes.c_size_t), ("lParam", ctypes.c_ssize_t),
+        ("time", ctypes.c_ulong), ("pt", _Point), ("lPrivate", ctypes.c_ulong),
+    ]
+
+
+def _pump_dialog(hwnd):
+    """Dispatch mouse events and let Windows handle Tab/Shift-Tab for the buttons."""
+    user32 = ctypes.windll.user32
+    message = _Message()
+    while user32.PeekMessageW(ctypes.byref(message), None, 0, 0, win32con.PM_REMOVE):
+        if not user32.IsDialogMessageW(hwnd, ctypes.byref(message)):
+            user32.TranslateMessage(ctypes.byref(message))
+            user32.DispatchMessageW(ctypes.byref(message))
 
 
 def _last_job(app):
@@ -49,7 +73,7 @@ def _wnd_proc(hwnd, msg, wparam, lparam):
             win32gui.DrawText(hdc, "●", -1, (16, 14, 34, 47), win32con.DT_SINGLELINE)
             win32gui.SetTextColor(hdc, TEXT)
             heading = "Orbyn · " + island.title if island.expanded else "Orbyn"
-            edge = 234 if island.expanded else 139
+            edge = 236 if island.expanded else 145
             win32gui.DrawText(hdc, heading, -1, (37, 9, edge, 30), win32con.DT_SINGLELINE | win32con.DT_END_ELLIPSIS)
             win32gui.SetTextColor(hdc, MUTED)
             detail = island.detail if island.expanded else island.title
@@ -64,7 +88,7 @@ def _wnd_proc(hwnd, msg, wparam, lparam):
         if msg == win32con.WM_COMMAND and win32api.HIWORD(wparam) == win32con.BN_CLICKED:
             action = win32api.LOWORD(wparam)
             if action == ID_OPEN:
-                island.open_window(island.url)
+                island.open()
             elif action == ID_STOP:
                 island.app.stop.set()
             elif action == ID_QUIT:
@@ -89,6 +113,7 @@ class Island:
         global _brush
         self.app, self.url, self.open_window = app, url, open_window
         self.clock = clock
+        self._opening = threading.Event()
         self.closed = False
         self.expanded = False
         self._notice_until = 0.0
@@ -108,14 +133,27 @@ class Island:
         )
         _windows[self.hwnd] = self
         win32gui.SetWindowRgn(self.hwnd, win32gui.CreateRoundRectRgn(0, 0, width, height, 30, 30), True)
-        style = win32con.WS_CHILD | win32con.WS_VISIBLE | win32con.BS_PUSHBUTTON
+        style = win32con.WS_CHILD | win32con.WS_VISIBLE | win32con.WS_TABSTOP | win32con.BS_PUSHBUTTON
         module = win32api.GetModuleHandle(None)
-        self.open_button = win32gui.CreateWindowEx(0, "BUTTON", "Open", style, 145, 9, 56, 38, self.hwnd, ID_OPEN, module, None)
-        self.stop_button = win32gui.CreateWindowEx(0, "BUTTON", "Stop", style, 304, 17, 56, 38, self.hwnd, ID_STOP, module, None)
-        self.quit_button = win32gui.CreateWindowEx(0, "BUTTON", "×", style, 210, 9, 28, 38, self.hwnd, ID_QUIT, module, None)
+        self.open_button = win32gui.CreateWindowEx(0, "BUTTON", "Open", style, 150, 9, 56, 38, self.hwnd, ID_OPEN, module, None)
+        self.stop_button = win32gui.CreateWindowEx(0, "BUTTON", "Stop", style, 309, 17, 56, 38, self.hwnd, ID_STOP, module, None)
+        self.quit_button = win32gui.CreateWindowEx(0, "BUTTON", "Quit", style, 214, 9, 52, 38, self.hwnd, ID_QUIT, module, None)
         win32gui.ShowWindow(self.stop_button, win32con.SW_HIDE)
         win32gui.ShowWindow(self.hwnd, win32con.SW_SHOWNOACTIVATE)
         win32gui.UpdateWindow(self.hwnd)
+
+    def open(self):
+        if self._opening.is_set():
+            return
+        self._opening.set()
+
+        def launch():
+            try:
+                self.open_window(self.url)
+            finally:
+                self._opening.clear()
+
+        threading.Thread(target=launch, daemon=True, name="orbyn-open-workspace").start()
 
     def tick(self):
         job = _last_job(self.app)
@@ -134,7 +172,7 @@ class Island:
             win32gui.InvalidateRect(self.hwnd, None, True)
         busy = bool(self.app.busy)
         win32gui.ShowWindow(self.stop_button, win32con.SW_SHOWNA if busy else win32con.SW_HIDE)
-        win32gui.PumpWaitingMessages()
+        _pump_dialog(self.hwnd)
 
     def _resize(self, expanded):
         old_width = EXPANDED[0] if self.expanded else COMPACT[0]
@@ -148,7 +186,7 @@ class Island:
         win32gui.SetWindowPos(self.hwnd, 0, left, top, width, height, win32con.SWP_NOZORDER | win32con.SWP_NOACTIVATE)
         win32gui.SetWindowRgn(self.hwnd, win32gui.CreateRoundRectRgn(0, 0, width, height, 30, 30), True)
         y = 17 if expanded else 9
-        win32gui.MoveWindow(self.open_button, 242 if expanded else 145, y, 56, 38, True)
-        win32gui.MoveWindow(self.quit_button, 368 if expanded else 210, y, 28, 38, True)
+        win32gui.MoveWindow(self.open_button, 247 if expanded else 150, y, 56, 38, True)
+        win32gui.MoveWindow(self.quit_button, 371 if expanded else 214, y, 52, 38, True)
         self.expanded = expanded
         win32gui.InvalidateRect(self.hwnd, None, True)

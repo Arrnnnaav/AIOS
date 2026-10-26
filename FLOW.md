@@ -205,7 +205,8 @@ shown at the top of the desktop. It is draggable and shows generic worker and
 research-job state without goal, question, answer or credential text. It grows
 while work runs and for twelve seconds when a new result arrives. Its native
 Open, Stop and Quit controls use the existing full-window launcher, Stop event
-and Quit action. `--window` opens the movable Edge workspace directly;
+and Quit action. Open launches Edge from a background thread so its positioning
+wait cannot hold the island's Stop control. `--window` opens the movable Edge workspace directly;
 `--dock` opens its right-side position. This is presentation only and does not
 share the click-through Teach overlay or add input authority. Its one worker owns `Workspace` and Brain; request
 threads refuse overlapping work while Stop and Done can signal that worker.
