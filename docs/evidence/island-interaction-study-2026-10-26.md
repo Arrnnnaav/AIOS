@@ -62,4 +62,18 @@ full-window opening, then found a shutdown crash. The local redacted crash
 log showed `PostThreadMessage` error 1444: the Listener tried to notify an
 already-exited hotkey thread. `Listener.stop()` now tolerates that exact
 Windows error. The focused listener/island/input-boundary lane passed 48 tests.
-The repaired frozen build and final quit result follow in a later record.
+The shutdown repair in `e8ce478` passed the full hermetic lane: 3,645 tests,
+92 deselected, 332.12 seconds (`.tmp/hermetic-listener-shutdown.log`). A D018
+mutation that raised error 1444 again was killed by
+`test_stopping_after_hotkey_thread_exits_does_not_crash`; the committed source
+was restored afterward. Earlier D018 mutations removing the busy Hide guard
+and hidden-work auto-reveal were also killed by the island interaction test.
+
+The rebuilt `dist/Orbyn/Orbyn.exe` passed the frozen GUI script twice after
+its startup check waited for a **visible** HWND. The retained output is
+`.tmp/packaged-island-final.log`: Hide kept the local server alive; a second
+default launch recalled the island without opening Edge; `--window` opened one
+full workspace; Quit closed both the island and server. The script's earlier
+startup assertion was a readiness race, not an app exception. The package
+trial used this PC's one active display. The second-monitor checks above are
+simulated work-area layouts, as requested.
