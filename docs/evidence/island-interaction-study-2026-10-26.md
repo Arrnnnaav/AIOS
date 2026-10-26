@@ -46,3 +46,20 @@ Focused interactive/workspace/no-input-synthesis/signed-byte tests passed 76
 tests. The full hermetic lane passed 3,644 tests with 90 deselected in 332.28
 seconds; its local output is `.tmp/hermetic-island-study.log` (ignored). D018
 mutation and frozen-build results are appended after those checks run.
+
+The repair in `c1f437e` moved recall to Ctrl+Alt+O to preserve the default
+voice shortcut, gives any configured voice Ctrl+Alt+O priority, and clamps the
+initial placement below a top taskbar. Its focused lane passed 75 tests and
+the staged full hermetic lane passed 3,644 tests with 92 deselected in 330.27
+seconds (`.tmp/hermetic-island-repair-staged.log`). The first full run had one
+signed-byte failure because this document was unstaged; staging it passed the
+signed-byte check, and the staged full lane passed. The reviewer found no
+blocking safety issue and flagged one nonblocking global-shortcut test flake;
+that test now skips its OS-reservation assertion when another app owns O.
+
+The first frozen-build trial passed Hide, second-launch recall and explicit
+full-window opening, then found a shutdown crash. The local redacted crash
+log showed `PostThreadMessage` error 1444: the Listener tried to notify an
+already-exited hotkey thread. `Listener.stop()` now tolerates that exact
+Windows error. The focused listener/island/input-boundary lane passed 48 tests.
+The repaired frozen build and final quit result follow in a later record.

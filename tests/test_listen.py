@@ -90,6 +90,21 @@ def test_the_hotkey_arms_without_a_wake_word():
     assert sent == ["summarise this page"]
 
 
+def test_stopping_after_hotkey_thread_exits_does_not_crash(monkeypatch):
+    import pywintypes
+    import win32api
+
+    listener = Listener(lambda text: None, hotkey="ctrl+alt+space")
+    listener._hotkey_thread_id = 123
+
+    def dead_thread(*_args):
+        raise pywintypes.error(1444, "PostThreadMessage", "Invalid thread identifier.")
+
+    monkeypatch.setattr(win32api, "PostThreadMessage", dead_thread)
+    listener.stop()
+    assert listener._stop.is_set()
+
+
 def test_with_the_wake_word_off_only_the_hotkey_listens():
     listener, sent, _ = _listener(["Hey bro open excel"])
     listener.wake = False

@@ -191,8 +191,13 @@ class Listener:
         if self._hotkey_thread_id:
             import win32api
             import win32con
+            import pywintypes
 
-            win32api.PostThreadMessage(self._hotkey_thread_id, win32con.WM_QUIT, 0, 0)
+            try:
+                win32api.PostThreadMessage(self._hotkey_thread_id, win32con.WM_QUIT, 0, 0)
+            except pywintypes.error as exc:
+                if exc.args[0] != 1444:  # hotkey thread has already exited
+                    raise
 
     def _mic(self) -> None:  # pragma: no cover - needs a microphone
         import sounddevice

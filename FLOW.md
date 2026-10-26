@@ -212,7 +212,8 @@ has priority if it uses the same chord. Work or a new research
 result reveals a hidden island automatically, and a new result's Open goes
 directly to the existing Work tab. Resize and display-change handling clamp
 the capsule to the current monitor's work area. A shortcut conflict leaves
-Hide unavailable. `--window` opens the movable Edge workspace directly;
+Hide unavailable. On shutdown the voice listener tolerates an already-exited
+hotkey thread. `--window` opens the movable Edge workspace directly;
 `--dock` opens its right-side position. This is presentation only and does not
 share the click-through Teach overlay or add input authority. Its one worker owns `Workspace` and Brain; request
 threads refuse overlapping work while Stop and Done can signal that worker.
