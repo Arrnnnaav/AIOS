@@ -1,7 +1,7 @@
 """Desktop entry point for Orbyn.
 
 Double-click ``Orbyn.cmd`` (or run ``py -3.12 tools\\orbyn_app.py``) to open the
-Orbyn workspace in a movable Edge app-mode window -- the local-first desktop app.
+Orbyn workspace island. Open on the island launches the full Edge app window.
 No arguments: opens the default workspace. The local server listens only on
 127.0.0.1 behind a per-launch token (ghostcursor/workspace/app.py). Configured
 model, search, and GitHub requests may leave under user choice and policy.

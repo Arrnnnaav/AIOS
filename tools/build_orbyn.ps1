@@ -17,4 +17,4 @@ if ($LASTEXITCODE -ne 0) { throw 'Build failed.' }
 
 $bundle = Join-Path $OutputDir 'Orbyn'
 Copy-Item -LiteralPath 'README.md' -Destination (Join-Path $bundle 'README.md') -Force -ErrorAction SilentlyContinue
-Write-Host "Built $bundle\Orbyn.exe  (double-click to open the workspace window)"
+Write-Host "Built $bundle\Orbyn.exe  (double-click to open the workspace island)"
