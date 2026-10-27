@@ -1484,6 +1484,10 @@ to confirm where the cost actually is before changing anything else.
   the frozen app passed an isolated seeded-job trial; fallback-browser download
   and a post-restart result export remain unmeasured. Downloaded Markdown can
   contain untrusted links or HTML from the answer and is never auto-opened.
+- Saved-result follow-up asks over the first 8,000 characters using the
+  one-off Ask path. Longer answers need chunked retrieval before the whole
+  result can be queried; the result sheet relies on Escape/global Stop while
+  waiting and has no dedicated Stop button.
 - Work can keep up to five finished research results ahead of the 20-job trim.
   One packaged Quit returned nonzero after saving Keep, without a captured exit
   value or crash log; seven immediate repeat trials passed Quit and restart.

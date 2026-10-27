@@ -27,4 +27,16 @@ server-side material selection, the 8,000-character bound, lack of persisted
 question/reply, invalid IDs and running-job refusal. The test gateway returned
 a stub reply; no live model provider was exercised.
 
-Mutation and independent review results follow after those gates finish.
+D018 mutation: removing the finished-state guard from `job_ask` let a seeded
+running row with a premature answer through. The focused test failed because
+the API returned 200 instead of the required 400. Restoring the guard made
+the same test pass (1 passed, 52 deselected); the mutant was not committed.
+
+An independent D032 reader inspected `7adf9fc` in a detached worktree and
+returned READY with no blocking safety finding. The reader verified the REA
+method evidence and installed assembly hash, server-side result selection,
+bounded full-material DLP, tainted egress, Stop wiring, lack of persistence,
+and text-only UI rendering. The reader did not rerun pytest under D025.
+Nonblocking limits: only the first 8,000 characters can answer a follow-up;
+the result sheet has no visible Stop button during the request, although the
+page's Escape/global Stop path remains available.
