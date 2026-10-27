@@ -466,7 +466,19 @@ function openJobResult(job) {
   const sheet = $("sheet"); const heading = el("h3", "", "Research result"); heading.id = "jobResultTitle";
   sheet.setAttribute("aria-labelledby", heading.id);
   const close = el("button", "secondary", "Close"); close.onclick = closeSheet;
-  sheet.replaceChildren(heading, el("p", "", job.question), el("div", "jobanswer", job.answer), close);
+  const follow = el("textarea"); follow.rows = 2; follow.maxLength = 500; follow.placeholder = "Ask about this result"; follow.setAttribute("aria-label", "Question about this result");
+  const reply = el("div", "jobanswer"); reply.hidden = true; reply.tabIndex = -1; reply.setAttribute("role", "status");
+  const ask = el("button", "pill go", "Ask about result"); ask.disabled = !!S.busy;
+  ask.onclick = async () => {
+    const text = follow.value.trim(); if (!text) return toast("Ask a question about this result.");
+    ask.disabled = true; ask.textContent = "Asking…";
+    try {
+      const result = await api("job_ask", { id: job.id, text });
+      reply.textContent = result.answer; reply.hidden = false; reply.focus(); await poll(true);
+    } catch (e) { toast(e.message); }
+    finally { ask.disabled = false; ask.textContent = "Ask about result"; }
+  };
+  sheet.replaceChildren(heading, el("p", "", job.question), el("div", "jobanswer", job.answer), el("p", "note", "Follow-up uses up to the first 8,000 characters of this saved result and your configured model. The question and reply are not saved."), follow, reply, ask, close);
   $("scrim").classList.add("open"); close.focus();
 }
 

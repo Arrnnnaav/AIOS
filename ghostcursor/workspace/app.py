@@ -837,6 +837,16 @@ class App:
             ):
                 raise ValueError("choose a text file under 8,000 characters")
             return {"answer": self.run("Asking file", lambda: ws.ask(text, material, cancelled=self.stop.is_set))}
+        if action == "job_ask":
+            question, jid = body.get("text"), body.get("id")
+            if not isinstance(question, str) or not question.strip() or len(question) > 500 or "\0" in question:
+                raise ValueError("ask a question under 500 characters")
+            with self._job_lock:
+                row = next((item for item in self.background_jobs if item["id"] == jid), None)
+                if row is None or row["state"] != "finished" or not row["answer"]:
+                    raise ValueError("no such finished result")
+                material = row["answer"][:8000]
+            return {"answer": self.run("Asking file", lambda: ws.ask(question, material, cancelled=self.stop.is_set))}
         if action == "evidence":
             return {"text": ws.evidence(int(body.get("n", 0)))}
         if action == "ideate":

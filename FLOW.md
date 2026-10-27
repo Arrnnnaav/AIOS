@@ -238,7 +238,11 @@ removes the oldest unkept row when new research starts. A failed Keep or Archive
 save reverts the in-memory change and reports an error. Finished results can also
 be archived and restored in the same local file. Work hides archived cards by
 default; archived cards still count toward the 20-job limit, and only Keep
-protects one from trimming. The background call
+protects one from trimming. A result's explicit follow-up uses its server-selected saved answer
+(first 8,000 characters) through the existing one-off, tainted-material Ask
+path and single worker. It sends the question and bounded material to the
+configured model, accepts Stop, and saves neither follow-up nor reply.
+The background call
 suppresses Brief turns, research history and trace writes; it
 scrubs the returned answer before writing the inbox. Stop reaches search-phase
 checks, both Jev calls and the System Two gateway. The

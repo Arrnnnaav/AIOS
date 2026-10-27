@@ -7895,6 +7895,15 @@ does not imply permanent storage. An unkept archived result can age out of
 the 20-job inbox, while a kept archived result retains Keep's five-item
 protection. Evidence: `docs/evidence/heyclicky-archived-results-2026-10-27.md`.
 
+On 28 October, REA managed metadata on the installed Agents assembly exposed
+`AgentService.SubmitThreadFollowUpAsync`, `StartFollowUpTurnAsync` and
+`SteerAsync`; the decompiled `ClickyJobStore` also associates runs with a
+thread. These establish a shipped follow-up path, not its live behavior.
+Orbyn's explicit saved-result follow-up uses the existing one-off Ask path,
+with the result selected server-side and bounded to its first 8,000 characters.
+It has no persistent conversation thread, research rerun, or action authority.
+Evidence: `docs/evidence/heyclicky-result-follow-up-2026-10-28.md`.
+
 ### D178 addendum — Scheduled research routines
 
 Date: 26 October 2026. Owner asked for HeyClicky-style routines. A routine is

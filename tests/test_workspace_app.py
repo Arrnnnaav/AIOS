@@ -699,6 +699,34 @@ def test_file_question_is_one_off_and_keeps_material_out_of_history(served):
     assert status == 400
 
 
+def test_saved_result_follow_up_uses_server_selected_bounded_answer(served):
+    app, port = served
+    jid = "0000000000000000"
+    with app._job_lock:
+        app.background_jobs.append({
+            "id": jid, "question": "Original question", "answer": "A" * 8000 + "TRAILING",
+            "state": "finished", "created": 1, "ended": 2, "routine": "", "pinned": False, "archived": False,
+        })
+        app.background_jobs.append({
+            "id": "0000000000000001", "question": "Running", "answer": "Premature answer",
+            "state": "running", "created": 3, "ended": None, "routine": "", "pinned": False, "archived": False,
+        })
+        app._save_background_jobs()
+    seen = []
+    app.ws.ask = lambda question, material, *, cancelled: (seen.append((question, material, cancelled())), "Grounded reply")[1]
+    status, payload = call(port, "/api/job_ask", {"id": jid, "text": "What?", "material": "injected"})
+    assert status == 200 and json.loads(payload) == {"answer": "Grounded reply"}
+    assert seen == [("What?", "A" * 8000, False)]
+    assert app.ws.turns == ()
+    saved = app.job_path.read_text(encoding="utf-8")
+    assert "What?" not in saved and "Grounded reply" not in saved
+    assert call(port, "/api/job_ask", {"id": "ffffffffffffffff", "text": "What?"})[0] == 400
+    assert call(port, "/api/job_ask", {"id": "0000000000000001", "text": "What?"})[0] == 400
+    assert call(port, "/api/job_ask", {"id": jid, "text": ""})[0] == 400
+    assert call(port, "/api/job_ask", {"id": jid, "text": "x" * 501})[0] == 400
+    assert call(port, "/api/job_ask", {"id": jid, "text": "x\0y"})[0] == 400
+
+
 def test_stop_reaches_file_question_provider_in_order(tmp_path):
     seen = []
 
@@ -944,6 +972,13 @@ def test_saved_research_card_downloads_markdown(served, tmp_path):
             page.get_by_role("button", name="Download Markdown").focus()
             page.evaluate("renderWork()")
             assert page.evaluate("document.activeElement.textContent") == "Download Markdown"
+            page.get_by_role("button", name="View result").click()
+            page.get_by_role("textbox", name="Question about this result").fill("What are the steps?")
+            page.get_by_role("button", name="Ask about result").click()
+            reply = page.get_by_role("status").filter(has_text="Sure.")
+            reply.wait_for()
+            assert reply.text_content() == "Sure."
+            page.get_by_role("button", name="Close", exact=True).click()
             with page.expect_download() as pending:
                 page.get_by_role("button", name="Download Markdown").click()
             download = pending.value
