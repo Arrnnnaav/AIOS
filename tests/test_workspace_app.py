@@ -216,6 +216,71 @@ def test_background_research_finishes_and_keeps_a_local_result(served):
     assert app.state()["jobs"] == []
 
 
+def test_kept_research_result_survives_inbox_trim_and_restart(tmp_path):
+    from ghostcursor.brief import brief_path
+
+    root = tmp_path / "briefs"
+    path = brief_path(root, "trip").with_suffix(".jobs.json")
+    path.parent.mkdir(parents=True)
+    old = {"id": "0000000000000000", "question": "Keep this", "answer": "Cited result",
+           "state": "finished", "created": 1, "ended": 2, "routine": ""}
+    path.write_text(json.dumps([old]), encoding="utf-8")  # pre-pin inbox schema
+    make = lambda: Workspace("trip", Gateway(), Brain(tmp_path / "kb.sqlite"), root=root)
+    app = App("trip", make_workspace=make)
+    server = make_server(app, "secret-token")
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        assert app.state()["jobs"][0]["pinned"] is False
+        assert call(server.server_port, "/api/job_pin", {"id": old["id"], "pinned": True})[0] == 200
+        with app._job_lock:
+            for i in range(1, 20):
+                app.background_jobs.append({**old, "id": f"{i:016x}", "question": f"Question {i}", "pinned": False})
+            app._save_background_jobs()
+        app.ws.research = lambda *_args, **_kw: "New result"
+        new_id = app.start_research_job("New question")
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline:
+            if any(row["id"] == new_id and row["state"] == "finished" for row in app.state()["jobs"]):
+                break
+            time.sleep(.01)
+        jobs = app.state()["jobs"]
+        assert len(jobs) == 20 and jobs[0]["id"] == old["id"] and jobs[0]["pinned"]
+        assert "0000000000000001" not in {row["id"] for row in jobs}
+        assert new_id in {row["id"] for row in jobs}
+    finally:
+        server.shutdown()
+        app.close()
+    reopened = App("trip", make_workspace=make)
+    try:
+        assert reopened.state()["jobs"][0]["id"] == old["id"]
+        assert reopened.state()["jobs"][0]["pinned"] is True
+    finally:
+        reopened.close()
+
+
+def test_keep_result_is_bounded_and_rejects_invalid_or_unsaved_changes(served, monkeypatch):
+    app, port = served
+    with app._job_lock:
+        for i in range(6):
+            app.background_jobs.append({
+                "id": f"{i:016x}", "question": f"Question {i}", "answer": "Result",
+                "state": "finished", "created": i, "ended": i + 1, "routine": "", "pinned": False,
+            })
+        app._save_background_jobs()
+    for i in range(5):
+        assert call(port, "/api/job_pin", {"id": f"{i:016x}", "pinned": True})[0] == 200
+    assert call(port, "/api/job_pin", {"id": "0000000000000005", "pinned": True})[0] == 400
+    assert call(port, "/api/job_pin", {"id": "0000000000000005", "pinned": "yes"})[0] == 400
+    assert sum(job["pinned"] for job in app.state()["jobs"]) == 5
+
+    def failed_save():
+        app.job_path = None
+
+    monkeypatch.setattr(app, "_save_background_jobs", failed_save)
+    assert call(port, "/api/job_pin", {"id": "0000000000000000", "pinned": False})[0] == 400
+    assert next(job for job in app.state()["jobs"] if job["id"] == "0000000000000000")["pinned"] is True
+
+
 def test_background_stop_and_secret_scrub_before_research(served):
     app, port = served
     started, release = threading.Event(), threading.Event()
@@ -827,13 +892,16 @@ def test_saved_research_card_downloads_markdown(served, tmp_path):
     with app._job_lock:
         app.background_jobs.append({
             "id": "0123456789abcdef", "question": question, "answer": answer,
-            "state": "finished", "created": 1.0, "ended": 2.0, "routine": "",
+            "state": "finished", "created": 1.0, "ended": 2.0, "routine": "", "pinned": False,
         })
     with playwright.sync_playwright() as browser:
         edge = browser.chromium.launch(executable_path=str(appmod.EDGE), headless=True)
         try:
-            page = edge.new_page(accept_downloads=True)
+            page = edge.new_page(accept_downloads=True, viewport={"width": 500, "height": 800})
             page.goto(f"http://127.0.0.1:{port}/?t=secret-token#work")
+            page.get_by_role("button", name="Keep", exact=True).click()
+            page.get_by_role("button", name="Unkeep").wait_for()
+            assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
             page.get_by_role("button", name="Download Markdown").focus()
             page.evaluate("renderWork()")
             assert page.evaluate("document.activeElement.textContent") == "Download Markdown"

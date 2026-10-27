@@ -183,7 +183,8 @@ class App:
             keys = {"id", "question", "answer", "state", "created", "ended", "routine"}
             if not isinstance(rows, list) or any(
                 not isinstance(row, dict)
-                or set(row) != keys
+                or set(row) not in (keys, keys | {"pinned"})
+                or not isinstance(row.get("pinned", False), bool)
                 or not isinstance(row["id"], str)
                 or len(row["id"]) != 16
                 or any(c not in "0123456789abcdef" for c in row["id"])
@@ -200,6 +201,8 @@ class App:
                 for row in rows
             ):
                 raise ValueError("invalid job inbox")
+            for row in rows:
+                row.setdefault("pinned", False)
             return rows[-20:]
         except FileNotFoundError:
             return []
@@ -381,7 +384,7 @@ class App:
         jid = secrets.token_hex(8)
         entry = {
             "id": jid, "question": question, "answer": "", "state": "running",
-            "created": self.clock(), "ended": None, "routine": routine,
+            "created": self.clock(), "ended": None, "routine": routine, "pinned": False,
         }
         future, row = self._begin_run(
             "Researching", lambda: self.ws.research(
@@ -391,7 +394,9 @@ class App:
         self.background_id = jid
         with self._job_lock:
             self.background_jobs.append(entry)
-            self.background_jobs = self.background_jobs[-20:]
+            if len(self.background_jobs) > 20:
+                oldest = next((i for i, job in enumerate(self.background_jobs) if not job["pinned"]), 0)
+                self.background_jobs.pop(oldest)
             self._save_background_jobs()
 
         def done(_):
@@ -451,6 +456,7 @@ class App:
         proposal = ws.proposal
         with self._job_lock:
             background_jobs = [dict(row) for row in reversed(self.background_jobs)]
+            background_jobs.sort(key=lambda row: not row["pinned"])
             routines = [dict(row) for row in self.routines]
         return {
             "topic": ws.topic,
@@ -525,6 +531,25 @@ class App:
                     raise ValueError("no such finished job")
                 self.background_jobs.remove(row)
                 self._save_background_jobs()
+            return {}
+        if action == "job_pin":
+            jid, pinned = body.get("id"), body.get("pinned")
+            if not isinstance(pinned, bool):
+                raise ValueError("choose whether to keep the result")
+            with self._job_lock:
+                row = next((item for item in self.background_jobs if item["id"] == jid), None)
+                if row is None or row["state"] != "finished" or not row["answer"]:
+                    raise ValueError("no such finished result")
+                if self.job_path is None:
+                    raise ValueError("job inbox is unavailable")
+                if pinned and not row["pinned"] and sum(job["pinned"] for job in self.background_jobs) >= 5:
+                    raise ValueError("keep at most five results")
+                previous = row["pinned"]
+                row["pinned"] = pinned
+                self._save_background_jobs()
+                if self.job_path is None:
+                    row["pinned"] = previous
+                    raise ValueError("job inbox could not be saved")
             return {}
         if action == "routine_create":
             question, cadence = body.get("question"), body.get("cadence")

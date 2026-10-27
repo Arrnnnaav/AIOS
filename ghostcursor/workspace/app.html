@@ -159,7 +159,7 @@ section[hidden] { display: none !important; }
 .jobcard { padding: 11px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
 .jobcard .meta { display: flex; justify-content: space-between; gap: 8px; color: var(--dim); font-size: 12px; }
 .jobcard p { margin: 6px 0; overflow-wrap: anywhere; }
-.jobcard .sheetrow { margin-top: 8px; }
+.jobcard .sheetrow { margin-top: 8px; flex-wrap: wrap; }
 .jobcard .sheetrow button { color: var(--cyan); font-size: 12px; font-weight: 600; }
 .jobanswer { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 50vh; overflow-y: auto; }
 .workstage { background: #131a2a; color: #f5f3ed; border-radius: 20px; padding: 15px; margin: 4px 0 22px; overflow: hidden; position: relative; }
@@ -405,7 +405,7 @@ function backgroundJobs() {
   const list = el("div", "joblist");
   for (const job of S.jobs) {
     const card = el("article", "jobcard");
-    const meta = el("div", "meta"); meta.append(el("b", "", job.routine ? "Routine research" : "Research"), el("span", "", job.state));
+    const meta = el("div", "meta"); meta.append(el("b", "", job.routine ? "Routine research" : "Research"), el("span", "", job.pinned ? "Kept · " + job.state : job.state));
     card.append(meta, el("p", "", job.question));
     const actions = el("div", "sheetrow");
     if (job.state === "running") {
@@ -418,9 +418,12 @@ function backgroundJobs() {
         const download = el("button", "secondary", "Download Markdown");
         download.dataset.workFocus = "download-" + job.id;
         download.onclick = () => downloadJobResult(job); actions.append(download);
+        const pin = el("button", "secondary", job.pinned ? "Unkeep" : "Keep");
+        pin.dataset.workFocus = "pin-" + job.id;
+        pin.onclick = () => act("job_pin", { id: job.id, pinned: !job.pinned }); actions.append(pin);
       }
       const remove = el("button", "", "Remove"); remove.classList.add("danger"); remove.style.marginLeft = "auto";
-      remove.onclick = () => { if (confirm("Remove this saved job result?")) act("job_delete", { id: job.id }, "Job removed"); };
+      remove.onclick = () => { if (confirm(job.pinned ? "Remove this kept result?" : "Remove this saved job result?")) act("job_delete", { id: job.id }, "Job removed"); };
       actions.append(remove);
     }
     card.append(actions); list.append(card);

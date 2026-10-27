@@ -231,8 +231,12 @@ current session continues with in-memory history. A separate per-topic
 terminal state, and bounded result locally. It uses the same single workspace
 worker, claim lock, provider policy, and Stop event as foreground work. A
 finished card downloads its existing question and answer as a browser-created
-Markdown file with no server write or model request. The
-background call suppresses Brief turns, research history and trace writes; it
+Markdown file with no server write or model request. The inbox migrates earlier
+rows without `pinned` to false. Only finished results
+with answers can be kept; at most five are shown first, and the 20-job trim
+removes the oldest unkept row when new research starts. A failed keep save
+reverts the in-memory change and reports an error. The background call
+suppresses Brief turns, research history and trace writes; it
 scrubs the returned answer before writing the inbox. Stop reaches search-phase
 checks, both Jev calls and the System Two gateway. The
 server stays alive while that worker is busy even if the page closes; after a

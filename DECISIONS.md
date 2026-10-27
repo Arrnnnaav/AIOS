@@ -7882,6 +7882,13 @@ question and answer in the browser. This keeps export out of the worker and
 adds no file-system write API or agent authority. Evidence:
 `docs/evidence/heyclicky-result-artifact-2026-10-27.md`.
 
+The same shipped `ClickyJobStore` also names keep, dismiss, archive and trim
+operations. Orbyn adds only bounded Keep/Unkeep for finished local research:
+five kept results can survive a 20-job inbox trim; unkept work stays in
+chronological order. Old inboxes migrate on read. This is a local presentation
+and retention choice, not a new agent lifecycle or action permission. Evidence:
+`docs/evidence/heyclicky-kept-results-2026-10-27.md`.
+
 ### D178 addendum — Scheduled research routines
 
 Date: 26 October 2026. Owner asked for HeyClicky-style routines. A routine is

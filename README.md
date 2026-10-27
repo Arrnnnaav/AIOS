@@ -46,7 +46,8 @@ release acceptance is still pending.
   agents. Unfinished work is marked interrupted after restart.
 - **Background research** — start cited research in Work, close the window,
   and return to a locally saved answer. Download a finished result as Markdown
-  directly from its card. One workspace job runs at a time;
+  directly from its card, or Keep up to five important results at the top of
+  Work so new jobs do not evict them. One workspace job runs at a time;
   Stop cancels it cooperatively. A crash marks it interrupted without retry.
 - **Routines** — schedule hourly, daily or weekly research from Work. Enabled
   routines run while Orbyn and the PC are awake, even with the window closed;
