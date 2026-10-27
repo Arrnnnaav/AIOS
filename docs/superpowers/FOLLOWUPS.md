@@ -1480,6 +1480,10 @@ to confirm where the cost actually is before changing anything else.
   routines on the same worker. Other job types, retries, sleeping-PC service,
   and side-effecting connectors still need their own lifecycle and authority
   design; generic activity history does not imply them.
+- Saved research cards can download their bounded answer as Markdown. Edge and
+  the frozen app passed an isolated seeded-job trial; fallback-browser download
+  and a post-restart result export remain unmeasured. Downloaded Markdown can
+  contain untrusted links or HTML from the answer and is never auto-opened.
 - GitHub has an explicit read-only Work view. A live account, bounded repo
   listing, and empty issues view passed in the packaged UI. An issue-containing
   private-repository acceptance remains unrun; other connectors and any

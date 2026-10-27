@@ -38,5 +38,17 @@ then checks the suggested filename and reads the downloaded bytes,
 including Markdown and literal HTML-like text. The test passed (1 test) with
 Edge headless. The source page script also passed `node --check` after extraction.
 The staged full hermetic lane passed 3,645 tests with 93 deselected in 365.69 s
-(`.tmp/hermetic-job-download-final.log`). A frozen package check and independent
-review follow after this code slice is committed.
+(`.tmp/hermetic-job-download-final.log`). The frozen `dist/Orbyn/Orbyn.exe`
+was rebuilt. A packaged trial with an isolated local app-data directory and
+seeded saved job passed filename/content download and clean Quit; its output is
+`.tmp/packaged-job-download.log`. Neither browser trial called a model or
+started a HeyClicky job.
+
+An independent D032 reader reviewed commit `480a376` in a detached worktree
+and returned READY with no blocking safety finding. The reader verified the
+installer and assembly hashes, REA member names, explicit-click download,
+focus preservation, and unchanged server/model/Act authority. The reader did
+not rerun the tests. Restart persistence and fallback-browser downloads were
+not retested in this slice. The exported Markdown preserves answer text, so
+untrusted HTML or links in a result may be interpreted by another Markdown
+renderer if the user opens the downloaded file there; Orbyn does not open it.
