@@ -7862,6 +7862,18 @@ monitor's work area, without turning screen geometry into action authority.
 The source comparison and one-real-monitor/emulated-secondary trial are in
 `docs/evidence/island-interaction-study-2026-10-26.md`.
 
+### D178 addendum — Work result presentation
+
+Date: 28 October 2026. A screenshot comparison of HeyClicky's compact
+completed-task card and Orbyn's Work page showed Orbyn displaying a generic
+start card above an already finished research job. Work now puts its newest
+non-archived finished result first in the existing card board, with a bounded
+answer preview and direct Read result action. The current run still takes
+precedence. A wider window centers the same content rather than stretching
+cards across the viewport. This is local presentation of an already saved
+result, with no new job, egress or action authority. Evidence:
+`docs/evidence/work-result-presentation-2026-10-28.md`.
+
 ### D178 addendum — Background research lifecycle
 
 Date: 26 October 2026. Owner requested HeyClicky-style background jobs. The

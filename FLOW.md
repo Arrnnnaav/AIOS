@@ -217,9 +217,10 @@ hotkey thread. `--window` opens the movable Edge workspace directly;
 `--dock` opens its right-side position. This is presentation only and does not
 share the click-through Teach overlay or add input authority. Its one worker owns `Workspace` and Brain; request
 threads refuse overlapping work while Stop and Done can signal that worker.
-The Work tab's card board previews only current in-memory turn text and plan
-steps, plus the current run. Its controls open Chat or Plan or call the existing
-Stop API; they add no execution authority or persisted result. The board is a
+The Work tab's card board previews the current run, newest visible finished
+research result, current in-memory turn text and plan steps. Its controls open
+the saved result, Chat or Plan, or call the existing Stop API; they add no
+execution authority or persisted result. The board is a
 focusable region with keyboard card navigation. The Work tab reads the latest
 20 generic operation labels and terminal states
 from a per-topic local activity file. `App.run()` writes a running record before

@@ -955,12 +955,18 @@ def test_saved_research_card_downloads_markdown(served, tmp_path):
         try:
             page = edge.new_page(accept_downloads=True, viewport={"width": 500, "height": 800})
             page.goto(f"http://127.0.0.1:{port}/?t=secret-token#work")
+            stage = page.get_by_role("region", name="Current work cards")
+            stage.get_by_role("heading", name=question).wait_for()
+            stage.get_by_role("button", name="Read result").click()
+            page.get_by_role("dialog", name="Research result").wait_for()
+            page.get_by_role("button", name="Close", exact=True).click()
             page.get_by_role("button", name="Keep", exact=True).click()
             page.get_by_role("button", name="Unkeep").wait_for()
             assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
             page.get_by_role("button", name="Archive", exact=True).click()
             page.get_by_role("button", name="Show archived (1)").wait_for()
             assert page.get_by_role("button", name="View result").count() == 0
+            assert stage.get_by_role("button", name="Read result").count() == 0
             page.get_by_role("button", name="Show archived (1)").click()
             page.get_by_role("button", name="Restore").wait_for()
             page.get_by_role("button", name="Restore").click()

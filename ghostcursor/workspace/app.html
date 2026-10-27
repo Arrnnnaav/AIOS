@@ -162,7 +162,7 @@ section[hidden] { display: none !important; }
 .jobcard .sheetrow { margin-top: 8px; flex-wrap: wrap; }
 .jobcard .sheetrow button { color: var(--cyan); font-size: 12px; font-weight: 600; }
 .jobanswer { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 50vh; overflow-y: auto; }
-.workstage { background: #131a2a; color: #f5f3ed; border-radius: 20px; padding: 15px; margin: 4px 0 22px; overflow: hidden; position: relative; }
+.workstage { background: #131a2a; color: #f5f3ed; border-radius: 20px; padding: 12px; margin: 4px 0 18px; overflow: hidden; position: relative; }
 .workstage:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
 .workstage::before { content: ""; position: absolute; width: 230px; height: 230px; border: 1px solid rgba(245,181,68,.18); border-radius: 50%; right: -105px; top: -125px; pointer-events: none; }
 .workstagebar { display: flex; align-items: center; gap: 8px; margin-bottom: 13px; position: relative; }
@@ -171,7 +171,7 @@ section[hidden] { display: none !important; }
 .workstagebar button { width: 27px; height: 27px; border-radius: 8px; border: 1px solid #485163; font-size: 19px; line-height: 1; }
 .workstagebar button:hover:not(:disabled) { background: #313b50; }
 .workstagebar button:disabled { opacity: .35; }
-.workstagecard { min-height: 174px; padding: 15px; border-radius: 14px; background: #f4f0e7; color: #202633; display: flex; flex-direction: column; gap: 8px; animation: work-reveal .18s ease-out; }
+.workstagecard { min-height: 148px; padding: 14px; border-radius: 14px; background: #f4f0e7; color: #202633; display: flex; flex-direction: column; gap: 6px; animation: work-reveal .18s ease-out; }
 @keyframes work-reveal { from { opacity: .45; transform: translateX(12px); } }
 .workstagecard .eyebrow { color: #646e7b; font-size: 11px; font-weight: 700; }
 .workstagecard h4 { margin: 0; font-size: 17px; line-height: 1.25; }
@@ -227,6 +227,11 @@ select { font: inherit; color: var(--text); background: var(--bg); border: 1px s
 #toast { position: fixed; left: 16px; right: 16px; bottom: 120px; padding: 10px 14px; border-radius: 12px; background: #2a1517; border: 1px solid rgba(255,107,107,.4); color: #ffd6d6; font-size: 13px; opacity: 0; transform: translateY(8px); transition: .2s; pointer-events: none; z-index: 20; }
 #toast.ok { background: #13261d; border-color: rgba(95,212,154,.4); color: #d4ffe8; }
 #toast.show { opacity: 1; transform: none; }
+@media (min-width: 760px) {
+  header, main, footer { width: min(100%, 760px); margin-inline: auto; }
+  nav { width: min(calc(100% - 32px), 728px); margin-inline: auto; }
+  .sheet { max-width: 760px; margin-inline: auto; }
+}
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 </style>
 </head>
@@ -586,6 +591,8 @@ function workStage() {
     cards.push(item);
   };
   if (S.busy) card("IN PROGRESS", S.busy, "Orbyn is working in this session. Stop is available here and in the live bar.", "Stop work", () => api("stop").catch((e) => toast(e.message)));
+  const latestJob = S.jobs.filter((job) => !job.archived && job.state === "finished" && job.answer).sort((a, b) => b.ended - a.ended)[0];
+  if (latestJob) card("Research ready", latestJob.question, latestJob.answer.slice(0, 360), "Read result", () => openJobResult(latestJob));
   const answer = [...S.turns].reverse().find((t) => t.speaker === "assistant" && !/^\[(teach|plan)\b/.test(t.text));
   if (answer) card("LATEST ANSWER", "Continue where you left off", answer.text.slice(0, 480), "Open answer", () => setTab("chat"));
   if (S.plan && S.plan.steps.length) card("CURRENT PLAN", "Plan revision " + S.plan.revision, S.plan.steps.slice(0, 2).join("\n") + (S.plan.steps.length > 2 ? "\n…and " + (S.plan.steps.length - 2) + " more steps" : ""), "Review plan", () => setTab("plan"));
