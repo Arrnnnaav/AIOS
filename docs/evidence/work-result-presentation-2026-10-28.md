@@ -39,3 +39,11 @@ archive behavior and bounded wide layout. The detached worktree was removed.
 Opening Work now shows up to 360 characters of the newest saved answer.
 Active-work precedence and 900 px overflow were checked in source and the
 Playwright CLI session, respectively, but lack separate automated assertions.
+
+The frozen app was rebuilt successfully with `tools/build_orbyn.ps1`
+(`.tmp/build-work-result.log`). An isolated seeded-inbox trial launched
+`dist/Orbyn/Orbyn.exe`, found the result spotlight, clicked Read result,
+found the named result sheet, and quit with exit code 0
+(`.tmp/packaged-work-result.log`; screenshot
+`output/playwright/orbyn-packaged-work-result.png`). This confirms packaged
+UI inclusion, not a live model response or HeyClicky action.
