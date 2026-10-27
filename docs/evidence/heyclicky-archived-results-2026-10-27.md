@@ -25,5 +25,22 @@ The focused three-test lane passed, as did 70 workspace/input-boundary tests
 with one interactive test deselected; the separate interactive Edge test passed
 and checked that a second Archive returns to hidden-by-default behavior.
 The staged full hermetic lane passed 3,648 tests with 93 deselected in 354.02 s
-(`.tmp/hermetic-archived-results.log`). The frozen-package and D032 review
-checks follow after this code slice is committed.
+(`.tmp/hermetic-archived-results.log`). A D018 mutation that reset every
+loaded `archived` flag to false was killed by the restart-persistence test;
+the committed source was restored afterward.
+
+The rebuilt `dist/Orbyn/Orbyn.exe` passed an isolated old-inbox trial: the
+packaged Work page kept and archived the result, saved both flags, quit cleanly,
+restarted with the card hidden, revealed it through Show archived, restored
+it, saved `archived: false`, and quit cleanly. Retained local output:
+`.tmp/packaged-archive-final.log`. This is a seeded local UI trial; no model,
+HeyClicky job, or external connector ran.
+
+An independent D032 reader reviewed `95ef072` in a detached worktree and
+returned READY with no blocking safety finding. The reader verified local API
+gates, archive validation, migration, retention and save rollback, UI text
+rendering, and the REA member evidence. The reader did not rerun tests during
+the package build. Nonblocking limits: the archive button's focus fallback
+lands on the Work board without a dedicated browser assertion; an externally
+edited inbox with more than 20 rows may lose an older kept row when loaded.
+Normal app-written inboxes are capped at 20 rows.

@@ -1490,6 +1490,11 @@ to confirm where the cost actually is before changing anything else.
   Reproduce before attributing a shutdown cause. A hand-edited inbox containing
   more than five pinned rows can exceed the cap on load; normal app writes
   cannot create that state.
+- Archived research cards are hidden by default and remain in the same 20-job
+  inbox; unkept archived cards can age out. The browser flow does not assert
+  that focus moves to the Work stage after archiving a focused card, although
+  the reviewer found the fallback in code. An externally edited inbox over
+  20 rows can discard an older kept row on load; normal writes stay at 20.
 - GitHub has an explicit read-only Work view. A live account, bounded repo
   listing, and empty issues view passed in the packaged UI. An issue-containing
   private-repository acceptance remains unrun; other connectors and any
