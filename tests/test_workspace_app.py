@@ -818,6 +818,36 @@ def test_company_brain_review_panel_actions(tmp_path):
         kb.close()
 
 
+@pytest.mark.interactive
+def test_saved_research_card_downloads_markdown(served, tmp_path):
+    playwright = pytest.importorskip("playwright.sync_api")
+    app, port = served
+    question = "What changed?"
+    answer = "Use **two** steps.\n<script>alert(1)</script>"
+    with app._job_lock:
+        app.background_jobs.append({
+            "id": "0123456789abcdef", "question": question, "answer": answer,
+            "state": "finished", "created": 1.0, "ended": 2.0, "routine": "",
+        })
+    with playwright.sync_playwright() as browser:
+        edge = browser.chromium.launch(executable_path=str(appmod.EDGE), headless=True)
+        try:
+            page = edge.new_page(accept_downloads=True)
+            page.goto(f"http://127.0.0.1:{port}/?t=secret-token#work")
+            page.get_by_role("button", name="Download Markdown").focus()
+            page.evaluate("renderWork()")
+            assert page.evaluate("document.activeElement.textContent") == "Download Markdown"
+            with page.expect_download() as pending:
+                page.get_by_role("button", name="Download Markdown").click()
+            download = pending.value
+            assert download.suggested_filename == "orbyn-research.md"
+            path = tmp_path / download.suggested_filename
+            download.save_as(path)
+            assert path.read_text(encoding="utf-8") == f"# {question}\n\n{answer}\n"
+        finally:
+            edge.close()
+
+
 def test_company_brain_gui_capture(tmp_path, monkeypatch):
     """GUI capture (D186): a typed note and the clipboard both land as
     candidates over HTTP -- not usable until the owner reviews them."""

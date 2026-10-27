@@ -415,6 +415,9 @@ function backgroundJobs() {
       if (job.answer) {
         const open = el("button", "", "View result"); open.dataset.workFocus = "job-" + job.id;
         open.onclick = () => openJobResult(job); actions.append(open);
+        const download = el("button", "secondary", "Download Markdown");
+        download.dataset.workFocus = "download-" + job.id;
+        download.onclick = () => downloadJobResult(job); actions.append(download);
       }
       const remove = el("button", "", "Remove"); remove.classList.add("danger"); remove.style.marginLeft = "auto";
       remove.onclick = () => { if (confirm("Remove this saved job result?")) act("job_delete", { id: job.id }, "Job removed"); };
@@ -451,6 +454,12 @@ function openJobResult(job) {
   const close = el("button", "secondary", "Close"); close.onclick = closeSheet;
   sheet.replaceChildren(heading, el("p", "", job.question), el("div", "jobanswer", job.answer), close);
   $("scrim").classList.add("open"); close.focus();
+}
+
+function downloadJobResult(job) {
+  const url = URL.createObjectURL(new Blob(["# ", job.question, "\n\n", job.answer, "\n"], { type: "text/markdown;charset=utf-8" }));
+  const link = document.createElement("a"); link.href = url; link.download = "orbyn-research.md"; link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function routinesCard() {

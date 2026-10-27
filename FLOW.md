@@ -229,7 +229,9 @@ window identity or error details. A malformed file remains untouched and the
 current session continues with in-memory history. A separate per-topic
 `.jobs.json` inbox stores explicitly started read-only research questions,
 terminal state, and bounded result locally. It uses the same single workspace
-worker, claim lock, provider policy, and Stop event as foreground work. The
+worker, claim lock, provider policy, and Stop event as foreground work. A
+finished card downloads its existing question and answer as a browser-created
+Markdown file with no server write or model request. The
 background call suppresses Brief turns, research history and trace writes; it
 scrubs the returned answer before writing the inbox. Stop reaches search-phase
 checks, both Jev calls and the System Two gateway. The

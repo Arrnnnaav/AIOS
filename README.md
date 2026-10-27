@@ -45,7 +45,8 @@ release acceptance is still pending.
   also keeps the latest 20 generic task states locally and holds reusable
   agents. Unfinished work is marked interrupted after restart.
 - **Background research** — start cited research in Work, close the window,
-  and return to a locally saved answer. One workspace job runs at a time;
+  and return to a locally saved answer. Download a finished result as Markdown
+  directly from its card. One workspace job runs at a time;
   Stop cancels it cooperatively. A crash marks it interrupted without retry.
 - **Routines** — schedule hourly, daily or weekly research from Work. Enabled
   routines run while Orbyn and the PC are awake, even with the window closed;
