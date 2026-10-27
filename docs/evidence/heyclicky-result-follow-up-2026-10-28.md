@@ -40,3 +40,10 @@ and text-only UI rendering. The reader did not rerun pytest under D025.
 Nonblocking limits: only the first 8,000 characters can answer a follow-up;
 the result sheet has no visible Stop button during the request, although the
 page's Escape/global Stop path remains available.
+
+After review, `tools/build_orbyn.ps1` rebuilt `dist/Orbyn/Orbyn.exe`
+successfully (`.tmp/build-job-followup.log`). An isolated seeded-inbox trial
+opened the frozen app and its Work result sheet in Edge, found the follow-up
+question field, the 8,000-character scope note and enabled Ask button, then
+quit with exit code 0 (`.tmp/packaged-followup.log`). This checked packaged
+UI inclusion; the packaged trial did not send a follow-up to a model.
