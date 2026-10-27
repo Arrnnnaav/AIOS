@@ -28,5 +28,14 @@ contains desktop filenames.
 The focused Edge test passed (1 passed, 52 deselected) in
 `.tmp/pytest-work-result-ui`. It checked the latest result in the stage,
 opening its sheet, hiding the stage action after Archive, and the existing
-Restore, follow-up and Markdown download flow. Full hermetic and independent
-review results follow below.
+Restore, follow-up and Markdown download flow. The staged full hermetic lane
+passed 3,649 tests with 93 deselected in 239.56 seconds
+(`.tmp/hermetic-work-result.log`). An independent D032 reviewer read
+`545a3e8` in a detached worktree and returned READY with no blocking finding;
+the reviewer did not rerun pytest under D025. The reviewer verified current
+work precedence, latest visible result selection, text-only rendering,
+archive behavior and bounded wide layout. The detached worktree was removed.
+
+Opening Work now shows up to 360 characters of the newest saved answer.
+Active-work precedence and 900 px overflow were checked in source and the
+Playwright CLI session, respectively, but lack separate automated assertions.

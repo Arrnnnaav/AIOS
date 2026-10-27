@@ -40,7 +40,7 @@ release acceptance is still pending.
 - **Voice dictation** — speak text with spoken punctuation and formatting
   commands; it saves to a file or the Brain, and never types into an app on its
   own (that stays behind the Act gate).
-- **Work hub** — a card board opens the current run, newest finished research
+- **Work hub** — a card board previews the current run, newest finished research
   result, latest answer or current
   plan, with keyboard navigation and a Stop control for live work. The tab
   also keeps the latest 20 generic task states locally and holds reusable
