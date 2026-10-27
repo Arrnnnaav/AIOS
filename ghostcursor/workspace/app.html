@@ -318,7 +318,7 @@ async function act(action, body, quietOk) {
 }
 
 // ---- state ------------------------------------------------------------
-let S = null, lastJson = "", tab = "chat", researchMode = false, pending = "", workCardIndex = 0, backgroundStarting = false;
+let S = null, lastJson = "", tab = "chat", researchMode = false, pending = "", workCardIndex = 0, backgroundStarting = false, showArchived = false;
 let githubRepos = [], githubIssues = {}, githubLoading = false;
 let chosen = new Set(), editing = null;
 
@@ -401,11 +401,19 @@ function backgroundJobs() {
   head.append(el("h3", "", "Background jobs"));
   const start = el("button", "secondary", "Research in background"); start.dataset.workFocus = "background"; start.disabled = !!S.busy; start.onclick = openBackgroundResearch;
   head.append(start); wrap.append(head);
-  if (!S.jobs.length) { wrap.append(el("p", "note", "Start cited research here. It can finish after you close this window.")); return wrap; }
+  const active = S.jobs.filter(job => !job.archived), archived = S.jobs.filter(job => job.archived);
+  if (!archived.length) showArchived = false;
+  if (archived.length) {
+    const toggle = el("button", "secondary", showArchived ? "Hide archived" : "Show archived (" + archived.length + ")");
+    toggle.dataset.workFocus = "archive-toggle"; toggle.onclick = () => { showArchived = !showArchived; renderWork(); };
+    wrap.append(toggle, el("p", "note", "Archived results share the 20-job inbox. Keep a result to protect it from the trim."));
+  }
+  const visible = showArchived ? active.concat(archived) : active;
+  if (!visible.length) { wrap.append(el("p", "note", archived.length ? "Archived results are hidden." : "Start cited research here. It can finish after you close this window.")); return wrap; }
   const list = el("div", "joblist");
-  for (const job of S.jobs) {
+  for (const job of visible) {
     const card = el("article", "jobcard");
-    const meta = el("div", "meta"); meta.append(el("b", "", job.routine ? "Routine research" : "Research"), el("span", "", job.pinned ? "Kept · " + job.state : job.state));
+    const meta = el("div", "meta"); meta.append(el("b", "", job.routine ? "Routine research" : "Research"), el("span", "", [job.archived ? "Archived" : "", job.pinned ? "Kept" : "", job.state].filter(Boolean).join(" · ")));
     card.append(meta, el("p", "", job.question));
     const actions = el("div", "sheetrow");
     if (job.state === "running") {
@@ -421,6 +429,9 @@ function backgroundJobs() {
         const pin = el("button", "secondary", job.pinned ? "Unkeep" : "Keep");
         pin.dataset.workFocus = "pin-" + job.id;
         pin.onclick = () => act("job_pin", { id: job.id, pinned: !job.pinned }); actions.append(pin);
+        const archive = el("button", "secondary", job.archived ? "Restore" : "Archive");
+        archive.dataset.workFocus = "archive-" + job.id;
+        archive.onclick = () => act("job_archive", { id: job.id, archived: !job.archived }); actions.append(archive);
       }
       const remove = el("button", "", "Remove"); remove.classList.add("danger"); remove.style.marginLeft = "auto";
       remove.onclick = () => { if (confirm(job.pinned ? "Remove this kept result?" : "Remove this saved job result?")) act("job_delete", { id: job.id }, "Job removed"); };

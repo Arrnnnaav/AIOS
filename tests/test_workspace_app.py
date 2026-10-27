@@ -231,10 +231,12 @@ def test_kept_research_result_survives_inbox_trim_and_restart(tmp_path):
     threading.Thread(target=server.serve_forever, daemon=True).start()
     try:
         assert app.state()["jobs"][0]["pinned"] is False
+        assert app.state()["jobs"][0]["archived"] is False
         assert call(server.server_port, "/api/job_pin", {"id": old["id"], "pinned": True})[0] == 200
+        assert call(server.server_port, "/api/job_archive", {"id": old["id"], "archived": True})[0] == 200
         with app._job_lock:
             for i in range(1, 20):
-                app.background_jobs.append({**old, "id": f"{i:016x}", "question": f"Question {i}", "pinned": False})
+                app.background_jobs.append({**old, "id": f"{i:016x}", "question": f"Question {i}", "pinned": False, "archived": False})
             app._save_background_jobs()
         app.ws.research = lambda *_args, **_kw: "New result"
         new_id = app.start_research_job("New question")
@@ -254,6 +256,9 @@ def test_kept_research_result_survives_inbox_trim_and_restart(tmp_path):
     try:
         assert reopened.state()["jobs"][0]["id"] == old["id"]
         assert reopened.state()["jobs"][0]["pinned"] is True
+        assert reopened.state()["jobs"][0]["archived"] is True
+        reopened.handle("job_archive", {"id": old["id"], "archived": False})
+        assert reopened.state()["jobs"][0]["archived"] is False
     finally:
         reopened.close()
 
@@ -264,7 +269,7 @@ def test_keep_result_is_bounded_and_rejects_invalid_or_unsaved_changes(served, m
         for i in range(6):
             app.background_jobs.append({
                 "id": f"{i:016x}", "question": f"Question {i}", "answer": "Result",
-                "state": "finished", "created": i, "ended": i + 1, "routine": "", "pinned": False,
+                "state": "finished", "created": i, "ended": i + 1, "routine": "", "pinned": False, "archived": False,
             })
         app._save_background_jobs()
     for i in range(5):
@@ -279,6 +284,29 @@ def test_keep_result_is_bounded_and_rejects_invalid_or_unsaved_changes(served, m
     monkeypatch.setattr(app, "_save_background_jobs", failed_save)
     assert call(port, "/api/job_pin", {"id": "0000000000000000", "pinned": False})[0] == 400
     assert next(job for job in app.state()["jobs"] if job["id"] == "0000000000000000")["pinned"] is True
+
+
+def test_archive_requires_finished_result_and_rolls_back_failed_save(served, monkeypatch):
+    app, port = served
+    with app._job_lock:
+        app.background_jobs.extend([
+            {"id": f"{i:016x}", "question": f"Question {i}", "answer": "Result" if i == 0 else "",
+             "state": "finished" if i == 0 else "running", "created": i, "ended": i + 1,
+             "routine": "", "pinned": False, "archived": False}
+            for i in range(2)
+        ])
+        app._save_background_jobs()
+    assert call(port, "/api/job_archive", {"id": "0000000000000000", "archived": "yes"})[0] == 400
+    assert call(port, "/api/job_archive", {"id": "0000000000000001", "archived": True})[0] == 400
+    assert call(port, "/api/job_archive", {"id": "0000000000000000", "archived": True})[0] == 200
+    assert next(job for job in app.state()["jobs"] if job["id"] == "0000000000000000")["archived"] is True
+
+    def failed_save():
+        app.job_path = None
+
+    monkeypatch.setattr(app, "_save_background_jobs", failed_save)
+    assert call(port, "/api/job_archive", {"id": "0000000000000000", "archived": False})[0] == 400
+    assert next(job for job in app.state()["jobs"] if job["id"] == "0000000000000000")["archived"] is True
 
 
 def test_background_stop_and_secret_scrub_before_research(served):
@@ -892,7 +920,7 @@ def test_saved_research_card_downloads_markdown(served, tmp_path):
     with app._job_lock:
         app.background_jobs.append({
             "id": "0123456789abcdef", "question": question, "answer": answer,
-            "state": "finished", "created": 1.0, "ended": 2.0, "routine": "", "pinned": False,
+            "state": "finished", "created": 1.0, "ended": 2.0, "routine": "", "pinned": False, "archived": False,
         })
     with playwright.sync_playwright() as browser:
         edge = browser.chromium.launch(executable_path=str(appmod.EDGE), headless=True)
@@ -902,6 +930,17 @@ def test_saved_research_card_downloads_markdown(served, tmp_path):
             page.get_by_role("button", name="Keep", exact=True).click()
             page.get_by_role("button", name="Unkeep").wait_for()
             assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+            page.get_by_role("button", name="Archive", exact=True).click()
+            page.get_by_role("button", name="Show archived (1)").wait_for()
+            assert page.get_by_role("button", name="View result").count() == 0
+            page.get_by_role("button", name="Show archived (1)").click()
+            page.get_by_role("button", name="Restore").wait_for()
+            page.get_by_role("button", name="Restore").click()
+            page.get_by_role("button", name="Archive", exact=True).wait_for()
+            page.get_by_role("button", name="Archive", exact=True).click()
+            page.get_by_role("button", name="Show archived (1)").wait_for()
+            assert page.get_by_role("button", name="View result").count() == 0
+            page.get_by_role("button", name="Show archived (1)").click()
             page.get_by_role("button", name="Download Markdown").focus()
             page.evaluate("renderWork()")
             assert page.evaluate("document.activeElement.textContent") == "Download Markdown"

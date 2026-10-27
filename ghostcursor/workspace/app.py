@@ -183,8 +183,9 @@ class App:
             keys = {"id", "question", "answer", "state", "created", "ended", "routine"}
             if not isinstance(rows, list) or any(
                 not isinstance(row, dict)
-                or set(row) not in (keys, keys | {"pinned"})
+                or set(row) - {"pinned", "archived"} != keys
                 or not isinstance(row.get("pinned", False), bool)
+                or not isinstance(row.get("archived", False), bool)
                 or not isinstance(row["id"], str)
                 or len(row["id"]) != 16
                 or any(c not in "0123456789abcdef" for c in row["id"])
@@ -203,6 +204,7 @@ class App:
                 raise ValueError("invalid job inbox")
             for row in rows:
                 row.setdefault("pinned", False)
+                row.setdefault("archived", False)
             return rows[-20:]
         except FileNotFoundError:
             return []
@@ -384,7 +386,7 @@ class App:
         jid = secrets.token_hex(8)
         entry = {
             "id": jid, "question": question, "answer": "", "state": "running",
-            "created": self.clock(), "ended": None, "routine": routine, "pinned": False,
+            "created": self.clock(), "ended": None, "routine": routine, "pinned": False, "archived": False,
         }
         future, row = self._begin_run(
             "Researching", lambda: self.ws.research(
@@ -532,23 +534,24 @@ class App:
                 self.background_jobs.remove(row)
                 self._save_background_jobs()
             return {}
-        if action == "job_pin":
-            jid, pinned = body.get("id"), body.get("pinned")
-            if not isinstance(pinned, bool):
-                raise ValueError("choose whether to keep the result")
+        if action in ("job_pin", "job_archive"):
+            field = "pinned" if action == "job_pin" else "archived"
+            jid, selected = body.get("id"), body.get(field)
+            if not isinstance(selected, bool):
+                raise ValueError("choose whether to " + ("keep" if field == "pinned" else "archive") + " the result")
             with self._job_lock:
                 row = next((item for item in self.background_jobs if item["id"] == jid), None)
                 if row is None or row["state"] != "finished" or not row["answer"]:
                     raise ValueError("no such finished result")
                 if self.job_path is None:
                     raise ValueError("job inbox is unavailable")
-                if pinned and not row["pinned"] and sum(job["pinned"] for job in self.background_jobs) >= 5:
+                if field == "pinned" and selected and not row[field] and sum(job["pinned"] for job in self.background_jobs) >= 5:
                     raise ValueError("keep at most five results")
-                previous = row["pinned"]
-                row["pinned"] = pinned
+                previous = row[field]
+                row[field] = selected
                 self._save_background_jobs()
                 if self.job_path is None:
-                    row["pinned"] = previous
+                    row[field] = previous
                     raise ValueError("job inbox could not be saved")
             return {}
         if action == "routine_create":

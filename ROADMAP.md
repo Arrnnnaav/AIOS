@@ -736,7 +736,7 @@ boundary is untouched (every slice verified against
 | Delight | fuzzy did-you-mean, inline calculator, clipboard history, snippets, global capture hotkey, tips, startup status, sticky pins | palette, `/clips`, `/snippet`, `/capture`, `/pin` |
 | Work hub | Work card board previews the current run, latest answer and plan with direct navigation/Stop; the latest 20 locally saved generic task states and reusable agents remain below it; stale running work becomes interrupted on restart | workspace app |
 | Desktop island and full workspace | Small movable topmost capsule by default, grows for work/new result, idle Hide/shortcut recall and monitor clamping, direct Work result link, Open/Stop/Quit; `--window` opens the full floating Edge app and `--dock` its right-side layout | workspace app |
-| Background research | Explicit read-only research on the existing single worker; local 20-job inbox with Markdown download and up to five kept results, Stop, interrupted-on-restart; no automatic retry | workspace app |
+| Background research | Explicit read-only research on the existing single worker; local 20-job inbox with Markdown download, up to five kept results and reversible archive view, Stop, interrupted-on-restart; no automatic retry | workspace app |
 | Research routines | Hourly/daily/weekly read-only research on the same worker; local schedules, pause/resume/run now/delete, one missed run after wake, explicit Quit | workspace app |
 | GitHub read-only connector | Explicit fine-grained token in Windows Credential Manager; bounded repository and issue views, local disconnect; no write authority or model/routine bridge | workspace app |
 

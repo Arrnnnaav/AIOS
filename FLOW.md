@@ -234,8 +234,11 @@ finished card downloads its existing question and answer as a browser-created
 Markdown file with no server write or model request. The inbox migrates earlier
 rows without `pinned` to false. Only finished results
 with answers can be kept; at most five are shown first, and the 20-job trim
-removes the oldest unkept row when new research starts. A failed keep save
-reverts the in-memory change and reports an error. The background call
+removes the oldest unkept row when new research starts. A failed Keep or Archive
+save reverts the in-memory change and reports an error. Finished results can also
+be archived and restored in the same local file. Work hides archived cards by
+default; archived cards still count toward the 20-job limit, and only Keep
+protects one from trimming. The background call
 suppresses Brief turns, research history and trace writes; it
 scrubs the returned answer before writing the inbox. Stop reaches search-phase
 checks, both Jev calls and the System Two gateway. The

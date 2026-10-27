@@ -7889,6 +7889,12 @@ chronological order. Old inboxes migrate on read. This is a local presentation
 and retention choice, not a new agent lifecycle or action permission. Evidence:
 `docs/evidence/heyclicky-kept-results-2026-10-27.md`.
 
+The next Orbyn slice adds reversible Archive/Restore for finished research
+results in the same bounded inbox. Archive changes only Work visibility; it
+does not imply permanent storage. An unkept archived result can age out of
+the 20-job inbox, while a kept archived result retains Keep's five-item
+protection. Evidence: `docs/evidence/heyclicky-archived-results-2026-10-27.md`.
+
 ### D178 addendum — Scheduled research routines
 
 Date: 26 October 2026. Owner asked for HeyClicky-style routines. A routine is
