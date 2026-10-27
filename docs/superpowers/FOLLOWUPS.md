@@ -1484,6 +1484,12 @@ to confirm where the cost actually is before changing anything else.
   the frozen app passed an isolated seeded-job trial; fallback-browser download
   and a post-restart result export remain unmeasured. Downloaded Markdown can
   contain untrusted links or HTML from the answer and is never auto-opened.
+- Work can keep up to five finished research results ahead of the 20-job trim.
+  One packaged Quit returned nonzero after saving Keep, without a captured exit
+  value or crash log; seven immediate repeat trials passed Quit and restart.
+  Reproduce before attributing a shutdown cause. A hand-edited inbox containing
+  more than five pinned rows can exceed the cap on load; normal app writes
+  cannot create that state.
 - GitHub has an explicit read-only Work view. A live account, bounded repo
   listing, and empty issues view passed in the packaged UI. An issue-containing
   private-repository acceptance remains unrun; other connectors and any
