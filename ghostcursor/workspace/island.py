@@ -18,10 +18,15 @@ HOTKEY_ID = 5
 SHOW_MESSAGE = win32con.WM_APP + 1
 COMPACT = (320, 56)
 EXPANDED = (440, 72)
-BG = win32api.RGB(25, 27, 34)
-TEXT = win32api.RGB(245, 247, 250)
-MUTED = win32api.RGB(172, 181, 195)
-ACCENT = win32api.RGB(106, 188, 255)
+BG = win32api.RGB(22, 26, 34)
+TEXT = win32api.RGB(249, 247, 242)
+MUTED = win32api.RGB(166, 174, 186)
+ACCENT = win32api.RGB(239, 182, 96)
+SECONDARY = win32api.RGB(48, 54, 64)
+PRESSED = win32api.RGB(202, 147, 67)
+STOP = win32api.RGB(105, 55, 53)
+SECONDARY_PRESSED = win32api.RGB(70, 77, 89)
+STOP_PRESSED = win32api.RGB(132, 70, 67)
 _windows = {}
 _brush = None
 
@@ -36,6 +41,50 @@ class _Message(ctypes.Structure):
         ("wParam", ctypes.c_size_t), ("lParam", ctypes.c_ssize_t),
         ("time", ctypes.c_ulong), ("pt", _Point), ("lPrivate", ctypes.c_ulong),
     ]
+
+
+class _Rect(ctypes.Structure):
+    _fields_ = [("left", ctypes.c_long), ("top", ctypes.c_long),
+                ("right", ctypes.c_long), ("bottom", ctypes.c_long)]
+
+
+class _DrawItem(ctypes.Structure):
+    _fields_ = [("CtlType", ctypes.c_uint), ("CtlID", ctypes.c_uint),
+                ("itemID", ctypes.c_uint), ("itemAction", ctypes.c_uint),
+                ("itemState", ctypes.c_uint), ("hwndItem", ctypes.c_void_p),
+                ("hDC", ctypes.c_void_p), ("rcItem", _Rect),
+                ("itemData", ctypes.c_size_t)]
+
+
+def _draw_button(lparam):
+    item = ctypes.cast(lparam, ctypes.POINTER(_DrawItem)).contents
+    hdc = int(item.hDC)
+    rect = item.rcItem
+    bounds = (rect.left, rect.top, rect.right, rect.bottom)
+    win32gui.FillRect(hdc, bounds, _brush)
+    primary = item.CtlID == ID_OPEN
+    pressed = bool(item.itemState & win32con.ODS_SELECTED)
+    if primary:
+        color = PRESSED if pressed else ACCENT
+    elif item.CtlID == ID_STOP:
+        color = STOP_PRESSED if pressed else STOP
+    else:
+        color = SECONDARY_PRESSED if pressed else SECONDARY
+    brush = win32gui.CreateSolidBrush(color)
+    old_brush = win32gui.SelectObject(hdc, brush)
+    old_pen = win32gui.SelectObject(hdc, win32gui.GetStockObject(win32con.NULL_PEN))
+    try:
+        win32gui.RoundRect(hdc, rect.left, rect.top, rect.right, rect.bottom, 16, 16)
+    finally:
+        win32gui.SelectObject(hdc, old_pen)
+        win32gui.SelectObject(hdc, old_brush)
+        win32gui.DeleteObject(brush)
+    win32gui.SetBkMode(hdc, win32con.TRANSPARENT)
+    win32gui.SetTextColor(hdc, BG if primary else TEXT)
+    win32gui.DrawText(hdc, win32gui.GetWindowText(item.hwndItem), -1, bounds,
+                      win32con.DT_CENTER | win32con.DT_VCENTER | win32con.DT_SINGLELINE)
+    if item.itemState & win32con.ODS_FOCUS:
+        win32gui.DrawFocusRect(hdc, (rect.left + 3, rect.top + 3, rect.right - 3, rect.bottom - 3))
 
 
 def _pump_dialog(hwnd):
@@ -84,6 +133,9 @@ def _wnd_proc(hwnd, msg, wparam, lparam):
         return 0
     if island is not None:
         if msg == win32con.WM_ERASEBKGND:
+            return 1
+        if msg == win32con.WM_DRAWITEM and lparam:
+            _draw_button(lparam)
             return 1
         if msg == win32con.WM_NCHITTEST:
             return win32con.HTCAPTION  # drag the background; child buttons keep their own clicks
@@ -166,7 +218,7 @@ class Island:
             ord("O"),
         ))
         win32gui.SetWindowRgn(self.hwnd, win32gui.CreateRoundRectRgn(0, 0, width, height, 30, 30), True)
-        style = win32con.WS_CHILD | win32con.WS_VISIBLE | win32con.WS_TABSTOP | win32con.BS_PUSHBUTTON
+        style = win32con.WS_CHILD | win32con.WS_VISIBLE | win32con.WS_TABSTOP | win32con.BS_OWNERDRAW
         module = win32api.GetModuleHandle(None)
         self.open_button = win32gui.CreateWindowEx(0, "BUTTON", "Open", style, 139, 9, 56, 38, self.hwnd, ID_OPEN, module, None)
         self.stop_button = win32gui.CreateWindowEx(0, "BUTTON", "Stop", style, 309, 17, 56, 38, self.hwnd, ID_STOP, module, None)

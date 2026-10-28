@@ -55,6 +55,8 @@ def test_native_island_opens_stops_and_quits_without_acting_on_desktop():
         assert win32gui.IsWindowVisible(island.open_button)
         assert win32gui.GetWindowText(island.quit_button) == "Quit"
         assert win32gui.GetWindowLong(island.quit_button, win32con.GWL_STYLE) & win32con.WS_TABSTOP
+        for button in (island.open_button, island.stop_button, island.hide_button, island.quit_button):
+            assert win32gui.GetWindowLong(button, win32con.GWL_STYLE) & win32con.BS_OWNERDRAW
         app.busy = "Researching"
         island.tick()
         assert island.expanded

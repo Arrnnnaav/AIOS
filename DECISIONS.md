@@ -7862,6 +7862,16 @@ monitor's work area, without turning screen geometry into action authority.
 The source comparison and one-real-monitor/emulated-secondary trial are in
 `docs/evidence/island-interaction-study-2026-10-26.md`.
 
+### D178 addendum — Native island visual hierarchy
+
+Date: 28 October 2026. The small island keeps native BUTTON child windows and
+their Tab stops, but draws their surfaces in the workspace palette. Open is the
+amber primary action, Stop has a distinct dark red surface, and Hide/Quit are
+secondary. This removes the default white controls from the dark capsule while
+preserving Win32 click and focus routing, the existing Stop signal, and the
+generic-only status text. The idle and working captures and interactive test
+are recorded in `docs/evidence/workspace-view-hierarchy-2026-10-28.md`.
+
 ### D178 addendum — Work result presentation
 
 Date: 28 October 2026. A screenshot comparison of HeyClicky's compact

@@ -204,7 +204,8 @@ and Work page on loopback. By default, a native topmost workspace island is
 shown at the top of the desktop. It is draggable and shows generic worker and
 research-job state without goal, question, answer or credential text. It grows
 while work runs and for twelve seconds when a new result arrives. Its native
-Open, Stop and Quit controls use the existing full-window launcher, Stop event
+owner-drawn buttons retain Windows focus and click handling while matching the
+amber and navy workspace palette. Open, Stop and Quit use the existing full-window launcher, Stop event
 and Quit action. Open launches Edge from a background thread so its positioning
 wait cannot hold the island's Stop control. Hide is allowed only while idle;
 Ctrl+Alt+O or a second default launch restores it. The configured voice key
