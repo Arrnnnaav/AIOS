@@ -6,8 +6,11 @@ transparent overlay. It can also, down a narrow and signed path, **perform
 approved steps for you** in approved applications — only after you approve the
 whole plan, only on a control it actually observed, and ESC always stops it.
 
-Local data stays on the machine; configured cloud models and web research can
-receive scrubbed request text. (Code name and package: `ghostcursor`.)
+Local Brain and work files stay on the machine. Configured cloud models and web
+research can receive request text and selected context; screen-derived text is
+scrubbed through the tainted-input path, while embedded-secret redaction for
+other remote text depends on policy or caller settings. (Code name and package:
+`ghostcursor`.)
 
 > Status: pre-1.0 (`0.1.0`). Teach works across observed Windows applications.
 > Act code and a signed PowerPoint path exist, but Act activation and packaged
@@ -60,7 +63,8 @@ release acceptance is still pending.
   pause, resume, run now, delete or Quit Orbyn there. A missed time runs once
   after wake, with no catch-up burst. A crash may skip an occurrence rather
   than repeat it. Results land in the local job inbox.
-- **GitHub, read only** — connect a fine-grained token in Work to view a
+- **GitHub, read only** — connect a GitHub access token in Work (fine-grained
+  recommended) to view a
   bounded repository list and open issues. The token stays in Windows
   Credential Manager; disconnect removes it locally. Repository text does
   not enter model prompts or routines. Organization no-egress policy blocks
