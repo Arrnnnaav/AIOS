@@ -200,6 +200,17 @@ def test_sources_get_a_category_never_a_score():
     assert categorize("https://arxiv.org/abs/1") is SourceCategory.ACADEMIC
     assert categorize("https://stackoverflow.com/q/1") is SourceCategory.COMMUNITY
     assert categorize("https://example.com") is SourceCategory.UNKNOWN
+    # Live 12 and 28 Oct: a project's own docs and release pages read "unknown".
+    assert categorize("https://www.sqlite.org/docs.html") is SourceCategory.PRIMARY_DOCS
+    assert categorize("https://nodejs.org/en/about/previous-releases") is SourceCategory.PRIMARY_DOCS
+    assert categorize("https://www.python.org/downloads/release/") is SourceCategory.PRIMARY_DOCS
+    assert categorize("https://developer.apple.com/x") is SourceCategory.PRIMARY_DOCS
+    assert categorize("https://www.liquidweb.com/blog/latest-python-version") is SourceCategory.UNKNOWN
+    assert categorize("https://github.com/o/r/issues/1") is SourceCategory.COMMUNITY  # docs path only after hosts
+    assert categorize("https://www.ox.ac.uk/a") is SourceCategory.ACADEMIC
+    assert categorize("https://ec.europa.eu/a") is SourceCategory.GOVERNMENT
+    assert categorize("https://www.theguardian.com/a") is SourceCategory.PUBLICATION
+    assert categorize("https://example.com/apiary") is SourceCategory.UNKNOWN  # whole path segment only
 
 
 def test_spatial_reference_carries_no_geometry():

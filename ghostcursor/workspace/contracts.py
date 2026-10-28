@@ -7,6 +7,7 @@ step that could execute: they are context and provenance, never authority.
 from __future__ import annotations
 
 import hashlib
+import re
 import json
 from dataclasses import asdict, dataclass, field
 from enum import Enum
@@ -86,33 +87,56 @@ _PUBLICATION = (
     "nature.com",
     "britannica.com",
     "wikipedia.org",
+    "apnews.com",
+    "nytimes.com",
+    "theguardian.com",
+    "ft.com",
+    "wsj.com",
+    "bloomberg.com",
+    "economist.com",
+    "arstechnica.com",
+    "theverge.com",
+    "techcrunch.com",
+    "wired.com",
 )
-_ACADEMIC = ("arxiv.org", "nih.gov", "acm.org", "ieee.org")
+_ACADEMIC = ("arxiv.org", "nih.gov", "acm.org", "ieee.org", "springer.com", "sciencedirect.com", "doi.org")
+_GOVERNMENT = ("europa.eu", "who.int", "un.org", "gc.ca")
 _COMMUNITY = (
     "stackoverflow.com",
     "stackexchange.com",
     "reddit.com",
     "github.com",
     "medium.com",
+    "dev.to",
+    "quora.com",
+    "substack.com",
+    "news.ycombinator.com",
+    "hashnode.dev",
 )
+#: A project's own documentation or release pages on its own site
+#: (sqlite.org/docs.html, nodejs.org/en/about/previous-releases).
+_DOCS_PATH = re.compile(r"/(docs?|documentation|manual|reference|api|releases?|previous-releases|changelog|release-notes)(?:[/._-]|\.html?$|$)")
 
 
 def categorize(url: str) -> SourceCategory:
-    host = urlparse(url).netloc.lower()
+    parts = urlparse(url)
+    host = parts.netloc.lower().split(":")[0].removeprefix("www.")
 
     def under(hosts):
         return any(host == h or host.endswith("." + h) for h in hosts)
 
-    if under(_DOCS) or host.startswith("docs."):
+    if under(_DOCS) or host.startswith(("docs.", "developer.", "developers.")):
         return SourceCategory.PRIMARY_DOCS
-    if under(_ACADEMIC) or host.endswith(".edu") or ".edu." in host:
+    if under(_ACADEMIC) or host.endswith(".edu") or ".edu." in host or ".ac." in host:
         return SourceCategory.ACADEMIC
-    if host.endswith(".gov") or ".gov." in host:
+    if under(_GOVERNMENT) or host.endswith((".gov", ".mil")) or ".gov." in host:
         return SourceCategory.GOVERNMENT
     if under(_PUBLICATION):
         return SourceCategory.PUBLICATION
     if under(_COMMUNITY):
         return SourceCategory.COMMUNITY
+    if _DOCS_PATH.search(parts.path.lower()):
+        return SourceCategory.PRIMARY_DOCS
     return SourceCategory.UNKNOWN
 
 
