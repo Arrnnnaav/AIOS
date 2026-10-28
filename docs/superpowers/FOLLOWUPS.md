@@ -1446,8 +1446,8 @@ to confirm where the cost actually is before changing anything else.
 
 ## Live run findings, 12 October 2026 (docs/evidence/live-2026-10-12.md)
 
-- Research categorizes `sqlite.org` (a project's own documentation) as
-  `unknown`; the category list only knows `docs.*` hosts and a short list.
+- Research categories (29 Oct) also recognise documentation and release
+  paths on a project's own site; a vendor blog or aggregator stays `unknown`.
 - Act on PowerPoint has not run live since D176: the agent may not approve an
   Act plan, so the minimized-window restore needs an owner-approved run.
 - D176 review leftovers: restoring at proposal time leaves windows restored
@@ -1477,11 +1477,10 @@ to confirm where the cost actually is before changing anything else.
 ## D178 workspace app follow-ups
 
 - Island (29 Oct) has Ask, Research, Talk, finished results and full-screen
-  step-aside (`docs/evidence/island-ask-2026-10-29.md`). Open: Talk is
-  tap-to-talk on the Listener's 8 s armed window, not hold-to-talk (needs its
-  own recording path); in the live check Whisper turned room noise into
-  "die somewhere." and it was asked (refused as busy), so a minimum-speech or
-  confidence gate before asking would help; full-screen hiding was checked
+  step-aside, plus hold-to-talk on the voice hotkey and a Silero VAD gate
+  (`docs/evidence/island-ask-2026-10-29.md`). Open: hold-to-talk and the VAD
+  gate were checked with Windows TTS recordings fed as frames, not a person
+  at a microphone; full-screen hiding was checked
   only in tests and against a windowed desktop, not with a real full-screen
   app; a person typing and pressing Enter is still unchecked; the card shows
   only the first 1500 characters of a job's answer, so long answers point to Work.
@@ -1491,11 +1490,6 @@ to confirm where the cost actually is before changing anything else.
   is deliberately not built: it would add up to 24,000 characters of egress per
   run for a judgement the local match already makes
   (`docs/evidence/heyclicky-rea-2026-10-28.md`).
-- `/api/stats` claims the single worker, so Brain's stat tiles are silently
-  empty while any run is busy (two 400 "busy" responses in the 28 Oct
-  click-through). It only reads local counts; it could skip the claim.
-- Sign-in waits up to 300 s for the browser callback and Stop does not
-  cancel the wait (28 Oct click-through).
 - Work has read-only background research and timed hourly/daily/weekly research
   routines on the same worker. Other job types, retries, sleeping-PC service,
   and side-effecting connectors still need their own lifecycle and authority
@@ -1504,10 +1498,10 @@ to confirm where the cost actually is before changing anything else.
   the frozen app passed an isolated seeded-job trial; fallback-browser download
   and a post-restart result export remain unmeasured. Downloaded Markdown can
   contain untrusted links or HTML from the answer and is never auto-opened.
-- Saved-result follow-up asks over the first 8,000 characters using the
-  one-off Ask path. Longer answers need chunked retrieval before the whole
-  result can be queried; the result sheet relies on Escape/global Stop while
-  waiting and has no dedicated Stop button.
+- Saved-result follow-up and Ask a file pick passages by word overlap
+  (`session.relevant`) and send at most 8,000 characters. A question that
+  paraphrases the text without sharing its words can miss the passage; a
+  local embedding model would fix that.
 - Work can keep up to five finished research results ahead of the 20-job trim.
   One packaged Quit returned nonzero after saving Keep, without a captured exit
   value or crash log; seven immediate repeat trials passed Quit and restart.
@@ -1526,8 +1520,8 @@ to confirm where the cost actually is before changing anything else.
 - Work history is a single-writer per-topic file. If multiple app processes
   for one topic become supported, add coordinated persistence and live-run
   ownership before treating the cards as complete history.
-- Work “Ask a file” accepts one small text file. Larger files need chunked
-  retrieval and a clear source/answer presentation before the limit rises.
+- Work “Ask a file” accepts one text file up to 100,000 characters; the
+  answer does not yet show which passages were sent.
 - Packaged Chat, Plan, Brain and Work controls, live research and GitHub ran;
   see `docs/evidence/workspace-live-acceptance-2026-10-26.md`. A real packaged
   Teach session remains to be measured under its separate acceptance gate.

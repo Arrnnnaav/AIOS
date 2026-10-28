@@ -210,7 +210,13 @@ thread; the UI-thread tick shows the reply, and the turns join the shared Chat
 history. Follow-ups continue that conversation. Escape folds the panel (Stop
 only when folded and busy); pressing the shortcut while open folds and hides.
 Research (a toggle in the panel) sends the box through `App.handle("research")`
-instead. Talk arms the existing voice Listener; while the island is shown,
+instead. Talk arms the existing voice Listener. Holding the voice hotkey
+(Ctrl+Alt+Space) past 0.35 s records from the Listener's open microphone
+stream until release (`Listener.pressed`, key state read with
+`GetAsyncKeyState`, nothing synthesised) and the island shows "Listening ·
+Release to send"; a tap arms the next utterance as before. Every
+transcription runs faster-whisper's Silero VAD first, so room noise is not
+read as words. While the island is shown,
 `App.heard` hands every spoken request (Talk, the voice hotkey or "Hey Bro") to
 the island, which asks it on the card like typed text. A finished background
 job is shown on the card once (its first 1500 characters) and a strip counts
@@ -273,9 +279,12 @@ save reverts the in-memory change and reports an error. Finished results can als
 be archived and restored in the same local file. Work hides archived cards by
 default; archived cards still count toward the 20-job limit, and only Keep
 protects one from trimming. A result's explicit follow-up uses its server-selected saved answer
-(first 8,000 characters) through the existing one-off, tainted-material Ask
+(the passages sharing most words with the question, chosen locally by
+`session.relevant`, at most 8,000 characters) through the existing one-off,
+tainted-material Ask
 path and single worker. It sends the question and bounded material to the
-configured model, accepts Stop, and saves neither follow-up nor reply.
+configured model, accepts Stop (a Stop button shows on the sheet while it
+runs), and saves neither follow-up nor reply.
 The background call
 suppresses Brief turns, research history and trace writes; it
 scrubs the returned answer before writing the inbox. Stop reaches search-phase
@@ -316,7 +325,7 @@ card's Stop control uses the same `stop` API as the live bar. Card links only
 navigate; history holds no result identity. The tabs have keyboard arrow,
 Home and End navigation. Deleting a saved agent asks for confirmation.
 Work also offers a one-off file question: the browser reads an explicitly
-selected text file (at most 32 KiB and 8,000 characters) and sends its contents
+selected text file (at most 400 KB and 100,000 characters) and sends its contents
 and the question to the token-protected `ask_file` API. That action validates
 both fields and calls `Workspace.ask()` on the worker. That path scrubs the
 bounded material with both the tainted-text and full DLP recognizers before

@@ -41,6 +41,9 @@ only needed for plans, the Brain and background work.
 - **Research** (under the box) turns on cited web answers for what you type.
 - **Talk** listens once: say your question and the answer shows on the card.
   "Hey Bro" and Ctrl+Alt+Space work the same way while the bar is there.
+  Hold Ctrl+Alt+Space while you talk and let go to send.
+- **Ask a file** (in Work) takes text files up to 100,000 characters; only
+  the parts that match your question are sent to the model.
 - When background research finishes, its answer appears on the card; the full
   version is under **Open › Work**.
 - The bar hides itself while a video, game or slideshow is full screen, unless

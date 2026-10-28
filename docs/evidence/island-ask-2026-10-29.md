@@ -49,3 +49,32 @@ Screenshots were inspected locally and not kept in the repository.
 - `_fullscreen()` returned False on the windowed desktop. Hiding with a real
   full-screen app was not checked live.
 - Jev vision stayed off after the run.
+
+## Third run: voice gate, hold-to-talk, stats, sign-in Stop, long Ask (29 October 2026)
+
+Commits `f30624f` (VAD gate), `c1bf2b1` (hold-to-talk), `39e1ae3` (sign-in
+Stop), `e648cf2` (stats while busy), `c185b24` (source categories) and
+`f812852` (passage-matched Ask, sheet Stop). Hermetic lane 3657 passed
+before the last commit; one earlier run had a timing failure in
+`test_providers.py::test_submit_never_blocks_and_the_result_arrives_later`
+(0.125 s against 0.05 s) that passed 3 of 3 times alone and in the rerun.
+
+Checked locally, not with a person at a microphone:
+
+- Silero VAD: 3 s of synthetic noise transcribed by `base.en` gave " You"
+  without VAD and nothing with it; Windows TTS recordings of "What is on my
+  calendar tomorrow?" (`base.en`) and "Hey bro" (`tiny.en`) were unchanged.
+- Hold-to-talk: the TTS recording fed as microphone frames through
+  `Listener.pressed` with the real model sent "What is on my calendar
+  tomorrow?".
+
+Live run from source (`clicktest5`, topic files deleted afterwards), through
+the local token-protected API:
+
+- A 131,261-character file was refused ("under 100,000 characters").
+- A 93,301-character file with one sentence about a billing backup server
+  in the middle: the answer named HARBOR-7 in Frankfurt and quoted it.
+- `/api/stats` returned counts while the status read "Asking file".
+
+Not run: a real ChatGPT sign-in cancelled with Stop (covered by
+`test_stop_ends_the_sign_in_wait`).
