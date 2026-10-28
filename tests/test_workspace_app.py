@@ -1439,3 +1439,12 @@ def test_heard_goes_to_the_island_when_it_is_shown(served):
     app.voice_to = heard.append
     app.heard("plan my week")
     assert heard == ["plan my week"] and app.status[-1] == "Heard: plan my week"
+
+
+def test_stats_answer_while_the_worker_is_busy(served, tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
+    app, port = served
+    app.busy = "Thinking"  # a long run holds the worker
+    code, payload = call(port, "/api/stats", {})
+    assert code == 200 and json.loads(payload)["research_answers"] == 0
+    app.busy = ""

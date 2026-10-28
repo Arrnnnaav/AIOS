@@ -847,6 +847,18 @@ class App:
                     for a, b in ws.knowledge.conflicts(ws.kb_scope)
                 ]
             }
+        if action == "stats":
+            # Local counts only, so it never waits for (or blocks) the worker;
+            # its own connection, as the worker's belongs to the worker thread.
+            from ghostcursor.workspace.brain import Brain
+            from ghostcursor.workspace.research import _trace_path
+            from ghostcursor.workspace.session import measures
+
+            brain = Brain(ws.brain.path)
+            try:
+                return measures(brain, ws.root, _trace_path())
+            finally:
+                brain.close()
         if self.busy:
             raise ValueError(f"busy: {self.busy}")
         if action == "chatgpt_sign_in":
@@ -998,13 +1010,6 @@ class App:
             return {"draft": self.run("Listening", self._voice) or ""}
         if action == "brain":
             return {"text": self.run("Brain", lambda: self._brain(body))}
-        if action == "stats":
-            from ghostcursor.workspace.research import _trace_path
-            from ghostcursor.workspace.session import measures
-
-            return self.run(
-                "Counting", lambda: measures(ws.brain, ws.root, _trace_path())
-            )
         raise ValueError("unknown action")
 
     def _point(self, hwnds):
