@@ -1476,11 +1476,17 @@ to confirm where the cost actually is before changing anything else.
 
 ## D178 workspace app follow-ups
 
-- Routine results show claims new since the routine's previous finished run
-  (exact-text match; a reworded claim counts as new, a dropped claim is not
-  shown). Prompting the model with the prior run, as HeyClicky does, and a
-  "what disappeared" view are not built
+- Routine results show claims new since the routine's previous finished run,
+  matched locally (rapidfuzz token-set >= 90 and the same numbers). A dropped
+  claim is not shown. Sending the prior run to the model, as HeyClicky does,
+  is deliberately not built: it would add up to 24,000 characters of egress per
+  run for a judgement the local match already makes
   (`docs/evidence/heyclicky-rea-2026-10-28.md`).
+- `/api/stats` claims the single worker, so Brain's stat tiles are silently
+  empty while any run is busy (two 400 "busy" responses in the 28 Oct
+  click-through). It only reads local counts; it could skip the claim.
+- Sign-in waits up to 300 s for the browser callback and Stop does not
+  cancel the wait (28 Oct click-through).
 - Work has read-only background research and timed hourly/daily/weekly research
   routines on the same worker. Other job types, retries, sleeping-PC service,
   and side-effecting connectors still need their own lifecycle and authority

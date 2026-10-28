@@ -279,8 +279,9 @@ The next-due update is persisted before the worker starts; a failed save
 pauses that routine in memory. `_begin_run` checks Quit after clearing a stale
 Stop event, before a worker is submitted. When the page state is built,
 `new_claims` compares each finished routine result with that routine's
-previous finished result and lists the claims it did not make (exact text,
-source ids ignored). Nothing is stored or sent for it.
+previous finished result and lists the claims it did not make (rapidfuzz
+token-set >= 90 with the same numbers; source ids ignored). Nothing is stored
+or sent for it.
 Work's GitHub connector is a separate explicit read path:
 `github_connect` validates a supplied token against GitHub before Windows
 Credential Manager stores it; `github_repos` and `github_issues` send fixed

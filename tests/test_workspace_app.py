@@ -439,6 +439,13 @@ def test_routine_reruns_report_only_new_claims(served):
         "- price fell [s1]\nSources:",
     ) == ["Office opens (partial)"]
     assert appmod.new_claims("- Revenue grows", "") == ["Revenue grows"]  # trailing s kept
+    # Seen live on 28 Oct: the model reworded an unchanged fact between runs.
+    assert appmod.new_claims(
+        "- As of October 2026, the latest stable Python 3 release is Python 3.15.0, released on October 9, 2026. [s1]",
+        "- The latest stable Python 3 release is Python 3.15.0, released on October 9, 2026, "
+        "according to the provided passages covering October 2026. [s1][s5]",
+    ) == []
+    assert appmod.new_claims("- Price fell to 12 dollars", "- Price fell to 10 dollars") == ["Price fell to 12 dollars"]
     app, port = served
     now = [100.0]
     app.clock = lambda: now[0]

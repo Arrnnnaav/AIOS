@@ -85,13 +85,21 @@ def _claims(answer: str) -> list[str]:
     return [re.sub(r"(\s*\[s\d+\])+$", "", line[2:]).strip() for line in answer.splitlines() if line.startswith("- ")]
 
 
+def _same_claim(a: str, b: str) -> bool:
+    # A reworded claim is the same claim; a changed number never is.
+    from rapidfuzz import fuzz
+
+    numbers = lambda s: set(re.findall(r"\d+(?:[.,]\d+)*", s))
+    return numbers(a) == numbers(b) and fuzz.token_set_ratio(a.casefold(), b.casefold()) >= 90
+
+
 def new_claims(answer: str, previous: str) -> list[str]:
     """Claims in a routine's answer that its previous run did not make (as in
-    HeyClicky routines: later runs report what changed). Local; exact text
-    match, so a reworded claim counts as new."""
+    HeyClicky routines: later runs report what changed). Matched on this
+    computer only; nothing extra is sent to a model."""
 
-    seen = {c.casefold() for c in _claims(previous)}
-    return [c for c in _claims(answer) if c.casefold() not in seen]
+    seen = _claims(previous)
+    return [c for c in _claims(answer) if not any(_same_claim(c, s) for s in seen)]
 
 
 class App:
