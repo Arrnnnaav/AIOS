@@ -6,7 +6,7 @@ import time
 
 import pytest
 
-from ghostcursor.workspace.island import COMPACT, EXPANDED, HOTKEY_ID, ID_HIDE, ID_OPEN, ID_QUIT, ID_STOP, SHOW_MESSAGE, Island, _status, _wnd_proc
+from ghostcursor.workspace.island import ASKING, COMPACT, EXPANDED, HOTKEY_ID, ID_ASK, ID_HIDE, ID_OPEN, ID_QUIT, ID_SEND, ID_STOP, SHOW_MESSAGE, Island, _status, _wnd_proc
 
 
 class StubApp:
@@ -20,6 +20,8 @@ class StubApp:
 
     def handle(self, action, body):
         self.actions.append((action, body))
+        if action == "say":
+            return {"reply": "line one\nline two"}
 
 
 def test_island_status_uses_only_generic_worker_and_job_state():
@@ -51,7 +53,7 @@ def test_native_island_opens_stops_and_quits_without_acting_on_desktop():
     try:
         assert win32gui.IsWindow(island.hwnd)
         assert win32gui.GetWindowLong(island.hwnd, win32con.GWL_EXSTYLE) & win32con.WS_EX_TOPMOST
-        assert win32gui.GetWindowRect(island.hwnd)[2] - win32gui.GetWindowRect(island.hwnd)[0] == 320
+        assert win32gui.GetWindowRect(island.hwnd)[2] - win32gui.GetWindowRect(island.hwnd)[0] == COMPACT[0]
         assert win32gui.IsWindowVisible(island.open_button)
         assert win32gui.GetWindowText(island.quit_button) == "Quit"
         assert win32gui.GetWindowLong(island.quit_button, win32con.GWL_STYLE) & win32con.WS_TABSTOP
@@ -99,7 +101,10 @@ def test_island_hide_recall_and_result_auto_reveal():
         assert not island.hidden and win32gui.IsWindowVisible(island.hwnd)
         win32gui.PostMessage(island.hwnd, win32con.WM_HOTKEY, HOTKEY_ID, 0)
         island.tick()
-        assert island.hidden
+        assert island.asking and not island.hidden  # the shortcut opens Ask
+        win32gui.PostMessage(island.hwnd, win32con.WM_HOTKEY, HOTKEY_ID, 0)
+        island.tick()
+        assert island.hidden and not island.asking  # pressed again: fold and hide
         app.busy = "Researching"
         island.tick()
         assert not island.hidden and island.auto_revealed
@@ -118,6 +123,43 @@ def test_island_hide_recall_and_result_auto_reveal():
         assert island.hidden and not win32gui.IsWindowVisible(island.hwnd)
     finally:
         island.hotkey_available = registered
+        win32gui.DestroyWindow(island.hwnd)
+
+
+@pytest.mark.interactive
+def test_island_ask_uses_the_chat_path_and_shows_the_reply_on_a_card():
+    import win32con
+    import win32gui
+
+    app = StubApp()
+    island = Island(app, "http://127.0.0.1:1/?t=local", lambda url: None)
+    try:
+        _wnd_proc(island.hwnd, win32con.WM_COMMAND, ID_ASK, 0)
+        assert island.asking and win32gui.IsWindowVisible(island.input)
+        rect = win32gui.GetWindowRect(island.hwnd)
+        assert (rect[2] - rect[0], rect[3] - rect[1]) == ASKING
+        assert win32gui.SendMessage(island.hwnd, win32con.WM_USER, 0, 0) & 0xFFFF == ID_SEND  # Enter sends
+        _wnd_proc(island.hwnd, win32con.WM_COMMAND, ID_SEND, 0)
+        assert app.actions == []  # an empty box sends nothing
+        win32gui.SetWindowText(island.input, "  what   next? ")
+        _wnd_proc(island.hwnd, win32con.WM_COMMAND, ID_SEND, 0)
+        deadline = time.monotonic() + 2
+        while island._reply is None and time.monotonic() < deadline:
+            time.sleep(.01)
+        island.tick()
+        assert app.actions == [("say", {"text": "what next?"})]
+        assert win32gui.GetWindowText(island.input) == ""
+        assert win32gui.GetWindowText(island.reply) == "You: what next?\r\nOrbyn: line one\r\nline two"
+        assert "what next" not in win32gui.GetWindowText(island.hwnd)  # the title stays generic
+        app.busy = "Thinking"
+        win32gui.SetWindowText(island.input, "again")
+        _wnd_proc(island.hwnd, win32con.WM_COMMAND, ID_SEND, 0)
+        assert len(app.actions) == 1 and "busy" in win32gui.GetWindowText(island.reply)
+        app.busy = ""
+        _wnd_proc(island.hwnd, win32con.WM_COMMAND, win32con.IDCANCEL, 0)  # Escape folds
+        assert not island.asking and not win32gui.IsWindowVisible(island.input)
+        assert not app.stop.is_set()  # folding is not Stop
+    finally:
         win32gui.DestroyWindow(island.hwnd)
 
 

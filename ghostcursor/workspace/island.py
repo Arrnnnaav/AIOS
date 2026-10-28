@@ -1,4 +1,9 @@
-"""Small, movable workspace presence. It has no screen-targeting authority."""
+"""Small, movable workspace presence. It has no screen-targeting authority.
+
+Ask (the button or Ctrl+Alt+O) unfolds a type-to-ask panel, as in HeyClicky's
+notch: the question goes through the same Chat path as the workspace page
+(``App.handle("say")``), so nothing new leaves the device, and the reply shows
+on a card under the bar for follow-ups. Escape folds it."""
 
 from __future__ import annotations
 
@@ -13,11 +18,17 @@ import win32gui
 from ghostcursor.overlay.window import ensure_class
 
 CLASS = "OrbynWorkspaceIsland"
-ID_OPEN, ID_STOP, ID_QUIT, ID_HIDE = 1, 2, 3, 4
+# Above IDOK/IDCANCEL: IsDialogMessage turns Enter into the default button
+# (DM_GETDEFID) and Escape into IDCANCEL.
+ID_OPEN, ID_STOP, ID_QUIT, ID_HIDE, ID_ASK, ID_SEND, ID_INPUT, ID_REPLY = range(11, 19)
 HOTKEY_ID = 5
 SHOW_MESSAGE = win32con.WM_APP + 1
-COMPACT = (320, 56)
+DM_GETDEFID, DC_HASDEFID = win32con.WM_USER, 0x534B
+COMPACT = (384, 56)
 EXPANDED = (440, 72)
+ASKING = (440, 326)
+MAX_TRANSCRIPT = 20_000
+HINT = "Replies show here. Type again to follow up; Esc folds; Open shows the full chat."
 BG = win32api.RGB(22, 26, 34)
 TEXT = win32api.RGB(249, 247, 242)
 MUTED = win32api.RGB(166, 174, 186)
@@ -29,6 +40,8 @@ SECONDARY_PRESSED = win32api.RGB(70, 77, 89)
 STOP_PRESSED = win32api.RGB(132, 70, 67)
 _windows = {}
 _brush = None
+_field_brush = None
+_font = None
 
 
 class _Point(ctypes.Structure):
@@ -62,7 +75,7 @@ def _draw_button(lparam):
     rect = item.rcItem
     bounds = (rect.left, rect.top, rect.right, rect.bottom)
     win32gui.FillRect(hdc, bounds, _brush)
-    primary = item.CtlID == ID_OPEN
+    primary = item.CtlID in (ID_ASK, ID_SEND)
     pressed = bool(item.itemState & win32con.ODS_SELECTED)
     if primary:
         color = PRESSED if pressed else ACCENT
@@ -124,7 +137,7 @@ def _wnd_proc(hwnd, msg, wparam, lparam):
             win32gui.DrawText(hdc, "●", -1, (16, 14, 34, 47), win32con.DT_SINGLELINE)
             win32gui.SetTextColor(hdc, TEXT)
             heading = "Orbyn · " + island.title if island.expanded else "Orbyn"
-            edge = 236 if island.expanded else 135
+            edge = 182 if island.expanded or island.asking else 135
             win32gui.DrawText(hdc, heading, -1, (37, 9, edge, 30), win32con.DT_SINGLELINE | win32con.DT_END_ELLIPSIS)
             win32gui.SetTextColor(hdc, MUTED)
             detail = island.detail if island.expanded else island.title
@@ -134,6 +147,12 @@ def _wnd_proc(hwnd, msg, wparam, lparam):
     if island is not None:
         if msg == win32con.WM_ERASEBKGND:
             return 1
+        if msg in (win32con.WM_CTLCOLOREDIT, win32con.WM_CTLCOLORSTATIC):
+            win32gui.SetTextColor(wparam, TEXT)
+            win32gui.SetBkColor(wparam, SECONDARY)
+            return _field_brush
+        if msg == DM_GETDEFID:
+            return (DC_HASDEFID << 16) | (ID_SEND if island.asking else ID_ASK)
         if msg == win32con.WM_DRAWITEM and lparam:
             _draw_button(lparam)
             return 1
@@ -143,6 +162,15 @@ def _wnd_proc(hwnd, msg, wparam, lparam):
             action = win32api.LOWORD(wparam)
             if action == ID_OPEN:
                 island.open()
+            elif action == ID_ASK:
+                island.fold() if island.asking else island.unfold()
+            elif action == ID_SEND:
+                island.submit()
+            elif action == win32con.IDCANCEL:
+                if island.asking:
+                    island.fold()
+                elif island.app.busy:
+                    island.app.stop.set()
             elif action == ID_STOP:
                 island.app.stop.set()
             elif action == ID_HIDE:
@@ -152,7 +180,11 @@ def _wnd_proc(hwnd, msg, wparam, lparam):
                 win32gui.DestroyWindow(hwnd)
             return 0
         if msg == win32con.WM_HOTKEY and wparam == HOTKEY_ID:
-            island.hide() if not island.hidden else island.show()
+            if island.asking:
+                island.fold()
+                island.hide()
+            else:
+                island.unfold()
             return 0
         if msg == SHOW_MESSAGE:
             island.show()
@@ -177,7 +209,7 @@ class Island:
     """The Win32 UI thread owns this window; jobs stay on the existing worker."""
 
     def __init__(self, app, url, open_window, *, clock=time.monotonic, voice_hotkey=None):
-        global _brush
+        global _brush, _field_brush, _font
         self.app, self.url, self.open_window = app, url, open_window
         self.clock = clock
         self._opening = threading.Event()
@@ -185,12 +217,19 @@ class Island:
         self.hidden = False
         self.auto_revealed = False
         self.expanded = False
+        self.asking = False
+        self.transcript = ""
+        self._reply = None  # set by the ask thread, shown by tick() on the UI thread
         self._notice_until = 0.0
         job = _last_job(app)
         self._last_job_state = (job.get("id"), job.get("state")) if job else None
         self.title, self.detail = "Ready", "Open your workspace"
         if _brush is None:
             _brush = win32gui.CreateSolidBrush(BG)
+            _field_brush = win32gui.CreateSolidBrush(SECONDARY)
+            font = win32gui.LOGFONT()
+            font.lfHeight, font.lfFaceName = -15, "Segoe UI"
+            _font = win32gui.CreateFontIndirect(font)
         ensure_class(CLASS, _wnd_proc, _brush)
         screen = win32api.GetSystemMetrics(win32con.SM_CXSCREEN)
         width, height = COMPACT
@@ -220,11 +259,23 @@ class Island:
         win32gui.SetWindowRgn(self.hwnd, win32gui.CreateRoundRectRgn(0, 0, width, height, 30, 30), True)
         style = win32con.WS_CHILD | win32con.WS_VISIBLE | win32con.WS_TABSTOP | win32con.BS_OWNERDRAW
         module = win32api.GetModuleHandle(None)
-        self.open_button = win32gui.CreateWindowEx(0, "BUTTON", "Open", style, 139, 9, 56, 38, self.hwnd, ID_OPEN, module, None)
+        self.ask_button = win32gui.CreateWindowEx(0, "BUTTON", "Ask", style, 139, 9, 52, 38, self.hwnd, ID_ASK, module, None)
+        self.open_button = win32gui.CreateWindowEx(0, "BUTTON", "Open", style, 197, 9, 56, 38, self.hwnd, ID_OPEN, module, None)
+        self.send_button = win32gui.CreateWindowEx(0, "BUTTON", "Send", style, 364, 73, 60, 36, self.hwnd, ID_SEND, module, None)
+        field = win32con.WS_CHILD | win32con.WS_TABSTOP | win32con.ES_AUTOHSCROLL
+        self.input = win32gui.CreateWindowEx(0, "EDIT", "", field, 16, 76, 340, 30, self.hwnd, ID_INPUT, module, None)
+        card = win32con.WS_CHILD | win32con.WS_VSCROLL | win32con.ES_MULTILINE | win32con.ES_READONLY | win32con.ES_AUTOVSCROLL
+        self.reply = win32gui.CreateWindowEx(0, "EDIT", "", card, 16, 120, 408, 190, self.hwnd, ID_REPLY, module, None)
+        for child in (self.input, self.reply):
+            win32gui.SendMessage(child, win32con.WM_SETFONT, _font, 0)
+        ctypes.windll.uxtheme.SetWindowTheme(self.reply, "DarkMode_Explorer", None)  # dark scrollbar
+        win32gui.SetWindowText(self.reply, HINT)
+        win32gui.SendMessage(self.input, 0x1501, 1, "Ask Orbyn, then press Enter")  # EM_SETCUEBANNER
         self.stop_button = win32gui.CreateWindowEx(0, "BUTTON", "Stop", style, 309, 17, 56, 38, self.hwnd, ID_STOP, module, None)
-        self.hide_button = win32gui.CreateWindowEx(0, "BUTTON", "Hide", style, 201, 9, 45, 38, self.hwnd, ID_HIDE, module, None)
-        self.quit_button = win32gui.CreateWindowEx(0, "BUTTON", "Quit", style, 252, 9, 54, 38, self.hwnd, ID_QUIT, module, None)
-        win32gui.ShowWindow(self.stop_button, win32con.SW_HIDE)
+        self.hide_button = win32gui.CreateWindowEx(0, "BUTTON", "Hide", style, 259, 9, 45, 38, self.hwnd, ID_HIDE, module, None)
+        self.quit_button = win32gui.CreateWindowEx(0, "BUTTON", "Quit", style, 310, 9, 54, 38, self.hwnd, ID_QUIT, module, None)
+        for hidden in (self.stop_button, self.send_button):
+            win32gui.ShowWindow(hidden, win32con.SW_HIDE)
         if not self.hotkey_available:
             win32gui.ShowWindow(self.hide_button, win32con.SW_HIDE)
         self._resize(False)  # initial placement must respect a top/side taskbar
@@ -245,6 +296,57 @@ class Island:
 
         threading.Thread(target=launch, daemon=True, name="orbyn-open-workspace").start()
 
+    def unfold(self):
+        """Show the ask panel and put the caret in it."""
+        if self.hidden:
+            self.show()
+        self.asking = True
+        self._resize(self.expanded)
+        win32gui.SetWindowText(self.ask_button, "Done")
+        for child in (self.input, self.send_button, self.reply):
+            win32gui.ShowWindow(child, win32con.SW_SHOW)
+        try:
+            win32gui.SetForegroundWindow(self.hwnd)
+        except win32gui.error:
+            pass  # Windows may refuse focus theft; a click in the field still works
+        win32gui.SetFocus(self.input)
+
+    def fold(self):
+        self.asking = False
+        win32gui.SetWindowText(self.ask_button, "Ask")
+        for child in (self.input, self.send_button, self.reply):
+            win32gui.ShowWindow(child, win32con.SW_HIDE)
+        self._resize(self.expanded)
+
+    def submit(self):
+        text = " ".join(win32gui.GetWindowText(self.input).split())
+        if not text:
+            return
+        if self.app.busy:
+            self._show(f"Orbyn is busy ({self.app.busy}); try again when it finishes.")
+            return
+        win32gui.SetWindowText(self.input, "")
+        self._show(f"You: {text}\r\nOrbyn: …")
+
+        def ask():
+            try:
+                reply = self.app.handle("say", {"text": text})["reply"]
+            except Exception as exc:  # busy, no model, provider error: say it on the card
+                reply = f"Could not answer: {exc}"
+            self._reply = str(reply)
+
+        threading.Thread(target=ask, daemon=True, name="orbyn-island-ask").start()
+
+    def _show(self, text):
+        self.transcript = (self.transcript + "\r\n\r\n" if self.transcript else "") + text
+        self._render()
+
+    def _render(self):
+        self.transcript = self.transcript[-MAX_TRANSCRIPT:]
+        win32gui.SetWindowText(self.reply, self.transcript or HINT)
+        win32gui.SendMessage(self.reply, win32con.EM_SETSEL, len(self.transcript), len(self.transcript))
+        win32gui.SendMessage(self.reply, win32con.EM_SCROLLCARET, 0, 0)
+
     def hide(self):
         if self.app.busy or not self.hotkey_available:
             return  # the Stop surface stays reachable during work
@@ -260,6 +362,11 @@ class Island:
         win32gui.ShowWindow(self.hwnd, win32con.SW_SHOWNOACTIVATE)
 
     def tick(self):
+        reply, self._reply = self._reply, None
+        if reply is not None:
+            # an EDIT control breaks lines only on CRLF
+            self.transcript = self.transcript.removesuffix("…") + reply.replace("\r\n", "\n").replace("\n", "\r\n")
+            self._render()
         job = _last_job(self.app)
         job_state = (job.get("id"), job.get("state")) if job else None
         if job_state != self._last_job_state:
@@ -269,10 +376,11 @@ class Island:
         expanded = bool(self.app.busy) or self.clock() < self._notice_until
         if self.hidden and expanded:
             self.show(automatic=True)
-        elif self.auto_revealed and not expanded:
+        elif self.auto_revealed and not expanded and not self.asking:
             self.hide()
         if expanded != self.expanded:
             self._resize(expanded)
+        win32gui.ShowWindow(self.ask_button, win32con.SW_HIDE if self.app.busy and not self.asking else win32con.SW_SHOWNA)
         title, detail = _status(self.app, job)
         if (title, detail) != (self.title, self.detail):
             self.title, self.detail = title, detail
@@ -284,9 +392,12 @@ class Island:
             win32gui.ShowWindow(self.hide_button, win32con.SW_HIDE if busy else win32con.SW_SHOWNA)
         _pump_dialog(self.hwnd)
 
+    def _size(self, expanded):
+        return ASKING if self.asking else EXPANDED if expanded else COMPACT
+
     def _resize(self, expanded):
-        old_width = EXPANDED[0] if self.expanded else COMPACT[0]
-        width, height = EXPANDED if expanded else COMPACT
+        old_width = win32gui.GetWindowRect(self.hwnd)[2] - win32gui.GetWindowRect(self.hwnd)[0]
+        width, height = self._size(expanded)
         left, top, _, _ = win32gui.GetWindowRect(self.hwnd)
         left -= (width - old_width) // 2
         monitor = win32api.MonitorFromWindow(self.hwnd, win32con.MONITOR_DEFAULTTONEAREST)
@@ -295,9 +406,11 @@ class Island:
         top = max(work_top, min(top, work_bottom - height))
         win32gui.SetWindowPos(self.hwnd, 0, left, top, width, height, win32con.SWP_NOZORDER | win32con.SWP_NOACTIVATE)
         win32gui.SetWindowRgn(self.hwnd, win32gui.CreateRoundRectRgn(0, 0, width, height, 30, 30), True)
-        y = 17 if expanded else 9
-        win32gui.MoveWindow(self.open_button, 247 if expanded else 139, y, 56, 38, True)
-        win32gui.MoveWindow(self.hide_button, 309 if expanded else 201, y, 56 if expanded else 45, 38, True)
-        win32gui.MoveWindow(self.quit_button, 371 if expanded else 252, y, 52 if expanded else 54, 38, True)
+        wide = expanded or self.asking
+        y = 17 if wide else 9
+        win32gui.MoveWindow(self.ask_button, 189 if wide else 139, y, 52, 38, True)
+        win32gui.MoveWindow(self.open_button, 247 if wide else 197, y, 56, 38, True)
+        win32gui.MoveWindow(self.hide_button, 309 if wide else 259, y, 56 if wide else 45, 38, True)
+        win32gui.MoveWindow(self.quit_button, 371 if wide else 310, y, 52 if wide else 54, 38, True)
         self.expanded = expanded
         win32gui.InvalidateRect(self.hwnd, None, True)
