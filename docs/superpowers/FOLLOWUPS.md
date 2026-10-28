@@ -1513,7 +1513,7 @@ to confirm where the cost actually is before changing anything else.
   Teach session remains to be measured under its separate acceptance gate.
 - Edge app windows have a minimum width near 500 px; the 460 px dock may be clamped. Check on a real display.
 - The default launcher shows a slim topmost island until the user hides it; active work keeps Stop visible. Real primary-edge and emulated left/right-monitor geometry passed, but a physical second display and cross-DPI move remain unmeasured. Check overlap against real Teach targets. The full window remains available from Open.
-- Island buttons have Tab stops and dialog-key dispatch, but physical keyboard and screen-reader use have not been measured. Quit immediately after Open can still leave an Edge window opening against a stopped local server; close that window if the race matters in daily use.
+- Island buttons retain native Tab stops and dialog-key dispatch with owner-drawn surfaces, but physical keyboard and screen-reader use have not been measured. The new package's idle island was captured, while its full tab interactions and cross-DPI movement were not replayed. Quit immediately after Open can still leave an Edge window opening against a stopped local server; close that window if the race matters in daily use.
 - Brain Personal and Setup were captured at 500 px in the view-hierarchy
   study; test Company with a populated knowledge store and a physical screen
   reader before treating that section as fully accepted.
