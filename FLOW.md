@@ -217,6 +217,13 @@ hotkey thread. `--window` opens the movable Edge workspace directly;
 `--dock` opens its right-side position. This is presentation only and does not
 share the click-through Teach overlay or add input authority. Its one worker owns `Workspace` and Brain; request
 threads refuse overlapping work while Stop and Done can signal that worker.
+Chat's empty view leads to Point, Research and Plan while leaving the composer
+visible. An empty Plan gives a direct route to the Chat composer or drafts
+from an existing goal. Brain separates Personal memory, Company knowledge
+and Setup with an in-page section control. `company_brain_available` in the
+local state prevents presenting Company controls when no knowledge store was
+configured; Setup holds the picture policy, accounts, readiness and scalar
+statistics. These views invoke only their existing actions.
 The Work tab's card board previews the current run, newest visible finished
 research result, current in-memory turn text and plan steps. Its controls open
 the saved result, Chat or Plan, or call the existing Stop API; they add no

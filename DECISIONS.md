@@ -7874,6 +7874,19 @@ cards across the viewport. This is local presentation of an already saved
 result, with no new job, egress or action authority. Evidence:
 `docs/evidence/work-result-presentation-2026-10-28.md`.
 
+### D178 addendum — Workspace view hierarchy
+
+Date: 28 October 2026. The compact workspace's Chat, Plan and Brain views
+were inspected at 500 px. Plan exposed disabled draft controls before any
+goal existed; Brain mixed personal memory, company knowledge, privacy,
+accounts and readiness in one scroll, and rendered object-valued statistics
+as `[object Object]`. The revised views keep Orbyn's amber/navy identity and
+Windows typography while separating Personal, Company and Setup within Brain.
+An empty Plan routes to the Chat composer, and Company controls are absent
+when no knowledge store exists. This follows the small-on-demand panel
+pattern without copying another product's layout or assets. Evidence:
+`docs/evidence/workspace-view-hierarchy-2026-10-28.md`.
+
 ### D178 addendum — Background research lifecycle
 
 Date: 26 October 2026. Owner requested HeyClicky-style background jobs. The

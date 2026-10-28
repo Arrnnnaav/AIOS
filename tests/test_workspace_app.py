@@ -940,6 +940,35 @@ def test_company_brain_review_panel_actions(tmp_path):
 
 
 @pytest.mark.interactive
+def test_chat_plan_and_brain_views_keep_a_clear_next_action(served):
+    playwright = pytest.importorskip("playwright.sync_api")
+    app, port = served
+    assert app.state()["company_brain_available"] is False
+    with playwright.sync_playwright() as browser:
+        edge = browser.chromium.launch(executable_path=str(appmod.EDGE), headless=True)
+        try:
+            page = edge.new_page(viewport={"width": 500, "height": 800})
+            page.goto(f"http://127.0.0.1:{port}/?t=secret-token#chat")
+            page.get_by_role("heading", name="Start with what you want to do.").wait_for()
+            page.get_by_role("tab", name="Plan").click()
+            page.get_by_role("button", name="Describe a goal").click()
+            assert page.get_by_role("tab", name="Chat").get_attribute("aria-selected") == "true"
+            assert page.evaluate("document.activeElement.getAttribute('aria-label')") == "Message"
+            page.get_by_role("tab", name="Brain").click()
+            sections = page.get_by_role("group", name="Brain sections")
+            assert sections.get_by_role("button", name="Personal").get_attribute("aria-pressed") == "true"
+            sections.get_by_role("button", name="Company").click()
+            page.get_by_text("Company Brain is not set up in this workspace.").wait_for()
+            assert page.evaluate("document.activeElement.textContent") == "Company"
+            sections.get_by_role("button", name="Setup").click()
+            page.get_by_text("Let Jev see a picture", exact=False).wait_for()
+            assert page.locator("#tab-brain").get_by_text("[object Object]").count() == 0
+            assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+        finally:
+            edge.close()
+
+
+@pytest.mark.interactive
 def test_saved_research_card_downloads_markdown(served, tmp_path):
     playwright = pytest.importorskip("playwright.sync_api")
     app, port = served
@@ -1022,6 +1051,7 @@ def test_company_brain_gui_capture(tmp_path, monkeypatch):
     threading.Thread(target=server.serve_forever, daemon=True).start()
     try:
         port = server.server_port
+        assert app.state()["company_brain_available"] is True
         status, body = call(
             port, "/api/know_add", {"text": "Launch is in Q3", "source": "note"}
         )

@@ -45,6 +45,8 @@ release acceptance is still pending.
   plan, with keyboard navigation and a Stop control for live work. The tab
   also keeps the latest 20 generic task states locally and holds reusable
   agents. Unfinished work is marked interrupted after restart.
+- **Brain views** — Personal memory, reviewed Company knowledge and setup
+  controls have separate views. Plan's empty page leads back to the composer.
 - **Background research** — start cited research in Work, close the window,
   and return to a locally saved answer. Download a finished result as Markdown
   directly from its card, ask a one-off follow-up about its first 8,000

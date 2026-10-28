@@ -71,9 +71,9 @@ main::-webkit-scrollbar { width: 8px; } main::-webkit-scrollbar-thumb { backgrou
 section[hidden] { display: none !important; }
 
 /* chat */
-.empty { text-align: center; padding: 48px 8px 0; }
-.empty h2 { font-size: 19px; margin: 14px 0 4px; font-weight: 600; }
-.empty p { color: var(--dim); margin: 0 0 20px; }
+.empty { text-align: left; padding: 24px 8px 0; }
+.empty h2 { font-size: 24px; line-height: 1.2; letter-spacing: -.02em; margin: 0 0 8px; font-weight: 650; }
+.empty p { color: var(--dim); margin: 0 0 24px; max-width: 44ch; }
 .starters { display: grid; gap: 8px; text-align: left; }
 .starter { display: flex; gap: 12px; align-items: center; padding: 12px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--line); }
 .starter:hover { border-color: var(--amber); }
@@ -130,6 +130,15 @@ section[hidden] { display: none !important; }
 .note { color: var(--faint); font-size: 12px; margin-top: 14px; text-align: center; }
 .blank { color: var(--dim); text-align: center; padding: 40px 12px; }
 .blank svg { width: 32px; height: 32px; color: var(--faint); }
+.planempty { margin-top: 18px; padding: 24px; background: var(--surface); border: 1px solid var(--line); border-radius: 20px; }
+.planempty svg { width: 28px; height: 28px; color: var(--amber); }
+.planempty h2 { font-size: 21px; letter-spacing: -.02em; margin: 18px 0 6px; }
+.planempty p { color: var(--dim); max-width: 44ch; margin: 0 0 20px; }
+.planempty .sheetrow { flex-wrap: wrap; }
+.brainviews { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 4px; margin: 0 0 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.brainviews button { padding: 8px 4px; border-radius: 8px; color: var(--dim); font-size: 13px; }
+.brainviews button[aria-pressed="true"] { background: var(--raise); color: var(--text); font-weight: 600; }
+.brain-title { font-size: 18px; margin: 10px 0 12px; }
 
 /* brain */
 .switch { display: inline-flex; align-items: center; gap: 8px; color: var(--dim); font-size: 13px; }
@@ -323,7 +332,7 @@ async function act(action, body, quietOk) {
 }
 
 // ---- state ------------------------------------------------------------
-let S = null, lastJson = "", tab = "chat", researchMode = false, pending = "", workCardIndex = 0, backgroundStarting = false, showArchived = false;
+let S = null, lastJson = "", tab = "chat", brainView = "personal", researchMode = false, pending = "", workCardIndex = 0, backgroundStarting = false, showArchived = false;
 let githubRepos = [], githubIssues = {}, githubLoading = false;
 let chosen = new Set(), editing = null;
 
@@ -699,8 +708,8 @@ function suggestEl(kind) {
 function emptyState() {
   const e = el("div", "empty");
   e.append(el("div", "orb"));
-  e.firstChild.style.cssText = "width:56px;height:56px;margin:auto";
-  e.append(el("h2", "", "What do you want to get done?"), el("p", "", "Describe the goal. Orbyn researches, plans, then points at each step on your screen."));
+  e.firstChild.style.cssText = "width:42px;height:42px;margin:0 0 20px";
+  e.append(el("h2", "", "Start with what you want to do."), el("p", "", "Type a goal below, talk it through, or choose a way to begin."));
   const list = el("div", "starters");
   const add = (icon, title, sub, fn) => {
     const b = el("button", "starter"); b.append(iconEl(icon));
@@ -780,7 +789,9 @@ function renderPlan() {
   const explore = el("button", "secondary", S.ideas.length ? "New approaches" : "Explore approaches");
   explore.disabled = !!S.busy || !S.goal;
   explore.onclick = () => act("ideate", {}, "Approaches ready");
-  head.append(h, explore, regen); root.append(head);
+  head.append(h);
+  if (S.plan) head.append(explore, regen);
+  root.append(head);
   if (S.ideas.length) {
     const ideas = el("div", "ideas");
     S.ideas.forEach((idea, i) => {
@@ -794,11 +805,19 @@ function renderPlan() {
     root.append(ideas);
   }
   if (!S.plan) {
-    const b = el("div", "blank"); b.append(iconEl("plan"), el("p", "", S.goal ? "No plan yet. Draft one from your conversation, then review each step." : "Start in Chat: describe what you want to do."));
+    const b = el("div", "planempty");
+    b.append(iconEl("plan"), el("h2", "", S.goal ? "Turn your goal into steps" : "Start with a goal"),
+      el("p", "", S.goal ? "Draft a plan from your conversation, then review and edit every step before using it." : "Tell Orbyn what you want to do. A plan will appear here when you ask for one."));
+    const row = el("div", "sheetrow");
+    const primary = el("button", "pill go", S.goal ? "Draft plan" : "Describe a goal");
+    primary.disabled = !!S.busy;
+    primary.onclick = S.goal ? () => act("plan", {}, "Plan drafted") : () => { setTab("chat"); $("input").focus(); };
+    row.append(primary);
+    if (S.goal) { const ideas = el("button", "secondary", "Explore approaches"); ideas.disabled = !!S.busy; ideas.onclick = explore.onclick; row.append(ideas); }
     const file = el("input"); file.type = "file"; file.accept = ".json"; file.hidden = true;
     file.onchange = async () => { const f = file.files[0]; if (f) act("handoff_import", { data: await f.text() }, "Handoff opened"); };
     const open = el("button", "secondary", "Open a teammate's handoff"); open.disabled = !!S.busy; open.onclick = () => file.click();
-    b.append(open, file); root.append(b); return;
+    row.append(open); b.append(row, file); root.append(b); return;
   }
   const ol = el("ol", "steps");
   S.plan.steps.forEach((text, i) => {
@@ -836,32 +855,56 @@ function renderPlan() {
 
 // ---- brain ------------------------------------------------------------
 function renderBrain() {
-  const root = $("tab-brain"); root.replaceChildren();
-  const head = el("div", "panelhead"); head.append(el("h3", "", "What Orbyn remembers"));
-  const sw = el("button", "switch"); sw.setAttribute("role", "switch"); sw.setAttribute("aria-checked", String(!S.paused));
-  sw.append(document.createTextNode(S.paused ? "Paused" : "Learning"), el("i"));
-  sw.onclick = () => act("brain", { verb: S.paused ? "resume" : "pause" });
-  head.append(sw); root.append(head);
-  if (!S.memories.length) {
-    const b = el("div", "blank"); b.append(iconEl("brain"), el("p", "", "Nothing yet. Orbyn keeps only what you say about yourself, on this computer."));
-    root.append(b);
+  const root = $("tab-brain");
+  const focusedView = root.contains(document.activeElement) ? document.activeElement.dataset.brainView : null;
+  root.replaceChildren(el("h3", "brain-title", "Brain"));
+  const nav = el("div", "brainviews"); nav.setAttribute("role", "group"); nav.setAttribute("aria-label", "Brain sections");
+  for (const [name, label] of [["personal", "Personal"], ["company", "Company"], ["setup", "Setup"]]) {
+    const button = el("button", "", label); button.dataset.brainView = name;
+    button.setAttribute("aria-pressed", String(brainView === name));
+    button.onclick = () => { brainView = name; renderBrain(); $("main").scrollTop = 0; };
+    nav.append(button);
   }
-  const list = el("div", "mems");
-  for (const m of S.memories) {
-    const card = el("div", "mem"); const meta = el("div", "meta");
-    meta.append(el("span", "kind", m.kind), el("span", "", "· " + m.scope));
-    const acts = el("div", "acts");
-    const fix = el("button", "", "Correct"); const forget = el("button", "danger", "Forget");
-    fix.onclick = () => {
-      const inp = el("input"); inp.value = m.text; card.replaceChild(inp, card.lastChild); inp.focus();
-      inp.onkeydown = (e) => { if (e.key === "Enter") act("brain", { verb: "correct", id: m.mid, text: inp.value }, "Corrected"); if (e.key === "Escape") renderBrain(); };
-    };
-    forget.onclick = () => act("brain", { verb: "forget", id: m.mid }, "Forgotten");
-    acts.append(fix, forget); meta.append(acts);
-    card.append(meta, el("div", "", m.text)); list.append(card);
+  root.append(nav);
+  if (focusedView) nav.querySelector('[data-brain-view="' + focusedView + '"]').focus({ preventScroll: true });
+  if (brainView === "company") {
+    if (S.company_brain_available) root.append(companyBrainCard());
+    else root.append(el("p", "blank", "Company Brain is not set up in this workspace."));
+    return;
   }
-  root.append(list);
-  const priv = el("div", "mem"); priv.style.marginTop = "16px";
+  if (brainView === "personal") {
+    const head = el("div", "panelhead"); head.append(el("h3", "", "What Orbyn remembers"));
+    const sw = el("button", "switch"); sw.setAttribute("role", "switch"); sw.setAttribute("aria-checked", String(!S.paused));
+    sw.append(document.createTextNode(S.paused ? "Paused" : "Learning"), el("i"));
+    sw.onclick = () => act("brain", { verb: S.paused ? "resume" : "pause" });
+    head.append(sw); root.append(head);
+    if (!S.memories.length) {
+      const b = el("div", "blank"); b.append(iconEl("brain"), el("p", "", "Nothing yet. Orbyn keeps only what you say about yourself, on this computer."));
+      root.append(b);
+    }
+    const list = el("div", "mems");
+    for (const m of S.memories) {
+      const card = el("div", "mem"); const meta = el("div", "meta");
+      meta.append(el("span", "kind", m.kind), el("span", "", "· " + m.scope));
+      const acts = el("div", "acts");
+      const fix = el("button", "", "Correct"); const forget = el("button", "danger", "Forget");
+      fix.onclick = () => {
+        const inp = el("input"); inp.value = m.text; card.replaceChild(inp, card.lastChild); inp.focus();
+        inp.onkeydown = (e) => { if (e.key === "Enter") act("brain", { verb: "correct", id: m.mid, text: inp.value }, "Corrected"); if (e.key === "Escape") renderBrain(); };
+      };
+      forget.onclick = () => act("brain", { verb: "forget", id: m.mid }, "Forgotten");
+      acts.append(fix, forget); meta.append(acts);
+      card.append(meta, el("div", "", m.text)); list.append(card);
+    }
+    root.append(list);
+    if (S.memories.length) {
+      const erase = el("button", "secondary danger", "Erase every memory"); erase.style.marginTop = "16px";
+      erase.onclick = () => { if (prompt('Erase every memory? Type "yes" to confirm.') === "yes") act("brain", { verb: "erase", confirm: "yes" }, "Erased"); };
+      root.append(erase);
+    }
+    return;
+  }
+  const priv = el("div", "mem");
   const pmeta = el("div", "meta"); pmeta.append(el("span", "kind", "privacy"));
   const vsw = el("button", "switch"); vsw.setAttribute("role", "switch"); vsw.setAttribute("aria-checked", String(!!S.vision));
   vsw.style.marginLeft = "auto"; vsw.append(document.createTextNode(S.vision ? "On" : "Off"), el("i"));
@@ -873,16 +916,10 @@ function renderBrain() {
   if (S.managed) priv.append(el("div", "note", ["Set by your organization: nothing leaves this computer.", "Set by your organization: text only, no pictures.", "Your organization allows pictures."][S.egress]));
   priv.lastChild.style.textAlign = "left";
   root.append(priv);
-  root.append(companyBrainCard());
   root.append(accountsCard());
   root.append(doctorCard());
   const stats = el("div", "stats"); root.append(stats);
-  api("stats").then((s) => { for (const [k, v] of Object.entries(s).slice(0, 6)) { const d = el("div", "stat"); d.append(el("b", "", String(v)), el("span", "", k.replace(/_/g, " "))); stats.append(d); } }).catch(() => {});
-  if (S.memories.length) {
-    const erase = el("button", "secondary danger", "Erase every memory"); erase.style.marginTop = "16px";
-    erase.onclick = () => { if (prompt('Erase every memory? Type "yes" to confirm.') === "yes") act("brain", { verb: "erase", confirm: "yes" }, "Erased"); };
-    root.append(erase);
-  }
+  api("stats").then((s) => { for (const [k, v] of Object.entries(s).filter(([, v]) => typeof v === "number").slice(0, 6)) { const d = el("div", "stat"); d.append(el("b", "", String(v)), el("span", "", k.replace(/_/g, " "))); stats.append(d); } }).catch(() => {});
 }
 
 // ---- agents: create, save, use reusable helpers (D183) ----------------
@@ -919,7 +956,7 @@ function agentsCard() {
 
 // ---- company brain: curated org facts, owner-reviewed (D186) ----------
 function companyBrainCard() {
-  const card = el("div", "mem"); card.style.marginTop = "16px";
+  const card = el("div", "mem");
   const meta = el("div", "meta"); meta.append(el("span", "kind", "company brain")); card.append(meta);
   card.append(el("div", "", "Curated facts your team shares. New facts are candidates until you review them; approved facts guide plans, with their source. Add one below, capture the clipboard, or ingest a document with /know in the console."));
   const cap = el("div", "sheetrow"); cap.style.marginTop = "8px";

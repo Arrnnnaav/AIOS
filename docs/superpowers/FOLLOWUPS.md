@@ -1514,7 +1514,9 @@ to confirm where the cost actually is before changing anything else.
 - Edge app windows have a minimum width near 500 px; the 460 px dock may be clamped. Check on a real display.
 - The default launcher shows a slim topmost island until the user hides it; active work keeps Stop visible. Real primary-edge and emulated left/right-monitor geometry passed, but a physical second display and cross-DPI move remain unmeasured. Check overlap against real Teach targets. The full window remains available from Open.
 - Island buttons have Tab stops and dialog-key dispatch, but physical keyboard and screen-reader use have not been measured. Quit immediately after Open can still leave an Edge window opening against a stopped local server; close that window if the race matters in daily use.
-- Brain tab not captured in screenshots; check visually.
+- Brain Personal and Setup were captured at 500 px in the view-hierarchy
+  study; test Company with a populated knowledge store and a physical screen
+  reader before treating that section as fully accepted.
 - The page polls state every 700 ms; switch to a long poll if CPU shows up.
 
 ## Jev 1.14 / TypeSafe images (checked 16 October 2026, docs.typesafe.ai)

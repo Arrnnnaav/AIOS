@@ -471,6 +471,7 @@ class App:
                 "steps": [s.instruction for s in proposal.plan.steps],
             },
             "memories": self.memories,
+            "company_brain_available": ws.knowledge is not None,
             "suggest": ws.suggestion,
             "ideas": [
                 {
