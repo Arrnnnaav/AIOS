@@ -31,6 +31,13 @@ Orbyn **auto-starts Ollama** if it is installed, so you normally don't have to.
 Double-click the **Orbyn** shortcut. A slim window docks to the top-right of your
 screen. Launching it again while it is open just re-focuses that window.
 
+## The island
+
+The small bar at the top of the screen is always there. Press **Ask** (or
+**Ctrl+Alt+O**), type a question and press Enter; the answer appears under the
+bar. Type again to follow up, press **Esc** to fold it. The full window is
+only needed for plans, the Brain and background work.
+
 ## First things to try (in the window)
 
 The window has four views. Type plain sentences; slash commands are not

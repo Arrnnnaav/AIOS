@@ -1476,6 +1476,11 @@ to confirm where the cost actually is before changing anything else.
 
 ## D178 workspace app follow-ups
 
+- Island Ask (29 Oct) answers through Chat only. Not yet in the island, from
+  the HeyClicky notch teardown: hold-to-talk on the existing voice path,
+  research mode, a strip of running background jobs, hiding while a
+  full-screen app is foreground, and a live check of a person typing (the
+  check posted messages; `docs/evidence/island-ask-2026-10-29.md`).
 - Routine results show claims new since the routine's previous finished run,
   matched locally (rapidfuzz token-set >= 90 and the same numbers). A dropped
   claim is not shown. Sending the prior run to the model, as HeyClicky does,

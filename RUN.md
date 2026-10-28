@@ -8,7 +8,8 @@ exposed off-device. A model is used only when you have switched on a BYOK key
 ## The desktop app (GUI)
 
 - **Double-click `Orbyn.cmd`** at the repo root — opens a compact, draggable
-  desktop island. It expands during work and for a new result. **Open** opens
+  desktop island. **Ask** (or **Ctrl+Alt+O**) opens a type-to-ask box under it;
+  the reply shows right there, type again to follow up, **Esc** folds it. It expands during work and for a new result. **Open** opens
   the full Edge workspace (or your browser if Edge is absent); **Stop** stops
   the current run; **Hide** dismisses the idle island, and **Ctrl+Alt+O**
   recalls it. A new job/result reveals it automatically; Open on a new research

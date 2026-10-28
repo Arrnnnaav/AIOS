@@ -202,13 +202,20 @@ the bottom shows exactly what's being built/modified right now.
 `ghostcursor.workspace.app.App` serves the token-protected Chat, Plan, Brain
 and Work page on loopback. By default, a native topmost workspace island is
 shown at the top of the desktop. It is draggable and shows generic worker and
-research-job state without goal, question, answer or credential text. It grows
+research-job state without goal, question, answer or credential text in its
+title or status. Ask (its primary button, or Ctrl+Alt+O) unfolds a type-to-ask
+panel: an edit box and a read-only reply card. Enter sends through
+`App.handle("say")`, the same Chat path and model as the page, on a background
+thread; the UI-thread tick shows the reply, and the turns join the shared Chat
+history. Follow-ups continue that conversation. Escape folds the panel (Stop
+only when folded and busy); pressing the shortcut while open folds and hides.
+It grows
 while work runs and for twelve seconds when a new result arrives. Its native
 owner-drawn buttons retain Windows focus and click handling while matching the
 amber and navy workspace palette. Open, Stop and Quit use the existing full-window launcher, Stop event
 and Quit action. Open launches Edge from a background thread so its positioning
 wait cannot hold the island's Stop control. Hide is allowed only while idle;
-Ctrl+Alt+O or a second default launch restores it. The configured voice key
+Ctrl+Alt+O (which also opens Ask) or a second default launch restores it. The configured voice key
 has priority if it uses the same chord. Work or a new research
 result reveals a hidden island automatically, and a new result's Open goes
 directly to the existing Work tab. Resize and display-change handling clamp
