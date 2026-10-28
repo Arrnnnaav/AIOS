@@ -492,19 +492,21 @@ function openJobResult(job) {
   const follow = el("textarea"); follow.rows = 2; follow.maxLength = 500; follow.placeholder = "Ask about this result"; follow.setAttribute("aria-label", "Question about this result");
   const reply = el("div", "jobanswer"); reply.hidden = true; reply.tabIndex = -1; reply.setAttribute("role", "status");
   const ask = el("button", "pill go", "Ask about result"); ask.disabled = !!S.busy;
+  const stop = el("button", "secondary", "Stop"); stop.hidden = true; stop.id = "jobAskStop";
+  stop.onclick = () => api("stop").catch((e) => toast(e.message));
   ask.onclick = async () => {
     const text = follow.value.trim(); if (!text) return toast("Ask a question about this result.");
-    ask.disabled = true; ask.textContent = "Asking…";
+    ask.disabled = true; ask.textContent = "Asking…"; stop.hidden = false;
     try {
       const result = await api("job_ask", { id: job.id, text });
       reply.textContent = result.answer; reply.hidden = false; reply.focus(); await poll(true);
     } catch (e) { toast(e.message); }
-    finally { ask.disabled = false; ask.textContent = "Ask about result"; }
+    finally { ask.disabled = false; ask.textContent = "Ask about result"; stop.hidden = true; }
   };
   const changed = el("div", "note");
   if (job.new_claims) changed.textContent = job.new_claims.length ? "New since last run:\n" + job.new_claims.map((c) => "• " + c).join("\n") : "Nothing new since last run.";
   changed.hidden = !job.new_claims; changed.style.whiteSpace = "pre-wrap";
-  sheet.replaceChildren(heading, el("p", "", job.question), changed, el("div", "jobanswer", job.answer), el("p", "note", "Follow-up uses up to the first 8,000 characters of this saved result and your configured model. The question and reply are not saved."), follow, reply, ask, close);
+  sheet.replaceChildren(heading, el("p", "", job.question), changed, el("div", "jobanswer", job.answer), el("p", "note", "Follow-up sends the parts of this saved result that match your question (up to 8,000 characters) to your configured model. The question and reply are not saved."), follow, reply, ask, stop, close);
   $("scrim").classList.add("open"); close.focus();
 }
 
@@ -659,12 +661,12 @@ function openFileAsk() {
   const ask = el("button", "pill go", "Ask file"); ask.style.marginLeft = "auto";
   ask.onclick = async () => {
     const selected = file.files[0], text = question.value.trim();
-    if (!selected || selected.size > 32 * 1024) return toast("Choose a text file under 32 KB.");
+    if (!selected || selected.size > 400 * 1024) return toast("Choose a text file under 400 KB.");
     if (!text) return toast("Ask a question about the file.");
     ask.disabled = true; ask.textContent = "Asking…";
     try {
       const material = await selected.text();
-      if (!material.trim() || material.length > 8000 || material.includes("\0")) throw new Error("Choose a text file under 8,000 characters.");
+      if (!material.trim() || material.length > 100000 || material.includes("\0")) throw new Error("Choose a text file under 100,000 characters.");
       const result = await api("ask_file", { text, material });
       answer.hidden = false; answer.textContent = result.answer; answer.focus();
       await poll(true);

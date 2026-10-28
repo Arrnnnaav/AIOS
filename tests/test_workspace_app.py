@@ -723,7 +723,7 @@ def test_file_question_is_one_off_and_keeps_material_out_of_history(served):
     assert "Private file" not in saved and "Where?" not in saved
     assert json.loads(saved)[-1] == {"label": "Asking file", "state": "finished"}
 
-    for material in (["wrong type"], "x" * 8001, "\0binary"):
+    for material in (["wrong type"], "x" * 100_001, "\0binary"):
         status, _ = call(port, "/api/ask_file", {"text": "Where?", "material": material})
         assert status == 400
     status, _ = call(port, "/api/ask_file", {"text": ["wrong type"], "material": "text"})
@@ -747,7 +747,7 @@ def test_saved_result_follow_up_uses_server_selected_bounded_answer(served):
     app.ws.ask = lambda question, material, *, cancelled: (seen.append((question, material, cancelled())), "Grounded reply")[1]
     status, payload = call(port, "/api/job_ask", {"id": jid, "text": "What?", "material": "injected"})
     assert status == 200 and json.loads(payload) == {"answer": "Grounded reply"}
-    assert seen == [("What?", "A" * 8000, False)]
+    assert seen == [("What?", "A" * 8000 + "TRAILING", False)]  # ws.ask bounds what is sent
     assert app.ws.turns == ()
     saved = app.job_path.read_text(encoding="utf-8")
     assert "What?" not in saved and "Grounded reply" not in saved
@@ -1072,6 +1072,7 @@ def test_saved_research_card_downloads_markdown(served, tmp_path):
             reply = page.get_by_role("status").filter(has_text="Sure.")
             reply.wait_for()
             assert reply.text_content() == "Sure."
+            assert page.locator("#jobAskStop").is_hidden()  # shown only while asking
             page.get_by_role("button", name="Close", exact=True).click()
             with page.expect_download() as pending:
                 page.get_by_role("button", name="Download Markdown").click()

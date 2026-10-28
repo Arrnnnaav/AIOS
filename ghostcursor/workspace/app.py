@@ -41,7 +41,8 @@ from ghostcursor.workspace.contracts import POINT_PREFIX
 from ghostcursor.workspace.github import GitHubConnector
 
 PAGE = Path(__file__).with_name("app.html")
-MAX_BODY = 64 * 1024
+MAX_FILE_CHARS = 100_000
+MAX_BODY = 512 * 1024  # a 100,000-character file in JSON
 QUIT_AFTER_S = (
     90.0  # no poll this long: the window is closed (a hidden tab polls ~1/min)
 )
@@ -879,14 +880,14 @@ class App:
             material = body.get("material")
             if not isinstance(body.get("text"), str) or not text or len(text) > 500:
                 raise ValueError("ask a question under 500 characters")
-            # shortcut: small text files only; add chunked retrieval for larger documents.
+            # Larger files are fine: ws.ask sends only the passages that match.
             if (
                 not isinstance(material, str)
                 or not material.strip()
-                or len(material) > 8000
+                or len(material) > MAX_FILE_CHARS
                 or "\0" in material
             ):
-                raise ValueError("choose a text file under 8,000 characters")
+                raise ValueError("choose a text file under 100,000 characters")
             return {"answer": self.run("Asking file", lambda: ws.ask(text, material, cancelled=self.stop.is_set))}
         if action == "job_ask":
             question, jid = body.get("text"), body.get("id")
@@ -896,7 +897,7 @@ class App:
                 row = next((item for item in self.background_jobs if item["id"] == jid), None)
                 if row is None or row["state"] != "finished" or not row["answer"]:
                     raise ValueError("no such finished result")
-                material = row["answer"][:8000]
+                material = row["answer"]  # ws.ask picks the matching passages
             return {"answer": self.run("Asking file", lambda: ws.ask(question, material, cancelled=self.stop.is_set))}
         if action == "evidence":
             return {"text": ws.evidence(int(body.get("n", 0)))}

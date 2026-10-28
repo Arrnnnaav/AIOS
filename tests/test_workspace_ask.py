@@ -94,3 +94,21 @@ def test_ask_empty_question_and_no_model(tmp_path):
     ws2, brain2 = _ws(tmp_path, AskGateway(fail=True))
     assert "not available" in ws2.ask("q", "m")
     brain2.close()
+
+
+def test_a_long_file_sends_only_the_passages_that_match(tmp_path):
+    from ghostcursor.workspace.session import relevant
+
+    filler = "\n\n".join(f"Paragraph {i} talks about lunch menus and parking." for i in range(400))
+    text = filler + "\n\nThe production database runs in eu-west-2 since March.\n\n" + filler
+    picked = relevant(text, "Where does the production database run?", 8000)
+    assert len(picked) <= 8000 and "eu-west-2" in picked
+    assert relevant("short", "q", 8000) == "short"
+    assert len(relevant("x" * 9000, "q", 8000)) <= 8000  # no spaces: hard cuts
+
+    gw = AskGateway()
+    ws, brain = _ws(tmp_path, gw)
+    ws.ask("Where does the production database run?", text)
+    sent = "".join(chunk.text for chunk in gw.envelopes[0].tainted["material"])
+    assert "eu-west-2" in sent and len(sent) <= 8000  # same egress bound as a short file
+    brain.close()

@@ -16,6 +16,7 @@ filters, a plan to review -- never a selector or an action.
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
@@ -455,7 +456,7 @@ class Workspace:
             return "ask what? usage: /ask <question> (grounds on the clipboard)"
         # Run both recognizers before splitting: full DLP cannot see across JSON chunks.
         material = sanitize(
-            (material or "").strip()[: self.MAX_CLIP_CHARS * 4],
+            relevant(material or "", question, self.MAX_CLIP_CHARS * 4),
             limit=self.MAX_CLIP_CHARS * 4,
         )
         material = scrub(redact.scrub(material)[0])
@@ -1265,3 +1266,39 @@ def measures(brain: Brain, briefs: Path, traces: Path) -> dict:
         # Opt-in local event counts (D141); {} unless telemetry was switched on.
         "events": telemetry.counts(),
     }
+
+
+_STOP = frozenset(
+    "the and are was for with this that from about into what does did how why who "
+    "when where which can you your say said its has have will would should there".split()
+)
+
+
+def relevant(text: str, question: str, limit: int) -> str:
+    """The passages of TEXT that share the most words with QUESTION, kept in
+    reading order and within LIMIT characters. Chosen locally, so a long file
+    or saved result sends no more than a short one.
+    ponytail: word overlap, no embeddings; add a local embedding model if
+    paraphrased questions miss."""
+
+    text = text.strip()
+    if len(text) <= limit:
+        return text
+    words = set(re.findall(r"\w{3,}", question.casefold())) - _STOP
+    pieces = []
+    for passage in re.split(r"\n\s*\n", text):
+        passage = passage.strip()
+        while len(passage) > 1000:
+            cut = passage.rfind(" ", 0, 1000)
+            cut = cut if cut > 0 else 1000
+            pieces.append(passage[:cut])
+            passage = passage[cut:].lstrip()
+        if passage:
+            pieces.append(passage)
+    hits = [len(words & set(re.findall(r"\w{3,}", p.casefold()))) for p in pieces]
+    keep, used = set(), 0
+    for i in sorted(range(len(pieces)), key=lambda i: (-hits[i], i)):
+        if used + len(pieces[i]) + 2 <= limit:
+            keep.add(i)
+            used += len(pieces[i]) + 2
+    return "\n\n".join(pieces[i] for i in sorted(keep))
