@@ -246,3 +246,18 @@ def test_kws_keyword_fallback_when_tokenizer_missing(tmp_path, monkeypatch):
     listen_kws.install(download=lambda u, d: None, load_sp=boom)
     note = (model / "hey-bro.txt").read_text(encoding="utf-8")
     assert "Could not auto-generate" in note  # clear guidance, never a wrong keyword
+
+
+def test_transcribe_drops_non_speech_before_whisper(monkeypatch):
+    import ghostcursor.listen as listen
+
+    seen = {}
+
+    class Model:
+        def transcribe(self, samples, **kw):
+            seen.update(kw)
+            return [], None
+
+    monkeypatch.setattr(listen, "_model", lambda name: Model())
+    assert listen.transcribe(np.zeros(16000, "float32")) == ""
+    assert seen["vad_filter"] is True  # noise never reaches Whisper as words

@@ -48,7 +48,7 @@ def wake_match(text: str) -> str | None:
 class Utterances:
     """Energy-gated speech segmentation. ``feed`` 20 ms frames; returns a
     finished utterance (samples) or None. The threshold follows the noise
-    floor. ponytail: plain RMS gate; swap for Silero VAD if rooms are noisy."""
+    floor. ponytail: plain RMS gate; transcribe() runs Silero VAD after it."""
 
     def __init__(self, *, floor: float = 0.004):
         self.floor = floor
@@ -83,8 +83,10 @@ def _model(name: str):
 
 
 def transcribe(samples: np.ndarray, model: str = "base.en", prompt: str = "") -> str:
+    # Silero VAD (bundled with faster-whisper) drops room noise before Whisper
+    # can read it as words: live, noise became "die somewhere." without it.
     segments, _ = _model(model).transcribe(
-        samples, language="en", beam_size=1, initial_prompt=prompt or None
+        samples, language="en", beam_size=1, initial_prompt=prompt or None, vad_filter=True
     )
     segments = list(segments)
     text = " ".join(s.text.strip() for s in segments)
