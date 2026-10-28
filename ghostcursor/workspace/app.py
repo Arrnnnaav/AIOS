@@ -852,7 +852,7 @@ class App:
         if action == "chatgpt_sign_in":
             from ghostcursor.providers import chatgpt
 
-            self.run("Signing in", chatgpt.sign_in)
+            self.run("Signing in", lambda: chatgpt.sign_in(cancelled=self.stop.is_set))
             return {}
         ws.suggestion = ""  # a suggestion is for the message just answered
         if action == "say":

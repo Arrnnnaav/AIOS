@@ -150,6 +150,17 @@ def test_the_listener_gives_up_at_its_deadline():
         chatgpt.wait_for_code(server, "s", 0.6)
 
 
+def test_stop_ends_the_sign_in_wait():
+    import time
+
+    stop = threading.Event()
+    threading.Timer(0.2, stop.set).start()
+    started = time.monotonic()
+    with chatgpt.listen(0) as server, pytest.raises(chatgpt.SignInError, match="cancelled"):
+        chatgpt.wait_for_code(server, "s", 300.0, stop.is_set)
+    assert time.monotonic() - started < 2  # not the 300 s deadline
+
+
 # --- the token reply --------------------------------------------------------------
 
 

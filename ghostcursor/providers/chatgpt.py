@@ -156,12 +156,15 @@ class _CallbackHandler(http.server.BaseHTTPRequestHandler):
 
 
 def wait_for_code(
-    server: http.server.HTTPServer, state: str, deadline_s: float
+    server: http.server.HTTPServer, state: str, deadline_s: float, cancelled=lambda: False
 ) -> tuple[str, str | None]:
-    """(code, issued client id) from the callback whose state matches ours."""
+    """(code, issued client id) from the callback whose state matches ours.
+    ``cancelled()`` (Stop) ends the wait within the server's 0.5 s timeout."""
 
     deadline = time.monotonic() + deadline_s
     while time.monotonic() < deadline:
+        if cancelled():
+            raise SignInError("sign-in cancelled")
         server.handle_request()
         callback = server.callback
         if callback is None:
@@ -283,7 +286,11 @@ def complete_sign_in(
 
 
 def sign_in(
-    *, open_browser=webbrowser.open, deadline_s: float = 300.0, path: Path | None = None
+    *,
+    open_browser=webbrowser.open,
+    deadline_s: float = 300.0,
+    path: Path | None = None,
+    cancelled=lambda: False,
 ) -> dict:
     """Interactive browser sign-in; stores and returns the credential record."""
 
@@ -310,7 +317,7 @@ def sign_in(
                 host_id=host_id,
             )
         )
-        code, issued = wait_for_code(server, state, deadline_s)
+        code, issued = wait_for_code(server, state, deadline_s, cancelled)
     client_id = client_id or issued
     if not client_id:
         raise SignInError("ChatGPT did not issue a client id")
