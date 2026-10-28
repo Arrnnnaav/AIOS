@@ -261,3 +261,39 @@ def test_transcribe_drops_non_speech_before_whisper(monkeypatch):
     monkeypatch.setattr(listen, "_model", lambda name: Model())
     assert listen.transcribe(np.zeros(16000, "float32")) == ""
     assert seen["vad_filter"] is True  # noise never reaches Whisper as words
+
+
+def test_holding_the_hotkey_records_until_release_and_a_tap_arms():
+    listener, sent, clock = _listener(["book the room"])
+    said = []
+    listener.say = said.append
+
+    def tap():
+        clock.now += 0.1
+        return clock.now < 0.2
+
+    listener.pressed(tap)
+    assert listener.armed_until > clock.now and sent == []  # a tap keeps the armed window
+
+    listener.armed_until = 0.0
+    start = clock.now
+
+    def hold():
+        clock.now += 0.1
+        if listener.held is not None:
+            listener.held.append(np.full(1600, 0.1, "float32"))  # the mic thread's frames
+        return clock.now - start < 1.5
+
+    listener.pressed(hold)
+    assert sent == ["book the room"] and listener.held is None
+    assert listener.armed_until == 0.0  # hold-to-talk does not also arm
+    assert said[-1].startswith("Listening (hold)")
+
+    start = clock.now
+
+    def silent_hold():
+        clock.now += 0.2
+        return clock.now - start < 1.0  # held, but the microphone gave nothing
+
+    listener.pressed(silent_hold)
+    assert sent == ["book the room"] and said[-1] == "Didn't catch that."

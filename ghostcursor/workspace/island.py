@@ -440,7 +440,8 @@ class Island:
             if job and job.get("state") in ("finished", "failed", "stopped", "interrupted"):
                 self._notice_until = self.clock() + 12
             self._last_job_state = job_state
-        expanded = bool(self.app.busy) or self.clock() < self._notice_until
+        listening = self.listener is not None and self.listener.held is not None  # hold-to-talk
+        expanded = bool(self.app.busy) or listening or self.clock() < self._notice_until
         if self.hidden and expanded:
             self.show(automatic=True)
         elif self.auto_revealed and not expanded and not self.asking:
@@ -448,7 +449,7 @@ class Island:
         if expanded != self.expanded:
             self._resize(expanded)
         win32gui.ShowWindow(self.ask_button, win32con.SW_HIDE if self.app.busy and not self.asking else win32con.SW_SHOWNA)
-        title, detail = _status(self.app, job)
+        title, detail = ("Listening", "Release to send") if listening else _status(self.app, job)
         if (title, detail) != (self.title, self.detail):
             self.title, self.detail = title, detail
             win32gui.SetWindowText(self.hwnd, "Orbyn · " + title + " · " + detail)

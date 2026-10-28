@@ -1,5 +1,7 @@
 """Wake Orbyn hands-free (D182): say "Hey Bro", or press the hotkey
 (default Ctrl+Alt+Space, ``settings.json`` "hotkey"), then speak the request.
+Holding the hotkey records until it is released (hold-to-talk); a quick tap
+arms the next utterance instead.
 
 Everything is local: an energy gate finds speech, faster-whisper ``tiny.en``
 checks short utterances for the wake phrase, ``base.en`` transcribes the
@@ -30,6 +32,7 @@ END_SILENCE_S = 0.8
 MAX_UTTERANCE_S = 15.0
 WAKE_MAX_S = 4.0  # longer speech is conversation, not a wake word (unless armed)
 ARMED_FOR_S = 8.0  # after the wake word / hotkey, the next utterance is the request
+HOLD_S = 0.35  # the hotkey still down after this is hold-to-talk, not a tap
 
 
 def wake_match(text: str) -> str | None:
@@ -128,6 +131,8 @@ class Listener:
         self.on_request, self.say, self.clock, self.hear = on_request, say, clock, hear
         self.hotkey, self.wake = hotkey, wake
         self.armed_until = 0.0
+        #: Frames from the open microphone while the hotkey is held, else None.
+        self.held: list[np.ndarray] | None = None
         self._stop = threading.Event()
         self._threads: list[threading.Thread] = []
         self._hotkey_thread_id = 0
@@ -141,6 +146,30 @@ class Listener:
     def arm(self, why: str) -> None:
         self.armed_until = self.clock() + ARMED_FOR_S
         self.say(f"Listening ({why})… say what you need.")
+
+    def pressed(self, down, why: str = "hotkey") -> None:
+        """The hotkey went down; ``down()`` says whether it still is. Held:
+        record until release and send it. Tapped: arm the next utterance."""
+
+        start = self.clock()
+        while down() and self.clock() - start < HOLD_S:
+            time.sleep(0.02)
+        if self.clock() - start < HOLD_S:
+            self.arm(why)
+            return
+        self.held = []
+        self.say("Listening (hold)… release to send.")
+        try:
+            while down() and self.clock() - start < MAX_UTTERANCE_S and not self._stop.is_set():
+                time.sleep(0.02)
+        finally:
+            frames, self.held = self.held, None
+        samples = np.concatenate(frames) if frames else np.zeros(0, "float32")
+        text = self.hear(samples) if len(samples) >= RATE * 0.3 else ""
+        if text:
+            self.on_request(text)
+        else:
+            self.say("Didn't catch that.")
 
     def utterance(self, samples: np.ndarray) -> None:
         seconds = len(samples) / RATE
@@ -229,6 +258,10 @@ class Listener:
                         frame = frames.get(timeout=0.2)
                     except queue.Empty:
                         continue
+                    held = self.held
+                    if held is not None:
+                        held.append(frame)  # hold-to-talk owns the microphone
+                        continue
                     if self._kws is not None and self.clock() >= self.armed_until:
                         try:
                             if self._kws.feed(frame):
@@ -263,6 +296,7 @@ class Listener:
                 and user32.GetMessageW(ctypes.byref(message), None, 0, 0) > 0
             ):
                 if message.message == 0x0312:  # WM_HOTKEY
-                    self.arm(self.hotkey)
+                    # Reads the key state only; nothing is synthesised.
+                    self.pressed(lambda: user32.GetAsyncKeyState(vk) & 0x8000, self.hotkey)
         finally:
             user32.UnregisterHotKey(None, 1)

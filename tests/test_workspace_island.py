@@ -300,6 +300,7 @@ def test_island_research_talk_voice_results_and_fullscreen(windowed_desktop):
 
     class StubListener:
         armed = []
+        held = None
 
         def arm(self, why):
             self.armed.append(why)
@@ -313,6 +314,12 @@ def test_island_research_talk_voice_results_and_fullscreen(windowed_desktop):
         island.listener = StubListener()
         _wnd_proc(island.hwnd, win32con.WM_COMMAND, ID_TALK, 0)
         assert StubListener.armed == ["Talk"]  # Talk only arms the existing listener
+        island.listener.held = []  # the voice hotkey is held down
+        island.tick()
+        assert island.expanded and (island.title, island.detail) == ("Listening", "Release to send")
+        island.listener.held = None
+        island.tick()
+        assert island.title == "Ready"
 
         island.voice("what is next")  # as from the listener's thread
         island.tick()
