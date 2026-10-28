@@ -125,7 +125,9 @@ py -3.12 -m ghostcursor.plugins list            # installed plugins
 Orbyn.cmd launches a small, draggable, always-on-top island. **Ask** (or
 **Ctrl+Alt+O**) unfolds a box under it: type, press Enter, and the reply shows
 on a card there; type again to follow up, **Esc** folds it. It uses the same
-Chat and model as the full workspace. The island expands while
+Chat and model as the full workspace. **Research** switches the box to cited
+answers, **Talk** takes a spoken question, finished background research shows
+on the same card, and the bar steps aside for full-screen apps. The island expands while
 work runs and briefly when a background result arrives. **Hide** dismisses it
 while idle; **Ctrl+Alt+O** recalls it. Work and new results reveal a hidden
 island, and **Open** on a new research result goes to Work. **Stop** signals the

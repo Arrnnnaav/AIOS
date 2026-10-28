@@ -38,6 +38,14 @@ The small bar at the top of the screen is always there. Press **Ask** (or
 bar. Type again to follow up, press **Esc** to fold it. The full window is
 only needed for plans, the Brain and background work.
 
+- **Research** (under the box) turns on cited web answers for what you type.
+- **Talk** listens once: say your question and the answer shows on the card.
+  "Hey Bro" and Ctrl+Alt+Space work the same way while the bar is there.
+- When background research finishes, its answer appears on the card; the full
+  version is under **Open › Work**.
+- The bar hides itself while a video, game or slideshow is full screen, unless
+  Orbyn is working.
+
 ## First things to try (in the window)
 
 The window has four views. Type plain sentences; slash commands are not

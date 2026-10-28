@@ -209,7 +209,15 @@ panel: an edit box and a read-only reply card. Enter sends through
 thread; the UI-thread tick shows the reply, and the turns join the shared Chat
 history. Follow-ups continue that conversation. Escape folds the panel (Stop
 only when folded and busy); pressing the shortcut while open folds and hides.
-It grows
+Research (a toggle in the panel) sends the box through `App.handle("research")`
+instead. Talk arms the existing voice Listener; while the island is shown,
+`App.heard` hands every spoken request (Talk, the voice hotkey or "Hey Bro") to
+the island, which asks it on the card like typed text. A finished background
+job is shown on the card once (its first 1500 characters) and a strip counts
+running jobs; that text is local UI only, never the title. While Windows
+reports a full-screen app or presentation (`SHQueryUserNotificationState`) the
+bar hides, but never while work runs or the panel is open, so Stop stays
+reachable. It grows
 while work runs and for twelve seconds when a new result arrives. Its native
 owner-drawn buttons retain Windows focus and click handling while matching the
 amber and navy workspace palette. Open, Stop and Quit use the existing full-window launcher, Stop event

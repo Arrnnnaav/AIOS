@@ -1476,11 +1476,15 @@ to confirm where the cost actually is before changing anything else.
 
 ## D178 workspace app follow-ups
 
-- Island Ask (29 Oct) answers through Chat only. Not yet in the island, from
-  the HeyClicky notch teardown: hold-to-talk on the existing voice path,
-  research mode, a strip of running background jobs, hiding while a
-  full-screen app is foreground, and a live check of a person typing (the
-  check posted messages; `docs/evidence/island-ask-2026-10-29.md`).
+- Island (29 Oct) has Ask, Research, Talk, finished results and full-screen
+  step-aside (`docs/evidence/island-ask-2026-10-29.md`). Open: Talk is
+  tap-to-talk on the Listener's 8 s armed window, not hold-to-talk (needs its
+  own recording path); in the live check Whisper turned room noise into
+  "die somewhere." and it was asked (refused as busy), so a minimum-speech or
+  confidence gate before asking would help; full-screen hiding was checked
+  only in tests and against a windowed desktop, not with a real full-screen
+  app; a person typing and pressing Enter is still unchecked; the card shows
+  only the first 1500 characters of a job's answer, so long answers point to Work.
 - Routine results show claims new since the routine's previous finished run,
   matched locally (rapidfuzz token-set >= 90 and the same numbers). A dropped
   claim is not shown. Sending the prior run to the model, as HeyClicky does,
