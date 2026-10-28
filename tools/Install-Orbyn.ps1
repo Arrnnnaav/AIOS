@@ -1,55 +1,105 @@
-# Install the built Orbyn app for the current user and add Start Menu + Desktop
-# shortcuts, so Orbyn launches like any installed app instead of from dist\.
-# No admin, no MSI tooling. Build first with tools\build_orbyn.ps1.
+# Install or update the built Orbyn app for the current user. User data lives
+# outside this directory in %LOCALAPPDATA%\GhostCursor.
 #
-#   pwsh -File tools\Install-Orbyn.ps1            # install / update
-#   pwsh -File tools\Install-Orbyn.ps1 -Uninstall # remove app + shortcuts
-#
-# NOTE: the exe is not code-signed yet, so the first launch may show a Windows
-# SmartScreen prompt (More info -> Run anyway). Signing is an owner step.
-
-param([switch]$Uninstall)
+#   pwsh -File tools\Install-Orbyn.ps1
+#   pwsh -File tools\Install-Orbyn.ps1 -Uninstall
+param(
+    [switch]$Uninstall,
+    [string]$SourceDir,
+    [string]$InstallDir,
+    [string]$StartMenuLnk,
+    [string]$DesktopLnk
+)
 $ErrorActionPreference = 'Stop'
 
-$AppName     = 'Orbyn'
-$InstallDir  = Join-Path $env:LOCALAPPDATA "Programs\$AppName"
-$StartMenuLnk = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\$AppName.lnk"
-$DesktopLnk   = Join-Path ([Environment]::GetFolderPath('Desktop')) "$AppName.lnk"
+if (-not $SourceDir) { $SourceDir = Join-Path $PSScriptRoot '..\dist\Orbyn' }
+if (-not $InstallDir) { $InstallDir = Join-Path $env:LOCALAPPDATA 'Programs\Orbyn' }
+if (-not $StartMenuLnk) { $StartMenuLnk = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Orbyn.lnk' }
+if (-not $DesktopLnk) { $DesktopLnk = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Orbyn.lnk' }
+
+$InstallDir = [IO.Path]::GetFullPath($InstallDir)
+if ([IO.Path]::GetFileName($InstallDir) -ne 'Orbyn') { throw 'Install directory must end in Orbyn.' }
+$ProgramRoot = [IO.Path]::GetDirectoryName($InstallDir)
+$StageDir = Join-Path $ProgramRoot 'Orbyn.staging'
+$BackupDir = Join-Path $ProgramRoot 'Orbyn.previous'
+$CompleteMarker = Join-Path $InstallDir '.install-complete'
+foreach ($target in @($StageDir, $BackupDir)) {
+    if (-not ([IO.Path]::GetFullPath($target)).StartsWith($ProgramRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'Installer transaction path escaped its parent directory.'
+    }
+}
 
 function New-Shortcut([string]$Path, [string]$Target, [string]$WorkDir) {
     $shell = New-Object -ComObject WScript.Shell
     $s = $shell.CreateShortcut($Path)
-    $s.TargetPath       = $Target
+    $s.TargetPath = $Target
     $s.WorkingDirectory = $WorkDir
-    $s.IconLocation     = $Target
-    $s.Description       = 'Orbyn - local-first Windows desktop guide'
+    $s.IconLocation = $Target
+    $s.Description = 'Orbyn - local-first Windows desktop guide'
     $s.Save()
 }
 
-if ($Uninstall) {
-    Remove-Item $StartMenuLnk, $DesktopLnk -Force -ErrorAction SilentlyContinue
-    if (Test-Path $InstallDir) { Remove-Item $InstallDir -Recurse -Force }
-    Write-Host "Orbyn uninstalled (install dir + shortcuts removed)."
-    return
+New-Item -ItemType Directory -Force -Path $ProgramRoot | Out-Null
+$lock = [IO.File]::Open((Join-Path $ProgramRoot '.orbyn-installer.lock'), 'OpenOrCreate', 'ReadWrite', 'None')
+try {
+    if (Get-Process Orbyn -ErrorAction SilentlyContinue) {
+        throw 'Close Orbyn before installing, updating, or uninstalling it.'
+    }
+    # Restore the last complete install if a previous update was interrupted.
+    if (Test-Path -LiteralPath $BackupDir) {
+        if (Test-Path -LiteralPath $InstallDir) {
+            if (Test-Path -LiteralPath $CompleteMarker) {
+                Remove-Item -LiteralPath $BackupDir -Recurse -Force
+            } else {
+                Remove-Item -LiteralPath $InstallDir -Recurse -Force
+                Move-Item -LiteralPath $BackupDir -Destination $InstallDir
+            }
+        } else {
+            Move-Item -LiteralPath $BackupDir -Destination $InstallDir
+        }
+    }
+    if (Test-Path -LiteralPath $StageDir) { Remove-Item -LiteralPath $StageDir -Recurse -Force }
+
+    if ($Uninstall) {
+        Remove-Item -LiteralPath $StartMenuLnk, $DesktopLnk -Force -ErrorAction SilentlyContinue
+        if (Test-Path -LiteralPath $InstallDir) { Remove-Item -LiteralPath $InstallDir -Recurse -Force }
+        Write-Host 'Orbyn uninstalled; local workspace data was kept.'
+        return
+    }
+
+    $SourceDir = [IO.Path]::GetFullPath($SourceDir)
+    if (-not (Test-Path -LiteralPath (Join-Path $SourceDir 'Orbyn.exe'))) {
+        throw "No build found at $SourceDir. Build it first: pwsh -File tools\build_orbyn.ps1"
+    }
+    New-Item -ItemType Directory -Path $StageDir | Out-Null
+    try {
+        Get-ChildItem -LiteralPath $SourceDir -Force | Copy-Item -Destination $StageDir -Recurse -Force
+        if (-not (Test-Path -LiteralPath (Join-Path $StageDir 'Orbyn.exe'))) { throw 'Staged build is incomplete.' }
+        Remove-Item -LiteralPath (Join-Path $StageDir '.install-complete') -Force -ErrorAction SilentlyContinue
+        $hadInstall = Test-Path -LiteralPath $InstallDir
+        if ($hadInstall) { Move-Item -LiteralPath $InstallDir -Destination $BackupDir }
+        try {
+            Move-Item -LiteralPath $StageDir -Destination $InstallDir
+            $installedExe = Join-Path $InstallDir 'Orbyn.exe'
+            New-Shortcut $StartMenuLnk $installedExe $InstallDir
+            New-Shortcut $DesktopLnk $installedExe $InstallDir
+            Set-Content -LiteralPath $CompleteMarker -Value 'complete' -NoNewline
+        } catch {
+            if (Test-Path -LiteralPath $InstallDir) { Remove-Item -LiteralPath $InstallDir -Recurse -Force }
+            if ($hadInstall -and (Test-Path -LiteralPath $BackupDir)) {
+                Move-Item -LiteralPath $BackupDir -Destination $InstallDir
+            } else {
+                Remove-Item -LiteralPath $StartMenuLnk, $DesktopLnk -Force -ErrorAction SilentlyContinue
+            }
+            throw
+        }
+        if ($hadInstall) { Remove-Item -LiteralPath $BackupDir -Recurse -Force }
+    } finally {
+        if (Test-Path -LiteralPath $StageDir) { Remove-Item -LiteralPath $StageDir -Recurse -Force }
+    }
+    Write-Host "Orbyn installed to: $InstallDir"
+    Write-Host 'Start Menu and Desktop shortcuts point to this install.'
+    Write-Host 'The app is not yet code-signed; Windows may show a SmartScreen prompt.'
+} finally {
+    $lock.Dispose()
 }
-
-$RepoDist = Join-Path $PSScriptRoot '..\dist\Orbyn'
-$BuiltExe = Join-Path $RepoDist 'Orbyn.exe'
-if (-not (Test-Path $BuiltExe)) {
-    throw "No build found at $BuiltExe. Build it first:  pwsh -File tools\build_orbyn.ps1"
-}
-
-# Don't copy over a running install.
-Get-Process Orbyn -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-Start-Sleep -Milliseconds 500
-
-New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
-Copy-Item (Join-Path $RepoDist '*') $InstallDir -Recurse -Force
-$InstalledExe = Join-Path $InstallDir 'Orbyn.exe'
-
-New-Shortcut $StartMenuLnk $InstalledExe $InstallDir
-New-Shortcut $DesktopLnk   $InstalledExe $InstallDir
-
-Write-Host "Orbyn installed to: $InstallDir"
-Write-Host "Shortcuts added: Start Menu and Desktop. Launch 'Orbyn' from either."
-Write-Host "(Keep Ollama running for planning/Teach:  ollama serve)"

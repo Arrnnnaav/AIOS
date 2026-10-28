@@ -225,6 +225,12 @@ and Setup with an in-page section control. `company_brain_available` in the
 local state prevents presenting Company controls when no knowledge store was
 configured; Setup holds the picture policy, accounts, readiness and scalar
 statistics. These views invoke only their existing actions.
+The user-level installer stages a complete onedir build beside the installed
+directory, moves the old build aside, and restores it if the new directory or
+shortcut step fails. A completion marker distinguishes a finished swap from
+an interrupted rollback on the next invocation. It refuses to update while
+Orbyn is running. Workspace data remains
+under `%LOCALAPPDATA%\GhostCursor`, outside the replaceable app directory.
 The Work tab's card board previews the current run, newest visible finished
 research result, current in-memory turn text and plan steps. Its controls open
 the saved result, Chat or Plan, or call the existing Stop API; they add no

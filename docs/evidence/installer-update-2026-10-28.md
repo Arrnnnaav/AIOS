@@ -1,0 +1,9 @@
+# User-level installer update safety
+
+28 October 2026. The prior `tools/Install-Orbyn.ps1` force-stopped every `Orbyn` process and copied new files over the installed directory. A failed copy could leave old and new files mixed, and stale files from the old build remained. This was found by reading the script; no real user install was modified.
+
+The installer now refuses to run while Orbyn is open. It takes a local exclusive installer lock, copies the build to `Orbyn.staging`, then moves the old directory to `Orbyn.previous` before moving the staged build into place. If the switch or shortcut creation fails, it restores the old directory. A completion marker is written only after both shortcuts succeed: on the next invocation, a live directory without that marker gives way to the intact backup; a marked live directory is kept and the leftover backup removed. Uninstall removes the app directory and shortcuts; workspace data under `%LOCALAPPDATA%\GhostCursor` is outside that directory. Staging, backup and install paths are checked before recursive file operations.
+
+`py -3.12 -m pytest tests/test_workspace_installer.py --basetemp=.tmp\pytest-installer-recovery -p no:cacheprovider -q` passed (1 test in 5.68 seconds). It used temporary fake builds and shortcuts, checked a clean update removes obsolete files, forced a shortcut failure after the directory swap to check rollback, simulated interruptions before and after completion, and checked uninstall retained separate workspace data. The real installed copy was untouched. The full hermetic lane passed 3,650 tests, 94 deselected in 223.97 seconds (`.tmp/hermetic-installer-final.log`). Independent review follows after commit.
+
+This is local update robustness, not a signed release or automatic update system. The build source is not cryptographically verified by this script; distribution and code signing remain owner-controlled release gates.

@@ -746,6 +746,10 @@ restart-and-time-jump test covered one missed routine after downtime; actual
 PC sleep was not run at the user's choice. This does not close Teach/Act
 release acceptance.
 
+The user-level installer now stages a replacement build and rolls back a failed
+switch (`docs/evidence/installer-update-2026-10-28.md`). App signing, an automatic
+update channel, and first-run guidance remain release work.
+
 Critic/Evaluation (`/critique`) reviews the current plan for gaps and risks
 before Act — advisory, read-only.
 

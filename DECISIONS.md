@@ -7897,6 +7897,18 @@ when no knowledge store exists. This follows the small-on-demand panel
 pattern without copying another product's layout or assets. Evidence:
 `docs/evidence/workspace-view-hierarchy-2026-10-28.md`.
 
+### D178 addendum — Replaceable user-level installation
+
+Date: 28 October 2026. The shortcut installer previously force-stopped Orbyn
+and copied over a live installation, risking a mixed build on copy failure.
+Updates now require the app to be closed. The new build is staged next to the
+installed directory, then swapped with a previous-build backup; a failed
+switch restores the previous directory. A completion marker lets the next
+invocation recover either an interrupted rollback or a finished swap with a
+leftover backup. This changes local install mechanics only; it
+does not create a signed release or an automatic update authority. Evidence:
+`docs/evidence/installer-update-2026-10-28.md`.
+
 ### D178 addendum — Background research lifecycle
 
 Date: 26 October 2026. Owner requested HeyClicky-style background jobs. The

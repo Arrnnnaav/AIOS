@@ -34,12 +34,14 @@ discovery calls before committing GTM spend.
 | **Production trust-root signing** | Marketplace revocation/publisher identity is built + proven with a dev key; production needs the real root key. | Sign `root.b64` + key-manifest/revocation docs. |
 
 ### Build / infra gaps (buildable, not yet done)
-- **Signed installer + auto-update** — only a PyInstaller onedir today
-  (`tools/build_orbyn.ps1` → `dist/Orbyn/Orbyn.exe`). No MSI/installer, no
-  update channel. (ROADMAP: deferred.)
-- **Crash reporting / support logging** — telemetry is local, off-by-default,
-  events-not-content (correct for privacy); a support-facing crash log (opt-in,
-  local, redacted) is not built.
+- **Signed installer + auto-update** — PyInstaller onedir and a user-level
+  shortcut installer exist. The installer now stages replacements and rolls
+  back a failed switch; the executable and installer are unsigned, and there
+  is no MSI or automatic update channel. See
+  `docs/evidence/installer-update-2026-10-28.md`.
+- **Crash reporting / support logging** — a local redacted crash log exists in
+  `ghostcursor/workspace/crashlog.py`; an opt-in support export and reporting
+  workflow are not built. Telemetry remains local and off by default.
 - **Onboarding / first-run** — no guided first-run; `Orbyn.cmd` opens the
   workspace cold.
 
