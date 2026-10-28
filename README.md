@@ -125,6 +125,9 @@ while idle; **Ctrl+Alt+O** recalls it. Work and new results reveal a hidden
 island, and **Open** on a new research result goes to Work. **Stop** signals the
 current run; **Quit** exits Orbyn. If the shortcut is already taken, Hide stays
 unavailable. The full workspace remains local behind a per-launch token.
+On a fresh workspace profile, Chat shows a short getting-started guide. Check
+setup opens Brain Setup for account and readiness choices; Start typing focuses
+the message box. The guide remembers dismissal in the local browser profile.
 `--target` narrows which window Orbyn binds; when several windows still
 match it lists them and refuses rather than guessing.
 

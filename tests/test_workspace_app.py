@@ -969,6 +969,34 @@ def test_chat_plan_and_brain_views_keep_a_clear_next_action(served):
 
 
 @pytest.mark.interactive
+def test_first_run_guide_uses_existing_setup_and_remembers_dismissal(served):
+    playwright = pytest.importorskip("playwright.sync_api")
+    _, port = served
+    with playwright.sync_playwright() as browser:
+        edge = browser.chromium.launch(executable_path=str(appmod.EDGE), headless=True)
+        try:
+            page = edge.new_page(viewport={"width": 500, "height": 800})
+            page.goto(f"http://127.0.0.1:{port}/?t=secret-token#chat")
+            guide = page.get_by_role("region", name="Getting started")
+            guide.get_by_role("button", name="Check setup").click()
+            assert page.get_by_role("tab", name="Brain").get_attribute("aria-selected") == "true"
+            assert page.get_by_role("button", name="Setup").get_attribute("aria-pressed") == "true"
+            assert page.evaluate("document.activeElement.textContent") == "Setup"
+            page.reload()
+            page.get_by_role("tab", name="Chat").click()
+            assert page.get_by_role("region", name="Getting started").count() == 0
+            assert page.evaluate("localStorage.getItem('orbyn-welcome-v1')") == "seen"
+
+            fresh = edge.new_page(viewport={"width": 500, "height": 800})
+            fresh.goto(f"http://127.0.0.1:{port}/?t=secret-token#chat")
+            fresh.get_by_role("region", name="Getting started").get_by_role("button", name="Start typing").click()
+            assert fresh.evaluate("document.activeElement.getAttribute('aria-label')") == "Message"
+            assert fresh.get_by_role("region", name="Getting started").count() == 0
+        finally:
+            edge.close()
+
+
+@pytest.mark.interactive
 def test_saved_research_card_downloads_markdown(served, tmp_path):
     playwright = pytest.importorskip("playwright.sync_api")
     app, port = served

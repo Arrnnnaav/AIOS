@@ -80,6 +80,9 @@ section[hidden] { display: none !important; }
 .starter b { display: block; font-weight: 600; }
 .starter span { color: var(--dim); font-size: 12.5px; }
 .starter svg { color: var(--amber); width: 20px; height: 20px; }
+.welcome { padding: 14px; margin: 0 0 16px; background: var(--surface); border: 1px solid var(--amber); border-radius: var(--radius); }
+.welcome p { margin: 5px 0 12px; font-size: 13px; }
+.welcome .sheetrow { flex-wrap: wrap; }
 
 .msg { margin: 14px 0; display: flex; gap: 10px; }
 .msg.user { justify-content: flex-end; }
@@ -333,6 +336,12 @@ async function act(action, body, quietOk) {
 
 // ---- state ------------------------------------------------------------
 let S = null, lastJson = "", tab = "chat", brainView = "personal", researchMode = false, pending = "", workCardIndex = 0, backgroundStarting = false, showArchived = false;
+let welcomeSeen = false;
+try { welcomeSeen = localStorage.getItem("orbyn-welcome-v1") === "seen"; } catch {}
+function finishWelcome() {
+  welcomeSeen = true;
+  try { localStorage.setItem("orbyn-welcome-v1", "seen"); } catch {}
+}
 let githubRepos = [], githubIssues = {}, githubLoading = false;
 let chosen = new Set(), editing = null;
 
@@ -710,6 +719,16 @@ function emptyState() {
   e.append(el("div", "orb"));
   e.firstChild.style.cssText = "width:42px;height:42px;margin:0 0 20px";
   e.append(el("h2", "", "Start with what you want to do."), el("p", "", "Type a goal below, talk it through, or choose a way to begin."));
+  if (!welcomeSeen) {
+    const card = el("div", "welcome"); card.setAttribute("role", "region"); card.setAttribute("aria-label", "Getting started");
+    card.append(el("b", "", "New to Orbyn?"), el("p", "", "Start with a goal. For model answers, check what is ready and choose an account in Brain Setup."));
+    const row = el("div", "sheetrow");
+    const setup = el("button", "pill go", "Check setup");
+    setup.onclick = () => { finishWelcome(); brainView = "setup"; setTab("brain"); $("tab-brain").querySelector('[data-brain-view="setup"]').focus(); };
+    const dismiss = el("button", "secondary", "Start typing");
+    dismiss.onclick = () => { finishWelcome(); renderChat(true); $("input").focus(); };
+    row.append(setup, dismiss); card.append(row); e.append(card);
+  }
   const list = el("div", "starters");
   const add = (icon, title, sub, fn) => {
     const b = el("button", "starter"); b.append(iconEl(icon));
@@ -1188,6 +1207,7 @@ function setResearch(on) {
 async function send() {
   const inp = $("input"); const text = inp.value.trim();
   if (!text || (S && S.busy)) return;
+  finishWelcome();
   inp.value = ""; autosize(); pending = researchMode ? "[research] " + text : text;
   const action = researchMode ? "research" : "say";
   setTab("chat"); renderChat(true);

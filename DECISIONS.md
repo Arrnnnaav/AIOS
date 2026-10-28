@@ -7909,6 +7909,15 @@ leftover backup. This changes local install mechanics only; it
 does not create a signed release or an automatic update authority. Evidence:
 `docs/evidence/installer-update-2026-10-28.md`.
 
+### D178 addendum — First-run route without automatic setup
+
+Date: 28 October 2026. New users need a visible route from the empty Chat
+screen to the first message and account/readiness setup. A compact card appears
+until dismissed or a message is sent, remembers that choice only in the
+dedicated app browser profile, and links to the existing Brain Setup view.
+It does not start a provider request or change privacy defaults. Evidence:
+`docs/evidence/first-run-guide-2026-10-28.md`.
+
 ### D178 addendum — Background research lifecycle
 
 Date: 26 October 2026. Owner requested HeyClicky-style background jobs. The

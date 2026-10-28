@@ -748,7 +748,9 @@ release acceptance.
 
 The user-level installer now stages a replacement build and rolls back a failed
 switch (`docs/evidence/installer-update-2026-10-28.md`). App signing, an automatic
-update channel, and first-run guidance remain release work.
+update channel, and observed novice onboarding remain release work. Chat now
+has a one-time, local first-run guide to the composer and Brain Setup
+(`docs/evidence/first-run-guide-2026-10-28.md`).
 
 Critic/Evaluation (`/critique`) reviews the current plan for gaps and risks
 before Act — advisory, read-only.

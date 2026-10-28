@@ -42,8 +42,9 @@ discovery calls before committing GTM spend.
 - **Crash reporting / support logging** — a local redacted crash log exists in
   `ghostcursor/workspace/crashlog.py`; an opt-in support export and reporting
   workflow are not built. Telemetry remains local and off by default.
-- **Onboarding / first-run** — no guided first-run; `Orbyn.cmd` opens the
-  workspace cold.
+- **Onboarding / first-run** — Chat now shows a one-time local guide to the
+  composer and Brain Setup. A novice-user walkthrough and provider setup
+  completion trial remain open (`docs/evidence/first-run-guide-2026-10-28.md`).
 
 ### Ship-readiness verdict
 **Teach + Company Brain are demonstrable and safe to pilot** on a real desktop

@@ -225,6 +225,10 @@ and Setup with an in-page section control. `company_brain_available` in the
 local state prevents presenting Company controls when no knowledge store was
 configured; Setup holds the picture policy, accounts, readiness and scalar
 statistics. These views invoke only their existing actions.
+The empty Chat view shows a one-time getting-started card until dismissed or a
+message is sent. It links to the existing Brain Setup view or focuses the
+composer; dismissal stays in the dedicated Edge app profile's localStorage.
+The card has no backend action and does not connect an account or start work.
 The user-level installer stages a complete onedir build beside the installed
 directory, moves the old build aside, and restores it if the new directory or
 shortcut step fails. A completion marker distinguishes a finished swap from
