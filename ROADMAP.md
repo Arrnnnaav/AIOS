@@ -21,6 +21,14 @@ reconciled against what the repository actually contains.
 
 ## Where we are
 
+**Current product surface (28 October 2026):** the workspace app (D178,
+`ghostcursor/workspace/app.py`): a desktop island plus a full Edge workspace
+with Chat, Plan, Brain and Work. Work runs read-only background research and
+hourly/daily/weekly routines; a routine result lists the claims new since its
+previous run. A user-level installer stages updates with rollback. Slash
+commands belong to the console (`python -m ghostcursor.workspace`), not the
+app window. Teach/Act release acceptance below is still open.
+
 **Phase 1 is substantially complete. Phase 3's "limited Act" has an implemented
 object-model boundary, but its 11 September 3/3 runs are diagnostic under D139.
 Act acceptance remains open: the UIA slice, animation catalog, fresh counted
@@ -737,7 +745,7 @@ boundary is untouched (every slice verified against
 | Work hub | Work card board previews the current run, newest visible finished research result, latest answer and plan with direct navigation/Stop; the latest 20 locally saved generic task states and reusable agents remain below it; stale running work becomes interrupted on restart | workspace app |
 | Desktop island and full workspace | Small movable topmost capsule by default, grows for work/new result, idle Hide/shortcut recall and monitor clamping, direct Work result link, palette-matched native Open/Stop/Quit; `--window` opens the full floating Edge app and `--dock` its right-side layout. Chat, Plan and Brain have guided empty states and Brain section navigation | workspace app |
 | Background research | Explicit read-only research on the existing single worker; local 20-job inbox with Markdown download, up to five kept results, reversible archive view and one-off follow-up on the first 8,000 saved-result characters, Stop, interrupted-on-restart; no automatic retry | workspace app |
-| Research routines | Hourly/daily/weekly read-only research on the same worker; local schedules, pause/resume/run now/delete, one missed run after wake, explicit Quit | workspace app |
+| Research routines | Hourly/daily/weekly read-only research on the same worker; local schedules, pause/resume/run now/delete, one missed run after wake, explicit Quit; a rerun lists claims new since the previous run | workspace app |
 | GitHub read-only connector | Explicit fine-grained token in Windows Credential Manager; bounded repository and issue views, local disconnect; no write authority or model/routine bridge | workspace app |
 
 The packaged Work interface had a live Chat/Plan/Brain/Work and GitHub run on

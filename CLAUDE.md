@@ -78,9 +78,12 @@ and read only those entries. Never read the whole of `DECISIONS.md`, `FLOW.md`,
   retired (D161).
 - Act on PowerPoint: harness-path campaign accepted (D160); three real manager
   runs completed but no counted manager campaign (D163, D165).
-- Now: harness steps 1-3 and step-4 tooling built (D164-D170); Spatial
-  `--point`, SayStride `--voice` (D171) and the console MVP workspace
-  (`ghostcursor/workspace/`, D173-D175) built; live measurement is next.
+- Built: harness steps 1-3 and step-4 tooling (D164-D170); Spatial
+  `--point`, SayStride `--voice` (D171); the console workspace (D173-D175).
+- Now: the workspace app (D178) is the product surface: desktop island,
+  Chat/Plan/Brain/Work, read-only background research and routines, GitHub
+  read-only, user-level installer. Slash commands are console-only. Live
+  Teach/Act measurement and release acceptance remain open.
 - Spatial (`D:\PROJECTS\Spatial`) and SayStride are separate projects; reuse
   their code by porting with attribution, not by merging trees.
 

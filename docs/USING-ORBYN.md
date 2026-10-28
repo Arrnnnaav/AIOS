@@ -31,19 +31,23 @@ Orbyn **auto-starts Ollama** if it is installed, so you normally don't have to.
 Double-click the **Orbyn** shortcut. A slim window docks to the top-right of your
 screen. Launching it again while it is open just re-focuses that window.
 
-## First things to try (type in the window)
+## First things to try (in the window)
 
-Plain text is a goal; `/word` is a command.
+The window has four views. Type plain sentences; slash commands are not
+understood here (they belong to the console, below).
 
-| Do this | What happens |
+| View | Try |
 |---|---|
-| `/doctor` | what's ready, and the one thing to turn on for each missing part |
-| `Make an investor deck outline` | states a goal; Orbyn replies locally |
-| `/plan` | a step plan from the conversation (a proposal — never auto-acts) |
-| `/deck` | a slide-by-slide outline grounded in your Brain facts |
-| `/know add runbook Deploys go out on Fridays.` then `/related deploys` | the private knowledge graph |
-| `/do research what is core banking` | one-step router picks the capability |
-| `/stats` | local counts (name-only; nothing is sent) |
+| **Chat** | `Make an investor deck outline` — Orbyn replies with your configured model |
+| **Plan** | build a step plan from the conversation (a proposal — never auto-acts) |
+| **Brain** | Setup checks readiness; add facts, review, mark private |
+| **Work** | start background research, schedule a routine, read saved results |
+
+A routine's later results list what is new since its previous run.
+
+**Console (slash commands):** `py -3.12 -m ghostcursor.workspace "<topic>"`,
+then `/doctor`, `/plan`, `/deck`, `/know add ...`, `/related ...`, `/do ...`,
+`/stats`. See `RUN.md`.
 
 **Teach (overlay guidance on a real app)** — from a terminal:
 
