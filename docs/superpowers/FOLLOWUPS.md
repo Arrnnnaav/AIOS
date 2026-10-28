@@ -1476,6 +1476,11 @@ to confirm where the cost actually is before changing anything else.
 
 ## D178 workspace app follow-ups
 
+- Routine results show claims new since the routine's previous finished run
+  (exact-text match; a reworded claim counts as new, a dropped claim is not
+  shown). Prompting the model with the prior run, as HeyClicky does, and a
+  "what disappeared" view are not built
+  (`docs/evidence/heyclicky-rea-2026-10-28.md`).
 - Work has read-only background research and timed hourly/daily/weekly research
   routines on the same worker. Other job types, retries, sleeping-PC service,
   and side-effecting connectors still need their own lifecycle and authority

@@ -436,7 +436,7 @@ function backgroundJobs() {
   const list = el("div", "joblist");
   for (const job of visible) {
     const card = el("article", "jobcard");
-    const meta = el("div", "meta"); meta.append(el("b", "", job.routine ? "Routine research" : "Research"), el("span", "", [job.archived ? "Archived" : "", job.pinned ? "Kept" : "", job.state].filter(Boolean).join(" · ")));
+    const meta = el("div", "meta"); meta.append(el("b", "", job.routine ? "Routine research" : "Research"), el("span", "", [job.archived ? "Archived" : "", job.pinned ? "Kept" : "", job.state, job.new_claims ? `${job.new_claims.length} new since last run` : ""].filter(Boolean).join(" · ")));
     card.append(meta, el("p", "", job.question));
     const actions = el("div", "sheetrow");
     if (job.state === "running") {
@@ -501,7 +501,10 @@ function openJobResult(job) {
     } catch (e) { toast(e.message); }
     finally { ask.disabled = false; ask.textContent = "Ask about result"; }
   };
-  sheet.replaceChildren(heading, el("p", "", job.question), el("div", "jobanswer", job.answer), el("p", "note", "Follow-up uses up to the first 8,000 characters of this saved result and your configured model. The question and reply are not saved."), follow, reply, ask, close);
+  const changed = el("div", "note");
+  if (job.new_claims) changed.textContent = job.new_claims.length ? "New since last run:\n" + job.new_claims.map((c) => "• " + c).join("\n") : "Nothing new since last run.";
+  changed.hidden = !job.new_claims; changed.style.whiteSpace = "pre-wrap";
+  sheet.replaceChildren(heading, el("p", "", job.question), changed, el("div", "jobanswer", job.answer), el("p", "note", "Follow-up uses up to the first 8,000 characters of this saved result and your configured model. The question and reply are not saved."), follow, reply, ask, close);
   $("scrim").classList.add("open"); close.focus();
 }
 

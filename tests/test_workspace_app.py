@@ -433,6 +433,30 @@ def test_routine_runs_once_after_sleep_and_can_pause_resume_delete(served):
     assert app.state()["routines"] == []
 
 
+def test_routine_reruns_report_only_new_claims(served):
+    assert appmod.new_claims(
+        "- Price fell [s2]\n- Office opens (partial) [s1][s3]\nSources:\n  [s1] x",
+        "- price fell [s1]\nSources:",
+    ) == ["Office opens (partial)"]
+    assert appmod.new_claims("- Revenue grows", "") == ["Revenue grows"]  # trailing s kept
+    app, port = served
+    now = [100.0]
+    app.clock = lambda: now[0]
+    answers = iter(["- Old fact [s1]", "- Old fact [s2]\n- New fact [s1]"])
+    app.ws.research = lambda question, *, cancelled, record: next(answers)
+    call(port, "/api/routine_create", {"question": "Watch", "cadence": "hourly"})
+    for _ in range(2):
+        now[0] += 3600
+        app.tick_routines()
+        _wait_for_job(app, "finished")
+        while app.busy:
+            time.sleep(0.01)
+    first, second = sorted(app.state()["jobs"], key=lambda j: j["ended"])
+    assert "new_claims" not in first  # nothing to compare against
+    assert second["new_claims"] == ["New fact"]
+    assert "new_claims" not in json.loads(app.job_path.read_text(encoding="utf-8"))[1]
+
+
 def test_routines_survive_restart_and_malformed_file_is_preserved(tmp_path):
     root = tmp_path / "briefs"
     make = lambda: Workspace("trip", Gateway(), Brain(tmp_path / "kb.sqlite"), root=root)

@@ -20,6 +20,7 @@ import hmac
 import json
 import math
 import os
+import re
 import secrets
 import shutil
 import socket
@@ -76,6 +77,21 @@ ACTIVITY_STATES = frozenset(
     {"running", "finished", "stopped", "failed", "interrupted"}
 )
 ROUTINE_SECONDS = {"hourly": 3600, "daily": 86400, "weekly": 604800}
+
+
+def _claims(answer: str) -> list[str]:
+    # A rendered answer lists claims as "- text (status) [s1][s2]"; source ids
+    # are renumbered every run, so compare the claim text without them.
+    return [re.sub(r"(\s*\[s\d+\])+$", "", line[2:]).strip() for line in answer.splitlines() if line.startswith("- ")]
+
+
+def new_claims(answer: str, previous: str) -> list[str]:
+    """Claims in a routine's answer that its previous run did not make (as in
+    HeyClicky routines: later runs report what changed). Local; exact text
+    match, so a reworded claim counts as new."""
+
+    seen = {c.casefold() for c in _claims(previous)}
+    return [c for c in _claims(answer) if c.casefold() not in seen]
 
 
 class App:
@@ -460,6 +476,15 @@ class App:
             background_jobs = [dict(row) for row in reversed(self.background_jobs)]
             background_jobs.sort(key=lambda row: not row["pinned"])
             routines = [dict(row) for row in self.routines]
+        done = sorted(
+            (j for j in background_jobs if j["routine"] and j["state"] == "finished" and j["answer"]),
+            key=lambda j: j["ended"] or 0,
+        )
+        last: dict[str, str] = {}
+        for job in done:
+            if job["routine"] in last:
+                job["new_claims"] = new_claims(job["answer"], last[job["routine"]])[:20]
+            last[job["routine"]] = job["answer"]
         return {
             "topic": ws.topic,
             "goal": ws.goal,
