@@ -29,7 +29,7 @@ discovery calls before committing GTM spend.
 | **LICENSE / EULA** | No `LICENSE` file; can't legally distribute or sell. | Pick a commercial license + EULA; add `LICENSE`. |
 | **Code-signing certificate** | `Orbyn.exe` is unsigned → SmartScreen warns, enterprises block it. Plugins are signed; the *app* is not. | Buy an EV/OV code-signing cert; sign the PyInstaller output + set up timestamping. |
 | **Pricing & packaging tiers** | No pricing. (See ICP: ~$30–75/seat/mo beachhead.) | Decide tiers, seat minimums, expansion/org tier. |
-| **Privacy policy / data-handling brief** | The #1 sales asset for the beachhead (local-first). Not written. | Draft a one-page "nothing leaves the device" security brief (I can draft from the code; owner approves claims). |
+| **Privacy policy / data-handling brief** | A code-grounded draft now exists at `docs/go-to-market/data-handling-brief-draft.md`; provider retention and legal terms are not approved. | Review the provider list, retention, deletion process and claims; approve a customer version. |
 | **Act v1 acceptance evidence** | Counted PowerPoint manager runs (D162/D139). Needed to *claim* Act, not to ship Teach. | Run a counted campaign on a real desktop. |
 | **Production trust-root signing** | Marketplace revocation/publisher identity is built + proven with a dev key; production needs the real root key. | Sign `root.b64` + key-manifest/revocation docs. |
 

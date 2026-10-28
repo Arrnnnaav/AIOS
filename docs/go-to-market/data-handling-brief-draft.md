@@ -1,0 +1,17 @@
+# Orbyn data handling — owner review draft
+
+**Status:** Draft for product, security and legal review. Based on this checkout on 28 October 2026. Do not publish as a privacy policy or customer contract yet.
+
+Orbyn is a Windows desktop guide. Its workspace listens on `127.0.0.1` behind a per-launch token. Personal and Company Brain data, work history, saved research, routines and crash logs are stored on the PC. This checkout has no built-in sync for those local stores. The installer replaces application files under `%LOCALAPPDATA%\Programs\Orbyn` and leaves workspace data under `%LOCALAPPDATA%\GhostCursor` in place. Sources: `ghostcursor/workspace/app.py`, `brain.py`, `knowledge.py`, `crashlog.py`, `tools/Install-Orbyn.ps1`.
+
+| When | Data path | User control |
+|---|---|---|
+| Chat, Plan, Teach and file questions | A configured cloud model may receive the request text and selected context, including selected file text. A local Ollama configuration keeps model requests on this PC. Screen text passes through the tainted-input path, but embedded-secret redaction for remote requests is **off by default** unless enabled by organisation policy or a caller setting. | Choose a local provider or configure an organisation `MaxEgress` policy. Avoid submitting sensitive material to a cloud provider unless its terms are acceptable. |
+| Web research and routines | Search queries and page requests can leave the PC through the configured research services. An enabled routine can make its scheduled request while Orbyn and the PC are awake, without a new prompt for each run. Answers and schedules are saved locally. | Start research explicitly; pause or delete routines in Work. |
+| Optional window pictures | When the user turns pictures on, a bound-window image can be sent to the configured Jev provider after a text-only choice fails. Orbyn greys out document, list and title content and exposes selected chrome controls. Orbyn does not save that transmitted image. | Leave pictures off, or limit them with organisation `MaxEgress`. Provider-side retention needs separate verification. |
+| GitHub read-only connection | A fine-grained token is held in Windows Credential Manager and used for bounded GitHub GET requests. Repository text is not fed to the model or routines through this connector. | Disconnect in Work to remove the local credential. |
+| Crash and diagnostic data | A windowed-app crash writes a local traceback after secret-pattern redaction; file paths can remain. Local event telemetry is off by default and, when enabled by policy, records allowlisted event names locally. | Inspect a crash log before sharing it with support. No automatic support upload is implemented. |
+
+**Local retention and deletion.** Personal memories can be paused, corrected, forgotten or erased in Brain. Company facts have separate review and retirement states. Work keeps a bounded recent activity list and research inbox; kept research results resist normal inbox trimming. Routines remain until removed. The product does not yet offer one global erase/export control with a guaranteed retention period for every local file.
+
+**Before customer use:** the owner must approve the exact provider and subprocessor list, provider-side retention links, customer contact and deletion process, legal terms, and claims about the optional image path. This draft describes observed code paths; it makes no promise about a third party's retention or a future release.
