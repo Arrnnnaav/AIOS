@@ -6,7 +6,8 @@ import time
 
 import pytest
 
-from ghostcursor.workspace.island import ASKING, COMPACT, EXPANDED, HOTKEY_ID, ID_ASK, ID_HIDE, ID_OPEN, ID_QUIT, ID_SEND, ID_STOP, SHOW_MESSAGE, Island, _status, _wnd_proc
+from ghostcursor.workspace import island as island_module
+from ghostcursor.workspace.island import ASKING, COMPACT, EXPANDED, HOTKEY_ID, ID_ASK, ID_HIDE, ID_OPEN, ID_QUIT, ID_RESEARCH, ID_SEND, ID_STOP, ID_TALK, SHOW_MESSAGE, Island, _status, _wnd_proc
 
 
 class StubApp:
@@ -22,6 +23,15 @@ class StubApp:
         self.actions.append((action, body))
         if action == "say":
             return {"reply": "line one\nline two"}
+        if action == "research":
+            return {"answer": "cited [s1]"}
+
+
+@pytest.fixture(autouse=True)
+def windowed_desktop(monkeypatch):
+    fullscreen = [False]  # the real desktop may have a full-screen app in front
+    monkeypatch.setattr(island_module, "_fullscreen", lambda: fullscreen[0])
+    return fullscreen
 
 
 def test_island_status_uses_only_generic_worker_and_job_state():
@@ -272,5 +282,77 @@ def test_voice_hotkey_keeps_priority_over_island_recall():
         if not ctypes.windll.user32.RegisterHotKey(None, 98, win32con.MOD_CONTROL | win32con.MOD_ALT | win32con.MOD_NOREPEAT, ord("O")):
             pytest.skip("another application already owns Ctrl+Alt+O")
         ctypes.windll.user32.UnregisterHotKey(None, 98)
+    finally:
+        win32gui.DestroyWindow(island.hwnd)
+
+
+def _wait_reply(island):
+    deadline = time.monotonic() + 2
+    while island._reply is None and time.monotonic() < deadline:
+        time.sleep(.01)
+    island.tick()
+
+
+@pytest.mark.interactive
+def test_island_research_talk_voice_results_and_fullscreen(windowed_desktop):
+    import win32con
+    import win32gui
+
+    class StubListener:
+        armed = []
+
+        def arm(self, why):
+            self.armed.append(why)
+
+    app = StubApp()
+    app.background_jobs.append({"id": "old", "state": "finished", "question": "q0", "answer": "seen before"})
+    island = Island(app, "http://127.0.0.1:1/?t=local", lambda url: None)
+    try:
+        _wnd_proc(island.hwnd, win32con.WM_COMMAND, ID_TALK, 0)
+        assert "Voice is off" in win32gui.GetWindowText(island.reply)
+        island.listener = StubListener()
+        _wnd_proc(island.hwnd, win32con.WM_COMMAND, ID_TALK, 0)
+        assert StubListener.armed == ["Talk"]  # Talk only arms the existing listener
+
+        island.voice("what is next")  # as from the listener's thread
+        island.tick()
+        assert island.asking and win32gui.IsWindowVisible(island.talk_button)
+        _wait_reply(island)
+        assert app.actions == [("say", {"text": "what is next"})]
+        assert "You (voice): what is next\r\nOrbyn: line one" in win32gui.GetWindowText(island.reply)
+
+        _wnd_proc(island.hwnd, win32con.WM_COMMAND, ID_RESEARCH, 0)
+        assert island.research and win32gui.GetWindowText(island.ask_research) == "Research on"
+        win32gui.SetWindowText(island.input, "cite it")
+        _wnd_proc(island.hwnd, win32con.WM_COMMAND, ID_SEND, 0)
+        _wait_reply(island)
+        assert app.actions[-1] == ("research", {"text": "cite it"})
+        assert win32gui.GetWindowText(island.reply).endswith("Orbyn: cited [s1]")
+
+        app.background_jobs.append({"id": "new", "state": "running", "question": "q1", "answer": ""})
+        island.tick()
+        assert island.strip == "1 research job running"
+        app.background_jobs[-1].update(state="finished", answer="line a\nline b" + "x" * 2000)
+        island.tick()
+        island.tick()  # shown once
+        card = island.transcript  # pywin32's GetWindowText stops at 512 characters
+        assert card.count("Research finished: q1\r\nline a\r\nline b") == 1
+        assert "Open › Work for the rest" in card and "seen before" not in card
+        assert island.strip == "" and "q1" not in win32gui.GetWindowText(island.hwnd)
+
+        windowed_desktop[0] = True
+        island.tick()
+        assert not island.covered  # never while the Ask panel is open
+        island.fold()
+        island.tick()
+        assert island.covered and not win32gui.IsWindowVisible(island.hwnd)
+        app.busy = "Researching"
+        island.tick()
+        assert not island.covered and win32gui.IsWindowVisible(island.hwnd)  # Stop stays reachable
+        app.busy = ""
+        island.tick()
+        windowed_desktop[0] = False
+        island.tick()
+        assert not island.covered and win32gui.IsWindowVisible(island.hwnd)
     finally:
         win32gui.DestroyWindow(island.hwnd)

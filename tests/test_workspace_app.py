@@ -1431,3 +1431,11 @@ def test_know_private_source_over_http(tmp_path):
         server.shutdown()
         app.close()
         kb.close()
+
+
+def test_heard_goes_to_the_island_when_it_is_shown(served):
+    app, _ = served
+    heard = []
+    app.voice_to = heard.append
+    app.heard("plan my week")
+    assert heard == ["plan my week"] and app.status[-1] == "Heard: plan my week"

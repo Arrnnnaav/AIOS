@@ -118,6 +118,7 @@ class App:
         self.pending_point = None
         self.memories: list[dict] = []
         self.seen = time.monotonic()  # the page's last poll
+        self.voice_to = None  # the island's voice(text), when it is shown
         self.paused = False
         self.downloads = Path.home() / "Downloads"  # where a handoff is saved
         self.ws = self.jobs.submit(
@@ -446,6 +447,10 @@ class App:
         """A spoken request ("Hey Bro ..." or the hotkey, D182): a message to
         Orbyn, like typing it. Never acts on its own."""
 
+        if self.voice_to is not None:  # the island shows it and the reply on its card
+            self.say(f"Heard: {text}")
+            self.voice_to(text)
+            return
         if self.busy:
             self.say(f"Heard you, but Orbyn is busy: {self.busy}")
             return
@@ -1359,12 +1364,15 @@ def main(argv: list[str] | None = None) -> int:
         from ghostcursor.workspace.island import Island
 
         island = Island(app, url, open_window, voice_hotkey=hotkey)
+        app.voice_to = island.voice
     listener = None
     if wake or hotkey:
         from ghostcursor.listen import Listener
 
         listener = Listener(app.heard, say=app.say, hotkey=hotkey, wake=wake)
         listener.start()
+        if island is not None:
+            island.listener = listener
         app.say(
             'Say "Hey Bro" or press '
             + (hotkey or "the hotkey (off)").title()
