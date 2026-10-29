@@ -2004,7 +2004,14 @@ Both items below are pre-existing patterns, not introduced by this commit.
 
 ### 1. _plan_for puts build_brief (model/Brain-derived) text in trusted, not tainted — RESOLVED 2026-10-29
 build_deck now sends a fixed trusted goal; the DeckSpec outline rides the
-tainted channel, DLP-scrubbed (`_tainted_chunks`, shared with Ask).
+tainted channel, DLP-scrubbed (`tainted_chunks`, shared with Ask). Same
+sweep moved research/Brain deck grounding and the critic's plan steps to
+tainted (29 Oct). Open from its review (no BLOCKING): crew and router args
+are model-written from the user's text and become trusted goals -- keep it
+that way, or route them through tainted if research ever shapes them; a deck
+outline over 8,000 chars is cut silently (partial build, no message), and
+`sanitize` collapses its newlines so slides rest on the "Slide N" markers; no
+test that build_deck still picks the PowerPoint guidance from the fixed goal.
 session.py:~841 -- shared with draft_skill + the one-step router. The DeckSpec
 text becomes the plan goal via the trusted channel. Confirm grounding provenance
 stays scrubbed; not a rule-6 egress change here.

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from ghostcursor import redact
 from ghostcursor.providers import CRITIQUE_SCHEMA, Critique, Envelope, parse_critique
+from ghostcursor.providers.envelope import Tainted
 
 CRITIC_SYSTEM = (
     "You review a step plan a person is about to run in their own applications. "
@@ -29,10 +30,11 @@ def critique_plan(gateway, plan) -> Critique:
 
     if plan is None or not plan.steps:
         raise ValueError("no plan to critique")
-    steps = [redact.scrub(s.instruction)[0] for s in plan.steps]
+    # Model output that may echo screen text: data for the critic, not instruction.
+    steps = [Tainted.of("plan_step", redact.scrub(s.instruction)[0]) for s in plan.steps]
     return gateway.complete(
         Envelope(
-            task="review the plan before it is run", trusted={"plan": steps}, tainted={}
+            task="review the plan before it is run", trusted={}, tainted={"plan": steps}
         ),
         CRITIC_SYSTEM,
         CRITIQUE_SCHEMA,

@@ -15,6 +15,8 @@ import re
 import unicodedata
 from dataclasses import dataclass, field
 
+from ghostcursor import redact
+
 #: Bounds on any single tainted string and on the whole tainted payload.
 MAX_TAINTED_CHARS = 300
 #: A full harness frame (150 candidates x 4 fields, plus windows) must fit.
@@ -198,3 +200,20 @@ def _require_no_raw_strings(value, path: str) -> None:
     elif isinstance(value, (list, tuple)):
         for index, child in enumerate(value):
             _require_no_raw_strings(child, f"{path}[{index}]")
+
+
+def tainted_chunks(source: str, material: str) -> tuple[str, list[Tainted]]:
+    """MATERIAL fully DLP-scrubbed (both recognizers run before splitting:
+    they cannot see across chunks), then cut at spaces into Tainted chunks.
+    Returns (the scrubbed text, its chunks). For model-, web- or Brain-derived
+    text longer than one Tainted value."""
+
+    material = scrub(redact.scrub(material)[0])
+    scrubbed, chunks = material, []
+    while material:
+        part = material[:MAX_TAINTED_CHARS]
+        if len(material) > MAX_TAINTED_CHARS and " " in part:
+            part = part[: part.rfind(" ")]
+        chunks.append(Tainted.of(source, part))
+        material = material[len(part) :].lstrip()
+    return scrubbed, chunks

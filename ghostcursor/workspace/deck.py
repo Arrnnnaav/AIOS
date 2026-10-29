@@ -16,6 +16,7 @@ pass cannot give.
 from __future__ import annotations
 
 from ghostcursor.providers import DECK_SPEC_SCHEMA, DeckSpec, Envelope, parse_deck_spec
+from ghostcursor.providers.envelope import tainted_chunks
 
 
 def build_brief(spec: DeckSpec) -> str:
@@ -66,23 +67,21 @@ def plan_deck(
     invented) comes from, in order: explicit ``grounding`` lines if given (e.g.
     this session's cited research claims), else the owner's reviewed non-
     sensitive Brain facts for the goal when ``knowledge`` + ``scope`` are set.
-    Grounding rides trusted context, which the gateway's egress-redaction gate
-    scrubs before it leaves (D186)."""
+    Grounding is web- or Brain-derived, so it rides the tainted channel,
+    DLP-scrubbed, as data the model may use but never as instruction."""
 
     goal = " ".join(str(goal).split())
     if not goal:
         raise ValueError("a deck needs a goal")
-    trusted = {"goal": goal}
-    if grounding:
-        trusted["grounding"] = list(grounding)
-    elif knowledge is not None and scope is not None:
+    lines = list(grounding or ())
+    if not lines and knowledge is not None and scope is not None:
         facts = knowledge.recall(goal, scope, k=k)  # non-sensitive, usable only
-        if facts:
-            trusted["grounding"] = [f"{f.text} (source: {f.source})" for f in facts]
+        lines = [f"{f.text} (source: {f.source})" for f in facts]
+    tainted = {"grounding": [c for line in lines for c in tainted_chunks("grounding", line)[1]]} if lines else {}
     # The goal is user-supplied, not screen-observed, so it is authoritative
     # trusted context; no tainted copy (deck review FOLLOWUP #1).
     envelope = Envelope(
-        task="plan a presentation for the goal", trusted=trusted, tainted={}
+        task="plan a presentation for the goal", trusted={"goal": goal}, tainted=tainted
     )
     return gateway.complete(
         envelope,

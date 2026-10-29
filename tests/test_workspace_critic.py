@@ -57,7 +57,8 @@ def test_critique_scrubs_secrets_and_renders(tmp_path):
     )
     out = ws.critique()
     assert "caution" in out and "looks risky" in out
-    sent = gw.envelopes[0].trusted["plan"][0]
+    assert "plan" not in gw.envelopes[0].trusted  # model output: data, not instruction
+    sent = gw.envelopes[0].tainted["plan"][0].text
     assert "AKIA1234567890ABCDEF" not in sent  # scrubbed before the model
     brain.close()
 

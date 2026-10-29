@@ -123,7 +123,8 @@ def test_research_deck_grounds_the_deck_in_cited_research_claims(tmp_path):
             if "claims" in props:
                 return parse(json.dumps(CLAIMS))
             # deck schema: capture the grounding the deck was given
-            self.grounding_seen = envelope.trusted.get("grounding")
+            assert "grounding" not in envelope.trusted  # web-derived: data, not instruction
+            self.grounding_seen = [c.text for c in envelope.tainted.get("grounding", [])]
             return parse(json.dumps(DECK))
 
     kb = Knowledge(tmp_path / "k.sqlite")
