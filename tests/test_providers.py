@@ -601,7 +601,8 @@ def test_submit_never_blocks_and_the_result_arrives_later():
     slot, gate = RequestSlot(), threading.Event()
     started = time.monotonic()
     request_id = slot.submit(lambda cancelled: (gate.wait(1.0), "plan")[1])
-    assert time.monotonic() - started < 0.05 and slot.poll(request_id) is None
+    # Blocking would take the work's full 1.0 s; 0.5 s leaves room for thread start under load.
+    assert time.monotonic() - started < 0.5 and slot.poll(request_id) is None
     gate.set()
     assert _wait(slot, request_id).value == "plan"
 
