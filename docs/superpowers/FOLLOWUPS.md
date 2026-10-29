@@ -2027,3 +2027,22 @@ stays scrubbed; not a rule-6 egress change here.
 ### 2. /deck build topic parse couples to the ["build"] guard
 __main__.py -- rest.split(maxsplit=1)[1] is safe only because the guard implies
 >=1 token; a bare "/deck build" falls through to the goal-based deck (intended).
+
+## Act guards from the Aside teardown -- 2026-10-29
+
+`docs/evidence/aside-rea-2026-10-29.md`. Taken: `act.blocker` refuses a point
+whose top-level window belongs to another process (covered or off screen),
+and `chord_events` refuses the Windows key and Alt+Tab. Open:
+
+- Aside yields when the user is using the mouse or keyboard ("the next action
+  waits for their pause"). Orbyn has ESC but no yield. `GetLastInputInfo`
+  counts Orbyn's own `SendInput`, so this needs a low-level hook that skips
+  `LLMHF_INJECTED` events, on its own thread with a message pump.
+- Aside re-checks keyboard focus between keys of a long `typeText` ("focus
+  changed or became protected, so no more keys were sent"). Orbyn sends a
+  step's keys in one `SendInput` batch after one click; a focus steal mid-batch
+  would type into the wrong control.
+- The covered-window check compares processes, not windows, so a control
+  under another window of the same app is still clicked. The live wrapper in
+  `run_model_teach` that passes the bound window has no direct test (only
+  `_live_perform` does).
