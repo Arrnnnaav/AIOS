@@ -2054,3 +2054,6 @@ and `chord_events` refuses the Windows key and Alt+Tab. Open:
   missing label surfaces as a bare KeyError; alt+f4, f1 and ctrl+alt+arrows
   are allowed; a closed bound HWND reused by another process is not caught
   (pin the bound PID at bind time).
+  Re-check of 0047647: no BLOCKING; an owned window from another process
+  (some hosted or COM dialogs) is accepted -- add a same-process check if
+  no real dialog needs it.
