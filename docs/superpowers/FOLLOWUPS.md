@@ -2076,3 +2076,18 @@ an in-memory checkpoint summary; a weekdays routine cadence. Open:
   an observation path (rule 6, sessions.sqlite); proactivity mode mines
   password vaults, cookies and history; final-confirm review drafts are for
   sending messages Orbyn cannot send; per-app tips are macOS bundle ids only.
+- Review of 487675d..40bc409 (one BLOCKING, fixed: the fake-tag regex was
+  quadratic on "<" + a long whitespace run and held the GIL past the 0.5 s
+  Stop; every quantifier is now bounded and a 50k-character timing test pins
+  it; soft hyphen / U+2060-2064 / U+180E are stripped; mixed-case
+  `Trusted_Context` and `x_TRUSTED_CONTEXT` are caught). Open from it:
+  Cyrillic look-alikes (`<ѕystem>`) still pass; `sanitize` now neutralises
+  on-device text too (handoff `type` text such as `<user>`, and candidate
+  names in `build_frame`), so only the sent copy should be neutralised;
+  `tainted_chunks` runs on material with no size cap ahead of it; no property
+  test pins `Tainted`'s scrub-idempotence over tag-heavy text; the chat
+  checkpoint adds one model round-trip every tenth dropped turn and after a
+  restart marks all dropped turns covered while summarising only the newest
+  3,000 tokens; `weekdays` and `daily` drift an hour across DST; for
+  `paste_text` the clipboard is set after the focus check, so a focus steal
+  between check and Ctrl+V still pastes into the wrong window.

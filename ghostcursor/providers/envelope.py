@@ -26,15 +26,21 @@ MAX_TAINTED_ITEMS = 800
 #: (``<system>``, ``<|im_start|>``, ``TRUSTED_CONTEXT``): replaced, so screen,
 #: file or web text cannot fake a boundary (Aside neutralises the same).
 FAKE_BOUNDARY = "[control tag removed]"
+#: Every quantifier is bounded, so a match attempt costs a constant and the
+#: whole scan stays linear in untrusted text of any length (review of 003e1b1:
+#: "<" + 50k spaces was quadratic and held the GIL past the 0.5 s Stop).
 _FAKE_TAG = re.compile(
-    r"<\s*/?\s*(?:system|developer|assistant|user|tool|human|im_start|im_end)"
-    r"[\w-]*(?:\s[^<>]*)?>"
+    r"<\s{0,8}(?:/\s{0,8})?(?:system|developer|assistant|user|tool|human|im_start|im_end)"
+    r"[\w-]{0,40}(?:\s[^<>]{0,200})?>"
     r"|<\|[^|<>]{1,30}\|>",
     re.IGNORECASE,
 )
-_FAKE_MARKER = re.compile(r"\b(?:TRUSTED[\s_-]*CONTEXT|OBSERVED[\s_-]*DATA)\b")
+_FAKE_MARKER = re.compile(
+    r"(?<![A-Za-z])(?:TRUSTED[\s_-]{0,4}CONTEXT|OBSERVED[\s_-]{0,4}DATA"
+    r"|(?i:trusted[_-]{1,4}context|observed[_-]{1,4}data))(?![A-Za-z])"
+)
 
-_CONTROL = re.compile(r"[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩﻿]")
+_CONTROL = re.compile(r"[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩﻿­᠎⁠-⁤]")
 
 
 def neutralize(text: str) -> str:
