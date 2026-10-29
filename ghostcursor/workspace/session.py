@@ -463,15 +463,7 @@ class Workspace:
             relevant(material or "", question, self.MAX_CLIP_CHARS * 4),
             limit=self.MAX_CLIP_CHARS * 4,
         )
-        material = scrub(redact.scrub(material)[0])
-        self.last_sent = material
-        chunks = []
-        while material:
-            part = material[:MAX_TAINTED_CHARS]
-            if len(material) > MAX_TAINTED_CHARS and " " in part:
-                part = part[: part.rfind(" ")]
-            chunks.append(Tainted.of("attached", part))
-            material = material[len(part) :].lstrip()
+        self.last_sent, chunks = _tainted_chunks("attached", material)
         envelope = Envelope(
             task="answer the question using the attached material",
             trusted={"question": question},
@@ -890,10 +882,12 @@ class Workspace:
             )
         return self.discuss(fallback or arg)  # chat / remember-without-a-brain
 
-    def _plan_for(self, need: str):
+    def _plan_for(self, need: str, outline: str = ""):
         """A TeachPlan toward an arbitrary need (not the session goal), with any
         matching app skill as guidance. None if no model answers. Shared by the
-        one-step router and the skill drafter."""
+        one-step router and the skill drafter. NEED must be the user's own words
+        or Orbyn's fixed text (it is trusted); model- or web-derived content goes
+        in OUTLINE, which rides the tainted channel, scrubbed."""
 
         from ghostcursor.workspace import skills
 
@@ -901,9 +895,12 @@ class Workspace:
         guides = skills.relevant(need)
         if guides:
             trusted["app_guidance"] = [{"app": n, "notes": b} for n, b in guides]
+        tainted = {}
+        if outline:
+            tainted["outline"] = _tainted_chunks("deck_outline", sanitize(outline, limit=self.MAX_CLIP_CHARS * 4))[1]
         try:
             return self.gateway.plan(
-                Envelope(task="teach", trusted=trusted, tainted={})
+                Envelope(task="teach", trusted=trusted, tainted=tainted)
             )
         except ProviderError:
             return None
@@ -971,7 +968,9 @@ class Workspace:
         deck = self.make_deck(topic)
         if deck is None:
             return None, "No deck: the model is not available."
-        plan = self._plan_for(build_brief(deck))
+        # The DeckSpec is model output grounded on web research and the Brain, so
+        # it is data (tainted, scrubbed), never the trusted goal.
+        plan = self._plan_for(DECK_BUILD_GOAL, outline=build_brief(deck))
         if plan is None:
             return deck, (
                 f"Planned the deck '{deck.title}' ({len(deck.slides)} slides) but "
@@ -1271,6 +1270,28 @@ def measures(brain: Brain, briefs: Path, traces: Path) -> dict:
         # Opt-in local event counts (D141); {} unless telemetry was switched on.
         "events": telemetry.counts(),
     }
+
+
+DECK_BUILD_GOAL = (
+    "Build, in PowerPoint, the deck described in the deck_outline data: one slide "
+    "per outline item, in order, with its title, bullets and layout."
+)
+
+
+def _tainted_chunks(source: str, material: str) -> tuple[str, list]:
+    """MATERIAL fully DLP-scrubbed (both recognizers run before splitting:
+    they cannot see across chunks), then cut at spaces into Tainted chunks.
+    Returns (the scrubbed text, its chunks)."""
+
+    material = scrub(redact.scrub(material)[0])
+    scrubbed, chunks = material, []
+    while material:
+        part = material[:MAX_TAINTED_CHARS]
+        if len(material) > MAX_TAINTED_CHARS and " " in part:
+            part = part[: part.rfind(" ")]
+        chunks.append(Tainted.of(source, part))
+        material = material[len(part) :].lstrip()
+    return scrubbed, chunks
 
 
 _STOP = frozenset(

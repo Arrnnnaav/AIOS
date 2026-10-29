@@ -2002,7 +2002,9 @@ runs /act. Verified: no input synthesis, no new authority, never auto-acts, no
 model-supplied geometry, no new egress; act.py/act_runtime not in the diff.
 Both items below are pre-existing patterns, not introduced by this commit.
 
-### 1. _plan_for puts build_brief (model/Brain-derived) text in trusted, not tainted
+### 1. _plan_for puts build_brief (model/Brain-derived) text in trusted, not tainted — RESOLVED 2026-10-29
+build_deck now sends a fixed trusted goal; the DeckSpec outline rides the
+tainted channel, DLP-scrubbed (`_tainted_chunks`, shared with Ask).
 session.py:~841 -- shared with draft_skill + the one-step router. The DeckSpec
 text becomes the plan goal via the trusted channel. Confirm grounding provenance
 stays scrubbed; not a rule-6 egress change here.
