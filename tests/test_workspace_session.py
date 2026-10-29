@@ -430,3 +430,84 @@ def test_company_brain_labels_an_n_hop_fact_with_why_it_surfaced(tmp_path):
     assert "Dana leads the platform team." in sent  # the n-hop fact surfaced
     assert "linked_via" in sent and "Dana" in sent  # and why
     kb.close()
+
+
+class CheckpointGateway(FakeGateway):
+    """Answers checkpoint requests with a numbered summary; records them."""
+
+    def __init__(self, fail_checkpoint=False):
+        super().__init__()
+        self.checkpoints, self.fail_checkpoint = [], fail_checkpoint
+
+    def complete(self, envelope, system, schema, parse, **kw):
+        if kw.get("purpose") != "checkpoint":
+            return super().complete(envelope, system, schema, parse, **kw)
+        self.checkpoints.append(envelope)
+        if self.fail_checkpoint:
+            raise ProviderError(FailureKind.TIMEOUT)
+        return parse(json.dumps({"summary": f"Goal: launch. Decided: blue theme #{len(self.checkpoints)}"}))
+
+
+def _long_talk(tmp_path, gateway, turns):
+    from ghostcursor.brief import append_turn
+
+    brain = Brain(tmp_path / "brain.sqlite")
+    ws = Workspace("launch", gateway, brain, root=tmp_path / "briefs")
+    for n in range(turns):
+        append_turn(ws.root, ws.topic, "user" if n % 2 == 0 else "assistant", f"turn {n}")
+    return ws, brain
+
+
+def test_turns_that_fall_out_of_the_window_are_summarised_not_lost(tmp_path):
+    from ghostcursor.workspace.session import HISTORY_TURNS
+
+    gateway = CheckpointGateway()
+    ws, brain = _long_talk(tmp_path, gateway, HISTORY_TURNS)
+    assert "earlier_summary" not in ws._context("q") and gateway.checkpoints == []
+
+    ws, brain2 = _long_talk(tmp_path / "b", gateway, HISTORY_TURNS + 3)
+    context = ws._context("q")
+    assert [c.text for c in context["earlier_summary"]] == ["Goal: launch. Decided: blue theme #1"]
+    folded = [t["text"].text for t in gateway.checkpoints[0].tainted["turns"]]
+    assert folded == ["turn 0", "turn 1", "turn 2"]  # only the dropped ones
+    assert gateway.checkpoints[0].trusted == {}  # conversation text is data
+
+    ws._context("q")
+    assert len(gateway.checkpoints) == 1  # cached until ten more drop
+    brain.close()
+    brain2.close()
+
+
+def test_the_summary_is_refreshed_with_only_the_newly_dropped_turns(tmp_path):
+    from ghostcursor.brief import append_turn
+    from ghostcursor.workspace.session import CHECKPOINT_EVERY, HISTORY_TURNS
+
+    gateway = CheckpointGateway()
+    ws, brain = _long_talk(tmp_path, gateway, HISTORY_TURNS + 1)
+    ws._context("q")
+    for n in range(CHECKPOINT_EVERY):
+        append_turn(ws.root, ws.topic, "user", f"later {n}")
+    context = ws._context("q")
+    second = gateway.checkpoints[1].tainted
+    assert [c.text for c in second["previous_summary"]] == ["Goal: launch. Decided: blue theme #1"]
+    assert [t["text"].text for t in second["turns"]][0] == "turn 1"
+    assert context["earlier_summary"][0].text.endswith("#2")
+    brain.close()
+
+
+def test_no_model_means_no_summary_and_no_failure(tmp_path):
+    from ghostcursor.workspace.session import HISTORY_TURNS
+
+    ws, brain = _long_talk(tmp_path, CheckpointGateway(fail_checkpoint=True), HISTORY_TURNS + 2)
+    assert "earlier_summary" not in ws._context("q")
+    assert ws.checkpoint == (0, "")
+    brain.close()
+
+
+def test_a_checkpoint_reply_must_be_exactly_a_summary():
+    from ghostcursor.workspace.session import parse_checkpoint
+
+    assert parse_checkpoint('{"summary": "ok"}') == "ok"
+    for bad in ('{"reply": "ok", "memories": []}', '{"summary": 3}', '{"summary": "a", "x": 1}'):
+        with pytest.raises(ProviderError):
+            parse_checkpoint(bad)
