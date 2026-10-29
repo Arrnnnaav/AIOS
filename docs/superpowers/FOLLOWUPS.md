@@ -2128,56 +2128,30 @@ an in-memory checkpoint summary; a weekdays routine cadence. Open:
 - Review of 8f8e092 (empty chord parts refused): `_VK` has no `plus`/`minus` names, so zoom chords such as Ctrl+Plus cannot be written; add named keys if plans need them.
 - Review of 8f8e092: `keys` text is not checked when a plan is parsed (`providers/schemas.py` PlanStep), so a bad chord stops the run after approval; check chords at plan time instead.
 
-## Whole-tree review, 2026-10-29 (not fixed; fixed items are in d8bf30d, c590c9d, 2b6348e)
+## Whole-tree review, 2026-10-29 -- status 2026-10-30
 
-Act and the signed path (tier 1; each needs its own test, D018 and review):
-- `harness/act.py` `_on_bound_window`: unowned top-level popups of the same app (Office galleries, WPF Popup, Chromium select) are refused as "covered"; measure on the desktop, then accept same-thread popups if real.
-- `harness/act.py` paste_text: when the clipboard held an image or files, the restore empties it (get_clipboard_text returns None); snapshot all formats or refuse paste_text then. A failed restore is swallowed.
-- `harness/act.py` paste_text budget: held wait + 0.15 s + clipboard retries can reach about 0.75 s, past D020's 0.5 s.
-- `harness/drive.py`: busy retries consume the step budget and end as "max_steps"; count real attempts or return "busy".
-- `act_runtime.py:1268`: Stop during live verification after a UIA dispatch reports VERIFICATION_FAILED, though the effect happened; never cancel after dispatch, or report "unverified".
-- `adapter_host.py:227` and `:139`: adapter and verifier stderr is a PIPE nobody drains; a chatty child blocks and times out. Drain on a thread or use a temp file.
-- `adapter_host.py:122-125`: stdin write/close outside the try; a BrokenPipeError leaks the Popen.
-- `action.py:808`: an optional effect-key field missing from a node raises KeyError (fails closed as a refusal); use `.get` or require effect-key fields.
-- `act_staging.py:197-203` / `act_cli.py:271-283`: a raw OSError from publish escapes, skips the result line and the ESC-watcher stop.
-- `task_graph.py:183` / `action.py:280`: float() of a huge int overflows and escapes as OverflowError; range-check first. `task_graph.py:221`: a non-string intent_id raises TypeError out of verify_bundle (unsigned developer bundles only).
-- `plugins/store.py:433-436`: installing a second, differently signed bundle of the same version overwrites installed.json and fails every catalog closed; refuse it.
-- `plugins/platform.py:66-67`: a partly failed first bootstrap is never retried; record per-entry completion.
-- `plugins/store.py:418`: the bundle is copied from its path after verifying; write the verified bytes or hash the copy.
-- `plugins/cli.py:44`: `_store()` outside the try prints a traceback instead of the refusal.
+Fixed: d8bf30d, c590c9d, 2b6348e (first pass); 915277d (signed path), c8f7f6e
+and 39e334c (harness Act), 3d8cc8b (Teach, perception, providers), c5d0d3c
+(workspace), d17b543 (tools). Tier-1 review of 5fd3722..c8f7f6e: no BLOCKING.
+D018: 19/19, then 4/4. Hermetic lane 3804 passed. Desktop lanes not run.
 
-Teach and perception:
-- `harness/tier2.py:185-187`: OCR boxes are reused when the pixels match but the window moved; key the cache on the window rect.
-- `harness/teach_live.py:252-254` and `run_model_teach`: observer.start() runs before the try, so a failed overlay or banner leaks the observer thread.
-- `harness/teach_live.py:62-64`: one transient UIA error reads as "window gone" and ends the session; retry a few ticks.
-- `providers/clients.py:317`: the stream read timeout is the whole budget, so a stall near the end can double it and Stop waits; use a short read timeout and recheck.
-- `providers/gateway.py:240`: injection_risk is 0.0 when Jev is down, so handoff (`workspace/handoff.py:193`) treats every screen as clean; decide whether handoff should block instead.
-- `reasoning/planner.py:633-640`: http.client.HTTPException from the local model escapes plan_compiled_goal.
-- `manager.py:1883-1896`: take() after the running check lets a second planner start in a one-iteration window.
-- `listen.py:193`: when the full transcript does not start with the wake phrase, "hey bro" is sent as part of the request.
-- `providers/chatgpt.py:140`: sign-in cancel takes about 5 s (handler timeout), not the 0.5 s the docstring says.
-
-Workspace:
-- `workspace/app.py:356-370`: a routine's next_due advances before the run starts; a busy start skips a whole period silently.
-- `workspace/app.py:797-807` / `knowledge.py:404-410`: a superseded fact can be approved again and recalled with its successor.
-- `workspace/app.py` `_post`: control characters still serialise as six-byte JSON escapes, so a file of them can exceed MAX_BODY; check the serialised length.
-- `workspace/app.html` poll: overlapping polls can apply an older state over a newer one for one tick; add a sequence number.
-- `workspace/session.py` checkpoint: runs synchronously in _context and is not cancellable by Stop; move it after the reply or pass `cancelled`.
-
-Tools (tier 3):
-- `devtools/act_live_node.py:468`: a non-pointer operation raises "confirmation timing is incomplete" before the JSON is written.
-- `evaluation/teach_replay.py:209-211`: a cassette missing a step counts as a correct abstention; raise on a missing recording.
-- `tools/render_acceptance_evidence.py:79-80`: extra failed runs are accepted beside three passes; confirm the Task 8 rule.
-- `tools/render_confirmation_budget.py:99-110`: the same record file can be passed three times.
-- `tools/render_d072_compatibility.py:52-80`: rows with an unknown divergence_class vanish from every table.
-- `devtools/receipt_budget.py:169-182`: cues_measured excludes the first cue.
-- `devtools/paint_budget.py:107`: budget_ms truncates microseconds before the ceiling (left alone: rendered evidence is pinned).
-- `evaluation/safety.py:40-58`: the no-input scan sees only direct calls; an aliased SendInput or importlib import passes.
-- `devtools/act_live_node.py:301-349`: the overlay is created before the try, so a presenter failure skips destroy.
-
-Review of d8bf30d (no BLOCKING):
-- `harness/teach_live.py` drive_live act(): no frame-age, minimized or incomplete check on the latest frame (Teach has MAX_FRAME_AGE_S); a stalled observer resolves trivially.
-- `harness/teach.py` verify job reads self._chosen on the worker; capture it in the lambda and slot.cancel() in _advance to stop the orphan judge call.
-- `providers/envelope.py` tainted_chunks: the returned scrubbed text has its newlines collapsed; check the callers that show it (last_sent).
-- `harness/browser.py` close(): terminate() signals only the parent Chrome; children may keep profile files and rmtree(ignore_errors) leaves them. close() can block up to 5 s.
+Still open (needs a live desktop session or an owner decision):
+- `harness/act.py` `_on_bound_window`: unowned top-level popups of the same app (Office galleries, WPF Popup, Chromium select) are refused as "covered"; measure their window classes on the desktop, then accept same-thread popups if real.
 - `harness/act.py` surrogate-pair typing is unit-tested only; try one emoji in Notepad and PowerPoint on the interactive lane.
+- `tools/render_acceptance_evidence.py:79-80`: extra failed runs are accepted beside three passes. Owner to confirm the Task 8 rule; the pinned evidence includes earlier failed attempts, so changing it moves that document.
+- `devtools/paint_budget.py:107`: budget_ms truncates microseconds before the ceiling. Left alone because the rendered evidence is pinned.
+
+Closed without a change:
+- `devtools/receipt_budget.py` cues_measured: counts the cues that travelled; the first cue is reported separately (settled_*), and the pinned runs (59/60) and the renderer's checks rely on that.
+- `providers/envelope.py` tainted_chunks newline collapse: `last_sent` shows exactly the text that left, which is the intent.
+
+From the tier-1 review of 5fd3722..c8f7f6e (not blocking):
+- `harness/teach_live.py`: during one or two missed reads, Act can still act on a kept frame up to MAX_FRAME_AGE_S old; expose the miss count to the session and refuse Act while it is non-zero.
+- `harness/act.py` restore: a copy the user makes in the 0.2 s before the restore is overwritten; skip the restore if GetClipboardSequenceNumber changed since our set.
+- `harness/act.py` `_quietly`: a locked clipboard at restore time leaves Orbyn's text with no message; retry or report it.
+- `harness/act.py` set_clipboard_text: no opt-out from Windows clipboard history / cloud sync (ExcludeClipboardContentFromMonitorProcessing, CanIncludeInClipboardHistory=0).
+- `harness/act.py`: restore puts back CF_UNICODETEXT only; HTML/RTF of a rich copy is lost.
+- `harness/act.py`: the join on a pending restore is unreachable within a step today (ACT_SETTLE_S=2.0); no test pins that.
+- `harness/teach.py`: no test fails if `slot.cancel()` in `_advance` or the `chosen` capture in the verify lambda is removed.
+- `harness/browser.py`: a parent Chrome that already exited leaves its children holding the profile.
+- `harness/act.py` get_clipboard_text's non-text refusal (CountClipboardFormats) is only exercised live; no hermetic test reaches win32clipboard.
