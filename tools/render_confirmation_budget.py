@@ -98,6 +98,8 @@ def _p99(values: list[float]) -> float:
 def derive(paths: list[Path], excluded: list[Path] | None = None) -> dict[str, object]:
     if len(paths) != REQUIRED_RUNS:
         raise EvidenceRefused(f"expected exactly {REQUIRED_RUNS} records")
+    if len({path.resolve() for path in paths}) != len(paths):
+        raise EvidenceRefused("the same record was given more than once")
     records = [(_load(path), path) for path in paths]
     contexts = {
         (

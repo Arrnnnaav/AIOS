@@ -201,14 +201,15 @@ def lexical_chooser(step: Step) -> Choice:
 
 
 def cassette_chooser(path: Path) -> Chooser:
-    """Replays recorded answers; a step with no recording is an abstention."""
+    """Replays recorded answers. A step with no recording is refused: read as
+    an abstention it would score as a correct abstention on a held-out step."""
 
     recorded = json.loads(path.read_text(encoding="utf-8"))
 
     def choose(step: Step) -> Choice:
         answer = recorded.get(step.step_id)
         if answer is None:
-            return Choice(ABSTAIN, {})
+            raise ValueError(f"the cassette has no recording for step {step.step_id!r}")
         return Choice(answer["choice"], dict(answer["probabilities"]))
 
     return choose

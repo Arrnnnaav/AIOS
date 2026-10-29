@@ -1,3 +1,4 @@
+import pytest
 from pathlib import Path
 
 from ghostcursor.evaluation.safety import (
@@ -27,3 +28,19 @@ def test_evaluation_scan_rejects_tour_import_and_input_call(tmp_path):
     assert any("forbidden-import:ghostcursor.run" in item for item in violations)
     assert any("call:run_tour" in item for item in violations)
     assert any("call:SendInput" in item for item in violations)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "send = user32.SendInput\nsend(1)\n",
+        "from ctypes.windll.user32 import SendInput as s\n",
+        "getattr(user32, 'SendInput')(1)\n",
+        "import importlib\nimportlib.import_module('ghostcursor.harness.act')\n",
+    ],
+)
+def test_an_aliased_or_dynamic_input_call_is_still_caught(tmp_path, source):
+    from ghostcursor.evaluation.safety import evaluation_safety_violations
+
+    (tmp_path / "sneaky.py").write_text(source, encoding="utf-8")
+    assert evaluation_safety_violations(tmp_path)

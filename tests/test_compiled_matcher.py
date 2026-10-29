@@ -852,3 +852,14 @@ def test_compiled_terms_carry_no_executable_behaviour() -> None:
     terms = [term for rule in heuristic for clause in rule for term in clause]
     assert terms
     assert all(isinstance(term, (LiteralTerm, PathTerm)) for term in terms)
+
+
+def test_a_row_with_an_undefined_divergence_class_is_refused() -> None:
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("render_d072", RENDERER)
+    renderer = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(renderer)
+    document = {"divergence_classes": {}, "rows": [{"divergence_class": "typo"}]}
+    with pytest.raises(ValueError, match="undefined divergence"):
+        renderer.render_document("", document)

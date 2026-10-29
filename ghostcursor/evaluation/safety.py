@@ -45,17 +45,21 @@ def evaluation_safety_violations(root: Path | None = None) -> list[str]:
                     _check_import(alias.name, path, node.lineno, violations)
             elif isinstance(node, ast.ImportFrom):
                 _check_import(node.module or "", path, node.lineno, violations)
-            elif isinstance(node, ast.Call):
-                function = node.func
-                name = (
-                    function.attr
-                    if isinstance(function, ast.Attribute)
-                    else function.id
-                    if isinstance(function, ast.Name)
-                    else ""
-                )
+                for alias in node.names:  # `from x import SendInput as s`
+                    if alias.name in FORBIDDEN_CALLS:
+                        violations.append(f"{path.name}:{node.lineno}:call:{alias.name}")
+            # Any reference, not only a direct call: `s = user32.SendInput`
+            # then `s(...)` passed before; so did getattr(user32, "SendInput").
+            elif isinstance(node, (ast.Name, ast.Attribute)):
+                name = node.attr if isinstance(node, ast.Attribute) else node.id
                 if name in FORBIDDEN_CALLS:
                     violations.append(f"{path.name}:{node.lineno}:call:{name}")
+                elif name in ("import_module", "__import__"):  # imports the scan cannot see
+                    violations.append(f"{path.name}:{node.lineno}:dynamic-import:{name}")
+            elif isinstance(node, ast.Call):
+                for arg in node.args:
+                    if isinstance(arg, ast.Constant) and arg.value in FORBIDDEN_CALLS:
+                        violations.append(f"{path.name}:{node.lineno}:call:{arg.value}")
     return sorted(violations)
 
 

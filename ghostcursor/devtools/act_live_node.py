@@ -337,16 +337,20 @@ def main() -> int:
     confirmation_timing = _ConfirmationTiming()
     receipt_policy = measured_receipt_policy()
 
-    overlay = overlay_presenter(
-        overlay_hwnd,
-        budget=_cue_budget(arguments),
-        policy=receipt_policy,
-        label_for=lambda _observation: selector.name,
-        backend_trust=TrustClass.LIVE_STATE,
-        keep_running=keep_running,
-        on_state=lambda _node, state: lifecycle.append(state.value),
-        on_receipt=lambda receipt, at: receipts.append((receipt.kind.value, at)),
-    )
+    try:
+        overlay = overlay_presenter(
+            overlay_hwnd,
+            budget=_cue_budget(arguments),
+            policy=receipt_policy,
+            label_for=lambda _observation: selector.name,
+            backend_trust=TrustClass.LIVE_STATE,
+            keep_running=keep_running,
+            on_state=lambda _node, state: lifecycle.append(state.value),
+            on_receipt=lambda receipt, at: receipts.append((receipt.kind.value, at)),
+        )
+    except BaseException:  # a full-desktop overlay must not outlive this run
+        overlay_window.destroy_overlay_window(overlay_hwnd)
+        raise
 
     started = time.monotonic()
     elapsed_at_stop = {"end": None}
@@ -465,12 +469,16 @@ def main() -> int:
         note("trust", outcome.trust.value)
         note("detail", outcome.detail)
         note("identity", json.dumps(outcome.identity_record or {}))
-        timing_record = confirmation_timing.record()
-        note(
-            "confirmation timing",
-            f"read={timing_record['confirmation_round_trip_ms']:.3f}ms "
-            f"to-write={timing_record['confirmation_to_request_write_ms']:.3f}ms",
-        )
+        if confirmation_timing.confirmation_started_ns is None:
+            timing_record = None  # a non-pointer operation has no confirmation
+            note("confirmation timing", "none (no confirmation in this operation)")
+        else:
+            timing_record = confirmation_timing.record()
+            note(
+                "confirmation timing",
+                f"read={timing_record['confirmation_round_trip_ms']:.3f}ms "
+                f"to-write={timing_record['confirmation_to_request_write_ms']:.3f}ms",
+            )
     else:
         timing_record = None
     note("lifecycle", " -> ".join(lifecycle))

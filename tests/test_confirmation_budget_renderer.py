@@ -162,3 +162,10 @@ def test_render_and_check_are_reproducible(tmp_path):
             "--records", *(str(path) for path in paths),
             "--out", str(output), "--check",
         ])
+
+
+def test_the_same_record_file_cannot_count_as_three_runs(tmp_path):
+    path = tmp_path / "run.json"
+    _write(path, _record())
+    with pytest.raises(renderer.EvidenceRefused, match="more than once"):
+        renderer.derive([path, path, tmp_path / "." / "run.json"])

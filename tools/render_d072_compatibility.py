@@ -152,6 +152,13 @@ def _replace(text: str, name: str, body: str) -> str:
 
 def render_document(text: str, document: dict) -> str:
     rows = document["rows"]
+    unknown = sorted(
+        {row["divergence_class"] for row in rows}
+        - set(document["divergence_classes"])
+        - {None}
+    )
+    if unknown:  # such rows would vanish from every table
+        raise ValueError(f"rows name undefined divergence classes: {unknown}")
     text = _replace(text, "result", render_result(rows))
     text = _replace(text, "classes", render_classes(document))
     text = _replace(text, "corpus", render_corpus(rows))

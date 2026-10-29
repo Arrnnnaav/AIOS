@@ -160,12 +160,13 @@ def test_fit_uses_dev_only_and_reaches_zero_wrong_on_dev():
     )
 
 
-def test_cassette_replay_abstains_on_a_missing_step(tmp_path):
+def test_cassette_replay_refuses_a_missing_step(tmp_path):
     tape = tmp_path / "tape.json"
     tape.write_text(json.dumps({"s1": {"choice": "c1", "probabilities": {"c1": 0.9}}}))
     chooser = cassette_chooser(tape)
     assert chooser(parse_record(_record())).choice == "c1"
-    assert chooser(parse_record(_record("other"))).abstained
+    with pytest.raises(ValueError, match="no recording"):  # never a free "correct abstention"
+        chooser(parse_record(_record("other")))
 
 def test_capture_refuses_a_line_that_carries_a_bound_pid(tmp_path):
     record = _record()
