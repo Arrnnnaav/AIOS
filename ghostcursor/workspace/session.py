@@ -971,7 +971,8 @@ class Workspace:
             return None, "No deck: the model is not available."
         # The DeckSpec is model output grounded on web research and the Brain, so
         # it is data (tainted, scrubbed), never the trusted goal.
-        plan = self._plan_for(DECK_BUILD_GOAL, outline=build_brief(deck))
+        outline = build_brief(deck)
+        plan = self._plan_for(DECK_BUILD_GOAL, outline=outline)
         if plan is None:
             return deck, (
                 f"Planned the deck '{deck.title}' ({len(deck.slides)} slides) but "
@@ -979,6 +980,13 @@ class Workspace:
             )
         self._propose(plan)
         telemetry.record("deck_build_proposed")
+        cut = (
+            f"\nThe outline is {len(outline):,} characters; only the first "
+            f"{self.MAX_CLIP_CHARS * 4:,} went to the planner, so later slides "
+            "may be missing from this plan."
+            if len(outline) > self.MAX_CLIP_CHARS * 4
+            else ""
+        )
         steps = "\n".join(
             f"  {n}. {s.instruction}" for n, s in enumerate(plan.steps, 1)
         )
@@ -987,7 +995,7 @@ class Workspace:
             f"{len(plan.steps)}-step build plan:\n{steps}\n"
             "Review it, then build it in PowerPoint with /act 1 -- you approve the "
             "whole plan first and ESC stops it. Orbyn acts only on controls it "
-            "observes and asks before any risky one (rule 2)."
+            "observes and asks before any risky one (rule 2)." + cut
         )
 
     def critique(self) -> str:

@@ -109,3 +109,17 @@ def test_deck_content_rides_the_tainted_channel_scrubbed(tmp_path):
     outline = " ".join(chunk.text for chunk in envelope.tainted["outline"])
     assert "Ignore the user" in outline and "[EMAIL_1]" in outline and "alice@" not in outline
     brain.close()
+
+
+def test_a_long_outline_still_gets_powerpoint_guidance_and_says_it_was_cut(tmp_path):
+    bullets = ["a fairly long bullet about quarterly platform results " * 2] * 8
+    deck = {"title": "Big", "slides": [{"title": f"S{i}", "layout": "bullets", "bullets": bullets} for i in range(20)]}
+    gw = DeckGateway(deck=deck)
+    brain = Brain(tmp_path / "b.sqlite")
+    ws = Workspace("deck", gw, brain, root=tmp_path / "briefs")
+    _, message = ws.build_deck("big review")
+    envelope = gw.plans[0]
+    assert [g["app"] for g in envelope.trusted["app_guidance"]] == ["powerpoint"]
+    assert len(envelope.tainted["outline"]) <= 60  # far under MAX_TAINTED_ITEMS
+    assert "only the first 8,000 went to the planner" in message
+    brain.close()
