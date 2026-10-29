@@ -2058,6 +2058,12 @@ and `chord_events` refuses the Windows key and Alt+Tab. Open:
   `UserBusy` instead of retrying; no test that a retry tick re-resolves a
   control that moved; the "ORBN" signature only labels input -- any process
   can set `dwExtraInfo`, so it is never an authority check.
+  Re-check of b75e127: no BLOCKING. Open: the 0.5 s budget test fakes the
+  clipboard, so `_open_clipboard`'s real retries (up to 4 x 0.02 s, three
+  opens per `paste_text`) can push a contended paste to about 0.69 s; this
+  overrun predates the held-key wait (0.35 + 0.24 s) but the wait uses the
+  margin. Count or cut those retries during a paste, and time a real
+  `perform` on a desktop lane (only sleeps are counted today).
 - Focus is re-checked once after the click, before a step's keys (29 Oct);
   Aside re-checks between keys of a long `typeText`. Orbyn sends a step's keys
   in one `SendInput` batch, so a focus steal mid-batch is still possible.
