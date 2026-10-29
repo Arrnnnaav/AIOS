@@ -238,7 +238,7 @@ class ModelTeachSession:
 
     # --- requests (worker side) ----------------------------------------
 
-    def _verify_says_no(self, step, frame: ObservationFrame) -> bool:
+    def _verify_says_no(self, step, frame: ObservationFrame, chosen) -> bool:
         """Jev's verdict on whether an acted step took effect (D179). True only
         on a confident 'no'; fail-open (False) on unsure, yes, or any error, so
         a verification outage never stalls Act."""
@@ -246,14 +246,14 @@ class ModelTeachSession:
         judge = getattr(self.gateway, "judge", None)
         if judge is None:
             return False
-        current = resolve(self._chosen, frame)
+        current = resolve(chosen, frame)  # CHOSEN: captured on the UI thread
         after = (
             "the control is gone"
             if current is None
             else (f"state={current.state or '(none)'} focused={current.focused}")
         )
         before = (
-            f"state={self._chosen.state or '(none)'} focused={self._chosen.focused}"
+            f"state={chosen.state or '(none)'} focused={chosen.focused}"
         )
         envelope = Envelope(
             task="verify",
@@ -347,6 +347,7 @@ class ModelTeachSession:
             self.phase, self.message = Phase.CHOOSING, f"re-looking ({reason})"
 
     def _advance(self) -> None:
+        self.slot.cancel()  # an answer for the step just left is never used
         self.step += 1
         self.reasks = 0
         self._request = self._chosen = self._before = self._target = None
@@ -496,8 +497,9 @@ class ModelTeachSession:
                     # On the worker like every model call: the UI loop polls
                     # ESC and Stop and must never wait on Jev (rule 4, D020).
                     if self._request is None:
+                        chosen = self._chosen  # never read self on the worker
                         self._request = self.slot.submit(
-                            lambda cancelled: self._verify_says_no(step, frame)
+                            lambda cancelled: self._verify_says_no(step, frame, chosen)
                         )
                     verdict = self.slot.poll(self._request)
                     if verdict is None:

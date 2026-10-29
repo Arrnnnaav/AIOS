@@ -225,3 +225,146 @@ def test_drive_live_rechecks_the_deny_list_on_the_name_it_would_click():
         _perform=lambda step, target: acted.append(target.cid) or "clicked",
     )  # fmt: skip
     assert r.status == "blocked" and "deny" in r.reason and acted == []
+
+
+
+def test_held_key_retries_are_not_counted_as_steps():
+    from ghostcursor.harness.act import UserBusy
+    from ghostcursor.harness.drive import drive_until
+    from ghostcursor.providers.schemas import Choice
+
+    @dataclass(frozen=True)
+    class C:
+        id: str
+        name: str
+
+    picks = iter(["a", "a", "DONE"])
+    held = iter([True, False])
+
+    def act(control):
+        if next(held, False):
+            raise UserBusy("holding a key")
+
+    r = drive_until(
+        "g",
+        observe=lambda: [C("a", "Next")],
+        choose=lambda goal, cs: Choice(next(picks), {"a": 0.95}),
+        act=act,
+        approved=True,
+        max_steps=1,
+    )
+    assert r.status == "max_steps" and r.steps == 1 and r.history == ("Next",)
+
+
+def test_a_key_held_through_every_retry_hands_back_as_busy():
+    from ghostcursor.harness.act import UserBusy
+    from ghostcursor.harness.drive import MAX_BUSY, drive_until
+    from ghostcursor.providers.schemas import Choice
+
+    @dataclass(frozen=True)
+    class C:
+        id: str
+        name: str
+
+    tries = []
+
+    def act(control):
+        tries.append(1)
+        raise UserBusy("holding a key")
+
+    r = drive_until(
+        "g",
+        observe=lambda: [C("a", "Next")],
+        choose=lambda goal, cs: Choice("a", {"a": 0.95}),
+        act=act,
+        approved=True,
+        max_steps=8,
+    )
+    assert r.status == "busy" and r.steps == 0 and len(tries) == MAX_BUSY + 1
+
+
+
+def test_drive_live_refuses_a_stale_screen_reading():
+    from ghostcursor.harness import teach_live
+    from ghostcursor.providers.schemas import Choice
+
+    @dataclass(frozen=True)
+    class Cand:
+        cid: str
+        name: str
+        rect: tuple = (0, 0, 40, 20)
+        window: str = "w1"
+
+        @property
+        def runtime_id(self):
+            return (self.cid,)
+
+    class Frame:
+        minimized = incomplete = ()
+
+        def __init__(self, at):
+            self.at = at
+            self.candidates = (Cand("w1-1", "Insert"),)
+
+        def get(self, cid):
+            return next((c for c in self.candidates if c.cid == cid), None)
+
+    import time as _time
+
+    old = _time.monotonic() - 60  # the observer stalled a minute ago
+    frames = iter([Frame(old), Frame(old)])
+
+    class G:
+        def choose(self, envelope, option_ids, **kw):
+            return Choice("w1-1", {"w1-1": 0.95})
+
+    acted = []
+    r = teach_live.drive_live(
+        "open insert", None, approved=True, gateway=G(),
+        _observe=lambda: next(frames),
+        _perform=lambda step, target: acted.append(target.cid) or "clicked",
+    )  # fmt: skip
+    assert r.status == "blocked" and "out of date" in r.reason and acted == []
+
+
+def _observer_with_reads(monkeypatch, reads):
+    from types import SimpleNamespace
+
+    from ghostcursor.harness import teach_live
+
+    monkeypatch.setattr(teach_live, "OBSERVE_INTERVAL_S", 0.01)
+    monkeypatch.setattr(teach_live, "read_window", lambda hwnd: next(reads))
+    monkeypatch.setattr(teach_live, "still_bound", lambda b: True)
+    monkeypatch.setattr(teach_live, "window_facts", lambda *a: ("t", ()))
+    monkeypatch.setattr(teach_live, "is_minimized", lambda hwnd: False)
+    monkeypatch.setattr(teach_live, "WindowObservation", lambda *a: a)
+    monkeypatch.setattr(
+        teach_live, "build_frame", lambda fid, at, obs, unnamed=False: ("frame", fid)
+    )
+    binding = SimpleNamespace(label="w1", hwnd=1, identity=SimpleNamespace(pid=2, executable="x.exe"))
+    return teach_live.Observer((binding,))
+
+
+def test_one_failed_window_read_does_not_end_the_session(monkeypatch):
+    import itertools
+
+    ok = ((0, 0, 10, 10), (), False)
+    reads = itertools.chain([(None, (), False), (None, (), False)], itertools.repeat(ok))
+    observer = _observer_with_reads(monkeypatch, reads)
+    observer.start()
+    observer.join(0.3)
+    observer.stop()
+    observer.join(2)
+    assert observer.lost is None and observer.latest() is not None
+
+
+def test_a_window_that_stays_unreadable_is_lost(monkeypatch):
+    import itertools
+
+    from ghostcursor.harness.teach_live import MAX_READ_MISSES
+
+    reads = itertools.repeat((None, (), False))
+    observer = _observer_with_reads(monkeypatch, reads)
+    observer.start()
+    observer.join(2)
+    assert observer.lost == "w1" and observer.latest() is None and MAX_READ_MISSES > 1

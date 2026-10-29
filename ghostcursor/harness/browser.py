@@ -122,7 +122,15 @@ class Browser:
 
     def close(self) -> None:
         try:
-            self.proc.terminate()
+            if self.proc.poll() is None:  # still running, so the PID is still ours
+                # Chrome's renderer and GPU children outlive a terminated parent
+                # and keep the profile's files open: end the tree, by PID only.
+                subprocess.run(
+                    ["taskkill", "/PID", str(self.proc.pid), "/T", "/F"],
+                    capture_output=True,
+                    timeout=5,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                )
             self.proc.wait(timeout=5)
         except Exception:
             pass

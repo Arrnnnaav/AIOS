@@ -333,6 +333,7 @@ def test_paste_text_carries_known_text_then_restores_the_clipboard():
         check=lambda x, y, window: None,
         get_clip=lambda: "USER PRIOR",
         set_clip=clip_writes.append,
+        later=lambda job: job(),
     )
     assert out == "pasted 13 characters"
     assert clicks == [(200, 220)]  # focused the observed control first
@@ -362,6 +363,7 @@ def test_paste_text_restores_the_clipboard_even_if_the_paste_fails():
             check=lambda x, y, window: None,
             get_clip=lambda: "USER PRIOR",
             set_clip=clip_writes.append,
+            later=lambda job: job(),
         )
     assert clip_writes[-1] == "USER PRIOR"  # restored despite the failure
     assert "secret-carry" not in clip_writes[-1:]  # ours is not what's left
@@ -379,6 +381,7 @@ def test_paste_text_with_no_text_touches_nothing():
         check=lambda x, y, window: None,
         get_clip=lambda: "USER PRIOR",
         set_clip=clip_writes.append,
+        later=lambda job: job(),
     )
     assert out == "nothing to paste" and clip_writes == []
 
@@ -398,6 +401,7 @@ def test_paste_text_is_refused_on_a_blocked_or_elevated_window():
             check=lambda x, y, window: "that window runs as administrator",
             get_clip=lambda: "PRIOR",
             set_clip=clip_writes.append,
+            later=lambda job: job(),
         )
     assert clip_writes == []  # nothing written to the clipboard
 
@@ -425,6 +429,7 @@ def test_paste_text_restore_failure_does_not_mask_the_real_error():
             check=lambda x, y, window: None,
             get_clip=lambda: "PRIOR",
             set_clip=flaky_set,
+            later=lambda job: job(),
         )
     # happy paste, restore fails -> still returns cleanly (error swallowed)
     calls["n"] = 0
@@ -437,6 +442,7 @@ def test_paste_text_restore_failure_does_not_mask_the_real_error():
         check=lambda x, y, window: None,
         get_clip=lambda: "PRIOR",
         set_clip=flaky_set,
+        later=lambda job: job(),
     )
     assert out == "pasted 2 characters"
 
@@ -696,3 +702,71 @@ def test_step_verification_never_runs_on_the_ui_tick():
     clock.now = ACT_SETTLE_S
     out = session.tick(frame(fid=2))
     assert len(submitted) == 1 and out.phase is Phase.SHOWING and session.completed == []
+
+
+
+def _paste(target, **kw):
+    values = dict(
+        send=lambda e: None,
+        click=lambda x, y: None,
+        pause=lambda s: None,
+        check=lambda x, y, window: None,
+    )
+    values.update(kw)
+    return act.perform(
+        PlanStep("Paste", E.CHOSEN_STATE_CHANGES, "paste_text", "ours"), target, **values
+    )
+
+
+def test_paste_text_restores_after_the_step_returns():
+    """The 0.2 s wait and the restore run off the step, so Stop is read again
+    within D020's 0.5 s; the restore still happens."""
+
+    target = _frame([_c(1, "Body", "Edit")]).candidates[0]
+    clip_writes, jobs = [], []
+    out = _paste(
+        target, get_clip=lambda: "PRIOR", set_clip=clip_writes.append, later=jobs.append
+    )
+    assert out == "pasted 4 characters" and clip_writes == ["ours"] and len(jobs) == 1
+    jobs[0]()
+    assert clip_writes == ["ours", "PRIOR"]
+
+
+def test_paste_text_over_a_picture_is_refused_before_any_input():
+    target = _frame([_c(1, "Body", "Edit")]).candidates[0]
+    clicks, clip_writes = [], []
+
+    def picture():
+        raise PermissionError("the clipboard holds a picture or files")
+
+    with pytest.raises(PermissionError, match="picture"):
+        _paste(
+            target,
+            click=lambda x, y: clicks.append(1),
+            get_clip=picture,
+            set_clip=clip_writes.append,
+        )
+    assert clicks == [] and clip_writes == []
+
+
+def test_a_new_step_waits_for_the_last_paste_to_restore():
+    import threading
+
+    target = _frame([_c(1, "Body", "Edit")]).candidates[0]
+    clip_writes, release = [], threading.Event()
+    _paste(
+        target,
+        get_clip=lambda: "PRIOR",
+        set_clip=clip_writes.append,
+        pause=lambda s: release.wait(5) if s == 0.2 else None,
+    )
+    seen = []
+    threading.Timer(0.1, release.set).start()
+    act.perform(
+        PlanStep("Click", E.CHOSEN_STATE_CHANGES),
+        target,
+        click=lambda x, y: seen.append(list(clip_writes)),
+        pause=lambda s: None,
+        check=lambda x, y, window: None,
+    )
+    assert seen == [["ours", "PRIOR"]]  # restored before the click went out

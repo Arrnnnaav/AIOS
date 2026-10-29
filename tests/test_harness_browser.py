@@ -96,7 +96,7 @@ def test_drive_refuses_without_approval(page):
     assert r.status == "not_approved"
 
 
-def test_closing_the_browser_deletes_its_temporary_profile(tmp_path):
+def test_closing_the_browser_deletes_its_temporary_profile(tmp_path, monkeypatch):
     from ghostcursor.harness.browser import Browser
 
     profile = tmp_path / "orbyn-cdp-x"
@@ -104,11 +104,38 @@ def test_closing_the_browser_deletes_its_temporary_profile(tmp_path):
     (profile / "Default" / "Cookies").write_bytes(b"c")
 
     class Proc:
-        def terminate(self):
-            pass
+        pid = 4242
+
+        def poll(self):
+            return None
 
         def wait(self, timeout):
             return 0
 
+    ran = []
+    monkeypatch.setattr(
+        "ghostcursor.harness.browser.subprocess.run", lambda args, **k: ran.append(args)
+    )
     Browser(Proc(), 0, str(profile)).close()
     assert not profile.exists()
+    assert ran == [["taskkill", "/PID", "4242", "/T", "/F"]]  # the tree, by PID
+
+
+def test_a_browser_that_already_exited_is_never_killed_by_pid(tmp_path, monkeypatch):
+    from ghostcursor.harness.browser import Browser
+
+    class Proc:
+        pid = 4242
+
+        def poll(self):
+            return 0  # gone: the PID may belong to someone else now
+
+        def wait(self, timeout):
+            return 0
+
+    ran = []
+    monkeypatch.setattr(
+        "ghostcursor.harness.browser.subprocess.run", lambda args, **k: ran.append(args)
+    )
+    Browser(Proc(), 0, str(tmp_path / "p")).close()
+    assert ran == []

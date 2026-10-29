@@ -28,11 +28,14 @@ from ghostcursor.harness.frame import (
     build_frame,
     resolve,
 )
-from ghostcursor.harness.teach import ModelTeachSession, Phase
+from ghostcursor.harness.teach import MAX_FRAME_AGE_S, ModelTeachSession, Phase
 from ghostcursor.harness.uia_reader import is_minimized, read_window, window_facts
 
 TICK_S = 0.1
 OBSERVE_INTERVAL_S = 0.4
+#: Failed reads in a row before a window that is still bound counts as gone:
+#: one UIA hiccup must not end the session (the identity check stays strict).
+MAX_READ_MISSES = 3
 
 
 class Observer(threading.Thread):
@@ -46,28 +49,30 @@ class Observer(threading.Thread):
         self.lost: str | None = None
         self._latest: ObservationFrame | None = None
         self._lock = threading.Lock()
-        self._stop = threading.Event()
+        self._halt = threading.Event()
 
     def latest(self) -> ObservationFrame | None:
         with self._lock:
             return self._latest
 
     def stop(self) -> None:
-        self._stop.set()
+        self._halt.set()
 
     def run(self) -> None:
         import pythoncom
 
         pythoncom.CoInitializeEx(pythoncom.COINIT_MULTITHREADED)
         try:
-            frame_id = 0
-            while not self._stop.is_set():
+            frame_id = misses = 0
+            while not self._halt.is_set():
                 observations = []
                 for binding in self.bindings:
                     rect, controls, timed_out = read_window(binding.hwnd)
-                    if rect is None or not still_bound(binding):
+                    if not still_bound(binding):
                         self.lost = binding.label
                         return
+                    if rect is None:
+                        break
                     title, owned = window_facts(
                         binding.hwnd, binding.identity.pid, binding.identity.executable
                     )
@@ -82,13 +87,22 @@ class Observer(threading.Thread):
                             owned,
                         )
                     )
+                else:
+                    misses = 0
+                if len(observations) < len(self.bindings):
+                    misses += 1  # keep the last frame; teach's age check guards it
+                    if misses >= MAX_READ_MISSES:
+                        self.lost = binding.label
+                        return
+                    self._halt.wait(OBSERVE_INTERVAL_S)
+                    continue
                 frame_id += 1
                 frame = build_frame(
                     frame_id, time.monotonic(), observations, unnamed=self.unnamed
                 )
                 with self._lock:
                     self._latest = frame
-                self._stop.wait(OBSERVE_INTERVAL_S)
+                self._halt.wait(OBSERVE_INTERVAL_S)
         finally:
             pythoncom.CoUninitialize()
 
@@ -255,8 +269,14 @@ def drive_live(
         observer = Observer(bind(hwnds or choose_windows()))
         windows = {b.label: b.hwnd for b in observer.bindings}
         observer.start()
-        overlay = window.create_overlay_window(hidden_from_capture=True)
-        banner = _acting_banner()
+        try:
+            overlay = window.create_overlay_window(hidden_from_capture=True)
+            banner = _acting_banner()
+        except BaseException:
+            observer.stop()
+            if overlay is not None:
+                window.destroy_overlay_window(overlay)
+            raise
     deadline = time.monotonic() + seconds
     state = {"frame": None}
 
@@ -290,6 +310,12 @@ def drive_live(
         target = None if chosen is None or latest is None else resolve(chosen, latest)
         if target is None:
             raise RuntimeError("the control moved or went away")
+        at = getattr(latest, "at", None)  # test fakes may leave it out
+        if at is not None and (
+            time.monotonic() - at > MAX_FRAME_AGE_S
+            or target.window in latest.minimized + latest.incomplete
+        ):  # as Teach: a stalled observer must not vouch for an old screen
+            raise RuntimeError("the screen reading is out of date")
         if any(d and d.casefold() in (target.name or "").casefold() for d in deny):
             raise PermissionError(f"{target.name!r} is on the deny list")
         did = (
@@ -366,58 +392,69 @@ def run_model_teach(
     seeing = settings.jev_vision()
     observer = Observer(bindings, unnamed=seeing)
     observer.start()
-    # One deadline for the whole session, the point prompt included (rule 4).
-    deadline = time.monotonic() + seconds
-    mark = (
-        take_mark(
-            observer,
-            deadline,
-            escape=lambda: _escape_pressed() or stop(),
-            enter=confirm,
-            say=say,
+    overlay = banner = None
+    try:
+        # One deadline for the whole session, the point prompt included (rule 4).
+        deadline = time.monotonic() + seconds
+        mark = (
+            take_mark(
+                observer,
+                deadline,
+                escape=lambda: _escape_pressed() or stop(),
+                enter=confirm,
+                say=say,
+            )
+            if point
+            else None
         )
-        if point
-        else None
-    )
-    if mark is ABORTED:
-        observer.stop()
-        say("Stopped before guidance started.")
-        return 0
-    look = None
-    if seeing:
-        from ghostcursor.harness.vision import pictures as look
+        if mark is ABORTED:
+            observer.stop()
+            say("Stopped before guidance started.")
+            return 0
+        look = None
+        if seeing:
+            from ghostcursor.harness.vision import pictures as look
 
+            say(
+                "Jev may see redacted pictures of these windows when text is not "
+                "enough (only buttons, tabs and menus; the rest is grey)."
+            )
+        perform = None
+        if act:  # D182: the user approves the plan; Orbyn performs each step
+            windows = {b.label: b.hwnd for b in bindings}
+
+            def perform(step, target):
+                return _live_perform(step, target, windows[target.window])
+        session = ModelTeachSession(
+            goal,
+            gateway or Gateway(),
+            mark=mark,
+            plan=plan,
+            look=look,
+            act=perform,
+            deny=deny,
+        )
+        overlay = window.create_overlay_window(hidden_from_capture=True)
+        banner = _acting_banner() if act else None
         say(
-            "Jev may see redacted pictures of these windows when text is not "
-            "enough (only buttons, tabs and menus; the rest is grey)."
+            f"{'Act' if act else 'Model Teach'} across "
+            f"{', '.join(b.label + ' ' + b.identity.executable for b in bindings)}. "
+            + (
+                "Enter = approve the plan / a risky step. "
+                if act
+                else "Pointers are suggestions (amber). Enter = step done. "
+            )
+            + f"ESC stops (auto-stops after {seconds:g}s)."
         )
-    perform = None
-    if act:  # D182: the user approves the plan; Orbyn performs each step
-        windows = {b.label: b.hwnd for b in bindings}
+    except BaseException:  # never leak the observer thread (or the overlay)
+        observer.stop()
+        if overlay is not None:
+            window.destroy_overlay_window(overlay)
+        if banner:
+            import win32gui
 
-        def perform(step, target):
-            return _live_perform(step, target, windows[target.window])
-    session = ModelTeachSession(
-        goal,
-        gateway or Gateway(),
-        mark=mark,
-        plan=plan,
-        look=look,
-        act=perform,
-        deny=deny,
-    )
-    overlay = window.create_overlay_window(hidden_from_capture=True)
-    banner = _acting_banner() if act else None
-    say(
-        f"{'Act' if act else 'Model Teach'} across "
-        f"{', '.join(b.label + ' ' + b.identity.executable for b in bindings)}. "
-        + (
-            "Enter = approve the plan / a risky step. "
-            if act
-            else "Pointers are suggestions (amber). Enter = step done. "
-        )
-        + f"ESC stops (auto-stops after {seconds:g}s)."
-    )
+            win32gui.DestroyWindow(banner)
+        raise
     reported = 0
     shown = None
     code = 0

@@ -10,6 +10,7 @@ plan first and to confirm risky controls; ESC stops the loop between steps.
 from __future__ import annotations
 
 import ctypes
+import threading
 import time
 from ctypes import wintypes
 
@@ -39,8 +40,9 @@ _INPUT_MOUSE, _INPUT_KEYBOARD = 0, 1
 INPUT_SIGNATURE = 0x4E42524F
 #: Before acting, Orbyn waits for the user to let go of any key or mouse
 #: button (Aside's check, minus its hook). A whole perform() -- this wait, the
-#: 0.15 s focus pause and paste_text's 0.2 s clipboard wait -- stays under
-#: D020's 0.5 s; a longer hold retries on the next tick.
+#: 0.15 s focus pause and paste_text's two clipboard opens (0.1 s each at
+#: worst) -- stays under D020's 0.5 s; a longer hold retries on the next tick.
+#: paste_text's 0.2 s wait and restore run after perform() returns.
 MAX_HELD_WAIT_S = 0.1
 _VK_ESCAPE = 0x1B
 _KEYUP, _UNICODE = 0x0002, 0x0004
@@ -167,9 +169,11 @@ def _open_clipboard(c, tries: int = 5):
 
 
 def get_clipboard_text() -> str | None:
-    """The clipboard's text, or None if it holds no text. Read ONLY so the
+    """The clipboard's text, or None if it is empty. Read ONLY so the
     user's prior clipboard can be put back after a paste; the value stays on
-    this machine -- it is never sent to a model, stored or logged."""
+    this machine -- it is never sent to a model, stored or logged. A picture
+    or copied files cannot be put back as text, so paste_text is refused
+    then instead of emptying the user's clipboard."""
 
     import win32clipboard as c
 
@@ -177,6 +181,10 @@ def get_clipboard_text() -> str | None:
     try:
         if c.IsClipboardFormatAvailable(c.CF_UNICODETEXT):
             return c.GetClipboardData(c.CF_UNICODETEXT)
+        if c.CountClipboardFormats():
+            raise PermissionError(
+                "the clipboard holds a picture or files, so Orbyn did not paste over it"
+            )
         return None
     finally:
         c.CloseClipboard()
@@ -197,6 +205,27 @@ def set_clipboard_text(text: str | None) -> None:
             c.SetClipboardData(c.CF_UNICODETEXT, text)
     finally:
         c.CloseClipboard()
+
+
+#: The clipboard restore still running from the last paste_text, if any.
+_restoring: list[threading.Thread] = []
+
+
+def _in_background(job) -> None:
+    """Run JOB on a thread perform() does not wait for. Not a daemon: a
+    session that quits right after a paste still puts the clipboard back."""
+
+    thread = threading.Thread(target=job, name="OrbynClipboardRestore")
+    _restoring[:] = [thread]
+    thread.start()
+
+
+def _quietly(set_clip, saved) -> None:
+    try:
+        set_clip(saved)
+    except Exception:
+        pass  # a locked clipboard at restore time must not propagate
+        #       or mask the paste's own error (tier-1 review followup)
 
 
 def click_at(x: int, y: int) -> None:
@@ -356,6 +385,7 @@ def perform(
     get_clip=get_clipboard_text,
     focus=None,
     held=None,
+    later=_in_background,
 ) -> str:
     """Do ``step`` on ``target`` (a Candidate in the latest frame); returns a
     short description for the status line. ``window`` is the bound window
@@ -366,8 +396,12 @@ def perform(
     action = step.action
     if action == "none":
         return "nothing to do"
+    for pending in _restoring:  # a paste still restoring finishes first, so a
+        pending.join()  # later paste never reads Orbyn's own text as the user's
     if action == "keys":
         events = chord_events(step.text)  # validate before touching anything
+    if action == "paste_text" and step.text:
+        saved = get_clip()  # refuses a picture or files before anything is sent
     wait_for_release(held or held_input, pause)
     reason = check(x, y, window)
     if reason:
@@ -392,19 +426,20 @@ def perform(
         # Orbyn's to paste (from the plan/brief), not read from the screen.
         if not step.text:
             return "nothing to paste"
-        saved = get_clip()
         try:
             set_clip(step.text)
             send(chord_events("ctrl+v"))
+        except BaseException:
+            _quietly(set_clip, saved)  # always restore, even if the paste raised
+            raise
+
+        def restore():
             pause(0.2)  # ponytail: fixed wait for the app to read the clipboard
             #            before we restore; a slow app could miss it -- raise it
             #            if that shows up, or gate restore on a paste ack.
-        finally:
-            try:
-                set_clip(saved)  # always restore, even if the paste raised
-            except Exception:
-                pass  # a locked clipboard at restore time must not propagate
-                #       or mask the paste's own error (tier-1 review followup)
+            _quietly(set_clip, saved)
+
+        later(restore)  # off the step, so Stop is read again within D020's 0.5 s
         return f"pasted {len(step.text)} characters"
     if action == "copy":
         send(chord_events("ctrl+c"))

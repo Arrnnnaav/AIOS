@@ -19,11 +19,12 @@ from dataclasses import dataclass, field
 
 CONFIDENCE_FLOOR = 0.6  # below this Jev is guessing; hand back (matches teach.gate)
 MARGIN = 0.2  # the top two must be at least this far apart
+MAX_BUSY = 3  # held-key retries in a row before handing back; not counted as steps
 
 
 @dataclass(frozen=True)
 class Result:
-    #: done | handed_back | blocked | max_steps | not_approved | stopped
+    #: done | handed_back | blocked | busy | max_steps | not_approved | stopped
     status: str
     reason: str = ""
     steps: int = 0
@@ -57,7 +58,9 @@ def drive_until(
         return Result("not_approved", "the person has not approved this loop")
     deny = tuple(d.casefold() for d in deny if d)
     history: list[str] = []
-    for step in range(1, max_steps + 1):
+    busy = 0
+    while len(history) < max_steps:  # a retry while the user holds a key is no step
+        step = len(history) + 1
         if stop():
             return Result("stopped", "ESC", step - 1, tuple(history))
         controls = list(observe())
@@ -87,7 +90,11 @@ def drive_until(
             act(control)
         except Exception as exc:
             if getattr(exc, "retry", False):  # the user is holding a key: look again
+                busy += 1
+                if busy > MAX_BUSY:
+                    return Result("busy", str(exc), step - 1, tuple(history))
                 continue
             return Result("blocked", f"could not act: {exc}", step - 1, tuple(history))
+        busy = 0
         history.append(control.name or control.id)
     return Result("max_steps", "reached the step cap", max_steps, tuple(history))
