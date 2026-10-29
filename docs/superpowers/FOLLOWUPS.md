@@ -2125,3 +2125,5 @@ an in-memory checkpoint summary; a weekdays routine cadence. Open:
   this file": a second offer replaces one the page has not taken yet, with
   no notice; an offer accepted by an instance that is quitting is never
   opened.
+- Review of 8f8e092 (empty chord parts refused): `_VK` has no `plus`/`minus` names, so zoom chords such as Ctrl+Plus cannot be written; add named keys if plans need them.
+- Review of 8f8e092: `keys` text is not checked when a plan is parsed (`providers/schemas.py` PlanStep), so a bad chord stops the run after approval; check chords at plan time instead.
