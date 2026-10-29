@@ -2046,6 +2046,18 @@ and `chord_events` refuses the Windows key and Alt+Tab. Open:
   0.4 s while any key or mouse button is held, then retries next tick. Still
   open: Aside's 2 s recent-input window, which needs a native low-level hook
   (a Python hook callback risks system-wide pointer lag).
+  Review of 436d779 (two BLOCKING, fixed: the scan read ESC and so cleared the
+  "pressed since last call" bit the session's ESC poll needs to catch a tap,
+  and the 0.4 s wait sat on top of the 0.15 s focus pause and the 0.2 s
+  paste wait, about 0.75 s before Stop was seen; ESC is no longer read and
+  the wait is 0.1 s, with a whole-step budget test). Open from it: the retry
+  has no cap, so a key that reads as stuck down (remote session, ghost key,
+  pedal) leaves the step "waiting" until `--seconds` -- block with a reason
+  after N tries; the scan covers every VK including X-buttons and VK_PACKET,
+  and does not ignore keys already down at approval; the drive path ends on
+  `UserBusy` instead of retrying; no test that a retry tick re-resolves a
+  control that moved; the "ORBN" signature only labels input -- any process
+  can set `dwExtraInfo`, so it is never an authority check.
 - Focus is re-checked once after the click, before a step's keys (29 Oct);
   Aside re-checks between keys of a long `typeText`. Orbyn sends a step's keys
   in one `SendInput` batch, so a focus steal mid-batch is still possible.

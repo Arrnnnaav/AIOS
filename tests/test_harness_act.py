@@ -13,6 +13,8 @@ from ghostcursor.providers.schemas import parse_teach_plan
 from tests.test_harness_teach import FakeGateway, SyncSlot, _c, _choice, _frame
 
 E = ExpectedChange
+#: The real scan, kept before the autouse fixture below replaces it.
+REAL_HELD_INPUT = act.held_input
 
 
 @pytest.fixture(autouse=True)
@@ -613,3 +615,37 @@ def test_every_event_orbyn_sends_carries_its_signature():
     finally:
         act._send = original
     assert {e.u.mi.dwExtraInfo for e in sent} == {act.INPUT_SIGNATURE}
+
+
+def test_the_held_key_scan_never_reads_escape(monkeypatch):
+    read = []
+
+    class Keys:
+        def GetAsyncKeyState(self, vk):
+            read.append(vk)
+            return 0
+
+    monkeypatch.setattr(act, "_user32", Keys())
+    assert REAL_HELD_INPUT() is False
+    assert 0x1B not in read and {0x01, 0x10, 0x41} <= set(read)
+
+
+def test_a_whole_step_with_a_held_key_stays_inside_the_stop_budget():
+    pauses, calls = [], [0]
+
+    def held():  # held through every poll, let go at the final check: the worst case
+        calls[0] += 1
+        return calls[0] <= round(act.MAX_HELD_WAIT_S / 0.05)
+
+    act.perform(
+        PlanStep("s", E.TITLE_CHANGES, action="paste_text", text="hello"),
+        _c("c1", "Title", "Edit"),
+        held=held,
+        pause=pauses.append,
+        click=lambda x, y: None,
+        send=lambda e: None,
+        check=lambda x, y, window: None,
+        set_clip=lambda t: None,
+        get_clip=lambda: None,
+    )
+    assert sum(pauses) < 0.5  # D020: Stop reaches a running Act within 0.5 s

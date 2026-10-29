@@ -38,8 +38,11 @@ _INPUT_MOUSE, _INPUT_KEYBOARD = 0, 1
 #: way and skips it in its low-level hooks).
 INPUT_SIGNATURE = 0x4E42524F
 #: Before acting, Orbyn waits for the user to let go of any key or mouse
-#: button (Aside's check, minus its hook). The wait stays under D020's 0.5 s.
-MAX_HELD_WAIT_S = 0.4
+#: button (Aside's check, minus its hook). A whole perform() -- this wait, the
+#: 0.15 s focus pause and paste_text's 0.2 s clipboard wait -- stays under
+#: D020's 0.5 s; a longer hold retries on the next tick.
+MAX_HELD_WAIT_S = 0.1
+_VK_ESCAPE = 0x1B
 _KEYUP, _UNICODE = 0x0002, 0x0004
 _MOVE, _LEFTDOWN, _LEFTUP = 0x0001, 0x0002, 0x0004
 _ABSOLUTE, _VIRTUALDESK = 0x8000, 0x4000
@@ -217,9 +220,13 @@ class UserBusy(PermissionError):
 
 def held_input() -> bool:
     """True while any key or mouse button is physically down (GetAsyncKeyState
-    high bit; toggle state such as Caps Lock is ignored)."""
+    high bit; toggle state such as Caps Lock is ignored). ESC is never read
+    here: each read clears its "pressed since last call" bit, and the session's
+    ESC poll needs that bit to catch a quick tap (review of 436d779)."""
 
-    return any(_user32.GetAsyncKeyState(vk) & 0x8000 for vk in range(1, 255))
+    return any(
+        _user32.GetAsyncKeyState(vk) & 0x8000 for vk in range(1, 255) if vk != _VK_ESCAPE
+    )
 
 
 def wait_for_release(held, pause) -> None:
