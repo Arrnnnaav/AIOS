@@ -106,7 +106,7 @@ def redact(
                 continue
             picture.paste(screen.crop(box), box[:2])
     picture = _fit(picture)
-    scale = picture.width / screen.width
+    scale = min(1.0, MAX_SIDE / max(screen.size))  # padding adds no scale
     draw = ImageDraw.Draw(picture)
     font = ImageFont.load_default(size=13)
     for c in mine:

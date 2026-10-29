@@ -357,8 +357,13 @@ def access_token(
             return None
 
 
+#: A refreshed record that could not be saved, by path. OpenAI may rotate the
+#: refresh token, so losing it would sign the user out; kept until a save works.
+_UNSAVED: dict = {}
+
+
 def _current_token(path, transport, now) -> str | None:
-    record = load(path)
+    record = _UNSAVED.get(path) or load(path)
     if not signed_in(record):
         return None
     if now() < float(record.get("expires_at") or 0) - 60:
@@ -382,7 +387,11 @@ def _current_token(path, transport, now) -> str | None:
     if isinstance(body.get("refresh_token"), str):
         record["refresh_token"] = body["refresh_token"]
     record["expires_at"] = now() + int(body.get("expires_in") or 3600)
-    save(record, path)
+    try:
+        save(record, path)
+        _UNSAVED.pop(path, None)
+    except OSError:
+        _UNSAVED[path] = record
     return record["access_token"]
 
 

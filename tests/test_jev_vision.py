@@ -332,3 +332,12 @@ def test_the_check_failing_keeps_the_answer(tmp_path):
     )
     assert [c.status for c in graph.claims] == [ClaimStatus.SUPPORTED]
     assert "check: timeout" in trace.failures and "Jev" not in trace.privacy
+
+
+def test_outlines_line_up_on_a_narrow_padded_window():
+    from ghostcursor.harness.vision import MARK
+
+    frame = _frame([_c(1, "Bold", "Button", (10, 50, 60, 90))], window=(0, 0, 240, 200))
+    picture = redact(frame, "w1", _red((240, 200)), MINE)
+    assert picture.width >= MIN_SIDE  # padded
+    assert picture.getpixel((59, 89)) == MARK  # the outline's corner, unscaled

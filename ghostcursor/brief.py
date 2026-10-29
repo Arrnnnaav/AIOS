@@ -31,6 +31,7 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -119,13 +120,23 @@ def append_turn(
     existing = path.read_text(encoding="utf-8") if path.exists() else ""
     if not existing:
         block = f"# {topic}\n\n" + block
+    if len((existing + block).encode("utf-8")) > MAX_BRIEF_BYTES:
+        # load_brief refuses a larger file, which would lock the topic for good.
+        raise BriefError(f"topic {topic!r} is full; start a new topic to go on")
     # A brief's exact bytes are hashed and bound to every proposal made from
     # it (D113), so newline translation would make the digest depend on the
     # platform that appended the turn.
     # Write-then-rename: a crash mid-write must not truncate the history.
     partial = path.with_name(path.name + ".partial")
     partial.write_text(existing + block, encoding="utf-8", newline="\n")
-    os.replace(partial, path)
+    for attempt in range(5):  # a reader (the page's poll) may hold the file
+        try:
+            os.replace(partial, path)
+            break
+        except PermissionError:
+            if attempt == 4:
+                raise
+            time.sleep(0.05)
     return path
 
 

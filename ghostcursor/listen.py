@@ -152,12 +152,13 @@ class Listener:
         record until release and send it. Tapped: arm the next utterance."""
 
         start = self.clock()
+        self.held = []  # from key-down: the first words come during the tap wait
         while down() and self.clock() - start < HOLD_S:
             time.sleep(0.02)
         if self.clock() - start < HOLD_S:
+            self.held = None
             self.arm(why)
             return
-        self.held = []
         self.say("Listening (hold)… release to send.")
         try:
             while down() and self.clock() - start < MAX_UTTERANCE_S and not self._stop.is_set():
@@ -165,7 +166,11 @@ class Listener:
         finally:
             frames, self.held = self.held, None
         samples = np.concatenate(frames) if frames else np.zeros(0, "float32")
-        text = self.hear(samples) if len(samples) >= RATE * 0.3 else ""
+        try:
+            text = self.hear(samples) if len(samples) >= RATE * 0.3 else ""
+        except Exception as exc:  # a model load failure must not end the hotkey
+            self.say(f"Voice unavailable: {exc}")
+            return
         if text:
             self.on_request(text)
         else:

@@ -173,6 +173,10 @@ def test_agent(spec: AgentSpec) -> list[str]:
         issues.append("the goal can delete/send/spend but names nothing to never touch")
     if not spec.goal_template.strip():
         issues.append("the goal is empty")
+    try:
+        spec.goal_template.format_map(dict.fromkeys(re.findall(r"{(\w+)}", spec.goal_template), ""))
+    except (ValueError, IndexError, KeyError, AttributeError):
+        issues.append("the goal has a stray { or }; slots look like {name}")
     # A spec that tells the agent to do the very thing its deny list forbids can
     # never finish: it would try every run and be blocked every run. Catch the
     # contradiction at build time (deterministic, no model needed).
@@ -194,7 +198,10 @@ def filled_goal(spec: AgentSpec, values: dict | None = None) -> str:
         def __missing__(self, key):
             return "{" + key + "}"
 
-    return spec.goal_template.format_map(_Safe(values or {}))
+    try:
+        return spec.goal_template.format_map(_Safe(values or {}))
+    except (ValueError, IndexError, AttributeError):  # "{}", a lone "{", "{a.b}"
+        return spec.goal_template
 
 
 def dry_run(spec: AgentSpec, gateway, values: dict | None = None) -> list[str]:
@@ -269,7 +276,7 @@ def list_specs(root: Path) -> list[AgentSpec]:
     for path in sorted(_dir(root).glob("*.json")):
         try:
             out.append(load(root, path.stem))
-        except ValueError:
+        except (ValueError, ProviderError):  # parse_agent raises ProviderError
             continue  # a corrupt file is skipped, not fatal
     return out
 

@@ -297,3 +297,40 @@ def test_holding_the_hotkey_records_until_release_and_a_tap_arms():
 
     listener.pressed(silent_hold)
     assert sent == ["book the room"] and said[-1] == "Didn't catch that."
+
+
+def test_words_said_during_the_tap_wait_are_kept():
+    listener, sent, clock = _listener([])
+    heard = []
+    listener.hear = lambda samples, *a: heard.append(len(samples)) or "go"
+    start = clock.now
+
+    def hold():
+        clock.now += 0.1
+        if listener.held is not None:
+            listener.held.append(np.full(1600, 0.1, "float32"))
+        return clock.now - start < 1.0
+
+    listener.pressed(hold)
+    assert heard[0] >= 1600 * 10  # every 0.1 s from key-down, the first 0.35 s too
+
+
+def test_a_speech_failure_is_said_and_the_hotkey_lives_on():
+    listener, sent, clock = _listener([])
+    said = []
+    listener.say = said.append
+
+    def boom(*a):
+        raise RuntimeError("no model")
+
+    listener.hear = boom
+    start = clock.now
+
+    def hold():
+        clock.now += 0.1
+        if listener.held is not None:
+            listener.held.append(np.full(1600, 0.1, "float32"))
+        return clock.now - start < 1.0
+
+    listener.pressed(hold)  # does not raise
+    assert said[-1] == "Voice unavailable: no model" and sent == []

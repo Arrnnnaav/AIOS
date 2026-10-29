@@ -376,3 +376,13 @@ def test_a_failed_append_leaves_the_existing_brief_intact(tmp_path, monkeypatch)
     monkeypatch.undo()
     assert path.read_bytes() == before
     assert os.path.exists(path)
+
+
+def test_a_full_topic_refuses_a_turn_instead_of_locking_itself(tmp_path, monkeypatch):
+    from ghostcursor import brief
+
+    monkeypatch.setattr(brief, "MAX_BRIEF_BYTES", 200)
+    brief.append_turn(tmp_path, "t", "user", "hello")
+    with pytest.raises(brief.BriefError, match="full"):
+        brief.append_turn(tmp_path, "t", "user", "x" * 300)
+    assert brief.load_brief(brief.brief_path(tmp_path, "t"))  # still readable

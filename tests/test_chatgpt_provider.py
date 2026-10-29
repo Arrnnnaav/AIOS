@@ -435,3 +435,23 @@ def test_hermetic_tests_never_see_a_real_token():
 
     assert "ORBYN_CHATGPT_API_KEY" not in os.environ
     assert keys.get_key("chatgpt") is None
+
+
+def test_a_refreshed_token_that_cannot_be_saved_is_kept_in_memory(tmp_path, monkeypatch):
+    path = tmp_path / "c.cred"
+    chatgpt.save(_complete(_reply()), path)
+    forms = []
+
+    def token(request):
+        forms.append(dict(httpx.QueryParams(request.content.decode())))
+        return httpx.Response(200, json={"access_token": f"at{len(forms) + 1}", "refresh_token": f"rt{len(forms) + 1}"})
+
+    def no_disk(record, path=None):
+        raise PermissionError("locked")
+
+    monkeypatch.setattr(chatgpt, "save", no_disk)
+    monkeypatch.setattr(chatgpt, "_UNSAVED", {})
+    transport = httpx.MockTransport(token)
+    assert chatgpt.access_token(path=path, transport=transport, now=lambda: 4560.0) == "at2"
+    assert chatgpt.access_token(path=path, transport=transport, now=lambda: 9000.0) == "at3"
+    assert forms[1]["refresh_token"] == "rt2"  # the rotated token, not the dead one on disk

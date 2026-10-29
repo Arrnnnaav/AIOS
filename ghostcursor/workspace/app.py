@@ -579,7 +579,8 @@ class App:
 
     def handle(self, action: str, body: dict):
         ws = self.ws
-        text = str(body.get("text", "")).strip()
+        text = body.get("text")
+        text = text.strip() if isinstance(text, str) else ""
         if action == "state":
             self.seen = time.monotonic()
             return self.state()

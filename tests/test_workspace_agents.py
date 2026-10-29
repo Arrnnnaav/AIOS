@@ -212,3 +212,16 @@ def test_the_auto_test_catches_a_goal_that_names_a_denied_control():
         "deny": ["Delete"],
     }))
     assert any("could never finish" in i for i in agents.test_agent(bad))
+
+
+def test_a_corrupt_agent_file_is_skipped_not_fatal(tmp_path):
+    agents.save(tmp_path, agents.parse_agent(json.dumps(GOOD)))
+    (agents._dir(tmp_path) / "bad.json").write_text("{}", encoding="utf-8")
+    assert len(agents.list_specs(tmp_path)) == 1
+
+
+@pytest.mark.parametrize("template", ["Enter {} now", "open { the deck", "close } it"])
+def test_a_stray_brace_is_flagged_and_never_crashes(template):
+    spec = agents.parse_agent(json.dumps({**GOOD, "goal_template": template}))
+    assert agents.filled_goal(spec) == template
+    assert any("stray" in issue for issue in agents.test_agent(spec))
