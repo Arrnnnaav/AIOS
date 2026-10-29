@@ -22,6 +22,10 @@ import json
 import math
 import pathlib
 import sys
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from datetime import datetime
 
 INTENT_ID = "ADD_SLIDE"
 PACK_ID = "powerpoint"

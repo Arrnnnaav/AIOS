@@ -86,6 +86,7 @@ import time
 from dataclasses import replace
 from pathlib import Path
 
+from ghostcursor import telemetry
 from ghostcursor.harness.frame import HIDDEN_NAME, reveals_document
 from ghostcursor.workspace.brain import Brain
 from ghostcursor.workspace.contracts import SpatialContextReference
@@ -483,7 +484,7 @@ def main(argv: list[str] | None = None) -> int:
     brain = Brain()
     workspace = Workspace(argv[0], Gateway(), brain, knowledge=Knowledge())
     from ghostcursor.workspace import tips
-    from ghostcursor.workspace.clips import Clips
+    from ghostcursor.workspace.clips import Clips, _preview
 
     clips = Clips()
 

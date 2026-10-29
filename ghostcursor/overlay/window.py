@@ -14,11 +14,18 @@ invalidate the window. Drawing outside WM_PAINT leaves the window surface
 uninitialised, which renders as opaque garbage covering the screen.
 """
 
+from typing import TYPE_CHECKING
+
 import win32api
 import win32con
 import win32gui
 
 from ghostcursor.overlay import dpi
+
+if TYPE_CHECKING:  # annotations only; imported lazily where used
+    from ghostcursor.overlay import cue as cue_layout
+    from ghostcursor.overlay.cue import CueScene
+    from ghostcursor.reasoning.staleness import Freshness
 
 # Colour that SetLayeredWindowAttributes makes fully transparent. Any pixel
 # painted in this exact colour disappears; everything else is opaque.
