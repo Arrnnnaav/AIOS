@@ -128,9 +128,10 @@ def chord_events(chord: str) -> list[_INPUT]:
     Alt+Tab are refused too: they reach the shell or another app, outside the
     window the user approved (Aside's computer-use helper refuses them too)."""
 
+    # An empty part ("ctrl++") reaches vk_of and is refused, not dropped:
+    # dropping it would send a different chord from the one the plan showed.
     names = [n.strip().casefold() for n in chord.split("+")]
-    names = [n for n in names if n]
-    if not names or {"esc", "escape"} & set(names):
+    if {"esc", "escape"} & set(names):
         raise ValueError(f"refused key chord {chord!r}")
     vks = [vk_of(n) for n in names]
     # Judged on the key codes, so no spelling of a name slips past.

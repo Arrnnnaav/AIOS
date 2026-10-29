@@ -149,7 +149,7 @@ def test_perform_clicks_the_observed_centre_then_sends_the_action():
     assert run("none") == "nothing to do" and not clicks
 
 
-@pytest.mark.parametrize("chord", ["", "ctrl+banana"])
+@pytest.mark.parametrize("chord", ["", "ctrl+banana", "ctrl++", "ctrl+ ", "+s"])
 def test_bad_key_chords_are_refused(chord):
     with pytest.raises(ValueError):
         act.chord_events(chord)
