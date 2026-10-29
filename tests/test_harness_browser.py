@@ -94,3 +94,21 @@ def test_drive_refuses_without_approval(page):
     _, p = page
     r = p.drive("do it", object(), approved=False)
     assert r.status == "not_approved"
+
+
+def test_closing_the_browser_deletes_its_temporary_profile(tmp_path):
+    from ghostcursor.harness.browser import Browser
+
+    profile = tmp_path / "orbyn-cdp-x"
+    (profile / "Default").mkdir(parents=True)
+    (profile / "Default" / "Cookies").write_bytes(b"c")
+
+    class Proc:
+        def terminate(self):
+            pass
+
+        def wait(self, timeout):
+            return 0
+
+    Browser(Proc(), 0, str(profile)).close()
+    assert not profile.exists()

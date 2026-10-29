@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import os
 import socket
+import shutil
 import subprocess
 import tempfile
 import time
@@ -100,7 +101,7 @@ class Browser:
                 return cls(proc, port, profile)
             except Exception:
                 time.sleep(0.2)
-        proc.terminate()
+        cls(proc, port, profile).close()
         raise RuntimeError("browser did not open a debugging port in time")
 
     def tabs(self) -> list[PageTab]:
@@ -122,8 +123,11 @@ class Browser:
     def close(self) -> None:
         try:
             self.proc.terminate()
+            self.proc.wait(timeout=5)
         except Exception:
             pass
+        # The profile holds cookies and history of the pages Orbyn visited.
+        shutil.rmtree(self.profile, ignore_errors=True)
 
     def __enter__(self) -> "Browser":
         return self

@@ -653,3 +653,46 @@ def test_a_whole_step_with_a_held_key_stays_inside_the_stop_budget():
 
 def test_a_key_name_with_a_space_inside_still_works():
     assert [e.u.ki.wVk for e in act.chord_events("ctrl+page down")] == [0x11, 0x22, 0x22, 0x11]
+
+
+def test_an_emoji_is_typed_as_its_surrogate_pair():
+    events = act.text_events("a\U0001F600")
+    assert [e.u.ki.wScan for e in events] == [0x61, 0x61, 0xD83D, 0xD83D, 0xDE00, 0xDE00]
+
+
+def test_a_confident_no_after_typing_blocks_instead_of_typing_again():
+    from ghostcursor.providers.schemas import Choice
+
+    session, done, clock = _session(
+        [PlanStep("Type the title", E.TITLE_CHANGES, action="type", text="Q3")],
+        [_choice("c1"), _choice("c1")],
+    )
+    session.gateway.judge = lambda env, qs, **k: {
+        "happened": Choice("no", {"no": 0.95, "yes": 0.05})
+    }
+    frame = lambda fid=1: _frame([_c(1, state="selected=0")], frame_id=fid)
+    session.tick(frame())
+    session.tick(frame(), confirm=True)
+    clock.now = ACT_SETTLE_S
+    out = session.tick(frame(fid=2))
+    assert out.phase is Phase.BLOCKED and len(done) == 1
+
+
+def test_step_verification_never_runs_on_the_ui_tick():
+    """The verify call goes to the worker slot; a slot that has not answered
+    yet leaves the tick free to return (and the loop free to read ESC)."""
+    from ghostcursor.providers.schemas import Choice
+
+    session, done, clock = _session(
+        [PlanStep("Click Insert", E.CHOSEN_STATE_CHANGES)], [_choice("c1")]
+    )
+    session.gateway.judge = lambda env, qs, **k: {"happened": Choice("no", {"no": 0.95})}
+    frame = lambda fid=1: _frame([_c(1, state="selected=0")], frame_id=fid)
+    session.tick(frame())
+    session.tick(frame(), confirm=True)
+    submitted = []
+    session.slot.submit = lambda work: submitted.append(work) or 99
+    session.slot.poll = lambda rid: None
+    clock.now = ACT_SETTLE_S
+    out = session.tick(frame(fid=2))
+    assert len(submitted) == 1 and out.phase is Phase.SHOWING and session.completed == []

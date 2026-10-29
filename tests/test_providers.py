@@ -728,3 +728,11 @@ def test_a_padded_fake_tag_cannot_hide_across_a_chunk_split(pad):
 )
 def test_ordinary_markup_is_not_taken_for_a_role_tag(markup):
     assert sanitize(markup) == markup
+
+
+@pytest.mark.parametrize(
+    "secret", ["Authorization: Bearer s3cr3tTok9", "key AKIAIOSFODNN7EXAMPLE"]
+)
+def test_screen_text_with_a_credential_is_masked(secret):
+    text = Tainted.of("ocr", secret).text
+    assert "s3cr3tTok9" not in text and "AKIAIOSFODNN7EXAMPLE" not in text

@@ -493,7 +493,25 @@ class ModelTeachSession:
                 # re-looks instead of counting a false completion; anything else
                 # (yes, unsure, Jev down) lets the settle stand (fail-open).
                 if getattr(self.gateway, "judge", None) is not None:
-                    if self._verify_says_no(step, frame):
+                    # On the worker like every model call: the UI loop polls
+                    # ESC and Stop and must never wait on Jev (rule 4, D020).
+                    if self._request is None:
+                        self._request = self.slot.submit(
+                            lambda cancelled: self._verify_says_no(step, frame)
+                        )
+                    verdict = self.slot.poll(self._request)
+                    if verdict is None:
+                        return Display(self.phase, self.message)
+                    self._request = None
+                    if verdict.error is None and verdict.value:
+                        if step.action != "click":
+                            # Typing or keys again could double the text or
+                            # repeat a shortcut: the user decides instead.
+                            self._block(
+                                f"step {self.step + 1} may not have taken effect; "
+                                "check it before running Orbyn again"
+                            )
+                            return Display(self.phase, self.message)
                         self._reask("the step did not take effect")
                         return Display(self.phase, self.message)
                     settle_why = "acted (Jev: likely done)"

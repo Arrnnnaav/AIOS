@@ -100,6 +100,12 @@ def test_drive_live_wiring_without_a_desktop(monkeypatch):
     class Cand:
         cid: str
         name: str
+        window: str = "w1"
+        rect: tuple = (0, 0, 40, 20)
+
+        @property
+        def runtime_id(self):
+            return (self.cid,)
 
     class Frame:
         candidates = (Cand("w1-1", "Insert"), Cand("w1-2", "Delete"))
@@ -145,3 +151,40 @@ def test_a_busy_user_costs_a_step_not_the_run():
     r = drive_until("g", observe=lambda: [C("a", "Save")],
                     choose=lambda g, c: next(picks), act=act, approved=True)  # fmt: skip
     assert r.status == "done" and tries == ["a", "a"]
+
+
+def test_drive_live_never_clicks_a_control_that_moved_during_the_model_call():
+    from ghostcursor.harness import teach_live
+    from ghostcursor.providers.schemas import Choice
+
+    @dataclass(frozen=True)
+    class Cand:
+        cid: str
+        name: str
+        rect: tuple
+        window: str = "w1"
+
+        @property
+        def runtime_id(self):
+            return (self.cid,)
+
+    class Frame:
+        def __init__(self, rect):
+            self.candidates = (Cand("w1-1", "Insert", rect),)
+
+        def get(self, cid):
+            return next((c for c in self.candidates if c.cid == cid), None)
+
+    frames = iter([Frame((0, 0, 40, 20)), Frame((500, 500, 540, 520))])
+
+    class G:
+        def choose(self, envelope, option_ids, **kw):
+            return Choice("w1-1", {"w1-1": 0.95})
+
+    acted = []
+    r = teach_live.drive_live(
+        "open insert", None, approved=True, gateway=G(),
+        _observe=lambda: next(frames),
+        _perform=lambda step, target: acted.append(target.cid) or "clicked",
+    )  # fmt: skip
+    assert r.status == "blocked" and "moved" in r.reason and acted == []

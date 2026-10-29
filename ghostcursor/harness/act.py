@@ -145,8 +145,11 @@ def text_events(text: str) -> list[_INPUT]:
     for char in text.replace("\r\n", "\n"):
         if char == "\n":
             events += [_key(0x0D), _key(0x0D, up=True)]
-        else:
-            events += [_key(char=char), _key(char=char, up=True)]
+        else:  # wScan is 16 bits: an emoji goes as its surrogate pair
+            units = char.encode("utf-16-le")
+            for unit in (units[i : i + 2] for i in range(0, len(units), 2)):
+                code = chr(int.from_bytes(unit, "little"))
+                events += [_key(char=code), _key(char=code, up=True)]
     return events
 
 

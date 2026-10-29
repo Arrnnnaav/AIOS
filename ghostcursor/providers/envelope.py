@@ -45,6 +45,12 @@ _FAKE_MARKER = re.compile(
 _CONTROL = re.compile(r"[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩﻿­᠎⁠-⁤]")
 
 
+#: The DLP pass's credential recognisers (D186), run on every Tainted value:
+#: envelope.scrub alone missed "Bearer <token>" and AWS key ids. Only these --
+#: its phone pattern would also mask dates such as 2026-10-16 on screen.
+_CREDENTIALS = tuple(p for c, p in redact._PATTERNS if c in ("PEM", "JWT", "KEY"))
+
+
 def neutralize(text: str) -> str:
     """TEXT with fake role tags and section markers replaced."""
 
@@ -134,7 +140,10 @@ class Tainted:
 
     @staticmethod
     def of(source: str, value: object) -> "Tainted":
-        return Tainted(sanitize(source, 40), scrub(sanitize(value)))
+        text = scrub(sanitize(value))
+        for pattern in _CREDENTIALS:
+            text = pattern.sub("[token]", text)
+        return Tainted(sanitize(source, 40), text)
 
 
 @dataclass(frozen=True)

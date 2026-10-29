@@ -22,7 +22,12 @@ from ghostcursor.harness.binding import (
     bindable_windows,
     still_bound,
 )
-from ghostcursor.harness.frame import ObservationFrame, WindowObservation, build_frame
+from ghostcursor.harness.frame import (
+    ObservationFrame,
+    WindowObservation,
+    build_frame,
+    resolve,
+)
 from ghostcursor.harness.teach import ModelTeachSession, Phase
 from ghostcursor.harness.uia_reader import is_minimized, read_window, window_facts
 
@@ -278,9 +283,15 @@ def drive_live(
         )
 
     def act(pick):
-        target = state["frame"].get(pick.id)
+        chosen = state["frame"].get(pick.id)
+        # choose() is a model call that can take seconds: resolve the pick in
+        # the latest frame, as Teach does, and never click an old rectangle.
+        latest = _observe() if _observe is not None else observer.latest()
+        target = None if chosen is None or latest is None else resolve(chosen, latest)
         if target is None:
-            raise RuntimeError("the control went away")
+            raise RuntimeError("the control moved or went away")
+        if any(d and d.casefold() in (target.name or "").casefold() for d in deny):
+            raise PermissionError(f"{target.name!r} is on the deny list")
         did = (
             _perform(click, target)
             if _perform
