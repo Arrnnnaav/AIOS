@@ -58,7 +58,7 @@ release acceptance is still pending.
   choose Show archived; unkept archived results still age out of the 20-job
   inbox. One workspace job runs at a time;
   Stop cancels it cooperatively. A crash marks it interrupted without retry.
-- **Routines** — schedule hourly, daily or weekly research from Work. Enabled
+- **Routines** — schedule hourly, daily, weekday or weekly research from Work. Enabled
   routines run while Orbyn and the PC are awake, even with the window closed;
   pause, resume, run now, delete or Quit Orbyn there. A missed time runs once
   after wake, with no catch-up burst. A crash may skip an occurrence rather

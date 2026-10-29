@@ -295,8 +295,9 @@ server stays alive while that worker is busy even if the page closes; after a
 restart, a stale running entry becomes interrupted with no retry. It cannot
 launch Teach, Act, an agent, or a connector. Each topic file has one intended writer;
 concurrent workspace app processes for the same topic are not coordinated.
-The per-topic `.routines.json` file stores hourly, daily, or weekly research
-questions and next-due times. A due routine enters the same single-worker
+The per-topic `.routines.json` file stores hourly, daily, weekdays (Monday to
+Friday, local time; `app.next_due`) or weekly research questions and next-due
+times. A due routine enters the same single-worker
 research job path; an idle tick coalesces missed intervals into one run and
 reschedules from the actual start. Enabled routines keep the app process alive
 after its window closes; Quit stops the process and active job. Pausing a
@@ -336,6 +337,20 @@ chunk boundaries are masked; the gateway still enforces organisation egress
 policy. Stop is passed to the gateway cancellation hook.
 The answer stays in the open sheet, which is cleared on close; only the generic
 “Asking file” state is written to activity history.
+
+Chat sends the newest 20 turns that fit 3,000 tokens. Turns that fall out of
+that window are folded into one structured summary (goal, constraints, done,
+open, decisions, next steps, critical details) by a separate `checkpoint`
+request, refreshed after ten more turns drop (`Workspace._earlier_summary`).
+The summary rides the tainted channel as `earlier_summary`, lives only in
+memory, and is skipped without error when no model answers.
+
+Every tainted value, and long material before it is split into chunks, has
+text imitating a chat role tag (`<system>`, `<|im_start|>`) or the envelope's
+own `TRUSTED_CONTEXT` / `OBSERVED_DATA` markers replaced with
+`[control tag removed]` (`envelope.neutralize`, after NFKC so full-width
+look-alikes are caught); the request then tells the model that text was
+removed (taken from Aside, `docs/evidence/aside-daemon-rea-2026-10-29.md`).
 
 ---
 

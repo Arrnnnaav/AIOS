@@ -2012,9 +2012,9 @@ that way, or route them through tainted if research ever shapes them; a deck
 outline over 8,000 chars is cut (the proposal now says so, and the plan may
 miss later slides; chunking into several build plans is the upgrade), and
 `sanitize` collapses its newlines so slides rest on the "Slide N" markers.
-Review of 25755e4 (no BLOCKING): the OBSERVED_DATA label still says "read
-from the user's screen" although web claims, Brain facts and plan steps now
-use it (a neutral "untrusted data" label would fit); the critic now judges
+Review of 25755e4 (no BLOCKING): the OBSERVED_DATA label said "read from the
+user's screen" although web claims, Brain facts and plan steps use it (RESOLVED
+2026-10-29: it now says screen, files, the web or saved notes); the critic now judges
 plan steps it is told are never instructions -- critique quality was not
 re-checked against a live model; deck grounding is bounded (subquestions x 8
 claims) but not capped, and overflow fails closed; `agents.dry_run` still puts
@@ -2057,3 +2057,21 @@ and `chord_events` refuses the Windows key and Alt+Tab. Open:
   Re-check of 0047647: no BLOCKING; an owned window from another process
   (some hosted or COM dialogs) is accepted -- add a same-process check if
   no real dialog needs it.
+
+## Aside full teardown: what was added and what is open -- 2026-10-29
+
+Added: fake role tags and envelope markers in tainted text are replaced
+(`envelope.neutralize`); Chat folds turns that leave the history window into
+an in-memory checkpoint summary; a weekdays routine cadence. Open:
+
+- The checkpoint is in memory only, so after a restart the first long chat
+  rebuilds it from the newest 3,000 tokens of the dropped turns; older ones
+  are lost then. Persist it beside the brief if that bites.
+- `neutralize` also replaces harmless tags that start with a role word
+  (`<username>`, `<toolbar>`); fine for model input, visible in "Sent N
+  characters".
+- Not taken from Aside: Context Awareness (an always-on capture of the user's
+  activity, summarised per window into a journal) needs an owner decision on
+  an observation path (rule 6, sessions.sqlite); proactivity mode mines
+  password vaults, cookies and history; final-confirm review drafts are for
+  sending messages Orbyn cannot send; per-app tips are macOS bundle ids only.
