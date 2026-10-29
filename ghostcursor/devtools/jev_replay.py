@@ -58,7 +58,7 @@ def compare(
         b = _answer(case, model_b, key=key, transport=transport)
         for qid in case["questions"]:
             total += 1
-            if a.get(qid) == b.get(qid):
+            if a.get(qid) is not None and a.get(qid) == b.get(qid):  # two blanks are not agreement
                 agree += 1
             else:
                 diffs.append(

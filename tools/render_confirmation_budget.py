@@ -202,7 +202,7 @@ def main(argv=None) -> int:
     report = derive(args.records, args.excluded)
     rendered = render(report)
     if args.check:
-        if not args.out.is_file() or args.out.read_text(encoding="utf-8") != rendered:
+        if not args.out.is_file() or args.out.read_bytes() != rendered.encode("utf-8"):
             raise SystemExit("refused: rendered confirmation budget is stale")
     else:
         args.out.parent.mkdir(parents=True, exist_ok=True)

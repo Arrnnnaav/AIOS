@@ -181,8 +181,8 @@ def main(argv=None) -> int:
 
     rendered = render(by_intent)
     if args.check:
-        current = args.out.read_text(encoding="utf-8") if args.out.exists() else ""
-        if current != rendered:
+        current = args.out.read_bytes() if args.out.exists() else b""
+        if current != rendered.encode("utf-8"):  # bytes: read_text would fold CRLF
             print(
                 f"refused: {args.out} is not what the records render", file=sys.stderr
             )

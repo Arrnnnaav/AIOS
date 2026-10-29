@@ -38,3 +38,11 @@ def test_full_agreement_has_no_diffs():
     t = _transport({"jev-latest": ["a", "b"], "jev-preview": ["a", "b"]})
     r = compare(CASES, "jev-latest", "jev-preview", key="k", transport=t)
     assert r.agree == 2 and r.diffs == () and r.agreement == 1.0
+
+
+def test_two_missing_answers_are_not_agreement(monkeypatch):
+    from ghostcursor.devtools import jev_replay
+
+    monkeypatch.setattr(jev_replay, "_answer", lambda case, model, **kw: {})
+    report = jev_replay.compare([{"questions": {"q1": "?"}}], "a", "b", key="k")
+    assert report.agree == 0 and report.total == 1
