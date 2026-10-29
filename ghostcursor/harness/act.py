@@ -27,6 +27,9 @@ _user32.GetWindowThreadProcessId.argtypes = (
     wintypes.HWND,
     ctypes.POINTER(wintypes.DWORD),
 )
+_user32.GetWindow.restype = wintypes.HWND
+_user32.GetWindow.argtypes = (wintypes.HWND, wintypes.UINT)
+_user32.GetClassNameW.argtypes = (wintypes.HWND, wintypes.LPWSTR, ctypes.c_int)
 
 _INPUT_MOUSE, _INPUT_KEYBOARD = 0, 1
 _KEYUP, _UNICODE = 0x0002, 0x0004
@@ -101,7 +104,7 @@ def vk_of(name: str) -> int:
     name = name.strip().casefold()
     if name in _VK:
         return _VK[name]
-    if len(name) == 1 and name.isalnum():
+    if len(name) == 1 and name.isascii() and name.isalnum():  # not media keys
         return ord(name.upper())
     if name.startswith("f") and name[1:].isdigit() and 1 <= int(name[1:]) <= 12:
         return 0x70 + int(name[1:]) - 1
@@ -114,15 +117,14 @@ def chord_events(chord: str) -> list[_INPUT]:
     Alt+Tab are refused too: they reach the shell or another app, outside the
     window the user approved (Aside's computer-use helper refuses them too)."""
 
-    names = [n for n in chord.replace(" ", "").split("+") if n]
-    folded = {n.casefold() for n in names}
-    if (
-        not names
-        or folded & {"esc", "escape", "win"}
-        or {"alt", "tab"} <= folded
-    ):
+    names = [n.strip().casefold() for n in chord.split("+")]
+    names = [n for n in names if n]
+    if not names or {"esc", "escape"} & set(names):
         raise ValueError(f"refused key chord {chord!r}")
     vks = [vk_of(n) for n in names]
+    # Judged on the key codes, so no spelling of a name slips past.
+    if {0x1B, 0x5B, 0x5C} & set(vks) or {0x12, 0x09} <= set(vks):
+        raise ValueError(f"refused key chord {chord!r}")
     return [_key(v) for v in vks] + [_key(v, up=True) for v in reversed(vks)]
 
 
@@ -263,14 +265,31 @@ def blocker(x: int, y: int, window: int | None = None) -> str | None:
         _user32.GetWindowThreadProcessId(root, ctypes.byref(pid))
     if pid.value and _elevated(pid.value) and not _elevated():
         return "that window runs as administrator; Orbyn cannot act in it"
-    if window is not None:
-        owner = wintypes.DWORD()
-        _user32.GetWindowThreadProcessId(window, ctypes.byref(owner))
-        # Same process, not same window: the app's own menus and dialogs
-        # are separate top-level windows the control may live in.
-        if not root or not owner.value or pid.value != owner.value:
-            return "that control is off screen or covered by another window"
+    if window is not None and not _on_bound_window(root, window):
+        return "that control is off screen or covered by another window"
     return None
+
+
+def _on_bound_window(root: int, window: int) -> bool:
+    """True if ROOT, the top-level window under the point, is the bound
+    window, a window it owns (its dialogs), or a menu on its UI thread.
+    Another window of the same app (a second presentation) is not."""
+
+    bound = _user32.GetAncestor(window, 2) if window else 0  # GA_ROOT
+    if not root or not bound:
+        return False
+    owner = root
+    for _ in range(16):  # owner chains are short; a cycle must not hang
+        if not owner:
+            break
+        if owner == bound:
+            return True
+        owner = _user32.GetWindow(owner, 4)  # GW_OWNER
+    name = ctypes.create_unicode_buffer(16)
+    _user32.GetClassNameW(root, name, 16)
+    return name.value == "#32768" and _user32.GetWindowThreadProcessId(
+        root, None
+    ) == _user32.GetWindowThreadProcessId(bound, None)
 
 
 def perform(

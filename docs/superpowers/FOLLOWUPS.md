@@ -2042,7 +2042,15 @@ and `chord_events` refuses the Windows key and Alt+Tab. Open:
   changed or became protected, so no more keys were sent"). Orbyn sends a
   step's keys in one `SendInput` batch after one click; a focus steal mid-batch
   would type into the wrong control.
-- The covered-window check compares processes, not windows, so a control
-  under another window of the same app is still clicked. The live wrapper in
-  `run_model_teach` that passes the bound window has no direct test (only
-  `_live_perform` does).
+- Review of d0f3e5a (three BLOCKING, fixed in the next commit): the chord
+  guard now judges key codes after the same strip/casefold `vk_of` uses
+  (tabs and no-break spaces slipped past), single-character keys are ASCII
+  only (`"ª"` was VK_BROWSER_SEARCH), and the covered check accepts
+  only the bound window, windows it owns, or a `#32768` menu on its thread
+  (a second presentation of the same app no longer passes). Open from that
+  review: `perform(window=None)` skips the check silently (make it required);
+  keys go 0.15 s after the click without re-checking the foreground window;
+  the `run_model_teach` closure and the drive lookup have no direct test; a
+  missing label surfaces as a bare KeyError; alt+f4, f1 and ctrl+alt+arrows
+  are allowed; a closed bound HWND reused by another process is not caught
+  (pin the bound PID at bind time).

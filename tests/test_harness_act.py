@@ -160,10 +160,24 @@ def test_the_stop_key_is_refused_by_the_guard_in_any_case(chord):
 
 # The Windows key and Alt+Tab leave the approved window (shell, Run dialog,
 # lock screen, another app); a model-written plan must not reach them.
-@pytest.mark.parametrize("chord", ["win", "WIN+r", "win+d", "alt+tab", "Alt+Shift+Tab"])
+@pytest.mark.parametrize(
+    "chord",
+    [
+        "win", "WIN+r", "win+d", "alt+tab", "Alt+Shift+Tab",
+        # other whitespace must not slip a name past the guard (review of d0f3e5a)
+        "win\t", "\twin+r", "win\u00a0", "alt\t+tab", "alt+tab\n", "esc\t",
+    ],
+)  # fmt: skip
 def test_keys_that_leave_the_approved_window_are_refused(chord):
     with pytest.raises(ValueError, match="refused key chord"):
         act.chord_events(chord)
+
+
+@pytest.mark.parametrize("key", ["\u00aa", "\u00b3", "\u00e9"])
+def test_a_non_ascii_letter_is_not_a_key(key):
+    # isalnum() is true for these, and ord() would be a browser/media key.
+    with pytest.raises(ValueError):
+        act.vk_of(key)
 
 
 def test_ordinary_shortcuts_still_pass():
@@ -418,11 +432,13 @@ def test_paste_text_restore_failure_does_not_mask_the_real_error():
 
 
 class _Desk:
-    """user32 for blocker(): default desktop, one window at every point,
-    its process ``at``; the bound window's process is ``bound``."""
+    """user32 for blocker(): default desktop, window ``hit`` at every point,
+    every window top-level and in one process; ``owners``, ``classes`` and
+    ``threads`` describe the windows."""
 
-    def __init__(self, at, bound, hit=7):
-        self.at, self.bound, self.hit = at, bound, hit
+    def __init__(self, hit, owners=(), classes=(), threads=()):
+        self.hit, self.owners = hit, dict(owners)
+        self.classes, self.threads = dict(classes), dict(threads)
 
     def OpenInputDesktop(self, *_):
         return 1
@@ -439,20 +455,42 @@ class _Desk:
     def GetAncestor(self, hwnd, _flag):
         return hwnd
 
+    def GetWindow(self, hwnd, _flag):
+        return self.owners.get(hwnd, 0)
+
+    def GetClassNameW(self, hwnd, name, _size):
+        name.value = self.classes.get(hwnd, "")
+
     def GetWindowThreadProcessId(self, hwnd, pid):
-        pid._obj.value = self.at if hwnd == self.hit else self.bound
+        if pid is not None:
+            pid._obj.value = 100
+        return self.threads.get(hwnd, 1)
 
 
-def test_a_control_covered_by_another_apps_window_is_refused(monkeypatch):
+@pytest.mark.parametrize(
+    "desk, refused",
+    [
+        (_Desk(hit=9), False),  # the bound window itself
+        (_Desk(hit=7, owners={7: 9}), False),  # its own dialog
+        (_Desk(hit=7, owners={7: 8, 8: 9}), False),  # a dialog of its dialog
+        (_Desk(hit=7, classes={7: "#32768"}), False),  # its menu, same thread
+        (_Desk(hit=7, classes={7: "#32768"}, threads={7: 2}), True),  # other thread
+        (_Desk(hit=7), True),  # another window of the same app on top
+        (_Desk(hit=7, owners={7: 7}), True),  # an owner cycle ends, refused
+        (_Desk(hit=0), True),  # off screen
+    ],
+)
+def test_only_the_bound_window_its_dialogs_and_menus_take_input(monkeypatch, desk, refused):
     monkeypatch.setattr(act, "_elevated", lambda pid=None: False)
-    monkeypatch.setattr(act, "_user32", _Desk(at=200, bound=100))
-    assert "covered" in act.blocker(5, 5, window=9)
-    monkeypatch.setattr(act, "_user32", _Desk(at=0, bound=100, hit=0))  # off screen
-    assert "covered" in act.blocker(5, 5, window=9)
-    monkeypatch.setattr(act, "_user32", _Desk(at=100, bound=100))  # its own popup
-    assert act.blocker(5, 5, window=9) is None
-    monkeypatch.setattr(act, "_user32", _Desk(at=200, bound=100))
-    assert act.blocker(5, 5) is None  # no window: only the lock/admin checks
+    monkeypatch.setattr(act, "_user32", desk)
+    reason = act.blocker(5, 5, window=9)
+    assert (reason is not None and "covered" in reason) if refused else reason is None
+
+
+def test_without_a_bound_window_only_the_lock_and_admin_checks_run(monkeypatch):
+    monkeypatch.setattr(act, "_elevated", lambda pid=None: False)
+    monkeypatch.setattr(act, "_user32", _Desk(hit=7))
+    assert act.blocker(5, 5) is None
 
 
 def test_perform_hands_the_bound_window_to_the_blocker():
