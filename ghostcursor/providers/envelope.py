@@ -55,8 +55,8 @@ def sanitize(text: object, limit: int = MAX_TAINTED_CHARS) -> str:
 
     value = unicodedata.normalize("NFKC", str(text))
     value = _CONTROL.sub("", value)
+    value = " ".join(value.split())  # first: a long gap must not hide a tag
     value = neutralize(value)
-    value = " ".join(value.split())
     return value[:limit]
 
 

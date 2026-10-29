@@ -2091,3 +2091,14 @@ an in-memory checkpoint summary; a weekdays routine cadence. Open:
   3,000 tokens; `weekdays` and `daily` drift an hour across DST; for
   `paste_text` the clipboard is set after the focus check, so a focus steal
   between check and Ctrl+V still pastes into the wrong window.
+- Re-check of d7675b1 (no BLOCKING; the fake-tag scan timed linear on 50k
+  hostile inputs in the reviewer's ad hoc probe). Fixed after it: `sanitize`
+  collapsed whitespace after `neutralize`, so `"<" + 12 spaces + "system>"`
+  came out as a live `< system>`; it now collapses first. Open: the older
+  `scrub()` is quadratic on one long alphanumeric run (reviewer measured
+  1.35 s at 20k characters; `_TOKEN`/`_MIXED`/`_SECRET` lookaheads). Today
+  `Tainted.of` truncates to 300 first and `tainted_chunks` callers pass at
+  most 8,000, but bound it before any caller passes more. "Ask Orbyn about
+  this file": a second offer replaces one the page has not taken yet, with
+  no notice; an offer accepted by an instance that is quitting is never
+  opened.
