@@ -106,7 +106,7 @@ def test_a_failed_action_blocks_instead_of_retrying_blind():
             target,
             send=lambda e: None,
             click=lambda x, y: None,
-            check=lambda x, y: None,
+            check=lambda x, y, window: None,
         ),
     )
     frame = _frame([_c(1)])
@@ -126,7 +126,7 @@ def test_perform_clicks_the_observed_centre_then_sends_the_action():
             send=sent.append,
             click=lambda x, y: clicks.append((x, y)),
             pause=lambda s: None,
-            check=lambda x, y: None,
+            check=lambda x, y, window: None,
         )
 
     assert run("click") == "clicked Title" and clicks == [(200, 220)] and not sent
@@ -158,6 +158,20 @@ def test_the_stop_key_is_refused_by_the_guard_in_any_case(chord):
         act.chord_events(chord)
 
 
+# The Windows key and Alt+Tab leave the approved window (shell, Run dialog,
+# lock screen, another app); a model-written plan must not reach them.
+@pytest.mark.parametrize("chord", ["win", "WIN+r", "win+d", "alt+tab", "Alt+Shift+Tab"])
+def test_keys_that_leave_the_approved_window_are_refused(chord):
+    with pytest.raises(ValueError, match="refused key chord"):
+        act.chord_events(chord)
+
+
+def test_ordinary_shortcuts_still_pass():
+    assert len(act.chord_events("ctrl+shift+s")) == 6
+    assert len(act.chord_events("alt+f")) == 4
+    assert len(act.chord_events("tab")) == 2
+
+
 def test_plans_carry_an_action_and_old_plans_default_to_click():
     old = parse_teach_plan(
         '{"steps":[{"instruction":"Click Insert","expected_change":"title_changes"}]}'
@@ -183,7 +197,7 @@ def test_a_blocked_desktop_or_elevated_window_gets_no_input():
             PlanStep("s", E.TITLE_CHANGES),
             target,
             click=lambda x, y: clicks.append((x, y)),
-            check=lambda x, y: "that window runs as administrator",
+            check=lambda x, y, window: "that window runs as administrator",
         )
     assert clicks == []
 
@@ -292,7 +306,7 @@ def test_paste_text_carries_known_text_then_restores_the_clipboard():
         send=sent.append,
         click=lambda x, y: clicks.append((x, y)),
         pause=lambda s: None,
-        check=lambda x, y: None,
+        check=lambda x, y, window: None,
         get_clip=lambda: "USER PRIOR",
         set_clip=clip_writes.append,
     )
@@ -321,7 +335,7 @@ def test_paste_text_restores_the_clipboard_even_if_the_paste_fails():
             send=boom,
             click=lambda x, y: None,
             pause=lambda s: None,
-            check=lambda x, y: None,
+            check=lambda x, y, window: None,
             get_clip=lambda: "USER PRIOR",
             set_clip=clip_writes.append,
         )
@@ -338,7 +352,7 @@ def test_paste_text_with_no_text_touches_nothing():
         send=lambda e: None,
         click=lambda x, y: clicks.append(1),
         pause=lambda s: None,
-        check=lambda x, y: None,
+        check=lambda x, y, window: None,
         get_clip=lambda: "USER PRIOR",
         set_clip=clip_writes.append,
     )
@@ -357,7 +371,7 @@ def test_paste_text_is_refused_on_a_blocked_or_elevated_window():
             send=lambda e: None,
             click=lambda x, y: None,
             pause=lambda s: None,
-            check=lambda x, y: "that window runs as administrator",
+            check=lambda x, y, window: "that window runs as administrator",
             get_clip=lambda: "PRIOR",
             set_clip=clip_writes.append,
         )
@@ -384,7 +398,7 @@ def test_paste_text_restore_failure_does_not_mask_the_real_error():
             send=lambda e: (_ for _ in ()).throw(OSError("SendInput failed")),
             click=lambda x, y: None,
             pause=lambda s: None,
-            check=lambda x, y: None,
+            check=lambda x, y, window: None,
             get_clip=lambda: "PRIOR",
             set_clip=flaky_set,
         )
@@ -396,8 +410,68 @@ def test_paste_text_restore_failure_does_not_mask_the_real_error():
         send=lambda e: None,
         click=lambda x, y: None,
         pause=lambda s: None,
-        check=lambda x, y: None,
+        check=lambda x, y, window: None,
         get_clip=lambda: "PRIOR",
         set_clip=flaky_set,
     )
     assert out == "pasted 2 characters"
+
+
+class _Desk:
+    """user32 for blocker(): default desktop, one window at every point,
+    its process ``at``; the bound window's process is ``bound``."""
+
+    def __init__(self, at, bound, hit=7):
+        self.at, self.bound, self.hit = at, bound, hit
+
+    def OpenInputDesktop(self, *_):
+        return 1
+
+    def GetUserObjectInformationW(self, _desktop, _index, name, *_):
+        name.value = "Default"
+
+    def CloseDesktop(self, _):
+        pass
+
+    def WindowFromPoint(self, _point):
+        return self.hit
+
+    def GetAncestor(self, hwnd, _flag):
+        return hwnd
+
+    def GetWindowThreadProcessId(self, hwnd, pid):
+        pid._obj.value = self.at if hwnd == self.hit else self.bound
+
+
+def test_a_control_covered_by_another_apps_window_is_refused(monkeypatch):
+    monkeypatch.setattr(act, "_elevated", lambda pid=None: False)
+    monkeypatch.setattr(act, "_user32", _Desk(at=200, bound=100))
+    assert "covered" in act.blocker(5, 5, window=9)
+    monkeypatch.setattr(act, "_user32", _Desk(at=0, bound=100, hit=0))  # off screen
+    assert "covered" in act.blocker(5, 5, window=9)
+    monkeypatch.setattr(act, "_user32", _Desk(at=100, bound=100))  # its own popup
+    assert act.blocker(5, 5, window=9) is None
+    monkeypatch.setattr(act, "_user32", _Desk(at=200, bound=100))
+    assert act.blocker(5, 5) is None  # no window: only the lock/admin checks
+
+
+def test_perform_hands_the_bound_window_to_the_blocker():
+    seen = []
+    target = _c("c1", "Bold", "Button")
+    act.perform(
+        PlanStep("s", E.TITLE_CHANGES, action="click"),
+        target,
+        window=9,
+        click=lambda x, y: None,
+        check=lambda x, y, window: seen.append(window),
+    )
+    assert seen == [9]
+
+
+def test_the_live_act_path_passes_the_bound_window(monkeypatch):
+    from ghostcursor.harness import teach_live
+
+    seen = []
+    monkeypatch.setattr(act, "perform", lambda step, target, window: seen.append(window))
+    teach_live._live_perform(None, None, 9)
+    assert seen == [9]

@@ -248,6 +248,7 @@ def drive_live(
         from ghostcursor.harness.binding import bind
 
         observer = Observer(bind(hwnds or choose_windows()))
+        windows = {b.label: b.hwnd for b in observer.bindings}
         observer.start()
         overlay = window.create_overlay_window(hidden_from_capture=True)
         banner = _acting_banner()
@@ -280,7 +281,11 @@ def drive_live(
         target = state["frame"].get(pick.id)
         if target is None:
             raise RuntimeError("the control went away")
-        did = (_perform or _live_perform)(click, target)
+        did = (
+            _perform(click, target)
+            if _perform
+            else _live_perform(click, target, windows[target.window])
+        )
         say(f"[drive] {did}")
 
     def stopped():
@@ -316,10 +321,10 @@ def _default_gateway():
     return Gateway()
 
 
-def _live_perform(step, target):
+def _live_perform(step, target, window: int):
     from ghostcursor.harness import act as act_mod
 
-    return act_mod.perform(step, target)
+    return act_mod.perform(step, target, window=window)
 
 
 def run_model_teach(
@@ -377,7 +382,10 @@ def run_model_teach(
         )
     perform = None
     if act:  # D182: the user approves the plan; Orbyn performs each step
-        from ghostcursor.harness.act import perform
+        windows = {b.label: b.hwnd for b in bindings}
+
+        def perform(step, target):
+            return _live_perform(step, target, windows[target.window])
     session = ModelTeachSession(
         goal,
         gateway or Gateway(),

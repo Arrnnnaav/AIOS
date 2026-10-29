@@ -110,10 +110,17 @@ def vk_of(name: str) -> int:
 
 def chord_events(chord: str) -> list[_INPUT]:
     """``ctrl+shift+s`` -> modifiers down, key down/up, modifiers up. ESC is
-    refused: it is the user's stop key, not the model's."""
+    refused: it is the user's stop key, not the model's. The Windows key and
+    Alt+Tab are refused too: they reach the shell or another app, outside the
+    window the user approved (Aside's computer-use helper refuses them too)."""
 
     names = [n for n in chord.replace(" ", "").split("+") if n]
-    if not names or any(n.casefold() in ("esc", "escape") for n in names):
+    folded = {n.casefold() for n in names}
+    if (
+        not names
+        or folded & {"esc", "escape", "win"}
+        or {"alt", "tab"} <= folded
+    ):
         raise ValueError(f"refused key chord {chord!r}")
     vks = [vk_of(n) for n in names]
     return [_key(v) for v in vks] + [_key(v, up=True) for v in reversed(vks)]
@@ -231,11 +238,15 @@ def _elevated(pid: int | None = None) -> bool | None:
             kernel32.CloseHandle(process)
 
 
-def blocker(x: int, y: int) -> str | None:
+def blocker(x: int, y: int, window: int | None = None) -> str | None:
     """Why input at (x, y) must not be sent now, or None (D182; the checks
     Dodaios makes before input). The secure desktop (UAC prompt, lock
     screen) swallows input; an elevated window drops input from a
-    non-elevated sender (UIPI), so a click would silently do nothing."""
+    non-elevated sender (UIPI), so a click would silently do nothing. With
+    WINDOW (the bound window the control was observed in), the point must
+    also land on a window of that app: another app's window on top would
+    take the click (Aside's computer-use helper refuses the same case).
+    Click-through windows, such as Orbyn's own overlay, are not hit."""
 
     desktop = _user32.OpenInputDesktop(0, False, 0x0001)  # DESKTOP_READOBJECTS
     if not desktop:
@@ -252,6 +263,13 @@ def blocker(x: int, y: int) -> str | None:
         _user32.GetWindowThreadProcessId(root, ctypes.byref(pid))
     if pid.value and _elevated(pid.value) and not _elevated():
         return "that window runs as administrator; Orbyn cannot act in it"
+    if window is not None:
+        owner = wintypes.DWORD()
+        _user32.GetWindowThreadProcessId(window, ctypes.byref(owner))
+        # Same process, not same window: the app's own menus and dialogs
+        # are separate top-level windows the control may live in.
+        if not root or not owner.value or pid.value != owner.value:
+            return "that control is off screen or covered by another window"
     return None
 
 
@@ -259,6 +277,7 @@ def perform(
     step,
     target,
     *,
+    window: int | None = None,
     send=_send,
     click=click_at,
     pause=time.sleep,
@@ -267,7 +286,8 @@ def perform(
     get_clip=get_clipboard_text,
 ) -> str:
     """Do ``step`` on ``target`` (a Candidate in the latest frame); returns a
-    short description for the status line."""
+    short description for the status line. ``window`` is the bound window
+    ``target`` was observed in; the live callers always pass it."""
 
     left, top, right, bottom = target.rect
     x, y = (left + right) // 2, (top + bottom) // 2
@@ -276,7 +296,7 @@ def perform(
         return "nothing to do"
     if action == "keys":
         events = chord_events(step.text)  # validate before touching anything
-    reason = check(x, y)
+    reason = check(x, y, window)
     if reason:
         raise PermissionError(reason)
     click(x, y)  # every other action starts by focusing the observed control
