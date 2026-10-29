@@ -1521,3 +1521,30 @@ def test_a_second_instance_sends_the_file_as_utf8_not_escapes(monkeypatch):
     monkeypatch.setattr(urllib.request, "urlopen", urlopen)
     appmod._post("http://127.0.0.1:1/?t=x", "offer_file", {"name": "a", "material": "\u4e2d" * 1000})
     assert len(sent["data"]) < 4000 and "\u4e2d".encode() in sent["data"]
+
+
+def test_a_routine_that_meets_a_busy_worker_stays_due(tmp_path, monkeypatch):
+    root = tmp_path / "briefs"
+    make = lambda: Workspace("trip", Gateway(), Brain(tmp_path / "kb.sqlite"), root=root)
+    now = [100.0]
+    app = App("trip", make_workspace=make, clock=lambda: now[0])
+    try:
+        app.handle("routine_create", {"question": "Find updates", "cadence": "hourly"})
+        now[0] += 3600
+        due = app.routines[0]["next_due"]
+
+        def claimed(*a, **k):
+            raise ValueError("another request claimed the worker")
+
+        monkeypatch.setattr(app, "start_research_job", claimed)
+        app.tick_routines()
+        assert app.routines[0]["next_due"] == due  # not pushed to the next hour
+    finally:
+        app.close()
+
+
+def test_post_refuses_a_body_the_server_would_refuse():
+    from ghostcursor.workspace import app as app_mod
+
+    with pytest.raises(ValueError, match="too large"):
+        app_mod._post("http://127.0.0.1:9/?t=x", "offer_file", {"material": "\x01" * 100_000})

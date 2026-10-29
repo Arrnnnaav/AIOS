@@ -547,3 +547,22 @@ def test_a_failed_checkpoint_is_not_retried_on_every_message(tmp_path):
     ws._context("q")
     assert len(gateway.checkpoints) == 2
     brain.close()
+
+
+def test_stop_reaches_the_checkpoint_and_is_not_counted_as_a_failure(tmp_path):
+    from ghostcursor.workspace.session import HISTORY_TURNS
+
+    class StopAware(CheckpointGateway):
+        def complete(self, envelope, system, schema, parse, **kw):
+            if kw.get("purpose") == "checkpoint" and kw["cancelled"]():
+                self.checkpoints.append(envelope)
+                raise ProviderError(FailureKind.CANCELLED)
+            return super().complete(envelope, system, schema, parse, **kw)
+
+    gateway = StopAware()
+    ws, brain = _long_talk(tmp_path, gateway, HISTORY_TURNS + 2)
+    ws._context("q", cancelled=lambda: True)
+    assert len(gateway.checkpoints) == 1 and ws.checkpoint_failed_at == -1
+    ws._context("q")  # not backed off: the next message tries again
+    assert ws.checkpoint[0] > 0
+    brain.close()

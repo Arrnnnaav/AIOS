@@ -360,6 +360,7 @@ class App:
             due = next((row for row in self.routines if row["enabled"] and row["next_due"] <= now), None)
             if due is None:
                 return
+            missed = due["next_due"]
             due["next_due"] = next_due(due["cadence"], now)
             if not self._save_routines():
                 due["enabled"] = False
@@ -367,7 +368,9 @@ class App:
                 return
             try:
                 self.start_research_job(due["question"], routine=due["id"])
-            except ValueError:  # another request claimed the worker
+            except ValueError:  # another request claimed the worker: still due,
+                due["next_due"] = missed  # so the next free tick runs it, not
+                self._save_routines()  # the next period
                 return
 
     def _refresh(self) -> None:
@@ -919,7 +922,7 @@ class App:
         if action == "say":
             if not text:
                 raise ValueError("say something")
-            return {"reply": self.run("Thinking", lambda: ws.discuss(text))}
+            return {"reply": self.run("Thinking", lambda: ws.discuss(text, cancelled=self.stop.is_set))}
         if action == "research":
             if not text:
                 raise ValueError("ask a question")
@@ -1309,9 +1312,12 @@ def _post(url: str, action: str, body: dict) -> dict:
 
     parts = urllib.parse.urlparse(url)
     token = urllib.parse.parse_qs(parts.query).get("t", [""])[0]
+    data = json.dumps(body, ensure_ascii=False).encode("utf-8")  # \uXXXX would pass MAX_BODY
+    if len(data) > MAX_BODY:  # control characters still escape to six bytes each
+        raise ValueError("that file is too large to send to Orbyn")
     request = urllib.request.Request(
         f"http://{parts.netloc}/api/{action}",
-        json.dumps(body, ensure_ascii=False).encode("utf-8"),  # \uXXXX would pass MAX_BODY
+        data,
         {"Content-Type": "application/json", "X-Orbyn-Token": token},
     )
     with urllib.request.urlopen(request, timeout=10) as response:
@@ -1433,6 +1439,9 @@ def main(argv: list[str] | None = None) -> int:
     if existing is not None and offered is not None:
         try:
             _post(existing, "offer_file", {"name": offered[0], "material": offered[1]})
+        except ValueError as exc:
+            _notice(str(exc))
+            return 2
         except OSError:
             _notice("Orbyn is running but did not accept the file; try again.")
             return 2

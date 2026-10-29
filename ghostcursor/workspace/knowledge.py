@@ -402,6 +402,10 @@ class Knowledge:
     # --- owner governance -----------------------------------------------
 
     def _set_status(self, fid: int, status: str) -> Fact | None:
+        old = self.get(fid)
+        if old is not None and old.status == "superseded" and status != "retired":
+            # Bringing it back would let recall return it beside its successor.
+            raise ValueError("this fact was replaced; review or approve the newer one")
         with self._lock, self._db:
             self._db.execute(
                 "UPDATE facts SET status=?, last_verified=? WHERE fid=?",

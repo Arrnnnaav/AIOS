@@ -382,10 +382,10 @@ class Workspace:
     def _say(self, speaker: str, text: str) -> None:
         append_turn(self.root, self.topic, speaker, text)
 
-    def _context(self, query: str) -> dict:
+    def _context(self, query: str, cancelled=lambda: False) -> dict:
         turns = self.turns
         history = _within(turns[-HISTORY_TURNS:], HISTORY_TOKENS)
-        earlier = self._earlier_summary(turns[: len(turns) - len(history)])
+        earlier = self._earlier_summary(turns[: len(turns) - len(history)], cancelled)
         used = _within(self.brain.relevant(query), MEMORY_TOKENS)
         self._used = tuple(m.mid for m in used)
         context = {
@@ -409,7 +409,7 @@ class Workspace:
         self._add_company_knowledge(query, context)
         return context
 
-    def _earlier_summary(self, dropped) -> str:
+    def _earlier_summary(self, dropped, cancelled=lambda: False) -> str:
         """A summary of the turns that no longer fit the history window, so a
         long conversation keeps its decisions instead of silently losing them.
         Refreshed once CHECKPOINT_EVERY more turns have dropped, folding the
@@ -447,10 +447,11 @@ class Workspace:
         try:
             summary = self.gateway.complete(
                 envelope, CHECKPOINT_SYSTEM, CHECKPOINT_SCHEMA, parse_checkpoint,
-                purpose="checkpoint",
+                purpose="checkpoint", cancelled=cancelled,
             )  # fmt: skip
-        except ProviderError:
-            self.checkpoint_failed_at = len(dropped)
+        except ProviderError as exc:
+            if exc.kind is not FailureKind.CANCELLED:  # Stop is no model failure
+                self.checkpoint_failed_at = len(dropped)
             return self.checkpoint[1]
         self.checkpoint = (covered + len(fresh), summary)
         self.checkpoint_failed_at = -1
@@ -565,10 +566,10 @@ class Workspace:
             return f"(no answer: the model is not available -- {exc.kind.value})"
         return answer.reply
 
-    def discuss(self, message: str) -> str:
+    def discuss(self, message: str, *, cancelled=lambda: False) -> str:
         """DISCUSS + REMEMBER: reply, and offer the Brain the user's own statements."""
 
-        context = self._context(message)
+        context = self._context(message, cancelled)
         self._say("user", message)
         envelope = Envelope(
             task="discuss",
@@ -582,6 +583,7 @@ class Workspace:
                 DISCUSS_SCHEMA,
                 parse_discussed,
                 purpose="discussion",
+                cancelled=cancelled,
             )
         except ProviderError as exc:
             reply = f"(no reply: the model is not available -- {exc.kind.value})"

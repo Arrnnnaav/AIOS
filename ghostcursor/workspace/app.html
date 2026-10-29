@@ -345,9 +345,13 @@ function finishWelcome() {
 let githubRepos = [], githubIssues = {}, githubLoading = false;
 let chosen = new Set(), editing = null;
 
+let pollSeq = 0, pollShown = 0;
 async function poll(force) {
+  const seq = ++pollSeq;  // polls overlap; an older reply must not undo a newer one
   let s;
   try { s = await api("state"); } catch { return; }
+  if (seq < pollShown) return;
+  pollShown = seq;
   const json = JSON.stringify(s);
   if (s.offered_file) takeOfferedFile();  // before the early return: a sheet may have closed since
   if (!force && json === lastJson) return;

@@ -839,3 +839,14 @@ def test_export_redacts_embedded_secrets_before_egress(kn):
     raw = kn.export_scope("acme", redact_pii=False)
     assert "ada@acme.io" in raw["facts"][0]["text"]  # owner's verbatim backup
     assert raw["redacted"] == {}
+
+
+def test_a_superseded_fact_cannot_be_approved_back_beside_its_successor(kn):
+    old = kn.add_candidate("Prod region is us-west-1.", source="v1", scope="acme")
+    new = kn.add_candidate("Prod region is us-east-1.", source="v2", scope="acme")
+    kn.approve(old.fid)
+    kn.approve(new.fid)
+    kn.supersede(old.fid, new.fid)
+    with pytest.raises(ValueError, match="replaced"):
+        kn.approve(old.fid)
+    assert [f.fid for f in kn.recall("prod region", "acme")] == [new.fid]
