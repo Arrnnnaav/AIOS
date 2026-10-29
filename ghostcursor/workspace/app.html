@@ -354,6 +354,7 @@ async function poll(force) {
   if (busyChanged) workCardIndex = 0;
   lastJson = json; S = s;
   render(busyChanged);
+  if (S.offered_file) takeOfferedFile();
 }
 setInterval(poll, 700);
 
@@ -655,7 +656,14 @@ function workStage() {
   return stage;
 }
 
-function openFileAsk() {
+async function takeOfferedFile() {
+  if ($("scrim").classList.contains("open")) return;  // never over an open sheet
+  let offered;
+  try { offered = await api("take_offered_file"); } catch { return; }
+  if (offered.name) { setTab("work"); openFileAsk(offered); }
+}
+
+function openFileAsk(offered) {
   sheetOpener = document.activeElement;
   const sheet = $("sheet");
   const heading = el("h3", "", "Ask about a file"); heading.id = "fileAskTitle";
@@ -664,18 +672,19 @@ function openFileAsk() {
   const form = el("div", "fileask");
   const file = el("input"); file.type = "file"; file.accept = ".txt,.md,.csv,.json,.py,.js,.ts,.yaml,.yml,.html,.css";
   const fileLabel = el("label", "", "Text file"); fileLabel.append(file);
+  if (offered) { fileLabel.replaceChildren("File: " + offered.name); }
   const question = el("textarea"); question.rows = 3; question.maxLength = 500; question.placeholder = "What do you want to know?"; question.setAttribute("aria-label", "Question about the file");
   const answer = el("div", "mem"); answer.hidden = true; answer.tabIndex = -1; answer.setAttribute("role", "status");
   const row = el("div", "sheetrow");
   const cancel = el("button", "secondary", "Close"); cancel.onclick = closeSheet;
   const ask = el("button", "pill go", "Ask file"); ask.style.marginLeft = "auto";
   ask.onclick = async () => {
-    const selected = file.files[0], text = question.value.trim();
-    if (!selected || selected.size > 400 * 1024) return toast("Choose a text file under 400 KB.");
+    const selected = offered ? null : file.files[0], text = question.value.trim();
+    if (!offered && (!selected || selected.size > 400 * 1024)) return toast("Choose a text file under 400 KB.");
     if (!text) return toast("Ask a question about the file.");
     ask.disabled = true; ask.textContent = "Asking…";
     try {
-      const material = await selected.text();
+      const material = offered ? offered.material : await selected.text();
       if (!material.trim() || material.length > 100000 || material.includes("\0")) throw new Error("Choose a text file under 100,000 characters.");
       const result = await api("ask_file", { text, material });
       answer.hidden = false; answer.textContent = result.answer;

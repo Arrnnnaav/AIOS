@@ -8,7 +8,9 @@ param(
     [string]$SourceDir,
     [string]$InstallDir,
     [string]$StartMenuLnk,
-    [string]$DesktopLnk
+    [string]$DesktopLnk,
+    # Explorer's "Ask Orbyn about this file" verb, under HKEY_CURRENT_USER.
+    [string]$VerbKey = 'Software\Classes\*\shell\Orbyn.AskFile'
 )
 $ErrorActionPreference = 'Stop'
 
@@ -27,6 +29,21 @@ foreach ($target in @($StageDir, $BackupDir)) {
     if (-not ([IO.Path]::GetFullPath($target)).StartsWith($ProgramRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
         throw 'Installer transaction path escaped its parent directory.'
     }
+}
+
+function Set-AskVerb([string]$Exe) {
+    # .NET, not the registry provider: '*' in a provider path is a wildcard.
+    $key = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey($VerbKey)
+    try {
+        $key.SetValue('MUIVerb', 'Ask Orbyn about this file')
+        $key.SetValue('Icon', "`"$Exe`"")
+        $command = $key.CreateSubKey('command')
+        try { $command.SetValue('', "`"$Exe`" --ask-file `"%1`"") } finally { $command.Dispose() }
+    } finally { $key.Dispose() }
+}
+
+function Remove-AskVerb {
+    [Microsoft.Win32.Registry]::CurrentUser.DeleteSubKeyTree($VerbKey, $false)
 }
 
 function New-Shortcut([string]$Path, [string]$Target, [string]$WorkDir) {
@@ -62,6 +79,7 @@ try {
 
     if ($Uninstall) {
         Remove-Item -LiteralPath $StartMenuLnk, $DesktopLnk -Force -ErrorAction SilentlyContinue
+        Remove-AskVerb
         if (Test-Path -LiteralPath $InstallDir) { Remove-Item -LiteralPath $InstallDir -Recurse -Force }
         Write-Host 'Orbyn uninstalled; local workspace data was kept.'
         return
@@ -83,6 +101,7 @@ try {
             $installedExe = Join-Path $InstallDir 'Orbyn.exe'
             New-Shortcut $StartMenuLnk $installedExe $InstallDir
             New-Shortcut $DesktopLnk $installedExe $InstallDir
+            Set-AskVerb $installedExe
             Set-Content -LiteralPath $CompleteMarker -Value 'complete' -NoNewline
         } catch {
             if (Test-Path -LiteralPath $InstallDir) { Remove-Item -LiteralPath $InstallDir -Recurse -Force }
@@ -90,6 +109,7 @@ try {
                 Move-Item -LiteralPath $BackupDir -Destination $InstallDir
             } else {
                 Remove-Item -LiteralPath $StartMenuLnk, $DesktopLnk -Force -ErrorAction SilentlyContinue
+                Remove-AskVerb
             }
             throw
         }
@@ -98,7 +118,7 @@ try {
         if (Test-Path -LiteralPath $StageDir) { Remove-Item -LiteralPath $StageDir -Recurse -Force }
     }
     Write-Host "Orbyn installed to: $InstallDir"
-    Write-Host 'Start Menu and Desktop shortcuts point to this install.'
+    Write-Host 'Start Menu and Desktop shortcuts point to this install; right-click a text file for "Ask Orbyn about this file".'
     Write-Host 'The app is not yet code-signed; Windows may show a SmartScreen prompt.'
 } finally {
     $lock.Dispose()

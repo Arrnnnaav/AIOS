@@ -337,6 +337,14 @@ chunk boundaries are masked; the gateway still enforces organisation egress
 policy. Stop is passed to the gateway cancellation hook.
 The answer stays in the open sheet, which is cleared on close; only the generic
 “Asking file” state is written to activity history.
+Explorer's "Ask Orbyn about this file" (a per-user `*\shell\Orbyn.AskFile`
+verb the installer writes) runs `Orbyn.exe --ask-file <path>`. That process
+reads the file locally with the same limits (`app.read_text_file`) and either
+hands it to the running instance through the token-protected `offer_file`
+API or offers it at startup. The page sees only the file name in state, takes
+the text once with `take_offered_file`, and opens the same sheet; nothing
+leaves until the user asks a question (taken from Photoshop Express's "Open
+with" verb, `docs/evidence/photoshop-express-rea-2026-10-29.md`).
 
 Chat sends the newest 20 turns that fit 3,000 tokens. Turns that fall out of
 that window are folded into one structured summary (goal, constraints, done,

@@ -1,4 +1,4 @@
-"""The workspace app (D178):  py -3.12 -m ghostcursor.workspace.app [--window|--dock] <topic>
+"""The workspace app (D178):  py -3.12 -m ghostcursor.workspace.app [--window|--dock] <topic>  |  --ask-file <path>
 
 The console workspace (D173) as a small desktop island with an optional full
 window: a local page served on 127.0.0.1 and shown by Edge in app mode. The page is a
@@ -42,6 +42,26 @@ from ghostcursor.workspace.github import GitHubConnector
 
 PAGE = Path(__file__).with_name("app.html")
 MAX_FILE_CHARS = 100_000
+MAX_FILE_BYTES = 400 * 1024
+
+
+def read_text_file(path: str) -> tuple[str, str]:
+    """(file name, text) of a text file the user right-clicked, with Ask a
+    file's limits; ValueError for anything else. Read locally; nothing is sent
+    until the user asks a question about it."""
+
+    file = Path(path)
+    try:
+        if not file.is_file() or file.stat().st_size > MAX_FILE_BYTES:
+            raise ValueError("choose a text file under 400 KB")
+        text = file.read_bytes().decode("utf-8-sig")
+    except UnicodeDecodeError:
+        raise ValueError("that file is not UTF-8 text") from None
+    except OSError:
+        raise ValueError("that file could not be read") from None
+    if not text.strip() or len(text) > MAX_FILE_CHARS or "\0" in text:
+        raise ValueError("choose a text file under 100,000 characters")
+    return file.name[:120], text
 MAX_BODY = 512 * 1024  # a 100,000-character file in JSON
 QUIT_AFTER_S = (
     90.0  # no poll this long: the window is closed (a hidden tab polls ~1/min)
@@ -130,6 +150,9 @@ class App:
         self.memories: list[dict] = []
         self.seen = time.monotonic()  # the page's last poll
         self.voice_to = None  # the island's voice(text), when it is shown
+        #: A file handed over by "Ask Orbyn about this file" (name, text),
+        #: waiting for the page to open it. In memory only; taken once.
+        self.offered_file: tuple[str, str] | None = None
         self.paused = False
         self.downloads = Path.home() / "Downloads"  # where a handoff is saved
         self.ws = self.jobs.submit(
@@ -510,6 +533,7 @@ class App:
                 job["new_claims"] = new_claims(job["answer"], last[job["routine"]])[:20]
             last[job["routine"]] = job["answer"]
         return {
+            "offered_file": self.offered_file[0] if self.offered_file else "",
             "topic": ws.topic,
             "goal": ws.goal,
             "turns": [{"speaker": t.speaker, "text": t.text} for t in ws.turns[-200:]],
@@ -562,6 +586,19 @@ class App:
         if action == "signal":
             self.signal.set()
             return {}
+        if action == "offer_file":  # from a second Orbyn started by the shell verb
+            name, material = body.get("name"), body.get("material")
+            if (
+                not isinstance(name, str) or not isinstance(material, str)
+                or not material.strip() or len(material) > MAX_FILE_CHARS
+                or "\0" in material
+            ):  # fmt: skip
+                raise ValueError("choose a text file under 100,000 characters")
+            self.offered_file = (" ".join(name.split())[:120] or "file", material)
+            return {}
+        if action == "take_offered_file":
+            offered, self.offered_file = self.offered_file, None
+            return {"name": offered[0], "material": offered[1]} if offered else {}
         if action == "stop":
             self.stop.set()
             return {}
@@ -1263,6 +1300,34 @@ def _lock_path() -> Path:
     return Path(base) / "GhostCursor" / "app.lock"
 
 
+def _post(url: str, action: str, body: dict) -> dict:
+    """One token-protected API call to the running instance at URL."""
+
+    import urllib.parse
+    import urllib.request
+
+    parts = urllib.parse.urlparse(url)
+    token = urllib.parse.parse_qs(parts.query).get("t", [""])[0]
+    request = urllib.request.Request(
+        f"http://{parts.netloc}/api/{action}",
+        json.dumps(body).encode("utf-8"),
+        {"Content-Type": "application/json", "X-Orbyn-Token": token},
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        return json.load(response)
+
+
+def _notice(text: str) -> None:
+    """Tell the user why a shell-verb launch did nothing (no console there)."""
+
+    try:
+        import win32api
+
+        win32api.MessageBox(0, text, "Orbyn", 0x40)
+    except Exception:
+        print(text)
+
+
 def _live_instance_url() -> str | None:
     """The URL of an Orbyn already serving on this machine, or None.
 
@@ -1348,6 +1413,14 @@ def main(argv: list[str] | None = None) -> int:
     if argv and argv[0] in ("--help", "-h"):
         print(__doc__)
         return 0
+    offered = None
+    if len(argv) == 2 and argv[0] == "--ask-file":  # Explorer: Ask Orbyn about this file
+        try:
+            offered = read_text_file(argv[1])
+        except ValueError as exc:
+            _notice(str(exc))
+            return 2
+        argv = ["--window"]
     docked = bool(argv and argv[0] == "--dock")
     windowed = bool(argv and argv[0] in ("--dock", "--window"))
     if windowed:
@@ -1356,6 +1429,12 @@ def main(argv: list[str] | None = None) -> int:
         print(__doc__)
         return 2
     existing = _live_instance_url()
+    if existing is not None and offered is not None:
+        try:
+            _post(existing, "offer_file", {"name": offered[0], "material": offered[1]})
+        except OSError:
+            _notice("Orbyn is running but did not accept the file; try again.")
+            return 2
     if existing is not None:  # already running: re-open its window, don't double-start
         if not windowed:
             import win32gui
@@ -1369,6 +1448,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     _ensure_ollama()  # start the local model if it is installed but not running
     app = App(argv[0] if argv else "workspace")
+    app.offered_file = offered
     token = secrets.token_urlsafe(32)
     server = make_server(app, token)
     threading.Thread(target=server.serve_forever, daemon=True).start()

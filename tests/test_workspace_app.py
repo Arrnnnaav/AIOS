@@ -1463,3 +1463,37 @@ def test_a_weekdays_routine_skips_the_weekend():
     assert (tuesday.tm_wday, tuesday.tm_mday) == (1, 3)
     saturday = time.localtime(next_due("daily", friday))
     assert saturday.tm_wday == 5  # daily still runs at the weekend
+
+
+def test_a_right_clicked_text_file_is_read_with_ask_a_files_limits(tmp_path):
+    from ghostcursor.workspace.app import read_text_file
+
+    good = tmp_path / "notes.md"
+    good.write_text("The launch is on Friday.", encoding="utf-8")
+    assert read_text_file(str(good)) == ("notes.md", "The launch is on Friday.")
+    for name, data in [("bin.dat", b"\x00\x01\x02"), ("latin.txt", "caf\xe9".encode("latin-1")),
+                       ("big.txt", b"a" * (400 * 1024 + 1)), ("empty.txt", b"  ")]:
+        (tmp_path / name).write_bytes(data)
+        with pytest.raises(ValueError):
+            read_text_file(str(tmp_path / name))
+    with pytest.raises(ValueError):
+        read_text_file(str(tmp_path / "missing.txt"))
+    with pytest.raises(ValueError):
+        read_text_file(str(tmp_path))  # a folder
+
+
+def test_an_offered_file_is_shown_once_and_needs_the_token(served):
+    app, port = served
+    status, _ = call(port, "/api/offer_file", {"name": "notes.md", "material": "hello"}, token="wrong")
+    assert status != 200 and app.offered_file is None
+    status, _ = call(port, "/api/offer_file", {"name": "notes.md", "material": "hello"})
+    assert status == 200
+    assert json.loads(call(port, "/api/state")[1])["offered_file"] == "notes.md"  # the name, never the text
+    assert b"hello" not in call(port, "/api/state")[1]
+    assert json.loads(call(port, "/api/take_offered_file")[1]) == {"name": "notes.md", "material": "hello"}
+    assert json.loads(call(port, "/api/take_offered_file")[1]) == {}
+    assert json.loads(call(port, "/api/state")[1])["offered_file"] == ""
+    for bad in ({"name": "x", "material": "a\0b"}, {"name": "x", "material": " "},
+                {"name": 3, "material": "a"}, {"name": "x", "material": "a" * 100_001}):
+        assert call(port, "/api/offer_file", bad)[0] != 200
+    assert app.offered_file is None

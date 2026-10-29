@@ -6,6 +6,19 @@ from pathlib import Path
 
 import pytest
 
+#: A throwaway key, so the test never touches the real "*\shell" verb.
+VERB = r"Software\OrbynInstallerTest\shell\Orbyn.AskFile"
+
+
+def _verb_command():
+    import winreg
+
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, VERB + r"\command") as key:
+            return winreg.QueryValueEx(key, "")[0]
+    except FileNotFoundError:
+        return None
+
 
 @pytest.mark.skipif(shutil.which("pwsh") is None, reason="PowerShell 7 is not installed")
 def test_installer_stages_updates_rolls_back_and_recovers(tmp_path):
@@ -23,7 +36,8 @@ def test_installer_stages_updates_rolls_back_and_recovers(tmp_path):
         return subprocess.run(
             ["pwsh", "-NoProfile", "-File", str(script),
              "-SourceDir", str(source), "-InstallDir", str(install),
-             "-StartMenuLnk", str(start), "-DesktopLnk", str(desktop), *extra],
+             "-StartMenuLnk", str(start), "-DesktopLnk", str(desktop),
+             "-VerbKey", VERB, *extra],
             capture_output=True, text=True, timeout=30,
         )
 
@@ -32,6 +46,8 @@ def test_installer_stages_updates_rolls_back_and_recovers(tmp_path):
     assert run().returncode == 0
     assert (install / "Orbyn.exe").read_text(encoding="utf-8") == "v1"
     assert start.exists() and desktop.exists()
+    exe_path = str(install / "Orbyn.exe")
+    assert _verb_command() == f'"{exe_path}" --ask-file "%1"'
 
     exe.write_text("v2", encoding="utf-8")
     (source / "old.txt").unlink()
@@ -47,7 +63,7 @@ def test_installer_stages_updates_rolls_back_and_recovers(tmp_path):
     failed = subprocess.run(
         ["pwsh", "-NoProfile", "-File", str(script),
          "-SourceDir", str(source), "-InstallDir", str(install),
-         "-StartMenuLnk", str(bad_link), "-DesktopLnk", str(desktop)],
+         "-StartMenuLnk", str(bad_link), "-DesktopLnk", str(desktop), "-VerbKey", VERB],
         capture_output=True, text=True, timeout=30,
     )
     assert failed.returncode != 0
@@ -81,4 +97,9 @@ def test_installer_stages_updates_rolls_back_and_recovers(tmp_path):
     personal.write_text("personal data", encoding="utf-8")
     assert run("-Uninstall").returncode == 0
     assert not install.exists() and not start.exists() and not desktop.exists()
+    assert _verb_command() is None
+    import winreg
+
+    winreg.DeleteKey(winreg.HKEY_CURRENT_USER, r"Software\OrbynInstallerTest\shell")
+    winreg.DeleteKey(winreg.HKEY_CURRENT_USER, r"Software\OrbynInstallerTest")
     assert personal.read_text(encoding="utf-8") == "personal data"
