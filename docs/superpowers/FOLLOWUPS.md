@@ -2174,3 +2174,10 @@ Tools (tier 3):
 - `devtools/paint_budget.py:107`: budget_ms truncates microseconds before the ceiling (left alone: rendered evidence is pinned).
 - `evaluation/safety.py:40-58`: the no-input scan sees only direct calls; an aliased SendInput or importlib import passes.
 - `devtools/act_live_node.py:301-349`: the overlay is created before the try, so a presenter failure skips destroy.
+
+Review of d8bf30d (no BLOCKING):
+- `harness/teach_live.py` drive_live act(): no frame-age, minimized or incomplete check on the latest frame (Teach has MAX_FRAME_AGE_S); a stalled observer resolves trivially.
+- `harness/teach.py` verify job reads self._chosen on the worker; capture it in the lambda and slot.cancel() in _advance to stop the orphan judge call.
+- `providers/envelope.py` tainted_chunks: the returned scrubbed text has its newlines collapsed; check the callers that show it (last_sent).
+- `harness/browser.py` close(): terminate() signals only the parent Chrome; children may keep profile files and rmtree(ignore_errors) leaves them. close() can block up to 5 s.
+- `harness/act.py` surrogate-pair typing is unit-tested only; try one emoji in Notepad and PowerPoint on the interactive lane.

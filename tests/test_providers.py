@@ -736,3 +736,12 @@ def test_ordinary_markup_is_not_taken_for_a_role_tag(markup):
 def test_screen_text_with_a_credential_is_masked(secret):
     text = Tainted.of("ocr", secret).text
     assert "s3cr3tTok9" not in text and "AKIAIOSFODNN7EXAMPLE" not in text
+
+
+@pytest.mark.parametrize(
+    "tag",
+    ["<systemoverride>", "<assistantresponse>", "<toolresponse>", "<system/>",
+     "<system:override>", "<system.prompt>", "<user-turn>", "<system_prompt>"],
+)  # fmt: skip
+def test_compound_role_tags_are_still_replaced(tag):
+    assert FAKE_BOUNDARY in sanitize(tag)

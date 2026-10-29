@@ -188,3 +188,40 @@ def test_drive_live_never_clicks_a_control_that_moved_during_the_model_call():
         _perform=lambda step, target: acted.append(target.cid) or "clicked",
     )  # fmt: skip
     assert r.status == "blocked" and "moved" in r.reason and acted == []
+
+
+def test_drive_live_rechecks_the_deny_list_on_the_name_it_would_click():
+    from ghostcursor.harness import teach_live
+    from ghostcursor.providers.schemas import Choice
+
+    @dataclass(frozen=True)
+    class Cand:
+        cid: str
+        name: str
+        rect: tuple = (0, 0, 40, 20)
+        window: str = "w1"
+
+        @property
+        def runtime_id(self):
+            return (self.cid,)
+
+    class Frame:
+        def __init__(self, name):
+            self.candidates = (Cand("w1-1", name),)
+
+        def get(self, cid):
+            return next((c for c in self.candidates if c.cid == cid), None)
+
+    frames = iter([Frame("Insert"), Frame("Delete all")])  # renamed during choose()
+
+    class G:
+        def choose(self, envelope, option_ids, **kw):
+            return Choice("w1-1", {"w1-1": 0.95})
+
+    acted = []
+    r = teach_live.drive_live(
+        "open insert", None, approved=True, gateway=G(), deny=["delete"],
+        _observe=lambda: next(frames),
+        _perform=lambda step, target: acted.append(target.cid) or "clicked",
+    )  # fmt: skip
+    assert r.status == "blocked" and "deny" in r.reason and acted == []

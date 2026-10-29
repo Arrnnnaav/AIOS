@@ -33,7 +33,9 @@ _FAKE_TAG = re.compile(
     r"<\s{0,8}(?:/\s{0,8})?(?:system|developer|assistant|user|tool|human|im_start|im_end)"
     # <system_prompt>, <user-turn>, <systemprompt> -- but not <UserControl>,
     # <toolbar> or <users>, which are ordinary markup in a file the user asks about
-    r"(?:[_-][\w-]{0,40}|prompt|message|instructions?)?(?:\s[^<>]{0,200})?>"
+    r"(?:[-_/:.][\w./:-]{0,40}"
+    r"|prompt|message|instructions?|response|override|turn|query|call|result|output|input)?"
+    r"(?:\s[^<>]{0,200})?>"
     r"|<\|[^|<>]{1,30}\|>",
     re.IGNORECASE,
 )
