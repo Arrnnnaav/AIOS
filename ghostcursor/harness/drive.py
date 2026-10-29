@@ -86,6 +86,8 @@ def drive_until(
         try:
             act(control)
         except Exception as exc:
+            if getattr(exc, "retry", False):  # the user is holding a key: look again
+                continue
             return Result("blocked", f"could not act: {exc}", step - 1, tuple(history))
         history.append(control.name or control.id)
     return Result("max_steps", "reached the step cap", max_steps, tuple(history))

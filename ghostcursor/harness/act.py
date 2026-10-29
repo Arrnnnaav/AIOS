@@ -130,7 +130,7 @@ def chord_events(chord: str) -> list[_INPUT]:
 
     # An empty part ("ctrl++") reaches vk_of and is refused, not dropped:
     # dropping it would send a different chord from the one the plan showed.
-    names = [n.strip().casefold() for n in chord.split("+")]
+    names = ["".join(n.split()).casefold() for n in chord.split("+")]  # "page down"
     if {"esc", "escape"} & set(names):
         raise ValueError(f"refused key chord {chord!r}")
     vks = [vk_of(n) for n in names]

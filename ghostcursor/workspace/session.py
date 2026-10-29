@@ -343,6 +343,9 @@ class Workspace:
     #: (dropped turns covered, summary) of the earlier conversation. In-memory
     #: only; rebuilt from the brief after a restart.
     checkpoint: tuple[int, str] = (0, "")
+    #: How many turns had dropped when a checkpoint request last failed, so a
+    #: missing model costs one request per CHECKPOINT_EVERY turns, not one per ask.
+    checkpoint_failed_at: int = -1
 
     def __post_init__(self) -> None:
         brief_path(self.root, self.topic)  # validates the topic name
@@ -413,9 +416,20 @@ class Workspace:
         new turns into the previous summary. Fail-open: no model, no summary."""
 
         covered, summary = self.checkpoint
-        if not dropped or (summary and len(dropped) - covered < CHECKPOINT_EVERY):
-            return summary if dropped else ""
-        fresh = _within(dropped[covered:], HISTORY_TOKENS)
+        if not dropped:
+            return ""
+        due = covered == 0 or len(dropped) - covered >= CHECKPOINT_EVERY
+        failed = self.checkpoint_failed_at
+        if not due or (failed >= 0 and len(dropped) - failed < CHECKPOINT_EVERY):
+            return summary
+        # Oldest first, so no turn is marked covered without being sent; a
+        # backlog (after a restart) is folded in over the next requests.
+        fresh, spent = [], 0
+        for turn in dropped[covered:]:
+            spent += rough_tokens(turn.text)
+            if spent > HISTORY_TOKENS and fresh:
+                break
+            fresh.append(turn)
         envelope = Envelope(
             task="summarise the earlier conversation",
             trusted={},
@@ -436,8 +450,10 @@ class Workspace:
                 purpose="checkpoint",
             )  # fmt: skip
         except ProviderError:
-            return summary
-        self.checkpoint = (len(dropped), summary)
+            self.checkpoint_failed_at = len(dropped)
+            return self.checkpoint[1]
+        self.checkpoint = (covered + len(fresh), summary)
+        self.checkpoint_failed_at = -1
         return summary
 
     def _add_company_knowledge(self, query: str, context: dict) -> None:

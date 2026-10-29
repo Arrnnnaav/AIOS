@@ -128,3 +128,20 @@ def test_drive_live_wiring_without_a_desktop(monkeypatch):
 
     ok = teach_live.drive_live("open insert", None, approved=True, deny=["delete"], **common)
     assert ok.status == "done" and acted == [("w1-1", "click")]
+
+
+def test_a_busy_user_costs_a_step_not_the_run():
+    class Busy(PermissionError):
+        retry = True
+
+    tries = []
+
+    def act(c):
+        tries.append(c.id)
+        if len(tries) == 1:
+            raise Busy("holding a key")
+
+    picks = iter([_choice("a"), _choice("a"), _choice("DONE")])
+    r = drive_until("g", observe=lambda: [C("a", "Save")],
+                    choose=lambda g, c: next(picks), act=act, approved=True)  # fmt: skip
+    assert r.status == "done" and tries == ["a", "a"]

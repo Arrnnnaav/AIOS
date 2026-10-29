@@ -1310,7 +1310,7 @@ def _post(url: str, action: str, body: dict) -> dict:
     token = urllib.parse.parse_qs(parts.query).get("t", [""])[0]
     request = urllib.request.Request(
         f"http://{parts.netloc}/api/{action}",
-        json.dumps(body).encode("utf-8"),
+        json.dumps(body, ensure_ascii=False).encode("utf-8"),  # \uXXXX would pass MAX_BODY
         {"Content-Type": "application/json", "X-Orbyn-Token": token},
     )
     with urllib.request.urlopen(request, timeout=10) as response:

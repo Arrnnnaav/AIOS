@@ -1497,3 +1497,27 @@ def test_an_offered_file_is_shown_once_and_needs_the_token(served):
                 {"name": 3, "material": "a"}, {"name": "x", "material": "a" * 100_001}):
         assert call(port, "/api/offer_file", bad)[0] != 200
     assert app.offered_file is None
+
+
+def test_a_second_instance_sends_the_file_as_utf8_not_escapes(monkeypatch):
+    import urllib.request
+
+    sent = {}
+
+    class Reply:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self, *a):
+            return b"{}"
+
+    def urlopen(request, timeout):
+        sent["data"] = request.data
+        return Reply()
+
+    monkeypatch.setattr(urllib.request, "urlopen", urlopen)
+    appmod._post("http://127.0.0.1:1/?t=x", "offer_file", {"name": "a", "material": "\u4e2d" * 1000})
+    assert len(sent["data"]) < 4000 and "\u4e2d".encode() in sent["data"]

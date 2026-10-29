@@ -31,7 +31,9 @@ FAKE_BOUNDARY = "[control tag removed]"
 #: "<" + 50k spaces was quadratic and held the GIL past the 0.5 s Stop).
 _FAKE_TAG = re.compile(
     r"<\s{0,8}(?:/\s{0,8})?(?:system|developer|assistant|user|tool|human|im_start|im_end)"
-    r"[\w-]{0,40}(?:\s[^<>]{0,200})?>"
+    # <system_prompt>, <user-turn>, <systemprompt> -- but not <UserControl>,
+    # <toolbar> or <users>, which are ordinary markup in a file the user asks about
+    r"(?:[_-][\w-]{0,40}|prompt|message|instructions?)?(?:\s[^<>]{0,200})?>"
     r"|<\|[^|<>]{1,30}\|>",
     re.IGNORECASE,
 )
@@ -49,7 +51,7 @@ def neutralize(text: str) -> str:
     return _FAKE_MARKER.sub(FAKE_BOUNDARY, _FAKE_TAG.sub(FAKE_BOUNDARY, text))
 
 
-def sanitize(text: object, limit: int = MAX_TAINTED_CHARS) -> str:
+def sanitize(text: object, limit: int | None = MAX_TAINTED_CHARS) -> str:
     """Normalise, strip control and bidi-override characters and fake role
     tags or section markers, bound length."""
 
@@ -243,8 +245,10 @@ def tainted_chunks(source: str, material: str) -> tuple[str, list[Tainted]]:
     Returns (the scrubbed text, its chunks). For model-, web- or Brain-derived
     text longer than one Tainted value."""
 
-    material = scrub(redact.scrub(material)[0])
-    material = neutralize(unicodedata.normalize("NFKC", material))
+    # The whole of sanitize first (NFKC, control strip, whitespace collapse):
+    # a tag padded past \s{0,8} or split by a zero-width character is only
+    # caught once those run, and they must run before the split, not per chunk.
+    material = neutralize(scrub(redact.scrub(sanitize(material, limit=None))[0]))
     scrubbed, chunks = material, []
     while material:
         part = material[:MAX_TAINTED_CHARS]

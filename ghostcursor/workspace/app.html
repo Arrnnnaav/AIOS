@@ -349,12 +349,12 @@ async function poll(force) {
   let s;
   try { s = await api("state"); } catch { return; }
   const json = JSON.stringify(s);
+  if (s.offered_file) takeOfferedFile();  // before the early return: a sheet may have closed since
   if (!force && json === lastJson) return;
   const busyChanged = !S || S.busy !== s.busy;
   if (busyChanged) workCardIndex = 0;
   lastJson = json; S = s;
   render(busyChanged);
-  if (S.offered_file) takeOfferedFile();
 }
 setInterval(poll, 700);
 

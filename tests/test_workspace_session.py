@@ -511,3 +511,39 @@ def test_a_checkpoint_reply_must_be_exactly_a_summary():
     for bad in ('{"reply": "ok", "memories": []}', '{"summary": 3}', '{"summary": "a", "x": 1}'):
         with pytest.raises(ProviderError):
             parse_checkpoint(bad)
+
+
+def test_a_backlog_is_folded_oldest_first_without_skipping(tmp_path):
+    from ghostcursor.workspace import session
+    from ghostcursor.workspace.session import HISTORY_TURNS
+
+    gateway = CheckpointGateway()
+    ws, brain = _long_talk(tmp_path, gateway, HISTORY_TURNS + 40)
+    old = session.HISTORY_TOKENS
+    session.HISTORY_TOKENS = 30  # about ten short turns per request
+    try:
+        ws._context("q")
+        first = [t["text"].text for t in gateway.checkpoints[0].tainted["turns"]]
+        assert first[0] == "turn 0" and ws.checkpoint[0] == len(first) < 40
+        ws._context("q")
+        second = [t["text"].text for t in gateway.checkpoints[1].tainted["turns"]]
+        assert second[0] == f"turn {len(first)}"  # picks up where the first stopped
+    finally:
+        session.HISTORY_TOKENS = old
+    brain.close()
+
+
+def test_a_failed_checkpoint_is_not_retried_on_every_message(tmp_path):
+    from ghostcursor.brief import append_turn
+    from ghostcursor.workspace.session import CHECKPOINT_EVERY, HISTORY_TURNS
+
+    gateway = CheckpointGateway(fail_checkpoint=True)
+    ws, brain = _long_talk(tmp_path, gateway, HISTORY_TURNS + 2)
+    ws._context("q")
+    ws._context("q")
+    assert len(gateway.checkpoints) == 1
+    for n in range(CHECKPOINT_EVERY):
+        append_turn(ws.root, ws.topic, "user", f"later {n}")
+    ws._context("q")
+    assert len(gateway.checkpoints) == 2
+    brain.close()

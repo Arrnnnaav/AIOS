@@ -649,3 +649,7 @@ def test_a_whole_step_with_a_held_key_stays_inside_the_stop_budget():
         get_clip=lambda: None,
     )
     assert sum(pauses) < 0.5  # D020: Stop reaches a running Act within 0.5 s
+
+
+def test_a_key_name_with_a_space_inside_still_works():
+    assert [e.u.ki.wVk for e in act.chord_events("ctrl+page down")] == [0x11, 0x22, 0x22, 0x11]
