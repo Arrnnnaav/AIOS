@@ -717,7 +717,7 @@ def test_file_question_is_one_off_and_keeps_material_out_of_history(served):
         port, "/api/ask_file", {"text": "Where?", "material": "Private file: east"}
     )
     assert status == 200
-    assert json.loads(payload) == {"answer": "Sure."}
+    assert json.loads(payload) == {"answer": "Sure.", "sent": "Private file: east"}
     assert app.ws.turns == ()
     saved = app.activity_path.read_text(encoding="utf-8")
     assert "Private file" not in saved and "Where?" not in saved
@@ -746,7 +746,7 @@ def test_saved_result_follow_up_uses_server_selected_bounded_answer(served):
     seen = []
     app.ws.ask = lambda question, material, *, cancelled: (seen.append((question, material, cancelled())), "Grounded reply")[1]
     status, payload = call(port, "/api/job_ask", {"id": jid, "text": "What?", "material": "injected"})
-    assert status == 200 and json.loads(payload) == {"answer": "Grounded reply"}
+    assert status == 200 and json.loads(payload) == {"answer": "Grounded reply", "sent": ""}
     assert seen == [("What?", "A" * 8000 + "TRAILING", False)]  # ws.ask bounds what is sent
     assert app.ws.turns == ()
     saved = app.job_path.read_text(encoding="utf-8")
@@ -776,7 +776,7 @@ def test_stop_reaches_file_question_provider_in_order(tmp_path):
     )
     try:
         assert app.handle("ask_file", {"text": "Where?", "material": "a file"}) == {
-            "answer": "Sure."
+            "answer": "Sure.", "sent": "a file"
         }
         assert seen == [False, True]
         assert app.activity[-1] == {"label": "Asking file", "state": "stopped"}

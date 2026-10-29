@@ -307,6 +307,9 @@ class Workspace:
     #: Recurring-use learning (D186): a session tally that offers to save a task
     #: once it repeats. In-memory only; never persisted (rule 6).
     usage: Usage = field(default_factory=Usage)
+    #: The scrubbed material the latest ask() prepared for the model, so the
+    #: user can see exactly what was sent. In-memory only; never persisted.
+    last_sent: str = ""
 
     def __post_init__(self) -> None:
         brief_path(self.root, self.topic)  # validates the topic name
@@ -451,6 +454,7 @@ class Workspace:
         tainted channel (scrubbed before any egress); the question is the user's
         own, so it is trusted. Returns the reply."""
 
+        self.last_sent = ""
         question = " ".join(str(question).split())
         if not question:
             return "ask what? usage: /ask <question> (grounds on the clipboard)"
@@ -460,6 +464,7 @@ class Workspace:
             limit=self.MAX_CLIP_CHARS * 4,
         )
         material = scrub(redact.scrub(material)[0])
+        self.last_sent = material
         chunks = []
         while material:
             part = material[:MAX_TAINTED_CHARS]

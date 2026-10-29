@@ -1520,8 +1520,6 @@ to confirm where the cost actually is before changing anything else.
 - Work history is a single-writer per-topic file. If multiple app processes
   for one topic become supported, add coordinated persistence and live-run
   ownership before treating the cards as complete history.
-- Work “Ask a file” accepts one text file up to 100,000 characters; the
-  answer does not yet show which passages were sent.
 - Packaged Chat, Plan, Brain and Work controls, live research and GitHub ran;
   see `docs/evidence/workspace-live-acceptance-2026-10-26.md`. A real packaged
   Teach session remains to be measured under its separate acceptance gate.

@@ -484,6 +484,16 @@ function openBackgroundResearch() {
   row.append(cancel, start); sheet.append(question, row); $("scrim").classList.add("open"); question.focus();
 }
 
+// What ask() actually sent (scrubbed, matching passages only), shown on demand.
+function sentDetails(sent, total) {
+  const box = el("details", "sent"); box.hidden = !sent;
+  if (sent) {
+    box.append(el("summary", "", `Sent ${sent.length.toLocaleString()} of ${total.toLocaleString()} characters to the model`));
+    const text = el("pre", "", sent); text.style.whiteSpace = "pre-wrap"; box.append(text);
+  }
+  return box;
+}
+
 function openJobResult(job) {
   sheetOpener = document.activeElement;
   const sheet = $("sheet"); const heading = el("h3", "", "Research result"); heading.id = "jobResultTitle";
@@ -499,7 +509,7 @@ function openJobResult(job) {
     ask.disabled = true; ask.textContent = "Asking…"; stop.hidden = false;
     try {
       const result = await api("job_ask", { id: job.id, text });
-      reply.textContent = result.answer; reply.hidden = false; reply.focus(); await poll(true);
+      reply.textContent = result.answer; reply.hidden = false; sheet.querySelector("details.sent")?.remove(); reply.after(sentDetails(result.sent, job.answer.length)); reply.focus(); await poll(true);
     } catch (e) { toast(e.message); }
     finally { ask.disabled = false; ask.textContent = "Ask about result"; stop.hidden = true; }
   };
@@ -668,7 +678,8 @@ function openFileAsk() {
       const material = await selected.text();
       if (!material.trim() || material.length > 100000 || material.includes("\0")) throw new Error("Choose a text file under 100,000 characters.");
       const result = await api("ask_file", { text, material });
-      answer.hidden = false; answer.textContent = result.answer; answer.focus();
+      answer.hidden = false; answer.textContent = result.answer;
+      form.querySelector("details.sent")?.remove(); answer.after(sentDetails(result.sent, material.length)); answer.focus();
       await poll(true);
     } catch (e) { toast(e.message); }
     finally { ask.disabled = false; ask.textContent = "Ask file"; }

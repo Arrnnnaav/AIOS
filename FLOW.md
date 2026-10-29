@@ -280,7 +280,9 @@ be archived and restored in the same local file. Work hides archived cards by
 default; archived cards still count toward the 20-job limit, and only Keep
 protects one from trimming. A result's explicit follow-up uses its server-selected saved answer
 (the passages sharing most words with the question, chosen locally by
-`session.relevant`, at most 8,000 characters) through the existing one-off,
+`session.relevant`, at most 8,000 characters; the answer shows that scrubbed
+text under "Sent N of M characters", kept in memory only as
+`Workspace.last_sent`) through the existing one-off,
 tainted-material Ask
 path and single worker. It sends the question and bounded material to the
 configured model, accepts Stop (a Stop button shows on the sheet while it

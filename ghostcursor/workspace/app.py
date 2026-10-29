@@ -888,7 +888,8 @@ class App:
                 or "\0" in material
             ):
                 raise ValueError("choose a text file under 100,000 characters")
-            return {"answer": self.run("Asking file", lambda: ws.ask(text, material, cancelled=self.stop.is_set))}
+            answer = self.run("Asking file", lambda: ws.ask(text, material, cancelled=self.stop.is_set))
+            return {"answer": answer, "sent": ws.last_sent}
         if action == "job_ask":
             question, jid = body.get("text"), body.get("id")
             if not isinstance(question, str) or not question.strip() or len(question) > 500 or "\0" in question:
@@ -898,7 +899,8 @@ class App:
                 if row is None or row["state"] != "finished" or not row["answer"]:
                     raise ValueError("no such finished result")
                 material = row["answer"]  # ws.ask picks the matching passages
-            return {"answer": self.run("Asking file", lambda: ws.ask(question, material, cancelled=self.stop.is_set))}
+            answer = self.run("Asking file", lambda: ws.ask(question, material, cancelled=self.stop.is_set))
+            return {"answer": answer, "sent": ws.last_sent}
         if action == "evidence":
             return {"text": ws.evidence(int(body.get("n", 0)))}
         if action == "ideate":

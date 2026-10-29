@@ -69,6 +69,7 @@ def test_ask_sends_later_file_text_in_bounded_scrubbed_chunks(tmp_path):
     assert "MARKER_AT_END" in combined
     assert "alice@example.com" not in combined
     assert "[EMAIL_1]" in combined
+    assert "[EMAIL_1]" in ws.last_sent and "alice@" not in ws.last_sent  # the shown copy is scrubbed too
     brain.close()
 
 
@@ -111,4 +112,5 @@ def test_a_long_file_sends_only_the_passages_that_match(tmp_path):
     ws.ask("Where does the production database run?", text)
     sent = "".join(chunk.text for chunk in gw.envelopes[0].tainted["material"])
     assert "eu-west-2" in sent and len(sent) <= 8000  # same egress bound as a short file
+    assert ws.last_sent.split() == " ".join(c.text for c in gw.envelopes[0].tainted["material"]).split()  # shown == sent
     brain.close()
