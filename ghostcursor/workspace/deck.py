@@ -46,7 +46,8 @@ DECK_SYSTEM_PROMPT = (
     "of slides. Each slide has a short title, 0-8 terse bullets, and a layout "
     "chosen by its content type (title/section/bullets/two_column/comparison/"
     "timeline/table/quote/image). Open with a title slide and group the deck "
-    "into a clear narrative. Use ONLY the facts in GROUNDING when it is present; "
+    "into a clear narrative. Use ONLY the facts in the OBSERVED_DATA grounding "
+    "entries when they are present; "
     "do not invent figures, names or quotes."
 )
 

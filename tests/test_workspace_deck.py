@@ -76,6 +76,7 @@ def test_plan_deck_grounds_in_reviewed_brain_facts(tmp_path):
 
     body = calls[0].content.decode()
     assert "us-east-1" in body  # reviewed fact is grounding
+    # DLP leaves this sentence intact, so the assertion tests recall's exclusion.
     assert "hunter2" not in body  # sensitive fact never reaches the model path
     kb.close()
 

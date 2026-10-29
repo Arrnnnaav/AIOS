@@ -2012,6 +2012,14 @@ that way, or route them through tainted if research ever shapes them; a deck
 outline over 8,000 chars is cut (the proposal now says so, and the plan may
 miss later slides; chunking into several build plans is the upgrade), and
 `sanitize` collapses its newlines so slides rest on the "Slide N" markers.
+Review of 25755e4 (no BLOCKING): the OBSERVED_DATA label still says "read
+from the user's screen" although web claims, Brain facts and plan steps now
+use it (a neutral "untrusted data" label would fit); the critic now judges
+plan steps it is told are never instructions -- critique quality was not
+re-checked against a live model; deck grounding is bounded (subquestions x 8
+claims) but not capped, and overflow fails closed; `agents.dry_run` still puts
+a model-drafted agent goal (drafted with Brain context, user-reviewed before
+save) in trusted `goal`.
 session.py:~841 -- shared with draft_skill + the one-step router. The DeckSpec
 text becomes the plan goal via the trusted channel. Confirm grounding provenance
 stays scrubbed; not a rule-6 egress change here.
