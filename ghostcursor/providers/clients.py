@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import time
 from dataclasses import dataclass
 
@@ -321,7 +322,19 @@ def responses_json_call(
                 if failure is not None:
                     response.read()
                     raise _plan_limit_in(config, response) or failure
-                for line in response.iter_lines():
+                # A read waits up to the whole budget, so a stall late in the
+                # stream could double it and Stop would wait it out: a
+                # watchdog closes the stream at the deadline or on cancel.
+                ended = threading.Event()
+
+                def watch():
+                    while not ended.wait(0.1):
+                        if cancelled() or time.monotonic() > deadline:
+                            response.close()
+                            return
+
+                threading.Thread(target=watch, name="StreamWatchdog", daemon=True).start()
+                for line in _watched(response.iter_lines(), ended, cancelled, deadline, config):
                     if cancelled():
                         raise ProviderError(FailureKind.CANCELLED)
                     if time.monotonic() > deadline:
@@ -355,6 +368,22 @@ def responses_json_call(
                 FailureKind.UNAVAILABLE, f"{config.name}: {type(exc).__name__}"
             ) from exc
     raise ProviderError(FailureKind.INVALID_OUTPUT, f"{config.name}: stream ended early")
+
+
+def _watched(lines, ended, cancelled, deadline, config):
+    """LINES, ending the watchdog when they end; a stream the watchdog closed
+    reads as the cancel or timeout it was."""
+
+    try:
+        yield from lines
+    except Exception as exc:
+        if cancelled():
+            raise ProviderError(FailureKind.CANCELLED) from exc
+        if time.monotonic() > deadline:
+            raise ProviderError(FailureKind.TIMEOUT, config.name) from exc
+        raise
+    finally:
+        ended.set()
 
 
 def _completed(config, body: dict, content: str, started: float) -> tuple[str, Reply]:

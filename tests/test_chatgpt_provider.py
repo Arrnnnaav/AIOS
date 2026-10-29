@@ -455,3 +455,54 @@ def test_a_refreshed_token_that_cannot_be_saved_is_kept_in_memory(tmp_path, monk
     assert chatgpt.access_token(path=path, transport=transport, now=lambda: 4560.0) == "at2"
     assert chatgpt.access_token(path=path, transport=transport, now=lambda: 9000.0) == "at3"
     assert forms[1]["refresh_token"] == "rt2"  # the rotated token, not the dead one on disk
+
+
+class _Stalls(httpx.SyncByteStream):
+    """A stream that sends one line, then hangs until it is closed (as a
+    socket read does), like a provider that stops mid-answer."""
+
+    def __init__(self):
+        self.closed = threading.Event()
+
+    def __iter__(self):
+        yield b'data: {"type":"response.output_text.delta","delta":"x"}\n\n'
+        self.closed.wait(10)
+        raise httpx.ReadError("closed")
+
+    def close(self):
+        self.closed.set()
+
+
+@pytest.mark.parametrize("stop_after", ["cancel", "deadline"])
+def test_a_stalled_stream_ends_at_stop_or_the_deadline(stop_after):
+    from ghostcursor.providers.clients import ProviderConfig, responses_json_call
+    from ghostcursor.providers.errors import FailureKind, ProviderError
+
+    stream = _Stalls()
+    transport = httpx.MockTransport(lambda r: httpx.Response(200, stream=stream))
+    config = ProviderConfig("chatgpt", "https://x.test", "m", None, 30.0, api="responses")
+    started = time.monotonic()
+    pressed = lambda: stop_after == "cancel" and time.monotonic() - started > 0.3
+    with pytest.raises(ProviderError) as caught:
+        responses_json_call(
+            config, "k", [{"role": "user", "content": "q"}], {},
+            transport=transport, deadline_s=0.5 if stop_after == "deadline" else 30.0,
+            cancelled=pressed,
+        )  # fmt: skip
+    assert time.monotonic() - started < 2.0  # not the 10 s the read would hang
+    want = FailureKind.CANCELLED if stop_after == "cancel" else FailureKind.TIMEOUT
+    assert caught.value.kind is want
+
+
+def test_stop_lands_quickly_even_with_an_idle_preconnect():
+    import socket
+
+    stop = threading.Event()
+    with chatgpt.listen(0) as server:
+        idle = socket.create_connection(server.server_address)  # sends nothing
+        threading.Timer(0.2, stop.set).start()
+        started = time.monotonic()
+        with pytest.raises(chatgpt.SignInError, match="cancelled"):
+            chatgpt.wait_for_code(server, "s", 300.0, stop.is_set)
+        idle.close()
+    assert time.monotonic() - started < 1.5  # not the old 5 s handler timeout

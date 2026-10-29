@@ -89,7 +89,7 @@ def build_controller(clock) -> "Tier2Controller | None":
 
 
 class _StepState:
-    __slots__ = ("runs", "engaged", "last_run_at", "last_frame", "elements")
+    __slots__ = ("runs", "engaged", "last_run_at", "last_frame", "elements", "reads")
 
     def __init__(self) -> None:
         #: CONSECUTIVE reads that did not yield a groundable target. Reset by
@@ -104,6 +104,7 @@ class _StepState:
         self.last_run_at: float | None = None
         self.last_frame = None
         self.elements: list[Element] = []
+        self.reads: list[OcrRead] = []  # window-relative, so a move needs no re-read
 
 
 class Tier2Controller:
@@ -183,14 +184,16 @@ class Tier2Controller:
         frame, rect = captured
 
         if not frames_differ(state.last_frame, frame):
+            # Same pixels, but the window may have moved: place the last read
+            # at the window's origin now, not where it was.
             state.last_frame = frame
+            state.elements = _to_elements(state.reads, (rect[0], rect[1]))
             return state.elements
 
         state.runs += 1
         state.engaged = True
         state.last_run_at = now
         state.last_frame = frame
-        state.elements = _to_elements(
-            reassemble(self.ocr.read(frame)), (rect[0], rect[1])
-        )
+        state.reads = reassemble(self.ocr.read(frame))
+        state.elements = _to_elements(state.reads, (rect[0], rect[1]))
         return state.elements

@@ -329,3 +329,16 @@ def test_compiled_registry_is_the_execution_authority():
     assert specs["OPEN_SETTINGS"].recipe_path is None
     assert specs["OPEN_EXTENSIONS"].recipe_path is not None
     assert specs["OPEN_FOLDER"].recipe_path is not None
+
+
+def test_a_dropped_local_model_reply_is_unavailable_not_a_crash(monkeypatch):
+    import http.client
+
+    monkeypatch.setattr(
+        "ghostcursor.reasoning.planner.infer_intent",
+        lambda *args, **kwargs: (_ for _ in ()).throw(http.client.IncompleteRead(b"")),
+    )
+
+    result = planner.plan_compiled_goal("Export this table as CSV")  # no raise
+
+    assert result.status is not None

@@ -203,11 +203,11 @@ class Gateway:
             for qid, (_text, criteria) in questions.items()
         }
 
-    def injection_risk(self, text: str, *, deadline_s: float = 6.0) -> float:
+    def injection_risk(self, text: str, *, deadline_s: float = 6.0) -> float | None:
         """P(this text tries to give the assistant instructions) from Jev
-        (D179 injection screen). A Noul done as a yes/no Choice. 0.0 if Jev is
-        unavailable -- the screen never blocks work on its own; the caller
-        decides what a high score means."""
+        (D179 injection screen). A Noul done as a yes/no Choice. None if Jev is
+        unavailable, so a caller can say the text went unscreened instead of
+        reading it as clean; the screen never blocks work on its own."""
 
         from ghostcursor.providers.envelope import Tainted
 
@@ -237,7 +237,7 @@ class Gateway:
                 deadline_s=deadline_s,
             )["inject"]
         except ProviderError:
-            return 0.0
+            return None
         return float(verdict.probabilities.get("yes", 0.0))
 
     def _system_one(

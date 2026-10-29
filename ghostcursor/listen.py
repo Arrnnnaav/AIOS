@@ -35,12 +35,15 @@ ARMED_FOR_S = 8.0  # after the wake word / hotkey, the next utterance is the req
 HOLD_S = 0.35  # the hotkey still down after this is hold-to-talk, not a tap
 
 
+def _words(text: str) -> list[str]:
+    return re.sub(r"[^a-z' ]", " ", text.casefold()).split()
+
+
 def wake_match(text: str) -> str | None:
     """The request after the wake phrase ("" if none), or None if the text
     does not start with it."""
 
-    words = re.sub(r"[^a-z' ]", " ", text.casefold()).split()
-    joined = " ".join(words)
+    joined = " ".join(_words(text))
     for form in _WAKE_FORMS:
         form = re.sub(r"[^a-z ]", "", form)
         if joined == form or joined.startswith(form + " "):
@@ -195,7 +198,12 @@ class Listener:
             return
         if seconds > WAKE_MAX_S:  # the whole request in one breath
             full = self.hear(samples)
-            rest = wake_match(full) if wake_match(full) is not None else full
+            whole = wake_match(full)
+            if whole is None:  # the long pass heard the wake words differently:
+                # drop as many leading words as the wake took in the short pass
+                wake_words = len(_words(heard)) - len(rest.split())
+                whole = " ".join(_words(full)[wake_words:])
+            rest = whole
         if len(rest.split()) >= 2:
             self.on_request(rest)
         else:

@@ -120,3 +120,17 @@ def test_an_absent_window_yields_no_elements_and_costs_no_read():
     controller = Tier2Controller(ocr=ocr, capture=lambda _t: None, clock=clock)
     assert controller.elements_for(0, ".*") == []
     assert ocr.calls == 0
+
+
+def test_a_moved_window_with_the_same_pixels_moves_its_outlines():
+    clock, ocr = FakeClock(), FakeOcr()
+    origins = iter([(0, 0, 10, 10), (300, 200, 310, 210)])
+    frame = np.zeros((10, 10, 3), dtype=np.uint8)
+    controller = Tier2Controller(
+        ocr=ocr, capture=lambda _t: (frame, next(origins)), clock=clock
+    )
+    controller.elements_for(0, ".*")
+    clock.t += 10.0
+    moved = controller.elements_for(0, ".*")
+    assert ocr.calls == 1  # no re-read for a move
+    assert moved[0].bbox[:2] == (310, 220)

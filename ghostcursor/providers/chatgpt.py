@@ -137,7 +137,9 @@ def listen(port: int) -> http.server.HTTPServer:
 
 
 class _CallbackHandler(http.server.BaseHTTPRequestHandler):
-    timeout = 5  # a local client that connects and sends nothing cannot hang sign-in
+    # A client that connects and sends nothing (a browser preconnect) holds
+    # the one-request loop this long; Stop must land within 0.5 s.
+    timeout = 0.5
 
     def do_GET(self):  # noqa: N802 (http.server API)
         url = urllib.parse.urlsplit(self.path)

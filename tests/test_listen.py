@@ -334,3 +334,12 @@ def test_a_speech_failure_is_said_and_the_hotkey_lives_on():
 
     listener.pressed(hold)  # does not raise
     assert said[-1] == "Voice unavailable: no model" and sent == []
+
+
+def test_a_long_request_never_carries_the_wake_words():
+    from ghostcursor.listen import WAKE_MAX_S
+
+    # the short pass hears the wake; the long pass hears it another way
+    listener, sent, _ = _listener(["Hey bro open", "A bro, open the budget sheet now"])
+    listener.utterance(_tone(WAKE_MAX_S + 2.0, 0.1))
+    assert sent == ["open the budget sheet now"]

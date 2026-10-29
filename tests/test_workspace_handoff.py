@@ -165,3 +165,12 @@ def test_a_normal_handoff_is_not_flagged(tmp_path):
     other.gateway.injection_risk = lambda s: 0.1
     handoff.receive(other, text)
     assert not any("[caution]" in t.text for t in other.turns)
+
+
+
+def test_an_unscreened_handoff_says_so(tmp_path):
+    ws, text = _sent(tmp_path)
+    other = _ws(tmp_path, "receiver")
+    other.gateway.injection_risk = lambda s: None  # Jev unavailable
+    handoff.receive(other, text)
+    assert any("could not be checked" in t.text for t in other.turns)

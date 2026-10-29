@@ -188,10 +188,14 @@ def receive(ws, text: str) -> str:
     screen = " ".join(
         [received["goal"]] + [s.instruction for s in received["plan"].steps]
     )
-    if (
-        getattr(ws.gateway, "injection_risk", None)
-        and ws.gateway.injection_risk(screen) >= 0.8
-    ):
+    check = getattr(ws.gateway, "injection_risk", None)
+    risk = check(screen) if check else 0.0
+    if risk is None:
+        lines.append(
+            "[caution] This handoff could not be checked for instructions aimed "
+            "at Orbyn (Jev is unavailable). Read the steps before you run any."
+        )
+    elif risk >= 0.8:
         lines.append(
             "[caution] Parts of this handoff read like instructions to Orbyn, "
             "not a task. Read the steps before you run any of them."

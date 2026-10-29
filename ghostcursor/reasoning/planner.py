@@ -7,6 +7,7 @@ trusted registry.
 from __future__ import annotations
 
 import json
+from http.client import HTTPException  # a dropped local-model reply, e.g. RemoteDisconnected
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -630,7 +631,7 @@ def plan_compiled_goal(
                 decision.confidence,
                 decision.explanation,
             )
-        except (OSError, TimeoutError, ConnectionError) as exc:
+        except (OSError, TimeoutError, ConnectionError, HTTPException) as exc:
             candidate = IntentCandidate(
                 CandidateSource.MODEL_UNAVAILABLE,
                 fallback.intent_id,

@@ -1584,7 +1584,11 @@ class _PlanningWorker:
 
     @property
     def running(self) -> bool:
-        return self._thread is not None and self._thread.is_alive()
+        # Still running until its result is taken: a planner that has just
+        # finished must not let a second one start beside its unread result.
+        return self._thread is not None and (
+            self._thread.is_alive() or not self._result.empty()
+        )
 
     def start(
         self, request: LaunchRequest | TaskProposalRequest | ActProposalRequest

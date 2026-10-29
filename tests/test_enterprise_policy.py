@@ -254,4 +254,4 @@ def test_injection_risk_returns_the_yes_probability(monkeypatch, tmp_path):
         raise ProviderError(FailureKind.UNAVAILABLE)
 
     monkeypatch.setattr(gw, "judge", boom)
-    assert gw.injection_risk("hello") == 0.0  # never blocks on its own
+    assert gw.injection_risk("hello") is None  # unscreened, never "clean"
