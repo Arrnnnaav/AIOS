@@ -2041,6 +2041,11 @@ and `chord_events` refuses the Windows key and Alt+Tab. Open:
   every few tens of ms), so a 0.3 s pause gate would refuse almost every step.
   A yield needs a low-level hook that counts only real key presses and button
   clicks (skipping `LLMHF_INJECTED` and bare mouse moves), on its own thread.
+  Partly done 29 Oct (`docs/evidence/aside-computer-use-rea-2026-10-29.md`):
+  Orbyn's events carry an "ORBN" `dwExtraInfo` signature, and Act waits up to
+  0.4 s while any key or mouse button is held, then retries next tick. Still
+  open: Aside's 2 s recent-input window, which needs a native low-level hook
+  (a Python hook callback risks system-wide pointer lag).
 - Focus is re-checked once after the click, before a step's keys (29 Oct);
   Aside re-checks between keys of a long `typeText`. Orbyn sends a step's keys
   in one `SendInput` batch, so a focus steal mid-batch is still possible.

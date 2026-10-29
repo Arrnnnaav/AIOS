@@ -15,6 +15,14 @@ from tests.test_harness_teach import FakeGateway, SyncSlot, _c, _choice, _frame
 E = ExpectedChange
 
 
+@pytest.fixture(autouse=True)
+def _nothing_held(monkeypatch):
+    """perform() waits while the real user holds a key; tests must not depend
+    on this machine's keyboard."""
+
+    monkeypatch.setattr(act, "held_input", lambda: False)
+
+
 class Clock:
     def __init__(self):
         self.now = 0.0
@@ -541,3 +549,67 @@ def test_keys_are_not_sent_when_focus_moved_to_another_window(monkeypatch):
         check=lambda x, y, window: None,
     )
     assert len(sent) == 1
+
+
+def test_act_waits_for_a_held_key_to_be_released():
+    held = iter([True, True, False])
+    pauses = []
+    act.wait_for_release(lambda: next(held), pauses.append)
+    assert pauses == [0.05, 0.05]
+
+
+def test_act_gives_up_inside_the_stop_budget_while_a_key_stays_held():
+    pauses = []
+    with pytest.raises(act.UserBusy, match="holding a key"):
+        act.wait_for_release(lambda: True, pauses.append)
+    assert sum(pauses) <= act.MAX_HELD_WAIT_S < 0.5  # D020: Stop within 0.5 s
+
+
+def test_a_held_key_means_nothing_is_clicked_or_sent():
+    clicks, sent = [], []
+    with pytest.raises(act.UserBusy):
+        act.perform(
+            PlanStep("s", E.TITLE_CHANGES, action="type", text="hi"),
+            _c("c1", "Title", "Edit"),
+            held=lambda: True,
+            pause=lambda s: None,
+            click=lambda x, y: clicks.append((x, y)),
+            send=sent.append,
+            check=lambda x, y, window: None,
+        )
+    assert clicks == [] and sent == []
+
+
+def test_a_busy_user_makes_teach_wait_a_tick_instead_of_blocking():
+    plan = TeachPlan((PlanStep("Click Insert", E.CHOSEN_STATE_CHANGES),))
+    busy = [True]
+    done = []
+
+    def perform(step, target):
+        if busy[0]:
+            raise act.UserBusy("you are holding a key or mouse button, so Orbyn is waiting")
+        done.append(target.name)
+        return "clicked"
+
+    session = ModelTeachSession(
+        "x", FakeGateway(plan, [_choice("c1")]), SyncSlot(), clock=lambda: 0.0, plan=plan, act=perform
+    )
+    frame = _frame([_c(1)])
+    shown = session.tick(frame, confirm=True)
+    assert shown.phase is Phase.SHOWING and "waiting" in shown.message and done == []
+    busy[0] = False
+    session.tick(frame)
+    assert done == ["Insert"]
+
+
+def test_every_event_orbyn_sends_carries_its_signature():
+    events = act.text_events("a") + act.chord_events("ctrl+s")
+    assert {e.u.ki.dwExtraInfo for e in events} == {act.INPUT_SIGNATURE}
+    sent = []
+    original = act._send
+    try:
+        act._send = sent.extend
+        act.click_at(10, 10)
+    finally:
+        act._send = original
+    assert {e.u.mi.dwExtraInfo for e in sent} == {act.INPUT_SIGNATURE}

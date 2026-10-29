@@ -33,6 +33,13 @@ _user32.GetClassNameW.argtypes = (wintypes.HWND, wintypes.LPWSTR, ctypes.c_int)
 _user32.GetForegroundWindow.restype = wintypes.HWND
 
 _INPUT_MOUSE, _INPUT_KEYBOARD = 0, 1
+#: Stamped in dwExtraInfo of every event Orbyn sends ("ORBN"), so a hook or an
+#: audit can tell Orbyn's input from the user's (Aside stamps "SUCE" the same
+#: way and skips it in its low-level hooks).
+INPUT_SIGNATURE = 0x4E42524F
+#: Before acting, Orbyn waits for the user to let go of any key or mouse
+#: button (Aside's check, minus its hook). The wait stays under D020's 0.5 s.
+MAX_HELD_WAIT_S = 0.4
 _KEYUP, _UNICODE = 0x0002, 0x0004
 _MOVE, _LEFTDOWN, _LEFTUP = 0x0001, 0x0002, 0x0004
 _ABSOLUTE, _VIRTUALDESK = 0x8000, 0x4000
@@ -97,7 +104,7 @@ def _send(events: list[_INPUT]) -> None:
 def _key(vk: int = 0, *, up: bool = False, char: str = "") -> _INPUT:
     flags = (_KEYUP if up else 0) | (_UNICODE if char else 0)
     event = _INPUT(type=_INPUT_KEYBOARD)
-    event.u.ki = _KEYBDINPUT(vk, ord(char) if char else 0, flags, 0, 0)
+    event.u.ki = _KEYBDINPUT(vk, ord(char) if char else 0, flags, 0, INPUT_SIGNATURE)
     return event
 
 
@@ -195,9 +202,36 @@ def click_at(x: int, y: int) -> None:
     events = []
     for flags in (_MOVE, _LEFTDOWN, _LEFTUP):
         event = _INPUT(type=_INPUT_MOUSE)
-        event.u.mi = _MOUSEINPUT(dx, dy, 0, flags | _ABSOLUTE | _VIRTUALDESK, 0, 0)
+        event.u.mi = _MOUSEINPUT(
+            dx, dy, 0, flags | _ABSOLUTE | _VIRTUALDESK, 0, INPUT_SIGNATURE
+        )
         events.append(event)
     _send(events)
+
+
+class UserBusy(PermissionError):
+    """The user is holding a key or mouse button; try the step again later."""
+
+    retry = True
+
+
+def held_input() -> bool:
+    """True while any key or mouse button is physically down (GetAsyncKeyState
+    high bit; toggle state such as Caps Lock is ignored)."""
+
+    return any(_user32.GetAsyncKeyState(vk) & 0x8000 for vk in range(1, 255))
+
+
+def wait_for_release(held, pause) -> None:
+    """Return once nothing is held; raise UserBusy if something still is
+    after MAX_HELD_WAIT_S."""
+
+    for _ in range(round(MAX_HELD_WAIT_S / 0.05)):  # a count: floats drift
+        if not held():
+            return
+        pause(0.05)
+    if held():
+        raise UserBusy("you are holding a key or mouse button, so Orbyn is waiting")
 
 
 def _foreground_root() -> int:
@@ -310,6 +344,7 @@ def perform(
     set_clip=set_clipboard_text,
     get_clip=get_clipboard_text,
     focus=None,
+    held=None,
 ) -> str:
     """Do ``step`` on ``target`` (a Candidate in the latest frame); returns a
     short description for the status line. ``window`` is the bound window
@@ -322,6 +357,7 @@ def perform(
         return "nothing to do"
     if action == "keys":
         events = chord_events(step.text)  # validate before touching anything
+    wait_for_release(held or held_input, pause)
     reason = check(x, y, window)
     if reason:
         raise PermissionError(reason)

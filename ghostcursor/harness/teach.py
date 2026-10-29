@@ -471,6 +471,9 @@ class ModelTeachSession:
                 try:
                     did = self.act(step, current)
                 except Exception as exc:  # a refused chord, a failed SendInput
+                    if getattr(exc, "retry", False):  # the user is busy: next tick
+                        self.message = f"{self._instruction()} -- {exc}"
+                        return Display(self.phase, self.message)
                     self._block(f"could not act on step {self.step + 1}: {exc}")
                     return Display(self.phase, self.message)
                 self._acted_at = self.clock()
