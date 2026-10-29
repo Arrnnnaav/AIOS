@@ -30,6 +30,7 @@ _user32.GetWindowThreadProcessId.argtypes = (
 _user32.GetWindow.restype = wintypes.HWND
 _user32.GetWindow.argtypes = (wintypes.HWND, wintypes.UINT)
 _user32.GetClassNameW.argtypes = (wintypes.HWND, wintypes.LPWSTR, ctypes.c_int)
+_user32.GetForegroundWindow.restype = wintypes.HWND
 
 _INPUT_MOUSE, _INPUT_KEYBOARD = 0, 1
 _KEYUP, _UNICODE = 0x0002, 0x0004
@@ -199,6 +200,11 @@ def click_at(x: int, y: int) -> None:
     _send(events)
 
 
+def _foreground_root() -> int:
+    hwnd = _user32.GetForegroundWindow()
+    return _user32.GetAncestor(hwnd, 2) if hwnd else 0  # GA_ROOT
+
+
 def _elevated(pid: int | None = None) -> bool | None:
     """True if the process runs elevated; None if it cannot be asked."""
 
@@ -303,6 +309,7 @@ def perform(
     check=blocker,
     set_clip=set_clipboard_text,
     get_clip=get_clipboard_text,
+    focus=None,
 ) -> str:
     """Do ``step`` on ``target`` (a Candidate in the latest frame); returns a
     short description for the status line. ``window`` is the bound window
@@ -322,6 +329,9 @@ def perform(
     if action == "click":
         return f"clicked {target.name or target.control_type}"
     pause(0.15)  # let focus land before keys arrive
+    # A toast or another app may take focus in that gap; keys must not follow it.
+    if window is not None and not _on_bound_window((focus or _foreground_root)(), window):
+        raise PermissionError("focus moved to another window, so nothing was typed")
     if action == "type":
         send(text_events(step.text))
         return f"typed {len(step.text)} characters"

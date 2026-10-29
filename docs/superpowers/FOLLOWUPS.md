@@ -2035,13 +2035,15 @@ whose top-level window belongs to another process (covered or off screen),
 and `chord_events` refuses the Windows key and Alt+Tab. Open:
 
 - Aside yields when the user is using the mouse or keyboard ("the next action
-  waits for their pause"). Orbyn has ESC but no yield. `GetLastInputInfo`
-  counts Orbyn's own `SendInput`, so this needs a low-level hook that skips
-  `LLMHF_INJECTED` events, on its own thread with a message pump.
-- Aside re-checks keyboard focus between keys of a long `typeText` ("focus
-  changed or became protected, so no more keys were sent"). Orbyn sends a
-  step's keys in one `SendInput` batch after one click; a focus steal mid-batch
-  would type into the wrong control.
+  waits for their pause"). Orbyn has ESC but no yield. Tried 29 Oct with
+  `GetLastInputInfo` and dropped: on the owner's machine the idle time never
+  passed 0.25 s across 2.5 s of sampling (some device or service reports input
+  every few tens of ms), so a 0.3 s pause gate would refuse almost every step.
+  A yield needs a low-level hook that counts only real key presses and button
+  clicks (skipping `LLMHF_INJECTED` and bare mouse moves), on its own thread.
+- Focus is re-checked once after the click, before a step's keys (29 Oct);
+  Aside re-checks between keys of a long `typeText`. Orbyn sends a step's keys
+  in one `SendInput` batch, so a focus steal mid-batch is still possible.
 - Review of d0f3e5a (three BLOCKING, fixed in the next commit): the chord
   guard now judges key codes after the same strip/casefold `vk_of` uses
   (tabs and no-break spaces slipped past), single-character keys are ASCII
@@ -2049,7 +2051,6 @@ and `chord_events` refuses the Windows key and Alt+Tab. Open:
   only the bound window, windows it owns, or a `#32768` menu on its thread
   (a second presentation of the same app no longer passes). Open from that
   review: `perform(window=None)` skips the check silently (make it required);
-  keys go 0.15 s after the click without re-checking the foreground window;
   the `run_model_teach` closure and the drive lookup have no direct test; a
   missing label surfaces as a bare KeyError; alt+f4, f1 and ctrl+alt+arrows
   are allowed; a closed bound HWND reused by another process is not caught

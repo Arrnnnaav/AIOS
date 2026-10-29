@@ -513,3 +513,31 @@ def test_the_live_act_path_passes_the_bound_window(monkeypatch):
     monkeypatch.setattr(act, "perform", lambda step, target, window: seen.append(window))
     teach_live._live_perform(None, None, 9)
     assert seen == [9]
+
+
+def test_keys_are_not_sent_when_focus_moved_to_another_window(monkeypatch):
+    monkeypatch.setattr(act, "_user32", _Desk(hit=9))
+    sent = []
+    with pytest.raises(PermissionError, match="focus moved"):
+        act.perform(
+            PlanStep("s", E.TITLE_CHANGES, action="type", text="secret"),
+            _c("c1", "Title", "Edit"),
+            window=9,
+            focus=lambda: 7,  # a toast took focus after the click
+            pause=lambda s: None,
+            click=lambda x, y: None,
+            send=sent.append,
+            check=lambda x, y, window: None,
+        )
+    assert sent == []
+    act.perform(
+        PlanStep("s", E.TITLE_CHANGES, action="type", text="ok"),
+        _c("c1", "Title", "Edit"),
+        window=9,
+        focus=lambda: 9,
+        pause=lambda s: None,
+        click=lambda x, y: None,
+        send=sent.append,
+        check=lambda x, y, window: None,
+    )
+    assert len(sent) == 1
