@@ -499,3 +499,23 @@ def test_the_core_graph_vocabulary_contains_no_application_specific_branches():
     source = inspect.getsource(module).casefold()
     for application_word in ("powerpoint", "excel", "vscode", "sap"):
         assert application_word not in source
+
+
+
+def test_a_huge_integer_number_is_refused_not_an_overflow():
+    from ghostcursor.task_graph import _scalar_matches
+
+    assert _scalar_matches(ParameterKind.NUMBER, 10**400) is False
+
+
+@pytest.mark.parametrize("field", ["capability_id", "intent_id"])
+def test_a_non_string_capability_id_is_a_refusal_not_a_type_error(field):
+    registry = _registry()
+    key = next(iter(registry.capabilities))
+    spec = replace(registry.capabilities[key], **{field: 7})
+    caps = {**registry.capabilities, key: spec}
+    if field == "capability_id":
+        caps = {**registry.capabilities, key: spec}
+    bad = replace(registry, capabilities=MappingProxyType(caps))
+    with pytest.raises(TaskGraphValidationError):
+        validate_task_graph(TaskGraph(PLUGIN, "1.0.0", (), ()), bad)

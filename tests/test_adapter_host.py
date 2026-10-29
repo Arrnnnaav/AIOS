@@ -226,3 +226,54 @@ def test_verifier_timeout_terminates_the_one_shot_process(tmp_path):
             target={"hwnd": 101},
             timeout_s=0.1,
         )
+
+
+
+CHATTY = "import sys\nsys.stderr.write('x' * 200000)\nsys.stderr.flush()\n"
+
+
+def test_a_chatty_verifier_is_drained_not_timed_out(tmp_path):
+    descriptor = _verifier_descriptor(
+        tmp_path,
+        CHATTY
+        + r"""
+import json
+request=json.loads(sys.stdin.read())
+print(json.dumps({
+    "detail":"ok",
+    "node_id":"slide-one",
+    "observed":{},
+    "outcome":"verified",
+    "session_nonce":request["session_nonce"],
+    "type":"verification_result",
+    "validation_sha256":request["validation_sha256"],
+},sort_keys=True,separators=(",",":")))
+""",
+    )
+    response = VerifierHost(descriptor).verify(
+        node=_node(),
+        validation_sha256="v" * 64,
+        output_path=str(tmp_path / "deck.pptx"),
+        target={"hwnd": 101},
+        timeout_s=10.0,
+    )
+    assert response.verified
+
+
+def test_a_verifier_that_never_reads_stdin_fails_closed(tmp_path):
+    descriptor = _verifier_descriptor(tmp_path, "import sys\nsys.exit(3)\n")
+    with pytest.raises(AdapterProtocolError, match="exited with code 3"):
+        VerifierHost(descriptor).verify(
+            node=_node(),
+            validation_sha256="v" * 64,
+            output_path=str(tmp_path / "deck.pptx"),
+            target={"hwnd": 101},
+        )
+
+
+def test_a_chatty_adapter_does_not_stall_on_stderr(tmp_path):
+    host = AdapterHost(
+        _descriptor(tmp_path, CHATTY + SCRIPT), session_nonce="n" * 32
+    )
+    with host:
+        assert host.running

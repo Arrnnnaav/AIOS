@@ -610,3 +610,21 @@ def test_the_deadlines_are_given_together_or_not_at_all():
     )
     assert policy.first_paint_deadline_ms == 2000
     assert policy.completion_deadline_ms == 8000
+
+
+def test_a_disk_error_while_publishing_is_a_result_not_a_traceback(tmp_path, monkeypatch):
+    from ghostcursor import act_staging
+    from ghostcursor.act_cli import execute_act_proposal
+
+    _stub_execution(monkeypatch, completed=True)
+    proposal = _proposal(tmp_path)
+
+    def locked(*_a, **_k):
+        raise PermissionError("the deck is open elsewhere")
+
+    monkeypatch.setattr(act_staging, "publish", locked)
+    result = execute_act_proposal(proposal)
+
+    assert result.code.value != "completed"
+    assert "could not be published" in result.detail
+    assert proposal.output_path.exists() is False

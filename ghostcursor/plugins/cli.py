@@ -41,8 +41,8 @@ def main(argv: list[str] | None = None) -> int:
     cat.add_argument("--write", type=Path, help="write a read-only index.json here")
     args = parser.parse_args(argv)
 
-    store = _store(args.developer)
     try:
+        store = _store(args.developer)  # a bad key file is a refusal, not a traceback
         if args.command == "install":
             item = store.install(args.bundle)
             print(f"installed {item.plugin_id} {item.version} ({item.state.value})")

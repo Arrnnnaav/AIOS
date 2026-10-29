@@ -277,7 +277,10 @@ def _value_matches(kind: ActionValueKind, value: JsonValue) -> bool:
     if kind is ActionValueKind.INTEGER:
         return type(value) is int
     if kind is ActionValueKind.NUMBER:
-        return type(value) in {int, float} and math.isfinite(float(value))
+        try:
+            return type(value) in {int, float} and math.isfinite(float(value))
+        except OverflowError:  # an int past float range is no number we take
+            return False
     if kind is ActionValueKind.BOOLEAN:
         return type(value) is bool
     if kind is ActionValueKind.OBJECT:
@@ -805,7 +808,9 @@ def validate_action_graph(
         if not operation.safe_to_repeat:
             key_values = tuple(
                 json.dumps(
-                    _plain(node.parameters[field]),
+                    # An absent optional field keys as null: two such
+                    # nodes are still one repeated effect, never a KeyError.
+                    _plain(node.parameters.get(field)),
                     sort_keys=True,
                     separators=(",", ":"),
                 )

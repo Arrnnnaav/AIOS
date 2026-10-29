@@ -120,23 +120,29 @@ class VerifierHost:
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         encoded = json.dumps(request, sort_keys=True, separators=(",", ":")) + "\n"
-        assert process.stdin is not None
-        process.stdin.write(encoded)
-        process.stdin.close()
+        # communicate() drains stdout and stderr together, so a chatty child
+        # never fills a pipe and stalls into a timeout; on its own thread so
+        # Stop and the deadline are still polled. A child that closed stdin
+        # early is ignored by communicate() instead of leaking the Popen.
+        streams: list = []
+        pump = threading.Thread(
+            target=lambda: streams.append(process.communicate(encoded)),
+            name="GhostCursorVerifierPipes",
+            daemon=True,
+        )
         deadline = time.monotonic() + timeout_s
         try:
-            while process.poll() is None:
+            pump.start()
+            while pump.is_alive():
                 if cancel_event is not None and cancel_event.is_set():
                     process.terminate()
                     raise AdapterProtocolError("verification stopped")
                 if time.monotonic() >= deadline:
                     process.terminate()
                     raise AdapterProtocolError("verifier timed out")
-                time.sleep(0.02)
-            assert process.stdout is not None
-            raw = process.stdout.read()
-            assert process.stderr is not None
-            error = process.stderr.read(4096)
+                pump.join(0.02)
+            raw, error = streams[0] if streams else ("", "")
+            error = error[:4096]
         finally:
             if process.poll() is None:
                 process.kill()
@@ -145,10 +151,7 @@ class VerifierHost:
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.wait(timeout=2.0)
-            if process.stdout is not None:
-                process.stdout.close()
-            if process.stderr is not None:
-                process.stderr.close()
+            pump.join(2.0)
         if process.returncode != 0:
             detail = error.strip() or "no diagnostic"
             raise AdapterProtocolError(
@@ -224,7 +227,8 @@ class AdapterHost:
             cwd=str(self.descriptor.payload_root),
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            # Nothing reads it: a PIPE would fill and stall a chatty adapter.
+            stderr=subprocess.DEVNULL,
             text=True,
             encoding="utf-8",
             errors="strict",

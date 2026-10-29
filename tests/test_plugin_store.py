@@ -656,3 +656,40 @@ def test_a_revoked_digest_drops_from_the_active_catalog(tmp_path):
         revoked_digests=frozenset({digest}),
     )
     assert tuple(revoked.load_active_catalog().plugins) == ()
+
+
+
+def test_a_differently_signed_bundle_of_an_installed_version_is_refused(tmp_path):
+    private, trusted = _key()
+    store = PluginStore(tmp_path / "store", trusted_keys=trusted, core_version="0.1.0")
+    first = _bundle(tmp_path, private)
+    store.install(first)
+    store.enable("ghostcursor.one", "1.0.0")
+    other = tmp_path / "other"
+    other.mkdir()
+    changed = _bundle(
+        other,
+        private,
+        files={"ghostcursor/packs/index.json": b'{"packs":[],"schema_version":2} \n'},
+    )
+    store.install(first)  # the same bytes again is fine
+    with pytest.raises(PluginStoreError, match="different contents"):
+        store.install(changed)
+    assert tuple(store.load_active_catalog().plugins) == ("ghostcursor.one",)
+
+
+def test_a_bundle_swapped_after_verifying_is_not_installed(tmp_path, monkeypatch):
+    import shutil as _shutil
+
+    private, trusted = _key()
+    store = PluginStore(tmp_path / "store", trusted_keys=trusted, core_version="0.1.0")
+    bundle = _bundle(tmp_path, private)
+    real = _shutil.copyfile
+
+    def swap(source, target, *a, **k):
+        real(source, target, *a, **k)
+        Path(target).write_bytes(b"not the verified bundle")
+
+    monkeypatch.setattr("ghostcursor.plugins.store.shutil.copyfile", swap)
+    with pytest.raises(PluginStoreError, match="changed while"):
+        store.install(bundle)

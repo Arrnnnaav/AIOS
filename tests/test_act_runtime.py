@@ -1384,3 +1384,57 @@ def test_the_uia_except_does_not_swallow_a_keyboard_interrupt(tmp_path):
 
     with pytest.raises(KeyboardInterrupt):
         _run_uia(tmp_path, session=session)
+
+
+
+def _stop_during_verify(controls):
+    from ghostcursor.adapter_host import AdapterProtocolError
+
+    def verify(*_args):
+        controls.stop_event.set()
+        raise AdapterProtocolError("verification stopped")
+
+    return verify
+
+
+def test_stop_during_object_model_verification_reports_stopped_unverified(tmp_path):
+    registry = _registry()
+    validated = _validated(registry)
+    controls = ActControls()
+    result = _execute_approved_graph(
+        validated,
+        registry,
+        _approval(tmp_path, validated, registry),
+        descriptor=_descriptor(tmp_path),
+        current_authority=_authority,
+        revalidate_target=lambda _target: None,
+        verify=_stop_during_verify(controls),
+        controls=controls,
+        wall_clock=lambda: 101.0,
+    )
+    assert result.code is ActRunCode.STOPPED
+    assert "not verified" in result.detail and result.completed_node_ids == ()
+
+
+def test_stop_during_control_verification_reports_stopped(tmp_path):
+    import time as _time
+
+    session, record = _fake_session()
+    registry = _uia_registry()
+    validated = _uia_graph(registry)
+    approval = _approval(tmp_path, validated, registry, now=_time.time())
+    (tmp_path / "owned").mkdir(exist_ok=True)
+    controls = ActControls()
+    result = _execute_approved_graph(
+        validated,
+        registry,
+        approval,
+        descriptor=_descriptor(tmp_path),
+        current_authority=_authority,
+        revalidate_target=lambda _target: None,
+        verify=_stop_during_verify(controls),
+        controls=controls,
+        uia_session=session,
+    )
+    assert record["dispatched"] == ["n001"]
+    assert result.code is ActRunCode.STOPPED and "verification stopped" in result.detail

@@ -403,6 +403,17 @@ class PluginStore:
         if bundle.manifest_sha256 in self.revoked_digests:
             raise PluginStoreError("bundle is revoked and must not be installed")
         self._ensure_layout()
+        installed, _ = self._read_index("installed.json")
+        known = (
+            installed["plugins"].get(bundle.plugin_id, {}).get("versions", {}).get(bundle.version)
+        )
+        if known and known.get("manifest_sha256") != bundle.manifest_sha256:
+            # Replacing the entry would leave the active ref pointing at a
+            # digest that is no longer installed, failing every catalog.
+            raise PluginStoreError(
+                f"plugin {bundle.plugin_id} {bundle.version} is already installed "
+                "with different contents; give the new bundle a new version"
+            )
         relative = PurePosixPath(
             "installed",
             bundle.plugin_id,
@@ -416,6 +427,14 @@ class PluginStore:
             staging.mkdir()
             staged_bundle = staging / "bundle.ghostplugin"
             shutil.copyfile(bundle.path, staged_bundle)
+            # The path was read once to verify; check the bytes actually kept.
+            try:
+                kept = self.inspect(staged_bundle).manifest_sha256
+            except Exception:  # noqa: BLE001 - any refusal means not the same bytes
+                kept = None
+            if kept != bundle.manifest_sha256:
+                shutil.rmtree(staging, ignore_errors=True)
+                raise PluginStoreError("bundle changed while it was being installed")
             # The digest directory itself is the atomic rename target. Creating
             # it first turns an atomic publication into an invalid directory-
             # over-directory replacement on Windows.
@@ -426,7 +445,6 @@ class PluginStore:
                 if not target.exists():
                     raise
                 shutil.rmtree(staging, ignore_errors=True)
-        installed, _ = self._read_index("installed.json")
         plugins = dict(installed["plugins"])
         plugin = dict(plugins.get(bundle.plugin_id, {"versions": {}}))
         versions = dict(plugin.get("versions", {}))

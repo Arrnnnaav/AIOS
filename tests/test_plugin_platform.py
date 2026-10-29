@@ -130,3 +130,37 @@ def test_disabling_a_plugin_invalidates_the_running_authority_epoch(
         platform.runtime_authority_status(workflow)
         == "active plugin authority changed during the tour"
     )
+
+
+
+def test_a_first_run_that_failed_halfway_is_finished_next_time(monkeypatch, tmp_path):
+    monkeypatch.setenv(platform.ENV_PLUGIN_ROOT, str(tmp_path / "plugins"))
+    real = PluginStore.enable
+    calls = []
+
+    def fail_once(self, *a, **k):
+        calls.append(a)
+        if len(calls) == 1:
+            raise OSError("disk hiccup")
+        return real(self, *a, **k)
+
+    monkeypatch.setattr(PluginStore, "enable", fail_once)
+    try:
+        platform.production_store()
+    except OSError:
+        pass
+    store = platform.production_store()
+    assert set(store.load_active_catalog().plugins) == {"ghostcursor.synthetic"}
+    assert not (tmp_path / "plugins" / "bootstrap.pending").exists()
+
+
+def test_a_bad_store_is_a_refusal_line_not_a_traceback(monkeypatch, capsys):
+    from ghostcursor.plugins import cli
+    from ghostcursor.plugins.store import PluginStoreError
+
+    def broken(_developer):
+        raise PluginStoreError("trusted release key file is invalid")
+
+    monkeypatch.setattr(cli, "_store", broken)
+    code = cli.main(["list"])
+    assert code == 2 and "refused: trusted release key" in capsys.readouterr().out

@@ -994,9 +994,12 @@ def _execute_approved_graph(
                         ordinal,
                         f"{type(exc).__name__}: {exc}",
                     )
+                    # A Stop pressed mid-node is the user's stop, not an
+                    # adapter fault; the detail says whether the effect ran.
+                    stopped = controls.stop_event.is_set()
                     return ActRunResult(
                         ActRunPhase.EXECUTION,
-                        ActRunCode.ADAPTER_FAILED,
+                        ActRunCode.STOPPED if stopped else ActRunCode.ADAPTER_FAILED,
                         f"{type(exc).__name__}: {exc}",
                         validated,
                         tuple(completed),
@@ -1066,6 +1069,20 @@ def _execute_approved_graph(
             try:
                 verified = verify(node, operation, response, approval)
             except Exception as exc:
+                if controls.stop_event.is_set():
+                    # The adapter already completed: the effect happened and
+                    # only its check was cut short. Say so, never "failed".
+                    publish("stopped", node, ordinal, "stopped after the action ran; its effect was not verified")
+                    return ActRunResult(
+                        ActRunPhase.EXECUTION,
+                        ActRunCode.STOPPED,
+                        "stopped after the action ran; its effect was not verified",
+                        validated,
+                        tuple(completed),
+                        node.node_id,
+                        tuple(events),
+                        approval.output_path,
+                    )
                 publish("verification_failed", node, ordinal, f"verifier failed: {exc}")
                 return ActRunResult(
                     ActRunPhase.EXECUTION,

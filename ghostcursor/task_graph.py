@@ -180,7 +180,10 @@ def _scalar_matches(kind: ParameterKind, value: object) -> bool:
     if kind is ParameterKind.INTEGER:
         return type(value) is int
     if kind is ParameterKind.NUMBER:
-        return type(value) in {int, float} and math.isfinite(float(value))
+        try:
+            return type(value) in {int, float} and math.isfinite(float(value))
+        except OverflowError:  # an int past float range is no number we take
+            return False
     if kind is ParameterKind.BOOLEAN:
         return type(value) is bool
     return False
@@ -213,12 +216,18 @@ def _validate_registry(registry: CapabilityRegistry) -> None:
                 GraphValidationCode.INVALID_REGISTRY,
                 f"capability key {key!r} disagrees with its id",
             )
-        if _CAPABILITY_ID_RE.fullmatch(capability.capability_id) is None:
+        if (
+            not isinstance(capability.capability_id, str)
+            or _CAPABILITY_ID_RE.fullmatch(capability.capability_id) is None
+        ):
             _reject(
                 GraphValidationCode.INVALID_REGISTRY,
                 f"capability id {capability.capability_id!r} is invalid",
             )
-        if _CAPABILITY_ID_RE.fullmatch(capability.intent_id) is None:
+        if (
+            not isinstance(capability.intent_id, str)
+            or _CAPABILITY_ID_RE.fullmatch(capability.intent_id) is None
+        ):
             _reject(
                 GraphValidationCode.INVALID_REGISTRY,
                 f"intent id {capability.intent_id!r} is invalid",

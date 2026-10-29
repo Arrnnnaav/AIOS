@@ -194,3 +194,42 @@ def test_registry_digest_inputs_are_load_bearing():
     )
     second = validate_action_graph(graph, changed)
     assert first.validation_sha256 != second.validation_sha256
+
+
+
+def test_a_huge_integer_number_is_refused_not_an_overflow():
+    from ghostcursor.action import _value_matches
+
+    assert _value_matches(ActionValueKind.NUMBER, 10**400) is False
+    assert _value_matches(ActionValueKind.NUMBER, 3) is True
+
+
+def test_a_missing_optional_effect_key_is_a_repeated_effect_not_a_crash():
+    registry = OperationRegistry(
+        PLUGIN,
+        VERSION,
+        ADAPTER,
+        "b" * 64,
+        MappingProxyType(
+            {
+                "powerpoint.note": OperationSpec(
+                    "powerpoint.note",
+                    ActionRisk.NORMAL,
+                    MappingProxyType(
+                        {"tag": ActionParameterSpec(ActionValueKind.STRING, required=False)}
+                    ),
+                    effect_key_fields=("tag",),
+                ),
+            }
+        ),
+    )
+    graph = ActionGraph(
+        PLUGIN,
+        VERSION,
+        ADAPTER,
+        (ActionNode("a", "powerpoint.note"), ActionNode("b", "powerpoint.note")),
+        (ActionEdge("a", "b"),),
+    )
+    with pytest.raises(ActionValidationError) as caught:
+        validate_action_graph(graph, registry)
+    assert caught.value.code is ActionValidationCode.DUPLICATE_EFFECT

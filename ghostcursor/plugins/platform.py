@@ -63,8 +63,13 @@ def _bundled_index() -> tuple[dict, ...]:
 def _bootstrap(store: PluginStore) -> None:
     """Install defaults once; an existing empty index is an operator choice."""
 
-    if (store.root / "installed.json").exists():
+    # The pending marker lives until every default is in, so a first run
+    # that failed halfway is finished next time instead of left half-done.
+    pending = store.root / "bootstrap.pending"
+    if (store.root / "installed.json").exists() and not pending.exists():
         return
+    store.root.mkdir(parents=True, exist_ok=True)
+    pending.touch()
     for entry in _bundled_index():
         required = {
             "bundle_sha256",
@@ -88,6 +93,7 @@ def _bootstrap(store: PluginStore) -> None:
             raise PluginStoreError("bundled plugin identity disagrees with index")
         if entry["enable_on_first_run"]:
             store.enable(installed.plugin_id, installed.version)
+    pending.unlink(missing_ok=True)
 
 
 def _read_sequence_floor(path: Path) -> tuple[int, int]:

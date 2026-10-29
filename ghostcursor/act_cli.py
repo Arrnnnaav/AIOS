@@ -270,7 +270,7 @@ def execute_act_proposal(
         return result
     try:
         publish(proposal.staging)
-    except StagingError as exc:
+    except (StagingError, OSError) as exc:  # a locked or full disk is no traceback
         # A run that verified but could not publish is NOT completed. Saying
         # otherwise would report a deck at a path where nothing exists.
         abandon(proposal.staging)
