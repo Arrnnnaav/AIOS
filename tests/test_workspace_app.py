@@ -1449,3 +1449,17 @@ def test_stats_answer_while_the_worker_is_busy(served, tmp_path, monkeypatch):
     code, payload = call(port, "/api/stats", {})
     assert code == 200 and json.loads(payload)["research_answers"] == 0
     app.busy = ""
+
+
+def test_a_weekdays_routine_skips_the_weekend():
+    import time
+
+    from ghostcursor.workspace.app import next_due
+
+    friday = time.mktime((2026, 10, 30, 9, 0, 0, 0, 0, -1))  # Fri 30 Oct 2026, 09:00 local
+    monday = time.localtime(next_due("weekdays", friday))
+    assert (monday.tm_wday, monday.tm_mday, monday.tm_hour) == (0, 2, 9)
+    tuesday = time.localtime(next_due("weekdays", time.mktime((2026, 11, 2, 9, 0, 0, 0, 0, -1))))
+    assert (tuesday.tm_wday, tuesday.tm_mday) == (1, 3)
+    saturday = time.localtime(next_due("daily", friday))
+    assert saturday.tm_wday == 5  # daily still runs at the weekend

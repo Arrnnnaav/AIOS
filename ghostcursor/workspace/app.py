@@ -77,7 +77,17 @@ ACTIVITY_LABELS = frozenset(
 ACTIVITY_STATES = frozenset(
     {"running", "finished", "stopped", "failed", "interrupted"}
 )
-ROUTINE_SECONDS = {"hourly": 3600, "daily": 86400, "weekly": 604800}
+ROUTINE_SECONDS = {"hourly": 3600, "daily": 86400, "weekdays": 86400, "weekly": 604800}
+
+
+def next_due(cadence: str, now: float) -> float:
+    """When a routine runs next: one period on, and for ``weekdays`` the next
+    Monday-to-Friday day in local time (HeyClicky and Aside schedule the same)."""
+
+    due = now + ROUTINE_SECONDS[cadence]
+    while cadence == "weekdays" and time.localtime(due).tm_wday >= 5:
+        due += 86400
+    return due
 
 
 def _claims(answer: str) -> list[str]:
@@ -327,7 +337,7 @@ class App:
             due = next((row for row in self.routines if row["enabled"] and row["next_due"] <= now), None)
             if due is None:
                 return
-            due["next_due"] = now + ROUTINE_SECONDS[due["cadence"]]
+            due["next_due"] = next_due(due["cadence"], now)
             if not self._save_routines():
                 due["enabled"] = False
                 self.say("A routine was paused because its next time could not be saved.")
@@ -607,7 +617,7 @@ class App:
                     raise ValueError("this workspace already has 20 routines")
                 item = {
                     "id": secrets.token_hex(8), "question": question,
-                    "cadence": cadence, "next_due": self.clock() + ROUTINE_SECONDS[cadence],
+                    "cadence": cadence, "next_due": next_due(cadence, self.clock()),
                     "enabled": True,
                 }
                 self.routines.append(item)
@@ -627,7 +637,7 @@ class App:
                     item["enabled"] = False
                 elif action == "routine_resume":
                     item["enabled"] = True
-                    item["next_due"] = self.clock() + ROUTINE_SECONDS[item["cadence"]]
+                    item["next_due"] = next_due(item["cadence"], self.clock())
                 else:
                     return {"id": self.start_research_job(item["question"], routine=item["id"])}
                 if not self._save_routines():

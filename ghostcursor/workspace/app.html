@@ -555,7 +555,7 @@ function openRoutine() {
   sheet.replaceChildren(heading, el("p", "", "At each due time, Orbyn sends this question to web search and your configured model and saves the result locally. Orbyn stays running after you close this window."));
   const question = el("textarea"); question.maxLength = 500; question.rows = 3; question.placeholder = "What should Orbyn research?"; question.setAttribute("aria-label", "Research question");
   const cadence = el("select"); cadence.setAttribute("aria-label", "Schedule");
-  for (const name of ["hourly", "daily", "weekly"]) { const option = el("option", "", name[0].toUpperCase() + name.slice(1)); option.value = name; cadence.append(option); }
+  for (const name of ["hourly", "daily", "weekdays", "weekly"]) { const option = el("option", "", name[0].toUpperCase() + name.slice(1)); option.value = name; cadence.append(option); }
   const row = el("div", "sheetrow"); const close = el("button", "secondary", "Close"); close.onclick = closeSheet;
   const save = el("button", "pill go", "Create routine"); save.style.marginLeft = "auto";
   save.onclick = async () => { if (!question.value.trim()) return toast("Enter a research question."); save.disabled = true; try { await api("routine_create", { question: question.value, cadence: cadence.value }); closeSheet(); await poll(true); } catch (e) { toast(e.message); } finally { save.disabled = false; } };
