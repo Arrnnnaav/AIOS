@@ -459,7 +459,11 @@ class ModelTeachSession:
             step = self.plan.steps[self.step]
             if self.act is not None and self._acted_at is None:
                 current = resolve(self._chosen, frame)
-                if current is None or self.clock() - frame.at > MAX_FRAME_AGE_S:
+                if (
+                    current is None
+                    or self.clock() - frame.at > MAX_FRAME_AGE_S
+                    or current.window in frame.minimized + frame.incomplete
+                ):  # as drive_live: never act on a window that was not fully read
                     self._reask("the control moved or went away")
                     return Display(self.phase, self.message)
                 name = (current.name or "").casefold()

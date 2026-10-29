@@ -368,3 +368,20 @@ def test_a_window_that_stays_unreadable_is_lost(monkeypatch):
     observer.start()
     observer.join(2)
     assert observer.lost == "w1" and observer.latest() is None and MAX_READ_MISSES > 1
+
+
+
+def test_a_good_read_resets_the_miss_count(monkeypatch):
+    import itertools
+
+    ok = ((0, 0, 10, 10), (), False)
+    miss = (None, (), False)
+    reads = itertools.chain(
+        itertools.islice(itertools.cycle([miss, miss, ok]), 30), itertools.repeat(ok)
+    )
+    observer = _observer_with_reads(monkeypatch, reads)
+    observer.start()
+    observer.join(0.6)
+    observer.stop()
+    observer.join(2)
+    assert observer.lost is None

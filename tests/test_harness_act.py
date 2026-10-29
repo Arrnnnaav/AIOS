@@ -770,3 +770,12 @@ def test_a_new_step_waits_for_the_last_paste_to_restore():
         check=lambda x, y, window: None,
     )
     assert seen == [["ours", "PRIOR"]]  # restored before the click went out
+
+
+def test_act_never_acts_on_a_window_that_was_not_fully_read():
+    session, done, _ = _session(
+        [PlanStep("Click Insert", E.CHOSEN_STATE_CHANGES)], [_choice("c1"), _choice("c1")]
+    )
+    session.tick(_frame([_c(1)]))
+    session.tick(_frame([_c(1)], frame_id=2, timed_out=True), confirm=True)
+    assert done == []  # the read hit its budget: look again, never click

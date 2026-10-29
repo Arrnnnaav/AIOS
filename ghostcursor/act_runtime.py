@@ -1072,11 +1072,15 @@ def _execute_approved_graph(
                 if controls.stop_event.is_set():
                     # The adapter already completed: the effect happened and
                     # only its check was cut short. Say so, never "failed".
-                    publish("stopped", node, ordinal, "stopped after the action ran; its effect was not verified")
+                    detail = (
+                        "stopped after the action ran; its effect was not verified "
+                        f"({type(exc).__name__}: {exc})"
+                    )
+                    publish("stopped", node, ordinal, detail)
                     return ActRunResult(
                         ActRunPhase.EXECUTION,
                         ActRunCode.STOPPED,
-                        "stopped after the action ran; its effect was not verified",
+                        detail,
                         validated,
                         tuple(completed),
                         node.node_id,

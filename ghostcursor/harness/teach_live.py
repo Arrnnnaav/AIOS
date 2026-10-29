@@ -65,14 +65,15 @@ class Observer(threading.Thread):
         try:
             frame_id = misses = 0
             while not self._halt.is_set():
-                observations = []
+                observations, missed = [], None
                 for binding in self.bindings:
                     rect, controls, timed_out = read_window(binding.hwnd)
-                    if not still_bound(binding):
+                    if not still_bound(binding):  # every window, every round
                         self.lost = binding.label
                         return
                     if rect is None:
-                        break
+                        missed = missed or binding.label
+                        continue
                     title, owned = window_facts(
                         binding.hwnd, binding.identity.pid, binding.identity.executable
                     )
@@ -87,12 +88,12 @@ class Observer(threading.Thread):
                             owned,
                         )
                     )
-                else:
+                if missed is None:
                     misses = 0
-                if len(observations) < len(self.bindings):
+                else:
                     misses += 1  # keep the last frame; teach's age check guards it
                     if misses >= MAX_READ_MISSES:
-                        self.lost = binding.label
+                        self.lost = missed
                         return
                     self._halt.wait(OBSERVE_INTERVAL_S)
                     continue
