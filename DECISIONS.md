@@ -8336,6 +8336,12 @@ the owner sets Orbyn up once and staff use it. Built without an Orbyn server:
   `tools/package_msix.ps1` (MSIX, write virtualization off, signed with the
   customer's certificate). Docs in `docs/enterprise/`.
 
+Addendum (owner, 3 November 2026): the company gateway needs a per-user
+opt-in (`settings.company_gateway`, a switch in the workspace Privacy view,
+off by default) as well as CompanyEndpoint, so a policy never adds a place
+text is sent and rule 6 ("policy may only lower what leaves") holds as
+written.
+
 Not built: SSO/SCIM (no service to sign in to), an owner dashboard, live
 acceptance on Excel/Outlook/browser apps. The MSIX was built unsigned here and
 not installed; the per-machine install and the ADMX import were not run.

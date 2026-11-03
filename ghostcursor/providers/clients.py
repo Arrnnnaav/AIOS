@@ -106,14 +106,15 @@ SYSTEM_TWO = {
 
 def system_two(name: str) -> ProviderConfig | None:
     """A System-Two provider's config. ``company`` exists only while an
-    organisation policy names its model gateway (CompanyEndpoint, D187)."""
+    organisation policy names its model gateway (CompanyEndpoint, D187) AND
+    this person switched it on (settings.company_gateway)."""
 
     if name != "company":
         return SYSTEM_TWO[name]
-    from ghostcursor import policy
+    from ghostcursor import policy, settings
 
     url = policy.company_endpoint()
-    if url is None:
+    if url is None or not settings.company_gateway():
         return None
     return ProviderConfig("company", url, policy.company_model(), "company", 60.0)
 

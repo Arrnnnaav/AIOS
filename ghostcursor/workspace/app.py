@@ -574,6 +574,9 @@ class App:
             "research": len(ws.research_graphs),
             "point_prefix": POINT_PREFIX,
             "vision": settings.jev_vision(),
+            # D187: offered only when IT named a gateway; the person opts in.
+            "company_offered": policy.company_endpoint() is not None,
+            "company_on": settings.company_gateway(),
             "egress": policy.max_egress(),  # D180: set by the organisation
             "managed": policy.managed(),
         }
@@ -704,6 +707,9 @@ class App:
             if not isinstance(name, str):
                 raise ValueError("choose a repository")
             return {"issues": self.github.issues(name)}
+        if action == "company_gateway":  # the person's own opt-in (D187)
+            settings.set_company_gateway(body.get("on") is True)
+            return {}
         if action == "vision":
             # The user's own switch (D179); read when the next Teach starts.
             settings.set_jev_vision(body.get("on") is True)

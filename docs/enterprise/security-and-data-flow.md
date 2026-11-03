@@ -46,6 +46,7 @@ policy), it performs approved steps on controls it observed itself.
 | Provider keys sit in Windows Credential Manager, never in files | `providers/keys.py` |
 | Local stores (`kb.sqlite`, `sessions.sqlite`) never sync | rule 6; `team.py` publishes only the Company Brain export |
 | Hash-chained local audit log, content-free by allow-list | `audit.py` |
+| The company gateway is used only after the person switches it on; IT policy alone adds no destination | `settings.company_gateway`, `providers/clients.system_two` |
 
 ## Stored on the PC
 

@@ -15,7 +15,7 @@ from types import SimpleNamespace
 import httpx
 import pytest
 
-from ghostcursor import audit, policy
+from ghostcursor import audit, policy, settings
 from ghostcursor.harness import act as act_mod
 from ghostcursor.harness import binding, teach_live
 from ghostcursor.providers import TeachPlan
@@ -105,6 +105,7 @@ def test_the_company_gateway_answers_first_without_a_personal_key(
     _policy(
         monkeypatch, CompanyEndpoint="https://ai.example.com/v1", CompanyModel="house"
     )
+    settings.set_company_gateway(True)  # the person opted in
     seen = []
 
     def handler(request):
@@ -191,6 +192,7 @@ def test_a_harness_step_is_audited_with_its_outcome(monkeypatch):
 
 def test_egress_is_audited_without_content(monkeypatch, tmp_path):
     _policy(monkeypatch, CompanyEndpoint="https://ai.example.com/v1")
+    settings.set_company_gateway(True)
     gateway = Gateway(
         transport=httpx.MockTransport(_plan_reply),
         key_lookup=lambda n: None,
@@ -398,3 +400,22 @@ def test_a_garbage_sequence_in_the_folder_does_not_break_publish(owner, tmp_path
     (folder / "team.json").write_text('{"sequence": [1]}', encoding="utf-8")
     team.publish(_brain(tmp_path, "b", "x y z"), scope="default", skills_dir=tmp_path / "e", key_lookup=owner.store.get)
     assert json.loads((folder / "team.json").read_text(encoding="utf-8"))["sequence"] == 1
+
+
+def test_it_policy_alone_never_sends_to_the_company_gateway(monkeypatch, tmp_path):
+    _policy(monkeypatch, CompanyEndpoint="https://ai.example.com/v1")
+    calls = []
+    gateway = Gateway(
+        transport=httpx.MockTransport(lambda r: calls.append(r) or _plan_reply(r)),
+        key_lookup=lambda name: None,
+        log_path=tmp_path / "l",
+        system_two=("company",),
+    )
+    assert gateway.available()["company"] is False
+    with pytest.raises(Exception):
+        gateway.plan(_envelope())
+    assert calls == []
+    settings.set_company_gateway(True)
+    assert gateway.available()["company"] is True
+    _policy(monkeypatch)  # IT removed the endpoint: the opt-in alone adds nothing
+    assert settings.company_gateway() is False

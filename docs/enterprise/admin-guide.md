@@ -38,7 +38,7 @@ user). A policy only ever lowers what Orbyn may do.
 | AllowedApps | The apps you train on, e.g. `excel.exe;outlook.exe;msedge.exe` |
 | BlockedApps | Password managers, banking apps |
 | AllowedProviders | `company` (and `ollama` for the local model) |
-| CompanyEndpoint / CompanyModel | Your model gateway, see 3 |
+| CompanyEndpoint / CompanyModel | Your model gateway, see 3 (each user opts in) |
 | TeamFolder / TeamOwnerKey | See 4 |
 | ShareAudit | Enabled if the owner should see every PC's log |
 
@@ -48,7 +48,10 @@ Allow-lists fail closed: a value that is set but unreadable allows nothing.
 
 Run an OpenAI-compatible gateway (Azure OpenAI behind API Management,
 LiteLLM, or your provider's org endpoint) and set `CompanyEndpoint` to its
-https URL. Orbyn tries it before any personal account. If the gateway needs a
+https URL. Each person then sees a "company model" switch in the
+workspace's Privacy view, off by default; once they turn it on, Orbyn tries
+the gateway before any personal account. A policy alone never adds a place
+text is sent. If the gateway needs a
 key, deploy it to each PC's Credential Manager rather than the registry:
 
     cmdkey /generic:Orbyn/company /user:orbyn /pass:<key>

@@ -964,6 +964,16 @@ function renderBrain() {
   if (S.managed) priv.append(el("div", "note", ["Set by your organization: nothing leaves this computer.", "Set by your organization: text only, no pictures.", "Your organization allows pictures."][S.egress]));
   priv.lastChild.style.textAlign = "left";
   root.append(priv);
+  if (S.company_offered) {
+    const comp = el("div", "mem"); const cmeta = el("div", "meta"); cmeta.append(el("span", "kind", "company model"));
+    const csw = el("button", "switch"); csw.setAttribute("role", "switch"); csw.setAttribute("aria-checked", String(!!S.company_on));
+    csw.style.marginLeft = "auto"; csw.append(document.createTextNode(S.company_on ? "On" : "Off"), el("i"));
+    csw.onclick = () => act("company_gateway", { on: !S.company_on }, S.company_on ? "Company model off" : "Company model on");
+    cmeta.append(csw);
+    comp.append(cmeta, el("div", "", "Use your organization's model service for planning and answers."),
+      el("div", "note", "Your organization set this service up. When on, your goal and the scrubbed names of on-screen controls go to it, before any account of your own. Off by default."));
+    root.append(comp);
+  }
   root.append(accountsCard());
   root.append(doctorCard());
   const stats = el("div", "stats"); root.append(stats);

@@ -30,13 +30,34 @@ def jev_vision(path: Path | None = None) -> bool:
     return load(path).get("jev_vision") is True and policy.max_egress() >= policy.PICTURES
 
 
-def set_jev_vision(on: bool, path: Path | None = None) -> None:
+def _set(key: str, on: bool, path: Path | None) -> None:
     path = path or _path()
-    value = load(path) | {"jev_vision": bool(on)}
+    value = load(path) | {key: bool(on)}
     path.parent.mkdir(parents=True, exist_ok=True)
     temp = path.with_suffix(".tmp")
     temp.write_text(json.dumps(value), encoding="utf-8")
     temp.replace(path)  # never a half-written file
+
+
+def set_jev_vision(on: bool, path: Path | None = None) -> None:
+    _set("jev_vision", on, path)
+
+
+def company_gateway(path: Path | None = None) -> bool:
+    """D187: may this person's requests go to the company model gateway IT
+    named (CompanyEndpoint)? Off unless the user turned it on: an IT policy
+    alone never adds a place text is sent (rule 6, policy only lowers)."""
+
+    from ghostcursor import policy
+
+    return (
+        load(path).get("company_gateway") is True
+        and policy.company_endpoint() is not None
+    )
+
+
+def set_company_gateway(on: bool, path: Path | None = None) -> None:
+    _set("company_gateway", on, path)
 
 
 def listening(path: Path | None = None) -> tuple[bool, str | None]:

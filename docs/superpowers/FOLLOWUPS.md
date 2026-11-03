@@ -2163,8 +2163,8 @@ exact local-host check for CompanyEndpoint, DisableAct re-checked at execute
 and before Teach asks to approve Act, an unverified team.json sequence can no
 longer crash publish.
 
-Owner decision:
-- `providers/gateway.py`: CompanyEndpoint adds a remote destination tried first with no personal key, so a user with no account configured now sends redacted text off the device when IT sets it. CLAUDE.md rule 6 says policy "may only lower what leaves"; amend the rule (IT-chosen destination) or require a user opt-in.
+Resolved (owner chose a per-user opt-in): the company gateway is used only
+after the person turns it on (`settings.company_gateway`); D187 addendum.
 
 Open:
 - `harness/browser.py:215` Page.click/type_text does not check DisableAct/AllowedApps; add before browser drive is wired.
