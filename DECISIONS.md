@@ -8306,3 +8306,36 @@ the reviewed act.py path). Non-safety architectural deferrals (Phase 4 B2B,
 cross-application task graphs D087/D090) remain amendable by a recorded owner
 decision; Act v1 acceptance remains gated on live counted PowerPoint runs (D163)
 and the D032 activation review (evidence must be real, D034/rule 7).
+
+## D187 — Small-company deployment: team folder, audit log, company gateway, policy
+
+Owner request (3 November 2026): focus the build on small companies, where
+the owner sets Orbyn up once and staff use it. Built without an Orbyn server:
+
+- **Policy** (`policy.py`, ADMX in `tools/policy/`): AllowedApps,
+  DisableAct, AllowedProviders, CompanyEndpoint/CompanyModel, TeamFolder,
+  TeamOwnerKey, ShareAudit. Each only lowers what Orbyn may do; allow-lists
+  fail closed; DisableAct is checked in `harness/act.perform` and
+  `act_runtime.approve_action_graph`, the two places every Act step passes.
+- **Company gateway**: a `company` System-Two provider exists only while
+  CompanyEndpoint names an https (or local) URL; it is tried first and needs
+  no personal key. It is remote, so MaxEgress and redaction apply.
+- **Audit** (`audit.py`): local, append-only, hash-chained JSONL; an
+  allow-list of events and fields, never goals, screen text, titles, handles,
+  PIDs or paths; recording never raises. Hooked at plan approval (harness and
+  signed), every harness Act step, signed runs, every model request, and team
+  publish/sync.
+- **Team** (`workspace/team.py`): the owner signs a bundle (approved,
+  non-sensitive, scrubbed Brain facts; task skills; agents) into the team
+  folder with an Ed25519 key kept in Credential Manager. Staff load it only if
+  the pinned TeamOwnerKey signed it and its sequence is not older than the
+  last loaded. Roles come from holding the key. Team facts replace the `team`
+  scope; skills and agents get a `team-` prefix and still run through gated
+  Teach/Act.
+- **Deployment**: `Install-Orbyn.ps1 -AllUsers` (per machine) and
+  `tools/package_msix.ps1` (MSIX, write virtualization off, signed with the
+  customer's certificate). Docs in `docs/enterprise/`.
+
+Not built: SSO/SCIM (no service to sign in to), an owner dashboard, live
+acceptance on Excel/Outlook/browser apps. The MSIX was built unsigned here and
+not installed; the per-machine install and the ADMX import were not run.

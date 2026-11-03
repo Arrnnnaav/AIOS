@@ -211,7 +211,7 @@ with the script named at the bottom; edit the curated table by hand.
 - D175 — MVP workspace: inspect, correct, revise, record, replay
 - D176 — Act: a minimized target is restored; a failed run names its reason
 - D177 — Sign in with ChatGPT: the user's own plan powers System Two
-- D178 — The workspace app; floating window, background research, routine and GitHub addenda
+- D178 — The workspace app: a docked window over the same Workspace
 - D179 — Jev across the product, and redacted pictures for Teach
 - D180 — Organisation policy and scrubbed screen text: less leaves the machine
 - D181 — Ideate, Jev in the workspace, and handoff as the Multiplayer seed
@@ -221,5 +221,7 @@ with the script named at the bottom; edit the curated table by hand.
 - D185 — drive_until: a gated, goal-driven loop (browser first)
 - D185 addendum — streaming keyword spotter for "Hey Bro"
 - D186 — Company Brain store (MP7 21A, first slice)
+- D186 addendum — first-party plugin marketplace + Bucket-2 revocation/publisher trust
+- D187 — Small-company deployment: team folder, audit log, company gateway, policy
 
 _Generated from `DECISIONS.md` headings by `py -3.12 tools/render_decisions_index.py`._
