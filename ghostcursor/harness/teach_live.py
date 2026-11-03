@@ -269,6 +269,7 @@ def drive_live(
 
         observer = Observer(bind(hwnds or choose_windows()))
         windows = {b.label: b.hwnd for b in observer.bindings}
+        apps = {b.label: b.identity.executable for b in observer.bindings}
         observer.start()
         try:
             overlay = window.create_overlay_window(hidden_from_capture=True)
@@ -322,7 +323,9 @@ def drive_live(
         did = (
             _perform(click, target)
             if _perform
-            else _live_perform(click, target, windows[target.window])
+            else _live_perform(
+                click, target, windows[target.window], apps[target.window]
+            )
         )
         say(f"[drive] {did}")
 
@@ -363,17 +366,23 @@ def _default_gateway():
     return Gateway()
 
 
-def _live_perform(step, target, window: int):
+def _live_perform(step, target, window: int, app: str | None = None):
+    """``app`` is the bound window's executable, known since binding; without
+    it the window is identified here (an OpenProcess on this thread)."""
+
     from ghostcursor import audit
     from ghostcursor.harness import act as act_mod
-    from ghostcursor.harness.binding import identify
 
-    identity = identify(window)
+    if app is None:
+        from ghostcursor.harness.binding import identify
+
+        identity = identify(window)
+        app = identity.executable if identity else ""
     fields = dict(
         via="harness",
         action=getattr(step, "action", None),
         control_type=getattr(target, "control_type", None),
-        app=identity.executable if identity else "",
+        app=app,
     )
     try:
         did = act_mod.perform(step, target, window=window)
@@ -401,8 +410,11 @@ def run_model_teach(
     stop=lambda: False,
     act: bool = False,
     deny=(),
+    sketch: bool = False,
 ) -> int:
-    """``outcome`` receives (step, why) for each completed step. A UI passes
+    """``sketch`` (prototype) draws each step as a hand-drawn circle with an
+    arrow from the previous step's control (harness/sketch.py).
+    ``outcome`` receives (step, why) for each completed step. A UI passes
     ``say`` (status lines), ``confirm`` (step done) and ``stop`` (its Stop
     button); ESC and the deadline stop the session regardless (rule 4)."""
 
@@ -445,9 +457,12 @@ def run_model_teach(
         perform = None
         if act:  # D182: the user approves the plan; Orbyn performs each step
             windows = {b.label: b.hwnd for b in bindings}
+            apps = {b.label: b.identity.executable for b in bindings}
 
             def perform(step, target):
-                return _live_perform(step, target, windows[target.window])
+                return _live_perform(
+                    step, target, windows[target.window], apps[target.window]
+                )
         session = ModelTeachSession(
             goal,
             gateway or Gateway(),
@@ -481,6 +496,7 @@ def run_model_teach(
     reported = 0
     shown = None
     code = 0
+    marks = previous = None
     try:
         while True:
             if _escape_pressed() or stop():
@@ -511,6 +527,10 @@ def run_model_teach(
                     radius,
                     Freshness.INFERRED,
                 )
+            if sketch:
+                marks, previous = _sketch_step(
+                    overlay, marks, previous, target, observer.latest()
+                )
             if display.message != shown:
                 say(f"[{display.phase.value}] {display.message}")
                 shown = display.message
@@ -534,6 +554,32 @@ def run_model_teach(
         if act:  # D183: an honest local record of what Act did (no screen text)
             _audit(bindings, session.completed, code)
     return code
+
+
+def _sketch_step(overlay, marks, previous, target, latest):
+    """One tick of Teach's sketch: a new step starts new marks (the old target
+    becomes the arrow's tail); otherwise the marks follow their controls and
+    vanish if one is lost. Returns (marks, previous)."""
+
+    from ghostcursor.harness import sketch as sketch_mod
+
+    now = time.monotonic()
+    if target is None:
+        marks = None
+    else:
+        shown = None if marks is None else marks.control("now")
+        if shown is None or shown.runtime_id != target.runtime_id:
+            previous = shown or previous
+            # The tail is an older control: draw it only where it is now.
+            tail = None if previous is None or latest is None else resolve(previous, latest)
+            marks = sketch_mod.for_step(target, tail, now)
+        elif latest is not None:
+            marks = sketch_mod.follow(marks, latest)
+    if marks is None:
+        window.clear_sketch(overlay)
+    else:
+        window.set_sketch(overlay, sketch_mod.strokes(marks, now))
+    return marks, previous
 
 
 def _audit(bindings, completed, code: int) -> None:

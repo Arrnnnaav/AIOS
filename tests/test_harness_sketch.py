@@ -133,3 +133,38 @@ def test_start_places_marks_on_the_latest_frame():
     assert sk.control(a).rect == (120, 100, 180, 130)
     gone = _frame([_control(2, "Open", rect=(300, 100, 360, 130))], frame_id=3)
     assert sketch.start({"marks": [{"kind": "box", "cid": a}]}, asked, 0.0, latest=gone) is None
+
+
+def test_teach_sketch_draws_the_step_and_an_arrow_only_from_where_the_last_one_is(monkeypatch):
+    from ghostcursor.harness import teach_live
+
+    drawn = []
+    monkeypatch.setattr(teach_live.window, "set_sketch", lambda o, s, n=(): drawn.append(s))
+    monkeypatch.setattr(teach_live.window, "clear_sketch", lambda o: drawn.append(None))
+    frame = _two()
+    save, open_ = frame.candidates
+    marks, prev = teach_live._sketch_step(None, None, None, save, frame)
+    assert [m.kind for m in marks.marks] == ["circle"]
+    marks, prev = teach_live._sketch_step(None, marks, prev, open_, frame)
+    assert [m.kind for m in marks.marks] == ["arrow", "circle"] and prev == save
+    # The last step's control is gone: the next step gets no arrow tail.
+    only_open = _frame([_control(2, "Open", rect=(300, 100, 360, 130))], frame_id=2)
+    third = _frame([_control(3, "Close", rect=(500, 100, 560, 130))], frame_id=3)
+    marks, prev = teach_live._sketch_step(None, marks, prev, third.candidates[0], only_open)
+    assert [m.kind for m in marks.marks] == ["arrow", "circle"]  # tail: Open, still there
+    marks, prev = teach_live._sketch_step(None, None, save, third.candidates[0], third)
+    assert [m.kind for m in marks.marks] == ["circle"]  # Save is not in the frame
+    assert teach_live._sketch_step(None, marks, prev, None, third)[0] is None and drawn[-1] is None
+
+
+def test_teach_sketch_has_no_self_arrow_and_clears_when_its_control_is_lost(monkeypatch):
+    from ghostcursor.harness import teach_live
+
+    monkeypatch.setattr(teach_live.window, "set_sketch", lambda o, s, n=(): None)
+    monkeypatch.setattr(teach_live.window, "clear_sketch", lambda o: None)
+    frame = _two()
+    save = frame.candidates[0]
+    assert [m.kind for m in sketch.for_step(save, save, 0.0).marks] == ["circle"]
+    marks, prev = teach_live._sketch_step(None, None, None, save, frame)
+    lost = _frame([_control(2, "Open", rect=(300, 100, 360, 130))], frame_id=2)
+    assert teach_live._sketch_step(None, marks, prev, save, lost)[0] is None

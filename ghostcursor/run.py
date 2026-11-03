@@ -508,6 +508,11 @@ def main() -> int:
         action="store_true",
         help="--model-teach: point at what you mean before guidance starts (D171)",
     )
+    parser.add_argument(
+        "--sketch",
+        action="store_true",
+        help="--model-teach: draw each step hand-drawn, with an arrow from the last (prototype)",
+    )
     parser.add_argument("--output", type=Path, help="new output artifact for Act mode")
     parser.add_argument(
         "--act-pace",
@@ -597,6 +602,7 @@ def main() -> int:
             seconds=remaining,
             point=args.point,
             act=args.mode == "act",  # D182: approve the plan, Orbyn does it
+            sketch=args.sketch,
         )
 
     if args.goal:

@@ -114,6 +114,22 @@ def start(
     return sketch if latest is None else follow(sketch, latest)
 
 
+def for_step(
+    target: Candidate, previous: Candidate | None, now: float, *, seed: int = 0
+) -> Sketch:
+    """Teach's own marks for one step: a hand-drawn circle on the control the
+    step resolved to, and an arrow from the last step's control. Both are
+    controls Teach observed and chose; nothing comes from a model."""
+
+    marks = [Mark("circle", "now")]
+    controls = [("now", target)]
+    if previous is not None and previous.runtime_id != target.runtime_id:
+        marks.insert(0, Mark("arrow", "prev", "now"))
+        controls.append(("prev", previous))
+    # A step stays up until it changes; the caller clears it then.
+    return Sketch(tuple(marks), tuple(controls), now, seed, ttl_s=3600.0)
+
+
 def follow(sketch: Sketch, latest: ObservationFrame) -> Sketch | None:
     """The sketch moved onto the latest frame, or None if any marked control
     is gone, ambiguous or jumped: never draw at an old rectangle."""
