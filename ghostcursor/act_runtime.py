@@ -382,6 +382,10 @@ def approve_action_graph(
 ) -> PlanApproval:
     """Bind one explicit approval to every authority-bearing input."""
 
+    from ghostcursor import audit, policy
+
+    if policy.act_disabled():  # D180: the organisation allows guidance only
+        raise ValueError("your organisation allows Orbyn to guide, not act")
     if (
         registry.plugin_id != validated.plugin_id
         or registry.plugin_version != validated.plugin_version
@@ -448,6 +452,13 @@ def approve_action_graph(
         expires_at=approved_at + lifetime_s,
     )
     digest = _digest(value)
+    audit.record(
+        "plan_approved",
+        via="signed",
+        plugin=validated.plugin_id,
+        steps=len(validated.ordered_nodes),
+        app=target.executable,
+    )
     return PlanApproval(
         approval_id=approval_id,
         validation_sha256=validated.validation_sha256,
@@ -1317,7 +1328,7 @@ def execute_approved_graph(
         )
         return result.verified
 
-    return _execute_approved_graph(
+    result = _execute_approved_graph(
         validated,
         registry,
         approval,
@@ -1331,6 +1342,17 @@ def execute_approved_graph(
         live_verifier=live_verifier,
         pace=pace,
     )
+    from ghostcursor import audit
+
+    audit.record(
+        "act_run",
+        via="signed",
+        plugin=validated.plugin_id,
+        code=result.code.value,
+        completed=len(result.completed_node_ids),
+        steps=len(validated.ordered_nodes),
+    )
+    return result
 
 
 def _plain(value):

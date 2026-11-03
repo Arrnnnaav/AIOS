@@ -42,7 +42,12 @@ MAX_WINDOWS = 4
 def denied(executable: str) -> bool:
     """Never bound: the built-in list or the organisation's (D180)."""
 
-    return executable in DENYLIST or executable in policy.blocked_apps()
+    allowed = policy.allowed_apps()
+    return (
+        executable in DENYLIST
+        or executable in policy.blocked_apps()
+        or (allowed is not None and executable.casefold() not in allowed)
+    )
 
 
 class BindingError(ValueError):

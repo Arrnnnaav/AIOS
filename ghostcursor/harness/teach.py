@@ -404,6 +404,9 @@ class ModelTeachSession:
                     for n, s in enumerate(self.plan.steps, start=1)
                 )
                 return Display(self.phase, f"Approve to let Orbyn do: {steps}")
+            from ghostcursor import audit
+
+            audit.record("plan_approved", via="harness", steps=len(self.plan.steps))
             self.phase, self.message = Phase.CHOOSING, "finding the control"
             confirm = False
 

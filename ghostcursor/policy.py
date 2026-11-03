@@ -10,6 +10,17 @@ lowers what the user may switch on; with no policy, behaviour is unchanged.
   (email/card/SSN/key/...) out of text bound for a remote model (D186). Absent
   leaves it off (unchanged behaviour); present but unreadable fails safe to on.
 - ``BlockedApps`` (REG_SZ): executables never bound, ``;``-separated.
+- ``AllowedApps`` (REG_SZ): if set, ONLY these executables may be bound.
+- ``DisableAct`` (DWORD): 1 -- Orbyn guides only; no step is performed.
+- ``AllowedProviders`` (REG_SZ): if set, only these model providers answer.
+- ``CompanyEndpoint`` / ``CompanyModel`` (REG_SZ): the company's own
+  OpenAI-compatible model gateway (https), tried before any personal account;
+  its key, if it needs one, is ``Orbyn/company`` in Credential Manager.
+- ``TeamFolder`` / ``TeamOwnerKey`` (REG_SZ): the shared folder the owner
+  publishes to, and the owner's public key; only bundles it signed are loaded.
+- ``ShareAudit`` (DWORD): 1 -- copy this PC's audit log to the team folder.
+
+Allow-lists fail closed: present but unreadable allows nothing.
 """
 
 from __future__ import annotations
@@ -91,9 +102,83 @@ def blocked_apps() -> frozenset[str]:
     )
 
 
+def _names(name: str) -> frozenset[str] | None:
+    """A ``;``-separated allow-list, casefolded; None when not set. A value
+    that is present but not text allows nothing (fails closed)."""
+
+    value = _value(name)
+    if value is None:
+        return None
+    if not isinstance(value, str) or value == "unreadable":
+        return frozenset()
+    return frozenset(
+        ntpath.basename(p.strip()).casefold() for p in value.split(";") if p.strip()
+    )
+
+
+def allowed_apps() -> frozenset[str] | None:
+    return _names("AllowedApps")
+
+
+def allowed_providers() -> frozenset[str] | None:
+    return _names("AllowedProviders")
+
+
+def act_disabled() -> bool:
+    """DisableAct: anything present but ``0`` disables Act (fails safe)."""
+
+    value = _value("DisableAct")
+    if value is None:
+        return False
+    try:
+        return int(value) != 0
+    except (TypeError, ValueError):
+        return True
+
+
+def _text(name: str) -> str | None:
+    value = _value(name)
+    return value.strip() or None if isinstance(value, str) and value != "unreadable" else None
+
+
+def company_endpoint() -> str | None:
+    """The company model gateway, https only (or this machine)."""
+
+    url = _text("CompanyEndpoint")
+    if url is None:
+        return None
+    local = url.startswith(("http://127.0.0.1", "http://localhost"))
+    return url.rstrip("/") if url.startswith("https://") or local else None
+
+
+def company_model() -> str:
+    return _text("CompanyModel") or "default"
+
+
+def team_folder() -> str | None:
+    return _text("TeamFolder")
+
+
+def team_owner_key() -> str | None:
+    return _text("TeamOwnerKey")
+
+
+def share_audit() -> bool:
+    """Opt-in: only an explicit 1 copies the audit log to the team folder."""
+
+    value = _value("ShareAudit")
+    try:
+        return value is not None and int(value) == 1
+    except (TypeError, ValueError):
+        return False
+
+
 def allows(provider: str, *, images: int = 0) -> bool:
     """May a request go to ``provider`` now?"""
 
+    listed = allowed_providers()
+    if listed is not None and provider.casefold() not in listed:
+        return False
     level = max_egress()
     if provider in LOCAL_PROVIDERS:
         return not images or level >= PICTURES

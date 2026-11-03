@@ -468,6 +468,9 @@ class Workspace:
             return
         try:
             facts, edges = self.knowledge.context(query, self.kb_scope)
+            if self.kb_scope != "team":  # the owner's published facts (D187)
+                team_facts, team_edges = self.knowledge.context(query, "team")
+                facts, edges = facts + team_facts, edges + team_edges
         except Exception:
             return
         facts = _within(facts, KNOWLEDGE_TOKENS)

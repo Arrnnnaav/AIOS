@@ -13,6 +13,7 @@ TARGET_PREFIX = "Orbyn/"
 
 #: Provider key names this gateway knows.
 KNOWN = (
+    "company",  # the organisation's model gateway key, deployed by IT (D187)
     "typesafe",
     "nvidia",
     "openrouter",

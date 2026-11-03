@@ -104,6 +104,20 @@ SYSTEM_TWO = {
     ),
 }
 
+def system_two(name: str) -> ProviderConfig | None:
+    """A System-Two provider's config. ``company`` exists only while an
+    organisation policy names its model gateway (CompanyEndpoint, D187)."""
+
+    if name != "company":
+        return SYSTEM_TWO[name]
+    from ghostcursor import policy
+
+    url = policy.company_endpoint()
+    if url is None:
+        return None
+    return ProviderConfig("company", url, policy.company_model(), "company", 60.0)
+
+
 #: Providers a person can bring an API key for, shown in the app (D182).
 BYOK = ("anthropic", "openai", "gemini", "openrouter", "nvidia")
 

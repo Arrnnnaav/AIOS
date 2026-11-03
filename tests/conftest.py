@@ -165,3 +165,12 @@ def no_real_policy(monkeypatch):
     from ghostcursor import policy
 
     monkeypatch.setattr(policy, "_value", lambda name: None)
+
+@pytest.fixture(autouse=True)
+def no_real_audit_log(monkeypatch, tmp_path_factory):
+    """No test appends to this PC's audit log (D187)."""
+
+    from ghostcursor import audit
+
+    path = tmp_path_factory.mktemp("audit") / "audit.jsonl"
+    monkeypatch.setattr(audit, "default_path", lambda: path)

@@ -391,6 +391,10 @@ def perform(
     short description for the status line. ``window`` is the bound window
     ``target`` was observed in; the live callers always pass it."""
 
+    from ghostcursor import policy
+
+    if policy.act_disabled():  # D180: the organisation allows guidance only
+        raise PermissionError("your organisation allows Orbyn to guide, not act")
     left, top, right, bottom = target.rect
     x, y = (left + right) // 2, (top + bottom) // 2
     action = step.action

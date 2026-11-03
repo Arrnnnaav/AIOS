@@ -331,6 +331,10 @@ def drive_live(
         # _observe must not depend on the machine's keyboard state.
         return stop() or (live and _escape_pressed()) or time.monotonic() >= deadline
 
+    if approved:
+        from ghostcursor import audit
+
+        audit.record("drive_approved", max_steps=max_steps)
     try:
         return drive_until(
             goal,
@@ -360,9 +364,27 @@ def _default_gateway():
 
 
 def _live_perform(step, target, window: int):
+    from ghostcursor import audit
     from ghostcursor.harness import act as act_mod
+    from ghostcursor.harness.binding import identify
 
-    return act_mod.perform(step, target, window=window)
+    identity = identify(window)
+    fields = dict(
+        via="harness",
+        action=getattr(step, "action", None),
+        control_type=getattr(target, "control_type", None),
+        app=identity.executable if identity else "",
+    )
+    try:
+        did = act_mod.perform(step, target, window=window)
+    except PermissionError:
+        audit.record("act_step", outcome="refused", **fields)
+        raise
+    except BaseException:
+        audit.record("act_step", outcome="failed", **fields)
+        raise
+    audit.record("act_step", outcome="done", **fields)
+    return did
 
 
 def run_model_teach(

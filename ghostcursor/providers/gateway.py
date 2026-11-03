@@ -21,7 +21,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ghostcursor import policy, redact
+from ghostcursor import audit, policy, redact
 from ghostcursor.providers import clients, keys
 from ghostcursor.providers.envelope import Envelope
 from ghostcursor.providers.errors import FailureKind, ProviderError
@@ -85,6 +85,7 @@ class Gateway:
     #: then it is skipped as not configured, with no request sent.
     #: The person's own accounts first (D182), then the shared fallbacks.
     system_two: tuple[str, ...] = (
+        "company",  # the organisation's own gateway, when policy names one
         "chatgpt",
         "anthropic",
         "openai",
@@ -116,9 +117,15 @@ class Gateway:
             "jev": policy.allows("jev") and self.key_lookup("typesafe") is not None
         }
         for name in self.system_two:
-            config = clients.SYSTEM_TWO[name]
-            state[name] = policy.allows(name) and (
-                config.key_name is None or self.key_lookup(config.key_name) is not None
+            config = clients.system_two(name)
+            state[name] = (
+                config is not None
+                and policy.allows(name)
+                and (
+                    config.key_name is None
+                    or name == "company"
+                    or self.key_lookup(config.key_name) is not None
+                )
             )
         return state
 
@@ -338,12 +345,12 @@ class Gateway:
         for name in self.system_two:
             if cancelled():
                 raise ProviderError(FailureKind.CANCELLED)
-            config = clients.SYSTEM_TWO[name]
-            if not policy.allows(name):  # D180: local only skips every remote
+            config = clients.system_two(name)
+            if config is None or not policy.allows(name):  # D180: local only
                 failures.append(ProviderError(FailureKind.NOT_CONFIGURED, name))
                 continue
             key = self.key_lookup(config.key_name) if config.key_name else None
-            if config.key_name and key is None:
+            if config.key_name and key is None and name != "company":
                 failures.append(ProviderError(FailureKind.NOT_CONFIGURED, name))
                 continue
             self._take()
@@ -427,6 +434,13 @@ class Gateway:
 
         if failure is None:
             self.last_provider = provider  # a provider answered; remember which
+        audit.record(
+            "egress",
+            provider=provider,
+            model=model,
+            failure=failure.value if failure else None,
+            images=images,
+        )
         path = self.log_path or _default_log_path()
         line = {
             "at": round(started, 3),

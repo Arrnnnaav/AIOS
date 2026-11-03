@@ -401,7 +401,8 @@ def test_not_signed_in_sends_nothing_and_falls_through(tmp_path):
         key_lookup=lambda name: "k" if name == "nvidia" else None,
         log_path=tmp_path / "log",
     )
-    assert gateway.system_two[0] == "chatgpt"
+    # the company gateway (D187) is first only when a policy names one
+    assert gateway.system_two[:2] == ("company", "chatgpt")
     gateway.plan(_envelope())
     assert [c.url.host for c in calls] == ["integrate.api.nvidia.com"]
 
