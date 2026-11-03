@@ -136,6 +136,8 @@ def _wnd_proc(hwnd, msg, wparam, lparam):
             _paint_ring(hdc, *_hint)
         if _cue is not None:
             _paint_cue(hdc, _cue)
+        if _sketch is not None:
+            _paint_sketch(hdc, *_sketch)
         win32gui.EndPaint(hwnd, paint_struct)
         return 0
 
@@ -376,6 +378,40 @@ def clear_cue(hwnd: int) -> None:
     _cue = None
     win32gui.InvalidateRect(hwnd, None, False)
     win32gui.UpdateWindow(hwnd)
+
+
+#: Hand-drawn marks (harness/sketch.py): (strokes, notes) in screen
+#: coordinates, or None. Painted last, over the hint and the cue.
+_sketch = None
+SKETCH_COLOR = win32api.RGB(255, 196, 0)
+SKETCH_THICKNESS = 3
+
+
+def _paint_sketch(hdc, strokes, notes) -> None:
+    ox, oy = _origin
+    pen = win32gui.CreatePen(win32con.PS_SOLID, SKETCH_THICKNESS, SKETCH_COLOR)
+    old_pen = win32gui.SelectObject(hdc, pen)
+    for stroke in strokes:
+        win32gui.Polyline(hdc, [(x - ox, y - oy) for x, y in stroke])
+    win32gui.SelectObject(hdc, old_pen)
+    win32gui.DeleteObject(pen)
+    for text, box in notes:
+        _paint_label(hdc, box, text, SKETCH_COLOR)
+
+
+def set_sketch(hwnd: int, strokes, notes=()) -> None:
+    """Show these strokes and laid-out (text, box) notes, repainting now.
+    Call every tick while a sketch draws in; strokes come only from
+    harness/sketch.py, which builds them from observed rectangles."""
+
+    global _sketch
+    _sketch = (tuple(strokes), tuple(notes)) if strokes or notes else None
+    win32gui.InvalidateRect(hwnd, None, False)
+    win32gui.UpdateWindow(hwnd)
+
+
+def clear_sketch(hwnd: int) -> None:
+    set_sketch(hwnd, ())
 
 
 def destroy_overlay_window(hwnd: int) -> None:
