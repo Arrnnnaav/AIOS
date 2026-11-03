@@ -3,17 +3,33 @@
 #
 #   pwsh -File tools\Install-Orbyn.ps1
 #   pwsh -File tools\Install-Orbyn.ps1 -Uninstall
+#   pwsh -File tools\Install-Orbyn.ps1 -AllUsers   # per machine, as admin (Intune/SCCM)
 param(
     [switch]$Uninstall,
+    # Per machine: Program Files, the all-users Start Menu and Public Desktop,
+    # and the Explorer verb under HKEY_LOCAL_MACHINE. Needs an elevated shell.
+    [switch]$AllUsers,
     [string]$SourceDir,
     [string]$InstallDir,
     [string]$StartMenuLnk,
     [string]$DesktopLnk,
-    # Explorer's "Ask Orbyn about this file" verb, under HKEY_CURRENT_USER.
+    # Explorer's "Ask Orbyn about this file" verb (HKCU, or HKLM with -AllUsers).
     [string]$VerbKey = 'Software\Classes\*\shell\Orbyn.AskFile'
 )
 $ErrorActionPreference = 'Stop'
 
+if ($AllUsers) {
+    $principal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
+    if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+        throw 'A per-machine install (-AllUsers) needs an elevated shell.'
+    }
+    $Hive = [Microsoft.Win32.Registry]::LocalMachine
+    if (-not $InstallDir) { $InstallDir = Join-Path $env:ProgramFiles 'Orbyn' }
+    if (-not $StartMenuLnk) { $StartMenuLnk = Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs\Orbyn.lnk' }
+    if (-not $DesktopLnk) { $DesktopLnk = Join-Path ([Environment]::GetFolderPath('CommonDesktopDirectory')) 'Orbyn.lnk' }
+} else {
+    $Hive = [Microsoft.Win32.Registry]::CurrentUser
+}
 if (-not $SourceDir) { $SourceDir = Join-Path $PSScriptRoot '..\dist\Orbyn' }
 if (-not $InstallDir) { $InstallDir = Join-Path $env:LOCALAPPDATA 'Programs\Orbyn' }
 if (-not $StartMenuLnk) { $StartMenuLnk = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Orbyn.lnk' }
@@ -33,7 +49,7 @@ foreach ($target in @($StageDir, $BackupDir)) {
 
 function Set-AskVerb([string]$Exe) {
     # .NET, not the registry provider: '*' in a provider path is a wildcard.
-    $key = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey($VerbKey)
+    $key = $Hive.CreateSubKey($VerbKey)
     try {
         $key.SetValue('MUIVerb', 'Ask Orbyn about this file')
         $key.SetValue('Icon', "`"$Exe`"")
@@ -43,7 +59,7 @@ function Set-AskVerb([string]$Exe) {
 }
 
 function Remove-AskVerb {
-    [Microsoft.Win32.Registry]::CurrentUser.DeleteSubKeyTree($VerbKey, $false)
+    $Hive.DeleteSubKeyTree($VerbKey, $false)
 }
 
 function New-Shortcut([string]$Path, [string]$Target, [string]$WorkDir) {

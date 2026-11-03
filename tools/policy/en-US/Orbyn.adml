@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<policyDefinitionResources xmlns="http://schemas.microsoft.com/GroupPolicy/2006/07/PolicyDefinitions" revision="1.0" schemaVersion="1.0">
+  <displayName>Orbyn</displayName><description>Orbyn organisation policy</description>
+  <resources>
+    <stringTable>
+      <string id="Orbyn">Orbyn</string>
+      <string id="SUPPORTED_Orbyn">Orbyn on Windows 10 2004 or later</string>
+      <string id="MaxEgress">What may leave this PC</string>
+      <string id="MaxEgress_Help">0 = local only: nothing leaves and only the local model answers. 1 = text: the redacted model view only. 2 = text and pictures (redacted window pictures, only when the user also turns them on).</string>
+      <string id="MaxEgress_0">Local only</string>
+      <string id="MaxEgress_1">Text</string>
+      <string id="MaxEgress_2">Text and pictures</string>
+      <string id="RedactEgress">Scrub secrets from text sent to remote models</string>
+      <string id="RedactEgress_Help">Emails, card numbers, keys, IBANs, phone numbers and similar are replaced with placeholders before text goes to a remote model.</string>
+      <string id="Telemetry">Allow local usage counts</string>
+      <string id="Telemetry_Help">Counts event names in a local file for the owner. Nothing leaves the PC.</string>
+      <string id="BlockedApps">Apps Orbyn never works in</string>
+      <string id="BlockedApps_Help">Executable names separated by semicolons, for example keepass.exe;bank.exe.</string>
+      <string id="AllowedApps">Only these apps (allow-list)</string>
+      <string id="AllowedApps_Help">If set, Orbyn works only in these executables (semicolon-separated). Set but unreadable allows none.</string>
+      <string id="DisableAct">Guide only: never perform steps</string>
+      <string id="DisableAct_Help">When enabled, Orbyn shows where to click but never clicks or types for the user.</string>
+      <string id="AllowedProviders">Only these model providers</string>
+      <string id="AllowedProviders_Help">Semicolon-separated provider names: company, chatgpt, anthropic, openai, gemini, nvidia, openrouter, ollama, jev.</string>
+      <string id="CompanyEndpoint">Company model gateway (https)</string>
+      <string id="CompanyEndpoint_Help">An OpenAI-compatible endpoint your company runs, for example https://ai.example.com/v1. Tried before any personal account. A key, if needed, goes in Credential Manager as Orbyn/company.</string>
+      <string id="CompanyModel">Company gateway model name</string>
+      <string id="CompanyModel_Help">The model name to request from the company gateway.</string>
+      <string id="TeamFolder">Team folder</string>
+      <string id="TeamFolder_Help">A shared folder (synced SharePoint/OneDrive or a file share) the owner publishes the team bundle to. Give staff read access and only the owner write access.</string>
+      <string id="TeamOwnerKey">Team owner public key</string>
+      <string id="TeamOwnerKey_Help">The key printed by 'python -m ghostcursor.workspace.team init' on the owner's PC. Staff load only bundles this key signed.</string>
+      <string id="ShareAudit">Copy the audit log to the team folder</string>
+      <string id="ShareAudit_Help">When enabled, each PC copies its content-free audit log into the team folder for the owner.</string>
+    </stringTable>
+    <presentationTable>
+      <presentation id="MaxEgress"><dropdownList refId="MaxEgress_Value" defaultItem="2">What may leave this PC</dropdownList></presentation>
+      <presentation id="BlockedApps"><textBox refId="BlockedApps_Value"><label>Apps Orbyn never works in</label></textBox></presentation>
+      <presentation id="AllowedApps"><textBox refId="AllowedApps_Value"><label>Only these apps (allow-list)</label></textBox></presentation>
+      <presentation id="AllowedProviders"><textBox refId="AllowedProviders_Value"><label>Only these model providers</label></textBox></presentation>
+      <presentation id="CompanyEndpoint"><textBox refId="CompanyEndpoint_Value"><label>Company model gateway (https)</label></textBox></presentation>
+      <presentation id="CompanyModel"><textBox refId="CompanyModel_Value"><label>Company gateway model name</label></textBox></presentation>
+      <presentation id="TeamFolder"><textBox refId="TeamFolder_Value"><label>Team folder</label></textBox></presentation>
+      <presentation id="TeamOwnerKey"><textBox refId="TeamOwnerKey_Value"><label>Team owner public key</label></textBox></presentation>
+    </presentationTable>
+  </resources>
+</policyDefinitionResources>

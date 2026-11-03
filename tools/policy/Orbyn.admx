@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Orbyn Group Policy template. Copy to %SystemRoot%\PolicyDefinitions (or the central store); see docs/enterprise/admin-guide.md. -->
+<policyDefinitions xmlns="http://schemas.microsoft.com/GroupPolicy/2006/07/PolicyDefinitions" revision="1.0" schemaVersion="1.0">
+  <policyNamespaces><target prefix="orbyn" namespace="Orbyn.Policies.Orbyn" /><using prefix="windows" namespace="Microsoft.Policies.Windows" /></policyNamespaces>
+  <resources minRequiredRevision="1.0" />
+  <supportedOn><definitions><definition name="SUPPORTED_Orbyn" displayName="$(string.SUPPORTED_Orbyn)" /></definitions></supportedOn>
+  <categories><category name="Orbyn" displayName="$(string.Orbyn)" /></categories>
+  <policies>
+    <policy name="MaxEgress" class="Both" displayName="$(string.MaxEgress)" explainText="$(string.MaxEgress_Help)" key="Software\Policies\Orbyn" presentation="$(presentation.MaxEgress)">
+      <parentCategory ref="Orbyn" /><supportedOn ref="SUPPORTED_Orbyn" />
+      <elements><enum id="MaxEgress_Value" valueName="MaxEgress" required="true">
+        <item displayName="$(string.MaxEgress_0)"><value><decimal value="0" /></value></item>
+        <item displayName="$(string.MaxEgress_1)"><value><decimal value="1" /></value></item>
+        <item displayName="$(string.MaxEgress_2)"><value><decimal value="2" /></value></item>
+      </enum></elements>
+    </policy>
+    <policy name="RedactEgress" class="Both" displayName="$(string.RedactEgress)" explainText="$(string.RedactEgress_Help)" key="Software\Policies\Orbyn" valueName="RedactEgress">
+      <parentCategory ref="Orbyn" /><supportedOn ref="SUPPORTED_Orbyn" />
+      <enabledValue><decimal value="1" /></enabledValue><disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+    <policy name="Telemetry" class="Both" displayName="$(string.Telemetry)" explainText="$(string.Telemetry_Help)" key="Software\Policies\Orbyn" valueName="Telemetry">
+      <parentCategory ref="Orbyn" /><supportedOn ref="SUPPORTED_Orbyn" />
+      <enabledValue><decimal value="1" /></enabledValue><disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+    <policy name="BlockedApps" class="Both" displayName="$(string.BlockedApps)" explainText="$(string.BlockedApps_Help)" key="Software\Policies\Orbyn" presentation="$(presentation.BlockedApps)">
+      <parentCategory ref="Orbyn" /><supportedOn ref="SUPPORTED_Orbyn" />
+      <elements><text id="BlockedApps_Value" valueName="BlockedApps" maxLength="1024" /></elements>
+    </policy>
+    <policy name="AllowedApps" class="Both" displayName="$(string.AllowedApps)" explainText="$(string.AllowedApps_Help)" key="Software\Policies\Orbyn" presentation="$(presentation.AllowedApps)">
+      <parentCategory ref="Orbyn" /><supportedOn ref="SUPPORTED_Orbyn" />
+      <elements><text id="AllowedApps_Value" valueName="AllowedApps" maxLength="1024" /></elements>
+    </policy>
+    <policy name="DisableAct" class="Both" displayName="$(string.DisableAct)" explainText="$(string.DisableAct_Help)" key="Software\Policies\Orbyn" valueName="DisableAct">
+      <parentCategory ref="Orbyn" /><supportedOn ref="SUPPORTED_Orbyn" />
+      <enabledValue><decimal value="1" /></enabledValue><disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+    <policy name="AllowedProviders" class="Both" displayName="$(string.AllowedProviders)" explainText="$(string.AllowedProviders_Help)" key="Software\Policies\Orbyn" presentation="$(presentation.AllowedProviders)">
+      <parentCategory ref="Orbyn" /><supportedOn ref="SUPPORTED_Orbyn" />
+      <elements><text id="AllowedProviders_Value" valueName="AllowedProviders" maxLength="1024" /></elements>
+    </policy>
+    <policy name="CompanyEndpoint" class="Both" displayName="$(string.CompanyEndpoint)" explainText="$(string.CompanyEndpoint_Help)" key="Software\Policies\Orbyn" presentation="$(presentation.CompanyEndpoint)">
+      <parentCategory ref="Orbyn" /><supportedOn ref="SUPPORTED_Orbyn" />
+      <elements><text id="CompanyEndpoint_Value" valueName="CompanyEndpoint" maxLength="1024" /></elements>
+    </policy>
+    <policy name="CompanyModel" class="Both" displayName="$(string.CompanyModel)" explainText="$(string.CompanyModel_Help)" key="Software\Policies\Orbyn" presentation="$(presentation.CompanyModel)">
+      <parentCategory ref="Orbyn" /><supportedOn ref="SUPPORTED_Orbyn" />
+      <elements><text id="CompanyModel_Value" valueName="CompanyModel" maxLength="1024" /></elements>
+    </policy>
+    <policy name="TeamFolder" class="Both" displayName="$(string.TeamFolder)" explainText="$(string.TeamFolder_Help)" key="Software\Policies\Orbyn" presentation="$(presentation.TeamFolder)">
+      <parentCategory ref="Orbyn" /><supportedOn ref="SUPPORTED_Orbyn" />
+      <elements><text id="TeamFolder_Value" valueName="TeamFolder" maxLength="1024" /></elements>
+    </policy>
+    <policy name="TeamOwnerKey" class="Both" displayName="$(string.TeamOwnerKey)" explainText="$(string.TeamOwnerKey_Help)" key="Software\Policies\Orbyn" presentation="$(presentation.TeamOwnerKey)">
+      <parentCategory ref="Orbyn" /><supportedOn ref="SUPPORTED_Orbyn" />
+      <elements><text id="TeamOwnerKey_Value" valueName="TeamOwnerKey" maxLength="1024" /></elements>
+    </policy>
+    <policy name="ShareAudit" class="Both" displayName="$(string.ShareAudit)" explainText="$(string.ShareAudit_Help)" key="Software\Policies\Orbyn" valueName="ShareAudit">
+      <parentCategory ref="Orbyn" /><supportedOn ref="SUPPORTED_Orbyn" />
+      <enabledValue><decimal value="1" /></enabledValue><disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+  </policies>
+</policyDefinitions>
