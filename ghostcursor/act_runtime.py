@@ -367,6 +367,21 @@ def _trusted_presentation_surface(value: object) -> bool:
     )
 
 
+def _policy_refusal(target: "ActTarget") -> str | None:
+    """Why the organisation's policy forbids Act on this target now, or None.
+    Checked at approval and again when the run starts (D180/D187)."""
+
+    from ghostcursor import policy
+
+    if policy.act_disabled():
+        return "your organisation allows Orbyn to guide, not act"
+    app = ntpath.basename(target.executable or "").casefold()
+    allowed = policy.allowed_apps()
+    if app in policy.blocked_apps() or (allowed is not None and app not in allowed):
+        return "your organisation does not allow Orbyn in this app"
+    return None
+
+
 def approve_action_graph(
     validated: ValidatedActionGraph,
     registry: OperationRegistry,
@@ -383,14 +398,11 @@ def approve_action_graph(
 ) -> PlanApproval:
     """Bind one explicit approval to every authority-bearing input."""
 
-    from ghostcursor import audit, policy
+    from ghostcursor import audit
 
-    if policy.act_disabled():  # D180: the organisation allows guidance only
-        raise ValueError("your organisation allows Orbyn to guide, not act")
-    app = ntpath.basename(target.executable or "").casefold()
-    allowed = policy.allowed_apps()
-    if app in policy.blocked_apps() or (allowed is not None and app not in allowed):
-        raise ValueError("your organisation does not allow Orbyn in this app")
+    refusal = _policy_refusal(target)
+    if refusal:
+        raise ValueError(refusal)
     if (
         registry.plugin_id != validated.plugin_id
         or registry.plugin_version != validated.plugin_version
@@ -1251,14 +1263,10 @@ def execute_approved_graph(
     earlier version of this docstring claimed.
     """
 
-    from ghostcursor import policy
-
-    if policy.act_disabled():  # a policy pushed after approval still applies
+    refusal = _policy_refusal(approval.target)  # a policy pushed after approval
+    if refusal:
         return ActRunResult(
-            ActRunPhase.EXECUTION,
-            ActRunCode.APPROVAL_REQUIRED,
-            "your organisation allows Orbyn to guide, not act",
-            validated,
+            ActRunPhase.EXECUTION, ActRunCode.APPROVAL_REQUIRED, refusal, validated
         )
     verifier = VerifierHost(descriptor)
 

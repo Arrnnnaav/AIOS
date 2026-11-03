@@ -10,6 +10,7 @@ it, never older than the last one, and replaces the team scope exactly.
 from __future__ import annotations
 
 import json
+import time
 from types import SimpleNamespace
 
 import httpx
@@ -526,7 +527,9 @@ def test_browser_input_obeys_disable_act_and_the_app_lists(monkeypatch):
         page._guard(control, True, ())
 
 
-@pytest.mark.parametrize("values", [{"AllowedApps": "excel.exe"}, {"BlockedApps": "powerpnt.exe"}])
+@pytest.mark.parametrize(
+    "values", [{"AllowedApps": "excel.exe"}, {"BlockedApps": "powerpnt.exe"}]
+)
 def test_the_signed_path_obeys_the_app_lists(monkeypatch, tmp_path, values):
     _policy(monkeypatch, **values)
     registry = _registry()
@@ -539,5 +542,57 @@ def test_a_harness_act_run_lands_in_the_one_audit_log():
     teach_live._audit(bindings, [(1, "you confirmed"), (2, "observed change")], 0)
     audit.flush()
     row = json.loads(audit.default_path().read_text().splitlines()[-1])
-    assert (row["event"], row["app"], row["completed"], row["code"]) == ("act_run", "excel.exe", 2, "0")
+    assert (row["event"], row["app"], row["completed"], row["code"]) == (
+        "act_run",
+        "excel.exe",
+        2,
+        "0",
+    )
     assert "confirmed" not in audit.default_path().read_text()
+
+
+def test_an_app_list_pushed_after_approval_still_stops_the_run(monkeypatch, tmp_path):
+    from ghostcursor.act_runtime import ActRunCode, execute_approved_graph
+
+    registry = _registry()
+    validated = _validated(registry)
+    approval = _approval(tmp_path, validated, registry)
+    _policy(monkeypatch, BlockedApps="powerpnt.exe")
+    result = execute_approved_graph(
+        validated, registry, approval, descriptor=None,
+        current_authority=None, revalidate_target=None, controls=None,
+    )  # fmt: skip
+    assert result.code is ActRunCode.APPROVAL_REQUIRED and "this app" in result.detail
+
+
+def test_record_returns_while_the_disk_is_stuck(monkeypatch):
+    import threading
+
+    stuck = threading.Event()
+    monkeypatch.setattr(audit, "_write", lambda path, entry: stuck.wait(5))
+    started = time.monotonic()
+    assert audit.record("act_step", outcome="done")
+    assert time.monotonic() - started < 0.1  # the caller never waits on the disk
+    stuck.set()
+    assert audit.flush()
+
+
+def test_a_full_queue_is_counted_not_raised(monkeypatch):
+    import queue as queue_mod
+
+    monkeypatch.setattr(audit, "_queue", queue_mod.Queue(maxsize=1))
+    monkeypatch.setattr(audit, "_writer", SimpleNamespace(is_alive=lambda: True))
+    before = audit.dropped
+    assert audit.record("act_step", outcome="done")
+    assert audit.record("act_step", outcome="done") is False
+    assert audit.dropped == before + 1
+
+
+def test_the_owner_report_survives_a_corrupt_log(tmp_path):
+    folder = tmp_path / "audit"
+    folder.mkdir()
+    (folder / "pc9.jsonl").write_bytes(
+        b'[1, 2]\n{"at": "noon", "event": "egress", "prev": "x"}\n'
+    )
+    (row,) = team.report(folder)
+    assert row["intact"] is False and row["requests"] == 1 and row["last"] is None

@@ -339,8 +339,12 @@ def report(folder: Path | None = None) -> list[dict]:
                 entry = json.loads(raw)
             except ValueError:
                 continue
+            if not isinstance(entry, dict):
+                continue  # a corrupt line: verify already flagged the chain
             row["users"].add(str(entry.get("user", "")))
-            row["last"] = max(row["last"] or 0, entry.get("at") or 0)
+            at = entry.get("at")
+            if isinstance(at, (int, float)) and not isinstance(at, bool):
+                row["last"] = max(row["last"] or 0, at)
             event, outcome = entry.get("event"), entry.get("outcome")
             row["approvals"] += event in ("plan_approved", "drive_approved")
             row["requests"] += event == "egress"

@@ -109,8 +109,11 @@ def _write(path: Path, entry: dict) -> None:
 
 #: Lines that could not be written (disk full, folder gone), for doctor.
 dropped = 0
-_queue: "queue.Queue[tuple[Path, dict] | None]" = queue.Queue()
+#: Bounded: a writer stuck on a dead disk must not grow memory without end.
+_queue: "queue.Queue[tuple[Path, dict] | None]" = queue.Queue(maxsize=10_000)
 _writer: threading.Thread | None = None
+#: Lines queued but not yet written, per file, so verify waits only for its own.
+_pending: dict[Path, int] = {}
 
 
 def _drain() -> None:
@@ -120,6 +123,9 @@ def _drain() -> None:
             if item is not None:
                 _write(*item)
         finally:
+            if item is not None:
+                with _lock:
+                    _pending[item[0]] = _pending.get(item[0], 1) - 1
             _queue.task_done()
 
 
@@ -156,20 +162,36 @@ def record(event: str, *, path: Path | None = None, clock=time.time, **fields) -
                     target=_drain, name="audit-writer", daemon=True
                 )
                 _writer.start()
-        _queue.put((path or default_path(), entry))
+        target = path or default_path()
+        _queue.put_nowait((target, entry))
+        with _lock:
+            _pending[target] = _pending.get(target, 0) + 1
         return True
+    except queue.Full:
+        global dropped
+        dropped += 1
+        return False
     except Exception:
         return False
 
 
-atexit.register(flush)
+def _at_exit() -> None:
+    """Give queued lines a moment at exit; count any that never landed."""
+
+    global dropped
+    if not flush():
+        dropped += _queue.unfinished_tasks
+
+
+atexit.register(_at_exit)
 
 
 def verify(path: Path | None = None) -> tuple[bool, int, int | None]:
     """(intact, lines read, first broken line number or None)."""
 
-    flush()
     path = path or default_path()
+    if _pending.get(path):
+        flush()  # lines this process queued for this file land first
     try:
         lines = path.read_bytes().splitlines()
     except FileNotFoundError:
@@ -180,7 +202,7 @@ def verify(path: Path | None = None) -> tuple[bool, int, int | None]:
             entry = json.loads(raw)
         except ValueError:
             return False, len(lines), number
-        if entry.get("prev") != prev or entry.get("event") not in EVENTS:
+        if not isinstance(entry, dict) or entry.get("prev") != prev or entry.get("event") not in EVENTS:
             return False, len(lines), number
         prev = hashlib.sha256(raw).hexdigest()
     return True, len(lines), None

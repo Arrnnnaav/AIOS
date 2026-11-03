@@ -2175,6 +2175,8 @@ marks on the newest frame; `team report` is the owner's view of shared logs.
 
 Third pass: Page knows its browser (Browser.launch passes it), Act steps take the bound executable instead of identify() on the tick, the D183 Act-run line now goes to audit.py, and Teach can draw steps as sketches (--sketch).
 
+Second tier-1 review (12c7116..adbbcb1): no BLOCKING. Fixed: a test that record() returns while the disk is stuck; bounded queue with full/exit losses counted in `dropped`; verify waits only for lines queued to its own file and rejects non-object lines; `team report` survives corrupt logs; one frame per tick for Teach and its sketch; AllowedApps/BlockedApps re-checked when a signed run starts. Left: a Page built without `executable` (only outside Browser.page) is refused only when both browsers are denied.
+
 Open:
 - `audit.py`: tail truncation is undetectable (no anchor); a periodic signed checkpoint would close it.
 - `team.py`: a synced `team-<name>` skill overwrites a local skill a user named `team-...` (accepted: the prefix is reserved for the team).

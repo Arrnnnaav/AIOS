@@ -510,7 +510,8 @@ def run_model_teach(
                 code = 3
                 break
             done = confirm()
-            display = session.tick(observer.latest(), confirm=done)
+            frame = observer.latest()  # one frame per tick, for Teach and the sketch
+            display = session.tick(frame, confirm=done)
             for number, why in session.completed[reported:]:
                 say(f"[done] step {number}: {why}")
             reported = len(session.completed)
@@ -528,9 +529,7 @@ def run_model_teach(
                     Freshness.INFERRED,
                 )
             if sketch:
-                marks, previous = _sketch_step(
-                    overlay, marks, previous, target, observer.latest()
-                )
+                marks, previous = _sketch_step(overlay, marks, previous, target, frame)
             if display.message != shown:
                 say(f"[{display.phase.value}] {display.message}")
                 shown = display.message
