@@ -71,8 +71,11 @@ class Browser:
     """Orbyn's own browser window. Use as a context manager so the process and
     its temporary profile are always cleaned up."""
 
-    def __init__(self, proc: subprocess.Popen, port: int, profile: str):
+    def __init__(
+        self, proc: subprocess.Popen, port: int, profile: str, executable: str = ""
+    ):
         self.proc, self.port, self.profile = proc, port, profile
+        self.executable = executable  # "chrome.exe" / "msedge.exe", for policy
 
     @classmethod
     def launch(cls, url: str = "about:blank", *, timeout_s: float = 12.0) -> "Browser":
@@ -98,7 +101,7 @@ class Browser:
                 urllib.request.urlopen(
                     f"http://127.0.0.1:{port}/json/version", timeout=1
                 )
-                return cls(proc, port, profile)
+                return cls(proc, port, profile, Path(exe).name.casefold())
             except Exception:
                 time.sleep(0.2)
         cls(proc, port, profile).close()
@@ -118,7 +121,7 @@ class Browser:
 
     def page(self, tab: PageTab | None = None) -> "Page":
         tab = tab or next(iter(self.tabs()))
-        return Page(tab.ws_url)
+        return Page(tab.ws_url, executable=self.executable)
 
     def close(self) -> None:
         try:
@@ -147,9 +150,10 @@ class Browser:
 class Page:
     """One tab, driven over CDP. Observation is read-only; actions are gated."""
 
-    def __init__(self, ws_url: str, *, timeout_s: float = 10.0):
+    def __init__(self, ws_url: str, *, timeout_s: float = 10.0, executable: str = ""):
         import websocket  # websocket-client
 
+        self.executable = executable
         self.ws = websocket.create_connection(ws_url, timeout=timeout_s)
         self._id = 0
         self.cmd("Page.enable")
@@ -211,10 +215,10 @@ class Page:
 
         if policy.act_disabled():  # D187: the organisation allows guidance only
             raise PermissionError("your organisation allows Orbyn to guide, not act")
-        # ponytail: the page does not know which browser it is in, so it is
-        # refused only when policy denies both; pass the executable if one
-        # browser is allowed and the other is not.
-        if denied("chrome.exe") and denied("msedge.exe"):
+        # A page opened outside Browser.launch does not know its browser; it
+        # is then refused only when policy denies both.
+        known = getattr(self, "executable", "")
+        if denied(known) if known else denied("chrome.exe") and denied("msedge.exe"):
             raise PermissionError("your organisation does not allow Orbyn in the browser")
         if not approved:
             raise PermissionError("browser actions need the user's approval first")

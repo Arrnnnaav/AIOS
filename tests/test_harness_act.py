@@ -259,7 +259,7 @@ def test_act_audit_writes_a_screen_text_free_line(tmp_path, monkeypatch):
 
     from ghostcursor.harness import teach_live
 
-    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    from ghostcursor import audit
 
     class B:
         class identity:
@@ -268,10 +268,10 @@ def test_act_audit_writes_a_screen_text_free_line(tmp_path, monkeypatch):
     teach_live._audit(
         [B()], [(1, "observed chosen_state_changes"), (2, "you confirmed")], 0
     )
-    path = tmp_path / "GhostCursor" / "act-audit.jsonl"
-    line = json.loads(path.read_text(encoding="utf-8").strip())
-    assert line["apps"] == ["powerpnt.exe"] and line["code"] == 0
-    assert [s["step"] for s in line["steps"]] == [1, 2]
+    audit.flush()  # D187: the run line now lives in the one audit log
+    line = json.loads(audit.default_path().read_text(encoding="utf-8").splitlines()[-1])
+    assert line["app"] == "powerpnt.exe" and line["code"] == "0"
+    assert line["completed"] == 2 and line["event"] == "act_run"
     assert "goal" not in line and "name" not in json.dumps(line)
 
 

@@ -31,7 +31,7 @@ from pathlib import Path
 EVENTS = {
     "plan_approved": {"via", "steps", "app", "plugin"},
     "act_step": {"via", "action", "control_type", "app", "outcome"},
-    "act_run": {"via", "plugin", "code", "completed", "steps"},
+    "act_run": {"via", "plugin", "app", "code", "completed", "steps"},
     "drive_approved": {"max_steps"},
     "egress": {"provider", "model", "failure", "images"},
     "team_publish": {"facts", "skills", "agents"},

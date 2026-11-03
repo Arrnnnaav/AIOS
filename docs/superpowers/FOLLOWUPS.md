@@ -2173,8 +2173,8 @@ never waits on disk); ShareAudit's user names are documented in the admin
 guide; re-syncing the same bundle is tested; sketch.start(latest=) places
 marks on the newest frame; `team report` is the owner's view of shared logs.
 
+Third pass: Page knows its browser (Browser.launch passes it), Act steps take the bound executable instead of identify() on the tick, the D183 Act-run line now goes to audit.py, and Teach can draw steps as sketches (--sketch).
+
 Open:
-- `harness/browser.py` `_guard`: the page does not know its browser, so it refuses only when both chrome.exe and msedge.exe are denied; pass the executable through.
-- `teach_live._live_perform` still calls identify() (OpenProcess + version read) on the tick thread per step.
 - `audit.py`: tail truncation is undetectable (no anchor); a periodic signed checkpoint would close it.
 - `team.py`: a synced `team-<name>` skill overwrites a local skill a user named `team-...` (accepted: the prefix is reserved for the team).

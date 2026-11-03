@@ -521,6 +521,9 @@ def test_browser_input_obeys_disable_act_and_the_app_lists(monkeypatch):
         page._guard(control, True, ())
     _policy(monkeypatch, AllowedApps="msedge.exe")
     page._guard(control, True, ())  # allowed: no error
+    page.executable = "chrome.exe"  # opened by Browser.launch: its own browser counts
+    with pytest.raises(PermissionError, match="in the browser"):
+        page._guard(control, True, ())
 
 
 @pytest.mark.parametrize("values", [{"AllowedApps": "excel.exe"}, {"BlockedApps": "powerpnt.exe"}])
@@ -529,3 +532,12 @@ def test_the_signed_path_obeys_the_app_lists(monkeypatch, tmp_path, values):
     registry = _registry()
     with pytest.raises(ValueError, match="not allow Orbyn in this app"):
         _approval(tmp_path, _validated(registry), registry)
+
+
+def test_a_harness_act_run_lands_in_the_one_audit_log():
+    bindings = [SimpleNamespace(identity=SimpleNamespace(executable="excel.exe"))]
+    teach_live._audit(bindings, [(1, "you confirmed"), (2, "observed change")], 0)
+    audit.flush()
+    row = json.loads(audit.default_path().read_text().splitlines()[-1])
+    assert (row["event"], row["app"], row["completed"], row["code"]) == ("act_run", "excel.exe", 2, "0")
+    assert "confirmed" not in audit.default_path().read_text()

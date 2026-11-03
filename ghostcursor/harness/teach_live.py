@@ -583,27 +583,16 @@ def _sketch_step(overlay, marks, previous, target, latest):
 
 
 def _audit(bindings, completed, code: int) -> None:
-    """Append one line per Act run to a local audit log: which apps, how each
-    step ended, and the exit code. Each ``why`` is already screen-text-free
-    ("observed <change>", "you confirmed", "acted (no change seen)"); no
-    control name, goal or screen text is written (privacy rule 6). Never fatal."""
+    """One line per Act run in the audit log (D183, now D187's ``audit.py``):
+    the apps, how many steps completed, and the exit code. No control name,
+    goal or screen text (privacy rule 6). Never fatal."""
 
-    import json
-    import os
-    import time
-    from pathlib import Path
+    from ghostcursor import audit
 
-    try:
-        base = os.environ.get("LOCALAPPDATA") or str(Path.home())
-        path = Path(base) / "GhostCursor" / "act-audit.jsonl"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        line = {
-            "at": round(time.time(), 3),
-            "apps": [b.identity.executable for b in bindings],
-            "steps": [{"step": n, "why": why} for n, why in completed],
-            "code": code,
-        }
-        with path.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(line) + "\n")
-    except Exception:
-        pass
+    audit.record(
+        "act_run",
+        via="harness",
+        app=";".join(b.identity.executable for b in bindings),
+        code=str(code),
+        completed=len(completed),
+    )
