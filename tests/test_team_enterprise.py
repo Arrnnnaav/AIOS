@@ -140,6 +140,7 @@ def test_the_audit_chain_detects_an_edited_or_removed_line(tmp_path):
     assert audit.record("act_step", path=path, action="click", outcome="done")
     assert audit.record("act_step", path=path, action="type", outcome="refused")
     assert audit.verify(path) == (True, 3, None)
+    audit.flush()
     first = json.loads(path.read_text(encoding="utf-8").splitlines()[0])
     assert first["app"] == "EXCEL.EXE"  # a name, never a path
     lines = path.read_bytes().splitlines()
@@ -162,9 +163,9 @@ def test_the_audit_refuses_content_and_never_raises(tmp_path):
     assert not path.exists()
     blocked = tmp_path / "file"
     blocked.write_text("x")
-    assert (
-        audit.record("act_step", path=blocked / "audit.jsonl", outcome="done") is False
-    )
+    before = audit.dropped
+    assert audit.record("act_step", path=blocked / "audit.jsonl", outcome="done")
+    assert audit.flush() and audit.dropped == before + 1  # counted, never raised
 
 
 def test_a_harness_step_is_audited_with_its_outcome(monkeypatch):
@@ -182,6 +183,7 @@ def test_a_harness_step_is_audited_with_its_outcome(monkeypatch):
     monkeypatch.setattr(act_mod, "perform", refuse)
     with pytest.raises(PermissionError):
         teach_live._live_perform(step, target, 5)
+    audit.flush()
     rows = [json.loads(line) for line in audit.default_path().read_text().splitlines()]
     assert [(r["event"], r["outcome"], r["app"], r["control_type"]) for r in rows] == [
         ("act_step", "done", "excel.exe", "Edit"),
@@ -199,6 +201,7 @@ def test_egress_is_audited_without_content(monkeypatch, tmp_path):
         log_path=tmp_path / "l",
     )
     gateway.plan(_envelope())
+    audit.flush()
     text = audit.default_path().read_text()
     assert '"event": "egress"' in text and '"provider": "company"' in text
     assert "Save" not in text
@@ -353,7 +356,8 @@ def test_the_group_policy_template_names_every_policy_value():
 
 
 @pytest.mark.parametrize(
-    "url", ["http://localhost.evil.example/v1", "http://127.0.0.1.evil.example", "https://"]
+    "url",
+    ["http://localhost.evil.example/v1", "http://127.0.0.1.evil.example", "https://"],
 )
 def test_a_lookalike_local_endpoint_is_refused(monkeypatch, url):
     _policy(monkeypatch, CompanyEndpoint=url)
@@ -379,7 +383,9 @@ def test_teach_does_not_ask_to_approve_act_that_policy_disables(monkeypatch):
     from tests.test_harness_teach import SyncSlot, _frame
 
     _policy(monkeypatch, DisableAct=1)
-    session = ModelTeachSession("g", None, SyncSlot(), plan=_plan(), act=lambda s, t: "x")
+    session = ModelTeachSession(
+        "g", None, SyncSlot(), plan=_plan(), act=lambda s, t: "x"
+    )
     shown = session.tick(_frame())
     assert session.phase is Phase.BLOCKED and "guide, not act" in shown.message
     assert not audit.default_path().exists()  # no plan_approved recorded
@@ -387,19 +393,40 @@ def test_teach_does_not_ask_to_approve_act_that_policy_disables(monkeypatch):
 
 def test_published_skills_are_scrubbed(owner, tmp_path):
     plan = TeachPlan(
-        (PlanStep("Type the key", ExpectedChange.CHOSEN_STATE_CHANGES, action="type", text="mail ann@example.com"),)
+        (
+            PlanStep(
+                "Type the key",
+                ExpectedChange.CHOSEN_STATE_CHANGES,
+                action="type",
+                text="mail ann@example.com",
+            ),
+        )
     )
     task_skills.save_skill("send", plan, dest_dir=tmp_path / "os")
-    team.publish(_brain(tmp_path, "b", "x y z"), scope="default", skills_dir=tmp_path / "os", key_lookup=owner.store.get)
-    assert "ann@example.com" not in (owner.folder / "orbyn" / "team.json").read_text(encoding="utf-8")
+    team.publish(
+        _brain(tmp_path, "b", "x y z"),
+        scope="default",
+        skills_dir=tmp_path / "os",
+        key_lookup=owner.store.get,
+    )
+    assert "ann@example.com" not in (owner.folder / "orbyn" / "team.json").read_text(
+        encoding="utf-8"
+    )
 
 
 def test_a_garbage_sequence_in_the_folder_does_not_break_publish(owner, tmp_path):
     folder = owner.folder / "orbyn"
     folder.mkdir(parents=True)
     (folder / "team.json").write_text('{"sequence": [1]}', encoding="utf-8")
-    team.publish(_brain(tmp_path, "b", "x y z"), scope="default", skills_dir=tmp_path / "e", key_lookup=owner.store.get)
-    assert json.loads((folder / "team.json").read_text(encoding="utf-8"))["sequence"] == 1
+    team.publish(
+        _brain(tmp_path, "b", "x y z"),
+        scope="default",
+        skills_dir=tmp_path / "e",
+        key_lookup=owner.store.get,
+    )
+    assert (
+        json.loads((folder / "team.json").read_text(encoding="utf-8"))["sequence"] == 1
+    )
 
 
 def test_it_policy_alone_never_sends_to_the_company_gateway(monkeypatch, tmp_path):
@@ -419,3 +446,86 @@ def test_it_policy_alone_never_sends_to_the_company_gateway(monkeypatch, tmp_pat
     assert gateway.available()["company"] is True
     _policy(monkeypatch)  # IT removed the endpoint: the opt-in alone adds nothing
     assert settings.company_gateway() is False
+
+
+def test_audit_writes_never_wait_on_the_caller_and_two_writers_keep_the_chain(tmp_path):
+    import threading
+
+    path = tmp_path / "audit.jsonl"
+    writers = [
+        threading.Thread(
+            target=lambda: [
+                audit._write(path, {"event": "act_step", "outcome": "done"})
+                for _ in range(25)
+            ]
+        )
+        for _ in range(2)
+    ]  # _write directly: the same path from two threads, as two processes would
+    for w in writers:
+        w.start()
+    for w in writers:
+        w.join()
+    assert audit.verify(path) == (True, 50, None)
+
+
+def test_the_owner_report_counts_each_pc_and_flags_a_broken_chain(tmp_path):
+    folder = tmp_path / "audit"
+    good, bad = folder / "pc1.jsonl", folder / "pc2.jsonl"
+    for fields in ({"steps": 2}, {"outcome": "done"}, {"outcome": "refused"}):
+        event = "plan_approved" if "steps" in fields else "act_step"
+        audit._write(good, {"at": 5.0, "user": "ann", "event": event, **fields})
+    audit._write(
+        bad, {"at": 1.0, "user": "bob", "event": "egress", "provider": "company"}
+    )
+    audit._write(
+        bad, {"at": 2.0, "user": "bob", "event": "egress", "provider": "company"}
+    )
+    lines = bad.read_bytes().splitlines()
+    bad.write_bytes(lines[1] + b"\n")  # someone deleted the first line
+    one, two = team.report(folder)
+    assert (
+        one["users"],
+        one["approvals"],
+        one["done"],
+        one["refused"],
+        one["intact"],
+    ) == (["ann"], 1, 1, 1, True)
+    assert (two["requests"], two["intact"], two["broken_at"]) == (1, False, 1)
+
+
+def test_syncing_the_same_bundle_twice_is_harmless(owner, tmp_path):
+    team.publish(
+        _brain(tmp_path, "boss", "VAT is 20 percent"),
+        scope="default",
+        skills_dir=tmp_path / "e",
+        key_lookup=owner.store.get,
+    )
+    staff = Knowledge(tmp_path / "staff.sqlite")
+    first = team.sync(staff, skills_dir=tmp_path / "ss")
+    assert team.sync(staff, skills_dir=tmp_path / "ss") == first
+    assert [f.text for f in staff.list(scope="team") if f.status == "approved"] == [
+        "VAT is 20 percent"
+    ]
+
+
+def test_browser_input_obeys_disable_act_and_the_app_lists(monkeypatch):
+    from ghostcursor.harness.browser import Page, PageControl
+
+    page = object.__new__(Page)  # no tab needed: the guard runs before CDP
+    control = PageControl("button", "Submit", 7, None)
+    _policy(monkeypatch, DisableAct=1)
+    with pytest.raises(PermissionError, match="guide, not act"):
+        page._guard(control, True, ())
+    _policy(monkeypatch, AllowedApps="excel.exe")
+    with pytest.raises(PermissionError, match="in the browser"):
+        page._guard(control, True, ())
+    _policy(monkeypatch, AllowedApps="msedge.exe")
+    page._guard(control, True, ())  # allowed: no error
+
+
+@pytest.mark.parametrize("values", [{"AllowedApps": "excel.exe"}, {"BlockedApps": "powerpnt.exe"}])
+def test_the_signed_path_obeys_the_app_lists(monkeypatch, tmp_path, values):
+    _policy(monkeypatch, **values)
+    registry = _registry()
+    with pytest.raises(ValueError, match="not allow Orbyn in this app"):
+        _approval(tmp_path, _validated(registry), registry)

@@ -2166,10 +2166,15 @@ longer crash publish.
 Resolved (owner chose a per-user opt-in): the company gateway is used only
 after the person turns it on (`settings.company_gateway`); D187 addendum.
 
+Also fixed (2026-11-03, second pass): browser Page actions check DisableAct and the
+app lists; the signed path checks AllowedApps/BlockedApps at approval; audit
+writes go through a writer thread with a cross-process file lock (record()
+never waits on disk); ShareAudit's user names are documented in the admin
+guide; re-syncing the same bundle is tested; sketch.start(latest=) places
+marks on the newest frame; `team report` is the owner's view of shared logs.
+
 Open:
-- `harness/browser.py:215` Page.click/type_text does not check DisableAct/AllowedApps; add before browser drive is wired.
-- AllowedApps is not checked on the signed PowerPoint path.
-- `teach_live._live_perform` and the approval audit write run on the tick thread (identify() + file append); move audit writes to a queue thread if slow storage shows up (rule 4).
-- `audit.py`: user name is in every line and ShareAudit copies it to the team folder; document as egress or hash it. Per-process lock only: two Orbyn processes appending at once look like tampering; tail truncation is undetectable (no anchor).
-- `team.py`: a synced `team-<name>` skill silently overwrites a local one of that slug; no test for equal sequence.
-- `harness/sketch.py`: start() trusts the frame it is given; take the latest frame or follow() inside start.
+- `harness/browser.py` `_guard`: the page does not know its browser, so it refuses only when both chrome.exe and msedge.exe are denied; pass the executable through.
+- `teach_live._live_perform` still calls identify() (OpenProcess + version read) on the tick thread per step.
+- `audit.py`: tail truncation is undetectable (no anchor); a periodic signed checkpoint would close it.
+- `team.py`: a synced `team-<name>` skill overwrites a local skill a user named `team-...` (accepted: the prefix is reserved for the team).

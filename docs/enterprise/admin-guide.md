@@ -34,7 +34,7 @@ user). A policy only ever lowers what Orbyn may do.
 |---|---|
 | MaxEgress | 1 (text) unless you need pictures; 0 keeps everything on the PC |
 | RedactEgress | Enabled |
-| DisableAct | Enabled until you trust it; staff then get guidance only |
+| DisableAct | Enabled until you trust it; staff then get guidance only (desktop, browser and PowerPoint Act) |
 | AllowedApps | The apps you train on, e.g. `excel.exe;outlook.exe;msedge.exe` |
 | BlockedApps | Password managers, banking apps |
 | AllowedProviders | `company` (and `ollama` for the local model) |
@@ -92,7 +92,15 @@ before it.
     py -3.12 -m ghostcursor.audit export <file>
 
 With `ShareAudit` on, `team sync` and `team publish` copy the log to
-`<TeamFolder>\orbyn\audit\<opaque id>.jsonl`. The hash chain shows edits and
+`<TeamFolder>\orbyn\audit\<opaque id>.jsonl`. That copy carries each line's
+Windows user name and app names to the team folder; tell staff before you
+turn it on. The owner reads every PC's copy with
+
+    py -3.12 -m ghostcursor.workspace.team report
+
+which prints, per PC: users, last activity, whether the chain is intact (or
+the first broken line), approvals, steps done/refused/failed and model
+requests. The hash chain shows edits and
 deletions inside a copy; it cannot stop someone with write access replacing
 a whole file, so keep staff write access off the audit folder.
 
@@ -100,5 +108,4 @@ a whole file, so keep staff write access off the audit folder.
 
 - SSO/SCIM: there is no Orbyn service to sign in to, so there are no Orbyn
   accounts. Windows sign-in and folder permissions are the identity.
-- An owner dashboard over the shared audit logs.
 - Live acceptance on Excel, Outlook and a browser app (see `ROADMAP.md`).

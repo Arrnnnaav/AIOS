@@ -206,6 +206,16 @@ class Page:
     # --- actions (gated exactly like Act, D182) --------------------------
 
     def _guard(self, control: PageControl, approved: bool, deny) -> None:
+        from ghostcursor import policy
+        from ghostcursor.harness.binding import denied
+
+        if policy.act_disabled():  # D187: the organisation allows guidance only
+            raise PermissionError("your organisation allows Orbyn to guide, not act")
+        # ponytail: the page does not know which browser it is in, so it is
+        # refused only when policy denies both; pass the executable if one
+        # browser is allowed and the other is not.
+        if denied("chrome.exe") and denied("msedge.exe"):
+            raise PermissionError("your organisation does not allow Orbyn in the browser")
         if not approved:
             raise PermissionError("browser actions need the user's approval first")
         name = control.name.casefold()

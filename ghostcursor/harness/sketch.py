@@ -94,12 +94,24 @@ def parse_marks(raw: object, frame: ObservationFrame) -> tuple[Mark, ...]:
     return tuple(marks)
 
 
-def start(raw: object, frame: ObservationFrame, now: float, *, seed: int = 0) -> Sketch:
+def start(
+    raw: object,
+    frame: ObservationFrame,
+    now: float,
+    *,
+    latest: ObservationFrame | None = None,
+    seed: int = 0,
+) -> Sketch | None:
+    """Marks named against ``frame`` (the one the model was shown), placed on
+    ``latest`` when given: a model answer takes seconds, and its frame's
+    rectangles may be old. None if a marked control did not survive."""
+
     marks = parse_marks(raw, frame)
     cids = {m.cid for m in marks} | {m.to for m in marks if m.to}
-    return Sketch(
+    sketch = Sketch(
         marks, tuple((cid, frame.get(cid)) for cid in sorted(cids)), now, seed
     )
+    return sketch if latest is None else follow(sketch, latest)
 
 
 def follow(sketch: Sketch, latest: ObservationFrame) -> Sketch | None:

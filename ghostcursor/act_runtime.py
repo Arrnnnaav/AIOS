@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import ntpath
 import secrets
 import threading
 import time
@@ -386,6 +387,10 @@ def approve_action_graph(
 
     if policy.act_disabled():  # D180: the organisation allows guidance only
         raise ValueError("your organisation allows Orbyn to guide, not act")
+    app = ntpath.basename(target.executable or "").casefold()
+    allowed = policy.allowed_apps()
+    if app in policy.blocked_apps() or (allowed is not None and app not in allowed):
+        raise ValueError("your organisation does not allow Orbyn in this app")
     if (
         registry.plugin_id != validated.plugin_id
         or registry.plugin_version != validated.plugin_version

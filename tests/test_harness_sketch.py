@@ -123,3 +123,13 @@ def test_a_sketch_expires():
     assert (
         sketch.strokes(sk, sketch.TTL_S) == () and sketch.notes(sk, sketch.TTL_S) == ()
     )
+
+
+def test_start_places_marks_on_the_latest_frame():
+    asked = _two()
+    a = asked.ids[0]
+    latest = _frame([_control(1, "Save", rect=(120, 100, 180, 130)), _control(2, "Open", rect=(300, 100, 360, 130))], frame_id=2)
+    sk = sketch.start({"marks": [{"kind": "box", "cid": a}]}, asked, 0.0, latest=latest)
+    assert sk.control(a).rect == (120, 100, 180, 130)
+    gone = _frame([_control(2, "Open", rect=(300, 100, 360, 130))], frame_id=3)
+    assert sketch.start({"marks": [{"kind": "box", "cid": a}]}, asked, 0.0, latest=gone) is None

@@ -19,6 +19,7 @@ Fact text is scrubbed of embedded secrets on export (``redact``).
     py -3.12 -m ghostcursor.workspace.team init       # owner: make the key
     py -3.12 -m ghostcursor.workspace.team publish    # owner
     py -3.12 -m ghostcursor.workspace.team sync       # staff
+    py -3.12 -m ghostcursor.workspace.team report     # owner: every PC's shared audit
     py -3.12 -m ghostcursor.workspace.team status
 """
 
@@ -321,6 +322,35 @@ def share_audit(source: Path | None = None) -> Path | None:
     return dest
 
 
+def report(folder: Path | None = None) -> list[dict]:
+    """The owner's view of every shared audit log: per PC, whether its chain
+    is intact, who used it, when it was last active, and counts of approvals,
+    steps done/refused/failed and model requests. Events only, as recorded."""
+
+    folder = folder or _folder() / "audit"
+    rows = []
+    for path in sorted(folder.glob("*.jsonl")):
+        intact, lines, broken = audit.verify(path)
+        row = {"pc": path.stem, "intact": intact, "broken_at": broken, "events": lines,
+               "users": set(), "last": None, "approvals": 0, "done": 0,
+               "refused": 0, "failed": 0, "requests": 0}  # fmt: skip
+        for raw in path.read_bytes().splitlines():
+            try:
+                entry = json.loads(raw)
+            except ValueError:
+                continue
+            row["users"].add(str(entry.get("user", "")))
+            row["last"] = max(row["last"] or 0, entry.get("at") or 0)
+            event, outcome = entry.get("event"), entry.get("outcome")
+            row["approvals"] += event in ("plan_approved", "drive_approved")
+            row["requests"] += event == "egress"
+            if event == "act_step" and outcome in ("done", "refused", "failed"):
+                row[outcome] += 1
+        row["users"] = sorted(u for u in row["users"] if u)
+        rows.append(row)
+    return rows
+
+
 def main(argv=None) -> int:
     from ghostcursor.workspace.knowledge import Knowledge
     from ghostcursor.workspace.session import default_root
@@ -331,6 +361,14 @@ def main(argv=None) -> int:
         if command == "init":
             print("Owner key ready. Ask IT to set the TeamOwnerKey policy to:")
             print(init_owner())
+            return 0
+        if command == "report":
+            for r in report():
+                when = time.strftime("%Y-%m-%d %H:%M", time.localtime(r["last"])) if r["last"] else "-"
+                chain = "intact" if r["intact"] else f"BROKEN at line {r['broken_at']}"
+                print(f"{r['pc']}  {', '.join(r['users']) or '-'}  last {when}  chain {chain}  "
+                      f"approvals {r['approvals']}  steps {r['done']} done / {r['refused']} refused / "
+                      f"{r['failed']} failed  model requests {r['requests']}")
             return 0
         if command == "status":
             print(
@@ -353,7 +391,7 @@ def main(argv=None) -> int:
         print(f"team: {exc}")
         return 1
     print(
-        "usage: python -m ghostcursor.workspace.team init | status | publish [scope] | sync"
+        "usage: python -m ghostcursor.workspace.team init | status | publish [scope] | sync | report"
     )
     return 2
 

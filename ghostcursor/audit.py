@@ -14,11 +14,13 @@ not stop the user's work, and it never blocks Stop.
 
 from __future__ import annotations
 
+import atexit
 import getpass
 import hashlib
 import json
 import ntpath
 import os
+import queue
 import shutil
 import sys
 import threading
@@ -73,39 +75,100 @@ def _last_hash(path: Path) -> str:
     return hashlib.sha256(lines[-1]).hexdigest() if lines else GENESIS
 
 
-def record(event: str, *, path: Path | None = None, clock=time.time, **fields) -> bool:
-    """Append one event; False (never an exception) if it could not be written.
-    An unknown event or field is refused, so content cannot slip in."""
+def _locked(path: Path):
+    """An exclusive lock shared with every Orbyn process on this PC, so two
+    writers never read the same ``prev`` and look like tampering."""
 
+    import contextlib
+    import msvcrt
+
+    @contextlib.contextmanager
+    def held():
+        with path.with_name(path.name + ".lock").open("a+b") as handle:
+            msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)  # retries ~10 s
+            try:
+                yield
+            finally:
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+
+    return held()
+
+
+def _write(path: Path, entry: dict) -> None:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with _locked(path):  # never _lock: record() must not wait behind a slow disk
+            line = {**entry, "prev": _last_hash(path)}
+            with path.open("ab") as handle:
+                handle.write(json.dumps(line, sort_keys=True).encode("utf-8") + b"\n")
+    except Exception:  # an audit failure never stops the user's work
+        global dropped
+        dropped += 1
+
+
+#: Lines that could not be written (disk full, folder gone), for doctor.
+dropped = 0
+_queue: "queue.Queue[tuple[Path, dict] | None]" = queue.Queue()
+_writer: threading.Thread | None = None
+
+
+def _drain() -> None:
+    while True:
+        item = _queue.get()
+        try:
+            if item is not None:
+                _write(*item)
+        finally:
+            _queue.task_done()
+
+
+def flush(timeout_s: float = 2.0) -> bool:
+    """Wait until queued lines are on disk (tests, export, exit)."""
+
+    deadline = time.monotonic() + timeout_s
+    while _queue.unfinished_tasks and time.monotonic() < deadline:
+        time.sleep(0.005)
+    return not _queue.unfinished_tasks
+
+
+def record(event: str, *, path: Path | None = None, clock=time.time, **fields) -> bool:
+    """Queue one event; False if it was refused (an unknown event or field, so
+    content cannot slip in). The write happens on a writer thread, so a step
+    or Stop never waits on the disk (rule 4); never raises."""
+
+    global _writer
     try:
         clean = _clean(event, fields)
     except (KeyError, ValueError):
         return False
-    path = path or default_path()
     try:
         user = getpass.getuser()
     except Exception:
         user = ""
+    entry = {"at": round(clock(), 3), "user": user[:MAX_FIELD], "event": event, **clean}
     try:
         with _lock:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            line = {
-                "at": round(clock(), 3),
-                "user": user[:MAX_FIELD],
-                "event": event,
-                **clean,
-                "prev": _last_hash(path),
-            }
-            with path.open("ab") as handle:
-                handle.write(json.dumps(line, sort_keys=True).encode("utf-8") + b"\n")
+            if _writer is None or not _writer.is_alive():
+                # Daemon, with an exit flush below: a stuck disk must not keep
+                # the process alive after the user closed Orbyn.
+                _writer = threading.Thread(
+                    target=_drain, name="audit-writer", daemon=True
+                )
+                _writer.start()
+        _queue.put((path or default_path(), entry))
         return True
-    except Exception:  # an audit failure never stops the user's work
+    except Exception:
         return False
+
+
+atexit.register(flush)
 
 
 def verify(path: Path | None = None) -> tuple[bool, int, int | None]:
     """(intact, lines read, first broken line number or None)."""
 
+    flush()
     path = path or default_path()
     try:
         lines = path.read_bytes().splitlines()
@@ -126,6 +189,7 @@ def verify(path: Path | None = None) -> tuple[bool, int, int | None]:
 def export(dest: Path, path: Path | None = None) -> tuple[bool, int, int | None]:
     """Copy the log for the owner, with the result of verifying it."""
 
+    flush()
     path = path or default_path()
     dest.parent.mkdir(parents=True, exist_ok=True)
     if path.exists():
