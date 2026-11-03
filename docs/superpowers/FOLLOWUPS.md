@@ -2155,3 +2155,21 @@ From the tier-1 review of 5fd3722..c8f7f6e (not blocking):
 - `harness/teach.py`: no test fails if `slot.cancel()` in `_advance` or the `chosen` capture in the verify lambda is removed.
 - `harness/browser.py`: a parent Chrome that already exited leaves its children holding the profile.
 - `harness/act.py` get_clipboard_text's non-text refusal (CountClipboardFormats) is only exercised live; no hermetic test reaches win32clipboard.
+
+## Small-company deployment (D187), tier-1 review of b4783c0..ebde852 -- 2026-11-03
+
+No BLOCKING. Fixed in the follow-up commit: skills/agents scrubbed on publish,
+exact local-host check for CompanyEndpoint, DisableAct re-checked at execute
+and before Teach asks to approve Act, an unverified team.json sequence can no
+longer crash publish.
+
+Owner decision:
+- `providers/gateway.py`: CompanyEndpoint adds a remote destination tried first with no personal key, so a user with no account configured now sends redacted text off the device when IT sets it. CLAUDE.md rule 6 says policy "may only lower what leaves"; amend the rule (IT-chosen destination) or require a user opt-in.
+
+Open:
+- `harness/browser.py:215` Page.click/type_text does not check DisableAct/AllowedApps; add before browser drive is wired.
+- AllowedApps is not checked on the signed PowerPoint path.
+- `teach_live._live_perform` and the approval audit write run on the tick thread (identify() + file append); move audit writes to a queue thread if slow storage shows up (rule 4).
+- `audit.py`: user name is in every line and ShareAudit copies it to the team folder; document as egress or hash it. Per-process lock only: two Orbyn processes appending at once look like tampering; tail truncation is undetectable (no anchor).
+- `team.py`: a synced `team-<name>` skill silently overwrites a local one of that slug; no test for equal sequence.
+- `harness/sketch.py`: start() trusts the frame it is given; take the latest frame or follow() inside start.

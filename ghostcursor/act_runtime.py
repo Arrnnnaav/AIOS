@@ -1246,6 +1246,15 @@ def execute_approved_graph(
     earlier version of this docstring claimed.
     """
 
+    from ghostcursor import policy
+
+    if policy.act_disabled():  # a policy pushed after approval still applies
+        return ActRunResult(
+            ActRunPhase.EXECUTION,
+            ActRunCode.APPROVAL_REQUIRED,
+            "your organisation allows Orbyn to guide, not act",
+            validated,
+        )
     verifier = VerifierHost(descriptor)
 
     # The LIVE-state verifier, when the plugin ships one. Routing is by the

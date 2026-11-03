@@ -37,7 +37,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PublicKey,
 )
 
-from ghostcursor import audit, policy
+from ghostcursor import audit, policy, redact
 from ghostcursor.providers import keys
 
 TEAM_SCOPE = "team"
@@ -170,10 +170,10 @@ def publish(
     folder = _folder()
     folder.mkdir(parents=True, exist_ok=True)
     previous = 0
-    try:
-        previous = json.loads((folder / BUNDLE).read_bytes()).get("sequence", 0)
-    except (OSError, ValueError, AttributeError):
-        pass
+    try:  # unverified: anyone with write access could have put it there
+        previous = int(json.loads((folder / BUNDLE).read_bytes()).get("sequence", 0))
+    except (OSError, ValueError, AttributeError, TypeError):
+        previous = 0
     skills = {}
     for name in task_skills.list_skills(dest_dir=skills_dir):
         if name.startswith(SKILL_PREFIX):
@@ -181,20 +181,23 @@ def publish(
         plan = task_skills.load_skill(name, dest_dir=skills_dir)
         skills[name] = [
             {
-                "instruction": s.instruction,
+                "instruction": redact.scrub(s.instruction)[0],
                 "expected_change": s.expected_change.value,
                 "action": s.action,
-                "text": s.text,
+                "text": redact.scrub(s.text)[0],
             }
             for s in plan.steps
         ]
-    specs = [s.as_dict() for s in agents.list_specs(agents_root)] if agents_root else []
+    specs = [
+        {**d, "description": redact.scrub(d["description"])[0], "goal_template": redact.scrub(d["goal_template"])[0]}
+        for d in (s.as_dict() for s in (agents.list_specs(agents_root) if agents_root else []))
+    ]
     bundle = build_bundle(
         knowledge,
         scope=scope,
         skills=skills,
         agent_specs=specs,
-        sequence=int(previous) + 1,
+        sequence=previous + 1,
     )
     raw, signature = sign(bundle, private)
     for name, data in ((BUNDLE, raw), (SIGNATURE, signature)):

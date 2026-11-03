@@ -147,8 +147,15 @@ def company_endpoint() -> str | None:
     url = _text("CompanyEndpoint")
     if url is None:
         return None
-    local = url.startswith(("http://127.0.0.1", "http://localhost"))
-    return url.rstrip("/") if url.startswith("https://") or local else None
+    from urllib.parse import urlsplit
+
+    try:
+        parts = urlsplit(url)
+        host = parts.hostname
+    except ValueError:
+        return None
+    local = parts.scheme == "http" and host in ("127.0.0.1", "localhost", "::1")
+    return url.rstrip("/") if (parts.scheme == "https" and host) or local else None
 
 
 def company_model() -> str:

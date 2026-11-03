@@ -398,6 +398,11 @@ class ModelTeachSession:
                     confirm = False
 
         if self.phase is Phase.APPROVE:
+            from ghostcursor import policy
+
+            if policy.act_disabled():  # D187: say so before asking to approve
+                self._block("your organisation allows Orbyn to guide, not act")
+                return Display(self.phase, self.message)
             if not confirm:
                 steps = "; ".join(
                     f"{n}. {s.instruction}"

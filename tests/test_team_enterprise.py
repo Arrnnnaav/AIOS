@@ -348,3 +348,53 @@ def test_the_group_policy_template_names_every_policy_value():
     strings = {e.get("id") for e in adml.iter() if e.tag.endswith("string")}
     assert names and names == set(re.findall(r'valueName="([A-Za-z]+)"', admx))
     assert set(re.findall(r"\$\(string\.([A-Za-z0-9_]+)\)", admx)) <= strings
+
+
+@pytest.mark.parametrize(
+    "url", ["http://localhost.evil.example/v1", "http://127.0.0.1.evil.example", "https://"]
+)
+def test_a_lookalike_local_endpoint_is_refused(monkeypatch, url):
+    _policy(monkeypatch, CompanyEndpoint=url)
+    assert policy.company_endpoint() is None
+
+
+def test_disable_act_pushed_after_approval_still_stops_the_run(monkeypatch, tmp_path):
+    from ghostcursor.act_runtime import ActRunCode, execute_approved_graph
+
+    registry = _registry()
+    validated = _validated(registry)
+    approval = _approval(tmp_path, validated, registry)
+    _policy(monkeypatch, DisableAct=1)
+    result = execute_approved_graph(
+        validated, registry, approval, descriptor=None,
+        current_authority=None, revalidate_target=None, controls=None,
+    )  # fmt: skip
+    assert result.code is ActRunCode.APPROVAL_REQUIRED and not result.completed_node_ids
+
+
+def test_teach_does_not_ask_to_approve_act_that_policy_disables(monkeypatch):
+    from ghostcursor.harness.teach import ModelTeachSession, Phase
+    from tests.test_harness_teach import SyncSlot, _frame
+
+    _policy(monkeypatch, DisableAct=1)
+    session = ModelTeachSession("g", None, SyncSlot(), plan=_plan(), act=lambda s, t: "x")
+    shown = session.tick(_frame())
+    assert session.phase is Phase.BLOCKED and "guide, not act" in shown.message
+    assert not audit.default_path().exists()  # no plan_approved recorded
+
+
+def test_published_skills_are_scrubbed(owner, tmp_path):
+    plan = TeachPlan(
+        (PlanStep("Type the key", ExpectedChange.CHOSEN_STATE_CHANGES, action="type", text="mail ann@example.com"),)
+    )
+    task_skills.save_skill("send", plan, dest_dir=tmp_path / "os")
+    team.publish(_brain(tmp_path, "b", "x y z"), scope="default", skills_dir=tmp_path / "os", key_lookup=owner.store.get)
+    assert "ann@example.com" not in (owner.folder / "orbyn" / "team.json").read_text(encoding="utf-8")
+
+
+def test_a_garbage_sequence_in_the_folder_does_not_break_publish(owner, tmp_path):
+    folder = owner.folder / "orbyn"
+    folder.mkdir(parents=True)
+    (folder / "team.json").write_text('{"sequence": [1]}', encoding="utf-8")
+    team.publish(_brain(tmp_path, "b", "x y z"), scope="default", skills_dir=tmp_path / "e", key_lookup=owner.store.get)
+    assert json.loads((folder / "team.json").read_text(encoding="utf-8"))["sequence"] == 1
