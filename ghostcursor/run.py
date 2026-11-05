@@ -572,6 +572,9 @@ def main() -> int:
         help="print what is ready and how to turn on the rest, then exit",
     )
     args = parser.parse_args()
+    from ghostcursor import crashreport
+
+    crashreport.install()  # sends nothing unless the person opted in (D191)
 
     if args.doctor:
         from ghostcursor import doctor

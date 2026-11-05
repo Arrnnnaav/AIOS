@@ -37,10 +37,11 @@ user). A policy only ever lowers what Orbyn may do.
 | DisableAct | Enabled until you trust it; staff then get guidance only (desktop, browser and PowerPoint Act) |
 | AllowedApps | The apps you train on, e.g. `excel.exe;outlook.exe;msedge.exe` |
 | BlockedApps | Password managers, banking apps |
-| AllowedProviders | `company` (and `ollama` for the local model) |
+| AllowedProviders | `company` (and `ollama` for the local model); add `calendar` and `mail` to allow the read-only calendar and inbox views |
 | CompanyEndpoint / CompanyModel | Your model gateway, see 3 (each user opts in) |
 | TeamFolder / TeamOwnerKey | See 4 |
 | ShareAudit | Enabled if the owner should see every PC's log |
+| CrashEndpoint | Your Sentry project's DSN, if you want crash reports; each person still opts in, and only the error type and where in Orbyn's code it happened are sent |
 
 Allow-lists fail closed: a value that is set but unreadable allows nothing.
 

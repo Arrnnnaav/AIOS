@@ -31,8 +31,10 @@ if __name__ == "__main__":
     except SystemExit:
         raise
     except BaseException as _exc:  # noqa: BLE001 -- last-resort visibility
+        from ghostcursor import crashreport
         from ghostcursor.workspace.crashlog import report
 
         report(_exc)
+        crashreport.send(_exc)  # only if the person and the organisation allow it (D191)
         _code = 1
     raise SystemExit(_code)

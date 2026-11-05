@@ -174,7 +174,9 @@ def test_agent(spec: AgentSpec) -> list[str]:
     if not spec.goal_template.strip():
         issues.append("the goal is empty")
     try:
-        spec.goal_template.format_map(dict.fromkeys(re.findall(r"{(\w+)}", spec.goal_template), ""))
+        spec.goal_template.format_map(
+            dict.fromkeys(re.findall(r"{(\w+)}", spec.goal_template), "")
+        )
     except (ValueError, IndexError, KeyError, AttributeError):
         issues.append("the goal has a stray { or }; slots look like {name}")
     # A spec that tells the agent to do the very thing its deny list forbids can
@@ -285,3 +287,59 @@ def delete(root: Path, name: str) -> None:
     if not _NAME.fullmatch(name or ""):
         raise ValueError(f"not an agent name: {name!r}")
     (_dir(root) / f"{name}.json").unlink(missing_ok=True)
+    (_dir(root) / f"{name}.md").unlink(missing_ok=True)  # its notes go with it
+
+
+# --- the agent's own notes (HeyClicky "Clickys" keep an AGENTS.md) ------------
+# A persistent named agent remembers between runs through dated notes in
+# <root>/agents/<name>.md. Notes are what the user tells it (scrubbed of
+# secrets); they reach the planner as context when the agent starts, never as
+# instructions that bypass plan approval.
+
+MAX_NOTES = 40
+MAX_NOTE_CHARS = 300
+
+
+def _notes_path(root: Path, name: str) -> Path:
+    if not _NAME.fullmatch(name or ""):
+        raise ValueError(f"not an agent name: {name!r}")
+    return _dir(root) / f"{name}.md"
+
+
+def notes(root: Path, name: str) -> list[str]:
+    """The agent's notes, oldest first, as "YYYY-MM-DD: text"."""
+
+    try:
+        text = _notes_path(root, name).read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        return []
+    return [line[2:] for line in text.splitlines() if line.startswith("- ")][
+        -MAX_NOTES:
+    ]
+
+
+def add_note(root: Path, name: str, text: str, *, clock=None) -> str:
+    """Append one dated note to an existing agent; returns the stored line."""
+
+    import os
+    import time
+
+    from ghostcursor import redact
+
+    load(root, name)  # only a saved, valid agent keeps notes
+    text = redact.scrub(" ".join(str(text).split()))[0][:MAX_NOTE_CHARS]
+    if not text:
+        raise ValueError("say what the agent should remember")
+    line = (
+        f"{time.strftime('%Y-%m-%d', time.localtime((clock or time.time)()))}: {text}"
+    )
+    kept = (notes(root, name) + [line])[-MAX_NOTES:]
+    path = _notes_path(root, name)
+    partial = path.with_name(path.name + ".partial")
+    partial.write_text(
+        f"# Notes for {name}\n\n" + "".join(f"- {n}\n" for n in kept),
+        encoding="utf-8",
+        newline="\n",
+    )
+    os.replace(partial, path)
+    return line

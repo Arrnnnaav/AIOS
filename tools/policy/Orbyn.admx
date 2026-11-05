@@ -46,6 +46,10 @@
       <parentCategory ref="Orbyn" /><supportedOn ref="SUPPORTED_Orbyn" />
       <elements><text id="CompanyModel_Value" valueName="CompanyModel" maxLength="1024" /></elements>
     </policy>
+    <policy name="CrashEndpoint" class="Both" displayName="$(string.CrashEndpoint)" explainText="$(string.CrashEndpoint_Help)" key="Software\Policies\Orbyn" presentation="$(presentation.CrashEndpoint)">
+      <parentCategory ref="Orbyn" /><supportedOn ref="SUPPORTED_Orbyn" />
+      <elements><text id="CrashEndpoint_Value" valueName="CrashEndpoint" maxLength="1024" /></elements>
+    </policy>
     <policy name="TeamFolder" class="Both" displayName="$(string.TeamFolder)" explainText="$(string.TeamFolder_Help)" key="Software\Policies\Orbyn" presentation="$(presentation.TeamFolder)">
       <parentCategory ref="Orbyn" /><supportedOn ref="SUPPORTED_Orbyn" />
       <elements><text id="TeamFolder_Value" valueName="TeamFolder" maxLength="1024" /></elements>

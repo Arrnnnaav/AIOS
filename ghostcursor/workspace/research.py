@@ -354,7 +354,9 @@ RERANK_KEEP = 6
 RERANK_FLOOR = 0.5  # P(relevant) below this is dropped, unless all are below
 
 
-def rerank_passages(graph: EvidenceGraph, gateway, *, cancelled=lambda: False) -> EvidenceGraph:
+def rerank_passages(
+    graph: EvidenceGraph, gateway, *, cancelled=lambda: False
+) -> EvidenceGraph:
     """Jev scores each passage's relevance to the question (yes/no per passage,
     one request); keep the best, drop the irrelevant, order by relevance before
     System Two. Raises ProviderError when Jev cannot answer (the caller then
@@ -387,7 +389,9 @@ def rerank_passages(graph: EvidenceGraph, gateway, *, cancelled=lambda: False) -
     return EvidenceGraph(graph.question, sources, passages)
 
 
-def check_claims(graph: EvidenceGraph, gateway, *, cancelled=lambda: False) -> tuple[Claim, ...]:
+def check_claims(
+    graph: EvidenceGraph, gateway, *, cancelled=lambda: False
+) -> tuple[Claim, ...]:
     """Jev reads each supported claim against the passages it cites, all in
     one request. A confident 'contradicts' or 'says nothing' lowers the
     claim; Jev never raises one. Raises ProviderError when Jev cannot answer."""
@@ -593,6 +597,15 @@ class DeepResearchReport:
     graphs: tuple[EvidenceGraph, ...]
     filed_to_brain: int
 
+    def as_text(self) -> str:
+        parts = [f"Researched '{self.question}' in {len(self.subquestions)} parts."]
+        for sub, graph in zip(self.subquestions, self.graphs):
+            parts.append(f"## {sub}\n{render(graph)}")
+        parts.append(
+            f"Filed {self.filed_to_brain} cited claim(s) to the Brain for review."
+        )
+        return "\n\n".join(parts)
+
 
 def plan_research(
     question: str, gateway, *, deadline_s: float = 20.0, cancelled=lambda: False
@@ -663,7 +676,10 @@ def deep_research(
     except ProviderError:
         subquestions = (question,)  # plan unavailable -> one pass on the whole
     graphs, filed = [], 0
+    cancelled = research_kw.get("cancelled", lambda: False)
     for sub in subquestions:
+        if cancelled():  # a background job's Stop lands between sub-questions too
+            break
         graph, _trace = research(sub, gateway, **research_kw)
         graphs.append(graph)
         if file_to_brain and knowledge is not None and scope is not None:

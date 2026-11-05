@@ -8386,3 +8386,49 @@ D018 on the freehand guard: 10 mutants, 10 killed.
 Not built: a model that answers a question by drawing (no caller asks for
 marks yet; `sketch.start` is ready for one), word-by-word timing of marks to
 speech, 3D, photo cards.
+
+## D190 — Background job kinds, agent notes, calendar and mail views
+
+Owner request (5 November 2026), from the HeyClicky comparison.
+
+- **Background jobs** (HeyClicky "Jobs"): the Work inbox now runs deep
+  research and crews as well as research (`JOB_KINDS` in
+  `workspace/app.py`). All are read-only: deep research files cited claims
+  to the Brain as candidates, and a crew's plan step only proposes (rule 2).
+  Stop lands between sub-questions and crew steps. Old inbox rows load as
+  research; an unknown kind refuses the inbox. Not taken: code-running jobs.
+- **Persistent named agents** (HeyClicky "Clickys" with an AGENTS.md): each
+  saved agent keeps dated notes in `<root>/agents/<name>.md` (40 notes,
+  300 characters each, secrets scrubbed). Starting the agent puts its last 10
+  notes into the conversation as context for the plan, which is still
+  approved before anything acts. Deleting the agent deletes its notes.
+  Not built: notes the agent writes itself from a run's outcome.
+- **Connectors**: read-only calendar (the private iCalendar address
+  Outlook.com, Microsoft 365 and Google publish) and mail (IMAP over TLS,
+  inbox opened with EXAMINE, headers fetched with BODY.PEEK so nothing is
+  marked read, bodies never fetched). Secrets in Credential Manager. Like the
+  GitHub view, what is fetched is shown to the user only: never sent to a
+  model, never stored. Egress policy names `calendar` and `mail`; the ICS
+  fetch follows redirects only to https. Classic Outlook COM is not used (not
+  installed here; new Outlook has none). Not built: repeating events (RRULE)
+  are not expanded; time zones are taken as local; no write access anywhere.
+
+## D191 — Crash reports for maintenance (owner decision)
+
+Owner request (5 November 2026): "crash reporting to a server (Sentry) for
+maintenance and knowing what is wrong and failing". This adds a place data
+can go, so it follows the D187 company-gateway shape and rule 6 holds as
+written: IT names a Sentry-compatible DSN (`CrashEndpoint` policy, https) AND
+each person turns "crash reports" on in Privacy (`settings.crash_reports`,
+off by default); `MaxEgress 0` or an `AllowedProviders` list without `crash`
+blocks it. `ghostcursor/crashreport.py` sends one Sentry envelope per
+unhandled exception (main thread, worker threads, the windowed app's last
+resort), with only: the exception type names (cause chain), for frames inside
+the `ghostcursor` package their package path, function and line, for other
+frames the module name, and the Orbyn, Python and Windows versions. Never the
+exception message, locals, source lines, other paths, or the user or machine
+name. Each send writes an `egress` audit line (provider `crash`). Sending never
+raises; the main-thread wait is capped at 5 s.
+D018: 9 mutants, 9 killed (`tests/test_crashreport.py`).
+
+Not built: breadcrumbs, performance tracing, a hosted Orbyn Sentry project.

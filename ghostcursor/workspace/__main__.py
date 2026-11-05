@@ -5,6 +5,8 @@ Type to discuss. Commands:
   /voice            say your message instead of typing (SayStride, D171)
   /dictate [brain]  speak on demand; save the transcript to a file (or the Brain)
   /dictate type     speak, approve the text, click a field: Orbyn types it there
+  /calendar [days]  today's events (connect <ics address> | disconnect)
+  /mail             unread senders and subjects (connect <imap host> <address>)
   /research <q>     a cited answer from web sources
   /evidence [n]     the passages behind research answer n (default: latest)
   /remember <n>     save research claim n to the Company Brain (owner reviews)
@@ -1099,8 +1101,73 @@ def main(argv: list[str] | None = None) -> int:
                         "\n".join(f"- {s.name}: {s.description}" for s in saved)
                         or "no agents yet"
                     )
+                elif verb in ("note", "notes") and len(parts) == 2:
+                    from ghostcursor.workspace import agents
+
+                    name, _, said = parts[1].partition(" ")
+                    try:
+                        if verb == "note":
+                            print(
+                                "noted: " + agents.add_note(workspace.root, name, said)
+                            )
+                        else:
+                            print(
+                                "\n".join(agents.notes(workspace.root, name))
+                                or "no notes yet"
+                            )
+                    except ValueError as exc:
+                        print(exc)
                 else:
-                    print("usage: /agent new <need> | save | use <name> [k=v] | list")
+                    print(
+                        "usage: /agent new <need> | save | use <name> [k=v] | list"
+                        " | note <name> <text> | notes <name>"
+                    )
+            elif command in ("/calendar", "/mail"):
+                # Read-only views on this PC (connectors.py); never sent to a model.
+                from ghostcursor.workspace import connectors
+
+                verb, _, arg = rest.strip().partition(" ")
+                try:
+                    if command == "/calendar" and verb == "connect":
+                        n = connectors.connect_calendar(arg.strip())
+                        print(
+                            f"calendar connected ({n} events); address kept in Credential Manager"
+                        )
+                    elif command == "/mail" and verb == "connect":
+                        import getpass
+
+                        host, _, user = arg.strip().partition(" ")
+                        connectors.connect_mail(
+                            host, user, getpass.getpass("App password: ")
+                        )
+                        print("mail connected (read-only); kept in Credential Manager")
+                    elif verb == "disconnect":
+                        (
+                            connectors.disconnect_calendar
+                            if command == "/calendar"
+                            else connectors.disconnect_mail
+                        )()
+                        print("disconnected")
+                    elif command == "/calendar":
+                        days = int(verb) if verb.isdigit() else 1
+                        rows = connectors.agenda(days=days)
+                        print(
+                            "\n".join(
+                                f"  {r['start'][:10] if r['all_day'] else r['start'].replace('T', ' ')}"
+                                f"  {r['title']}"
+                                + (f"  ({r['location']})" if r["location"] else "")
+                                for r in rows
+                            )
+                            or "nothing on the calendar"
+                        )
+                    else:
+                        rows = connectors.unread()
+                        print(
+                            "\n".join(f"  {r['from']}: {r['subject']}" for r in rows)
+                            or "no unread mail"
+                        )
+                except ValueError as exc:
+                    print(exc)
             elif command == "/web":
                 from ghostcursor.harness import browser
 

@@ -47,6 +47,8 @@ policy), it performs approved steps on controls it observed itself.
 | Local stores (`kb.sqlite`, `sessions.sqlite`) never sync | rule 6; `team.py` publishes only the Company Brain export |
 | Hash-chained local audit log, content-free by allow-list | `audit.py` |
 | The company gateway is used only after the person switches it on; IT policy alone adds no destination | `settings.company_gateway`, `providers/clients.system_two` |
+| Crash reports carry only error types and Orbyn-internal code locations, go only to the organisation's CrashEndpoint, and only after the person opts in | `crashreport.py`, `settings.crash_reports` |
+| Calendar and mail views are read-only (ICS over https; IMAP EXAMINE + BODY.PEEK, headers only), shown to the user, never sent to a model or stored; policy names `calendar` and `mail` | `workspace/connectors.py` |
 
 ## Stored on the PC
 

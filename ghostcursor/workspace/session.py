@@ -26,7 +26,6 @@ from ghostcursor.providers.envelope import (
     Envelope,
     Tainted,
     sanitize,
-    scrub,
     tainted_chunks,
 )
 from ghostcursor.providers.errors import FailureKind, ProviderError
@@ -405,7 +404,9 @@ class Workspace:
             ],
         }
         if earlier:
-            context["earlier_summary"] = tainted_chunks("conversation_summary", earlier)[1]
+            context["earlier_summary"] = tainted_chunks(
+                "conversation_summary", earlier
+            )[1]
         self._add_company_knowledge(query, context)
         return context
 
@@ -562,8 +563,12 @@ class Workspace:
         )
         try:
             answer = self.gateway.complete(
-                envelope, ASK_SYSTEM, DISCUSS_SCHEMA, parse_discussed,
-                purpose="ask", cancelled=cancelled,
+                envelope,
+                ASK_SYSTEM,
+                DISCUSS_SCHEMA,
+                parse_discussed,
+                purpose="ask",
+                cancelled=cancelled,
             )
         except ProviderError as exc:
             return f"(no answer: the model is not available -- {exc.kind.value})"
@@ -990,7 +995,9 @@ class Workspace:
             trusted["app_guidance"] = [{"app": n, "notes": b} for n, b in guides]
         tainted = {}
         if outline:
-            tainted["outline"] = tainted_chunks("deck_outline", sanitize(outline, limit=self.MAX_CLIP_CHARS * 4))[1]
+            tainted["outline"] = tainted_chunks(
+                "deck_outline", sanitize(outline, limit=self.MAX_CLIP_CHARS * 4)
+            )[1]
         try:
             return self.gateway.plan(
                 Envelope(task="teach", trusted=trusted, tainted=tainted)
@@ -1111,7 +1118,6 @@ class Workspace:
         approved plan becomes something to tick off. Secrets in a step are
         scrubbed before they are written. Needs a plan (/plan or /do first)."""
 
-        from ghostcursor import redact
         from ghostcursor.workspace import todos
 
         plan = self.plan
@@ -1207,7 +1213,7 @@ class Workspace:
             text += "\n(no Company Brain configured; not filed)"
         return summary, text
 
-    def deep_dive(self, question: str):
+    def deep_dive(self, question: str, **kw):
         """Deep research: decompose -> cited research per sub-question -> file
         cited claims into the Company Brain as reviewable candidates (#5/#3)."""
 
@@ -1219,6 +1225,7 @@ class Workspace:
             knowledge=self.knowledge,
             scope=self.kb_scope,
             file_to_brain=True,
+            **kw,
         )
         telemetry.record("research_done")
         return result
@@ -1236,14 +1243,14 @@ class Workspace:
         except ProviderError:
             return None, None
 
-    def crew(self, goal: str):
+    def crew(self, goal: str, **kw):
         """Agent crew (D186): decompose a goal into ordered capability steps and
         run them in sequence, chaining through the Company Brain. Returns a
         CrewResult. A 'plan' step only proposes -- the crew never acts (rule 2)."""
 
         from ghostcursor.workspace.crew import run_crew
 
-        result = run_crew(self, goal)
+        result = run_crew(self, goal, **kw)
         telemetry.record("crew_run")
         return result
 
@@ -1327,6 +1334,12 @@ class Workspace:
             + (f"never touches {', '.join(spec.deny)}. " if spec.deny else "")
             + "Say /plan then /act.",
         )
+        remembered = agents.notes(self.root, spec.name)[-10:]
+        if remembered:  # the agent's own notes, as context for the plan
+            self._say(
+                "assistant",
+                f"[agent {spec.name}] notes from earlier: " + "; ".join(remembered),
+            )
         return spec
 
 

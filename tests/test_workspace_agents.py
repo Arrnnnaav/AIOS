@@ -225,3 +225,42 @@ def test_a_stray_brace_is_flagged_and_never_crashes(template):
     spec = agents.parse_agent(json.dumps({**GOOD, "goal_template": template}))
     assert agents.filled_goal(spec) == template
     assert any("stray" in issue for issue in agents.test_agent(spec))
+
+
+# --- the agent's own notes (HeyClicky "Clickys" AGENTS.md) --------------------
+
+
+def test_an_agent_keeps_dated_scrubbed_notes_and_reads_them_when_it_starts(tmp_path):
+    ws = _ws(tmp_path)
+    agents.save(ws.root, agents.parse_agent(json.dumps(GOOD)))
+    day = lambda: 1_762_300_000.0  # noqa: E731
+    line = agents.add_note(ws.root, "q3-deck-builder", "  Use the  blue template ", clock=day)
+    assert line.endswith(": Use the blue template")
+    agents.add_note(ws.root, "q3-deck-builder", "send it to boss@example.com", clock=day)
+    kept = agents.notes(ws.root, "q3-deck-builder")
+    assert len(kept) == 2 and "boss@example.com" not in kept[1]
+    ws.use_agent("q3-deck-builder")
+    assert "notes from earlier" in ws.turns[-1].text and "blue template" in ws.turns[-1].text
+    agents.delete(ws.root, "q3-deck-builder")
+    assert agents.notes(ws.root, "q3-deck-builder") == []
+
+
+def test_notes_need_a_saved_agent_and_some_text(tmp_path):
+    root = tmp_path / "r"
+    with pytest.raises(ValueError):
+        agents.add_note(root, "nobody", "hi")
+    agents.save(root, agents.parse_agent(json.dumps(GOOD)))
+    with pytest.raises(ValueError):
+        agents.add_note(root, "q3-deck-builder", "   ")
+    with pytest.raises(ValueError):
+        agents.add_note(root, "../evil", "hi")
+
+
+def test_notes_are_capped(tmp_path):
+    root = tmp_path / "r"
+    agents.save(root, agents.parse_agent(json.dumps(GOOD)))
+    for n in range(agents.MAX_NOTES + 5):
+        agents.add_note(root, "q3-deck-builder", f"note {n} " + "x" * 400)
+    kept = agents.notes(root, "q3-deck-builder")
+    assert len(kept) == agents.MAX_NOTES and kept[-1].split(": ", 1)[1].startswith(f"note {agents.MAX_NOTES + 4}")
+    assert all(len(k.split(": ", 1)[1]) <= agents.MAX_NOTE_CHARS for k in kept)

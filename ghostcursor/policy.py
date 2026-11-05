@@ -19,6 +19,8 @@ lowers what the user may switch on; with no policy, behaviour is unchanged.
 - ``TeamFolder`` / ``TeamOwnerKey`` (REG_SZ): the shared folder the owner
   publishes to, and the owner's public key; only bundles it signed are loaded.
 - ``ShareAudit`` (DWORD): 1 -- copy this PC's audit log to the team folder.
+- ``CrashEndpoint`` (REG_SZ): a Sentry DSN (https) for content-free crash
+  events; each person still turns crash reports on (D191).
 
 Allow-lists fail closed: present but unreadable allows nothing.
 """
@@ -138,7 +140,11 @@ def act_disabled() -> bool:
 
 def _text(name: str) -> str | None:
     value = _value(name)
-    return value.strip() or None if isinstance(value, str) and value != "unreadable" else None
+    return (
+        value.strip() or None
+        if isinstance(value, str) and value != "unreadable"
+        else None
+    )
 
 
 def company_endpoint() -> str | None:
@@ -156,6 +162,14 @@ def company_endpoint() -> str | None:
         return None
     local = parts.scheme == "http" and host in ("127.0.0.1", "localhost", "::1")
     return url.rstrip("/") if (parts.scheme == "https" and host) or local else None
+
+
+def crash_endpoint() -> str | None:
+    """D191: a Sentry-compatible DSN for crash reports, https only. Used only
+    after the person also switches crash reports on (settings.crash_reports)."""
+
+    url = _text("CrashEndpoint")
+    return url if url and url.startswith("https://") else None
 
 
 def company_model() -> str:

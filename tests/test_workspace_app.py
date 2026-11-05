@@ -1548,3 +1548,95 @@ def test_post_refuses_a_body_the_server_would_refuse():
 
     with pytest.raises(ValueError, match="too large"):
         app_mod._post("http://127.0.0.1:9/?t=x", "offer_file", {"material": "\x01" * 100_000})
+
+
+# --- background job kinds (HeyClicky "Jobs", read-only) -----------------------
+
+
+@pytest.mark.parametrize("kind, method", [("deep", "deep_dive"), ("crew", "crew")])
+def test_deep_research_and_crew_run_as_background_jobs(served, kind, method):
+    app, port = served
+    seen = {}
+
+    class Report:
+        def as_text(self):
+            return f"{kind} result"
+
+    def work(question, *, cancelled):
+        seen["question"], seen["cancelled"] = question, cancelled()
+        return Report()
+
+    setattr(app.ws, method, work)
+    status, _ = call(port, "/api/job_start", {"question": "Plan our launch", "kind": kind})
+    assert status == 200
+    job = _wait_for_job(app, "finished")
+    assert job["answer"] == f"{kind} result" and job["kind"] == kind
+    assert seen == {"question": "Plan our launch", "cancelled": False}
+
+
+@pytest.mark.parametrize("kind", ["act", "teach", "", 3, None])
+def test_an_unknown_job_kind_is_refused(served, kind):
+    app, port = served
+    assert call(port, "/api/job_start", {"question": "x", "kind": kind})[0] == 400
+    assert app.state()["jobs"] == []
+
+
+def test_a_saved_job_from_before_kinds_loads_as_research(tmp_path):
+    from ghostcursor.brief import brief_path
+
+    root = tmp_path / "briefs"
+    path = brief_path(root, "trip").with_suffix(".jobs.json")
+    path.parent.mkdir(parents=True)
+    old = {"id": "0000000000000000", "question": "q", "answer": "a", "state": "finished",
+           "created": 1, "ended": 2, "routine": ""}
+    path.write_text(json.dumps([old, {**old, "id": "0000000000000001", "kind": "crew"}]), encoding="utf-8")
+    make = lambda: Workspace("trip", Gateway(), Brain(tmp_path / "kb.sqlite"), root=root)
+    app = App("trip", make_workspace=make)
+    try:
+        assert sorted(j["kind"] for j in app.state()["jobs"]) == ["crew", "research"]
+    finally:
+        app.close()
+    path.write_text(json.dumps([{**old, "kind": "act"}]), encoding="utf-8")
+    app = App("trip", make_workspace=make)
+    try:
+        assert app.state()["jobs"] == []  # a rotten kind refuses the inbox
+    finally:
+        app.close()
+
+
+def test_stop_lands_between_crew_steps():
+    from ghostcursor.workspace.crew import run_crew
+
+    ran = []
+    ws = type("W", (), {"_run_intent": lambda self, i, a, fallback: ran.append(a) or a})()
+    calls = iter([False, True])
+    result = run_crew(ws, "g", steps=(("research", "a"), ("research", "b")), cancelled=lambda: next(calls))
+    assert ran == ["a"] and result.steps == (("research", "a"),) and result.results == ("a",)
+
+
+def test_stop_lands_between_deep_research_parts(monkeypatch):
+    from ghostcursor.workspace import research
+
+    asked = []
+    monkeypatch.setattr(research, "plan_research", lambda q, g: ("one", "two"))
+    monkeypatch.setattr(research, "research", lambda sub, g, **kw: (asked.append(sub), None)[::-1])
+    calls = iter([False, True])
+    report = research.deep_research("q", object(), cancelled=lambda: next(calls))
+    assert asked == ["one"] and len(report.graphs) == 1
+
+
+def test_calendar_and_mail_actions_are_read_only_views(served, monkeypatch):
+    from ghostcursor.workspace import connectors
+
+    app, port = served
+    seen = []
+    monkeypatch.setattr(connectors, "agenda", lambda days=1: seen.append(days) or [{"title": "Stand-up"}])
+    monkeypatch.setattr(connectors, "unread", lambda: [{"from": "Ana", "subject": "Hi"}])
+    monkeypatch.setattr(connectors, "connect_calendar", lambda url: seen.append(url) or 3)
+    status, payload = call(port, "/api/calendar_agenda", {"days": "7; drop"})
+    assert status == 200 and json.loads(payload)["events"][0]["title"] == "Stand-up"
+    assert call(port, "/api/mail_unread", {})[0] == 200
+    assert call(port, "/api/calendar_connect", {"url": ["not", "text"]})[0] == 200
+    assert seen == [1, ""]  # a non-integer day count and a non-string address are ignored
+    for key in ("calendar_connected", "mail_connected"):
+        assert isinstance(app.state()[key], bool)

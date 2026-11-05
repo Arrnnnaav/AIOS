@@ -26,6 +26,8 @@
       <string id="CompanyEndpoint_Help">An OpenAI-compatible endpoint your company runs, for example https://ai.example.com/v1. Tried before any personal account. A key, if needed, goes in Credential Manager as Orbyn/company.</string>
       <string id="CompanyModel">Company gateway model name</string>
       <string id="CompanyModel_Help">The model name to request from the company gateway.</string>
+      <string id="CrashEndpoint">Crash report endpoint</string>
+      <string id="CrashEndpoint_Help">A Sentry DSN (https) that receives content-free crash events: the error type and where in Orbyn's code it happened, with Orbyn and Windows versions. Never the error text, files, names or screen content. Each person must still turn crash reports on in Orbyn; this policy alone sends nothing.</string>
       <string id="TeamFolder">Team folder</string>
       <string id="TeamFolder_Help">A shared folder (synced SharePoint/OneDrive or a file share) the owner publishes the team bundle to. Give staff read access and only the owner write access.</string>
       <string id="TeamOwnerKey">Team owner public key</string>
@@ -40,6 +42,7 @@
       <presentation id="AllowedProviders"><textBox refId="AllowedProviders_Value"><label>Only these model providers</label></textBox></presentation>
       <presentation id="CompanyEndpoint"><textBox refId="CompanyEndpoint_Value"><label>Company model gateway (https)</label></textBox></presentation>
       <presentation id="CompanyModel"><textBox refId="CompanyModel_Value"><label>Company gateway model name</label></textBox></presentation>
+      <presentation id="CrashEndpoint"><textBox refId="CrashEndpoint_Value"><label>Crash report endpoint (Sentry DSN)</label></textBox></presentation>
       <presentation id="TeamFolder"><textBox refId="TeamFolder_Value"><label>Team folder</label></textBox></presentation>
       <presentation id="TeamOwnerKey"><textBox refId="TeamOwnerKey_Value"><label>Team owner public key</label></textBox></presentation>
     </presentationTable>

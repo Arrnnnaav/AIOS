@@ -28,6 +28,8 @@ COMMANDS = (
     "/plan",
     "/agent",
     "/web",
+    "/calendar",
+    "/mail",
     "/convert",
     "/do",
     "/deck",

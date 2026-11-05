@@ -37,6 +37,8 @@ from pathlib import Path
 
 from ghostcursor import policy, redact, settings
 from ghostcursor.brief import brief_path
+from ghostcursor.workspace import connectors
+from ghostcursor.workspace.agents import notes as agent_notes
 from ghostcursor.workspace.contracts import POINT_PREFIX
 from ghostcursor.workspace.github import GitHubConnector
 
@@ -62,6 +64,8 @@ def read_text_file(path: str) -> tuple[str, str]:
     if not text.strip() or len(text) > MAX_FILE_CHARS or "\0" in text:
         raise ValueError("choose a text file under 100,000 characters")
     return file.name[:120], text
+
+
 MAX_BODY = 512 * 1024  # a 100,000-character file in JSON
 QUIT_AFTER_S = (
     90.0  # no poll this long: the window is closed (a hidden tab polls ~1/min)
@@ -75,6 +79,8 @@ ACTIVITY_LABELS = frozenset(
         "Signing in",
         "Thinking",
         "Researching",
+        "Deep research",
+        "Running a crew",
         "Asking file",
         "Exploring",
         "Planning",
@@ -94,9 +100,23 @@ ACTIVITY_LABELS = frozenset(
         "Work",
     }
 )
-ACTIVITY_STATES = frozenset(
-    {"running", "finished", "stopped", "failed", "interrupted"}
+CONNECTOR_ACTIONS = frozenset(
+    {
+        "calendar_connect",
+        "calendar_disconnect",
+        "calendar_agenda",
+        "mail_connect",
+        "mail_disconnect",
+        "mail_unread",
+    }
 )
+#: Background job kinds -> activity label. All read-only (no Act).
+JOB_KINDS = {
+    "research": "Researching",
+    "deep": "Deep research",
+    "crew": "Running a crew",
+}
+ACTIVITY_STATES = frozenset({"running", "finished", "stopped", "failed", "interrupted"})
 ROUTINE_SECONDS = {"hourly": 3600, "daily": 86400, "weekdays": 86400, "weekly": 604800}
 
 
@@ -113,7 +133,11 @@ def next_due(cadence: str, now: float) -> float:
 def _claims(answer: str) -> list[str]:
     # A rendered answer lists claims as "- text (status) [s1][s2]"; source ids
     # are renumbered every run, so compare the claim text without them.
-    return [re.sub(r"(\s*\[s\d+\])+$", "", line[2:]).strip() for line in answer.splitlines() if line.startswith("- ")]
+    return [
+        re.sub(r"(\s*\[s\d+\])+$", "", line[2:]).strip()
+        for line in answer.splitlines()
+        if line.startswith("- ")
+    ]
 
 
 def _same_claim(a: str, b: str) -> bool:
@@ -121,7 +145,10 @@ def _same_claim(a: str, b: str) -> bool:
     from rapidfuzz import fuzz
 
     numbers = lambda s: set(re.findall(r"\d+(?:[.,]\d+)*", s))
-    return numbers(a) == numbers(b) and fuzz.token_set_ratio(a.casefold(), b.casefold()) >= 90
+    return (
+        numbers(a) == numbers(b)
+        and fuzz.token_set_ratio(a.casefold(), b.casefold()) >= 90
+    )
 
 
 def new_claims(answer: str, previous: str) -> list[str]:
@@ -171,14 +198,18 @@ class App:
         self.background_id: str | None = None
         self.quit_requested = threading.Event()
         self.github = GitHubConnector()
-        self.job_path = brief_path(self.ws.root, self.ws.topic).with_suffix(".jobs.json")
+        self.job_path = brief_path(self.ws.root, self.ws.topic).with_suffix(
+            ".jobs.json"
+        )
         self.background_jobs = self._load_background_jobs()
         if any(row["state"] == "running" for row in self.background_jobs):
             for row in self.background_jobs:
                 if row["state"] == "running":
                     row["state"], row["ended"] = "interrupted", self.clock()
             self._save_background_jobs()
-        self.routine_path = brief_path(self.ws.root, self.ws.topic).with_suffix(".routines.json")
+        self.routine_path = brief_path(self.ws.root, self.ws.topic).with_suffix(
+            ".routines.json"
+        )
         self.routines = self._load_routines()
         self.jobs.submit(self._refresh).result()
 
@@ -204,7 +235,9 @@ class App:
             return []
         except (OSError, ValueError, UnicodeError, RecursionError):
             self.activity_path = None  # keep an unreadable file intact
-            self.say("Activity history could not be read; this session stays in memory.")
+            self.say(
+                "Activity history could not be read; this session stays in memory."
+            )
             return []
 
     def _save_activity(self) -> None:
@@ -226,7 +259,9 @@ class App:
             os.replace(partial, self.activity_path)
         except OSError:
             self.activity_path = None
-            self.say("Activity history could not be saved; this session stays in memory.")
+            self.say(
+                "Activity history could not be saved; this session stays in memory."
+            )
         finally:
             if partial is not None:
                 try:
@@ -242,7 +277,8 @@ class App:
             keys = {"id", "question", "answer", "state", "created", "ended", "routine"}
             if not isinstance(rows, list) or any(
                 not isinstance(row, dict)
-                or set(row) - {"pinned", "archived"} != keys
+                or set(row) - {"pinned", "archived", "kind"} != keys
+                or row.get("kind", "research") not in JOB_KINDS
                 or not isinstance(row.get("pinned", False), bool)
                 or not isinstance(row.get("archived", False), bool)
                 or not isinstance(row["id"], str)
@@ -255,7 +291,8 @@ class App:
                 or not isinstance(row["state"], str)
                 or row["state"] not in ACTIVITY_STATES
                 or not isinstance(row["created"], (int, float))
-                or row["ended"] is not None and not isinstance(row["ended"], (int, float))
+                or row["ended"] is not None
+                and not isinstance(row["ended"], (int, float))
                 or not isinstance(row["routine"], str)
                 or len(row["routine"]) > 16
                 for row in rows
@@ -264,6 +301,7 @@ class App:
             for row in rows:
                 row.setdefault("pinned", False)
                 row.setdefault("archived", False)
+                row.setdefault("kind", "research")
             return rows[-20:]
         except FileNotFoundError:
             return []
@@ -279,8 +317,12 @@ class App:
         try:
             self.job_path.parent.mkdir(parents=True, exist_ok=True)
             with tempfile.NamedTemporaryFile(
-                mode="w", encoding="utf-8", dir=self.job_path.parent,
-                prefix=self.job_path.name + ".", suffix=".tmp", delete=False,
+                mode="w",
+                encoding="utf-8",
+                dir=self.job_path.parent,
+                prefix=self.job_path.name + ".",
+                suffix=".tmp",
+                delete=False,
             ) as output:
                 partial = Path(output.name)
                 json.dump(self.background_jobs, output)
@@ -300,19 +342,23 @@ class App:
             if self.routine_path.stat().st_size > 64 * 1024:
                 raise ValueError("routine file too large")
             rows = json.loads(self.routine_path.read_text(encoding="utf-8"))
-            if not isinstance(rows, list) or len(rows) > 20 or any(
-                not isinstance(row, dict)
-                or set(row) != {"id", "question", "cadence", "next_due", "enabled"}
-                or not isinstance(row["id"], str)
-                or len(row["id"]) != 16
-                or any(c not in "0123456789abcdef" for c in row["id"])
-                or not isinstance(row["question"], str)
-                or not 1 <= len(row["question"]) <= 500
-                or row["cadence"] not in ROUTINE_SECONDS
-                or not isinstance(row["next_due"], (int, float))
-                or not math.isfinite(row["next_due"])
-                or not isinstance(row["enabled"], bool)
-                for row in rows
+            if (
+                not isinstance(rows, list)
+                or len(rows) > 20
+                or any(
+                    not isinstance(row, dict)
+                    or set(row) != {"id", "question", "cadence", "next_due", "enabled"}
+                    or not isinstance(row["id"], str)
+                    or len(row["id"]) != 16
+                    or any(c not in "0123456789abcdef" for c in row["id"])
+                    or not isinstance(row["question"], str)
+                    or not 1 <= len(row["question"]) <= 500
+                    or row["cadence"] not in ROUTINE_SECONDS
+                    or not isinstance(row["next_due"], (int, float))
+                    or not math.isfinite(row["next_due"])
+                    or not isinstance(row["enabled"], bool)
+                    for row in rows
+                )
             ):
                 raise ValueError("invalid routine file")
             return rows
@@ -330,8 +376,12 @@ class App:
         try:
             self.routine_path.parent.mkdir(parents=True, exist_ok=True)
             with tempfile.NamedTemporaryFile(
-                mode="w", encoding="utf-8", dir=self.routine_path.parent,
-                prefix=self.routine_path.name + ".", suffix=".tmp", delete=False,
+                mode="w",
+                encoding="utf-8",
+                dir=self.routine_path.parent,
+                prefix=self.routine_path.name + ".",
+                suffix=".tmp",
+                delete=False,
             ) as output:
                 partial = Path(output.name)
                 json.dump(self.routines, output)
@@ -357,14 +407,23 @@ class App:
             return
         now = self.clock()
         with self._job_lock:
-            due = next((row for row in self.routines if row["enabled"] and row["next_due"] <= now), None)
+            due = next(
+                (
+                    row
+                    for row in self.routines
+                    if row["enabled"] and row["next_due"] <= now
+                ),
+                None,
+            )
             if due is None:
                 return
             missed = due["next_due"]
             due["next_due"] = next_due(due["cadence"], now)
             if not self._save_routines():
                 due["enabled"] = False
-                self.say("A routine was paused because its next time could not be saved.")
+                self.say(
+                    "A routine was paused because its next time could not be saved."
+                )
                 return
             try:
                 self.start_research_job(due["question"], routine=due["id"])
@@ -399,7 +458,9 @@ class App:
             raise ValueError("Orbyn is quitting")
         self.busy = label
         self.signal.clear()
-        safe_label = label if isinstance(label, str) and label in ACTIVITY_LABELS else "Work"
+        safe_label = (
+            label if isinstance(label, str) and label in ACTIVITY_LABELS else "Work"
+        )
         row = {"label": safe_label, "state": "running"}
         self.activity.append(row)
         self.activity = self.activity[-20:]
@@ -440,26 +501,54 @@ class App:
         future, row = self._begin_run(label, fn)
         return self._finish_run(future, row)
 
-    def start_research_job(self, question: str, *, routine: str = "") -> str:
+    def start_research_job(
+        self, question: str, *, routine: str = "", kind: str = "research"
+    ) -> str:
+        """A background job (HeyClicky "Jobs", read-only here): cited research,
+        deep research (files cited claims to the Brain as candidates), or a
+        crew (whose plan steps only propose, rule 2). Stop lands between
+        steps."""
+
         question = " ".join(question.split())
         if not question or len(question) > 500 or "\0" in question:
             raise ValueError("ask a research question under 500 characters")
+        if kind not in JOB_KINDS:
+            raise ValueError("unknown job kind")
         question = redact.scrub(question)[0][:500]
         jid = secrets.token_hex(8)
         entry = {
-            "id": jid, "question": question, "answer": "", "state": "running",
-            "created": self.clock(), "ended": None, "routine": routine, "pinned": False, "archived": False,
+            "id": jid,
+            "question": question,
+            "answer": "",
+            "state": "running",
+            "created": self.clock(),
+            "ended": None,
+            "routine": routine,
+            "pinned": False,
+            "archived": False,
+            "kind": kind,
         }
-        future, row = self._begin_run(
-            "Researching", lambda: self.ws.research(
-                question, cancelled=self.stop.is_set, record=False
-            )
-        )
+        stop = self.stop.is_set
+        work = {
+            "research": lambda: self.ws.research(
+                question, cancelled=stop, record=False
+            ),
+            "deep": lambda: self.ws.deep_dive(question, cancelled=stop).as_text(),
+            "crew": lambda: self.ws.crew(question, cancelled=stop).as_text(),
+        }[kind]
+        future, row = self._begin_run(JOB_KINDS[kind], work)
         self.background_id = jid
         with self._job_lock:
             self.background_jobs.append(entry)
             if len(self.background_jobs) > 20:
-                oldest = next((i for i, job in enumerate(self.background_jobs) if not job["pinned"]), 0)
+                oldest = next(
+                    (
+                        i
+                        for i, job in enumerate(self.background_jobs)
+                        if not job["pinned"]
+                    ),
+                    0,
+                )
                 self.background_jobs.pop(oldest)
             self._save_background_jobs()
 
@@ -470,7 +559,11 @@ class App:
                 answer = ""
             with self._job_lock:
                 entry["state"] = row["state"]
-                entry["answer"] = redact.scrub(str(answer))[0][:24_000] if row["state"] == "finished" else ""
+                entry["answer"] = (
+                    redact.scrub(str(answer))[0][:24_000]
+                    if row["state"] == "finished"
+                    else ""
+                )
                 entry["ended"] = self.clock()
                 self._save_background_jobs()
 
@@ -527,7 +620,11 @@ class App:
             background_jobs.sort(key=lambda row: not row["pinned"])
             routines = [dict(row) for row in self.routines]
         done = sorted(
-            (j for j in background_jobs if j["routine"] and j["state"] == "finished" and j["answer"]),
+            (
+                j
+                for j in background_jobs
+                if j["routine"] and j["state"] == "finished" and j["answer"]
+            ),
             key=lambda j: j["ended"] or 0,
         )
         last: dict[str, str] = {}
@@ -560,7 +657,12 @@ class App:
             ],
             "plan_memories": self.plan_memories,
             "agents": [
-                {"name": a.name, "description": a.description} for a in ws.agents()
+                {
+                    "name": a.name,
+                    "description": a.description,
+                    "notes": agent_notes(ws.root, a.name)[-5:],
+                }
+                for a in ws.agents()
             ],
             "draft_agent": ws.draft_agent.as_text() if ws.draft_agent else "",
             "paused": self.paused,
@@ -569,6 +671,8 @@ class App:
             "jobs": background_jobs,
             "routines": routines,
             "github_connected": self.github.connected(),
+            "calendar_connected": connectors.calendar_connected(),
+            "mail_connected": connectors.mail_connected(),
             "background_id": self.background_id,
             "status": list(self.status),
             "research": len(ws.research_graphs),
@@ -577,6 +681,8 @@ class App:
             # D187: offered only when IT named a gateway; the person opts in.
             "company_offered": policy.company_endpoint() is not None,
             "company_on": settings.company_gateway(),
+            "crash_offered": policy.crash_endpoint() is not None,
+            "crash_on": settings.crash_reports(),
             "egress": policy.max_egress(),  # D180: set by the organisation
             "managed": policy.managed(),
         }
@@ -613,7 +719,10 @@ class App:
             question = body.get("question")
             if not isinstance(question, str):
                 raise ValueError("ask a research question under 500 characters")
-            return {"id": self.start_research_job(question)}
+            kind = body.get("kind", "research")
+            if not isinstance(kind, str):
+                raise ValueError("unknown job kind")
+            return {"id": self.start_research_job(question, kind=kind)}
         if action == "job_cancel":
             if body.get("id") != self.background_id or not self.background_id:
                 raise ValueError("no such running job")
@@ -622,7 +731,9 @@ class App:
         if action == "job_delete":
             jid = body.get("id")
             with self._job_lock:
-                row = next((item for item in self.background_jobs if item["id"] == jid), None)
+                row = next(
+                    (item for item in self.background_jobs if item["id"] == jid), None
+                )
                 if row is None or row["state"] == "running":
                     raise ValueError("no such finished job")
                 self.background_jobs.remove(row)
@@ -632,14 +743,25 @@ class App:
             field = "pinned" if action == "job_pin" else "archived"
             jid, selected = body.get("id"), body.get(field)
             if not isinstance(selected, bool):
-                raise ValueError("choose whether to " + ("keep" if field == "pinned" else "archive") + " the result")
+                raise ValueError(
+                    "choose whether to "
+                    + ("keep" if field == "pinned" else "archive")
+                    + " the result"
+                )
             with self._job_lock:
-                row = next((item for item in self.background_jobs if item["id"] == jid), None)
+                row = next(
+                    (item for item in self.background_jobs if item["id"] == jid), None
+                )
                 if row is None or row["state"] != "finished" or not row["answer"]:
                     raise ValueError("no such finished result")
                 if self.job_path is None:
                     raise ValueError("job inbox is unavailable")
-                if field == "pinned" and selected and not row[field] and sum(job["pinned"] for job in self.background_jobs) >= 5:
+                if (
+                    field == "pinned"
+                    and selected
+                    and not row[field]
+                    and sum(job["pinned"] for job in self.background_jobs) >= 5
+                ):
                     raise ValueError("keep at most five results")
                 previous = row[field]
                 row[field] = selected
@@ -660,8 +782,10 @@ class App:
                 if len(self.routines) >= 20:
                     raise ValueError("this workspace already has 20 routines")
                 item = {
-                    "id": secrets.token_hex(8), "question": question,
-                    "cadence": cadence, "next_due": next_due(cadence, self.clock()),
+                    "id": secrets.token_hex(8),
+                    "question": question,
+                    "cadence": cadence,
+                    "next_due": next_due(cadence, self.clock()),
                     "enabled": True,
                 }
                 self.routines.append(item)
@@ -669,9 +793,16 @@ class App:
                     self.routines.remove(item)
                     raise ValueError("routine could not be saved")
             return {"id": item["id"]}
-        if action in ("routine_pause", "routine_resume", "routine_delete", "routine_run"):
+        if action in (
+            "routine_pause",
+            "routine_resume",
+            "routine_delete",
+            "routine_run",
+        ):
             with self._job_lock:
-                item = next((row for row in self.routines if row["id"] == body.get("id")), None)
+                item = next(
+                    (row for row in self.routines if row["id"] == body.get("id")), None
+                )
                 if item is None:
                     raise ValueError("no such routine")
                 previous = dict(item)
@@ -683,7 +814,11 @@ class App:
                     item["enabled"] = True
                     item["next_due"] = next_due(item["cadence"], self.clock())
                 else:
-                    return {"id": self.start_research_job(item["question"], routine=item["id"])}
+                    return {
+                        "id": self.start_research_job(
+                            item["question"], routine=item["id"]
+                        )
+                    }
                 if not self._save_routines():
                     if action == "routine_delete":
                         self.routines.append(item)
@@ -707,6 +842,35 @@ class App:
             if not isinstance(name, str):
                 raise ValueError("choose a repository")
             return {"issues": self.github.issues(name)}
+        if action in CONNECTOR_ACTIONS:  # read-only calendar/mail, never to a model
+            from ghostcursor.workspace import connectors
+
+            def words(key: str) -> str:
+                value = body.get(key, "")
+                return value if isinstance(value, str) else ""
+
+            if action == "calendar_connect":
+                return {"events": connectors.connect_calendar(words("url"))}
+            if action == "mail_connect":
+                connectors.connect_mail(words("host"), words("user"), words("password"))
+                return {}
+            if action == "calendar_disconnect":
+                connectors.disconnect_calendar()
+                return {}
+            if action == "mail_disconnect":
+                connectors.disconnect_mail()
+                return {}
+            if action == "calendar_agenda":
+                days = body.get("days", 1)
+                return {
+                    "events": connectors.agenda(
+                        days=days if isinstance(days, int) else 1
+                    )
+                }
+            return {"mail": connectors.unread()}
+        if action == "crash_reports":  # the person's own opt-in (D191)
+            settings.set_crash_reports(body.get("on") is True)
+            return {}
         if action == "company_gateway":  # the person's own opt-in (D187)
             settings.set_company_gateway(body.get("on") is True)
             return {}
@@ -928,7 +1092,11 @@ class App:
         if action == "say":
             if not text:
                 raise ValueError("say something")
-            return {"reply": self.run("Thinking", lambda: ws.discuss(text, cancelled=self.stop.is_set))}
+            return {
+                "reply": self.run(
+                    "Thinking", lambda: ws.discuss(text, cancelled=self.stop.is_set)
+                )
+            }
         if action == "research":
             if not text:
                 raise ValueError("ask a question")
@@ -945,18 +1113,31 @@ class App:
                 or "\0" in material
             ):
                 raise ValueError("choose a text file under 100,000 characters")
-            answer = self.run("Asking file", lambda: ws.ask(text, material, cancelled=self.stop.is_set))
+            answer = self.run(
+                "Asking file",
+                lambda: ws.ask(text, material, cancelled=self.stop.is_set),
+            )
             return {"answer": answer, "sent": ws.last_sent}
         if action == "job_ask":
             question, jid = body.get("text"), body.get("id")
-            if not isinstance(question, str) or not question.strip() or len(question) > 500 or "\0" in question:
+            if (
+                not isinstance(question, str)
+                or not question.strip()
+                or len(question) > 500
+                or "\0" in question
+            ):
                 raise ValueError("ask a question under 500 characters")
             with self._job_lock:
-                row = next((item for item in self.background_jobs if item["id"] == jid), None)
+                row = next(
+                    (item for item in self.background_jobs if item["id"] == jid), None
+                )
                 if row is None or row["state"] != "finished" or not row["answer"]:
                     raise ValueError("no such finished result")
                 material = row["answer"]  # ws.ask picks the matching passages
-            answer = self.run("Asking file", lambda: ws.ask(question, material, cancelled=self.stop.is_set))
+            answer = self.run(
+                "Asking file",
+                lambda: ws.ask(question, material, cancelled=self.stop.is_set),
+            )
             return {"answer": answer, "sent": ws.last_sent}
         if action == "evidence":
             return {"text": ws.evidence(int(body.get("n", 0)))}
@@ -986,6 +1167,11 @@ class App:
                     "Starting the agent", lambda: ws.use_agent(name, values)
                 ).name
             }
+        if action == "agent_note":
+            from ghostcursor.workspace import agents
+
+            agents.add_note(ws.root, str(body.get("name", "")), text)
+            return {}
         if action == "agent_delete":
             from ghostcursor.workspace import agents
 
@@ -1248,10 +1434,15 @@ def _edge_app_windows() -> set[int]:
         pid = win32process.GetWindowThreadProcessId(hwnd)[1]
         try:
             process = win32api.OpenProcess(
-                win32con.PROCESS_QUERY_INFORMATION | win32con.PROCESS_VM_READ, False, pid
+                win32con.PROCESS_QUERY_INFORMATION | win32con.PROCESS_VM_READ,
+                False,
+                pid,
             )
             try:
-                if Path(win32process.GetModuleFileNameEx(process, 0)).resolve() == EDGE.resolve():
+                if (
+                    Path(win32process.GetModuleFileNameEx(process, 0)).resolve()
+                    == EDGE.resolve()
+                ):
                     found.add(hwnd)
             finally:
                 process.Close()
@@ -1318,7 +1509,9 @@ def _post(url: str, action: str, body: dict) -> dict:
 
     parts = urllib.parse.urlparse(url)
     token = urllib.parse.parse_qs(parts.query).get("t", [""])[0]
-    data = json.dumps(body, ensure_ascii=False).encode("utf-8")  # \uXXXX would pass MAX_BODY
+    data = json.dumps(body, ensure_ascii=False).encode(
+        "utf-8"
+    )  # \uXXXX would pass MAX_BODY
     if len(data) > MAX_BODY:  # control characters still escape to six bytes each
         raise ValueError("that file is too large to send to Orbyn")
     request = urllib.request.Request(
@@ -1418,6 +1611,9 @@ def _ensure_ollama() -> None:
 
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
+    from ghostcursor import crashreport
+
+    crashreport.install()  # sends nothing unless the person opted in (D191)
     if argv and argv[0] in ("--version", "-v"):
         from ghostcursor import __version__
 
@@ -1427,7 +1623,9 @@ def main(argv: list[str] | None = None) -> int:
         print(__doc__)
         return 0
     offered = None
-    if len(argv) == 2 and argv[0] == "--ask-file":  # Explorer: Ask Orbyn about this file
+    if (
+        len(argv) == 2 and argv[0] == "--ask-file"
+    ):  # Explorer: Ask Orbyn about this file
         try:
             offered = read_text_file(argv[1])
         except ValueError as exc:
@@ -1496,7 +1694,9 @@ def main(argv: list[str] | None = None) -> int:
         # Enabled routines keep the process alive after the window closes.
         while not app.quit_requested.is_set() and (
             (island is not None and not island.closed)
-            or app.busy or app.has_enabled_routines() or time.monotonic() - app.seen < QUIT_AFTER_S
+            or app.busy
+            or app.has_enabled_routines()
+            or time.monotonic() - app.seen < QUIT_AFTER_S
         ):
             app.tick_routines()
             if island is not None and not island.closed:

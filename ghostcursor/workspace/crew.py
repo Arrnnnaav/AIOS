@@ -74,7 +74,7 @@ def plan_crew(gateway, goal: str) -> tuple[tuple[str, str], ...]:
         return ()
 
 
-def run_crew(workspace, goal: str, *, steps=None) -> CrewResult:
+def run_crew(workspace, goal: str, *, steps=None, cancelled=lambda: False) -> CrewResult:
     """Run a crew. With ``steps`` (a saved crew), replay them verbatim -- no
     re-planning. Without, plan the goal first. Each step runs through the
     workspace's existing capability dispatch, in order. No threads, no new
@@ -86,10 +86,13 @@ def run_crew(workspace, goal: str, *, steps=None) -> CrewResult:
     if not steps:
         # No manager answer: degrade to a single research step rather than fail.
         steps = (("research", goal),)
-    results = tuple(
-        workspace._run_intent(intent, arg, fallback=arg) for intent, arg in steps
-    )
-    return CrewResult(goal=goal, steps=tuple(steps), results=results)
+    results = []
+    for intent, arg in steps:
+        if cancelled():  # a background job's Stop lands between steps
+            break
+        results.append(workspace._run_intent(intent, arg, fallback=arg))
+    steps = tuple(steps)[: len(results)]
+    return CrewResult(goal=goal, steps=steps, results=tuple(results))
 
 
 # --- saved, replayable crews (D186) ------------------------------------------

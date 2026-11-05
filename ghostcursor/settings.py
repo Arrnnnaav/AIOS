@@ -27,7 +27,9 @@ def jev_vision(path: Path | None = None) -> bool:
 
     from ghostcursor import policy
 
-    return load(path).get("jev_vision") is True and policy.max_egress() >= policy.PICTURES
+    return (
+        load(path).get("jev_vision") is True and policy.max_egress() >= policy.PICTURES
+    )
 
 
 def _set(key: str, on: bool, path: Path | None) -> None:
@@ -58,6 +60,21 @@ def company_gateway(path: Path | None = None) -> bool:
 
 def set_company_gateway(on: bool, path: Path | None = None) -> None:
     _set("company_gateway", on, path)
+
+
+def crash_reports(path: Path | None = None) -> bool:
+    """D191: may a content-free crash event go to the organisation's
+    CrashEndpoint? Off unless this person turned it on (rule 6)."""
+
+    from ghostcursor import policy
+
+    return (
+        load(path).get("crash_reports") is True and policy.crash_endpoint() is not None
+    )
+
+
+def set_crash_reports(on: bool, path: Path | None = None) -> None:
+    _set("crash_reports", on, path)
 
 
 def listening(path: Path | None = None) -> tuple[bool, str | None]:
