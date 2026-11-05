@@ -8,8 +8,10 @@ here from the observed rectangle, re-resolved against each new frame, and the
 whole sketch disappears the moment any marked control can no longer be found
 exactly once. Pure geometry: no Win32, so it runs anywhere and tests fast.
 
-Skipped from HeyClicky: free-form polygons, photo cards and 3D models -- none
-of them is anchored to an observed control.
+Freehand (D189) is anchored the same way: its points are fractions of one
+observed control's box (-0.5..1.5, so a stroke may wander a little around
+it), never screen positions. Skipped from HeyClicky: photo cards and 3D
+models -- neither is anchored to an observed control.
 """
 
 from __future__ import annotations
@@ -20,9 +22,12 @@ from dataclasses import dataclass, replace
 
 from ghostcursor.harness.frame import Candidate, ObservationFrame, resolve
 
-KINDS = ("circle", "underline", "box", "arrow")
+KINDS = ("circle", "underline", "box", "arrow", "freehand")
 MAX_MARKS = 6
 MAX_NOTE = 60
+#: Freehand: at most this many points, each within this margin of the box.
+MAX_PATH = 24
+PATH_MARGIN = 0.5
 #: Seconds each mark takes to draw in; marks draw one after another.
 DRAW_S = 0.45
 #: How long a sketch stays up unless cleared first (speech ending clears it).
@@ -44,6 +49,8 @@ class Mark:
     cid: str
     to: str | None = None  # arrow only: the control it points at
     note: str = ""
+    #: freehand only: (u, v) as fractions of the control's box
+    path: tuple[tuple[float, float], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -74,8 +81,14 @@ def parse_marks(raw: object, frame: ObservationFrame) -> tuple[Mark, ...]:
     known = set(frame.ids)
     marks = []
     for item in items:
-        if not isinstance(item, dict) or not set(item) <= {"kind", "cid", "to", "note"}:
-            raise SketchError("a mark has only kind, cid, to and note")
+        if not isinstance(item, dict) or not set(item) <= {
+            "kind",
+            "cid",
+            "to",
+            "note",
+            "path",
+        }:
+            raise SketchError("a mark has only kind, cid, to, note and path")
         kind, cid = item.get("kind"), item.get("cid")
         to, note = item.get("to"), item.get("note", "")
         if kind not in KINDS:
@@ -90,8 +103,36 @@ def parse_marks(raw: object, frame: ObservationFrame) -> tuple[Mark, ...]:
             )
         if not isinstance(note, str) or len(note) > MAX_NOTE:
             raise SketchError(f"a note is text of at most {MAX_NOTE} characters")
-        marks.append(Mark(kind, cid, to, note.strip()))
+        path = _path(item.get("path"), kind)
+        marks.append(Mark(kind, cid, to, note.strip(), path))
     return tuple(marks)
+
+
+def _path(raw: object, kind: str) -> tuple[tuple[float, float], ...]:
+    """A freehand mark's points, checked: box fractions, never positions."""
+
+    if kind != "freehand":
+        if raw is not None:
+            raise SketchError("only a freehand mark has a 'path'")
+        return ()
+    if not isinstance(raw, list) or not 2 <= len(raw) <= MAX_PATH:
+        raise SketchError(f"a freehand path has 2 to {MAX_PATH} points")
+    low, high = -PATH_MARGIN, 1 + PATH_MARGIN
+    points = []
+    for point in raw:
+        if (
+            not isinstance(point, list)
+            or len(point) != 2
+            or not all(
+                isinstance(v, (int, float)) and not isinstance(v, bool) and low <= v <= high
+                for v in point
+            )
+        ):
+            raise SketchError(
+                f"a freehand point is [u, v], fractions of the control's box in {low}..{high}"
+            )
+        points.append((float(point[0]), float(point[1])))
+    return tuple(points)
 
 
 def start(
@@ -203,6 +244,13 @@ def _strokes_for(mark: Mark, sketch: Sketch, rng: random.Random) -> list[list]:
         l, t, r, b = left - 6, top - 6, right + 6, bottom + 6
         corners = [(l, t), (r, t), (r, b), (l, b), (l, t)]
         return [_line(corners[i], corners[i + 1], rng, 8) for i in range(4)]
+    if mark.kind == "freehand":
+        w, h = right - left, bottom - top
+        points = [(left + u * w, top + v * h) for u, v in mark.path]
+        line = []
+        for p, q in zip(points, points[1:]):
+            line += _line(p, q, rng, 6)[(1 if line else 0) :]
+        return [line]
     # arrow: from the other control (or from up-left) to this one's edge
     if mark.to is None:
         origin = (left - 70, top - 50)

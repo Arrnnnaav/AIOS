@@ -411,9 +411,12 @@ def run_model_teach(
     act: bool = False,
     deny=(),
     sketch: bool = False,
+    speak: bool = False,
+    speaker=None,
 ) -> int:
     """``sketch`` (prototype) draws each step as a hand-drawn circle with an
-    arrow from the previous step's control (harness/sketch.py).
+    arrow from the previous step's control (harness/sketch.py). ``speak``
+    (D189) says each step aloud on this PC as its marks draw in.
     ``outcome`` receives (step, why) for each completed step. A UI passes
     ``say`` (status lines), ``confirm`` (step done) and ``stop`` (its Stop
     button); ESC and the deadline stop the session regardless (rule 4)."""
@@ -496,6 +499,10 @@ def run_model_teach(
     reported = 0
     shown = None
     code = 0
+    if speak and speaker is None:
+        from ghostcursor.speech import Speaker
+
+        speaker = Speaker()
     marks = previous = None
     try:
         while True:
@@ -533,6 +540,16 @@ def run_model_teach(
             if display.message != shown:
                 say(f"[{display.phase.value}] {display.message}")
                 shown = display.message
+                if speaker is not None and display.phase in (
+                    Phase.SHOWING,
+                    Phase.CONFIRM_RISK,
+                    Phase.APPROVE,
+                    Phase.BLOCKED,
+                    Phase.DONE,
+                ):
+                    from ghostcursor.speech import spoken
+
+                    speaker.say(spoken(display.message))
             if display.phase in (Phase.DONE, Phase.BLOCKED):
                 code = 0 if display.phase is Phase.DONE else 2
                 break
@@ -541,6 +558,8 @@ def run_model_teach(
     except KeyboardInterrupt:
         say("Interrupted - exiting.")
     finally:
+        if speaker is not None:
+            speaker.stop()  # ESC, Stop and the deadline silence it too (rule 4)
         session.stop()
         observer.stop()
         window.destroy_overlay_window(overlay)

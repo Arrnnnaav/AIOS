@@ -8369,3 +8369,20 @@ ask for it. Each attempt writes an `act_step` audit line (via `dictation`).
 D018: 15 mutants, 15 killed (`tests/test_dictation.py`).
 
 Not built: dictation from the workspace app window or a hotkey; line breaks.
+
+## D189 — Freehand marks and speaking while drawing
+
+Owner request (5 November 2026), from the HeyClicky comparison: freehand
+drawing and "draws while it talks". Rule 3 stays as written. A `freehand`
+mark (`harness/sketch.py`) carries 2-24 points that are fractions of ONE
+observed control's box, each within -0.5..1.5 (a stroke may wander a little
+around the control), never screen positions. It is re-resolved with every
+frame like the other marks and disappears when its control is lost.
+`--model-teach --speak` says each step aloud with Windows SAPI
+(`ghostcursor/speech.py`, on this PC, nothing sent) as its circle and arrow
+draw in; the session's exit (ESC, Stop, `--seconds`) purges speech.
+D018 on the freehand guard: 10 mutants, 10 killed.
+
+Not built: a model that answers a question by drawing (no caller asks for
+marks yet; `sketch.start` is ready for one), word-by-word timing of marks to
+speech, 3D, photo cards.

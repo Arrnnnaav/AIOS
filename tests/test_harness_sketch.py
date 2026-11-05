@@ -168,3 +168,114 @@ def test_teach_sketch_has_no_self_arrow_and_clears_when_its_control_is_lost(monk
     marks, prev = teach_live._sketch_step(None, None, None, save, frame)
     lost = _frame([_control(2, "Open", rect=(300, 100, 360, 130))], frame_id=2)
     assert teach_live._sketch_step(None, marks, prev, save, lost)[0] is None
+
+
+# --- freehand (D189): points are fractions of an observed control's box ------
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        None,  # freehand needs a path
+        [[0.5, 0.5]],  # one point is not a stroke
+        [[0, 0]] * (sketch.MAX_PATH + 1),
+        [[0, 0], [1.6, 0.5]],  # beyond the margin around the box
+        [[0, 0], [-0.6, 0.5]],
+        [[0, 0], [500, 300]],  # a screen position, not a fraction
+        [[0, 0], [0.5]],
+        [[0, 0], ["0.5", 0.5]],
+        [[0, 0], [True, 0.5]],
+        [[0, 0], {"u": 0.5, "v": 0.5}],
+        [[0, 0], (0.5, 0.5)],  # JSON gives lists; anything else is refused
+        [[0, 0], [0.5, 0.5, 0.5]],
+    ],
+)
+def test_a_freehand_path_is_only_box_fractions(path):
+    item = {"kind": "freehand", "cid": "c1"}
+    if path is not None:
+        item["path"] = path
+    with pytest.raises(sketch.SketchError):
+        sketch.parse_marks({"marks": [item]}, _two())
+
+
+def test_only_a_freehand_mark_has_a_path():
+    with pytest.raises(sketch.SketchError):
+        sketch.parse_marks(
+            {"marks": [{"kind": "circle", "cid": "c1", "path": [[0, 0], [1, 1]]}]}, _two()
+        )
+
+
+def test_freehand_strokes_stay_on_the_control_and_follow_it():
+    frame = _two()
+    raw = {"marks": [{"kind": "freehand", "cid": "c1", "path": [[-0.5, 1.2], [0.5, 1.5], [1.5, 1.1]]}]}
+    s = sketch.start(raw, frame, 0.0)
+    (stroke,) = sketch.strokes(s, 10.0 * sketch.DRAW_S)
+    # box 100..160 x 100..130 widened by half its size, plus the wobble
+    assert _inside(stroke, (70, 85, 190, 145), sketch.WOBBLE_PX + 7)
+    moved = sketch.follow(
+        s,
+        _frame(
+            [
+                _control(1, "Save", rect=(112, 108, 172, 138)),
+                _control(2, "Open", rect=(300, 100, 360, 130)),
+            ]
+        ),
+    )
+    (after,) = sketch.strokes(moved, 10.0 * sketch.DRAW_S)
+    assert after != stroke
+    assert _inside(after, (82, 93, 202, 153), sketch.WOBBLE_PX + 7)
+
+
+# --- draws while it talks (D189) ----------------------------------------------
+
+
+def test_speech_says_the_instruction_and_stops_cleanly():
+    from ghostcursor import speech
+
+    calls = []
+    voice = type("V", (), {"Speak": lambda self, text, flags: calls.append((text, flags))})()
+    speaker = speech.Speaker(voice)
+    speaker.say("  Click   Save ")
+    speaker.say("")
+    speaker.stop()
+    assert calls == [("Click Save", 3), ("", 3)]
+    assert speech.spoken("Step 2/5 (suggested): Click Save -- typed 4 characters") == "Click Save"
+    assert speech.spoken("all steps done") == "all steps done"
+
+
+def test_a_pc_without_a_voice_still_draws():
+    from ghostcursor import speech
+
+    def broken(self, *a):
+        raise OSError("no SAPI")
+
+    speaker = speech.Speaker(type("V", (), {"Speak": broken})())
+    speaker.say("Click Save")
+    speaker.stop()
+
+
+def test_esc_silences_the_voice(monkeypatch):
+    from ghostcursor.harness import teach_live
+    from tests.test_harness_spatial_voice import W1
+
+    class Session:
+        completed = []
+
+        def __init__(self, *a, **kw):
+            pass
+
+        def stop(self):
+            pass
+
+    stopped = []
+    speaker = type("S", (), {"say": lambda self, t: None, "stop": lambda self: stopped.append(1)})()
+    monkeypatch.setattr(teach_live, "bind", lambda hwnds: (W1,))
+    monkeypatch.setattr(teach_live.Observer, "start", lambda self: None)
+    monkeypatch.setattr(teach_live, "ModelTeachSession", Session)
+    monkeypatch.setattr(teach_live, "_escape_pressed", lambda: True)
+    monkeypatch.setattr(teach_live.window, "create_overlay_window", lambda **k: "overlay")
+    monkeypatch.setattr(teach_live.window, "destroy_overlay_window", lambda o: None)
+    teach_live.run_model_teach(
+        "g", [11], seconds=60, gateway=object(), say=lambda m: None, speak=True, speaker=speaker
+    )
+    assert stopped == [1]
