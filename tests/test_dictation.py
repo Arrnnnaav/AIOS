@@ -109,6 +109,7 @@ def _type(
         text,
         before=CONSOLE,
         escape=escape,
+        say=lambda m: None,
         wait_s=3,
         clock=lambda: clock() * 1.0,
         pause=lambda s: None,
@@ -192,6 +193,9 @@ def test_type_focused_types_without_clicking(monkeypatch):
         ({"focused": ()}, PermissionError),
         ({"blocked": "the screen is locked"}, PermissionError),
         ({"text": "a\nb"}, ValueError),
+        ({"text": "a\tb"}, ValueError),
+        ({"text": "a\x1bb"}, ValueError),
+        ({"text": "a b"}, ValueError),
         ({"text": ""}, ValueError),
     ],
 )
@@ -231,3 +235,17 @@ def test_a_model_plan_cannot_ask_for_type_focused():
     }
     with pytest.raises(Exception):
         parse_teach_plan(json.dumps({"steps": [step]}))
+
+
+def test_esc_pressed_after_the_countdown_still_stops_typing():
+    # Review of D188: ESC during the window read must stop it too (rule 4).
+    presses = iter([False, False])  # the whole countdown, then ESC during the read
+    said, typed = _type(escape=lambda: next(presses, True))
+    assert "cancelled" in said and not typed
+
+
+def test_a_slow_read_says_so():
+    with pytest.raises(ValueError, match="too slowly"):
+        dictation.field_in(
+            APP, read=lambda h: ((0, 0, 9, 9), (), True), identify_window=_identity()
+        )

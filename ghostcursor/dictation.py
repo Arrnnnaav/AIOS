@@ -120,7 +120,7 @@ def field_in(hwnd: int, *, read=None, identify_window=None):
     bound = binding_mod.bind([hwnd], identify_window=identify_window or binding_mod.identify)[0]
     if bound.identity.executable in SHELLS:
         raise ValueError("Orbyn never types dictation into a console")
-    _, controls, _ = read(hwnd)
+    _, controls, timed_out = read(hwnd)
     focused = [c for c in controls if c.focused]
     if any(c.is_password for c in focused):
         raise ValueError("that is a password field")
@@ -134,7 +134,9 @@ def field_in(hwnd: int, *, read=None, identify_window=None):
         and c.rect[3] > c.rect[1]
     ]
     if len(fields) != 1:
-        raise ValueError("no text field has the cursor there")
+        raise ValueError(
+            "the app answered too slowly" if timed_out else "no text field has the cursor there"
+        )
     c = fields[0]
     return bound, Candidate("c1", bound.label, c.runtime_id, c.name, c.control_type, c.rect, "")
 
@@ -144,6 +146,7 @@ def type_into(
     *,
     before: int,
     escape,
+    say=print,
     wait_s: float = CLICK_WINDOW_S,
     clock=time.monotonic,
     pause=time.sleep,
@@ -175,6 +178,9 @@ def type_into(
         bound, target = field(hwnd)
     except Exception as exc:  # BindingError is a ValueError
         return f"nothing typed: {exc}"
+    say(f"Typing into {bound.identity.executable} ({target.control_type})...")
+    if escape():  # the read takes up to seconds; a press during it still stops (rule 4)
+        return "cancelled; nothing typed"
     if perform is None:
         from ghostcursor.harness.act import perform
     step = SimpleNamespace(action="type_focused", text=text)

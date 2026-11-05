@@ -2180,3 +2180,22 @@ Second tier-1 review (12c7116..adbbcb1): no BLOCKING. Fixed: a test that record(
 Open:
 - `audit.py`: tail truncation is undetectable (no anchor); a periodic signed checkpoint would close it.
 - `team.py`: a synced `team-<name>` skill overwrites a local skill a user named `team-...` (accepted: the prefix is reserved for the team).
+
+## Dictation typing (D188), tier-1 review of 9b4f0aa..7648ce8 -- 2026-11-05
+
+One BLOCKING, fixed in the follow-up commit: ESC pressed during the window
+read after the countdown did not stop typing; `type_into` now checks ESC once
+more right before `perform`. Also fixed: `type_focused` refuses any
+non-printable character in act.py itself (not just line breaks); the console
+names the app and field type before typing; a slow read says so.
+
+Open:
+- [ ] `type_focused` types over a selection in the field without asking
+      (rule 2 asks before overwrite). Check TextPattern selection, or accept
+      and say so in D188.
+- [ ] The target is the window in front when the countdown ends, not the
+      one clicked; tracking the last click would be stricter.
+- [ ] `/dictate type` reads UIA on the console thread. Fine for the CLI; a
+      workspace-app or hotkey version must move the read to a worker (rule 5).
+- [ ] Teach's minimized hold applies to any minimized bound window, even one
+      the step does not use (marked `ponytail:` in teach.py).

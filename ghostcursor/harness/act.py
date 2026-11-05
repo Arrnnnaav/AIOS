@@ -422,8 +422,8 @@ def perform(
         # user left the caret. Never clicks (a click would move the caret);
         # never a line break (Enter can send a message). Not in the plan
         # schema, so a model cannot ask for it.
-        if not step.text or "\n" in step.text or "\r" in step.text:
-            raise ValueError("dictation is typed as one line of text")
+        if not step.text or not step.text.isprintable():  # no Enter, Tab, ESC
+            raise ValueError("dictation is typed as one line of plain text")
         wait_for_release(held or held_input, pause)
         reason = check(x, y, window)
         if reason:
