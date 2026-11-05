@@ -31,6 +31,7 @@ class StubApp:
 def windowed_desktop(monkeypatch):
     fullscreen = [False]  # the real desktop may have a full-screen app in front
     monkeypatch.setattr(island_module, "_fullscreen", lambda: fullscreen[0])
+    monkeypatch.setattr(island_module, "_cursor", lambda: (-30000, -30000))  # never on the bar
     return fullscreen
 
 
@@ -338,7 +339,7 @@ def test_island_research_talk_voice_results_and_fullscreen(windowed_desktop):
 
         app.background_jobs.append({"id": "new", "state": "running", "question": "q1", "answer": ""})
         island.tick()
-        assert island.strip == "1 research job running"
+        assert island.strip == "1 job running"
         app.background_jobs[-1].update(state="finished", answer="line a\nline b" + "x" * 2000)
         island.tick()
         island.tick()  # shown once
@@ -362,4 +363,53 @@ def test_island_research_talk_voice_results_and_fullscreen(windowed_desktop):
         island.tick()
         assert not island.covered and win32gui.IsWindowVisible(island.hwnd)
     finally:
+        win32gui.DestroyWindow(island.hwnd)
+
+
+@pytest.mark.interactive
+def test_a_hidden_bar_peeks_when_the_pointer_comes_to_it(monkeypatch):
+    import win32con
+    import win32gui
+
+    app = StubApp()
+    island = Island(app, "http://127.0.0.1:1/?t=local", lambda url: None)
+    registered = island.hotkey_available
+    island.hotkey_available = True
+    try:
+        left, top, right, bottom = win32gui.GetWindowRect(island.hwnd)
+        on_bar = ((left + right) // 2, (top + bottom) // 2)
+        pointer = [on_bar]
+        monkeypatch.setattr(island_module, "_cursor", lambda: pointer[0])
+        _wnd_proc(island.hwnd, win32con.WM_COMMAND, ID_HIDE, 0)
+        island.tick()
+        assert island.hidden  # the pointer is still where Hide was clicked: no instant return
+        pointer[0] = (-30000, -30000)
+        island.tick()
+        assert island.hidden and island.peek_armed
+        pointer[0] = on_bar
+        island.tick()
+        assert not island.hidden and win32gui.IsWindowVisible(island.hwnd)
+        island.tick()
+        assert not island.hidden  # stays while the pointer rests on it
+        pointer[0] = (-30000, -30000)
+        island.tick()
+        assert island.hidden  # and folds away when it leaves
+    finally:
+        island.hotkey_available = registered
+        win32gui.DestroyWindow(island.hwnd)
+
+
+@pytest.mark.interactive
+def test_result_cards_name_the_job_kind():
+    app = StubApp()
+    assert _status(app, {"state": "finished", "kind": "deep"}) == ("Ready", "Deep research finished")
+    assert _status(app, {"state": "failed", "kind": "crew"}) == ("Failed", "Crew failed")
+    island = Island(app, "http://127.0.0.1:1/?t=local", lambda url: None)
+    try:
+        app.background_jobs.append({"id": "c", "state": "finished", "kind": "crew", "question": "launch", "answer": "1. [plan] ..."})
+        island.tick()
+        assert "Crew finished: launch" in island.transcript
+    finally:
+        import win32gui
+
         win32gui.DestroyWindow(island.hwnd)
