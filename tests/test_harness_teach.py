@@ -193,7 +193,9 @@ def _plan(*changes):
 
 def _session(plan, choices):
     gateway = FakeGateway(plan, choices)
-    return ModelTeachSession("make a deck", gateway, SyncSlot(), clock=lambda: 0.0), gateway
+    return ModelTeachSession(
+        "make a deck", gateway, SyncSlot(), clock=lambda: 0.0
+    ), gateway
 
 
 def test_a_session_guides_step_by_step_and_finishes_on_observed_change():
@@ -346,7 +348,10 @@ def test_each_completed_step_records_why():
     session.tick(_frame([_c(1)]))
     session.tick(_frame([_c(2)], frame_id=2))
     session.tick(_frame([_c(2)], frame_id=3), confirm=True)
-    assert session.completed == [(1, "observed chosen_disappears"), (2, "you confirmed")]
+    assert session.completed == [
+        (1, "observed chosen_disappears"),
+        (2, "you confirmed"),
+    ]
 
 
 def test_a_stale_frame_is_never_drawn_from():
@@ -369,14 +374,59 @@ def test_a_minimized_or_partly_read_window_is_not_drawn_into():
     assert session.tick(_frame([_c(1)])).target is not None
     w1, w2 = W1, W2
     partial = build_frame(
-        2, 0.0, [WindowObservation(w1, WINDOW, (_c(1),), True), WindowObservation(w2, WINDOW, ())]
+        2,
+        0.0,
+        [
+            WindowObservation(w1, WINDOW, (_c(1),), True),
+            WindowObservation(w2, WINDOW, ()),
+        ],
     )
     assert session.tick(partial).target is None
 
 
+def test_a_minimized_window_holds_the_step_until_restored():
+    # Live Notepad run 3: the window was minimized mid-step, its controls went
+    # off-screen and Teach re-asked itself into "stuck". It must wait instead.
+    session, _ = _session(_plan(ExpectedChange.TITLE_CHANGES), [_choice("c1")])
+    assert session.tick(_frame([_c(1)])).target is not None
+    minimized = build_frame(
+        2,
+        0.0,
+        [
+            WindowObservation(W1, WINDOW, (), False, True),
+            WindowObservation(W2, WINDOW, ()),
+        ],
+    )
+    for _ in range(10):
+        held = session.tick(minimized)
+        assert held.phase is Phase.SHOWING and held.target is None
+        assert "powerpnt.exe is minimized" in held.message
+    assert session.reasks == 0
+    back = session.tick(_frame([_c(1)], frame_id=3))
+    assert back.phase is Phase.SHOWING and back.target is not None
+
+
+def test_a_window_showing_only_its_title_bar_is_named_when_stuck():
+    title_bar = [
+        _c(i, n, "Button") for i, n in enumerate(("Minimize", "Maximize", "Close"))
+    ]
+    session, _ = _session(
+        _plan(ExpectedChange.TITLE_CHANGES), [Choice(ABSTAIN, {ABSTAIN: 0.9})] * 4
+    )
+    full = [_c(10 + i, f"b{i}", "Button") for i in range(6)]
+    for n in range(4):
+        shown = session.tick(_frame(title_bar, full, frame_id=n + 1))
+    assert shown.phase is Phase.BLOCKED
+    assert "powerpnt.exe shows almost no controls" in shown.message
+    assert "chrome.exe" not in shown.message
+
+
 def test_a_capped_frame_is_never_evidence_of_disappearance():
     before = _frame([_c(1)])
-    many = [_c(i, f"B{i}", rect=(10, 10 + i, 60, 40 + i)) for i in range(2, MAX_CANDIDATES + 5)]
+    many = [
+        _c(i, f"B{i}", rect=(10, 10 + i, 60, 40 + i))
+        for i in range(2, MAX_CANDIDATES + 5)
+    ]
     after = _frame(many, frame_id=2)
     assert after.truncated
     assert not change_observed(
@@ -385,7 +435,12 @@ def test_a_capped_frame_is_never_evidence_of_disappearance():
 
 
 def test_high_risk_covers_dont_save_overwrite_and_a_risky_instruction():
-    frame = _frame([_c(1, "Don't Save", "Button"), _c(2, "Overwrite", "Button", rect=(70, 10, 120, 40))])
+    frame = _frame(
+        [
+            _c(1, "Don't Save", "Button"),
+            _c(2, "Overwrite", "Button", rect=(70, 10, 120, 40)),
+        ]
+    )
     for cid in ("c1", "c2"):
         assert gate(_choice(cid), frame, frame)[0] is Verdict.CONFIRM
     plain = _frame([_c(3, "OK", "Button")])
@@ -395,6 +450,8 @@ def test_high_risk_covers_dont_save_overwrite_and_a_risky_instruction():
 
 
 def test_a_risky_step_instruction_waits_even_on_a_plain_control():
-    plan = TeachPlan((PlanStep("Click OK to delete the file", ExpectedChange.CHOSEN_DISAPPEARS),))
+    plan = TeachPlan(
+        (PlanStep("Click OK to delete the file", ExpectedChange.CHOSEN_DISAPPEARS),)
+    )
     session, _ = _session(plan, [_choice("c1")])
     assert session.tick(_frame([_c(1, "OK", "Button")])).phase is Phase.CONFIRM_RISK

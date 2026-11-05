@@ -162,6 +162,25 @@ def change_observed(
     return False
 
 
+#: A window reporting this few controls shows only its title bar (System,
+#: Minimize, Maximize, Close): the app stopped exposing UI Automation.
+SPARSE_CONTROLS = 4
+
+
+def _sparse_hint(frame: ObservationFrame) -> str:
+    counts = {b.label: 0 for b in frame.windows}
+    for c in frame.candidates:
+        counts[c.window] = counts.get(c.window, 0) + 1
+    sparse = [
+        b.identity.executable
+        for b in frame.windows
+        if counts[b.label] <= SPARSE_CONTROLS
+    ]
+    if not sparse:
+        return ""
+    return f"; {', '.join(sparse)} shows almost no controls - restart it and try again"
+
+
 class Phase(Enum):
     PLANNING = "planning"
     APPROVE = "approve"  # Act: the user reads the whole plan first (D182)
@@ -252,9 +271,7 @@ class ModelTeachSession:
             if current is None
             else (f"state={current.state or '(none)'} focused={current.focused}")
         )
-        before = (
-            f"state={chosen.state or '(none)'} focused={chosen.focused}"
-        )
+        before = f"state={chosen.state or '(none)'} focused={chosen.focused}"
         envelope = Envelope(
             task="verify",
             trusted={
@@ -415,6 +432,20 @@ class ModelTeachSession:
             self.phase, self.message = Phase.CHOOSING, "finding the control"
             confirm = False
 
+        if frame.minimized and self.phase in (
+            Phase.CHOOSING,
+            Phase.CONFIRM_RISK,
+            Phase.SHOWING,
+        ):  # its controls are off-screen: wait, never re-ask or act (rule 3)
+            # ponytail: holds for any minimized bound window, even one the step
+            # does not use; narrow to the step's window if multi-window needs it.
+            apps = ", ".join(
+                b.identity.executable
+                for b in frame.windows
+                if b.label in frame.minimized
+            )
+            return Display(self.phase, f"{apps} is minimized - restore it to continue")
+
         if self.phase is Phase.CHOOSING:
             if self._request is None:
                 if not frame.ids:
@@ -435,7 +466,7 @@ class ModelTeachSession:
                     if verdict is Verdict.REASK:
                         if self.look is not None and reason != MOVED:
                             self._looking = True  # text was not enough: look
-                        self._reask(reason)
+                        self._reask(reason + _sparse_hint(frame))
                     else:
                         self._chosen = self._target = current
                         self._before = frame
