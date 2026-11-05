@@ -223,5 +223,6 @@ with the script named at the bottom; edit the curated table by hand.
 - D186 — Company Brain store (MP7 21A, first slice)
 - D186 addendum — first-party plugin marketplace + Bucket-2 revocation/publisher trust
 - D187 — Small-company deployment: team folder, audit log, company gateway, policy
+- D188 — Dictation types into the field the user clicked
 
 _Generated from `DECISIONS.md` headings by `py -3.12 tools/render_decisions_index.py`._

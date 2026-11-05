@@ -4,6 +4,7 @@ Type to discuss. Commands:
   /point            bind windows, point at what you mean (Spatial, D171)
   /voice            say your message instead of typing (SayStride, D171)
   /dictate [brain]  speak on demand; save the transcript to a file (or the Brain)
+  /dictate type     speak, approve the text, click a field: Orbyn types it there
   /research <q>     a cited answer from web sources
   /evidence [n]     the passages behind research answer n (default: latest)
   /remember <n>     save research claim n to the Company Brain (owner reviews)
@@ -560,6 +561,28 @@ def main(argv: list[str] | None = None) -> int:
 
                 said = dictate_goal(time.monotonic() + 120)
                 if not said:
+                    continue
+                if rest.strip() == "type":
+                    # D188: approve the exact text, then click the field; it is
+                    # typed through act.py, never into this console.
+                    from ghostcursor.voice import _console_enter, _escape_pressed
+
+                    flat = " ".join(said.split())
+                    print(f'Type "{flat}"? Enter = yes, ESC = no.')
+                    while not (yes := _console_enter()) and not _escape_pressed():
+                        time.sleep(0.05)
+                    if not yes:
+                        print("Nothing typed.")
+                        continue
+                    print(
+                        f"Click into the field within {dictation.CLICK_WINDOW_S:g} s "
+                        "(ESC cancels)..."
+                    )
+                    print(
+                        dictation.type_into(
+                            flat, before=dictation._foreground(), escape=_escape_pressed
+                        )
+                    )
                     continue
                 if rest.strip() == "brain" and workspace.knowledge is None:
                     print("no Company Brain here; saving to a file instead.")

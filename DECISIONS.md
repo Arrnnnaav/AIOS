@@ -8345,3 +8345,27 @@ written.
 Not built: SSO/SCIM (no service to sign in to), an owner dashboard, live
 acceptance on Excel/Outlook/browser apps. The MSIX was built unsigned here and
 not installed; the per-machine install and the ADMX import were not run.
+
+## D188 — Dictation types into the field the user clicked
+
+Owner request (5 November 2026): dictation should type into the app, not
+only save a file. `/dictate type` in the workspace console: the user speaks,
+confirms or corrects the transcript, approves the exact text (Enter), then has
+five seconds to click into a field. `dictation.type_into` then binds the
+window now in front (the binding denylist and policy apply), reads it once
+through UI Automation, and needs exactly one focused, enabled Edit or
+Document control that is not a password field. It never types into the
+window that was in front at approval (the console) or into a shell or
+terminal (`dictation.SHELLS`). The text is flattened to one line (Enter can
+send a message).
+
+Input still comes only from `harness/act.py` (rule 1), through a new
+`type_focused` action: it never clicks (the caret stays where the user put
+it), refuses a line break, runs the usual blocker (lock screen, elevated
+window, covered point), and right before typing checks that the bound window
+is in front and that the UI Automation focused element is the observed field.
+`type_focused` is not in the plan schema's ACTIONS, so a model plan can never
+ask for it. Each attempt writes an `act_step` audit line (via `dictation`).
+D018: 15 mutants, 15 killed (`tests/test_dictation.py`).
+
+Not built: dictation from the workspace app window or a hotkey; line breaks.

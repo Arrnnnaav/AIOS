@@ -1,12 +1,11 @@
 """On-demand voice dictation (D186): an explicit, user-triggered capture whose
-transcript is SAVED -- never always-on, and it never types into another
-application by itself.
+transcript is SAVED -- never always-on.
 
-Rule 1: this module performs NO input synthesis. The safe default sinks the
-text to a file (and optionally the Company Brain as a candidate). If dictation
-is ever made to insert into the focused app, that insertion MUST go through
-``ghostcursor.harness.act`` -- the one sanctioned input-synthesis module -- and
-stays approval-gated there; this module must never grow its own SendInput.
+Typing into an app (D188): ``type_into`` runs only after the user approved
+the exact text, and types it through ``ghostcursor.harness.act`` (rule 1: this
+module performs NO input synthesis) into the one focused text field Orbyn
+observed in the window the user clicked -- never a console, a password field
+or a window policy blocks.
 
 Audio capture and transcription are reused from ``ghostcursor.voice`` (local
 faster-whisper; audio stays in memory, nothing is sent anywhere).
@@ -78,3 +77,118 @@ def dictate(stop, *, record=None, transcribe=None, sink=None) -> tuple[str, obje
     samples = record(stop)
     text = transcribe(samples)
     return text, sink(text)
+
+
+#: Never typed into: a console would run the words as a command.
+SHELLS = frozenset(
+    {
+        "windowsterminal.exe",
+        "wt.exe",
+        "openconsole.exe",
+        "conhost.exe",
+        "cmd.exe",
+        "powershell.exe",
+        "pwsh.exe",
+        "bash.exe",
+        "mintty.exe",
+    }
+)
+TEXT_FIELDS = ("Edit", "Document")
+#: Time the user has to click into the field after approving.
+CLICK_WINDOW_S = 5.0
+
+
+def _foreground() -> int:
+    try:
+        import win32gui
+
+        hwnd = win32gui.GetForegroundWindow()
+        return win32gui.GetAncestor(hwnd, 2) if hwnd else 0  # GA_ROOT
+    except Exception:
+        return 0
+
+
+def field_in(hwnd: int, *, read=None, identify_window=None):
+    """(binding, field): the one focused text field Orbyn observes in HWND, or
+    raise ValueError saying why nothing will be typed."""
+
+    from ghostcursor.harness import binding as binding_mod
+    from ghostcursor.harness.frame import Candidate
+
+    if read is None:
+        from ghostcursor.harness.uia_reader import read_window as read
+    bound = binding_mod.bind([hwnd], identify_window=identify_window or binding_mod.identify)[0]
+    if bound.identity.executable in SHELLS:
+        raise ValueError("Orbyn never types dictation into a console")
+    _, controls, _ = read(hwnd)
+    focused = [c for c in controls if c.focused]
+    if any(c.is_password for c in focused):
+        raise ValueError("that is a password field")
+    fields = [
+        c
+        for c in focused
+        if c.control_type in TEXT_FIELDS
+        and c.enabled
+        and c.runtime_id
+        and c.rect[2] > c.rect[0]
+        and c.rect[3] > c.rect[1]
+    ]
+    if len(fields) != 1:
+        raise ValueError("no text field has the cursor there")
+    c = fields[0]
+    return bound, Candidate("c1", bound.label, c.runtime_id, c.name, c.control_type, c.rect, "")
+
+
+def type_into(
+    text: str,
+    *,
+    before: int,
+    escape,
+    wait_s: float = CLICK_WINDOW_S,
+    clock=time.monotonic,
+    pause=time.sleep,
+    foreground=_foreground,
+    field=field_in,
+    perform=None,
+) -> str:
+    """After the user approved TEXT: wait WAIT_S for them to click into a field
+    of another window (ESC cancels), then type TEXT there through act.py.
+    BEFORE is the window in front when they approved (the console), which is
+    never typed into. Returns what happened, for the console."""
+
+    from types import SimpleNamespace
+
+    from ghostcursor import audit
+
+    text = " ".join(text.split())  # a line break would press Enter
+    if not text:
+        return "nothing to type"
+    deadline = clock() + wait_s
+    while clock() < deadline:
+        if escape():
+            return "cancelled; nothing typed"
+        pause(0.05)
+    hwnd = foreground()
+    if not hwnd or hwnd == before:
+        return "no other window was clicked; nothing typed"
+    try:
+        bound, target = field(hwnd)
+    except Exception as exc:  # BindingError is a ValueError
+        return f"nothing typed: {exc}"
+    if perform is None:
+        from ghostcursor.harness.act import perform
+    step = SimpleNamespace(action="type_focused", text=text)
+    try:
+        did = perform(step, target, window=hwnd)
+        outcome = "done"
+    except Exception as exc:
+        did, outcome = f"nothing typed: {exc}", "refused"
+    audit.record(
+        "act_step",
+        via="dictation",
+        action="type",
+        control_type=target.control_type,
+        app=bound.identity.executable,
+        outcome=outcome,
+    )
+    return did

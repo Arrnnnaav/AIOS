@@ -258,7 +258,9 @@ def held_input() -> bool:
     ESC poll needs that bit to catch a quick tap (review of 436d779)."""
 
     return any(
-        _user32.GetAsyncKeyState(vk) & 0x8000 for vk in range(1, 255) if vk != _VK_ESCAPE
+        _user32.GetAsyncKeyState(vk) & 0x8000
+        for vk in range(1, 255)
+        if vk != _VK_ESCAPE
     )
 
 
@@ -277,6 +279,18 @@ def wait_for_release(held, pause) -> None:
 def _foreground_root() -> int:
     hwnd = _user32.GetForegroundWindow()
     return _user32.GetAncestor(hwnd, 2) if hwnd else 0  # GA_ROOT
+
+
+def _focused_runtime_id() -> tuple[int, ...]:
+    """UI Automation runtime id of the element with keyboard focus, or ()."""
+
+    try:
+        from pywinauto.uia_defines import IUIA
+
+        element = IUIA().iuia.GetFocusedElement()
+        return tuple(int(v) for v in element.GetRuntimeId())
+    except Exception:
+        return ()
 
 
 def _elevated(pid: int | None = None) -> bool | None:
@@ -386,6 +400,7 @@ def perform(
     focus=None,
     held=None,
     later=_in_background,
+    focused_id=None,
 ) -> str:
     """Do ``step`` on ``target`` (a Candidate in the latest frame); returns a
     short description for the status line. ``window`` is the bound window
@@ -402,6 +417,29 @@ def perform(
         return "nothing to do"
     for pending in _restoring:  # a paste still restoring finishes first, so a
         pending.join()  # later paste never reads Orbyn's own text as the user's
+    if action == "type_focused":
+        # Dictation (D188): type into the field the user clicked, where the
+        # user left the caret. Never clicks (a click would move the caret);
+        # never a line break (Enter can send a message). Not in the plan
+        # schema, so a model cannot ask for it.
+        if not step.text or "\n" in step.text or "\r" in step.text:
+            raise ValueError("dictation is typed as one line of text")
+        wait_for_release(held or held_input, pause)
+        reason = check(x, y, window)
+        if reason:
+            raise PermissionError(reason)
+        if window is None or not _on_bound_window(
+            (focus or _foreground_root)(), window
+        ):
+            raise PermissionError(
+                "that window is no longer in front, so nothing was typed"
+            )
+        if (focused_id or _focused_runtime_id)() != target.runtime_id:
+            raise PermissionError(
+                "the cursor moved to another field, so nothing was typed"
+            )
+        send(text_events(step.text))
+        return f"typed {len(step.text)} characters"
     if action == "keys":
         events = chord_events(step.text)  # validate before touching anything
     if action == "paste_text" and step.text:
@@ -415,7 +453,9 @@ def perform(
         return f"clicked {target.name or target.control_type}"
     pause(0.15)  # let focus land before keys arrive
     # A toast or another app may take focus in that gap; keys must not follow it.
-    if window is not None and not _on_bound_window((focus or _foreground_root)(), window):
+    if window is not None and not _on_bound_window(
+        (focus or _foreground_root)(), window
+    ):
         raise PermissionError("focus moved to another window, so nothing was typed")
     if action == "type":
         send(text_events(step.text))
