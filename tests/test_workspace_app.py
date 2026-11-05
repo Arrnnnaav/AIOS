@@ -1640,3 +1640,32 @@ def test_calendar_and_mail_actions_are_read_only_views(served, monkeypatch):
     assert seen == [1, ""]  # a non-integer day count and a non-string address are ignored
     for key in ("calendar_connected", "mail_connected"):
         assert isinstance(app.state()[key], bool)
+
+
+def test_a_question_asked_twice_is_offered_as_a_routine_never_started():
+    from ghostcursor.workspace.app import suggested_routines
+
+    jobs = [
+        {"question": "EU AI Act news", "kind": "research", "routine": ""},
+        {"question": "eu ai act  NEWS", "routine": ""},  # old row, no kind
+        {"question": "Plan launch", "kind": "crew", "routine": ""},
+        {"question": "Plan launch", "kind": "crew", "routine": ""},
+        {"question": "Weekly prices", "kind": "research", "routine": "r1"},
+        {"question": "Weekly prices", "kind": "research", "routine": "r1"},
+        {"question": "once", "kind": "research", "routine": ""},
+    ]
+    assert suggested_routines(jobs, []) == ["EU AI Act news"]
+    assert suggested_routines(jobs, [{"question": "EU AI ACT news"}]) == []
+    assert suggested_routines(jobs, [], dismissed={"eu ai act news"}) == []
+
+
+def test_not_now_hides_a_suggestion_for_this_session(served):
+    app, port = served
+    with app._job_lock:
+        for jid in ("0000000000000001", "0000000000000002"):
+            app.background_jobs.append({"id": jid, "question": "Same thing", "answer": "a", "state": "finished",
+                                        "created": 1, "ended": 2, "routine": "", "pinned": False, "archived": False, "kind": "research"})
+    assert app.state()["suggested_routines"] == ["Same thing"]
+    assert app.routines == []  # offered, never created on its own
+    assert call(port, "/api/routine_dismiss", {"question": "Same thing"})[0] == 200
+    assert app.state()["suggested_routines"] == []

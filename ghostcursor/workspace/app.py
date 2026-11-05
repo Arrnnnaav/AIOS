@@ -120,6 +120,26 @@ ACTIVITY_STATES = frozenset({"running", "finished", "stopped", "failed", "interr
 ROUTINE_SECONDS = {"hourly": 3600, "daily": 86400, "weekdays": 86400, "weekly": 604800}
 
 
+def suggested_routines(jobs: list[dict], routines: list[dict], dismissed=()) -> list[str]:
+    """Research questions asked at least twice in the job inbox that are not
+    routines yet: HeyClicky's proactive suggestions, from Orbyn's own local
+    history instead of watching the screen. Only offered; nothing runs until
+    the user makes it a routine."""
+
+    def key(text: str) -> str:
+        return " ".join(str(text).casefold().split())
+
+    taken = {key(r["question"]) for r in routines} | {key(d) for d in dismissed}
+    counts, first = {}, {}
+    for job in jobs:
+        if job.get("kind", "research") != "research" or job.get("routine"):
+            continue
+        k = key(job["question"])
+        counts[k] = counts.get(k, 0) + 1
+        first.setdefault(k, job["question"])
+    return [first[k] for k, n in counts.items() if n >= 2 and k not in taken][:3]
+
+
 def next_due(cadence: str, now: float) -> float:
     """When a routine runs next: one period on, and for ``weekdays`` the next
     Monday-to-Friday day in local time (HeyClicky and Aside schedule the same)."""
@@ -211,6 +231,7 @@ class App:
             ".routines.json"
         )
         self.routines = self._load_routines()
+        self.dismissed_suggestions: set[str] = set()  # this session only
         self.jobs.submit(self._refresh).result()
 
     # --- worker-side ------------------------------------------------------------
@@ -670,6 +691,9 @@ class App:
             "activity": list(reversed(self.activity)),
             "jobs": background_jobs,
             "routines": routines,
+            "suggested_routines": suggested_routines(
+                background_jobs, routines, self.dismissed_suggestions
+            ),
             "github_connected": self.github.connected(),
             "calendar_connected": connectors.calendar_connected(),
             "mail_connected": connectors.mail_connected(),
@@ -769,6 +793,11 @@ class App:
                 if self.job_path is None:
                     row[field] = previous
                     raise ValueError("job inbox could not be saved")
+            return {}
+        if action == "routine_dismiss":
+            question = body.get("question")
+            if isinstance(question, str):
+                self.dismissed_suggestions.add(question[:500])
             return {}
         if action == "routine_create":
             question, cadence = body.get("question"), body.get("cadence")

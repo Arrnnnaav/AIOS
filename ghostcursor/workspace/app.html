@@ -542,6 +542,15 @@ function routinesCard() {
   const add = el("button", "secondary", "New routine"); add.dataset.workFocus = "routine-add"; add.onclick = openRoutine;
   head.append(add); wrap.append(head);
   wrap.append(el("p", "note", "Scheduled research runs while Orbyn and this PC are awake. Closing the window keeps enabled routines active. One missed run starts after wake; no catch-up burst or automatic retry."));
+  for (const question of (S.suggested_routines || [])) {
+    const card = el("article", "jobcard");
+    const meta = el("div", "meta"); meta.append(el("b", "", "Suggestion"), el("span", "", "You have asked this more than once"));
+    card.append(meta, el("p", "", question));
+    const row = el("div", "sheetrow");
+    const yes = el("button", "secondary", "Make it a daily routine"); yes.onclick = () => act("routine_create", { question, cadence: "daily" }, "Routine created"); row.append(yes);
+    const no = el("button", "secondary", "Not now"); no.style.marginLeft = "auto"; no.onclick = () => act("routine_dismiss", { question }); row.append(no);
+    card.append(row); wrap.append(card);
+  }
   for (const item of S.routines) {
     const card = el("article", "jobcard");
     const meta = el("div", "meta"); meta.append(el("b", "", item.cadence + " research"), el("span", "", item.enabled ? "Next " + new Date(item.next_due * 1000).toLocaleString() : "Paused"));
