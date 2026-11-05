@@ -26,6 +26,7 @@ from urllib.parse import urlsplit
 PACKAGE = Path(__file__).resolve().parent
 MAX_FRAMES = 40
 TIMEOUT_S = 5.0
+MAIN_TIMEOUT_S = 2.0
 
 
 def endpoint(dsn: str | None) -> tuple[str, str] | None:
@@ -111,7 +112,9 @@ def event(exc: BaseException, *, clock=time.time) -> dict:
     }
 
 
-def send(exc: BaseException, *, transport=None, dsn: str | None = None) -> bool:
+def send(
+    exc: BaseException, *, transport=None, dsn: str | None = None, timeout_s: float = TIMEOUT_S
+) -> bool:
     """Send one crash event if this person and the organisation allow it.
     Returns True only if the endpoint accepted it; never raises."""
 
@@ -137,7 +140,7 @@ def send(exc: BaseException, *, transport=None, dsn: str | None = None) -> bool:
         import httpx
 
         with httpx.Client(
-            transport=transport, timeout=TIMEOUT_S, follow_redirects=False
+            transport=transport, timeout=timeout_s, follow_redirects=False
         ) as client:
             response = client.post(
                 url,
@@ -171,7 +174,7 @@ def install() -> None:
     def on_crash(kind, value, tb):
         previous(kind, value, tb)
         if not issubclass(kind, KeyboardInterrupt):
-            send(value)
+            send(value, timeout_s=MAIN_TIMEOUT_S)  # the exit waits at most this long
 
     def on_thread_crash(args):
         previous_thread(args)

@@ -2199,3 +2199,20 @@ Open:
       workspace-app or hotkey version must move the read to a worker (rule 5).
 - [ ] Teach's minimized hold applies to any minimized bound window, even one
       the step does not use (marked `ponytail:` in teach.py).
+
+## D189-D191 tier-1 review of 915a0c7..bc20832 -- 2026-11-05
+
+No BLOCKING (reviewer ran hermetic on bc20832: 3961 passed). Fixed in the
+follow-up commit: freehand strokes clamp to 40 px outside the control (a big
+pane is not a canvas); agent notes enter the conversation as the user's
+words; a main-thread crash waits at most 2 s to send; install() tested.
+
+Open:
+- [ ] SAPI Speak runs on the Teach loop thread; a first call can block while
+      the audio device starts. Give Speaker its own thread (D020 budget).
+- [ ] Stop lands only between crew steps; pass `cancelled` through
+      `_run_intent` so a crew's research/deck step stops mid-way too.
+- [ ] A background crew's plan step replaces the current plan without saying
+      so in the UI (Act still re-asks approval).
+- [ ] No test pins the 4-redirect limit on the ICS fetch, or that an IMAP
+      password never appears in an error message.

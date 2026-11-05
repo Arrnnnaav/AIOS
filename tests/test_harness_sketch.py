@@ -279,3 +279,11 @@ def test_esc_silences_the_voice(monkeypatch):
         "g", [11], seconds=60, gateway=object(), say=lambda m: None, speak=True, speaker=speaker
     )
     assert stopped == [1]
+
+
+def test_freehand_on_a_big_pane_stays_within_40_px_of_it():
+    pane = _frame([_control(1, "Document", rect=(0, 0, 1600, 900))])
+    raw = {"marks": [{"kind": "freehand", "cid": "c1", "path": [[-0.5, -0.5], [1.5, 1.5]]}]}
+    (stroke,) = sketch.strokes(sketch.start(raw, pane, 0.0), 2.0)
+    margin = 40 + sketch.WOBBLE_PX + 7  # the literal limit, not the constant under test
+    assert all(-margin <= x <= 1600 + margin and -margin <= y <= 900 + margin for x, y in stroke)

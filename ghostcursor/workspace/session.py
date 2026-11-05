@@ -1336,8 +1336,8 @@ class Workspace:
         )
         remembered = agents.notes(self.root, spec.name)[-10:]
         if remembered:  # the agent's own notes, as context for the plan
-            self._say(
-                "assistant",
+            self._say(  # the user wrote these notes, so they speak as the user
+                "user",
                 f"[agent {spec.name}] notes from earlier: " + "; ".join(remembered),
             )
         return spec

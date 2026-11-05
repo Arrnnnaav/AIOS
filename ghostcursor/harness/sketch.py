@@ -28,6 +28,8 @@ MAX_NOTE = 60
 #: Freehand: at most this many points, each within this margin of the box.
 MAX_PATH = 24
 PATH_MARGIN = 0.5
+#: ...and never more than this many pixels outside the control (review of D189).
+PATH_MARGIN_PX = 40
 #: Seconds each mark takes to draw in; marks draw one after another.
 DRAW_S = 0.45
 #: How long a sketch stays up unless cleared first (speech ending clears it).
@@ -246,7 +248,14 @@ def _strokes_for(mark: Mark, sketch: Sketch, rng: random.Random) -> list[list]:
         return [_line(corners[i], corners[i + 1], rng, 8) for i in range(4)]
     if mark.kind == "freehand":
         w, h = right - left, bottom - top
-        points = [(left + u * w, top + v * h) for u, v in mark.path]
+        # Beyond the box, at most PATH_MARGIN_PX: a big pane is not a canvas.
+        points = [
+            (
+                min(max(left + u * w, left - PATH_MARGIN_PX), right + PATH_MARGIN_PX),
+                min(max(top + v * h, top - PATH_MARGIN_PX), bottom + PATH_MARGIN_PX),
+            )
+            for u, v in mark.path
+        ]
         line = []
         for p, q in zip(points, points[1:]):
             line += _line(p, q, rng, 6)[(1 if line else 0) :]

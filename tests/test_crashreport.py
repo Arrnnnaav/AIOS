@@ -193,3 +193,19 @@ def test_the_policy_endpoint_alone_turns_nothing_on(monkeypatch, tmp_path):
     assert settings.crash_reports(path) is False  # never set
     settings.set_crash_reports(False, path)
     assert settings.crash_reports(path) is False
+
+
+def test_install_reports_a_crash_but_not_ctrl_c(monkeypatch):
+    import sys
+
+    sent = []
+    monkeypatch.setattr(crashreport, "send", lambda exc, **kw: sent.append((type(exc), kw)))
+    monkeypatch.setattr(sys, "excepthook", lambda *a: None)
+    crashreport.install()
+    crashreport.install()  # once per process
+    try:
+        sys.excepthook(KeyboardInterrupt, KeyboardInterrupt(), None)
+        sys.excepthook(ValueError, ValueError("x"), None)
+    finally:
+        monkeypatch.undo()
+    assert sent == [(ValueError, {"timeout_s": crashreport.MAIN_TIMEOUT_S})]
