@@ -211,12 +211,14 @@ def _public_address(host: str, resolve=None) -> str | None:
     import ipaddress
     import socket
 
+    if not host:  # getaddrinfo("") answers with this machine's own addresses
+        return None
     resolve = resolve or (lambda h: {i[4][0] for i in socket.getaddrinfo(h, None)})
     try:
         addresses = resolve(host)
     except OSError:
         return None
-    if not host or not addresses or not all(_global(a) for a in addresses):
+    if not addresses or not all(_global(a) for a in addresses):
         return None
     return sorted(addresses, key=lambda a: (":" in a, a))[0]  # IPv4 first
 
@@ -231,6 +233,8 @@ def _global(address: str) -> bool:
     if not ip.is_global:
         return False
     if ip.version == 6:
+        if ip in ipaddress.ip_network("::/96"):  # IPv4-compatible ::a.b.c.d
+            return False
         embedded = ip.ipv4_mapped or ip.sixtofour
         if ip in ipaddress.ip_network("64:ff9b::/96"):
             embedded = ipaddress.IPv4Address(int(ip) & 0xFFFFFFFF)
@@ -254,17 +258,21 @@ def fetch_public(client, url: str, *, hops: int = 3, resolve=None):
     from urllib.parse import urljoin
 
     for _ in range(hops + 1):
-        host = urlparse(url).hostname or ""
-        address = None if _blocked(url) else _public_address(host, resolve)
-        if address is None:
+        if _blocked(url):
             return None
         named = httpx.URL(url)
+        # Check, connect and verify TLS for one spelling of the name: the
+        # IDNA ASCII host httpx sends (Python's own codec is IDNA 2003).
+        host = named.raw_host.decode("ascii")
+        address = _public_address(host, resolve)
+        if address is None:
+            return None
         page = client.get(
             named.copy_with(host=address, userinfo=b""),  # no Basic auth from a URL
             # Connection: close -- a pooled connection is keyed by IP, so it
             # must not carry one name's verified TLS session to another name.
             headers={"Host": named.netloc.decode("ascii"), "Connection": "close"},
-            extensions={"sni_hostname": named.raw_host.decode("ascii")},
+            extensions={"sni_hostname": host},
             follow_redirects=False,
         )
         if not page.is_redirect:

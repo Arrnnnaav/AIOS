@@ -375,6 +375,7 @@ def test_fetch_refuses_an_empty_host_and_embedded_private_ipv4():
 
         with httpx.Client(transport=httpx.MockTransport(handler)) as client:
             assert fetch_public(client, "http://good.com/start", resolve=everywhere) is None
+    assert not is_public("", resolve=everywhere)  # the one guard every caller passes
     for embedded in ("64:ff9b::a00:1", "2002:a00:1::1", "::ffff:10.0.0.1"):
         assert not is_public("x.com", resolve=lambda h, a=embedded: {a})
 
@@ -391,3 +392,16 @@ def test_fetch_prefers_ipv4_drops_userinfo_and_does_not_reuse_connections():
     assert request.url.host == "93.184.216.34"
     assert "authorization" not in request.headers and request.url.userinfo == b""
     assert request.headers["connection"] == "close"
+
+
+def test_fetch_checks_and_verifies_the_idna_name_and_refuses_ipv4_compatible():
+    import httpx
+
+    from ghostcursor.workspace.research import fetch_public, is_public
+
+    asked, seen = [], []
+    with httpx.Client(transport=httpx.MockTransport(lambda r: seen.append(r) or httpx.Response(200))) as client:
+        fetch_public(client, "https://bücher.de/", resolve=lambda h: asked.append(h) or {"93.184.216.34"})
+    assert asked == ["xn--bcher-kva.de"]
+    assert seen[0].extensions["sni_hostname"] == "xn--bcher-kva.de"
+    assert not is_public("x.com", resolve=lambda h: {"::a00:1"})
