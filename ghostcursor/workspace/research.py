@@ -203,10 +203,10 @@ def tavily_search(query: str, key: str, *, transport=None) -> list[dict]:
     return hits
 
 
-def is_public(host: str, *, resolve=None) -> bool:
-    """True only if every address ``host`` resolves to is globally routable:
-    a result page must never pull loopback or LAN content into passages that
-    go to a model (review of D173)."""
+def _public_address(host: str, resolve=None) -> str | None:
+    """One address of ``host`` if every address it resolves to is globally
+    routable, else None: a result page must never pull loopback or LAN
+    content into passages that go to a model (review of D173)."""
 
     import ipaddress
     import socket
@@ -215,23 +215,43 @@ def is_public(host: str, *, resolve=None) -> bool:
     try:
         addresses = resolve(host)
     except OSError:
-        return False
-    return bool(addresses) and all(
+        return None
+    if not addresses or not all(
         ipaddress.ip_address(a.split("%")[0]).is_global for a in addresses
-    )
+    ):
+        return None
+    return sorted(addresses)[0]
+
+
+def is_public(host: str, *, resolve=None) -> bool:
+    return _public_address(host, resolve) is not None
 
 
 def fetch_public(client, url: str, *, hops: int = 3, resolve=None):
-    """GET following at most ``hops`` redirects, checking every hop's host."""
+    """GET following at most ``hops`` redirects, checking every hop's host.
+
+    Each hop connects to the very address that was checked (Host header and
+    TLS SNI keep the name), so a DNS answer that changes between the check
+    and the connect -- rebinding -- cannot reach a private address."""
+
+    import httpx
+    from urllib.parse import urljoin
 
     for _ in range(hops + 1):
         host = urlparse(url).hostname or ""
-        if _blocked(url) or not is_public(host, resolve=resolve):
+        address = None if _blocked(url) else _public_address(host, resolve)
+        if address is None:
             return None
-        page = client.get(url, follow_redirects=False)
+        named = httpx.URL(url)
+        page = client.get(
+            named.copy_with(host=address),
+            headers={"Host": named.netloc.decode("ascii")},
+            extensions={"sni_hostname": host},
+            follow_redirects=False,
+        )
         if not page.is_redirect:
             return page
-        url = str(page.next_request.url) if page.next_request else ""
+        url = urljoin(url, page.headers.get("location", ""))
     return None
 
 

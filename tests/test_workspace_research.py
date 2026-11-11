@@ -260,13 +260,41 @@ def test_fetch_refuses_private_hosts_and_private_redirects():
     assert not is_public("lan.com", resolve=resolve) and not is_public("loop.com", resolve=resolve)
 
     def handler(request):
-        if request.url.host == "good.com":
+        if request.headers["host"] == "good.com":
             return httpx.Response(302, headers={"location": "http://loop.com/admin"})
         return httpx.Response(200, text="<html>secret</html>")
 
     with httpx.Client(transport=httpx.MockTransport(handler)) as client:
         assert fetch_public(client, "http://good.com/x", resolve=resolve) is None
         assert fetch_public(client, "http://lan.com/x", resolve=resolve) is None
+
+
+def test_fetch_connects_to_the_address_it_checked_not_a_second_lookup():
+    """DNS rebinding: a name that answers public for the check and private for
+    the connect must never reach the private address."""
+    import httpx
+
+    from ghostcursor.workspace.research import fetch_public
+
+    answers = iter([{"93.184.216.34"}, {"127.0.0.1"}])  # check, then rebind
+    seen = []
+
+    def handler(request):
+        seen.append(request)
+        if request.url.path == "/x":
+            return httpx.Response(302, headers={"location": "/y"})
+        return httpx.Response(200, text="<html>ok</html>")
+
+    dns = {"good.com": {"93.184.216.34"}}
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        page = fetch_public(client, "https://good.com/x", resolve=dns.__getitem__)
+        assert page is not None and page.text == "<html>ok</html>"
+        assert [r.url.host for r in seen] == ["93.184.216.34", "93.184.216.34"]
+        assert {r.headers["host"] for r in seen} == {"good.com"}  # relative redirect keeps the name
+        assert {r.extensions["sni_hostname"] for r in seen} == {"good.com"}  # TLS checks the name
+        seen.clear()
+        assert fetch_public(client, "http://rebind.com/z", resolve=lambda h: next(answers)) is not None
+        assert seen[0].url.host == "93.184.216.34"
 
 
 def test_rerank_drops_irrelevant_passages_and_orders_by_relevance():
@@ -314,3 +342,17 @@ def test_rerank_keeps_the_best_when_all_are_below_the_floor():
 
     out = rerank_passages(graph, G())
     assert out.passages  # never starves the model
+
+
+def test_fetch_refuses_a_mixed_answer_and_a_blocked_host():
+    import httpx
+
+    from ghostcursor.workspace.research import BLOCKED_HOSTS, fetch_public
+
+    dns = {"mixed.com": {"93.184.216.34", "10.0.0.7"}}
+    blocked = sorted(BLOCKED_HOSTS)[0]
+    hits = []
+    with httpx.Client(transport=httpx.MockTransport(lambda r: hits.append(r) or httpx.Response(200))) as client:
+        assert fetch_public(client, "http://mixed.com/", resolve=dns.__getitem__) is None
+        assert fetch_public(client, f"https://{blocked}/", resolve=lambda h: {"93.184.216.34"}) is None
+    assert hits == []
