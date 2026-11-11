@@ -850,3 +850,18 @@ def test_a_superseded_fact_cannot_be_approved_back_beside_its_successor(kn):
     with pytest.raises(ValueError, match="replaced"):
         kn.approve(old.fid)
     assert [f.fid for f in kn.recall("prod region", "acme")] == [new.fid]
+
+
+def test_scope_lookups_use_an_index(tmp_path):
+    k = Knowledge(tmp_path / "k.sqlite")
+    try:
+        plan = " ".join(
+            str(r[-1])
+            for r in k._db.execute(
+                "EXPLAIN QUERY PLAN SELECT * FROM edges WHERE scope=? AND status='reviewed'",
+                ("s",),
+            )
+        )
+        assert "INDEX" in plan
+    finally:
+        k.close()

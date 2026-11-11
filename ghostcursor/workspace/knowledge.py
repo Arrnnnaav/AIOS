@@ -93,6 +93,9 @@ CREATE TABLE IF NOT EXISTS sensitive_sources (pattern TEXT PRIMARY KEY);
 -- EnterpriseContext::CaptureBlockedUnknownSensitivity (D186): max-privacy
 -- posture where nothing reaches a model without an explicit unmark.
 CREATE TABLE IF NOT EXISTS brain_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+-- Recall and review filter by scope (and edges by status) on every call.
+CREATE INDEX IF NOT EXISTS facts_scope ON facts(scope, status);
+CREATE INDEX IF NOT EXISTS edges_scope ON edges(scope, status);
 """
 
 
