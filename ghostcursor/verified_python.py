@@ -53,28 +53,28 @@ def main(argv: list[str] | None = None) -> int:
         if resolved == payload_root or resolved == path.parent:
             continue
         safe_paths.append(str(resolved))
-    # ``-I`` intentionally disables the user site. GhostCursor's Windows
-    # dependencies may legitimately be installed there, so add the directory
-    # itself without running its ``.pth`` startup code. PyWin32 also needs its
-    # three import directories and DLL directory explicitly. These are
+    # ``-I`` intentionally disables the user site and ``-S`` skips every
+    # ``.pth``. GhostCursor's Windows dependencies may be installed in either
+    # the system or the user site, so add each site directory itself without
+    # running its startup code, plus PyWin32's three import directories and
+    # DLL directory, which its ``.pth`` would normally add. These are
     # interpreter-owned dependency locations, never the plugin payload root.
-    user_site = Path(site.getusersitepackages()).resolve()
     install_paths = sysconfig.get_paths()
-    dependency_paths = [
-        Path(install_paths["purelib"]).resolve(),
-        Path(install_paths["platlib"]).resolve(),
-        user_site,
-        user_site / "win32",
-        user_site / "win32" / "lib",
-        user_site / "Pythonwin",
-    ]
+    dependency_paths, dll_directories = _dependency_paths(
+        [
+            Path(install_paths["purelib"]).resolve(),
+            Path(install_paths["platlib"]).resolve(),
+            Path(site.getusersitepackages()).resolve(),
+        ]
+    )
     for dependency in dependency_paths:
-        if dependency.is_dir() and str(dependency) not in safe_paths:
+        if str(dependency) not in safe_paths:
             safe_paths.append(str(dependency))
-    dll_directory = user_site / "pywin32_system32"
-    dll_handle = None
-    if dll_directory.is_dir() and hasattr(os, "add_dll_directory"):
-        dll_handle = os.add_dll_directory(str(dll_directory))
+    dll_handles = [
+        os.add_dll_directory(str(d))
+        for d in dll_directories
+        if hasattr(os, "add_dll_directory")
+    ]
     sys.path[:] = [str(trusted_root), *safe_paths]
 
     child_argv = [str(path), *arguments[3:]]
@@ -91,9 +91,25 @@ def main(argv: list[str] | None = None) -> int:
         exec(compile(source, str(path), "exec"), namespace, namespace)
     finally:
         sys.argv = previous
-        if dll_handle is not None:
-            dll_handle.close()
+        for handle in dll_handles:
+            handle.close()
     return 0
+
+
+def _dependency_paths(site_dirs: list[Path]) -> tuple[list[Path], list[Path]]:
+    """Existing site directories with PyWin32's import directories, in order,
+    and its DLL directories -- for the system and the user site alike."""
+
+    paths: list[Path] = []
+    dlls: list[Path] = []
+    for root in site_dirs:
+        for directory in (root, root / "win32", root / "win32" / "lib", root / "Pythonwin"):
+            if directory.is_dir() and directory not in paths:
+                paths.append(directory)
+        dll = root / "pywin32_system32"
+        if dll.is_dir() and dll not in dlls:
+            dlls.append(dll)
+    return paths, dlls
 
 
 if __name__ == "__main__":

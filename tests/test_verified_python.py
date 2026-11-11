@@ -123,3 +123,17 @@ def test_bootstrap_refuses_when_system_site_startup_was_not_disabled(tmp_path):
     assert completed.returncode != 0
     assert "requires -I -S" in completed.stderr
     assert not marker.exists()
+
+
+def test_pywin32_directories_are_found_in_the_system_site_too(tmp_path):
+    """CI 2026-11-11: pywin32 installed system-wide (not --user) left the
+    adapter child unable to import win32api, because only the user site's
+    PyWin32 directories were added under -S."""
+    from ghostcursor.verified_python import _dependency_paths
+
+    system, user, missing = tmp_path / "system", tmp_path / "user", tmp_path / "gone"
+    for d in (system / "win32" / "lib", system / "Pythonwin", system / "pywin32_system32", user):
+        d.mkdir(parents=True)
+    paths, dlls = _dependency_paths([system, system, user, missing])
+    assert paths == [system, system / "win32", system / "win32" / "lib", system / "Pythonwin", user]
+    assert dlls == [system / "pywin32_system32"]
