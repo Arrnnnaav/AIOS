@@ -2216,3 +2216,15 @@ Open:
       so in the UI (Act still re-asks approval).
 - [ ] No test pins the 4-redirect limit on the ICS fetch, or that an IMAP
       password never appears in an error message.
+
+## HeyClicky UI pass and resilience sweep -- 2026-11-11
+
+- Ring fly-in (`cue.fly_position`) touches the overlay (rule 3/4 area): one
+  independent tier-1 review before merge; mutation target = `fly_position`
+  returning `end` at `elapsed >= duration`.
+- Clicky-style resting companion beside the pointer (idle/blink, Listening /
+  Thinking / Speaking on the cursor itself) -- island shows Listening only.
+- Routine backoff counts live in memory; a restart resets them.
+- SSRF check in `research.fetch_public` resolves the host before httpx does:
+  a DNS-rebinding window remains (pin the resolved IP to close it).
+- CI workflow `.github/workflows/hermetic.yml` has not run on GitHub yet.
