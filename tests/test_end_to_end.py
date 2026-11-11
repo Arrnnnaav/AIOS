@@ -38,9 +38,11 @@ def check(name: str, ok: bool, detail: str = "") -> None:
 
 
 def settle() -> None:
-    for _ in range(3):
+    # Long enough for the ring's fly-in (cue.FLY_S) to land.
+    for _ in range(8):
         win32gui.PumpWaitingMessages()
         time.sleep(0.08)
+    win32gui.PumpWaitingMessages()
 
 
 def run() -> None:

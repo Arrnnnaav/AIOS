@@ -89,9 +89,11 @@ def require_capturable_desktop() -> None:
 
 def settle() -> None:
     """Let the compositor catch up before screenshotting."""
-    for _ in range(3):
+    # Long enough for the ring's fly-in (cue.FLY_S) to land.
+    for _ in range(8):
         win32gui.PumpWaitingMessages()
         time.sleep(0.08)
+    win32gui.PumpWaitingMessages()
 
 
 def classify(frame: np.ndarray) -> dict[str, np.ndarray]:

@@ -1,9 +1,11 @@
 """End-to-end: recipe -> ground -> hint on screen -> user acts -> verify."""
 
+import time
 from pathlib import Path
 
 import mss
 import numpy as np
+import win32gui
 
 from ghostcursor.overlay import dpi
 from ghostcursor.overlay import window as ov
@@ -93,6 +95,11 @@ def test_tour_grounds_renders_and_verifies_against_a_real_window():
                 tour.tick()
                 app.pump()
             assert tour.state is State.AWAITING_USER_ACTION
+            # Let the ring's fly-in (cue.FLY_S) land on the control.
+            deadline = time.monotonic() + 0.7
+            while time.monotonic() < deadline:
+                win32gui.PumpWaitingMessages()
+                time.sleep(0.03)
 
             # the hint must be on screen, over the Export button. Search only
             # a crop around the button's own bbox centre to avoid unrelated

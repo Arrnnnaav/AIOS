@@ -109,6 +109,35 @@ def pulse_delta(
     return round(amplitude * (1 - math.cos(2 * math.pi * (t % period) / period)) / 2)
 
 
+#: The Teach ring flies from where the user's cursor is to the control
+#: (HeyClicky's spring flight) instead of appearing there. Short enough to
+#: never delay a step; only a move this far is worth a flight.
+FLY_S = 0.45
+FLY_MIN_PX = 40
+_OVERSHOOT = 1.2  # easeOutBack constant: ~6% past the control, then settles
+
+
+def fly_position(
+    start: tuple[int, int],
+    end: tuple[int, int],
+    elapsed: float,
+    *,
+    duration: float = FLY_S,
+) -> tuple[int, int]:
+    """Where the ring is ``elapsed`` seconds into a flight. Ease-out with a
+    small spring overshoot; exactly ``end`` (the observed control) from
+    ``duration`` on, so a resting ring is always on the real control."""
+
+    if duration <= 0 or elapsed >= duration:
+        return end
+    t = max(elapsed, 0.0) / duration - 1
+    k = 1 + (_OVERSHOOT + 1) * t**3 + _OVERSHOOT * t**2
+    return (
+        round(start[0] + (end[0] - start[0]) * k),
+        round(start[1] + (end[1] - start[1]) * k),
+    )
+
+
 def pointer_polygon(x: int, y: int, *, scale: int = 1) -> tuple[tuple[int, int], ...]:
     """The glyph outline with its tip at ``(x, y)``."""
 
@@ -309,7 +338,10 @@ __all__ = [
     "PULSE_AMPLITUDE_PX",
     "PULSE_PERIOD_S",
     "TRUST_COLOURS",
+    "FLY_MIN_PX",
+    "FLY_S",
     "cue_colour",
+    "fly_position",
     "label_box",
     "pointer_polygon",
     "pulse_delta",

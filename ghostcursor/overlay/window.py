@@ -14,6 +14,7 @@ invalidate the window. Drawing outside WM_PAINT leaves the window surface
 uninitialised, which renders as opaque garbage covering the screen.
 """
 
+import ctypes
 from typing import TYPE_CHECKING
 
 import win32api
@@ -133,12 +134,24 @@ def _wnd_proc(hwnd, msg, wparam, lparam):
         # Erase to the colorkey -> the whole overlay is transparent by default.
         win32gui.FillRect(hdc, win32gui.GetClientRect(hwnd), _bg_brush)
         if _hint is not None:
-            _paint_ring(hdc, *_hint)
+            _paint_ring(hdc, *_ring_position(), *_hint[2:])
         if _cue is not None:
             _paint_cue(hdc, _cue)
         if _sketch is not None:
             _paint_sketch(hdc, *_sketch)
         win32gui.EndPaint(hwnd, paint_struct)
+        return 0
+
+    if msg == win32con.WM_TIMER and wparam == _FLY_TIMER:
+        global _flight
+        import time
+
+        from ghostcursor.overlay.cue import FLY_S
+
+        if _flight is None or time.monotonic() - _flight[1] >= FLY_S:
+            _flight = None
+            ctypes.windll.user32.KillTimer(hwnd, _FLY_TIMER)
+        win32gui.InvalidateRect(hwnd, None, False)
         return 0
 
     if msg == win32con.WM_ERASEBKGND:
@@ -219,18 +232,54 @@ def set_hint(
     """Show the hint ring centred on a *screen* coordinate, repainting now."""
     from ghostcursor.reasoning.staleness import Freshness
 
-    global _hint
+    global _hint, _flight
+    import time
+
+    from ghostcursor.overlay.cue import FLY_MIN_PX
+
     if freshness is None:
         freshness = Freshness.FRESH
-    _hint = (screen_x - _origin[0], screen_y - _origin[1], radius, freshness)
+    x, y = screen_x - _origin[0], screen_y - _origin[1]
+    if _hint is None:
+        cx, cy = win32api.GetCursorPos()
+        start = (cx - _origin[0], cy - _origin[1])  # fly out from the user's cursor
+    else:
+        start = (
+            _ring_position()
+            if abs(x - _hint[0]) + abs(y - _hint[1]) > FLY_MIN_PX
+            else None
+        )
+    if start is not None and abs(x - start[0]) + abs(y - start[1]) > FLY_MIN_PX:
+        _flight = (start, time.monotonic())
+        ctypes.windll.user32.SetTimer(hwnd, _FLY_TIMER, 15, None)  # repaint smoothly while flying
+    _hint = (x, y, radius, freshness)
     win32gui.InvalidateRect(hwnd, None, False)
     win32gui.UpdateWindow(hwnd)
 
 
+# A ring flight in progress: (start point in client coords, monotonic start),
+# or None. The timer only invalidates; painting stays in WM_PAINT (rule 4).
+_flight = None
+_FLY_TIMER = 7
+
+
+def _ring_position() -> tuple[int, int]:
+    """Where the hint ring is drawn now: mid-flight, or on its control."""
+    import time
+
+    from ghostcursor.overlay.cue import fly_position
+
+    end = (_hint[0], _hint[1])
+    if _flight is None:
+        return end
+    start, started = _flight
+    return fly_position(start, end, time.monotonic() - started)
+
+
 def clear_hint(hwnd: int) -> None:
     """Remove any hint, leaving the overlay fully transparent."""
-    global _hint
-    _hint = None
+    global _hint, _flight
+    _hint = _flight = None
     win32gui.InvalidateRect(hwnd, None, False)
     win32gui.UpdateWindow(hwnd)
 
