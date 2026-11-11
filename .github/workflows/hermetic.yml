@@ -10,7 +10,12 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
+      # Pinned bytes are LF (D125) and some tests walk commit history, so check
+      # out the way a developer clone is: no CRLF conversion, full history.
+      - run: git config --global core.autocrlf input
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
