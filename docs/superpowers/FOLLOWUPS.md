@@ -2217,19 +2217,21 @@ Open:
 - [ ] No test pins the 4-redirect limit on the ICS fetch, or that an IMAP
       password never appears in an error message.
 
-## HeyClicky UI pass and resilience sweep -- 2026-11-11
+## HeyClicky UI pass and resilience sweep -- 2026-11-11/12
 
-Tier-1 review of 9ecc270..eab0a49: no blocking findings. Fixed in the
-follow-up commit: secure-desktop cursor read, SetTimer/KillTimer argtypes,
-ring state reset on destroy, overshoot removed (strict rule 3), Stop polled
-during a Retry-After wait, tests for deadline/Stop/paused routine; D018
-15/15 killed. Still open:
+Three tier-1 reviews (9ecc270..eab0a49; af58006; 8b3885b..1053b54). One
+blocking finding (empty-host redirect reached this machine's own services),
+fixed in 8b3885b. Closed since: DNS rebinding (af58006, a6cfcd7), CI SHA
+pins and no persisted token (1053b54), PyWin32 found in the system site for
+the verified adapter boot (7abb41c, 9ece5b8). Hermetic CI green on Windows
+from 1053b54. Still open:
 
 - Clicky-style resting companion beside the pointer (idle/blink, Listening /
   Thinking / Speaking on the cursor itself) -- island shows Listening only.
 - Routine backoff counts live in memory; a restart resets them. A failed
   save in `_routine_retry` costs only that retry (tick pauses on save failure).
-- SSRF check in `research.fetch_public` resolves the host before httpx does:
-  a DNS-rebinding window remains (pin the resolved IP to close it).
-- `.github/workflows/hermetic.yml`: pin actions to commit SHAs; first run on
-  GitHub not yet seen.
+- `research._global` rejects every 6to4 (2002::/16) address, even one
+  embedding a global IPv4 (Python calls 6to4 non-global). Fails closed.
+- `verified_python`: if `os.add_dll_directory` fails on a second directory
+  the first handle is not closed; the process exits right after.
+- `ghostcursor.__version__` is still 0.1.0; bump it when a release is cut.
