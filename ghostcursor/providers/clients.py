@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+import random
 import threading
 import time
 from dataclasses import dataclass
@@ -104,6 +105,7 @@ SYSTEM_TWO = {
     ),
 }
 
+
 def system_two(name: str) -> ProviderConfig | None:
     """A System-Two provider's config. ``company`` exists only while an
     organisation policy names its model gateway (CompanyEndpoint, D187) AND
@@ -151,6 +153,18 @@ def _status_failure(config: ProviderConfig, code: int) -> ProviderError | None:
     return None
 
 
+def _retry_wait(response) -> float:
+    """The server's Retry-After in seconds (capped at 5), else 0.2, plus jitter so
+    parallel callers do not retry in lockstep. An HTTP-date form falls back to 1."""
+
+    raw = response.headers.get("retry-after", "")
+    try:
+        wait = min(max(float(raw), 0.0), 5.0) if raw else 0.2
+    except ValueError:
+        wait = 1.0
+    return wait + random.uniform(0, 0.2)
+
+
 def _post(
     config: ProviderConfig,
     key: str | None,
@@ -187,8 +201,13 @@ def _post(
             failure = _status_failure(config, code)
             if failure is not None:
                 retryable = code == 429 or code >= 500
-                if retryable and attempt == 1 and deadline - time.monotonic() > 0.5:
-                    time.sleep(0.2)
+                wait = _retry_wait(response)
+                if (
+                    retryable
+                    and attempt == 1
+                    and deadline - time.monotonic() > wait + 0.5
+                ):
+                    time.sleep(wait)
                     continue
                 raise failure
             try:
@@ -290,7 +309,9 @@ def anthropic_json_call(
     )
     start, end = text.find("{"), text.rfind("}")
     if start < 0 or end < start:
-        raise ProviderError(FailureKind.INVALID_OUTPUT, f"{config.name}: no JSON object")
+        raise ProviderError(
+            FailureKind.INVALID_OUTPUT, f"{config.name}: no JSON object"
+        )
     return text[start : end + 1], reply
 
 
@@ -348,8 +369,12 @@ def responses_json_call(
                             response.close()
                             return
 
-                threading.Thread(target=watch, name="StreamWatchdog", daemon=True).start()
-                for line in _watched(response.iter_lines(), ended, cancelled, deadline, config):
+                threading.Thread(
+                    target=watch, name="StreamWatchdog", daemon=True
+                ).start()
+                for line in _watched(
+                    response.iter_lines(), ended, cancelled, deadline, config
+                ):
                     if cancelled():
                         raise ProviderError(FailureKind.CANCELLED)
                     if time.monotonic() > deadline:
@@ -382,7 +407,9 @@ def responses_json_call(
             raise ProviderError(
                 FailureKind.UNAVAILABLE, f"{config.name}: {type(exc).__name__}"
             ) from exc
-    raise ProviderError(FailureKind.INVALID_OUTPUT, f"{config.name}: stream ended early")
+    raise ProviderError(
+        FailureKind.INVALID_OUTPUT, f"{config.name}: stream ended early"
+    )
 
 
 def _watched(lines, ended, cancelled, deadline, config):
@@ -423,7 +450,9 @@ def _plan_limit_in(config, response) -> ProviderError | None:
         return None
     error = body.get("error") if isinstance(body, dict) else None
     if isinstance(error, dict) and error.get("code") in PLAN_LIMIT_CODES:
-        return ProviderError(FailureKind.RATE_LIMITED, f"{config.name}: {error['code']}")
+        return ProviderError(
+            FailureKind.RATE_LIMITED, f"{config.name}: {error['code']}"
+        )
     return None
 
 

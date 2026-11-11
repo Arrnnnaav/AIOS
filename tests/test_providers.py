@@ -745,3 +745,24 @@ def test_screen_text_with_a_credential_is_masked(secret):
 )  # fmt: skip
 def test_compound_role_tags_are_still_replaced(tag):
     assert FAKE_BOUNDARY in sanitize(tag)
+
+
+def test_a_rate_limit_honours_retry_after_within_the_deadline(tmp_path, monkeypatch):
+    from ghostcursor.providers import clients
+
+    slept = []
+    monkeypatch.setattr(clients.time, "sleep", slept.append)
+    replies = iter(
+        [httpx.Response(429, headers={"Retry-After": "2"}, json={}),
+         httpx.Response(429, headers={"Retry-After": "2"}, json={})]
+    )
+    transport, calls = _transport(lambda r: next(replies))
+    gateway = Gateway(
+        system_two=("nvidia",),
+        transport=transport,
+        key_lookup=_keys(nvidia="k"),
+        log_path=tmp_path / "l",
+    )
+    with pytest.raises(ProviderError):
+        gateway.plan(_envelope())
+    assert len(calls) == 2 and len(slept) == 1 and 2.0 <= slept[0] <= 2.25
