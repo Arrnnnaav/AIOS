@@ -2219,12 +2219,17 @@ Open:
 
 ## HeyClicky UI pass and resilience sweep -- 2026-11-11
 
-- Ring fly-in (`cue.fly_position`) touches the overlay (rule 3/4 area): one
-  independent tier-1 review before merge; mutation target = `fly_position`
-  returning `end` at `elapsed >= duration`.
+Tier-1 review of 9ecc270..eab0a49: no blocking findings. Fixed in the
+follow-up commit: secure-desktop cursor read, SetTimer/KillTimer argtypes,
+ring state reset on destroy, overshoot removed (strict rule 3), Stop polled
+during a Retry-After wait, tests for deadline/Stop/paused routine; D018
+15/15 killed. Still open:
+
 - Clicky-style resting companion beside the pointer (idle/blink, Listening /
   Thinking / Speaking on the cursor itself) -- island shows Listening only.
-- Routine backoff counts live in memory; a restart resets them.
+- Routine backoff counts live in memory; a restart resets them. A failed
+  save in `_routine_retry` costs only that retry (tick pauses on save failure).
 - SSRF check in `research.fetch_public` resolves the host before httpx does:
   a DNS-rebinding window remains (pin the resolved IP to close it).
-- CI workflow `.github/workflows/hermetic.yml` has not run on GitHub yet.
+- `.github/workflows/hermetic.yml`: pin actions to commit SHAs; first run on
+  GitHub not yet seen.

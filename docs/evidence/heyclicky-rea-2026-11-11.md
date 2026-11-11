@@ -36,12 +36,17 @@ while it draws (D189).
 ## What Orbyn took
 
 - The ring now flies from the user's cursor (or from where it was) to the
-  observed control with a spring ease-out and lands exactly on it
-  (`cue.fly_position`, `FLY_S` = 0.45 s, moves under `FLY_MIN_PX` snap). A
-  15 ms timer only invalidates; painting stays in WM_PAINT (rule 4). Pinned by
-  `tests/test_cue_flight.py`; desktop runs: `tests.test_overlay` 16/16,
-  `tests.test_end_to_end` 8/8, pixel lane 3/3, interactive lane 85/85 on
-  this machine, 11 November 2026.
+  observed control with a cubic ease-out and lands exactly on it, never
+  passing it (`cue.fly_position`, `FLY_S` = 0.45 s; moves under `FLY_MIN_PX`
+  snap). The first version overshot like Clicky's spring; the tier-1 review
+  (11 November 2026, no blocking findings) read rule 3 strictly, so the
+  overshoot was removed. A 15 ms timer only invalidates; painting stays in
+  WM_PAINT (rule 4). Pinned by `tests/test_cue_flight.py`; D018 sweep 15
+  mutants, 15 killed (flight, provider retry wait, routine backoff).
+- Desktop lane results for this change were read off the terminal in the
+  working session and not captured to a file (D034): `tests.test_overlay`
+  16/16, `tests.test_end_to_end` 8/8, pixel 3/3, interactive 85/85. They are
+  stated, not recorded evidence; the owner's full run is the record.
 
 ## Not taken
 

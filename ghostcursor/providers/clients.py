@@ -207,7 +207,11 @@ def _post(
                     and attempt == 1
                     and deadline - time.monotonic() > wait + 0.5
                 ):
-                    time.sleep(wait)
+                    until = time.monotonic() + wait
+                    while time.monotonic() < until:  # Stop frees the worker
+                        if cancelled():
+                            raise ProviderError(FailureKind.CANCELLED)
+                        time.sleep(min(0.1, until - time.monotonic()))
                     continue
                 raise failure
             try:

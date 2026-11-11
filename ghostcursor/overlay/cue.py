@@ -114,7 +114,9 @@ def pulse_delta(
 #: never delay a step; only a move this far is worth a flight.
 FLY_S = 0.45
 FLY_MIN_PX = 40
-_OVERSHOOT = 1.2  # easeOutBack constant: ~6% past the control, then settles
+# No overshoot: the ring never passes the observed control (rule 3, strict
+# reading from the 2026-11-11 tier-1 review), it only eases into it.
+_OVERSHOOT = 0.0
 
 
 def fly_position(
@@ -124,8 +126,8 @@ def fly_position(
     *,
     duration: float = FLY_S,
 ) -> tuple[int, int]:
-    """Where the ring is ``elapsed`` seconds into a flight. Ease-out with a
-    small spring overshoot; exactly ``end`` (the observed control) from
+    """Where the ring is ``elapsed`` seconds into a flight. Cubic ease-out,
+    never past the control; exactly ``end`` (the observed control) from
     ``duration`` on, so a resting ring is always on the real control."""
 
     if duration <= 0 or elapsed >= duration:

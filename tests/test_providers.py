@@ -750,8 +750,14 @@ def test_compound_role_tags_are_still_replaced(tag):
 def test_a_rate_limit_honours_retry_after_within_the_deadline(tmp_path, monkeypatch):
     from ghostcursor.providers import clients
 
-    slept = []
-    monkeypatch.setattr(clients.time, "sleep", slept.append)
+    slept, clock = [], [0.0]
+    monkeypatch.setattr(clients.time, "monotonic", lambda: clock[0])
+
+    def sleep(s):
+        slept.append(s)
+        clock[0] += s
+
+    monkeypatch.setattr(clients.time, "sleep", sleep)
     replies = iter(
         [httpx.Response(429, headers={"Retry-After": "2"}, json={}),
          httpx.Response(429, headers={"Retry-After": "2"}, json={})]
@@ -765,4 +771,43 @@ def test_a_rate_limit_honours_retry_after_within_the_deadline(tmp_path, monkeypa
     )
     with pytest.raises(ProviderError):
         gateway.plan(_envelope())
-    assert len(calls) == 2 and len(slept) == 1 and 2.0 <= slept[0] <= 2.25
+    assert len(calls) == 2 and 2.0 <= sum(slept) <= 2.25
+
+
+def _jev_post(responses, *, deadline_s=30.0, cancelled=lambda: False):
+    from ghostcursor.providers import clients
+
+    replies = iter(responses)
+    transport, calls = _transport(lambda r: next(replies))
+    try:
+        clients._post(
+            clients.SYSTEM_ONE, "k", "/x", {}, transport=transport,
+            deadline_s=deadline_s, cancelled=cancelled,
+        )
+    except ProviderError as exc:
+        return exc, calls
+    return None, calls
+
+
+def test_a_retry_after_past_the_deadline_is_not_waited_for(monkeypatch):
+    from ghostcursor.providers import clients
+
+    slept = []
+    monkeypatch.setattr(clients.time, "sleep", slept.append)
+    error, calls = _jev_post(
+        [httpx.Response(429, headers={"Retry-After": "5"}, json={})], deadline_s=3.0
+    )
+    assert error.kind is FailureKind.RATE_LIMITED and len(calls) == 1 and slept == []
+
+
+def test_stop_during_a_retry_wait_frees_the_worker(monkeypatch):
+    from ghostcursor.providers import clients
+
+    stopped = []
+    monkeypatch.setattr(clients.time, "sleep", lambda s: stopped.append(s))
+    error, calls = _jev_post(
+        [httpx.Response(503, headers={"Retry-After": "1"}, json={})],
+        cancelled=lambda: bool(stopped),
+    )
+    assert error.kind is FailureKind.CANCELLED and len(calls) == 1
+    assert len(stopped) == 1  # noticed after one slice, not after the whole wait

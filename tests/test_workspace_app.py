@@ -1699,3 +1699,27 @@ def test_failed_routine_retries_with_backoff_not_a_whole_period(served):
         time.sleep(0.01)
     assert len(calls) == 3
     assert app.state()["routines"][0]["next_due"] == now[0] + appmod.ROUTINE_SECONDS["weekly"]
+
+
+def test_a_routine_paused_mid_run_is_not_rescheduled_by_its_failure(served):
+    app, port = served
+    now = [100.0]
+    app.clock = lambda: now[0]
+    gate = threading.Event()
+
+    def research(question, *, cancelled, record):
+        gate.wait(5)
+        raise OSError("network blip")
+
+    app.ws.research = research
+    rid = json.loads(call(port, "/api/routine_create", {"question": "Watch", "cadence": "daily"})[1])["id"]
+    now[0] += appmod.ROUTINE_SECONDS["daily"]
+    app.tick_routines()
+    assert call(port, "/api/routine_pause", {"id": rid})[0] == 200
+    before = dict(app.state()["routines"][0])
+    gate.set()
+    _wait_for_job(app, "failed")
+    while app.busy:
+        time.sleep(0.01)
+    after = app.state()["routines"][0]
+    assert after["enabled"] is False and after["next_due"] == before["next_due"]

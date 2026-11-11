@@ -15,6 +15,7 @@ uninitialised, which renders as opaque garbage covering the screen.
 """
 
 import ctypes
+from ctypes import wintypes
 from typing import TYPE_CHECKING
 
 import win32api
@@ -150,7 +151,7 @@ def _wnd_proc(hwnd, msg, wparam, lparam):
 
         if _flight is None or time.monotonic() - _flight[1] >= FLY_S:
             _flight = None
-            ctypes.windll.user32.KillTimer(hwnd, _FLY_TIMER)
+            _user32.KillTimer(hwnd, _FLY_TIMER)
         win32gui.InvalidateRect(hwnd, None, False)
         return 0
 
@@ -241,8 +242,11 @@ def set_hint(
         freshness = Freshness.FRESH
     x, y = screen_x - _origin[0], screen_y - _origin[1]
     if _hint is None:
-        cx, cy = win32api.GetCursorPos()
-        start = (cx - _origin[0], cy - _origin[1])  # fly out from the user's cursor
+        try:  # fly out from the user's cursor
+            cx, cy = win32api.GetCursorPos()
+            start = (cx - _origin[0], cy - _origin[1])
+        except win32api.error:  # secure desktop (lock/UAC): just snap
+            start = None
     else:
         start = (
             _ring_position()
@@ -251,7 +255,7 @@ def set_hint(
         )
     if start is not None and abs(x - start[0]) + abs(y - start[1]) > FLY_MIN_PX:
         _flight = (start, time.monotonic())
-        ctypes.windll.user32.SetTimer(hwnd, _FLY_TIMER, 15, None)  # repaint smoothly while flying
+        _user32.SetTimer(hwnd, _FLY_TIMER, 15, None)  # repaint smoothly while flying
     _hint = (x, y, radius, freshness)
     win32gui.InvalidateRect(hwnd, None, False)
     win32gui.UpdateWindow(hwnd)
@@ -261,6 +265,10 @@ def set_hint(
 # or None. The timer only invalidates; painting stays in WM_PAINT (rule 4).
 _flight = None
 _FLY_TIMER = 7
+_user32 = ctypes.WinDLL("user32", use_last_error=True)
+_user32.SetTimer.argtypes = (wintypes.HWND, ctypes.c_size_t, wintypes.UINT, ctypes.c_void_p)
+_user32.SetTimer.restype = ctypes.c_size_t
+_user32.KillTimer.argtypes = (wintypes.HWND, ctypes.c_size_t)
 
 
 def _ring_position() -> tuple[int, int]:
@@ -466,6 +474,8 @@ def clear_sketch(hwnd: int) -> None:
 def destroy_overlay_window(hwnd: int) -> None:
     """Tear the overlay down. Always call this on exit — a stranded
     full-screen window is exactly the failure that locks a user out."""
+    global _hint, _flight
+    _hint = _flight = None  # a later overlay must not inherit this ring
     try:
         win32gui.DestroyWindow(hwnd)
     except win32gui.error:
