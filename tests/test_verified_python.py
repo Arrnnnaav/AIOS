@@ -137,3 +137,15 @@ def test_pywin32_directories_are_found_in_the_system_site_too(tmp_path):
     paths, dlls = _dependency_paths([system, system, user, missing])
     assert paths == [system, system / "win32", system / "win32" / "lib", system / "Pythonwin", user]
     assert dlls == [system / "pywin32_system32"]
+
+
+def test_payload_folders_never_join_the_dependency_paths(tmp_path):
+    from ghostcursor.verified_python import _dependency_paths
+
+    site_dir = tmp_path / "site"
+    (site_dir / "win32").mkdir(parents=True)
+    (site_dir / "pywin32_system32").mkdir()
+    paths, dlls = _dependency_paths(
+        [site_dir], exclude=(site_dir / "win32", site_dir / "pywin32_system32")
+    )
+    assert paths == [site_dir] and dlls == []

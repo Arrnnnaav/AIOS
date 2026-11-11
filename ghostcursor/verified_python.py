@@ -65,7 +65,8 @@ def main(argv: list[str] | None = None) -> int:
             Path(install_paths["purelib"]).resolve(),
             Path(install_paths["platlib"]).resolve(),
             Path(site.getusersitepackages()).resolve(),
-        ]
+        ],
+        exclude=(payload_root, path.parent),
     )
     for dependency in dependency_paths:
         if str(dependency) not in safe_paths:
@@ -96,7 +97,9 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def _dependency_paths(site_dirs: list[Path]) -> tuple[list[Path], list[Path]]:
+def _dependency_paths(
+    site_dirs: list[Path], *, exclude: tuple[Path, ...] = ()
+) -> tuple[list[Path], list[Path]]:
     """Existing site directories with PyWin32's import directories, in order,
     and its DLL directories -- for the system and the user site alike."""
 
@@ -104,10 +107,10 @@ def _dependency_paths(site_dirs: list[Path]) -> tuple[list[Path], list[Path]]:
     dlls: list[Path] = []
     for root in site_dirs:
         for directory in (root, root / "win32", root / "win32" / "lib", root / "Pythonwin"):
-            if directory.is_dir() and directory not in paths:
+            if directory.is_dir() and directory not in paths and directory not in exclude:
                 paths.append(directory)
         dll = root / "pywin32_system32"
-        if dll.is_dir() and dll not in dlls:
+        if dll.is_dir() and dll not in dlls and dll not in exclude:
             dlls.append(dll)
     return paths, dlls
 
