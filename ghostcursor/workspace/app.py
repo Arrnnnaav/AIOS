@@ -120,7 +120,9 @@ ACTIVITY_STATES = frozenset({"running", "finished", "stopped", "failed", "interr
 ROUTINE_SECONDS = {"hourly": 3600, "daily": 86400, "weekdays": 86400, "weekly": 604800}
 
 
-def suggested_routines(jobs: list[dict], routines: list[dict], dismissed=()) -> list[str]:
+def suggested_routines(
+    jobs: list[dict], routines: list[dict], dismissed=()
+) -> list[str]:
     """Research questions asked at least twice in the job inbox that are not
     routines yet: HeyClicky's proactive suggestions, from Orbyn's own local
     history instead of watching the screen. Only offered; nothing runs until
@@ -231,6 +233,7 @@ class App:
             ".routines.json"
         )
         self.routines = self._load_routines()
+        self._routine_failures: dict[str, int] = {}
         self.dismissed_suggestions: set[str] = set()  # this session only
         self.jobs.submit(self._refresh).result()
 
@@ -453,6 +456,24 @@ class App:
                 self._save_routines()  # the next period
                 return
 
+    def _routine_retry(self, rid: str, failed: bool) -> None:
+        """A failed routine run (a network blip) retries in 5, 10, 20... minutes,
+        capped at an hour and never later than its next period, instead of
+        waiting a whole period. Caller holds _job_lock."""
+
+        # ponytail: failure counts are in memory; a restart resets the backoff.
+        failures = self._routine_failures
+        if not failed:
+            failures.pop(rid, None)
+            return
+        failures[rid] = failures.get(rid, 0) + 1
+        row = next((r for r in self.routines if r["id"] == rid), None)
+        if row is None or not row["enabled"]:
+            return
+        wait = min(300 * 2 ** (failures[rid] - 1), 3600)
+        row["next_due"] = min(row["next_due"], self.clock() + wait)
+        self._save_routines()
+
     def _refresh(self) -> None:
         brain = self.ws.brain
         self.memories = [
@@ -587,6 +608,8 @@ class App:
                 )
                 entry["ended"] = self.clock()
                 self._save_background_jobs()
+                if routine:
+                    self._routine_retry(routine, row["state"] == "failed")
 
         future.add_done_callback(done)
         return jid

@@ -1669,3 +1669,33 @@ def test_not_now_hides_a_suggestion_for_this_session(served):
     assert app.routines == []  # offered, never created on its own
     assert call(port, "/api/routine_dismiss", {"question": "Same thing"})[0] == 200
     assert app.state()["suggested_routines"] == []
+
+
+def test_failed_routine_retries_with_backoff_not_a_whole_period(served):
+    app, port = served
+    now = [100.0]
+    app.clock = lambda: now[0]
+    calls = []
+
+    def research(question, *, cancelled, record):
+        calls.append(question)
+        if len(calls) < 3:
+            raise OSError("network blip")
+        return "- Fact [s1]"
+
+    app.ws.research = research
+    call(port, "/api/routine_create", {"question": "Watch", "cadence": "weekly"})
+    now[0] += appmod.ROUTINE_SECONDS["weekly"]
+    for expected_wait in (300, 600):
+        app.tick_routines()
+        _wait_for_job(app, "failed")
+        while app.busy:
+            time.sleep(0.01)
+        assert app.state()["routines"][0]["next_due"] == now[0] + expected_wait
+        now[0] += expected_wait
+    app.tick_routines()
+    _wait_for_job(app, "finished")
+    while app.busy:
+        time.sleep(0.01)
+    assert len(calls) == 3
+    assert app.state()["routines"][0]["next_due"] == now[0] + appmod.ROUTINE_SECONDS["weekly"]
