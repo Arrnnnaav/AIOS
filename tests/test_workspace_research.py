@@ -356,3 +356,38 @@ def test_fetch_refuses_a_mixed_answer_and_a_blocked_host():
         assert fetch_public(client, "http://mixed.com/", resolve=dns.__getitem__) is None
         assert fetch_public(client, f"https://{blocked}/", resolve=lambda h: {"93.184.216.34"}) is None
     assert hits == []
+
+
+def test_fetch_refuses_an_empty_host_and_embedded_private_ipv4():
+    """Tier-1 review of af58006: ``http:///x`` must not resolve to this
+    machine, and IPv6 forms that embed a private IPv4 are not public."""
+    import httpx
+
+    from ghostcursor.workspace.research import fetch_public, is_public
+
+    everywhere = lambda h: {"93.184.216.34"}  # even "" answers global here
+    for location in ("http://:8080/admin", "https:///admin"):  # urljoin keeps these hostless
+
+        def handler(request, location=location):
+            if request.url.path == "/start":
+                return httpx.Response(302, headers={"location": location})
+            return httpx.Response(200, text="local service")
+
+        with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+            assert fetch_public(client, "http://good.com/start", resolve=everywhere) is None
+    for embedded in ("64:ff9b::a00:1", "2002:a00:1::1", "::ffff:10.0.0.1"):
+        assert not is_public("x.com", resolve=lambda h, a=embedded: {a})
+
+
+def test_fetch_prefers_ipv4_drops_userinfo_and_does_not_reuse_connections():
+    import httpx
+
+    from ghostcursor.workspace.research import fetch_public
+
+    seen = []
+    with httpx.Client(transport=httpx.MockTransport(lambda r: seen.append(r) or httpx.Response(200))) as client:
+        fetch_public(client, "https://user:pw@good.com/", resolve=lambda h: {"2606:2800::1", "93.184.216.34"})
+    request = seen[0]
+    assert request.url.host == "93.184.216.34"
+    assert "authorization" not in request.headers and request.url.userinfo == b""
+    assert request.headers["connection"] == "close"

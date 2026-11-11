@@ -216,11 +216,27 @@ def _public_address(host: str, resolve=None) -> str | None:
         addresses = resolve(host)
     except OSError:
         return None
-    if not addresses or not all(
-        ipaddress.ip_address(a.split("%")[0]).is_global for a in addresses
-    ):
+    if not host or not addresses or not all(_global(a) for a in addresses):
         return None
-    return sorted(addresses)[0]
+    return sorted(addresses, key=lambda a: (":" in a, a))[0]  # IPv4 first
+
+
+def _global(address: str) -> bool:
+    """Globally routable, including any IPv4 an IPv6 form embeds (mapped,
+    6to4, NAT64 64:ff9b::/96) -- Python calls some of those global."""
+
+    import ipaddress
+
+    ip = ipaddress.ip_address(address.split("%")[0])
+    if not ip.is_global:
+        return False
+    if ip.version == 6:
+        embedded = ip.ipv4_mapped or ip.sixtofour
+        if ip in ipaddress.ip_network("64:ff9b::/96"):
+            embedded = ipaddress.IPv4Address(int(ip) & 0xFFFFFFFF)
+        if embedded is not None and not embedded.is_global:
+            return False
+    return True
 
 
 def is_public(host: str, *, resolve=None) -> bool:
@@ -244,9 +260,11 @@ def fetch_public(client, url: str, *, hops: int = 3, resolve=None):
             return None
         named = httpx.URL(url)
         page = client.get(
-            named.copy_with(host=address),
-            headers={"Host": named.netloc.decode("ascii")},
-            extensions={"sni_hostname": host},
+            named.copy_with(host=address, userinfo=b""),  # no Basic auth from a URL
+            # Connection: close -- a pooled connection is keyed by IP, so it
+            # must not carry one name's verified TLS session to another name.
+            headers={"Host": named.netloc.decode("ascii"), "Connection": "close"},
+            extensions={"sni_hostname": named.raw_host.decode("ascii")},
             follow_redirects=False,
         )
         if not page.is_redirect:
