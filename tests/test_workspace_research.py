@@ -417,5 +417,10 @@ def test_6to4_is_judged_by_the_ipv4_it_relays_to():
         ("2002:a00:1::1", False),  # 10.0.0.1
         ("2002:7f00:1::1", False),  # 127.0.0.1
         ("2002:a9fe:a9fe::1", False),  # 169.254.169.254
+        ("2002:e000:1::1", False),  # 224.0.0.1 multicast
+        ("224.0.0.251", False),  # multicast, which Python calls global
+        ("ff0e::1", False),  # global-scope IPv6 multicast
+        ("::ffff:224.0.0.1", False),
+        ("64:ff9b::e000:1", False),  # NAT64 of 224.0.0.1
     ):
         assert is_public("x.com", resolve=lambda h, a=address: {a}) is public, address

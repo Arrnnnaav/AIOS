@@ -159,15 +159,18 @@ class Companion:
             return  # secure desktop or no pointer: stay where it was
         at = placement(cursor, SIZE, work)
         if at != self.at:
+            try:  # a decoration never ends the session
+                win32gui.SetWindowPos(
+                    self.hwnd,
+                    win32con.HWND_TOPMOST,
+                    *at,
+                    0,
+                    0,
+                    win32con.SWP_NOSIZE | win32con.SWP_NOACTIVATE,
+                )
+            except win32gui.error:
+                return
             self.at = at
-            win32gui.SetWindowPos(
-                self.hwnd,
-                win32con.HWND_TOPMOST,
-                *at,
-                0,
-                0,
-                win32con.SWP_NOSIZE | win32con.SWP_NOACTIVATE,
-            )
 
     def destroy(self) -> None:
         if win32gui.IsWindow(self.hwnd):

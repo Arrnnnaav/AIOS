@@ -74,9 +74,6 @@ def test_placement_sits_beside_the_pointer_and_stays_on_the_work_area():
     assert placement((90, 10), SIZE, (0, 0, 100, 1000)) == (0, 10 + OFFSET[1])  # too narrow: clamped
     second = (1920, 0, 3840, 1080)  # a monitor to the right
     assert placement((1925, 5), SIZE, second) == (1925 + OFFSET[0], 5 + OFFSET[1])
-    assert (
-        placement((-5, -5), SIZE, work) == (0, 0) or True
-    )  # pointer off-work: clamped
 
 
 def test_pulse_breathes_between_zero_and_one():
@@ -141,3 +138,37 @@ def test_native_companion_is_click_through_follows_and_hides():
     finally:
         companion.destroy()
     assert companion.hwnd not in companion_module._windows
+
+
+def test_a_failed_move_never_ends_the_session(monkeypatch):
+    """Tier-1 review 12 Nov: SetWindowPos raising would leave Island.tick
+    and end the app loop."""
+    import win32gui
+
+    def refuse(*args):
+        raise win32gui.error(5, "SetWindowPos", "Access is denied.")
+
+    monkeypatch.setattr(companion_module.win32gui, "SetWindowPos", refuse)
+    badge = object.__new__(Companion)
+    badge.cursor, badge.hwnd, badge.at = (lambda: (100, 100)), 0, None
+    badge.follow()
+    assert badge.at is None  # retried on the next timer tick
+
+
+def test_the_island_pumps_fast_only_while_the_badge_shows(monkeypatch):
+    from ghostcursor.workspace import island as island_module
+
+    pumps = []
+    monkeypatch.setattr(island_module, "_pump_dialog", pumps.append)
+    bar = object.__new__(island_module.Island)
+    bar.hwnd, bar.closed = 7, False
+    bar.companion = types.SimpleNamespace(text=None)
+    bar.idle(0.1)
+    assert pumps == []
+    bar.companion.text = "Thinking"
+    bar.idle(0.2)
+    assert len(pumps) >= 3 and set(pumps) == {7}
+    pumps.clear()
+    bar.closed = True
+    bar.idle(0.05)
+    assert pumps == []

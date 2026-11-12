@@ -1758,7 +1758,10 @@ def main(argv: list[str] | None = None) -> int:
             app.tick_routines()
             if island is not None and not island.closed:
                 island.tick()
-            time.sleep(0.25 if island is not None else 1)
+            if island is not None and not island.closed:
+                island.idle(0.25)
+            else:
+                time.sleep(0.25 if island is not None else 1)
     except KeyboardInterrupt:
         pass
     finally:

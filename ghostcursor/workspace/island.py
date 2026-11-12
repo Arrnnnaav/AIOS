@@ -344,6 +344,8 @@ class Island:
             font = win32gui.LOGFONT()
             font.lfHeight, font.lfFaceName = -15, "Segoe UI"
             _font = win32gui.CreateFontIndirect(font)
+        # Before the bar: if this fails no bar window is left behind.
+        self.companion = Companion(lambda: _cursor())  # the OS pointer only
         ensure_class(CLASS, _wnd_proc, _brush)
         screen = win32api.GetSystemMetrics(win32con.SM_CXSCREEN)
         width, height = COMPACT
@@ -362,7 +364,6 @@ class Island:
             None,
         )
         _windows[self.hwnd] = self
-        self.companion = Companion(lambda: _cursor())  # the OS pointer only
         voice_owns_hotkey = False
         if voice_hotkey:
             from ghostcursor.listen import parse_hotkey
@@ -721,6 +722,16 @@ class Island:
             companion_label(self.app, self.listener, fullscreen=_fullscreen())
         )
         _pump_dialog(self.hwnd)
+
+    def idle(self, seconds):
+        """Wait between ticks. While the badge shows, pump messages every
+        30 ms so it follows the pointer smoothly, not at the 4 Hz tick."""
+
+        until = time.monotonic() + seconds
+        while self.companion.text and not self.closed and time.monotonic() < until:
+            _pump_dialog(self.hwnd)
+            time.sleep(0.03)
+        time.sleep(max(0.0, until - time.monotonic()))
 
     def _size(self, expanded):
         return ASKING if self.asking else EXPANDED if expanded else COMPACT
