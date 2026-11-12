@@ -2234,4 +2234,8 @@ from 1053b54. Still open:
 - Companion not taken: an always-on resting dot with idle blink (intrusive
   by default; add a setting if wanted) and Speaking (the workspace process
   never speaks; SAPI speech is in Teach live only).
+- Tier-1 review 12 Nov (c4bd639..6051fe0): no blocking findings; fixed in
+  0208c14. Left: the rule-3 companion test is a source-string check
+  (documentation, not a guard); the badge stays while busy even after the
+  user hides the island (intended: work stays visible).
 - `ghostcursor.__version__` is still 0.1.0; bump it when a release is cut.
