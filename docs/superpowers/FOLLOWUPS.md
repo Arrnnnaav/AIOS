@@ -2226,12 +2226,12 @@ pins and no persisted token (1053b54), PyWin32 found in the system site for
 the verified adapter boot (7abb41c, 9ece5b8). Hermetic CI green on Windows
 from 1053b54. Still open:
 
-- Clicky-style resting companion beside the pointer (idle/blink, Listening /
-  Thinking / Speaking on the cursor itself) -- island shows Listening only.
-- Routine backoff counts live in memory; a restart resets them. A failed
-  save in `_routine_retry` costs only that retry (tick pauses on save failure).
-- `research._global` rejects every 6to4 (2002::/16) address, even one
-  embedding a global IPv4 (Python calls 6to4 non-global). Fails closed.
-- `verified_python`: if `os.add_dll_directory` fails on a second directory
-  the first handle is not closed; the process exits right after.
+- Closed 12 November: the cursor companion (`workspace/companion.py`)
+  shows Listening / Thinking / the activity beside the OS pointer while
+  Orbyn is busy or listening (D018 13/13); routine failure counts are saved
+  with the routine (7/7); 6to4 is judged by its relayed IPv4 (2/2); a failed
+  DLL directory closes the earlier handles (2/2).
+- Companion not taken: an always-on resting dot with idle blink (intrusive
+  by default; add a setting if wanted) and Speaking (the workspace process
+  never speaks; SAPI speech is in Teach live only).
 - `ghostcursor.__version__` is still 0.1.0; bump it when a release is cut.

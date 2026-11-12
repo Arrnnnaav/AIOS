@@ -48,8 +48,17 @@ while it draws (D189).
   16/16, `tests.test_end_to_end` 8/8, pixel 3/3, interactive 85/85. They are
   stated, not recorded evidence; the owner's full run is the record.
 
+- 12 November: a status badge beside the user's own pointer
+  (`workspace/companion.py`) says Listening, Thinking or the current
+  activity while Orbyn is busy or listening, like Clicky's
+  `ActivityListening`/`ActivityThinking`. It follows the OS cursor only,
+  points at nothing, is click-through and excluded from capture, and hides
+  over full-screen apps. Pinned by `tests/test_workspace_companion.py`
+  (D018 13 mutants, 13 killed, hermetic tests only).
+
 ## Not taken
 
-- Companion that rests beside the pointer all the time: needs an always-on
-  overlay presence; noted for FOLLOWUPS.
+- A resting companion shown all the time with idle blink: intrusive by
+  default; would need a setting.
+- Speaking state: the workspace process does not speak.
 - A drawn pointer at a model-supplied point (Clicky's `PointAt`): rule 3.
