@@ -230,12 +230,15 @@ def _global(address: str) -> bool:
     import ipaddress
 
     ip = ipaddress.ip_address(address.split("%")[0])
+    if ip.version == 6 and ip.sixtofour is not None:
+        # Python calls all of 2002::/16 non-global; the relayed IPv4 decides.
+        return ip.sixtofour.is_global
     if not ip.is_global:
         return False
     if ip.version == 6:
         if ip in ipaddress.ip_network("::/96"):  # IPv4-compatible ::a.b.c.d
             return False
-        embedded = ip.ipv4_mapped or ip.sixtofour
+        embedded = ip.ipv4_mapped
         if ip in ipaddress.ip_network("64:ff9b::/96"):
             embedded = ipaddress.IPv4Address(int(ip) & 0xFFFFFFFF)
         if embedded is not None and not embedded.is_global:

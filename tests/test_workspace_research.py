@@ -405,3 +405,17 @@ def test_fetch_checks_and_verifies_the_idna_name_and_refuses_ipv4_compatible():
     assert asked == ["xn--bcher-kva.de"]
     assert seen[0].extensions["sni_hostname"] == "xn--bcher-kva.de"
     assert not is_public("x.com", resolve=lambda h: {"::a00:1"})
+
+
+def test_6to4_is_judged_by_the_ipv4_it_relays_to():
+    """FOLLOWUPS 2026-11-12: Python calls all of 2002::/16 non-global, so a
+    6to4 address of a public host was refused; the relayed IPv4 decides."""
+    from ghostcursor.workspace.research import is_public
+
+    for address, public in (
+        ("2002:808:808::1", True),  # 8.8.8.8
+        ("2002:a00:1::1", False),  # 10.0.0.1
+        ("2002:7f00:1::1", False),  # 127.0.0.1
+        ("2002:a9fe:a9fe::1", False),  # 169.254.169.254
+    ):
+        assert is_public("x.com", resolve=lambda h, a=address: {a}) is public, address
