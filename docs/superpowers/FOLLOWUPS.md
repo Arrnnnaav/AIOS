@@ -2231,9 +2231,9 @@ from 1053b54. Still open:
   Orbyn is busy or listening (D018 13/13); routine failure counts are saved
   with the routine (7/7); 6to4 is judged by its relayed IPv4 (2/2); a failed
   DLL directory closes the earlier handles (2/2).
-- Companion not taken: an always-on resting dot with idle blink (intrusive
-  by default; add a setting if wanted) and Speaking (the workspace process
-  never speaks; SAPI speech is in Teach live only).
+- Resting dot with idle blink: opt-in, settings.json "companion_idle": true
+  (13 November, D018 7/7). Not taken: Speaking (the workspace process never
+  speaks; SAPI speech is in Teach live only); a page toggle for the setting.
 - Tier-1 review 12 Nov (c4bd639..6051fe0): no blocking findings; fixed in
   0208c14. Left: the rule-3 companion test is a source-string check
   (documentation, not a guard); the badge stays while busy even after the

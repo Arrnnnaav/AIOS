@@ -18,6 +18,7 @@ import win32api
 import win32con
 import win32gui
 
+from ghostcursor import settings
 from ghostcursor.overlay.window import ensure_class
 from ghostcursor.workspace.companion import Companion, label as companion_label
 
@@ -346,6 +347,7 @@ class Island:
             _font = win32gui.CreateFontIndirect(font)
         # Before the bar: if this fails no bar window is left behind.
         self.companion = Companion(lambda: _cursor())  # the OS pointer only
+        self.companion_idle = settings.companion_idle()
         ensure_class(CLASS, _wnd_proc, _brush)
         screen = win32api.GetSystemMetrics(win32con.SM_CXSCREEN)
         width, height = COMPACT
@@ -719,7 +721,12 @@ class Island:
                 self.hide_button, win32con.SW_HIDE if busy else win32con.SW_SHOWNA
             )
         self.companion.show(
-            companion_label(self.app, self.listener, fullscreen=_fullscreen())
+            companion_label(
+                self.app,
+                self.listener,
+                fullscreen=_fullscreen(),
+                idle=self.companion_idle,
+            )
         )
         _pump_dialog(self.hwnd)
 
@@ -728,7 +735,11 @@ class Island:
         30 ms so it follows the pointer smoothly, not at the 4 Hz tick."""
 
         until = time.monotonic() + seconds
-        while self.companion.text and not self.closed and time.monotonic() < until:
+        while (
+            self.companion.text is not None
+            and not self.closed
+            and time.monotonic() < until
+        ):
             _pump_dialog(self.hwnd)
             time.sleep(0.03)
         time.sleep(max(0.0, until - time.monotonic()))

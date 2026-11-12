@@ -56,10 +56,11 @@ _user32.KillTimer.argtypes = (wintypes.HWND, ctypes.c_size_t)
 _user32.KillTimer.restype = wintypes.BOOL
 
 
-def label(app, listener, *, fullscreen=False) -> str | None:
+def label(app, listener, *, fullscreen=False, idle=False) -> str | None:
     """What the badge says, or None to hide it. Generic state only: the
     busy label when it is one of the app's own activity names, never a goal.
-    Hidden over a full-screen app, game or presentation."""
+    Hidden over a full-screen app, game or presentation. With ``idle`` (the
+    companion_idle setting) a quiet Orbyn shows a resting dot: ""."""
 
     from ghostcursor.workspace.app import ACTIVITY_LABELS
 
@@ -70,7 +71,7 @@ def label(app, listener, *, fullscreen=False) -> str | None:
     ):
         return "Listening"
     if not app.busy:
-        return None
+        return "" if idle else None
     return app.busy if app.busy in ACTIVITY_LABELS else "Working"
 
 
@@ -91,6 +92,12 @@ def pulse(elapsed: float) -> float:
     """0..1, one breath every 1.2 s."""
 
     return 0.5 - 0.5 * math.cos(elapsed * 2 * math.pi / 1.2)
+
+
+def blinking(elapsed: float) -> bool:
+    """The resting dot blinks for 0.15 s every 5 s, as Clicky's does."""
+
+    return elapsed % 5.0 >= 4.85
 
 
 def _brush(color):
@@ -180,18 +187,24 @@ class Companion:
 def _paint(companion, hdc) -> None:
     width, height = SIZE
     win32gui.FillRect(hdc, (0, 0, width, height), _brush(COLOR_KEY))
-    if not companion.text:
+    if companion.text is None:
         return
+    elapsed = time.monotonic() - companion.started
     old_font = win32gui.SelectObject(hdc, _font)
     text_width = win32gui.GetTextExtentPoint32(hdc, companion.text)[0]
-    right = min(width, 30 + text_width + 12)
+    right = min(width, 30 + text_width + 12) if companion.text else height
     old_brush = win32gui.SelectObject(hdc, _brush(BG))
     old_pen = win32gui.SelectObject(hdc, win32gui.GetStockObject(win32con.NULL_PEN))
     win32gui.RoundRect(hdc, 0, 0, right, height, height, height)
     color = BLUE if companion.text == "Listening" else AMBER
-    r = 4 + round(2 * pulse(time.monotonic() - companion.started))
-    win32gui.SelectObject(hdc, _brush(color))
-    win32gui.Ellipse(hdc, 15 - r, 14 - r, 15 + r, 14 + r)
+    if companion.text:
+        r = 4 + round(2 * pulse(elapsed))
+    else:  # resting: a slower, smaller breath and a blink now and then
+        r = 0 if blinking(elapsed) else 3 + round(pulse(elapsed / 2))
+    centre = 15 if companion.text else height // 2
+    if r:
+        win32gui.SelectObject(hdc, _brush(color))
+        win32gui.Ellipse(hdc, centre - r, 14 - r, centre + r, 14 + r)
     win32gui.SelectObject(hdc, old_pen)
     win32gui.SelectObject(hdc, old_brush)
     win32gui.SetBkMode(hdc, win32con.TRANSPARENT)

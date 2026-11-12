@@ -135,6 +135,11 @@ def test_native_companion_is_click_through_follows_and_hides():
         win32gui.UpdateWindow(companion.hwnd)  # paints without raising
         companion.show(None)
         assert not win32gui.IsWindowVisible(companion.hwnd)
+        companion.show("")  # the resting dot
+        assert win32gui.IsWindowVisible(companion.hwnd)
+        win32gui.UpdateWindow(companion.hwnd)
+        companion.show(None)
+        assert not win32gui.IsWindowVisible(companion.hwnd)
     finally:
         companion.destroy()
     assert companion.hwnd not in companion_module._windows
@@ -172,3 +177,40 @@ def test_the_island_pumps_fast_only_while_the_badge_shows(monkeypatch):
     bar.closed = True
     bar.idle(0.05)
     assert pumps == []
+
+
+def test_the_resting_dot_is_opt_in_and_yields_to_activity():
+    from ghostcursor.workspace.companion import blinking
+
+    assert label(_app(), None) is None  # off by default
+    assert label(_app(), None, idle=True) == ""  # a dot, no words
+    assert label(_app("Thinking"), None, idle=True) == "Thinking"
+    assert label(_app(), _listener(held=[]), idle=True) == "Listening"
+    assert label(_app(), None, idle=True, fullscreen=True) is None
+    assert not blinking(0) and not blinking(4.84)
+    assert blinking(4.85) and blinking(4.99) and not blinking(5.0)
+    assert blinking(9.9)
+
+
+def test_companion_idle_setting_is_off_unless_literally_true(tmp_path):
+    import json
+
+    from ghostcursor import settings
+
+    path = tmp_path / "settings.json"
+    assert settings.companion_idle(path) is False
+    for value, on in ((True, True), (False, False), ("true", False), (1, False)):
+        path.write_text(json.dumps({"companion_idle": value}), encoding="utf-8")
+        assert settings.companion_idle(path) is on, value
+
+
+def test_the_island_pumps_fast_for_the_resting_dot_too(monkeypatch):
+    from ghostcursor.workspace import island as island_module
+
+    pumps = []
+    monkeypatch.setattr(island_module, "_pump_dialog", pumps.append)
+    bar = object.__new__(island_module.Island)
+    bar.hwnd, bar.closed = 7, False
+    bar.companion = types.SimpleNamespace(text="")
+    bar.idle(0.2)
+    assert len(pumps) >= 3

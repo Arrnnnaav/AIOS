@@ -77,6 +77,14 @@ def set_crash_reports(on: bool, path: Path | None = None) -> None:
     _set("crash_reports", on, path)
 
 
+def companion_idle(path: Path | None = None) -> bool:
+    """settings.json "companion_idle": true keeps a small resting dot beside
+    the pointer when Orbyn is idle (HeyClicky's docked companion). Off by
+    default: the badge shows only while Orbyn is busy or listening."""
+
+    return load(path).get("companion_idle") is True
+
+
 def listening(path: Path | None = None) -> tuple[bool, str | None]:
     """(wake word on, hotkey or None) -- "Hey Bro" and Ctrl+Alt+Space by
     default (D182); settings.json "wake_word": false / "hotkey": "" turn
