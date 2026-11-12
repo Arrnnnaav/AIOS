@@ -233,7 +233,6 @@ class App:
             ".routines.json"
         )
         self.routines = self._load_routines()
-        self._routine_failures: dict[str, int] = {}
         self.dismissed_suggestions: set[str] = set()  # this session only
         self.jobs.submit(self._refresh).result()
 
@@ -371,7 +370,10 @@ class App:
                 or len(rows) > 20
                 or any(
                     not isinstance(row, dict)
-                    or set(row) != {"id", "question", "cadence", "next_due", "enabled"}
+                    or set(row) - {"failures"}
+                    != {"id", "question", "cadence", "next_due", "enabled"}
+                    or type(row.get("failures", 1)) is not int
+                    or not 1 <= row.get("failures", 1) <= 64
                     or not isinstance(row["id"], str)
                     or len(row["id"]) != 16
                     or any(c not in "0123456789abcdef" for c in row["id"])
@@ -461,16 +463,19 @@ class App:
         capped at an hour and never later than its next period, instead of
         waiting a whole period. Caller holds _job_lock."""
 
-        # ponytail: failure counts are in memory; a restart resets the backoff.
-        failures = self._routine_failures
-        if not failed:
-            failures.pop(rid, None)
-            return
-        failures[rid] = failures.get(rid, 0) + 1
         row = next((r for r in self.routines if r["id"] == rid), None)
-        if row is None or not row["enabled"]:
+        if row is None:
             return
-        wait = min(300 * 2 ** (failures[rid] - 1), 3600)
+        if not failed:
+            if row.pop("failures", None) is not None:
+                self._save_routines()
+            return
+        # the count is saved with the routine, so a restart keeps the backoff
+        row["failures"] = min(row.get("failures", 0) + 1, 64)
+        if not row["enabled"]:
+            self._save_routines()
+            return
+        wait = min(300 * 2 ** (row["failures"] - 1), 3600)
         row["next_due"] = min(row["next_due"], self.clock() + wait)
         self._save_routines()
 

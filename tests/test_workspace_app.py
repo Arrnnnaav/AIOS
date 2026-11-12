@@ -1723,3 +1723,70 @@ def test_a_routine_paused_mid_run_is_not_rescheduled_by_its_failure(served):
         time.sleep(0.01)
     after = app.state()["routines"][0]
     assert after["enabled"] is False and after["next_due"] == before["next_due"]
+
+
+def test_routine_backoff_count_survives_a_restart(tmp_path):
+    """FOLLOWUPS 2026-11-12: the failure count lived in memory, so a restart
+    reset the backoff to 5 minutes. It is saved with the routine now."""
+    root = tmp_path / "briefs"
+    make = lambda: Workspace("trip", Gateway(), Brain(tmp_path / "kb.sqlite"), root=root)
+    now = [100.0]
+    first = App("trip", make_workspace=make, clock=lambda: now[0])
+    rid = first.handle("routine_create", {"question": "Watch", "cadence": "weekly"})["id"]
+    path = first.routine_path
+    first.close()
+    rows = json.loads(path.read_text(encoding="utf-8"))
+    rows[0]["failures"] = 2  # two failed runs before the restart
+    rows[0]["next_due"] = now[0]
+    path.write_text(json.dumps(rows), encoding="utf-8")
+
+    outcome = ["fail"]
+
+    def research(question, *, cancelled, record):
+        if outcome[0] == "fail":
+            raise OSError("network blip")
+        return "- Fact [s1]"
+
+    second = App("trip", make_workspace=make, clock=lambda: now[0])
+    try:
+        second.ws.research = research
+        second.tick_routines()
+        _wait_for_job(second, "failed")
+        while second.busy:
+            time.sleep(0.01)
+        saved = json.loads(path.read_text(encoding="utf-8"))[0]
+        assert saved["failures"] == 3 and saved["next_due"] == now[0] + 1200
+        now[0] += 1200
+        outcome[0] = "ok"
+        second.tick_routines()
+        _wait_for_job(second, "finished")
+        while second.busy:
+            time.sleep(0.01)
+        assert "failures" not in json.loads(path.read_text(encoding="utf-8"))[0]
+    finally:
+        second.close()
+    assert rid
+
+
+def test_a_routine_file_with_a_bad_failure_count_is_refused(tmp_path):
+    root = tmp_path / "briefs"
+    make = lambda: Workspace("trip", Gateway(), Brain(tmp_path / "kb.sqlite"), root=root)
+    first = App("trip", make_workspace=make, clock=lambda: 100)
+    first.handle("routine_create", {"question": "Watch", "cadence": "weekly"})
+    path = first.routine_path
+    first.close()
+    good = json.loads(path.read_text(encoding="utf-8"))
+    for bad in (0, 65, True, "2", 1.5):
+        path.write_text(json.dumps([{**good[0], "failures": bad}]), encoding="utf-8")
+        app = App("trip", make_workspace=make)
+        try:
+            assert app.routine_path is None, bad
+        finally:
+            app.close()
+    for ok in (1, 64):
+        path.write_text(json.dumps([{**good[0], "failures": ok}]), encoding="utf-8")
+        app = App("trip", make_workspace=make)
+        try:
+            assert app.routine_path == path and app.state()["routines"], ok
+        finally:
+            app.close()
