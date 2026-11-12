@@ -71,11 +71,11 @@ def main(argv: list[str] | None = None) -> int:
     for dependency in dependency_paths:
         if str(dependency) not in safe_paths:
             safe_paths.append(str(dependency))
-    dll_handles = [
-        os.add_dll_directory(str(d))
-        for d in dll_directories
+    dll_handles = (
+        _add_dll_directories(dll_directories, os.add_dll_directory)
         if hasattr(os, "add_dll_directory")
-    ]
+        else []
+    )
     sys.path[:] = [str(trusted_root), *safe_paths]
 
     child_argv = [str(path), *arguments[3:]]
@@ -95,6 +95,20 @@ def main(argv: list[str] | None = None) -> int:
         for handle in dll_handles:
             handle.close()
     return 0
+
+
+def _add_dll_directories(directories, add):
+    """Add each DLL directory; if one fails, close the handles already open."""
+
+    handles = []
+    try:
+        for directory in directories:
+            handles.append(add(str(directory)))
+    except OSError:
+        for handle in handles:
+            handle.close()
+        raise
+    return handles
 
 
 def _dependency_paths(

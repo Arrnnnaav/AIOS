@@ -149,3 +149,29 @@ def test_payload_folders_never_join_the_dependency_paths(tmp_path):
         [site_dir], exclude=(site_dir / "win32", site_dir / "pywin32_system32")
     )
     assert paths == [site_dir] and dlls == []
+
+
+def test_a_failed_dll_directory_closes_the_ones_already_added():
+    import pytest
+
+    from ghostcursor.verified_python import _add_dll_directories
+
+    closed = []
+
+    class Handle:
+        def __init__(self, name):
+            self.name = name
+
+        def close(self):
+            closed.append(self.name)
+
+    def add(name):
+        if name == "bad":
+            raise OSError("no such directory")
+        return Handle(name)
+
+    assert [h.name for h in _add_dll_directories(["a", "b"], add)] == ["a", "b"]
+    assert closed == []
+    with pytest.raises(OSError):
+        _add_dll_directories(["a", "b", "bad"], add)
+    assert closed == ["a", "b"]
