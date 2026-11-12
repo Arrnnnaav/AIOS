@@ -302,6 +302,8 @@ def test_island_research_talk_voice_results_and_fullscreen(windowed_desktop):
     class StubListener:
         armed = []
         held = None
+        armed_until = 0.0  # the real Listener's fields the companion reads
+        clock = staticmethod(time.monotonic)
 
         def arm(self, why):
             self.armed.append(why)

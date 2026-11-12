@@ -19,6 +19,7 @@ import win32con
 import win32gui
 
 from ghostcursor.overlay.window import ensure_class
+from ghostcursor.workspace.companion import Companion, label as companion_label
 
 CLASS = "OrbynWorkspaceIsland"
 # Above IDOK/IDCANCEL: IsDialogMessage turns Enter into the default button
@@ -303,6 +304,7 @@ def _wnd_proc(hwnd, msg, wparam, lparam):
             if island.hotkey_available:
                 ctypes.windll.user32.UnregisterHotKey(hwnd, HOTKEY_ID)
             island.closed = True
+            island.companion.destroy()
             _windows.pop(hwnd, None)
             return 0
     return win32gui.DefWindowProc(hwnd, msg, wparam, lparam)
@@ -360,6 +362,7 @@ class Island:
             None,
         )
         _windows[self.hwnd] = self
+        self.companion = Companion(lambda: _cursor())  # the OS pointer only
         voice_owns_hotkey = False
         if voice_hotkey:
             from ghostcursor.listen import parse_hotkey
@@ -714,6 +717,9 @@ class Island:
             win32gui.ShowWindow(
                 self.hide_button, win32con.SW_HIDE if busy else win32con.SW_SHOWNA
             )
+        self.companion.show(
+            companion_label(self.app, self.listener, fullscreen=_fullscreen())
+        )
         _pump_dialog(self.hwnd)
 
     def _size(self, expanded):
