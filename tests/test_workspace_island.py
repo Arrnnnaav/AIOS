@@ -513,6 +513,10 @@ def test_buttons_light_under_the_pointer_and_only_one_is_amber():
         island_module._pump_dialog(island.hwnd)
         assert colour(island.send_button) == island_module.ACCENT
         assert colour(island.ask_button) == island_module.SECONDARY  # Done steps back
+        island.hot = island.talk_button  # lit, then destroyed (as on Quit)
+        win32gui.DestroyWindow(island.talk_button)
+        island.hover(None)  # must not raise
+        assert island.hot is None
     finally:
         win32gui.DestroyWindow(island.hwnd)
 

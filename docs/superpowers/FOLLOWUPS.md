@@ -2280,6 +2280,13 @@ from 1053b54. Still open:
   only on overflow. Left: the scrollbar, when shown, is the stock dark one; a
   pointer-size change while Orbyn runs is picked up at the next start; the
   resting dot's CPU cost was not re-measured over a session.
+- Tier-1 review 14 Nov (014ee08): no blocking findings. Fixed: the hover
+  check in idle() no longer raises when the pointer cannot be read (UAC,
+  lock screen) and is skipped once the bar closes; a refused message wait
+  falls back to a short sleep. Left: dragging the bar enters Windows' modal
+  move loop, so tick() stalls for the drag (Stop and ESC do not depend on
+  tick); the badge render result is cached by (text, radius, scale) only up
+  to 64 entries.
 - Modern Web Guidance pass 13 Nov (GoogleChrome/modern-web-guidance 1.0.0,
   run from the npm package with DISABLE_TELEMETRY=1: its CLI otherwise sends
   search queries to Google). legacy-scan of ghostcursor/workspace found 11

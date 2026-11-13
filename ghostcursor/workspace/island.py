@@ -261,7 +261,7 @@ def _draw_button(lparam, island):
     )
     pressed = bool(item.itemState & win32con.ODS_SELECTED)
     focused = bool(item.itemState & win32con.ODS_FOCUS)
-    state = 1 if pressed else 2 if int(item.hwndItem) == island.hot else 0
+    state = 1 if pressed else 2 if (item.hwndItem or 0) == island.hot else 0
     if primary:
         color = (ACCENT, PRESSED, HOVER)[state]
     elif item.CtlID == ID_STOP:
@@ -286,9 +286,11 @@ def _wait(seconds):
     """Sleep until a message arrives (a click, a key, a timer) or the time is
     up, so input is handled at once and an idle bar costs nothing."""
 
-    ctypes.windll.user32.MsgWaitForMultipleObjectsEx(
+    failed = 0xFFFFFFFF == ctypes.windll.user32.MsgWaitForMultipleObjectsEx(
         0, None, max(0, int(seconds * 1000)), 0x04FF, 0x0004
     )  # QS_ALLINPUT, MWMO_INPUTAVAILABLE
+    if failed:
+        time.sleep(min(seconds, 0.03))  # never spin if the wait is refused
 
 
 def _pump_dialog(hwnd):
@@ -873,8 +875,14 @@ class Island:
                 break
             _wait(min(left, 0.05) if self.hot else left)
             _pump_dialog(self.hwnd)
-            if self.hot and win32gui.WindowFromPoint(_cursor()) != self.hot:
+            if self.hot and not self.closed and not self._over(self.hot):
                 self.hover(None)  # the pointer left the bar: no message says so
+
+    def _over(self, child):
+        try:
+            return win32gui.WindowFromPoint(_cursor()) == child
+        except Exception:
+            return False  # secure desktop (UAC, lock): no pointer to read
 
     def hover(self, child):
         """Light the button under the pointer."""
@@ -892,7 +900,7 @@ class Island:
         child = child if child in buttons else None
         if child != self.hot:
             for button in (self.hot, child):
-                if button:
+                if button and win32gui.IsWindow(button):  # not during Quit
                     win32gui.InvalidateRect(button, None, False)
             self.hot = child
 

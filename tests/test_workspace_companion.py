@@ -415,6 +415,21 @@ def test_a_lit_button_goes_dark_when_the_pointer_leaves_the_bar(monkeypatch):
     )
     bar.idle(0.25)
     assert cleared == [None]
+    # Tier-1 review 14 Nov: with a UAC prompt or the lock screen up the pointer
+    # cannot be read; that must not end the app. Nor may a closing bar be lit.
+    def denied():
+        raise OSError(5, "GetCursorPos", "Access is denied.")
+
+    monkeypatch.setattr(island_module, "_cursor", denied)
+    bar.hot, now[0] = 99, 0.0
+    bar.idle(0.1)
+    assert cleared == [None, None]
+    bar.hot, bar.closed = 99, True
+    monkeypatch.setattr(island_module, "_pump_dialog", lambda hwnd: None)
+    bar.closed = False
+    monkeypatch.setattr(island_module, "_pump_dialog", lambda hwnd: setattr(bar, "closed", True))
+    bar.idle(0.1)
+    assert cleared == [None, None] and bar.hot == 99  # left alone while closing
     assert waits[:2] == [pytest.approx(0.05)] * 2  # short waits while lit
     assert waits[2] == pytest.approx(0.15)  # then the rest in one
 
