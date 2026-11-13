@@ -2278,8 +2278,10 @@ from 1053b54. Still open:
   The browser's blocking confirm/prompt boxes (11 uses) are now one native
   modal (ask/askConfirm/askText): a confirmation starts on Cancel, the
   destructive button is red and named for the action, Enter submits a field
-  through its form (IME-safe), Esc still stops a running session. Left: the
-  theme toggle stores a scheme even when it matches the system.
+  through its form (IME-safe), Esc still stops a running session. The theme
+  toggle follows the guide's two-state model: no saved value follows Windows
+  (live), toggling to what Windows already uses clears the override, and a
+  saved override survives Windows switching to match it.
 - Brain rule-6 check 13 Nov: every Company Brain write (deep research,
   /research remember, clipboard, notes, know_add, folder ingest, team sync,
   snapshot import) lands as a candidate; recall to a model returns only

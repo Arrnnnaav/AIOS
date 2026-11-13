@@ -7,8 +7,13 @@
 <script>
 // Before first paint, so the window never flashes the wrong scheme.
 function applyTheme(t) { document.documentElement.dataset.theme = t; document.querySelector('meta[name="color-scheme"]').content = t; }
-let stored = null; try { stored = localStorage.getItem("orbyn-theme"); } catch {}
-applyTheme(stored === "light" || stored === "dark" ? stored : matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+// No saved value = follow Windows. A saved value is the user's override and
+// is kept even if Windows later switches to match it (e.g. a timed switch).
+const lightSystem = matchMedia("(prefers-color-scheme: light)");
+const systemTheme = () => (lightSystem.matches ? "light" : "dark");
+function savedTheme() { try { const t = localStorage.getItem("orbyn-theme"); return t === "light" || t === "dark" ? t : null; } catch { return null; } }
+applyTheme(savedTheme() ?? systemTheme());
+lightSystem.addEventListener("change", () => { if (!savedTheme()) applyTheme(systemTheme()); });
 </script>
 <title>Orbyn</title>
 <style>
@@ -1427,8 +1432,10 @@ document.querySelector("nav").addEventListener("keydown", (e) => {
 // theme
 $("themeBtn").innerHTML = ICON.moon;
 $("themeBtn").onclick = () => {
+  // The opposite of what is shown; choosing what Windows already uses clears
+  // the override, so the page follows Windows again.
   const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark"; applyTheme(next);
-  try { localStorage.setItem("orbyn-theme", next); } catch {}
+  try { if (next === systemTheme()) localStorage.removeItem("orbyn-theme"); else localStorage.setItem("orbyn-theme", next); } catch {}
 };
 
 $("pointBtn").innerHTML = ICON.point + "Point";
