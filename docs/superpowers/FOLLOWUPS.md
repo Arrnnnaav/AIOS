@@ -2257,4 +2257,11 @@ from 1053b54. Still open:
   the first checked address; EGM reviewers ran as general-purpose agents
   reading EGM personas, since its registered adapters (omitClaudeMd) load
   only in a new session.
+- Tier-1 review 13 Nov (deef941..eb4f4f5): no blocking findings. Fixed:
+  page fetches ask for identity encoding and refuse a compressed body (a
+  stacked gzip could inflate past the cap); each hop's timeout is the time
+  left; idle() steps are bounded by the time left; timing tests use a fake
+  clock (two were flaky under load). Left: deep research files claims to the
+  Brain (D190, owner decision) -- a rule-6 check of what model-selected text
+  reaches kb.sqlite was suggested and has not been done.
 - `ghostcursor.__version__` is still 0.1.0; bump it when a release is cut.

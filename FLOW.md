@@ -368,7 +368,10 @@ Host header carries the name with any port, the SNI the bare IDNA host. Only
 the first checked address is tried. The body is streamed and read up to
 `MAX_PAGE_BYTES` (640,000 bytes) within one `FETCH_DEADLINE_S` (20 s) for all
 hops, so a huge or trickling page keeps what arrived instead of holding a
-worker. Userinfo is dropped, `Connection: close` keeps a verified connection from
+worker; each hop's connect and read timeout is the time left (at most
+`TIMEOUT_S`), and none is sent once it is spent. It asks for
+`Accept-Encoding: identity` and refuses a compressed body, so the cap counts
+what is stored and a stacked gzip cannot inflate past it. Userinfo is dropped, `Connection: close` keeps a verified connection from
 being reused for another name, redirects are followed by hand at most 3 times
 with each hop checked again; a redirect with no Location, or one still
 redirecting after the last hop, returns nothing. The

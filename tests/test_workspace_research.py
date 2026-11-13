@@ -458,10 +458,12 @@ def test_a_page_fetch_reads_a_bounded_body_within_one_deadline(monkeypatch):
         page = fetch_public(client, "https://good.com/", resolve=public)
     assert len(page.content) == research.MAX_PAGE_BYTES and page.headers["content-type"] == "text/html"
     assert len(sent) <= research.MAX_PAGE_BYTES // 65536 + 1  # stopped reading at the cap
-    monkeypatch.setattr(research, "FETCH_DEADLINE_S", 0.0)
+    clock = iter(range(1000))  # each look at the clock is one second later
+    monkeypatch.setattr(research.time, "monotonic", lambda: next(clock))
+    monkeypatch.setattr(research, "FETCH_DEADLINE_S", 2.5)
     with httpx.Client(transport=httpx.MockTransport(huge)) as client:
         page = fetch_public(client, "https://good.com/", resolve=public)
-    assert len(page.content) == 65536  # the deadline passed: what arrived is kept
+    assert len(page.content) == 2 * 65536  # the deadline passed: what arrived is kept
 
 
 def test_a_page_fetch_keeps_default_ports_https_and_the_blocklist():
@@ -490,3 +492,50 @@ def test_a_page_fetch_keeps_default_ports_https_and_the_blocklist():
         assert (page is not None and page.text == "reached") is reached, location
     with httpx.Client(transport=httpx.MockTransport(to("/x"))) as client:
         assert fetch_public(client, "http://good.com:25/start", resolve=public) is None
+
+
+def test_a_page_fetch_asks_for_identity_and_refuses_a_compressed_body():
+    """Tier-1 review 13 Nov: a doubly gzipped body could inflate past the byte
+    cap in one decoded chunk."""
+    import gzip
+
+    import httpx
+
+    from ghostcursor.workspace.research import fetch_public
+
+    public = lambda h: {"93.184.216.34"}
+    seen = []
+    plain = lambda r: seen.append(r) or httpx.Response(200, text="ok")
+    with httpx.Client(transport=httpx.MockTransport(plain)) as client:
+        assert fetch_public(client, "https://good.com/", resolve=public).text == "ok"
+    assert seen[0].headers["accept-encoding"] == "identity"
+    bomb = gzip.compress(gzip.compress(b"a" * 1000))
+    packed = lambda r: httpx.Response(200, headers={"content-encoding": "gzip, gzip"}, content=bomb)
+    with httpx.Client(transport=httpx.MockTransport(packed)) as client:
+        assert fetch_public(client, "https://good.com/", resolve=public) is None
+
+
+def test_each_hop_waits_no_longer_than_the_deadline_left(monkeypatch):
+    import httpx
+
+    from ghostcursor.workspace import research
+    from ghostcursor.workspace.research import fetch_public
+
+    public = lambda h: {"93.184.216.34"}
+    timeouts = []
+
+    def handler(request):
+        timeouts.append(request.extensions["timeout"]["connect"])
+        if request.url.path == "/start":
+            return httpx.Response(302, headers={"location": "/next"})
+        return httpx.Response(200, text="ok")
+
+    monkeypatch.setattr(research, "FETCH_DEADLINE_S", 3.0)
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        assert fetch_public(client, "https://good.com/start", resolve=public).text == "ok"
+    assert len(timeouts) == 2 and all(0 < t <= 3.0 for t in timeouts)
+    monkeypatch.setattr(research, "FETCH_DEADLINE_S", 0.0)  # spent: no request at all
+    timeouts.clear()
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        assert fetch_public(client, "https://good.com/start", resolve=public) is None
+    assert timeouts == []

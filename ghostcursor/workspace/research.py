@@ -211,7 +211,6 @@ def _public_address(host: str, resolve=None) -> str | None:
     routable, else None: a result page must never pull loopback or LAN
     content into passages that go to a model (review of D173)."""
 
-    import ipaddress
     import socket
 
     if not host:  # getaddrinfo("") answers with this machine's own addresses
@@ -281,16 +280,31 @@ def fetch_public(client, url: str, *, hops: int = 3, resolve=None):
         address = _public_address(host, resolve)
         if address is None:
             return None
+        left = deadline - time.monotonic()
+        if left <= 0:
+            return None
         with client.stream(
             "GET",
             named.copy_with(host=address, userinfo=b""),  # no Basic auth from a URL
             # Connection: close -- a pooled connection is keyed by IP, so it
             # must not carry one name's verified TLS session to another name.
-            headers={"Host": named.netloc.decode("ascii"), "Connection": "close"},
+            # Accept-Encoding: identity -- the byte cap counts what is stored;
+            # a compressed (or doubly compressed) body could inflate past it.
+            headers={
+                "Host": named.netloc.decode("ascii"),
+                "Connection": "close",
+                "Accept-Encoding": "identity",
+            },
             extensions={"sni_hostname": host},
             follow_redirects=False,
+            timeout=min(TIMEOUT_S, left),  # connect and first byte fit the deadline
         ) as page:
             if not page.is_redirect:
+                if page.headers.get("content-encoding", "identity").lower() not in (
+                    "",
+                    "identity",
+                ):
+                    return None  # compressed although identity was asked for
                 body = bytearray()
                 for chunk in page.iter_bytes():
                     body += chunk
@@ -311,8 +325,6 @@ def fetch_public(client, url: str, *, hops: int = 3, resolve=None):
             location = page.headers.get("location")
         if not location:
             return None  # a redirect to nowhere
-        if time.monotonic() > deadline:
-            return None
         url = urljoin(url, location)
     return None
 

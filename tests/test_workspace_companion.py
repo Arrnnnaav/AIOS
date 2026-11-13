@@ -217,14 +217,19 @@ def test_the_island_pumps_fast_for_the_resting_dot_too(monkeypatch):
     bar = object.__new__(island_module.Island)
     bar.hwnd, bar.closed = 7, False
     bar.companion = types.SimpleNamespace(text="")
-    bar.idle(0.35)  # 100 ms for the resting dot
-    assert 3 <= len(pumps) <= 5  # not the 30 ms rate
+    now = [0.0]
+
+    def sleep(seconds):
+        now[0] += seconds
+
+    monkeypatch.setattr(island_module, "time", types.SimpleNamespace(monotonic=lambda: now[0], sleep=sleep))
+    bar.idle(0.35)
+    assert len(pumps) == 4  # every 100 ms for the resting dot, not every 30 ms
 
 
 def test_idle_stops_pumping_when_the_badge_hides_and_never_overruns(monkeypatch):
     """Tier-1 review 13 Nov: idle() must stop fast pumping once the badge is
     hidden mid-wait, and return within its time so the main loop keeps pace."""
-    import time
 
     from ghostcursor.workspace import island as island_module
 
@@ -239,11 +244,15 @@ def test_idle_stops_pumping_when_the_badge_hides_and_never_overruns(monkeypatch)
             bar.companion.text = None  # hidden by a tick's message
 
     monkeypatch.setattr(island_module, "_pump_dialog", pump)
-    start = time.monotonic()
+    now = [0.0]
+
+    def sleep(seconds):
+        now[0] += seconds
+
+    monkeypatch.setattr(island_module, "time", types.SimpleNamespace(monotonic=lambda: now[0], sleep=sleep))
     bar.idle(0.3)
-    took = time.monotonic() - start
     assert len(pumps) == 2
-    assert 0.29 <= took < 0.3 + 0.1
+    assert now[0] == pytest.approx(0.3)  # waits out the rest, never more
 
 
 def test_two_switches_flipped_at_once_both_stick(tmp_path):
@@ -298,7 +307,39 @@ def test_the_timer_repaints_when_the_dot_changes_and_not_otherwise(monkeypatch):
 def test_a_badge_windows_cannot_keep_out_of_captures_never_shows():
     """EGM design review 13 Nov: if SetWindowDisplayAffinity fails the badge
     would appear in screenshots and the D179 picture, so it never shows."""
-    badge = object.__new__(Companion)
-    badge.capturable, badge.text, badge.hwnd = True, None, 0
-    badge.show("Thinking")
-    assert badge.text is None
+    import pytest
+
+    def never(*a):
+        raise AssertionError("a capture-visible badge was shown")
+
+    mp = pytest.MonkeyPatch()
+    mp.setattr(companion_module.win32gui, "ShowWindow", never)
+    mp.setattr(companion_module.win32gui, "InvalidateRect", never)
+    try:
+        badge = object.__new__(Companion)
+        badge.capturable, badge.text, badge.hwnd = True, None, 0
+        badge.show("Thinking")
+        assert badge.text is None
+    finally:
+        mp.undo()
+
+
+def test_the_resting_dot_wait_never_overruns(monkeypatch):
+    """Tier-1 review 13 Nov: the 0.1 s resting step is bounded by the time
+    left. A fake clock makes this exact, not a race with Windows sleeps."""
+    from ghostcursor.workspace import island as island_module
+
+    now = [0.0]
+    slept = []
+
+    def sleep(seconds):
+        slept.append(seconds)
+        now[0] += seconds
+
+    monkeypatch.setattr(island_module, "time", types.SimpleNamespace(monotonic=lambda: now[0], sleep=sleep))
+    monkeypatch.setattr(island_module, "_pump_dialog", lambda hwnd: None)
+    bar = object.__new__(island_module.Island)
+    bar.hwnd, bar.closed = 7, False
+    bar.companion = types.SimpleNamespace(text="")
+    bar.idle(0.25)
+    assert now[0] == pytest.approx(0.25) and max(slept) <= 0.1 + 1e-9

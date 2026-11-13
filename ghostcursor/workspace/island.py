@@ -744,7 +744,8 @@ class Island:
         ):
             _pump_dialog(self.hwnd)
             # the resting dot changes slowly: 100 ms is enough there
-            time.sleep(0.03 if self.companion.text else 0.1)
+            step = 0.03 if self.companion.text else 0.1
+            time.sleep(max(0.0, min(step, until - time.monotonic())))
         time.sleep(max(0.0, until - time.monotonic()))
 
     def _size(self, expanded):
