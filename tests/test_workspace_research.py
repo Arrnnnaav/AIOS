@@ -424,3 +424,14 @@ def test_6to4_is_judged_by_the_ipv4_it_relays_to():
         ("64:ff9b::e000:1", False),  # NAT64 of 224.0.0.1
     ):
         assert is_public("x.com", resolve=lambda h, a=address: {a}) is public, address
+
+
+def test_a_redirect_without_a_location_stops_at_once():
+    import httpx
+
+    from ghostcursor.workspace.research import fetch_public
+
+    hits = []
+    with httpx.Client(transport=httpx.MockTransport(lambda r: hits.append(r) or httpx.Response(302))) as client:
+        assert fetch_public(client, "https://good.com/", resolve=lambda h: {"93.184.216.34"}) is None
+    assert len(hits) == 1  # not re-requested until the hops ran out

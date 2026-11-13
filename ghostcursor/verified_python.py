@@ -57,8 +57,11 @@ def main(argv: list[str] | None = None) -> int:
     # ``.pth``. GhostCursor's Windows dependencies may be installed in either
     # the system or the user site, so add each site directory itself without
     # running its startup code, plus PyWin32's three import directories and
-    # DLL directory, which its ``.pth`` would normally add. These are
-    # interpreter-owned dependency locations, never the plugin payload root.
+    # DLL directory, which its ``.pth`` would normally add. These are the
+    # interpreter's dependency locations, never the plugin payload root. The
+    # user site is writable by this user: code there already runs as this user
+    # in every Python they start, so the hash protects the payload bytes, not
+    # the installed dependencies.
     install_paths = sysconfig.get_paths()
     dependency_paths, dll_directories = _dependency_paths(
         [

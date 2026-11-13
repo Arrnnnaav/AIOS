@@ -280,7 +280,10 @@ def fetch_public(client, url: str, *, hops: int = 3, resolve=None):
         )
         if not page.is_redirect:
             return page
-        url = urljoin(url, page.headers.get("location", ""))
+        location = page.headers.get("location")
+        if not location:
+            return None  # a redirect to nowhere
+        url = urljoin(url, location)
     return None
 
 

@@ -1,8 +1,10 @@
 """Transports: TypeSafe Jev (System One) and OpenAI-compatible chat (System Two).
 
 Patterns ported, with attribution, from the separate Spatial project
-(`D:\\PROJECTS\\Spatial\\server\\app\\system_one.py`): one kept-alive client per
-provider, a hard time budget, at most one retry on 429/5xx inside that budget.
+(`D:\\PROJECTS\\Spatial\\server\\app\\system_one.py`): a hard time budget and at
+most one retry on 429/5xx inside it, waiting Retry-After (capped at 5 s) plus
+jitter in 0.1 s slices that Stop can cut short. Each call opens its own
+``httpx`` client (Spatial kept one alive per provider).
 Only the transport is ported -- no prompt building, and no fallback to the
 model's free text when a structured answer is missing.
 
