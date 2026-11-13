@@ -2247,4 +2247,14 @@ from 1053b54. Still open:
   core, against 0.16% for a bare 30 ms sleep loop and 1.2% before the
   repaint change. Left: a modal loop (MessageBox, menu) in a bar handler
   still holds the main loop, as before.
+- EGM pass 13 Nov (Elephant-Goldfish Model plugin, egm@egm 0.1.1): drift
+  report `docs/evidence/2026-11-13_DRIFT_REPORT.md` closed in 059a06c and
+  5c995df; Goldfish design_critic and codebase_details reviews of the new
+  FLOW sections found no blockers, and their code points were fixed (capture
+  exclusion failure hides the badge; page fetch byte cap, one deadline,
+  default ports, no https->http; 100 ms resting-dot pump). Left: the badge
+  is fixed-pixel (no DPI or large-pointer scaling); a page fetch tries only
+  the first checked address; EGM reviewers ran as general-purpose agents
+  reading EGM personas, since its registered adapters (omitClaudeMd) load
+  only in a new session.
 - `ghostcursor.__version__` is still 0.1.0; bump it when a release is cut.

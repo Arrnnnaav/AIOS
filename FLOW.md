@@ -244,16 +244,22 @@ island owns a small badge beside the user's own pointer that says
 -- never a goal or screen text -- while Orbyn is busy or listening, like
 HeyClicky's ActivityListening/Thinking. Its position comes only from
 `GetCursorPos` and it points at nothing (rule 3). It is layered,
-click-through, topmost, no-activate, excluded from capture
-(`WDA_EXCLUDEFROMCAPTURE`, so perception and the D179 picture never see it),
+click-through, topmost, no-activate, and excluded from capture
+(`WDA_EXCLUDEFROMCAPTURE`, so perception and the D179 picture never see it);
+where Windows refuses that (before Windows 10 2004) the badge never shows. It
 imports `overlay.dpi` first, and paints only in `WM_PAINT`; its 30 ms timer
-moves the window and invalidates only when the dot changes (rule 4). It
-hides over full-screen apps. While it shows, `Island.idle` pumps messages
-every 30 ms between the 0.25 s ticks so the badge follows the pointer.
+moves the window and invalidates only when the dot changes, and a new label
+repaints once (rule 4). It hides whenever `SHQueryUserNotificationState`
+reports a full-screen app, game or presentation, even while work runs (the
+bar itself stays then, for Stop). While a label shows, `Island.idle` pumps
+messages every 30 ms between the 0.25 s ticks so the badge follows the
+pointer; for the resting dot, every 100 ms. Its size and offset are fixed
+pixels, not scaled for DPI or a large pointer.
 Brain › Setup "companion" (settings.json `companion_idle`, only a literal
 true, off by default) keeps a breathing, blinking resting dot there when
-Orbyn is idle; measured at about 0.9% of one core in a 20 s session run on
-2026-11-13 (stated in FOLLOWUPS, not a captured file). Speaking is not shown:
+Orbyn is idle; an estimate from one 20 s session run on 2026-11-13 put it at
+about 0.9% of one core at the earlier 30 ms rate (not a captured file, so not
+evidence; D034). Speaking is not shown:
 the workspace process never speaks. Resize and display-change handling clamp
 the capsule to the current monitor's work area. A shortcut conflict leaves
 Hide unavailable. On shutdown the voice listener tolerates an already-exited
@@ -329,33 +335,43 @@ reschedules from the actual start. Enabled routines keep the app process alive
 after its window closes; Quit stops the process and active job. Pausing a
 routine prevents future starts, and restart never retries an interrupted job.
 The next-due update is persisted before the worker starts; a failed save
-pauses that routine in memory. If the worker is busy when a routine falls due,
-the old next-due time is restored so the next free tick runs it. A routine
+pauses that routine in memory. A tick does nothing while the worker is busy;
+if another request claims the worker (or Quit arrives) between that check and
+the start, the old next-due time is restored, best effort, so the next free
+tick runs it. A routine
 run that fails (a network blip) is retried sooner than its period:
 `_routine_retry` waits 5, 10, 20 ... minutes, capped at an hour and never
 later than the next period, and saves the count as the row's optional
 `failures` field (1..64, validated on load), so a restart keeps the backoff;
-success removes it, and a paused routine keeps its time. A research question
-asked twice is offered as a daily routine (`suggested_routines`), which the
-user creates or dismisses. `_begin_run` checks Quit after clearing a stale
+any run that does not fail (finished, stopped or interrupted) removes it, and
+a paused routine keeps its time. `suggested_routines` offers up to three
+research questions the user started at least twice (case and spacing
+ignored; routine runs, existing routines and dismissed ones excluded); the
+page's button creates one as a daily routine, or dismisses it. `_begin_run` checks Quit after clearing a stale
 Stop event, before a worker is submitted. When the page state is built,
 `new_claims` compares each finished routine result with that routine's
 previous finished result and lists the claims it did not make (rapidfuzz
 token-set >= 90 with the same numbers; source ids ignored). Nothing is stored
 or sent for it.
 Research page fetches (`research.fetch_public`) are the boundary between a
-search result's URL and this machine's network. Every hop's host is
-resolved and every address must be globally routable (`_public_address`,
+search result's URL and this machine's network. Every hop is checked against
+the blocklist (`_blocked`), must use its scheme's default port, and may not
+step down from https to http; its host is then resolved and every address must be globally routable (`_public_address`,
 `_global`): private, loopback, link-local, reserved and multicast addresses
 are refused, also when an IPv6 form embeds such an IPv4 (mapped, 6to4,
 NAT64 `64:ff9b::/96`, IPv4-compatible `::/96`); a 6to4 address is judged by
 the IPv4 it relays to, and an empty host is refused before resolving (it
 would resolve to this machine). The request connects to the checked address
 itself, IPv4 first, with the name in the Host header and as the TLS SNI, so a
-DNS answer that changes after the check cannot redirect it (rebinding).
-Userinfo is dropped, `Connection: close` keeps a verified connection from
+DNS answer that changes after the check cannot redirect it (rebinding); the
+Host header carries the name with any port, the SNI the bare IDNA host. Only
+the first checked address is tried. The body is streamed and read up to
+`MAX_PAGE_BYTES` (640,000 bytes) within one `FETCH_DEADLINE_S` (20 s) for all
+hops, so a huge or trickling page keeps what arrived instead of holding a
+worker. Userinfo is dropped, `Connection: close` keeps a verified connection from
 being reused for another name, redirects are followed by hand at most 3 times
-with each hop checked again, and a redirect with no Location stops. The
+with each hop checked again; a redirect with no Location, or one still
+redirecting after the last hop, returns nothing. The
 DuckDuckGo and Tavily search calls go to their fixed hosts through the normal
 client.
 Work's GitHub connector is a separate explicit read path:
@@ -1247,13 +1263,17 @@ the prepared invitation is not evidence that it was sent.
 `inference.ollama.generate_structured()` is the one bounded request adapter:
 no retry, one response envelope, and preserved generation metadata.
 
-The cloud providers in `ghostcursor/providers/clients.py` (TypeSafe Jev,
-System One; OpenAI-compatible chat, System Two) differ: `_post` gives each
+The cloud providers in `ghostcursor/providers/clients.py` that go through
+`_post` (TypeSafe Jev, System One; OpenAI-compatible chat and Anthropic's
+`anthropic_json_call`, System Two) differ: `_post` gives each
 call a hard deadline and retries once on 429/5xx only if the wait still fits
 before it (`deadline - now > wait + 0.5`). The wait is the response's
 Retry-After seconds capped at 5 (an HTTP-date counts as 1, none as 0.2), plus
 0-0.2 s jitter, slept in 0.1 s slices that check Stop, so Stop frees the
-worker during a wait. Each call opens its own `httpx` client.
+worker during a wait. Each call opens its own `httpx` client. Sign in with
+ChatGPT (`responses_json_call`) does not use `_post`: it streams, has no
+retry, fails on the first bad status, and a watchdog thread enforces its
+deadline.
 
 ```
 planner.infer_intent(goal)
