@@ -194,14 +194,16 @@ MAX_CHUNK_CHARS = 600
 
 def chunk_document(text: str) -> list[str]:
     """Split a document into candidate-sized chunks on blank lines (the simple
-    loader Mem0/Cognee use before extraction). Whitespace is collapsed, empties
-    and single-word fragments are dropped, each chunk is capped, and the count
-    is bounded."""
+    loader Mem0/Cognee use before extraction). Whitespace is collapsed, empties,
+    lone Markdown headings and single-word fragments are dropped, each chunk is
+    capped, and the count is bounded."""
 
     import re
 
     chunks = []
     for block in re.split(r"\n\s*\n", text or ""):
+        if re.fullmatch(r"\s*#{1,6}\s[^\n]*\s*", block):
+            continue  # a heading on its own is a title, not a fact
         chunk = " ".join(block.split())
         if len(chunk.split()) >= 2:  # a lone word is not a fact
             chunks.append(chunk[:MAX_CHUNK_CHARS])
@@ -692,10 +694,22 @@ class Knowledge:
 
         if sensitivity not in SENSITIVITIES:
             raise ValueError(f"sensitivity is one of {SENSITIVITIES}")
-        parts = [_secret_free(" ".join(str(x).split())) for x in (subject, predicate, obj, source)]
+        parts = [
+            _secret_free(" ".join(str(x).split()))
+            for x in (subject, predicate, obj, source)
+        ]
         if not all(parts) or not str(scope).strip():
             raise ValueError("an edge needs subject, predicate, object, source, scope")
         sensitivity = self._resolve_sensitivity(parts[3], sensitivity)
+        now = self.clock()
+        for row in self._db.execute(
+            "SELECT * FROM edges WHERE scope=? AND lower(subject)=? AND "
+            "lower(predicate)=? AND lower(object)=? ORDER BY eid",
+            (scope.strip(), *(part.lower() for part in parts[:3])),
+        ):
+            same = Edge(*row)
+            if not same.expired(now):
+                return same  # already known: no second copy to review
         with self._lock, self._db:
             cur = self._db.execute(
                 "INSERT INTO edges (subject, predicate, object, source, scope, "

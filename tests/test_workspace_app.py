@@ -115,12 +115,20 @@ def test_frozen_ollama_launch_does_not_export_bundle_dll_path(monkeypatch):
     import ctypes
 
     events = []
-    monkeypatch.setattr(appmod.socket, "create_connection", lambda *a, **k: (_ for _ in ()).throw(OSError()))
+    monkeypatch.setattr(
+        appmod.socket,
+        "create_connection",
+        lambda *a, **k: (_ for _ in ()).throw(OSError()),
+    )
     monkeypatch.setattr(appmod.shutil, "which", lambda name: r"C:\ollama.exe")
     monkeypatch.setattr(appmod.sys, "frozen", True, raising=False)
     monkeypatch.setattr(appmod.sys, "_MEIPASS", r"C:\bundle\_internal", raising=False)
-    monkeypatch.setattr(ctypes.windll.kernel32, "SetDllDirectoryW", lambda path: events.append(path))
-    monkeypatch.setattr(appmod.subprocess, "Popen", lambda *a, **kw: events.append("spawn"))
+    monkeypatch.setattr(
+        ctypes.windll.kernel32, "SetDllDirectoryW", lambda path: events.append(path)
+    )
+    monkeypatch.setattr(
+        appmod.subprocess, "Popen", lambda *a, **kw: events.append("spawn")
+    )
 
     appmod._ensure_ollama()
     assert events == [None, "spawn", r"C:\bundle\_internal"]
@@ -159,21 +167,31 @@ def test_window_launch_supports_floating_and_docked_geometry(tmp_path, monkeypat
     assert "--window-position=1444,24" in launches[-1]
     assert moves[-1] == (7, 1444, 24, 460, 860, True)
 
-    monkeypatch.setattr(appmod, "_edge_app_windows", lambda: {5} if not launches or len(launches) == 2 else {5, 8, 9})
+    monkeypatch.setattr(
+        appmod,
+        "_edge_app_windows",
+        lambda: {5} if not launches or len(launches) == 2 else {5, 8, 9},
+    )
     appmod.open_window("http://127.0.0.1:1/?t=test")
     assert len(moves) == 2  # two concurrent new windows: move neither
 
 
-def test_second_default_launch_keeps_existing_island_instead_of_opening_full_window(monkeypatch):
+def test_second_default_launch_keeps_existing_island_instead_of_opening_full_window(
+    monkeypatch,
+):
     import win32gui
     from ghostcursor.workspace.island import SHOW_MESSAGE
 
     opened = []
-    monkeypatch.setattr(appmod, "_live_instance_url", lambda: "http://127.0.0.1:1234/?t=local")
+    monkeypatch.setattr(
+        appmod, "_live_instance_url", lambda: "http://127.0.0.1:1234/?t=local"
+    )
     monkeypatch.setattr(win32gui, "FindWindow", lambda name, title: 42)
     revealed = []
     monkeypatch.setattr(win32gui, "PostMessage", lambda *args: revealed.append(args))
-    monkeypatch.setattr(appmod, "open_window", lambda url, **kw: opened.append((url, kw)))
+    monkeypatch.setattr(
+        appmod, "open_window", lambda url, **kw: opened.append((url, kw))
+    )
     assert appmod.main([]) == 0
     assert opened == []
     assert revealed == [(42, SHOW_MESSAGE, 0, 0)]
@@ -222,29 +240,61 @@ def test_kept_research_result_survives_inbox_trim_and_restart(tmp_path):
     root = tmp_path / "briefs"
     path = brief_path(root, "trip").with_suffix(".jobs.json")
     path.parent.mkdir(parents=True)
-    old = {"id": "0000000000000000", "question": "Keep this", "answer": "Cited result",
-           "state": "finished", "created": 1, "ended": 2, "routine": ""}
+    old = {
+        "id": "0000000000000000",
+        "question": "Keep this",
+        "answer": "Cited result",
+        "state": "finished",
+        "created": 1,
+        "ended": 2,
+        "routine": "",
+    }
     path.write_text(json.dumps([old]), encoding="utf-8")  # pre-pin inbox schema
-    make = lambda: Workspace("trip", Gateway(), Brain(tmp_path / "kb.sqlite"), root=root)
+    make = lambda: Workspace(
+        "trip", Gateway(), Brain(tmp_path / "kb.sqlite"), root=root
+    )
     app = App("trip", make_workspace=make)
     server = make_server(app, "secret-token")
     threading.Thread(target=server.serve_forever, daemon=True).start()
     try:
         assert app.state()["jobs"][0]["pinned"] is False
         assert app.state()["jobs"][0]["archived"] is False
-        assert call(server.server_port, "/api/job_pin", {"id": old["id"], "pinned": True})[0] == 200
-        assert call(server.server_port, "/api/job_archive", {"id": old["id"], "archived": True})[0] == 200
+        assert (
+            call(server.server_port, "/api/job_pin", {"id": old["id"], "pinned": True})[
+                0
+            ]
+            == 200
+        )
+        assert (
+            call(
+                server.server_port,
+                "/api/job_archive",
+                {"id": old["id"], "archived": True},
+            )[0]
+            == 200
+        )
         with app._job_lock:
             for i in range(1, 20):
-                app.background_jobs.append({**old, "id": f"{i:016x}", "question": f"Question {i}", "pinned": False, "archived": False})
+                app.background_jobs.append(
+                    {
+                        **old,
+                        "id": f"{i:016x}",
+                        "question": f"Question {i}",
+                        "pinned": False,
+                        "archived": False,
+                    }
+                )
             app._save_background_jobs()
         app.ws.research = lambda *_args, **_kw: "New result"
         new_id = app.start_research_job("New question")
         deadline = time.monotonic() + 2
         while time.monotonic() < deadline:
-            if any(row["id"] == new_id and row["state"] == "finished" for row in app.state()["jobs"]):
+            if any(
+                row["id"] == new_id and row["state"] == "finished"
+                for row in app.state()["jobs"]
+            ):
                 break
-            time.sleep(.01)
+            time.sleep(0.01)
         jobs = app.state()["jobs"]
         assert len(jobs) == 20 and jobs[0]["id"] == old["id"] and jobs[0]["pinned"]
         assert "0000000000000001" not in {row["id"] for row in jobs}
@@ -263,50 +313,108 @@ def test_kept_research_result_survives_inbox_trim_and_restart(tmp_path):
         reopened.close()
 
 
-def test_keep_result_is_bounded_and_rejects_invalid_or_unsaved_changes(served, monkeypatch):
+def test_keep_result_is_bounded_and_rejects_invalid_or_unsaved_changes(
+    served, monkeypatch
+):
     app, port = served
     with app._job_lock:
         for i in range(6):
-            app.background_jobs.append({
-                "id": f"{i:016x}", "question": f"Question {i}", "answer": "Result",
-                "state": "finished", "created": i, "ended": i + 1, "routine": "", "pinned": False, "archived": False,
-            })
+            app.background_jobs.append(
+                {
+                    "id": f"{i:016x}",
+                    "question": f"Question {i}",
+                    "answer": "Result",
+                    "state": "finished",
+                    "created": i,
+                    "ended": i + 1,
+                    "routine": "",
+                    "pinned": False,
+                    "archived": False,
+                }
+            )
         app._save_background_jobs()
     for i in range(5):
         assert call(port, "/api/job_pin", {"id": f"{i:016x}", "pinned": True})[0] == 200
-    assert call(port, "/api/job_pin", {"id": "0000000000000005", "pinned": True})[0] == 400
-    assert call(port, "/api/job_pin", {"id": "0000000000000005", "pinned": "yes"})[0] == 400
+    assert (
+        call(port, "/api/job_pin", {"id": "0000000000000005", "pinned": True})[0] == 400
+    )
+    assert (
+        call(port, "/api/job_pin", {"id": "0000000000000005", "pinned": "yes"})[0]
+        == 400
+    )
     assert sum(job["pinned"] for job in app.state()["jobs"]) == 5
 
     def failed_save():
         app.job_path = None
 
     monkeypatch.setattr(app, "_save_background_jobs", failed_save)
-    assert call(port, "/api/job_pin", {"id": "0000000000000000", "pinned": False})[0] == 400
-    assert next(job for job in app.state()["jobs"] if job["id"] == "0000000000000000")["pinned"] is True
+    assert (
+        call(port, "/api/job_pin", {"id": "0000000000000000", "pinned": False})[0]
+        == 400
+    )
+    assert (
+        next(job for job in app.state()["jobs"] if job["id"] == "0000000000000000")[
+            "pinned"
+        ]
+        is True
+    )
 
 
-def test_archive_requires_finished_result_and_rolls_back_failed_save(served, monkeypatch):
+def test_archive_requires_finished_result_and_rolls_back_failed_save(
+    served, monkeypatch
+):
     app, port = served
     with app._job_lock:
-        app.background_jobs.extend([
-            {"id": f"{i:016x}", "question": f"Question {i}", "answer": "Result" if i == 0 else "",
-             "state": "finished" if i == 0 else "running", "created": i, "ended": i + 1,
-             "routine": "", "pinned": False, "archived": False}
-            for i in range(2)
-        ])
+        app.background_jobs.extend(
+            [
+                {
+                    "id": f"{i:016x}",
+                    "question": f"Question {i}",
+                    "answer": "Result" if i == 0 else "",
+                    "state": "finished" if i == 0 else "running",
+                    "created": i,
+                    "ended": i + 1,
+                    "routine": "",
+                    "pinned": False,
+                    "archived": False,
+                }
+                for i in range(2)
+            ]
+        )
         app._save_background_jobs()
-    assert call(port, "/api/job_archive", {"id": "0000000000000000", "archived": "yes"})[0] == 400
-    assert call(port, "/api/job_archive", {"id": "0000000000000001", "archived": True})[0] == 400
-    assert call(port, "/api/job_archive", {"id": "0000000000000000", "archived": True})[0] == 200
-    assert next(job for job in app.state()["jobs"] if job["id"] == "0000000000000000")["archived"] is True
+    assert (
+        call(port, "/api/job_archive", {"id": "0000000000000000", "archived": "yes"})[0]
+        == 400
+    )
+    assert (
+        call(port, "/api/job_archive", {"id": "0000000000000001", "archived": True})[0]
+        == 400
+    )
+    assert (
+        call(port, "/api/job_archive", {"id": "0000000000000000", "archived": True})[0]
+        == 200
+    )
+    assert (
+        next(job for job in app.state()["jobs"] if job["id"] == "0000000000000000")[
+            "archived"
+        ]
+        is True
+    )
 
     def failed_save():
         app.job_path = None
 
     monkeypatch.setattr(app, "_save_background_jobs", failed_save)
-    assert call(port, "/api/job_archive", {"id": "0000000000000000", "archived": False})[0] == 400
-    assert next(job for job in app.state()["jobs"] if job["id"] == "0000000000000000")["archived"] is True
+    assert (
+        call(port, "/api/job_archive", {"id": "0000000000000000", "archived": False})[0]
+        == 400
+    )
+    assert (
+        next(job for job in app.state()["jobs"] if job["id"] == "0000000000000000")[
+            "archived"
+        ]
+        is True
+    )
 
 
 def test_background_stop_and_secret_scrub_before_research(served):
@@ -365,15 +473,29 @@ def test_background_answer_is_scrubbed_and_never_enters_brief(served, monkeypatc
 
 def test_stale_background_job_becomes_interrupted(tmp_path):
     root = tmp_path / "briefs"
-    make = lambda: Workspace("trip", Gateway(), Brain(tmp_path / "kb.sqlite"), root=root)
+    make = lambda: Workspace(
+        "trip", Gateway(), Brain(tmp_path / "kb.sqlite"), root=root
+    )
     app = App("trip", make_workspace=make, clock=lambda: 100)
     path = app.job_path
     app.close()
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps([{
-        "id": "0123456789abcdef", "question": "Old question", "answer": "",
-        "state": "running", "created": 10, "ended": None, "routine": "",
-    }]), encoding="utf-8")
+    path.write_text(
+        json.dumps(
+            [
+                {
+                    "id": "0123456789abcdef",
+                    "question": "Old question",
+                    "answer": "",
+                    "state": "running",
+                    "created": 10,
+                    "ended": None,
+                    "routine": "",
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
     reopened = App("trip", make_workspace=make, clock=lambda: 100)
     try:
         assert reopened.state()["jobs"][0]["state"] == "interrupted"
@@ -385,7 +507,9 @@ def test_stale_background_job_becomes_interrupted(tmp_path):
 
 def test_malformed_job_inbox_stays_untouched(tmp_path):
     root = tmp_path / "briefs"
-    make = lambda: Workspace("trip", Gateway(), Brain(tmp_path / "kb.sqlite"), root=root)
+    make = lambda: Workspace(
+        "trip", Gateway(), Brain(tmp_path / "kb.sqlite"), root=root
+    )
     first = App("trip", make_workspace=make)
     path = first.job_path
     first.close()
@@ -405,9 +529,15 @@ def test_routine_runs_once_after_sleep_and_can_pause_resume_delete(served):
     now = [100.0]
     app.clock = lambda: now[0]
     seen = []
-    app.ws.research = lambda question, *, cancelled, record: seen.append(question) or "Cited answer [1]"
+    app.ws.research = lambda question, *, cancelled, record: (
+        seen.append(question) or "Cited answer [1]"
+    )
     secret = "sk-abcdefghijklmnop"
-    status, payload = call(port, "/api/routine_create", {"question": "Check " + secret, "cadence": "hourly"})
+    status, payload = call(
+        port,
+        "/api/routine_create",
+        {"question": "Check " + secret, "cadence": "hourly"},
+    )
     assert status == 200
     rid = json.loads(payload)["id"]
     assert app.has_enabled_routines()
@@ -438,14 +568,21 @@ def test_routine_reruns_report_only_new_claims(served):
         "- Price fell [s2]\n- Office opens (partial) [s1][s3]\nSources:\n  [s1] x",
         "- price fell [s1]\nSources:",
     ) == ["Office opens (partial)"]
-    assert appmod.new_claims("- Revenue grows", "") == ["Revenue grows"]  # trailing s kept
+    assert appmod.new_claims("- Revenue grows", "") == [
+        "Revenue grows"
+    ]  # trailing s kept
     # Seen live on 28 Oct: the model reworded an unchanged fact between runs.
+    assert (
+        appmod.new_claims(
+            "- As of October 2026, the latest stable Python 3 release is Python 3.15.0, released on October 9, 2026. [s1]",
+            "- The latest stable Python 3 release is Python 3.15.0, released on October 9, 2026, "
+            "according to the provided passages covering October 2026. [s1][s5]",
+        )
+        == []
+    )
     assert appmod.new_claims(
-        "- As of October 2026, the latest stable Python 3 release is Python 3.15.0, released on October 9, 2026. [s1]",
-        "- The latest stable Python 3 release is Python 3.15.0, released on October 9, 2026, "
-        "according to the provided passages covering October 2026. [s1][s5]",
-    ) == []
-    assert appmod.new_claims("- Price fell to 12 dollars", "- Price fell to 10 dollars") == ["Price fell to 12 dollars"]
+        "- Price fell to 12 dollars", "- Price fell to 10 dollars"
+    ) == ["Price fell to 12 dollars"]
     app, port = served
     now = [100.0]
     app.clock = lambda: now[0]
@@ -466,7 +603,9 @@ def test_routine_reruns_report_only_new_claims(served):
 
 def test_routines_survive_restart_and_malformed_file_is_preserved(tmp_path):
     root = tmp_path / "briefs"
-    make = lambda: Workspace("trip", Gateway(), Brain(tmp_path / "kb.sqlite"), root=root)
+    make = lambda: Workspace(
+        "trip", Gateway(), Brain(tmp_path / "kb.sqlite"), root=root
+    )
     first = App("trip", make_workspace=make, clock=lambda: 100)
     first.handle("routine_create", {"question": "Find updates", "cadence": "daily"})
     path = first.routine_path
@@ -491,7 +630,9 @@ def test_quit_during_due_tick_cannot_start_research(served):
     app, port = served
     now = [100.0]
     app.clock = lambda: now[0]
-    rid = app.handle("routine_create", {"question": "Find updates", "cadence": "hourly"})["id"]
+    rid = app.handle(
+        "routine_create", {"question": "Find updates", "cadence": "hourly"}
+    )["id"]
     assert rid
     now[0] = 3700.0
     entered, release = threading.Event(), threading.Event()
@@ -517,14 +658,19 @@ def test_quit_during_due_tick_cannot_start_research(served):
 
 def test_due_time_is_durable_before_scheduled_job_starts(tmp_path):
     root = tmp_path / "briefs"
-    make = lambda: Workspace("trip", Gateway(), Brain(tmp_path / "kb.sqlite"), root=root)
+    make = lambda: Workspace(
+        "trip", Gateway(), Brain(tmp_path / "kb.sqlite"), root=root
+    )
     now = [100.0]
     app = App("trip", make_workspace=make, clock=lambda: now[0])
     app.handle("routine_create", {"question": "Find updates", "cadence": "hourly"})
     now[0] = 3700.0
 
     def crash_window(*args, **kwargs):
-        assert json.loads(app.routine_path.read_text(encoding="utf-8"))[0]["next_due"] == 7300.0
+        assert (
+            json.loads(app.routine_path.read_text(encoding="utf-8"))[0]["next_due"]
+            == 7300.0
+        )
         raise RuntimeError("simulated process death before work starts")
 
     app.start_research_job = crash_window
@@ -545,7 +691,9 @@ def test_due_time_is_durable_before_scheduled_job_starts(tmp_path):
 
 def test_missed_routine_after_downtime_replays_once(tmp_path):
     root = tmp_path / "briefs"
-    make = lambda: Workspace("trip", Gateway(), Brain(tmp_path / "kb.sqlite"), root=root)
+    make = lambda: Workspace(
+        "trip", Gateway(), Brain(tmp_path / "kb.sqlite"), root=root
+    )
     now = [100.0]
     first = App("trip", make_workspace=make, clock=lambda: now[0])
     first.handle("routine_create", {"question": "Find updates", "cadence": "hourly"})
@@ -554,10 +702,14 @@ def test_missed_routine_after_downtime_replays_once(tmp_path):
     now[0] += 10 * 3600  # PC was unavailable across ten due times
     resumed = App("trip", make_workspace=make, clock=lambda: now[0])
     calls = []
-    resumed.ws.research = lambda question, *, cancelled, record: calls.append(question) or "Cited answer [1]"
+    resumed.ws.research = lambda question, *, cancelled, record: (
+        calls.append(question) or "Cited answer [1]"
+    )
     try:
         resumed.tick_routines()
-        assert _wait_for_job(resumed, "finished")["routine"] == resumed.routines[0]["id"]
+        assert (
+            _wait_for_job(resumed, "finished")["routine"] == resumed.routines[0]["id"]
+        )
         assert calls == ["Find updates"]
         assert resumed.routines[0]["next_due"] == now[0] + 3600
     finally:
@@ -692,7 +844,9 @@ def test_recent_work_persists_only_generic_labels_and_recovers_interrupted(tmp_p
         with pytest.raises(ValueError):
             app.run("Planning", fail)
         assert [(r["label"], r["state"]) for r in app.state()["activity"]] == [
-            ("Planning", "failed"), ("Work", "finished"), ("Researching", "finished")
+            ("Planning", "failed"),
+            ("Work", "finished"),
+            ("Researching", "finished"),
         ]
     finally:
         app.close()
@@ -705,7 +859,8 @@ def test_recent_work_persists_only_generic_labels_and_recovers_interrupted(tmp_p
     reopened = App("trip", make_workspace=make_workspace)
     try:
         assert reopened.state()["activity"][0] == {
-            "label": "Guiding", "state": "interrupted"
+            "label": "Guiding",
+            "state": "interrupted",
         }
     finally:
         reopened.close()
@@ -724,9 +879,13 @@ def test_file_question_is_one_off_and_keeps_material_out_of_history(served):
     assert json.loads(saved)[-1] == {"label": "Asking file", "state": "finished"}
 
     for material in (["wrong type"], "x" * 100_001, "\0binary"):
-        status, _ = call(port, "/api/ask_file", {"text": "Where?", "material": material})
+        status, _ = call(
+            port, "/api/ask_file", {"text": "Where?", "material": material}
+        )
         assert status == 400
-    status, _ = call(port, "/api/ask_file", {"text": ["wrong type"], "material": "text"})
+    status, _ = call(
+        port, "/api/ask_file", {"text": ["wrong type"], "material": "text"}
+    )
     assert status == 400
 
 
@@ -734,25 +893,59 @@ def test_saved_result_follow_up_uses_server_selected_bounded_answer(served):
     app, port = served
     jid = "0000000000000000"
     with app._job_lock:
-        app.background_jobs.append({
-            "id": jid, "question": "Original question", "answer": "A" * 8000 + "TRAILING",
-            "state": "finished", "created": 1, "ended": 2, "routine": "", "pinned": False, "archived": False,
-        })
-        app.background_jobs.append({
-            "id": "0000000000000001", "question": "Running", "answer": "Premature answer",
-            "state": "running", "created": 3, "ended": None, "routine": "", "pinned": False, "archived": False,
-        })
+        app.background_jobs.append(
+            {
+                "id": jid,
+                "question": "Original question",
+                "answer": "A" * 8000 + "TRAILING",
+                "state": "finished",
+                "created": 1,
+                "ended": 2,
+                "routine": "",
+                "pinned": False,
+                "archived": False,
+            }
+        )
+        app.background_jobs.append(
+            {
+                "id": "0000000000000001",
+                "question": "Running",
+                "answer": "Premature answer",
+                "state": "running",
+                "created": 3,
+                "ended": None,
+                "routine": "",
+                "pinned": False,
+                "archived": False,
+            }
+        )
         app._save_background_jobs()
     seen = []
-    app.ws.ask = lambda question, material, *, cancelled: (seen.append((question, material, cancelled())), "Grounded reply")[1]
-    status, payload = call(port, "/api/job_ask", {"id": jid, "text": "What?", "material": "injected"})
-    assert status == 200 and json.loads(payload) == {"answer": "Grounded reply", "sent": ""}
-    assert seen == [("What?", "A" * 8000 + "TRAILING", False)]  # ws.ask bounds what is sent
+    app.ws.ask = lambda question, material, *, cancelled: (
+        seen.append((question, material, cancelled())),
+        "Grounded reply",
+    )[1]
+    status, payload = call(
+        port, "/api/job_ask", {"id": jid, "text": "What?", "material": "injected"}
+    )
+    assert status == 200 and json.loads(payload) == {
+        "answer": "Grounded reply",
+        "sent": "",
+    }
+    assert seen == [
+        ("What?", "A" * 8000 + "TRAILING", False)
+    ]  # ws.ask bounds what is sent
     assert app.ws.turns == ()
     saved = app.job_path.read_text(encoding="utf-8")
     assert "What?" not in saved and "Grounded reply" not in saved
-    assert call(port, "/api/job_ask", {"id": "ffffffffffffffff", "text": "What?"})[0] == 400
-    assert call(port, "/api/job_ask", {"id": "0000000000000001", "text": "What?"})[0] == 400
+    assert (
+        call(port, "/api/job_ask", {"id": "ffffffffffffffff", "text": "What?"})[0]
+        == 400
+    )
+    assert (
+        call(port, "/api/job_ask", {"id": "0000000000000001", "text": "What?"})[0]
+        == 400
+    )
     assert call(port, "/api/job_ask", {"id": jid, "text": ""})[0] == 400
     assert call(port, "/api/job_ask", {"id": jid, "text": "x" * 501})[0] == 400
     assert call(port, "/api/job_ask", {"id": jid, "text": "x\0y"})[0] == 400
@@ -771,12 +964,16 @@ def test_stop_reaches_file_question_provider_in_order(tmp_path):
     app = App(
         "trip",
         make_workspace=lambda: Workspace(
-            "trip", StopGateway(), Brain(tmp_path / "kb.sqlite"), root=tmp_path / "briefs"
+            "trip",
+            StopGateway(),
+            Brain(tmp_path / "kb.sqlite"),
+            root=tmp_path / "briefs",
         ),
     )
     try:
         assert app.handle("ask_file", {"text": "Where?", "material": "a file"}) == {
-            "answer": "Sure.", "sent": "a file"
+            "answer": "Sure.",
+            "sent": "a file",
         }
         assert seen == [False, True]
         assert app.activity[-1] == {"label": "Asking file", "state": "stopped"}
@@ -806,7 +1003,11 @@ def test_invalid_recent_work_file_is_not_overwritten(tmp_path):
 def test_recent_work_save_does_not_overwrite_neighboring_files(tmp_path):
     root = tmp_path / "briefs"
     root.mkdir()
-    neighbors = [root / "trip.tmp", root / "trip.activity.tmp", root / "trip.activity.json.tmp"]
+    neighbors = [
+        root / "trip.tmp",
+        root / "trip.activity.tmp",
+        root / "trip.activity.json.tmp",
+    ]
     for path in neighbors:
         path.write_text("keep", encoding="utf-8")
     app = App(
@@ -980,20 +1181,37 @@ def test_chat_plan_and_brain_views_keep_a_clear_next_action(served):
         try:
             page = edge.new_page(viewport={"width": 500, "height": 800})
             page.goto(f"http://127.0.0.1:{port}/?t=secret-token#chat")
-            page.get_by_role("heading", name="Start with what you want to do.").wait_for()
+            page.get_by_role(
+                "heading", name="Start with what you want to do."
+            ).wait_for()
             page.get_by_role("tab", name="Plan").click()
             page.get_by_role("button", name="Describe a goal").click()
-            assert page.get_by_role("tab", name="Chat").get_attribute("aria-selected") == "true"
-            assert page.evaluate("document.activeElement.getAttribute('aria-label')") == "Message"
+            assert (
+                page.get_by_role("tab", name="Chat").get_attribute("aria-selected")
+                == "true"
+            )
+            assert (
+                page.evaluate("document.activeElement.getAttribute('aria-label')")
+                == "Message"
+            )
             page.get_by_role("tab", name="Brain").click()
             sections = page.get_by_role("group", name="Brain sections")
-            assert sections.get_by_role("button", name="Personal").get_attribute("aria-pressed") == "true"
+            assert (
+                sections.get_by_role("button", name="Personal").get_attribute(
+                    "aria-pressed"
+                )
+                == "true"
+            )
             sections.get_by_role("button", name="Company").click()
-            page.get_by_text("Company Brain is not set up in this workspace.").wait_for()
+            page.get_by_text(
+                "Company Brain is not set up in this workspace."
+            ).wait_for()
             assert page.evaluate("document.activeElement.textContent") == "Company"
             sections.get_by_role("button", name="Setup").click()
             page.get_by_text("Let Jev see a picture", exact=False).wait_for()
-            assert page.locator("#tab-brain").get_by_text("[object Object]").count() == 0
+            assert (
+                page.locator("#tab-brain").get_by_text("[object Object]").count() == 0
+            )
             assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
         finally:
             edge.close()
@@ -1010,8 +1228,14 @@ def test_first_run_guide_uses_existing_setup_and_remembers_dismissal(served):
             page.goto(f"http://127.0.0.1:{port}/?t=secret-token#chat")
             guide = page.get_by_role("region", name="Getting started")
             guide.get_by_role("button", name="Check setup").click()
-            assert page.get_by_role("tab", name="Brain").get_attribute("aria-selected") == "true"
-            assert page.get_by_role("button", name="Setup").get_attribute("aria-pressed") == "true"
+            assert (
+                page.get_by_role("tab", name="Brain").get_attribute("aria-selected")
+                == "true"
+            )
+            assert (
+                page.get_by_role("button", name="Setup").get_attribute("aria-pressed")
+                == "true"
+            )
             assert page.evaluate("document.activeElement.textContent") == "Setup"
             page.reload()
             page.get_by_role("tab", name="Chat").click()
@@ -1020,8 +1244,13 @@ def test_first_run_guide_uses_existing_setup_and_remembers_dismissal(served):
 
             fresh = edge.new_page(viewport={"width": 500, "height": 800})
             fresh.goto(f"http://127.0.0.1:{port}/?t=secret-token#chat")
-            fresh.get_by_role("region", name="Getting started").get_by_role("button", name="Start typing").click()
-            assert fresh.evaluate("document.activeElement.getAttribute('aria-label')") == "Message"
+            fresh.get_by_role("region", name="Getting started").get_by_role(
+                "button", name="Start typing"
+            ).click()
+            assert (
+                fresh.evaluate("document.activeElement.getAttribute('aria-label')")
+                == "Message"
+            )
             assert fresh.get_by_role("region", name="Getting started").count() == 0
         finally:
             edge.close()
@@ -1034,14 +1263,25 @@ def test_saved_research_card_downloads_markdown(served, tmp_path):
     question = "What changed?"
     answer = "Use **two** steps.\n<script>alert(1)</script>"
     with app._job_lock:
-        app.background_jobs.append({
-            "id": "0123456789abcdef", "question": question, "answer": answer,
-            "state": "finished", "created": 1.0, "ended": 2.0, "routine": "", "pinned": False, "archived": False,
-        })
+        app.background_jobs.append(
+            {
+                "id": "0123456789abcdef",
+                "question": question,
+                "answer": answer,
+                "state": "finished",
+                "created": 1.0,
+                "ended": 2.0,
+                "routine": "",
+                "pinned": False,
+                "archived": False,
+            }
+        )
     with playwright.sync_playwright() as browser:
         edge = browser.chromium.launch(executable_path=str(appmod.EDGE), headless=True)
         try:
-            page = edge.new_page(accept_downloads=True, viewport={"width": 500, "height": 800})
+            page = edge.new_page(
+                accept_downloads=True, viewport={"width": 500, "height": 800}
+            )
             page.goto(f"http://127.0.0.1:{port}/?t=secret-token#work")
             stage = page.get_by_role("region", name="Current work cards")
             stage.get_by_role("heading", name=question).wait_for()
@@ -1065,9 +1305,14 @@ def test_saved_research_card_downloads_markdown(served, tmp_path):
             page.get_by_role("button", name="Show archived (1)").click()
             page.get_by_role("button", name="Download Markdown").focus()
             page.evaluate("renderWork()")
-            assert page.evaluate("document.activeElement.textContent") == "Download Markdown"
+            assert (
+                page.evaluate("document.activeElement.textContent")
+                == "Download Markdown"
+            )
             page.get_by_role("button", name="View result").click()
-            page.get_by_role("textbox", name="Question about this result").fill("What are the steps?")
+            page.get_by_role("textbox", name="Question about this result").fill(
+                "What are the steps?"
+            )
             page.get_by_role("button", name="Ask about result").click()
             reply = page.get_by_role("status").filter(has_text="Sure.")
             reply.wait_for()
@@ -1117,11 +1362,63 @@ def test_company_brain_gui_capture(tmp_path, monkeypatch):
         )
         assert status == 200 and json.loads(body)["status"] == "candidate"
         assert call(port, "/api/know_add", {"text": "   "})[0] == 400  # empty refused
+        # 14 Nov audit: the same fact again is not a second row to review, but
+        # a near match may be a correction and is kept; a wall of text, a
+        # non-text value and a null id are refused plainly, not with a 500.
+        again = json.loads(call(port, "/api/know_add", {"text": "launch  is in q3"})[1])
+        assert again["duplicate"] is True and again["fid"] == json.loads(body)["fid"]
+        other = json.loads(
+            call(port, "/api/know_add", {"text": "Launch is not in Q3"})[1]
+        )
+        assert other["duplicate"] is False and other["fid"] != again["fid"]
+        kb.retire(other["fid"])
+        back = json.loads(
+            call(port, "/api/know_add", {"text": "Launch is not in Q3"})[1]
+        )
+        assert back["duplicate"] is False  # a retired fact can be added afresh
+        kb.retire(back["fid"])
+        assert call(port, "/api/know_add", {"text": "x" * 2001})[0] == 400
+        assert call(port, "/api/know_add", {"text": 12345})[0] == 200  # stored as text
+        kb.retire(json.loads(call(port, "/api/know_list")[1])["facts"][-1]["fid"])
+        assert call(port, "/api/know_approve", {"fid": None})[0] == 400
+        link = {"subject": "Priya", "predicate": "owns", "object": "billing"}
+        first = json.loads(call(port, "/api/know_relate", link)[1])
+        same = json.loads(
+            call(port, "/api/know_relate", {**link, "subject": "PRIYA"})[1]
+        )
+        assert first["duplicate"] is False and same == {**first, "duplicate": True}
+        assert call(port, "/api/know_relate", {**link, "object": "y" * 201})[0] == 400
+        # Add from file: passages become candidates; a repeat adds nothing.
+        passages = [
+            "# Leave",
+            "Staff get 25 days of leave a year.",
+            "# Hours",
+            "The office opens at nine on weekdays.",
+        ]
+        doc = {"name": "handbook.md", "material": (chr(10) * 2).join(passages)}
+        got = json.loads(call(port, "/api/know_ingest", doc)[1])
+        assert got == {"added": 2, "duplicate": 0}  # the two facts, not the headings
+        assert json.loads(call(port, "/api/know_ingest", doc)[1]) == {
+            "added": 0,
+            "duplicate": got["added"],
+        }
+        from_file = [f for f in kb.list(scope="default") if f.source == "handbook.md"]
+        assert len(from_file) == got["added"] and {f.status for f in from_file} == {
+            "candidate"
+        }
+        for f in from_file:
+            kb.retire(f.fid)
+        assert (
+            call(port, "/api/know_ingest", {"name": "x", "material": "y" * 100_001})[0]
+            == 400
+        )
+        assert call(port, "/api/know_ingest", {"name": "x", "material": 5})[0] == 400
 
         status, body = call(port, "/api/know_clip", {})
         assert status == 200 and "candidate" in json.loads(body)["result"]
 
         facts = json.loads(call(port, "/api/know_list")[1])["facts"]
+        facts = [f for f in facts if f["status"] != "retired"]
         assert len(facts) == 2 and {f["status"] for f in facts} == {"candidate"}
     finally:
         server.shutdown()
@@ -1456,10 +1753,14 @@ def test_a_weekdays_routine_skips_the_weekend():
 
     from ghostcursor.workspace.app import next_due
 
-    friday = time.mktime((2026, 10, 30, 9, 0, 0, 0, 0, -1))  # Fri 30 Oct 2026, 09:00 local
+    friday = time.mktime(
+        (2026, 10, 30, 9, 0, 0, 0, 0, -1)
+    )  # Fri 30 Oct 2026, 09:00 local
     monday = time.localtime(next_due("weekdays", friday))
     assert (monday.tm_wday, monday.tm_mday, monday.tm_hour) == (0, 2, 9)
-    tuesday = time.localtime(next_due("weekdays", time.mktime((2026, 11, 2, 9, 0, 0, 0, 0, -1))))
+    tuesday = time.localtime(
+        next_due("weekdays", time.mktime((2026, 11, 2, 9, 0, 0, 0, 0, -1)))
+    )
     assert (tuesday.tm_wday, tuesday.tm_mday) == (1, 3)
     saturday = time.localtime(next_due("daily", friday))
     assert saturday.tm_wday == 5  # daily still runs at the weekend
@@ -1471,8 +1772,12 @@ def test_a_right_clicked_text_file_is_read_with_ask_a_files_limits(tmp_path):
     good = tmp_path / "notes.md"
     good.write_text("The launch is on Friday.", encoding="utf-8")
     assert read_text_file(str(good)) == ("notes.md", "The launch is on Friday.")
-    for name, data in [("bin.dat", b"\x00\x01\x02"), ("latin.txt", "caf\xe9".encode("latin-1")),
-                       ("big.txt", b"a" * (400 * 1024 + 1)), ("empty.txt", b"  ")]:
+    for name, data in [
+        ("bin.dat", b"\x00\x01\x02"),
+        ("latin.txt", "caf\xe9".encode("latin-1")),
+        ("big.txt", b"a" * (400 * 1024 + 1)),
+        ("empty.txt", b"  "),
+    ]:
         (tmp_path / name).write_bytes(data)
         with pytest.raises(ValueError):
             read_text_file(str(tmp_path / name))
@@ -1484,17 +1789,31 @@ def test_a_right_clicked_text_file_is_read_with_ask_a_files_limits(tmp_path):
 
 def test_an_offered_file_is_shown_once_and_needs_the_token(served):
     app, port = served
-    status, _ = call(port, "/api/offer_file", {"name": "notes.md", "material": "hello"}, token="wrong")
+    status, _ = call(
+        port,
+        "/api/offer_file",
+        {"name": "notes.md", "material": "hello"},
+        token="wrong",
+    )
     assert status != 200 and app.offered_file is None
     status, _ = call(port, "/api/offer_file", {"name": "notes.md", "material": "hello"})
     assert status == 200
-    assert json.loads(call(port, "/api/state")[1])["offered_file"] == "notes.md"  # the name, never the text
+    assert (
+        json.loads(call(port, "/api/state")[1])["offered_file"] == "notes.md"
+    )  # the name, never the text
     assert b"hello" not in call(port, "/api/state")[1]
-    assert json.loads(call(port, "/api/take_offered_file")[1]) == {"name": "notes.md", "material": "hello"}
+    assert json.loads(call(port, "/api/take_offered_file")[1]) == {
+        "name": "notes.md",
+        "material": "hello",
+    }
     assert json.loads(call(port, "/api/take_offered_file")[1]) == {}
     assert json.loads(call(port, "/api/state")[1])["offered_file"] == ""
-    for bad in ({"name": "x", "material": "a\0b"}, {"name": "x", "material": " "},
-                {"name": 3, "material": "a"}, {"name": "x", "material": "a" * 100_001}):
+    for bad in (
+        {"name": "x", "material": "a\0b"},
+        {"name": "x", "material": " "},
+        {"name": 3, "material": "a"},
+        {"name": "x", "material": "a" * 100_001},
+    ):
         assert call(port, "/api/offer_file", bad)[0] != 200
     assert app.offered_file is None
 
@@ -1519,13 +1838,19 @@ def test_a_second_instance_sends_the_file_as_utf8_not_escapes(monkeypatch):
         return Reply()
 
     monkeypatch.setattr(urllib.request, "urlopen", urlopen)
-    appmod._post("http://127.0.0.1:1/?t=x", "offer_file", {"name": "a", "material": "\u4e2d" * 1000})
+    appmod._post(
+        "http://127.0.0.1:1/?t=x",
+        "offer_file",
+        {"name": "a", "material": "\u4e2d" * 1000},
+    )
     assert len(sent["data"]) < 4000 and "\u4e2d".encode() in sent["data"]
 
 
 def test_a_routine_that_meets_a_busy_worker_stays_due(tmp_path, monkeypatch):
     root = tmp_path / "briefs"
-    make = lambda: Workspace("trip", Gateway(), Brain(tmp_path / "kb.sqlite"), root=root)
+    make = lambda: Workspace(
+        "trip", Gateway(), Brain(tmp_path / "kb.sqlite"), root=root
+    )
     now = [100.0]
     app = App("trip", make_workspace=make, clock=lambda: now[0])
     try:
@@ -1547,7 +1872,9 @@ def test_post_refuses_a_body_the_server_would_refuse():
     from ghostcursor.workspace import app as app_mod
 
     with pytest.raises(ValueError, match="too large"):
-        app_mod._post("http://127.0.0.1:9/?t=x", "offer_file", {"material": "\x01" * 100_000})
+        app_mod._post(
+            "http://127.0.0.1:9/?t=x", "offer_file", {"material": "\x01" * 100_000}
+        )
 
 
 # --- background job kinds (HeyClicky "Jobs", read-only) -----------------------
@@ -1567,7 +1894,9 @@ def test_deep_research_and_crew_run_as_background_jobs(served, kind, method):
         return Report()
 
     setattr(app.ws, method, work)
-    status, _ = call(port, "/api/job_start", {"question": "Plan our launch", "kind": kind})
+    status, _ = call(
+        port, "/api/job_start", {"question": "Plan our launch", "kind": kind}
+    )
     assert status == 200
     job = _wait_for_job(app, "finished")
     assert job["answer"] == f"{kind} result" and job["kind"] == kind
@@ -1587,10 +1916,22 @@ def test_a_saved_job_from_before_kinds_loads_as_research(tmp_path):
     root = tmp_path / "briefs"
     path = brief_path(root, "trip").with_suffix(".jobs.json")
     path.parent.mkdir(parents=True)
-    old = {"id": "0000000000000000", "question": "q", "answer": "a", "state": "finished",
-           "created": 1, "ended": 2, "routine": ""}
-    path.write_text(json.dumps([old, {**old, "id": "0000000000000001", "kind": "crew"}]), encoding="utf-8")
-    make = lambda: Workspace("trip", Gateway(), Brain(tmp_path / "kb.sqlite"), root=root)
+    old = {
+        "id": "0000000000000000",
+        "question": "q",
+        "answer": "a",
+        "state": "finished",
+        "created": 1,
+        "ended": 2,
+        "routine": "",
+    }
+    path.write_text(
+        json.dumps([old, {**old, "id": "0000000000000001", "kind": "crew"}]),
+        encoding="utf-8",
+    )
+    make = lambda: Workspace(
+        "trip", Gateway(), Brain(tmp_path / "kb.sqlite"), root=root
+    )
     app = App("trip", make_workspace=make)
     try:
         assert sorted(j["kind"] for j in app.state()["jobs"]) == ["crew", "research"]
@@ -1608,10 +1949,21 @@ def test_stop_lands_between_crew_steps():
     from ghostcursor.workspace.crew import run_crew
 
     ran = []
-    ws = type("W", (), {"_run_intent": lambda self, i, a, fallback: ran.append(a) or a})()
+    ws = type(
+        "W", (), {"_run_intent": lambda self, i, a, fallback: ran.append(a) or a}
+    )()
     calls = iter([False, True])
-    result = run_crew(ws, "g", steps=(("research", "a"), ("research", "b")), cancelled=lambda: next(calls))
-    assert ran == ["a"] and result.steps == (("research", "a"),) and result.results == ("a",)
+    result = run_crew(
+        ws,
+        "g",
+        steps=(("research", "a"), ("research", "b")),
+        cancelled=lambda: next(calls),
+    )
+    assert (
+        ran == ["a"]
+        and result.steps == (("research", "a"),)
+        and result.results == ("a",)
+    )
 
 
 def test_stop_lands_between_deep_research_parts(monkeypatch):
@@ -1619,7 +1971,9 @@ def test_stop_lands_between_deep_research_parts(monkeypatch):
 
     asked = []
     monkeypatch.setattr(research, "plan_research", lambda q, g: ("one", "two"))
-    monkeypatch.setattr(research, "research", lambda sub, g, **kw: (asked.append(sub), None)[::-1])
+    monkeypatch.setattr(
+        research, "research", lambda sub, g, **kw: (asked.append(sub), None)[::-1]
+    )
     calls = iter([False, True])
     report = research.deep_research("q", object(), cancelled=lambda: next(calls))
     assert asked == ["one"] and len(report.graphs) == 1
@@ -1630,14 +1984,25 @@ def test_calendar_and_mail_actions_are_read_only_views(served, monkeypatch):
 
     app, port = served
     seen = []
-    monkeypatch.setattr(connectors, "agenda", lambda days=1: seen.append(days) or [{"title": "Stand-up"}])
-    monkeypatch.setattr(connectors, "unread", lambda: [{"from": "Ana", "subject": "Hi"}])
-    monkeypatch.setattr(connectors, "connect_calendar", lambda url: seen.append(url) or 3)
+    monkeypatch.setattr(
+        connectors,
+        "agenda",
+        lambda days=1: seen.append(days) or [{"title": "Stand-up"}],
+    )
+    monkeypatch.setattr(
+        connectors, "unread", lambda: [{"from": "Ana", "subject": "Hi"}]
+    )
+    monkeypatch.setattr(
+        connectors, "connect_calendar", lambda url: seen.append(url) or 3
+    )
     status, payload = call(port, "/api/calendar_agenda", {"days": "7; drop"})
     assert status == 200 and json.loads(payload)["events"][0]["title"] == "Stand-up"
     assert call(port, "/api/mail_unread", {})[0] == 200
     assert call(port, "/api/calendar_connect", {"url": ["not", "text"]})[0] == 200
-    assert seen == [1, ""]  # a non-integer day count and a non-string address are ignored
+    assert seen == [
+        1,
+        "",
+    ]  # a non-integer day count and a non-string address are ignored
     for key in ("calendar_connected", "mail_connected"):
         assert isinstance(app.state()[key], bool)
 
@@ -1663,8 +2028,20 @@ def test_not_now_hides_a_suggestion_for_this_session(served):
     app, port = served
     with app._job_lock:
         for jid in ("0000000000000001", "0000000000000002"):
-            app.background_jobs.append({"id": jid, "question": "Same thing", "answer": "a", "state": "finished",
-                                        "created": 1, "ended": 2, "routine": "", "pinned": False, "archived": False, "kind": "research"})
+            app.background_jobs.append(
+                {
+                    "id": jid,
+                    "question": "Same thing",
+                    "answer": "a",
+                    "state": "finished",
+                    "created": 1,
+                    "ended": 2,
+                    "routine": "",
+                    "pinned": False,
+                    "archived": False,
+                    "kind": "research",
+                }
+            )
     assert app.state()["suggested_routines"] == ["Same thing"]
     assert app.routines == []  # offered, never created on its own
     assert call(port, "/api/routine_dismiss", {"question": "Same thing"})[0] == 200
@@ -1698,7 +2075,10 @@ def test_failed_routine_retries_with_backoff_not_a_whole_period(served):
     while app.busy:
         time.sleep(0.01)
     assert len(calls) == 3
-    assert app.state()["routines"][0]["next_due"] == now[0] + appmod.ROUTINE_SECONDS["weekly"]
+    assert (
+        app.state()["routines"][0]["next_due"]
+        == now[0] + appmod.ROUTINE_SECONDS["weekly"]
+    )
 
 
 def test_a_routine_paused_mid_run_is_not_rescheduled_by_its_failure(served):
@@ -1712,7 +2092,9 @@ def test_a_routine_paused_mid_run_is_not_rescheduled_by_its_failure(served):
         raise OSError("network blip")
 
     app.ws.research = research
-    rid = json.loads(call(port, "/api/routine_create", {"question": "Watch", "cadence": "daily"})[1])["id"]
+    rid = json.loads(
+        call(port, "/api/routine_create", {"question": "Watch", "cadence": "daily"})[1]
+    )["id"]
     now[0] += appmod.ROUTINE_SECONDS["daily"]
     app.tick_routines()
     assert call(port, "/api/routine_pause", {"id": rid})[0] == 200
@@ -1729,10 +2111,14 @@ def test_routine_backoff_count_survives_a_restart(tmp_path):
     """FOLLOWUPS 2026-11-12: the failure count lived in memory, so a restart
     reset the backoff to 5 minutes. It is saved with the routine now."""
     root = tmp_path / "briefs"
-    make = lambda: Workspace("trip", Gateway(), Brain(tmp_path / "kb.sqlite"), root=root)
+    make = lambda: Workspace(
+        "trip", Gateway(), Brain(tmp_path / "kb.sqlite"), root=root
+    )
     now = [100.0]
     first = App("trip", make_workspace=make, clock=lambda: now[0])
-    rid = first.handle("routine_create", {"question": "Watch", "cadence": "weekly"})["id"]
+    rid = first.handle("routine_create", {"question": "Watch", "cadence": "weekly"})[
+        "id"
+    ]
     path = first.routine_path
     first.close()
     rows = json.loads(path.read_text(encoding="utf-8"))
@@ -1770,7 +2156,9 @@ def test_routine_backoff_count_survives_a_restart(tmp_path):
 
 def test_a_routine_file_with_a_bad_failure_count_is_refused(tmp_path):
     root = tmp_path / "briefs"
-    make = lambda: Workspace("trip", Gateway(), Brain(tmp_path / "kb.sqlite"), root=root)
+    make = lambda: Workspace(
+        "trip", Gateway(), Brain(tmp_path / "kb.sqlite"), root=root
+    )
     first = App("trip", make_workspace=make, clock=lambda: 100)
     first.handle("routine_create", {"question": "Watch", "cadence": "weekly"})
     path = first.routine_path
@@ -1796,7 +2184,9 @@ def test_the_resting_dot_switch_is_saved_and_shown(tmp_path, monkeypatch):
     from ghostcursor import settings
 
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "lad"))
-    make = lambda: Workspace("trip", Gateway(), Brain(tmp_path / "kb.sqlite"), root=tmp_path / "briefs")
+    make = lambda: Workspace(
+        "trip", Gateway(), Brain(tmp_path / "kb.sqlite"), root=tmp_path / "briefs"
+    )
     app = App("trip", make_workspace=make)
     try:
         assert app.companion_idle is False and app.state()["companion_idle"] is False
@@ -1831,5 +2221,7 @@ def test_the_page_scripts_parse(tmp_path):
     for index, script in enumerate(scripts):
         path = tmp_path / f"script{index}.js"
         path.write_text(script, encoding="utf-8")
-        result = subprocess.run([node, "--check", str(path)], capture_output=True, text=True)
+        result = subprocess.run(
+            [node, "--check", str(path)], capture_output=True, text=True
+        )
         assert result.returncode == 0, result.stderr

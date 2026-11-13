@@ -2280,6 +2280,17 @@ from 1053b54. Still open:
   only on overflow. Left: the scrollbar, when shown, is the stock dark one; a
   pointer-size change while Orbyn runs is picked up at the next start; the
   resting dot's CPU cost was not re-measured over a session.
+- Brain audit 14 Nov (the Company Brain driven through the real page):
+  the Add box and the link form accepted the same fact or link again (now
+  an exact-match repeat returns the existing one; a near match is kept, as
+  it may be a correction); one fact had no length limit (now 2,000
+  characters, links 200 per part); a failed add cleared what was typed;
+  Enter did nothing in the Brain inputs; an unbroken long fact pushed the
+  page sideways; a non-text value or a null id gave a 500. Rows now show a
+  status chip and dim retired facts. `tools/smoke_build.py` checks the
+  packaged exe with throwaway data. Left: Export overwrites the previous
+  export in Downloads; documents still enter the Company Brain only through
+  /know in the console.
 - Tier-1 review 14 Nov (014ee08): no blocking findings. Fixed: the hover
   check in idle() no longer raises when the pointer cannot be read (UAC,
   lock screen) and is skipped once the bar closes; a refused message wait

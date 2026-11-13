@@ -1008,7 +1008,7 @@ class App:
         if action in ("know_review_edge", "know_expire_edge"):
             if ws.knowledge is None:
                 raise ValueError("no Company Brain")
-            eid = int(body.get("eid", 0))
+            eid = int(body.get("eid") or 0)
             if ws.knowledge.edge(eid) is None:
                 raise ValueError("no such edge")
             meth = "review_edge" if action == "know_review_edge" else "expire_edge"
@@ -1019,12 +1019,12 @@ class App:
                 raise ValueError("no Company Brain")
             sens = "sensitive" if body.get("sensitive") else "normal"
             if action == "know_classify_edge":
-                eid = int(body.get("eid", 0))
+                eid = int(body.get("eid") or 0)
                 if ws.knowledge.edge(eid) is None:
                     raise ValueError("no such edge")
                 ws.knowledge.classify_edge(eid, sens)
                 return {"sensitive": ws.knowledge.edge(eid).sensitivity == "sensitive"}
-            fid = int(body.get("fid", 0))
+            fid = int(body.get("fid") or 0)
             if ws.knowledge.get(fid) is None:
                 raise ValueError("no such fact")
             ws.knowledge.classify(fid, sens)
@@ -1038,7 +1038,7 @@ class App:
         ):
             if ws.knowledge is None:
                 raise ValueError("no Company Brain")
-            fid = int(body.get("fid", 0))
+            fid = int(body.get("fid") or 0)
             if ws.knowledge.get(fid) is None:
                 raise ValueError("no such fact")
             getattr(ws.knowledge, action.split("_")[1])(fid)
@@ -1046,36 +1046,73 @@ class App:
         if action == "know_add":  # GUI capture: one action to note a fact (D186)
             if ws.knowledge is None:
                 raise ValueError("no Company Brain")
-            t = " ".join((body.get("text") or "").split())
+            t = " ".join(str(body.get("text") or "").split())
             if not t:
                 raise ValueError("nothing to add")
+            if len(t) > ws.MAX_CLIP_CHARS:
+                raise ValueError(
+                    "that is too long for one fact; ingest it as a document "
+                    "with /know in the console"
+                )
+            # The same words again are not a second fact to review. Exact match
+            # only: a near match may be a correction ("is" against "is not").
+            stored = redact.scrub(t, redact.SECRETS)[0].casefold()
+            for old in ws.knowledge.list(scope=ws.kb_scope):
+                if old.status != "retired" and old.text.casefold() == stored:
+                    return {"fid": old.fid, "status": old.status, "duplicate": True}
             f = ws.knowledge.add_candidate(
                 t,
-                source=(body.get("source") or "note").strip() or "note",
+                source=str(body.get("source") or "note").strip() or "note",
                 scope=ws.kb_scope,
             )
-            return {"fid": f.fid, "status": f.status}  # candidate until reviewed
+            # candidate until reviewed
+            return {"fid": f.fid, "status": f.status, "duplicate": False}
+        if action == "know_ingest":  # the page's /know ingest: a document's passages
+            if ws.knowledge is None:
+                raise ValueError("no Company Brain")
+            material = body.get("material")
+            if (
+                not isinstance(material, str)
+                or not material.strip()
+                or len(material) > MAX_FILE_CHARS
+                or "\0" in material
+            ):
+                raise ValueError("choose a text file under 100,000 characters")
+            from ghostcursor.workspace.knowledge import chunk_document
+
+            name = " ".join(str(body.get("name") or "").split())[:120] or "document"
+            did = [
+                action
+                for action, _fid in ws.knowledge.ingest(
+                    chunk_document(material), source=name, scope=ws.kb_scope
+                )
+            ]  # candidates only: nothing is usable, or sent, until reviewed
+            return {"added": did.count("added"), "duplicate": did.count("duplicate")}
         if action == "know_relate":  # GUI: add a relationship (candidate edge)
             if ws.knowledge is None:
                 raise ValueError("no Company Brain")
-            s = " ".join((body.get("subject") or "").split())
-            p = " ".join((body.get("predicate") or "").split())
-            o = " ".join((body.get("object") or "").split())
+            s = " ".join(str(body.get("subject") or "").split())
+            p = " ".join(str(body.get("predicate") or "").split())
+            o = " ".join(str(body.get("object") or "").split())
             if not (s and p and o):
                 raise ValueError("need subject, predicate and object")
+            if max(len(s), len(p), len(o)) > 200:
+                raise ValueError("keep each part of a link under 200 characters")
+            known = {e.eid for e in ws.knowledge.list_edges(scope=ws.kb_scope)}
             e = ws.knowledge.relate(
                 s,
                 p,
                 o,
-                source=(body.get("source") or "note").strip() or "note",
+                source=str(body.get("source") or "note").strip() or "note",
                 scope=ws.kb_scope,
                 sensitivity="sensitive" if body.get("sensitive") else "normal",
             )
-            return {"eid": e.eid, "status": e.status}  # candidate until reviewed
+            # candidate until reviewed
+            return {"eid": e.eid, "status": e.status, "duplicate": e.eid in known}
         if action == "know_private_source":  # register/list private sources (D186)
             if ws.knowledge is None:
                 raise ValueError("no Company Brain")
-            pat = " ".join((body.get("pattern") or "").split())
+            pat = " ".join(str(body.get("pattern") or "").split())
             if pat and body.get("remove"):
                 ws.knowledge.unmark_source_sensitive(pat)
             elif pat:

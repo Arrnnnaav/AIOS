@@ -166,6 +166,14 @@ section[hidden] { display: none !important; }
 .mem { padding: 10px 12px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--line); }
 .mem .meta { display: flex; gap: 6px; align-items: center; font-size: 11.5px; color: var(--faint); margin-bottom: 3px; }
 .kind { color: var(--amber); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+/* Company Brain rows: long text wraps, the actions keep their size. */
+.knowtext { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.knowsrc { color: var(--faint); font-size: 12px; margin-left: 8px; }
+.knowacts { display: flex; gap: 6px; flex: none; margin-left: 10px; }
+.knowacts button { margin-left: 0 !important; white-space: nowrap; }
+.chip { display: inline-block; margin-right: 8px; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 600; background: var(--raise); color: var(--faint); vertical-align: 1px; }
+.chip.approved, .chip.reviewed { color: var(--amber); }
+.chip.private { color: var(--text); }
 .mem .acts { display: flex; gap: 4px; margin-left: auto; }
 .mem .acts button { color: var(--faint); font-size: 12px; padding: 1px 6px; border-radius: 6px; }
 .mem .acts button:hover { color: var(--text); background: var(--raise); }
@@ -1126,28 +1134,50 @@ function agentsCard() {
 }
 
 // ---- company brain: curated org facts, owner-reviewed (D186) ----------
+// One row's text: a status chip, the fact, then where it came from.
+function knowLabel(status, sensitive, text, source) {
+  const label = el("span", "knowtext");
+  label.append(el("span", "chip " + status, status));
+  if (sensitive) label.append(el("span", "chip private", "private"));
+  label.append(el("span", "", text), el("span", "knowsrc", source));
+  return label;
+}
+
 function companyBrainCard() {
   const card = el("div", "mem");
   const meta = el("div", "meta"); meta.append(el("span", "kind", "company brain")); card.append(meta);
-  card.append(el("div", "", "Curated facts your team shares. New facts are candidates until you review them; approved facts guide plans, with their source. Add one below, capture the clipboard, or ingest a document with /know in the console."));
+  card.append(el("div", "", "Curated facts your team shares. New facts are candidates until you review them; approved facts guide plans, with their source. Add one below, capture the clipboard, or add the passages of a text file."));
   const cap = el("div", "sheetrow"); cap.style.marginTop = "8px";
   const inp = el("input"); inp.placeholder = "Add a fact to the Brain…"; inp.style.flex = "1";
   const addB = el("button", "pill go", "Add");
-  addB.onclick = () => { const t = inp.value.trim(); if (!t) return; act("know_add", { text: t }, "Added as candidate").then(() => { inp.value = ""; renderBrain(); }); };
+  addB.onclick = () => { const t = inp.value.trim(); if (!t) return; act("know_add", { text: t }).then((r) => { if (!r) return; toast(r.duplicate ? "Already in the Brain" : "Added as candidate", true); inp.value = ""; renderBrain(); }); };
+  inp.onkeydown = (e) => { if (e.key === "Enter" && !imeEnter(e)) addB.onclick(); };
   const clipB = el("button", "secondary", "Capture clipboard"); clipB.style.marginLeft = "6px";
   clipB.onclick = () => act("know_clip", {}, "Clipboard captured").then(renderBrain);
   const expB = el("button", "secondary", "Export"); expB.style.marginLeft = "6px";
   expB.onclick = () => act("know_export", {}).then((r) => r && toast("Saved " + r.path, true));
-  cap.append(inp, addB, clipB, expB); card.append(cap);
+  const fileIn = el("input"); fileIn.type = "file"; fileIn.accept = ".txt,.md,.log,.csv"; fileIn.hidden = true;
+  const fileB = el("button", "secondary", "Add from file"); fileB.style.marginLeft = "6px";
+  fileB.title = "Each passage becomes a candidate to review; the file stays on this computer";
+  fileB.onclick = () => fileIn.click();
+  fileIn.onchange = async () => {
+    const chosen = fileIn.files[0]; fileIn.value = "";
+    if (!chosen) return;
+    if (chosen.size > 400 * 1024) return toast("Choose a text file under 400 KB.");
+    const r = await act("know_ingest", { name: chosen.name, material: await chosen.text() });
+    if (r) { toast(r.added + " to review" + (r.duplicate ? ", " + r.duplicate + " already known" : ""), true); renderBrain(); }
+  };
+  cap.style.flexWrap = "wrap"; cap.style.rowGap = "6px";
+  cap.append(inp, addB, clipB, fileB, fileIn, expB); card.append(cap);
   const list = el("div"); card.append(list);
   api("know_list").then((r) => {
     if (!r.facts || !r.facts.length) { list.append(el("div", "note", "No facts yet.")); return; }
     for (const f of r.facts) {
       const row = el("div", "sheetrow");
       const tag = f.expired ? "expired" : f.status;
-      const label = el("span", "", (f.sensitive ? "🔒 " : "") + "[" + tag + "] " + f.text + " — " + f.source);
-      if (f.expired) label.style.opacity = "0.55";
-      const rt = el("span"); rt.style.marginLeft = "auto";
+      const label = knowLabel(tag, f.sensitive, f.text, f.source);
+      if (f.expired || f.status === "retired" || f.status === "superseded") label.style.opacity = "0.55";
+      const rt = el("span", "knowacts");
       if (f.status === "candidate") { const b = el("button", "pill go", "Review"); b.onclick = () => act("know_review", { fid: f.fid }, "Reviewed").then(renderBrain); rt.append(b); }
       if (f.status === "reviewed") { const b = el("button", "pill go", "Approve"); b.onclick = () => act("know_approve", { fid: f.fid }, "Approved").then(renderBrain); rt.append(b); }
       if (f.status !== "retired" && f.status !== "superseded") { const b = el("button", "secondary", "Retire"); b.style.marginLeft = "6px"; b.onclick = () => act("know_retire", { fid: f.fid }, "Retired").then(renderBrain); rt.append(b); }
@@ -1166,15 +1196,17 @@ function companyBrainCard() {
   relB.onclick = () => {
     const s = subj.value.trim(), p = pred.value.trim(), o = obj.value.trim();
     if (!s || !p || !o) return;
-    act("know_relate", { subject: s, predicate: p, object: o, sensitive: sens.checked }, "Added as candidate").then(() => { subj.value = pred.value = obj.value = ""; sens.checked = false; renderBrain(); });
+    act("know_relate", { subject: s, predicate: p, object: o, sensitive: sens.checked }).then((r) => { if (!r) return; toast(r.duplicate ? "Already in the Brain" : "Added as candidate", true); subj.value = pred.value = obj.value = ""; sens.checked = false; renderBrain(); });
   };
+  for (const field of [subj, pred, obj]) field.onkeydown = (e) => { if (e.key === "Enter" && !imeEnter(e)) relB.onclick(); };
   relCap.append(subj, pred, obj, sensL, relB); card.append(relCap);
   // Private sources: new knowledge from a matching source is sensitive at entry (D186).
   const psCap = el("div", "sheetrow"); psCap.style.marginTop = "8px";
   const psIn = el("input"); psIn.placeholder = "private source (e.g. 1Password)"; psIn.style.flex = "1";
   psIn.title = "New facts/links from a source matching this stay off the model path automatically";
   const psB = el("button", "pill go", "Make private"); psB.style.marginLeft = "6px";
-  psB.onclick = () => { const p = psIn.value.trim(); if (!p) return; act("know_private_source", { pattern: p }, "Source is private").then(() => { psIn.value = ""; renderBrain(); }); };
+  psB.onclick = () => { const p = psIn.value.trim(); if (!p) return; act("know_private_source", { pattern: p }, "Source is private").then((r) => { if (!r) return; psIn.value = ""; renderBrain(); }); };
+  psIn.onkeydown = (e) => { if (e.key === "Enter" && !imeEnter(e)) psB.onclick(); };
   psCap.append(psIn, psB); card.append(psCap);
   const pdCap = el("div", "sheetrow"); pdCap.style.marginTop = "6px";
   const pd = el("input"); pd.type = "checkbox";
@@ -1202,9 +1234,9 @@ function companyBrainCard() {
     for (const e of r.edges) {
       const row = el("div", "sheetrow");
       const tag = e.expired ? "expired" : e.status;
-      const label = el("span", "", (e.sensitive ? "🔒 " : "") + "[" + tag + "] " + e.subject + " " + e.predicate + " " + e.object + " — " + e.source);
+      const label = knowLabel(tag, e.sensitive, e.subject + " " + e.predicate + " " + e.object, e.source);
       if (e.expired) label.style.opacity = "0.55";
-      const rt = el("span"); rt.style.marginLeft = "auto";
+      const rt = el("span", "knowacts");
       if (e.status === "candidate") { const b = el("button", "pill go", "Review"); b.onclick = () => act("know_review_edge", { eid: e.eid }, "Reviewed").then(renderBrain); rt.append(b); }
       if (e.status === "reviewed" && !e.expired) { const b = el("button", "secondary", "Expire"); b.style.marginLeft = "6px"; b.title = "Relationship ended now; kept as history"; b.onclick = () => act("know_expire_edge", { eid: e.eid }, "Expired").then(renderBrain); rt.append(b); }
       { const b = el("button", "secondary", e.sensitive ? "Unmark" : "Private"); b.style.marginLeft = "6px"; b.title = e.sensitive ? "Allow this relationship on the model path again" : "Keep this relationship off the model path"; b.onclick = () => act("know_classify_edge", { eid: e.eid, sensitive: !e.sensitive }, e.sensitive ? "Unmarked" : "Private").then(renderBrain); rt.append(b); }
