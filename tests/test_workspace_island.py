@@ -15,6 +15,7 @@ class StubApp:
         self._job_lock = threading.RLock()
         self.background_jobs = []
         self.busy = ""
+        self.companion_idle = False
         self.stop = threading.Event()
         self.background_id = None
         self.actions = []

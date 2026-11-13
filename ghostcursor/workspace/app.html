@@ -1039,7 +1039,7 @@ function renderBrain() {
     cmeta.append(csw);
     comp.append(cmeta, el("div", "", "Use your organization's model service for planning and answers."),
       el("div", "note", "Your organization set this service up. When on, your goal and the scrubbed names of on-screen controls go to it, before any account of your own. Off by default."));
-    root.append(comp);
+    comp.style.marginTop = "8px"; root.append(comp);
   }
   if (S.crash_offered) {
     const crash = el("div", "mem"); const xmeta = el("div", "meta"); xmeta.append(el("span", "kind", "crash reports"));
@@ -1049,8 +1049,16 @@ function renderBrain() {
     xmeta.append(xsw);
     crash.append(xmeta, el("div", "", "Help your organization fix Orbyn when it crashes."),
       el("div", "note", "When on and Orbyn crashes, the error's type and where in Orbyn's code it happened go to your organization's crash service, with the Orbyn and Windows versions. Never the error text, your files, names or screen. Off by default."));
-    root.append(crash);
+    crash.style.marginTop = "8px"; root.append(crash);
   }
+  const dot = el("div", "mem"); const dmeta = el("div", "meta"); dmeta.append(el("span", "kind", "companion"));
+  const dsw = el("button", "switch"); dsw.setAttribute("role", "switch"); dsw.setAttribute("aria-checked", String(!!S.companion_idle));
+  dsw.style.marginLeft = "auto"; dsw.append(document.createTextNode(S.companion_idle ? "On" : "Off"), el("i"));
+  dsw.onclick = () => act("companion_idle", { on: !S.companion_idle }, S.companion_idle ? "Resting dot off" : "Resting dot on");
+  dmeta.append(dsw);
+  dot.append(dmeta, el("div", "", "Keep a small dot beside your pointer when Orbyn is idle."),
+    el("div", "note", "While Orbyn works or listens, a label beside your pointer says what it is doing; this keeps a quiet dot there the rest of the time. It hides over full-screen apps. Off by default."));
+  dot.style.marginTop = "8px"; root.append(dot);
   root.append(accountsCard());
   root.append(doctorCard());
   const stats = el("div", "stats"); root.append(stats);

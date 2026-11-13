@@ -85,6 +85,10 @@ def companion_idle(path: Path | None = None) -> bool:
     return load(path).get("companion_idle") is True
 
 
+def set_companion_idle(on: bool, path: Path | None = None) -> None:
+    _set("companion_idle", on, path)
+
+
 def listening(path: Path | None = None) -> tuple[bool, str | None]:
     """(wake word on, hotkey or None) -- "Hey Bro" and Ctrl+Alt+Space by
     default (D182); settings.json "wake_word": false / "hotkey": "" turn

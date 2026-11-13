@@ -233,6 +233,7 @@ class App:
             ".routines.json"
         )
         self.routines = self._load_routines()
+        self.companion_idle = settings.companion_idle()  # the island reads it live
         self.dismissed_suggestions: set[str] = set()  # this session only
         self.jobs.submit(self._refresh).result()
 
@@ -735,6 +736,7 @@ class App:
             "company_on": settings.company_gateway(),
             "crash_offered": policy.crash_endpoint() is not None,
             "crash_on": settings.crash_reports(),
+            "companion_idle": self.companion_idle,
             "egress": policy.max_egress(),  # D180: set by the organisation
             "managed": policy.managed(),
         }
@@ -925,6 +927,10 @@ class App:
                     )
                 }
             return {"mail": connectors.unread()}
+        if action == "companion_idle":  # a resting dot beside the pointer
+            self.companion_idle = body.get("on") is True
+            settings.set_companion_idle(self.companion_idle)
+            return {}
         if action == "crash_reports":  # the person's own opt-in (D191)
             settings.set_crash_reports(body.get("on") is True)
             return {}

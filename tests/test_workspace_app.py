@@ -1790,3 +1790,25 @@ def test_a_routine_file_with_a_bad_failure_count_is_refused(tmp_path):
             assert app.routine_path == path and app.state()["routines"], ok
         finally:
             app.close()
+
+
+def test_the_resting_dot_switch_is_saved_and_shown(tmp_path, monkeypatch):
+    from ghostcursor import settings
+
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "lad"))
+    make = lambda: Workspace("trip", Gateway(), Brain(tmp_path / "kb.sqlite"), root=tmp_path / "briefs")
+    app = App("trip", make_workspace=make)
+    try:
+        assert app.companion_idle is False and app.state()["companion_idle"] is False
+        app.handle("companion_idle", {"on": True})
+        assert app.companion_idle is True and settings.companion_idle() is True
+        app.handle("companion_idle", {"on": "yes"})  # only a literal true turns it on
+        assert app.companion_idle is False and settings.companion_idle() is False
+        app.handle("companion_idle", {"on": True})
+    finally:
+        app.close()
+    reopened = App("trip", make_workspace=make)
+    try:
+        assert reopened.state()["companion_idle"] is True  # read at start
+    finally:
+        reopened.close()
