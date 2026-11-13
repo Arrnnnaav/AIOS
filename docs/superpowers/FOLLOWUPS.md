@@ -2262,8 +2262,8 @@ from 1053b54. Still open:
   stacked gzip could inflate past the cap); each hop's timeout is the time
   left; idle() steps are bounded by the time left; timing tests use a fake
   clock (two were flaky under load). Left: deep research files claims to the
-  Brain (D190, owner decision) -- the rule-6 check of what reaches kb.sqlite
-  was done 13 Nov (see the Modern Web Guidance entry below): no gap.
+  Brain (D190, owner decision) -- the rule-6 check of what reaches the
+  Company Brain (knowledge.sqlite; the review called it kb.sqlite) was done 13 Nov (see the Modern Web Guidance entry below): no gap.
 - `ghostcursor.__version__` is still 0.1.0; bump it when a release is cut.
 - Modern Web Guidance pass 13 Nov (GoogleChrome/modern-web-guidance 1.0.0,
   run from the npm package with DISABLE_TELEMETRY=1: its CLI otherwise sends
@@ -2288,6 +2288,11 @@ from 1053b54. Still open:
   usable, non-sensitive facts (edges too) wrapped in Tainted.of; the team
   bundle exports usable, non-sensitive, scrubbed facts. Personal memories
   refuse secret-looking text and reach the model only through Tainted.of.
-  No perception or screen text writes to either store. Left: a clipboard or
-  typed candidate is stored unscrubbed in kb.sqlite (local, owner-visible,
-  scrubbed on every egress); scrub at write if that matters.
+  No perception or screen text writes to either store (knowledge.sqlite,
+  brain.sqlite; screen observations live in kb.sqlite). Fixed the same day:
+  every knowledge.sqlite write (candidate text and source, episode, edge,
+  ingest dedup) scrubs credentials and card/ID numbers (redact.SECRETS) so a
+  pasted key never rests on disk; contact details stay, as company facts,
+  and are scrubbed on egress. Jobs, routines, agent notes and handoffs
+  already scrubbed on write. Known ceiling: redact is regex, so a free-text
+  password ("the password is swordfish") is not caught.

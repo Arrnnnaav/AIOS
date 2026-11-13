@@ -77,3 +77,12 @@ def test_clean_text_is_unchanged_and_maps_empty():
     scrubbed, mapping = redact.scrub("the deploy runs in us-east-1 on tuesdays")
     assert mapping == {} and "us-east-1" in scrubbed
     assert redact.audit(mapping) == {}
+
+
+def test_scrub_can_be_limited_to_secrets():
+    from ghostcursor import redact
+
+    key = "sk-" + "B" * 20
+    text, mapping = redact.scrub(f"mail a@b.example, key {key}", redact.SECRETS)
+    assert text == "mail a@b.example, key [KEY_1]" and mapping == {"[KEY_1]": key}
+    assert "[EMAIL_1]" in redact.scrub("mail a@b.example")[0]  # unlimited: all

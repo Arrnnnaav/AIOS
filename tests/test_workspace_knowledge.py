@@ -865,3 +865,52 @@ def test_scope_lookups_use_an_index(tmp_path):
         assert "INDEX" in plan
     finally:
         k.close()
+
+
+_SECRET = "sk-live" + "A" * 24  # a provider-key shape (built so scans do not flag it)
+_CARD = "4111 1111 1111 1111"  # Luhn-valid test card
+
+
+def _dump(path) -> str:
+    import sqlite3
+
+    db = sqlite3.connect(path)
+    try:
+        return "\n".join(db.iterdump())  # every table, the FTS index included
+    finally:
+        db.close()
+
+
+def test_a_pasted_secret_never_rests_in_the_brain(tmp_path):
+    """Clipboard capture is the likeliest way a key or card lands in the
+    Brain; it is scrubbed on write, and contact details stay."""
+
+    from ghostcursor.workspace.brain import Brain
+    from ghostcursor.workspace.session import Workspace
+
+    k = Knowledge(tmp_path / "k.sqlite")
+    ws = Workspace(
+        "t", object(), Brain(tmp_path / "b.sqlite"), root=tmp_path / "briefs",
+        knowledge=k, kb_scope="default",
+    )  # fmt: skip
+    ws.clip_to_brain(read=lambda: f"Billing key {_SECRET} card {_CARD}, ask ops@acme.example")
+    (fact,) = k.list(scope="default", status="candidate")
+    assert "[KEY_1]" in fact.text and "[CARD_1]" in fact.text
+    assert "ops@acme.example" in fact.text  # a contact is a fact, not a secret
+    k.close()
+    dump = _dump(tmp_path / "k.sqlite")
+    assert _SECRET not in dump and _CARD not in dump
+
+
+def test_every_brain_write_path_scrubs_secrets(tmp_path):
+    k = Knowledge(tmp_path / "k.sqlite")
+    k.add_candidate(f"deploy token {_SECRET}", source=f"https://x.example/?t={_SECRET}", scope="s")
+    k.record_episode(f"raw note with {_SECRET}", source="note", scope="s")
+    k.relate(f"svc {_SECRET}", "uses", f"card {_CARD}", source="typed", scope="s")
+    first = k.ingest([f"rotate {_SECRET} monthly"], source="doc", scope="s",
+                     episode=f"episode {_CARD}")  # fmt: skip
+    again = k.ingest([f"rotate {_SECRET} monthly"], source="doc", scope="s")
+    assert first[0][0] == "added" and again == [("duplicate", first[0][1])]
+    k.close()
+    dump = _dump(tmp_path / "k.sqlite")
+    assert _SECRET not in dump and _CARD not in dump

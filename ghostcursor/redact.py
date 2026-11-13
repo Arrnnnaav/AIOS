@@ -52,6 +52,12 @@ _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
 ]
 
 
+#: Credentials and identifiers that have no business at rest in a local store
+#: (the Company Brain, knowledge.sqlite, scrubs these on write). Contact details -- email, phone, IP -- are
+#: legitimate company facts and stay; they are scrubbed on egress instead.
+SECRETS = frozenset({"PEM", "JWT", "KEY", "IBAN", "SSN", "CARD"})
+
+
 def _luhn_ok(digits: str) -> bool:
     """Luhn checksum -- gates CARD so plain long digit runs (order numbers,
     IDs) are not blanket-redacted as payment cards."""
@@ -69,11 +75,12 @@ def _luhn_ok(digits: str) -> bool:
     return total % 10 == 0
 
 
-def scrub(text: str) -> tuple[str, dict[str, str]]:
+def scrub(text: str, categories=None) -> tuple[str, dict[str, str]]:
     """Return (scrubbed_text, map). Every detected entity is replaced by a
     stable ``[CATEGORY_n]`` placeholder; the map {placeholder: original} lets
     the caller rehydrate a reply later. The same original gets the same
-    placeholder within one call. The map NEVER leaves with the text."""
+    placeholder within one call. The map NEVER leaves with the text.
+    ``categories`` limits the scrub to those categories (e.g. ``SECRETS``)."""
 
     mapping: dict[str, str] = {}
     seen: dict[str, str] = {}  # original -> placeholder (dedupe within a scrub)
@@ -92,6 +99,8 @@ def scrub(text: str) -> tuple[str, dict[str, str]]:
         return placeholder
 
     for category, pattern in _PATTERNS:
+        if categories is not None and category not in categories:
+            continue
         text = pattern.sub(lambda m, c=category: _sub(c, m), text)
     return text, mapping
 

@@ -160,6 +160,14 @@ class Edge:
         return self.valid_until is not None and now >= self.valid_until
 
 
+def _secret_free(text: str) -> str:
+    """Credentials and card/ID numbers never rest in knowledge.sqlite, whichever path
+    wrote them (a pasted clipboard, a typed note, an imported file, a source
+    URL with a token). Replaced by a placeholder; the original is not kept."""
+
+    return redact.scrub(text, redact.SECRETS)[0]
+
+
 def _words(text: str) -> set[str]:
     import re
 
@@ -278,8 +286,8 @@ class Knowledge:
         owner reviews it. ``source`` is required provenance; empty is refused.
         ``episode_id`` links it to the raw input it was extracted from."""
 
-        text = " ".join(str(text).split())
-        source = " ".join(str(source).split())
+        text = _secret_free(" ".join(str(text).split()))
+        source = _secret_free(" ".join(str(source).split()))
         scope = str(scope).strip()
         if not text or not source or not scope:
             raise ValueError("a candidate needs text, a source and a scope")
@@ -305,8 +313,8 @@ class Knowledge:
         eid, so facts extracted from it can link back to it. Never recalled to a
         model -- it is provenance the owner can open."""
 
-        text = str(text).strip()
-        source, scope = " ".join(str(source).split()), str(scope).strip()
+        text = _secret_free(str(text).strip())
+        source, scope = _secret_free(" ".join(str(source).split())), str(scope).strip()
         if not text or not source or not scope:
             raise ValueError("an episode needs text, a source and a scope")
         with self._lock, self._db:
@@ -362,7 +370,7 @@ class Knowledge:
         )
         results: list[tuple[str, int]] = []
         for text in texts:
-            norm = " ".join(str(text).split())
+            norm = _secret_free(" ".join(str(text).split()))  # dedup on what is stored
             words = _words(norm)
             if not norm or not words:
                 results.append(("skipped", 0))
@@ -684,7 +692,7 @@ class Knowledge:
 
         if sensitivity not in SENSITIVITIES:
             raise ValueError(f"sensitivity is one of {SENSITIVITIES}")
-        parts = [" ".join(str(x).split()) for x in (subject, predicate, obj, source)]
+        parts = [_secret_free(" ".join(str(x).split())) for x in (subject, predicate, obj, source)]
         if not all(parts) or not str(scope).strip():
             raise ValueError("an edge needs subject, predicate, object, source, scope")
         sensitivity = self._resolve_sensitivity(parts[3], sensitivity)
