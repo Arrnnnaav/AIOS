@@ -73,6 +73,7 @@ _scale = 1.0  # display scaling (DPI / 96); layout is in 96-DPI design units
 SMOOTH = 4  # shapes are drawn this many times larger, then scaled down smoothly
 DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND = 33, 2
 DWMWA_BORDER_COLOR = 34
+WM_DPICHANGED = 0x02E0
 
 
 def _px(*values):
@@ -92,6 +93,10 @@ def _make_font(height, weight):
     font.lfFaceName = "Segoe UI"
     font.lfQuality = 5  # CLEARTYPE_QUALITY
     return win32gui.CreateFontIndirect(font)
+
+
+def _make_fonts():
+    return _make_font(13, win32con.FW_NORMAL), _make_font(13, win32con.FW_SEMIBOLD)
 
 
 def _rgb(color):
@@ -393,6 +398,16 @@ def _wnd_proc(hwnd, msg, wparam, lparam):
         if msg == SHOW_MESSAGE:
             island.show()
             return 0
+        if msg == WM_DPICHANGED:  # dragged onto a monitor with other scaling
+            left, top, right, bottom = ctypes.cast(
+                lparam, ctypes.POINTER(ctypes.c_long * 4)
+            ).contents
+            win32gui.SetWindowPos(  # Windows' suggestion keeps it under the pointer
+                hwnd, 0, left, top, right - left, bottom - top,
+                win32con.SWP_NOZORDER | win32con.SWP_NOACTIVATE,
+            )
+            island.rescale((wparam & 0xFFFF) / 96)
+            return 0
         if msg == win32con.WM_DISPLAYCHANGE:
             island._resize(island.expanded)
             return 0
@@ -442,8 +457,7 @@ class Island:
             _scale = ctypes.windll.user32.GetDpiForSystem() / 96  # dpi aware (rule 4)
             _brush = win32gui.CreateSolidBrush(BG)
             _field_brush = win32gui.CreateSolidBrush(SECONDARY)
-            _font = _make_font(13, win32con.FW_NORMAL)
-            _bold = _make_font(13, win32con.FW_SEMIBOLD)
+            _font, _bold = _make_fonts()
         # Before the bar: if this fails no bar window is left behind.
         self.companion = Companion(lambda: _cursor())  # the OS pointer only
         try:
@@ -558,11 +572,7 @@ class Island:
         self.reply = win32gui.CreateWindowEx(
             0, "EDIT", "", card, 0, 0, 0, 0, self.hwnd, ID_REPLY, module, None
         )
-        for child in (self.input, self.reply):
-            win32gui.SendMessage(child, win32con.WM_SETFONT, _font, 0)
-            win32gui.SendMessage(  # EM_SETMARGINS: breathing room inside the well
-                child, win32con.EM_SETMARGINS, 3, _px(4) | (_px(4) << 16)
-            )
+        self._set_field_fonts()
         ctypes.windll.uxtheme.SetWindowTheme(
             self.reply, "DarkMode_Explorer", None
         )  # dark scrollbar
@@ -848,6 +858,27 @@ class Island:
             step = 0.03 if self.companion.text else 0.1
             time.sleep(max(0.0, min(step, until - time.monotonic())))
         time.sleep(max(0.0, until - time.monotonic()))
+
+    def _set_field_fonts(self):
+        for child in (self.input, self.reply):
+            win32gui.SendMessage(child, win32con.WM_SETFONT, _font, 1)
+            win32gui.SendMessage(  # EM_SETMARGINS: breathing room inside the well
+                child, win32con.EM_SETMARGINS, 3, _px(4) | (_px(4) << 16)
+            )
+
+    def rescale(self, scale):
+        """Redo fonts, size and layout for a new display scaling."""
+
+        global _scale, _font, _bold
+        if scale == _scale:
+            return
+        old = _font, _bold
+        _scale = scale
+        _font, _bold = _make_fonts()
+        self._set_field_fonts()
+        for font in old:
+            win32gui.DeleteObject(font)
+        self._resize(self.expanded)
 
     def _layout(self):
         """Place every control, in design units scaled to the display."""

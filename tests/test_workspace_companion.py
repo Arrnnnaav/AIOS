@@ -156,6 +156,7 @@ def test_a_failed_move_never_ends_the_session(monkeypatch):
     monkeypatch.setattr(companion_module.win32gui, "SetWindowPos", refuse)
     badge = object.__new__(Companion)
     badge.cursor, badge.hwnd, badge.at, badge.pointer = (lambda: (100, 100)), 0, None, None
+    badge.arrow = 1.0
     badge.follow()
     assert badge.at is None  # retried on the next timer tick
     badge.follow()  # same pointer, but the move failed: it tries again
@@ -379,3 +380,47 @@ def test_the_badge_offset_scales_with_the_display():
         100 + round(OFFSET[0] * 1.25),
         100 + round(OFFSET[1] * 1.25),
     )
+
+
+def test_the_badge_takes_the_pointer_monitors_scaling_and_a_large_pointer(monkeypatch):
+    """Dragged to a 150% monitor the badge is resized and repainted there;
+    with a 2x pointer it sits twice as far off, clear of the bigger arrow."""
+
+    moves, painted = [], []
+    monkeypatch.setattr(companion_module, "_scale", 1.0)
+    monkeypatch.setattr(companion_module, "monitor_scale", lambda monitor: 1.5)
+    monkeypatch.setattr(companion_module.win32gui, "SetWindowPos", lambda *a: moves.append(a))
+    monkeypatch.setattr(companion_module.win32gui, "InvalidateRect", lambda h, r, e: painted.append(h))
+    badge = object.__new__(Companion)
+    badge.cursor, badge.hwnd, badge.at, badge.pointer = (lambda: (100, 100)), 7, None, None
+    badge.arrow = 2.0
+    badge.follow()
+    assert companion_module._scale == 1.5
+    assert moves[-1][2:6] == (100 + round(OFFSET[0] * 3), 100 + round(OFFSET[1] * 3), *companion_module.size_px(1.5))
+    assert painted == [7]  # repainted at the new size
+    badge.pointer = None  # same monitor, moved: no repaint for the scaling
+    badge.follow()
+    assert painted == [7]
+
+
+def test_the_pointer_size_setting_is_read_and_bounded(monkeypatch):
+    import winreg
+
+    class Key:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    values = iter([(64, 4), (16, 4)])
+    monkeypatch.setattr(winreg, "OpenKey", lambda *a: Key())
+    monkeypatch.setattr(winreg, "QueryValueEx", lambda key, name: next(values))
+    assert companion_module.pointer_scale() == 2.0
+    assert companion_module.pointer_scale() == 1.0  # never smaller than standard
+
+    def missing(*a):
+        raise FileNotFoundError
+
+    monkeypatch.setattr(winreg, "OpenKey", missing)
+    assert companion_module.pointer_scale() == 1.0

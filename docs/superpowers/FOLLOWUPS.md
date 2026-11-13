@@ -2252,8 +2252,7 @@ from 1053b54. Still open:
   5c995df; Goldfish design_critic and codebase_details reviews of the new
   FLOW sections found no blockers, and their code points were fixed (capture
   exclusion failure hides the badge; page fetch byte cap, one deadline,
-  default ports, no https->http; 100 ms resting-dot pump). Left: the badge
-  scales with DPI since 13 Nov but not with a large pointer size; a page fetch tries only
+  default ports, no https->http; 100 ms resting-dot pump). Left: a page fetch tries only
   the first checked address; EGM reviewers ran as general-purpose agents
   reading EGM personas, since its registered adapters (omitClaudeMd) load
   only in a new session.
@@ -2272,8 +2271,10 @@ from 1053b54. Still open:
   Now: Segoe UI ClearType, Pillow 4x box-averaged shapes (GDI HALFTONE left a
   dark fringe), DWM rounded corners on Windows 11, a per-pixel-alpha badge via
   UpdateLayeredWindow inside WM_PAINT, all sizes scaled by the system DPI.
-  Left: no WM_DPICHANGED handling (a monitor with a different scale keeps the
-  start-up scale); the reply card's scrollbar is the stock dark one.
+  Later 13 Nov: the bar handles WM_DPICHANGED (fonts, size, layout) and the
+  badge takes the pointer monitor's scaling and the pointer-size setting.
+  Left: the reply card's scrollbar is the stock dark one; a pointer-size
+  change while Orbyn runs is picked up at the next start.
 - Modern Web Guidance pass 13 Nov (GoogleChrome/modern-web-guidance 1.0.0,
   run from the npm package with DISABLE_TELEMETRY=1: its CLI otherwise sends
   search queries to Google). legacy-scan of ghostcursor/workspace found 11

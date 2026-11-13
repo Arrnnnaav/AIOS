@@ -10,8 +10,8 @@ listening, and the island hides it when a full-screen app is in front.
 
 The badge has real per-pixel alpha: it is rendered (Pillow, 4x, then scaled
 down) to a premultiplied bitmap that WM_PAINT hands to UpdateLayeredWindow,
-so the pill and dot have soft edges on any background, at the display's
-scaling. A colour-keyed window can only have hard, stepped edges."""
+so the pill and dot have soft edges on any background, at the scaling of
+the monitor under the pointer and beyond a large pointer. A colour-keyed window can only have hard, stepped edges."""
 
 from __future__ import annotations
 
@@ -37,6 +37,7 @@ OFFSET = (18, 22)  # below-right of the arrow's hotspot, clear of the arrow
 SIZE = (132, 28)
 TIMER_ID, TIMER_MS = 9, 30
 WDA_EXCLUDEFROMCAPTURE = 0x11
+WM_DPICHANGED = 0x02E0
 BG = (22, 26, 34, 236)  # RGBA: nearly opaque, so the pill reads on any app
 TEXT = (249, 247, 242, 255)
 AMBER = (239, 182, 96, 255)
@@ -156,18 +157,46 @@ def label(app, listener, *, fullscreen=False, idle=False) -> str | None:
     return app.busy if app.busy in ACTIVITY_LABELS else "Working"
 
 
-def placement(cursor, size, work, scale=1.0):
+def placement(cursor, size, work, scale=1.0, pointer=1.0):
     """Top-left of the badge: below-right of the pointer, flipped to the other
-    side of it at the right or bottom edge of the work area."""
+    side of it at the right or bottom edge of the work area. ``pointer`` is
+    the mouse-pointer size setting (1 = standard): a bigger arrow, further off."""
 
     (x, y), (width, height), (left, top, right, bottom) = cursor, size, work
-    dx, dy = round(OFFSET[0] * scale), round(OFFSET[1] * scale)
+    dx, dy = round(OFFSET[0] * scale * pointer), round(OFFSET[1] * scale * pointer)
     px, py = x + dx, y + dy
     if px + width > right:
         px = x - dx - width
     if py + height > bottom:
         py = y - dy - height
     return max(left, px), max(top, py)
+
+
+def monitor_scale(monitor) -> float | None:
+    """A monitor's display scaling (effective DPI / 96), or None if unknown."""
+
+    x, y = ctypes.c_uint(), ctypes.c_uint()
+    try:
+        failed = ctypes.windll.shcore.GetDpiForMonitor(
+            ctypes.c_void_p(int(monitor)), 0, ctypes.byref(x), ctypes.byref(y)
+        )  # MDT_EFFECTIVE_DPI
+    except (OSError, AttributeError):
+        return None
+    return x.value / 96 if not failed and x.value else None
+
+
+def pointer_scale() -> float:
+    """The Accessibility mouse-pointer size, as a multiple of the standard
+    32-pixel arrow (CursorBaseSize); 1.0 when it is unset."""
+
+    import winreg
+
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Control Panel\Cursors") as key:
+            base = int(winreg.QueryValueEx(key, "CursorBaseSize")[0])
+    except (OSError, ValueError):
+        return 1.0
+    return max(1.0, base / 32)
 
 
 def pulse(elapsed: float) -> float:
@@ -297,6 +326,7 @@ class Companion:
         self.at = None
         self.frame = None  # the dot radius last painted by the timer
         self.pointer = None  # the cursor position last looked up
+        self.arrow = pointer_scale()  # read once: a settings change needs a restart
         ensure_class(CLASS, _wnd_proc, 0)
         self.hwnd = win32gui.CreateWindowEx(
             EX_STYLE,
@@ -348,20 +378,25 @@ class Companion:
             work = win32api.GetMonitorInfo(monitor)["Work"]
         except Exception:
             return  # secure desktop or no pointer: stay where it was
-        at = placement(cursor, size_px(_scale), work, _scale)
-        if at != self.at:
+        global _scale
+        scale = monitor_scale(monitor) or _scale  # each monitor its own scaling
+        resized = scale != _scale
+        _scale = scale
+        at = placement(cursor, size_px(_scale), work, _scale, self.arrow)
+        if at != self.at or resized:
             try:  # a decoration never ends the session
                 win32gui.SetWindowPos(
                     self.hwnd,
                     win32con.HWND_TOPMOST,
                     *at,
-                    0,
-                    0,
-                    win32con.SWP_NOSIZE | win32con.SWP_NOACTIVATE,
+                    *size_px(_scale),
+                    win32con.SWP_NOACTIVATE,
                 )
             except win32gui.error:
                 return
             self.at = at
+            if resized:
+                win32gui.InvalidateRect(self.hwnd, None, False)
 
     def destroy(self) -> None:
         if win32gui.IsWindow(self.hwnd):
@@ -384,6 +419,8 @@ def _wnd_proc(hwnd, msg, wparam, lparam):
         if companion is not None:
             _paint(companion)  # UpdateLayeredWindow, from WM_PAINT only (rule 4)
         return 0
+    if msg == WM_DPICHANGED:
+        return 0  # follow() sizes the badge for the pointer's monitor
     if msg == win32con.WM_ERASEBKGND:
         return 1  # the layered bitmap is every pixel; nothing to erase
     if msg == win32con.WM_TIMER and wparam == TIMER_ID and companion is not None:

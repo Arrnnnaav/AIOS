@@ -451,3 +451,31 @@ def test_bar_shapes_are_anti_aliased_and_sizes_follow_display_scaling(monkeypatc
         win32gui.DeleteObject(bitmap)
         win32gui.DeleteDC(memory)
         win32gui.ReleaseDC(0, screen)
+
+
+@pytest.mark.interactive
+def test_the_bar_rescales_when_dragged_to_a_monitor_with_other_scaling():
+    import ctypes
+
+    import win32gui
+
+    start = island_module._scale
+    island = Island(StubApp(), "http://127.0.0.1:1/?t=local", lambda url: None)
+    try:
+        left, top, _, _ = win32gui.GetWindowRect(island.hwnd)
+        dpi = round(start * 96 * 1.5)
+        width, height = (round(v * dpi / 96) for v in COMPACT)
+        rect = (ctypes.c_long * 4)(left, top, left + width, top + height)
+        old_font = island_module._font
+        win32gui.SendMessage(island.hwnd, island_module.WM_DPICHANGED, dpi | dpi << 16, ctypes.addressof(rect))
+        assert island_module._scale == dpi / 96
+        l, t, r, b = win32gui.GetWindowRect(island.hwnd)
+        assert (r - l, b - t) == scaled(COMPACT) == (width, height)
+        assert island_module._font != old_font
+        assert win32gui.SendMessage(island.input, 0x0031, 0, 0) == island_module._font  # WM_GETFONT
+        ask = win32gui.GetWindowRect(island.ask_button)
+        assert ask[3] - ask[1] == island_module._px(38)
+    finally:
+        island.rescale(start)
+        win32gui.DestroyWindow(island.hwnd)
+    assert island_module._scale == start

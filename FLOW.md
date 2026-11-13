@@ -230,7 +230,8 @@ owner-drawn buttons retain Windows focus and click handling while matching the
 amber and navy workspace palette. Its pills, dot and field wells are drawn 4x
 with Pillow and box-averaged down (`_shape`, cached), so curves are
 anti-aliased; text is Segoe UI (ClearType), and every size is in 96-DPI
-design units scaled by the system DPI (`_px`). On Windows 11 the window's
+design units scaled by the display DPI (`_px`); dragged to a monitor
+with other scaling, `WM_DPICHANGED` rebuilds fonts, size and layout. On Windows 11 the window's
 corners come from DWM (`DWMWCP_ROUND`, with its shadow and a hairline
 border); before it, a stepped region. Open, Stop and Quit use the existing full-window launcher, Stop event
 and Quit action. Open launches Edge from a background thread so its positioning
@@ -261,8 +262,9 @@ repaints once (rule 4). It hides whenever `SHQueryUserNotificationState`
 reports a full-screen app, game or presentation, even while work runs (the
 bar itself stays then, for Stop). While a label shows, `Island.idle` pumps
 messages every 30 ms between the 0.25 s ticks so the badge follows the
-pointer; for the resting dot, every 100 ms. Its size and offset scale with
-the system DPI; a large pointer size is not taken into account.
+pointer; for the resting dot, every 100 ms. Its size and offset follow the
+scaling of the monitor under the pointer (`GetDpiForMonitor`), and the offset
+grows with the Accessibility pointer size (`CursorBaseSize`, read at start).
 Brain › Setup "companion" (settings.json `companion_idle`, only a literal
 true, off by default) keeps a breathing, blinking resting dot there when
 Orbyn is idle; an estimate from one 20 s session run on 2026-11-13 put it at
