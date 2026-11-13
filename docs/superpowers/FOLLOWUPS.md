@@ -2262,6 +2262,30 @@ from 1053b54. Still open:
   stacked gzip could inflate past the cap); each hop's timeout is the time
   left; idle() steps are bounded by the time left; timing tests use a fake
   clock (two were flaky under load). Left: deep research files claims to the
-  Brain (D190, owner decision) -- a rule-6 check of what model-selected text
-  reaches kb.sqlite was suggested and has not been done.
+  Brain (D190, owner decision) -- the rule-6 check of what reaches kb.sqlite
+  was done 13 Nov (see the Modern Web Guidance entry below): no gap.
 - `ghostcursor.__version__` is still 0.1.0; bump it when a release is cut.
+- Modern Web Guidance pass 13 Nov (GoogleChrome/modern-web-guidance 1.0.0,
+  run from the npm package with DISABLE_TELEMETRY=1: its CLI otherwise sends
+  search queries to Google). legacy-scan of ghostcursor/workspace found 11
+  items in app.html; fixed: the sheet is a native modal <dialog closedby=any>
+  (inert page, focus containment, Esc; no role/aria-modal by hand); Enter
+  handlers skip an IME-composing Enter; the composer uses field-sizing instead
+  of a scrollHeight script; standard scrollbar-color/width; the theme is set
+  in <head> before first paint with <meta color-scheme> in sync. The 4 left
+  are the scanner not seeing through the imeEnter() helper. New hermetic
+  test parses the page's scripts with node --check (skips without Node).
+  The browser's blocking confirm/prompt boxes (11 uses) are now one native
+  modal (ask/askConfirm/askText): a confirmation starts on Cancel, the
+  destructive button is red and named for the action, Enter submits a field
+  through its form (IME-safe), Esc still stops a running session. Left: the
+  theme toggle stores a scheme even when it matches the system.
+- Brain rule-6 check 13 Nov: every Company Brain write (deep research,
+  /research remember, clipboard, notes, know_add, folder ingest, team sync,
+  snapshot import) lands as a candidate; recall to a model returns only
+  usable, non-sensitive facts (edges too) wrapped in Tainted.of; the team
+  bundle exports usable, non-sensitive, scrubbed facts. Personal memories
+  refuse secret-looking text and reach the model only through Tainted.of.
+  No perception or screen text writes to either store. Left: a clipboard or
+  typed candidate is stored unscrubbed in kb.sqlite (local, owner-visible,
+  scrubbed on every egress); scrub at write if that matters.

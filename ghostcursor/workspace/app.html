@@ -3,6 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<script>
+// Before first paint, so the window never flashes the wrong scheme.
+function applyTheme(t) { document.documentElement.dataset.theme = t; document.querySelector('meta[name="color-scheme"]').content = t; }
+let stored = null; try { stored = localStorage.getItem("orbyn-theme"); } catch {}
+applyTheme(stored === "light" || stored === "dark" ? stored : matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+</script>
 <title>Orbyn</title>
 <style>
 :root {
@@ -67,7 +74,8 @@ nav .count { color: var(--faint); font-size: 11.5px; margin-left: 4px; }
 kbd { font: 11px ui-monospace, Consolas, monospace; padding: 1px 5px; border-radius: 5px; border: 1px solid currentColor; opacity: .7; }
 
 main { flex: 1; overflow-y: auto; padding: 4px 16px 16px; scroll-behavior: smooth; }
-main::-webkit-scrollbar { width: 8px; } main::-webkit-scrollbar-thumb { background: var(--line); border-radius: 8px; }
+main { scrollbar-width: thin; scrollbar-color: var(--faint) transparent; }
+@supports not (scrollbar-color: auto) { main::-webkit-scrollbar { width: 8px; } main::-webkit-scrollbar-thumb { background: var(--faint); border-radius: 8px; } }
 section[hidden] { display: none !important; }
 
 /* chat */
@@ -125,7 +133,7 @@ section[hidden] { display: none !important; }
 .step .acts button { font-size: 12.5px; color: var(--dim); padding: 3px 8px; border-radius: 7px; }
 .step .acts button:hover { background: var(--raise); color: var(--text); }
 .step .acts .show { color: var(--amber); font-weight: 600; }
-.step input, .addrow input, .mem input { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font: inherit; }
+.step input, .addrow input, .mem input, .ask input { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font: inherit; }
 .addrow { display: flex; gap: 8px; margin-top: 10px; }
 .cta { width: 100%; margin-top: 14px; padding: 11px; border-radius: 12px; background: var(--amber); color: #201400; font-weight: 700; display: flex; justify-content: center; gap: 8px; align-items: center; }
 .secondary { padding: 7px 12px; border-radius: 9px; border: 1px solid var(--line); background: var(--surface); font-size: 13px; font-weight: 500; }
@@ -210,6 +218,7 @@ footer { padding: 8px 12px 12px; }
 .composer.research { border-color: var(--cyan); }
 textarea { width: 100%; resize: none; border: 0; background: none; color: var(--text); font: inherit; max-height: 160px; min-height: 24px; padding: 4px 0; outline: none; }
 textarea::placeholder { color: var(--faint); }
+#input { field-sizing: content; }
 .tools { display: flex; align-items: center; gap: 2px; margin-top: 4px; }
 .tool { height: 30px; padding: 0 9px; border-radius: 9px; display: inline-flex; align-items: center; gap: 6px; color: var(--dim); font-size: 12.5px; }
 .tool:hover:not(:disabled) { background: var(--raise); color: var(--text); }
@@ -219,10 +228,14 @@ textarea::placeholder { color: var(--faint); }
 .fine { color: var(--faint); font-size: 11px; text-align: center; margin-top: 6px; }
 
 /* sheet */
-.scrim { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: none; align-items: flex-end; z-index: 10; }
-.scrim.open { display: flex; }
-.sheet { width: 100%; max-height: 80%; overflow-y: auto; background: var(--surface); border-top: 1px solid var(--line); border-radius: 20px 20px 0 0; padding: 16px; animation: up .18s ease-out; }
+.sheet::backdrop { background: rgba(0,0,0,.5); overflow: hidden; overscroll-behavior: contain; }
+.sheet { width: 100%; max-width: 100%; max-height: 80%; margin: auto auto 0; overflow-y: auto; overscroll-behavior: contain; color: var(--text); border: 0; background: var(--surface); border-top: 1px solid var(--line); border-radius: 20px 20px 0 0; padding: 16px; animation: up .18s ease-out; }
 @keyframes up { from { transform: translateY(30px); opacity: 0; } }
+.ask { width: min(420px, calc(100% - 32px)); padding: 16px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--text); overscroll-behavior: contain; }
+.ask::backdrop { background: rgba(0,0,0,.5); overflow: hidden; overscroll-behavior: contain; }
+.ask p { margin: 0 0 12px; }
+.ask input { margin-bottom: 12px; }
+.ask .sheetrow { justify-content: flex-end; }
 .sheet h3 { margin: 0 0 2px; font-size: 16px; }
 .sheet p { margin: 0 0 12px; color: var(--dim); font-size: 13px; }
 .wins { display: grid; gap: 6px; margin-bottom: 12px; }
@@ -288,7 +301,14 @@ select { font: inherit; color: var(--text); background: var(--bg); border: 1px s
   </div>
   <div class="fine">Teach shows where to act. Act requires your approval.</div>
 </footer>
-<div class="scrim" id="scrim"><div class="sheet" id="sheet" role="dialog" aria-modal="true"></div></div>
+<dialog class="sheet" id="sheet" closedby="any"></dialog>
+<dialog class="ask" id="ask" aria-labelledby="askText">
+  <form method="dialog">
+    <p id="askText"></p>
+    <input id="askInput" aria-labelledby="askText" autocomplete="off">
+    <div class="sheetrow"><button type="button" class="secondary" id="askCancel">Cancel</button><button value="ok" id="askOk">OK</button></div>
+  </form>
+</dialog>
 <div id="toast" role="alert"></div>
 
 <script>
@@ -463,7 +483,7 @@ function backgroundJobs() {
         archive.onclick = () => act("job_archive", { id: job.id, archived: !job.archived }); actions.append(archive);
       }
       const remove = el("button", "", "Remove"); remove.classList.add("danger"); remove.style.marginLeft = "auto";
-      remove.onclick = () => { if (confirm(job.pinned ? "Remove this kept result?" : "Remove this saved job result?")) act("job_delete", { id: job.id }, "Job removed"); };
+      remove.onclick = async () => { if (await askConfirm(job.pinned ? "Remove this kept result?" : "Remove this saved job result?", "Remove")) act("job_delete", { id: job.id }, "Job removed"); };
       actions.append(remove);
     }
     card.append(actions); list.append(card);
@@ -491,7 +511,7 @@ function openBackgroundResearch() {
     catch (e) { toast(e.message); }
     finally { backgroundStarting = false; start.disabled = false; }
   };
-  row.append(cancel, start); sheet.append(kind, question, row); $("scrim").classList.add("open"); question.focus();
+  row.append(cancel, start); sheet.append(kind, question, row); openSheet(); question.focus();
 }
 
 // What ask() actually sent (scrubbed, matching passages only), shown on demand.
@@ -527,7 +547,7 @@ function openJobResult(job) {
   if (job.new_claims) changed.textContent = job.new_claims.length ? "New since last run:\n" + job.new_claims.map((c) => "• " + c).join("\n") : "Nothing new since last run.";
   changed.hidden = !job.new_claims; changed.style.whiteSpace = "pre-wrap";
   sheet.replaceChildren(heading, el("p", "", job.question), changed, el("div", "jobanswer", job.answer), el("p", "note", "Follow-up sends the parts of this saved result that match your question (up to 8,000 characters) to your configured model. The question and reply are not saved."), follow, reply, ask, stop, close);
-  $("scrim").classList.add("open"); close.focus();
+  openSheet(); close.focus();
 }
 
 function downloadJobResult(job) {
@@ -558,11 +578,11 @@ function routinesCard() {
     const row = el("div", "sheetrow");
     const run = el("button", "secondary", "Run now"); run.disabled = !!S.busy; run.onclick = () => act("routine_run", { id: item.id }, "Research started"); row.append(run);
     const toggle = el("button", "secondary", item.enabled ? "Pause" : "Resume"); toggle.onclick = () => act(item.enabled ? "routine_pause" : "routine_resume", { id: item.id }); row.append(toggle);
-    const remove = el("button", "danger", "Delete"); remove.style.marginLeft = "auto"; remove.onclick = () => { if (confirm("Delete this routine? Saved results stay in Background jobs.")) act("routine_delete", { id: item.id }); }; row.append(remove);
+    const remove = el("button", "danger", "Delete"); remove.style.marginLeft = "auto"; remove.onclick = async () => { if (await askConfirm("Delete this routine? Saved results stay in Background jobs.", "Delete")) act("routine_delete", { id: item.id }); }; row.append(remove);
     card.append(row); wrap.append(card);
   }
   if (S.routines.length) {
-    const quit = el("button", "secondary", "Quit Orbyn"); quit.onclick = async () => { if (confirm("Quit Orbyn and stop scheduled routines until you reopen it?")) { try { await api("quit"); window.close(); } catch (e) { toast(e.message); } } }; wrap.append(quit);
+    const quit = el("button", "secondary", "Quit Orbyn"); quit.onclick = async () => { if (await askConfirm("Quit Orbyn and stop scheduled routines until you reopen it?", "Quit")) { try { await api("quit"); window.close(); } catch (e) { toast(e.message); } } }; wrap.append(quit);
   }
   return wrap;
 }
@@ -578,7 +598,7 @@ function openRoutine() {
   const row = el("div", "sheetrow"); const close = el("button", "secondary", "Close"); close.onclick = closeSheet;
   const save = el("button", "pill go", "Create routine"); save.style.marginLeft = "auto";
   save.onclick = async () => { if (!question.value.trim()) return toast("Enter a research question."); save.disabled = true; try { await api("routine_create", { question: question.value, cadence: cadence.value }); closeSheet(); await poll(true); } catch (e) { toast(e.message); } finally { save.disabled = false; } };
-  row.append(close, save); sheet.append(question, cadence, row); $("scrim").classList.add("open"); question.focus();
+  row.append(close, save); sheet.append(question, cadence, row); openSheet(); question.focus();
 }
 
 // ---- calendar & mail: read-only, on this PC, never sent to a model --------
@@ -591,18 +611,18 @@ function inboxCard() {
     const today = el("button", "secondary", "Today's calendar");
     today.onclick = async () => { try { inboxEvents = (await api("calendar_agenda", { days: 1 })).events; renderWork(); } catch (e) { toast(e.message); } };
     const off = el("button", "secondary", "Disconnect calendar");
-    off.onclick = async () => { if (confirm("Remove the calendar address from Windows Credential Manager?")) { await act("calendar_disconnect", {}, "Calendar disconnected"); inboxEvents = null; } };
+    off.onclick = async () => { if (await askConfirm("Remove the calendar address from Windows Credential Manager?", "Remove")) { await act("calendar_disconnect", {}, "Calendar disconnected"); inboxEvents = null; } };
     row.append(today, off);
   } else {
     const on = el("button", "secondary", "Connect calendar");
-    on.onclick = () => { const url = prompt("Paste your calendar's private iCalendar (ICS) address (starts with https://):"); if (url) act("calendar_connect", { url }, "Calendar connected"); };
+    on.onclick = async () => { const url = await askText("Paste your calendar's private iCalendar (ICS) address (starts with https://):"); if (url) act("calendar_connect", { url }, "Calendar connected"); };
     row.append(on);
   }
   if (S.mail_connected) {
     const unread = el("button", "secondary", "Unread mail");
     unread.onclick = async () => { try { inboxMail = (await api("mail_unread", {})).mail; renderWork(); } catch (e) { toast(e.message); } };
     const off = el("button", "secondary", "Disconnect mail");
-    off.onclick = async () => { if (confirm("Remove the mail sign-in from Windows Credential Manager?")) { await act("mail_disconnect", {}, "Mail disconnected"); inboxMail = null; } };
+    off.onclick = async () => { if (await askConfirm("Remove the mail sign-in from Windows Credential Manager?", "Remove")) { await act("mail_disconnect", {}, "Mail disconnected"); inboxMail = null; } };
     row.append(unread, off);
   } else {
     const on = el("button", "secondary", "Connect mail");
@@ -631,7 +651,7 @@ function openMailConnect() {
   const row = el("div", "sheetrow"); const close = el("button", "secondary", "Close"); close.onclick = closeSheet;
   const connect = el("button", "pill go", "Connect"); connect.style.marginLeft = "auto";
   connect.onclick = async () => { connect.disabled = true; try { await api("mail_connect", { host: host.value, user: user.value, password: pass.value }); pass.value = ""; closeSheet(); toast("Mail connected", true); await poll(true); } catch (e) { toast(e.message); } finally { connect.disabled = false; } };
-  row.append(close, connect); sheet.append(host, user, pass, row); $("scrim").classList.add("open"); host.focus();
+  row.append(close, connect); sheet.append(host, user, pass, row); openSheet(); host.focus();
 }
 
 function githubCard() {
@@ -656,7 +676,7 @@ function githubCard() {
     wrap.append(card);
   }
   const disconnect = el("button", "secondary", "Disconnect GitHub"); disconnect.onclick = async () => {
-    if (!confirm("Remove Orbyn's GitHub token from Windows Credential Manager? Revoke the token on GitHub if you also want to disable it there.")) return;
+    if (!(await askConfirm("Remove Orbyn's GitHub token from Windows Credential Manager? Revoke the token on GitHub if you also want to disable it there.", "Remove"))) return;
     const result = await act("github_disconnect", {}, "GitHub disconnected");
     if (result) { githubRepos = []; githubIssues = {}; await poll(true); }
   }; wrap.append(disconnect);
@@ -672,7 +692,7 @@ function openGithubConnect() {
   const row = el("div", "sheetrow"); const close = el("button", "secondary", "Close"); close.onclick = closeSheet;
   const connect = el("button", "pill go", "Connect"); connect.style.marginLeft = "auto";
   connect.onclick = async () => { connect.disabled = true; try { const r = await api("github_connect", { token: token.value }); token.value = ""; closeSheet(); githubRepos = []; githubIssues = {}; toast("Connected as " + r.login, true); await poll(true); } catch (e) { toast(e.message); } finally { connect.disabled = false; } };
-  row.append(close, connect); sheet.append(token, row); $("scrim").classList.add("open"); token.focus();
+  row.append(close, connect); sheet.append(token, row); openSheet(); token.focus();
 }
 
 async function loadGithubRepos() {
@@ -728,7 +748,7 @@ function workStage() {
 }
 
 async function takeOfferedFile() {
-  if ($("scrim").classList.contains("open")) return;  // never over an open sheet
+  if ($("sheet").open) return;  // never over an open sheet
   let offered;
   try { offered = await api("take_offered_file"); } catch { return; }
   if (offered.name) { setTab("work"); openFileAsk(offered); }
@@ -766,7 +786,7 @@ function openFileAsk(offered) {
   };
   row.append(cancel, ask);
   form.append(fileLabel, question, answer, row); sheet.append(form);
-  $("scrim").classList.add("open"); question.focus();
+  openSheet(); question.focus();
 }
 
 function renderLive() {
@@ -803,7 +823,7 @@ function suggestEl(kind) {
   const label = { research: "Research this with cited sources", ideate: "Explore approaches first", plan: "Draft a step plan" }[kind];
   const w = el("div", "event"); const c = el("button", "chip"); c.append(document.createTextNode(label));
   c.onclick = () => {
-    if (kind === "research") { setResearch(true); $("input").value = last ? last.text : ""; autosize(); $("input").focus(); }
+    if (kind === "research") { setResearch(true); $("input").value = last ? last.text : ""; $("input").focus(); }
     else if (kind === "ideate") { act("ideate", {}, "Approaches ready"); setTab("plan"); }
     else { act("plan", {}, "Plan drafted"); setTab("plan"); }
   };
@@ -940,7 +960,7 @@ function renderPlan() {
     const body = el("div", "text");
     if (editing === i) {
       const inp = el("input"); inp.value = text; inp.maxLength = 300;
-      inp.onkeydown = (e) => { if (e.key === "Enter") { editing = null; act("plan_edit", { verb: "edit", args: [String(i + 1), inp.value] }); } if (e.key === "Escape") { editing = null; renderPlan(); } };
+      inp.onkeydown = (e) => { if (e.key === "Enter" && !imeEnter(e)) { editing = null; act("plan_edit", { verb: "edit", args: [String(i + 1), inp.value] }); } if (e.key === "Escape") { editing = null; renderPlan(); } };
       body.append(inp); setTimeout(() => inp.focus());
     } else body.append(document.createTextNode(text));
     const acts = el("div", "acts");
@@ -954,13 +974,13 @@ function renderPlan() {
   if (S.plan_memories.length) root.append(el("div", "note", "Made with what Orbyn remembers: " + S.plan_memories.join(" · ")));
   const row = el("div", "addrow"); const inp = el("input"); inp.placeholder = "Add a step…"; inp.maxLength = 300;
   const add = el("button", "secondary", "Add"); add.onclick = () => inp.value.trim() && act("plan_edit", { verb: "add", args: [inp.value] });
-  inp.onkeydown = (e) => e.key === "Enter" && add.click();
+  inp.onkeydown = (e) => e.key === "Enter" && !imeEnter(e) && add.click();
   row.append(inp, add); root.append(row);
   const go = el("button", "cta"); go.append(iconEl("play"), document.createTextNode("Guide me from step 1")); go.disabled = !!S.busy; go.onclick = () => openTeach(1);
   const doit = el("button", "secondary", "Do it for me"); doit.disabled = !!S.busy; doit.onclick = () => openTeach(1, true);
   const hand = el("button", "secondary", "Hand off to a teammate"); hand.disabled = !!S.busy;
   hand.onclick = async () => {
-    const name = prompt("Your name, so your teammate knows who it is from:", "");
+    const name = await askText("Your name, so your teammate knows who it is from:");
     if (name === null) return;
     const r = await act("handoff_export", { name });
     if (r && r.path) toast("Saved " + r.path + " — send it to your teammate. Only the goal, steps and sources are in it.", true);
@@ -1005,7 +1025,7 @@ function renderBrain() {
       const fix = el("button", "", "Correct"); const forget = el("button", "danger", "Forget");
       fix.onclick = () => {
         const inp = el("input"); inp.value = m.text; card.replaceChild(inp, card.lastChild); inp.focus();
-        inp.onkeydown = (e) => { if (e.key === "Enter") act("brain", { verb: "correct", id: m.mid, text: inp.value }, "Corrected"); if (e.key === "Escape") renderBrain(); };
+        inp.onkeydown = (e) => { if (e.key === "Enter" && !imeEnter(e)) act("brain", { verb: "correct", id: m.mid, text: inp.value }, "Corrected"); if (e.key === "Escape") renderBrain(); };
       };
       forget.onclick = () => act("brain", { verb: "forget", id: m.mid }, "Forgotten");
       acts.append(fix, forget); meta.append(acts);
@@ -1014,7 +1034,7 @@ function renderBrain() {
     root.append(list);
     if (S.memories.length) {
       const erase = el("button", "secondary danger", "Erase every memory"); erase.style.marginTop = "16px";
-      erase.onclick = () => { if (prompt('Erase every memory? Type "yes" to confirm.') === "yes") act("brain", { verb: "erase", confirm: "yes" }, "Erased"); };
+      erase.onclick = async () => { if ((await askText('Erase every memory? Type "yes" to confirm.')) === "yes") act("brain", { verb: "erase", confirm: "yes" }, "Erased"); };
       root.append(erase);
     }
     return;
@@ -1075,10 +1095,10 @@ function agentsCard() {
     const use = el("button", "pill go", "Use"); use.disabled = !!S.busy;
     use.onclick = () => act("agent_use", { name: a.name }, "Agent started").then((r) => { if (r) setTab("chat"); });
     const del = el("button", "secondary", "Delete"); del.disabled = !!S.busy;
-    del.onclick = () => { if (confirm('Delete saved agent "' + a.name + '"?')) act("agent_delete", { name: a.name }, "Agent deleted"); };
+    del.onclick = async () => { if (await askConfirm('Delete saved agent "' + a.name + '"?', "Delete")) act("agent_delete", { name: a.name }, "Agent deleted"); };
     del.style.marginLeft = "6px";
     const note = el("button", "secondary", "Add note"); note.disabled = !!S.busy; note.style.marginLeft = "6px";
-    note.onclick = () => { const text = prompt('What should "' + a.name + '" remember next time?'); if (text && text.trim()) act("agent_note", { name: a.name, text }, "Noted"); };
+    note.onclick = async () => { const text = await askText('What should "' + a.name + '" remember next time?'); if (text && text.trim()) act("agent_note", { name: a.name, text }, "Noted"); };
     const label = el("span", "", a.name + " — " + a.description);
     const rt = el("span"); rt.style.marginLeft = "auto"; rt.append(use, note, del);
     row.append(label, rt); card.append(row);
@@ -1095,7 +1115,7 @@ function agentsCard() {
   const inp = el("input"); inp.placeholder = "what should the new agent do?"; inp.disabled = !!S.busy;
   const make = el("button", "secondary", "Create agent"); make.disabled = !!S.busy;
   make.onclick = () => inp.value.trim() && act("agent_create", { text: inp.value.trim() }, "Agent drafted");
-  inp.onkeydown = (e) => { if (e.key === "Enter") make.onclick(); };
+  inp.onkeydown = (e) => { if (e.key === "Enter" && !imeEnter(e)) make.onclick(); };
   const row = el("div", "sheetrow"); row.append(inp, make); card.append(row);
   return card;
 }
@@ -1258,20 +1278,44 @@ function accountsCard() {
 
 // ---- sheets: windows, point, teach -----------------------------------
 let sheetOpener = null;
-function closeSheet() {
-  $("scrim").classList.remove("open"); $("sheet").replaceChildren(); $("sheet").removeAttribute("aria-labelledby");
+function imeEnter(e) { return e.isComposing || e.keyCode === 229; }  // Enter confirming an IME composition
+// The browser's blocking confirm and prompt boxes, as a native modal instead.
+// Esc or Cancel resolves false/null. Enter in the field submits through the
+// form (IME-safe); a confirmation starts on Cancel, the safe choice.
+function ask(message, { input = null, ok = "OK", danger = false } = {}) {
+  const d = $("ask"), field = $("askInput");
+  $("askText").textContent = message; $("askOk").textContent = ok; $("askOk").className = danger ? "secondary danger" : "pill go";
+  field.hidden = input === null; field.value = input ?? "";
+  d.returnValue = ""; d.showModal(); (input === null ? $("askCancel") : field).focus();
+  return new Promise((done) => d.addEventListener("close", () => {
+    const yes = d.returnValue === "ok"; d.returnValue = "";
+    done(input === null ? yes : yes ? field.value : null);
+  }, { once: true }));
+}
+const askConfirm = (message, ok) => ask(message, { ok, danger: true });
+const askText = (message, value = "") => ask(message, { input: value });
+$("askCancel").onclick = () => $("ask").close();
+function openSheet() { if (!$("sheet").open) $("sheet").showModal(); }
+function closeSheet() { if ($("sheet").open) $("sheet").close(); resetSheet(); }
+$("sheet").addEventListener("close", resetSheet);  // Esc or a click outside closes it natively
+function resetSheet() {
+  if ($("sheet").open) return;  // a late close event after another sheet opened
+  $("sheet").replaceChildren(); $("sheet").removeAttribute("aria-labelledby");
   if (sheetOpener) {
     const key = sheetOpener.dataset.workFocus;
     const target = sheetOpener.isConnected ? sheetOpener : $("tab-work").querySelector('[data-work-focus="' + (key || "askfile") + '"]');
     sheetOpener = null; target?.focus();
   }
 }
-$("scrim").onclick = (e) => e.target === $("scrim") && closeSheet();
+if (!("closedBy" in HTMLDialogElement.prototype)) $("sheet").addEventListener("click", (e) => {  // light dismiss where closedby is missing
+  const r = $("sheet").getBoundingClientRect();
+  if (e.target === $("sheet") && (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom)) closeSheet();
+});
 
 async function windowSheet(title, sub, startLabel, extra, onStart) {
   const sheet = $("sheet"); sheet.replaceChildren(el("h3", "", title), el("p", "", sub));
   const list = el("div", "wins"); list.append(el("div", "note", "Finding windows…")); sheet.append(list);
-  $("scrim").classList.add("open");
+  openSheet();
   const r = await api("windows").catch((e) => (toast(e.message), null));
   list.replaceChildren();
   if (!r || !r.windows.length) { list.append(el("div", "note", "No windows to guide. Open the app you want help with.")); }
@@ -1304,7 +1348,7 @@ function openPoint() {
     const row = el("div", "sheetrow");
     const no = el("button", "secondary", "Discard"); no.onclick = () => { closeSheet(); act("point_keep", { answer: "x" }); };
     const yes = el("button", "pill go", "Yes, use it"); yes.style.marginLeft = "auto"; yes.onclick = () => { closeSheet(); act("point_keep", { answer: "" }); };
-    row.append(no, yes); sheet.append(alts, row); $("scrim").classList.add("open");
+    row.append(no, yes); sheet.append(alts, row); openSheet();
   });
 }
 
@@ -1335,21 +1379,19 @@ async function send() {
   const inp = $("input"); const text = inp.value.trim();
   if (!text || (S && S.busy)) return;
   finishWelcome();
-  inp.value = ""; autosize(); pending = researchMode ? "[research] " + text : text;
+  inp.value = ""; pending = researchMode ? "[research] " + text : text;
   const action = researchMode ? "research" : "say";
   setTab("chat"); renderChat(true);
   try { await api(action, { text }); } catch (e) { toast(e.message); inp.value = text; }
   pending = ""; await poll(true); renderChat(true);
 }
-function autosize() { const t = $("input"); t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight, 160) + "px"; }
-$("input").addEventListener("input", autosize);
-$("input").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !(S && S.busy)) { e.preventDefault(); send(); } });
+$("input").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !imeEnter(e) && !(S && S.busy)) { e.preventDefault(); send(); } });
 $("sendBtn").onclick = send;
 $("researchBtn").onclick = () => setResearch(!researchMode);
 $("pointBtn").onclick = openPoint;
 $("voiceBtn").onclick = async () => {
   const r = await act("voice", {});
-  if (r && r.draft) { $("input").value = r.draft; autosize(); $("input").focus(); }
+  if (r && r.draft) { $("input").value = r.draft; $("input").focus(); }
   else if (r) toast("Nothing was heard.");
 };
 $("doneBtn").onclick = () => api("signal").catch(() => {});
@@ -1360,7 +1402,7 @@ addEventListener("pagehide", () => {
 });
 document.addEventListener("keydown", (e) => {
   if (!S || !S.busy) { if (e.key === "Escape") closeSheet(); return; }
-  if (e.key === "Enter" && ["Guiding", "Pointing", "Listening"].includes(S.busy)) { e.preventDefault(); api("signal").catch(() => {}); }
+  if (e.key === "Enter" && !$("ask").open && ["Guiding", "Pointing", "Listening"].includes(S.busy)) { e.preventDefault(); api("signal").catch(() => {}); }
   if (e.key === "Escape") api("stop").catch(() => {});
 });
 
@@ -1383,9 +1425,6 @@ document.querySelector("nav").addEventListener("keydown", (e) => {
 });
 
 // theme
-function applyTheme(t) { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }
-let stored = null; try { stored = localStorage.getItem("orbyn-theme"); } catch {}
-applyTheme(stored || (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark"));
 $("themeBtn").innerHTML = ICON.moon;
 $("themeBtn").onclick = () => {
   const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark"; applyTheme(next);

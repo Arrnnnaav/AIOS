@@ -1812,3 +1812,24 @@ def test_the_resting_dot_switch_is_saved_and_shown(tmp_path, monkeypatch):
         assert reopened.state()["companion_idle"] is True  # read at start
     finally:
         reopened.close()
+
+
+def test_the_page_scripts_parse(tmp_path):
+    """One stray brace in app.html blanks the whole workspace; parse every
+    inline script with Node when it is installed."""
+
+    import re
+    import shutil
+    import subprocess
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node is not installed")
+    page = appmod.PAGE.read_text(encoding="utf-8")
+    scripts = re.findall(r"<script>(.*?)</script>", page, re.S)
+    assert len(scripts) == 2  # the head theme script and the app
+    for index, script in enumerate(scripts):
+        path = tmp_path / f"script{index}.js"
+        path.write_text(script, encoding="utf-8")
+        result = subprocess.run([node, "--check", str(path)], capture_output=True, text=True)
+        assert result.returncode == 0, result.stderr
