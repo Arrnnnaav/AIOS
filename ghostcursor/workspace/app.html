@@ -1164,7 +1164,9 @@ function companyBrainCard() {
     const chosen = fileIn.files[0]; fileIn.value = "";
     if (!chosen) return;
     if (chosen.size > 400 * 1024) return toast("Choose a text file under 400 KB.");
-    const r = await act("know_ingest", { name: chosen.name, material: await chosen.text() });
+    const material = await chosen.text();
+    if (!material.trim() || material.length > 100000 || material.includes("\0")) return toast("Choose a text file under 100,000 characters.");
+    const r = await act("know_ingest", { name: chosen.name, material });
     if (r) { toast(r.added + " to review" + (r.duplicate ? ", " + r.duplicate + " already known" : ""), true); renderBrain(); }
   };
   cap.style.flexWrap = "wrap"; cap.style.rowGap = "6px";

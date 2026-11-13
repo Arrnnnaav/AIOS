@@ -383,6 +383,7 @@ class Knowledge:
                 default=None,
             )
             if match and _jaccard(words, _words(match.text)) >= self.DUP_THRESHOLD:
+                self.tighten(match.fid, source, sensitivity)
                 results.append(("duplicate", match.fid))
                 continue
             try:
@@ -555,6 +556,15 @@ class Knowledge:
         ).fetchone()
         return row is not None and row[0] == "1"
 
+    def tighten(self, fid: int, source: str, requested: str = "normal") -> None:
+        """A fact met again as a duplicate: if this arrival would have been
+        sensitive (asked for, a private source, private by default), the
+        existing fact becomes sensitive. Never loosens (rule 6)."""
+
+        source = _secret_free(" ".join(str(source).split()))
+        if self._resolve_sensitivity(source, requested) == "sensitive":
+            self.classify(fid, "sensitive")
+
     def _resolve_sensitivity(self, source: str, requested: str) -> str:
         """Entry-time gate: an explicit 'sensitive' stays sensitive; otherwise a
         'normal' is lifted to 'sensitive' when the owner is private-by-default
@@ -702,15 +712,26 @@ class Knowledge:
             raise ValueError("an edge needs subject, predicate, object, source, scope")
         sensitivity = self._resolve_sensitivity(parts[3], sensitivity)
         now = self.clock()
-        for row in self._db.execute(
-            "SELECT * FROM edges WHERE scope=? AND lower(subject)=? AND "
-            "lower(predicate)=? AND lower(object)=? ORDER BY eid",
-            (scope.strip(), *(part.lower() for part in parts[:3])),
-        ):
-            same = Edge(*row)
-            if not same.expired(now):
-                return same  # already known: no second copy to review
         with self._lock, self._db:
+            rows = self._db.execute(
+                "SELECT * FROM edges WHERE scope=? AND lower(subject)=? AND "
+                "lower(predicate)=? AND lower(object)=? ORDER BY eid",
+                (scope.strip(), *(part.lower() for part in parts[:3])),
+            ).fetchall()
+            for same in (Edge(*row) for row in rows):
+                if same.expired(now):
+                    continue
+                # Already known: no second copy to review. A repeat may
+                # only tighten it (rule 6): asked for private, it is.
+                if sensitivity == "sensitive" != same.sensitivity:
+                    self._db.execute(
+                        "UPDATE edges SET sensitivity='sensitive' WHERE eid=?",
+                        (same.eid,),
+                    )
+                    same = Edge(*self._db.execute(
+                        "SELECT * FROM edges WHERE eid=?", (same.eid,)
+                    ).fetchone())
+                return same
             cur = self._db.execute(
                 "INSERT INTO edges (subject, predicate, object, source, scope, "
                 "status, added, valid_until, sensitivity) VALUES (?,?,?,?,?,?,?,?,?)",

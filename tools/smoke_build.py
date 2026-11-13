@@ -55,7 +55,9 @@ def main(argv: list[str]) -> int:
             failed.append(name)
 
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as data:
-        env = dict(os.environ, LOCALAPPDATA=data, USERPROFILE=data)
+        # Only throwaway data: ORBYN_* can point a store at the person's own.
+        env = {k: v for k, v in os.environ.items() if not k.upper().startswith("ORBYN_")}
+        env.update(LOCALAPPDATA=data, USERPROFILE=data)
         process = subprocess.Popen([str(exe), "smoke"], env=env, cwd=data)
         lock = Path(data) / "GhostCursor" / "app.lock"
         url = ""

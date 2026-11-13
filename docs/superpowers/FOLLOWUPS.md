@@ -2297,6 +2297,15 @@ from 1053b54. Still open:
   IBAN written in groups of four was not recognised anywhere; redact now
   has that form. Left: correcting a superseded memory revives it as a new
   active one; memories stored before this fix are not re-checked.
+- Tier-1 review 14 Nov (fb24b3e..9e2ad27): one BLOCKING finding, fixed: a
+  link added again with Private ticked returned the existing normal link,
+  dropping the mark. A repeat (link, typed fact, ingested passage) now
+  tightens the one already there when this arrival is private, and never
+  loosens. Also fixed: the smoke test drops ORBYN_* path overrides; an IBAN
+  whose last groups run together; the page checks the 100,000-character
+  limit before sending. Left: SQLite lower() is ASCII-only, so links that
+  differ only in non-ASCII case are not merged; the spaced IBAN form does
+  not cover lowercase or hyphen/tab separators.
 - Tier-1 review 14 Nov (014ee08): no blocking findings. Fixed: the hover
   check in idle() no longer raises when the pointer cannot be read (UAC,
   lock screen) and is skipped once the bar closes; a refused message wait

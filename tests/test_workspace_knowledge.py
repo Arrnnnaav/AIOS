@@ -914,3 +914,34 @@ def test_every_brain_write_path_scrubs_secrets(tmp_path):
     k.close()
     dump = _dump(tmp_path / "k.sqlite")
     assert _SECRET not in dump and _CARD not in dump
+
+
+def test_a_repeat_never_loosens_and_can_only_tighten(kn):
+    """Tier-1 review 14 Nov: a link or fact met again is not stored twice, but
+    if this arrival is private (asked for, a private source, private by
+    default) the one already there becomes private. Never the reverse."""
+
+    first = kn.relate("Priya", "salary", "200k", source="note", scope="acme")
+    assert first.sensitivity == "normal"
+    again = kn.relate("PRIYA", "salary", "200k", source="note", scope="acme", sensitivity="sensitive")
+    assert again.eid == first.eid and again.sensitivity == "sensitive"
+    assert kn.edge(first.eid).sensitivity == "sensitive"
+    assert len(kn.list_edges(scope="acme")) == 1
+    back = kn.relate("Priya", "salary", "200k", source="note", scope="acme")  # normal again
+    assert back.eid == first.eid and back.sensitivity == "sensitive"  # stays private
+    other = kn.relate("Priya", "salary", "200k", source="note", scope="other")
+    assert other.eid != first.eid and other.sensitivity == "normal"  # scopes apart
+
+    kn.mark_source_sensitive("payroll")
+    plain = kn.relate("Sam", "reports to", "Priya", source="wiki", scope="acme")
+    lifted = kn.relate("Sam", "reports to", "Priya", source="payroll export", scope="acme")
+    assert lifted.eid == plain.eid and lifted.sensitivity == "sensitive"
+
+    fact = kn.add_candidate("Bonuses are paid in March", source="wiki", scope="acme")
+    assert kn.ingest(["Bonuses are paid in March"], source="wiki", scope="acme") == [("duplicate", fact.fid)]
+    assert kn.get(fact.fid).sensitivity == "normal"
+    assert kn.ingest(["Bonuses are paid in March"], source="payroll.md", scope="acme") == [("duplicate", fact.fid)]
+    assert kn.get(fact.fid).sensitivity == "sensitive"
+    kn.tighten(fact.fid, "wiki")
+    assert kn.get(fact.fid).sensitivity == "sensitive"  # a normal arrival changes nothing
+

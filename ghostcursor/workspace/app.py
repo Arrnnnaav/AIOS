@@ -1056,13 +1056,15 @@ class App:
                 )
             # The same words again are not a second fact to review. Exact match
             # only: a near match may be a correction ("is" against "is not").
+            source = str(body.get("source") or "note").strip() or "note"
             stored = redact.scrub(t, redact.SECRETS)[0].casefold()
             for old in ws.knowledge.list(scope=ws.kb_scope):
                 if old.status != "retired" and old.text.casefold() == stored:
+                    ws.knowledge.tighten(old.fid, source)  # never loosens
                     return {"fid": old.fid, "status": old.status, "duplicate": True}
             f = ws.knowledge.add_candidate(
                 t,
-                source=str(body.get("source") or "note").strip() or "note",
+                source=source,
                 scope=ws.kb_scope,
             )
             # candidate until reviewed

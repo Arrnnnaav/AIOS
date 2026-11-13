@@ -1413,6 +1413,21 @@ def test_company_brain_gui_capture(tmp_path, monkeypatch):
             == 400
         )
         assert call(port, "/api/know_ingest", {"name": "x", "material": 5})[0] == 400
+        # Tier-1 review 14 Nov: a repeat marked private makes the existing link
+        # private; a file's name and text are scrubbed; a repeat from a private
+        # source makes the existing fact private.
+        private = json.loads(call(port, "/api/know_relate", {**link, "sensitive": True})[1])
+        assert private["eid"] == first["eid"] and kb.edge(first["eid"]).sensitivity == "sensitive"
+        key = "sk-proj-" + "a" * 40
+        call(port, "/api/know_ingest", {"name": f"notes {key}.md", "material": f"The deploy key is {key} for now."})
+        scrubbed = [f for f in kb.list(scope="default") if "deploy key" in f.text]
+        assert len(scrubbed) == 1 and key not in scrubbed[0].text and key not in scrubbed[0].source
+        kb.retire(scrubbed[0].fid)
+        kb.mark_source_sensitive("payroll")
+        launch = json.loads(call(port, "/api/know_add", {"text": "Launch is in Q3", "source": "payroll"})[1])
+        assert launch["duplicate"] is True and kb.get(launch["fid"]).sensitivity == "sensitive"
+        kb.classify(launch["fid"], "normal")
+        kb.unmark_source_sensitive("payroll")
 
         status, body = call(port, "/api/know_clip", {})
         assert status == 200 and "candidate" in json.loads(body)["result"]

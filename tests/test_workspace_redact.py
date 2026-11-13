@@ -91,8 +91,12 @@ def test_scrub_can_be_limited_to_secrets():
 def test_an_iban_written_in_groups_of_four_is_scrubbed():
     from ghostcursor import redact
 
-    for text in ("pay GB82 WEST 1234 5698 7654 32 today", "DE89 3704 0044 0532 0130 00"):
+    for text in (
+        "pay GB82 WEST 1234 5698 7654 32 today",
+        "DE89 3704 0044 0532 0130 00",
+        "GB82 WEST 1234 5698 765432",  # the last groups run together
+    ):
         clean = redact.scrub(text, redact.SECRETS)[0]
-        assert "[IBAN_1]" in clean and "5698" not in clean and "0532" not in clean
+        assert "[IBAN_1]" in clean and not any(n in clean for n in ("5698", "0532", "7654"))
     for text in ("Meet in room AB12 at noon", "See ID42 PLAN 2026 for details"):
         assert redact.scrub(text, redact.SECRETS)[0] == text  # too short to be one
