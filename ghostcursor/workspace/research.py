@@ -47,6 +47,9 @@ MAX_SOURCES = 5
 PASSAGES_PER_SOURCE = 3
 PASSAGE_CHARS = 600
 MAX_PAGE_CHARS = 40_000
+#: A page fetch reads at most this many bytes, within one deadline for all hops.
+MAX_PAGE_BYTES = MAX_PAGE_CHARS * 16
+FETCH_DEADLINE_S = 20.0
 MAX_CLAIMS = 8
 BLOCKED_HOSTS = (
     "facebook.com",
@@ -260,6 +263,8 @@ def fetch_public(client, url: str, *, hops: int = 3, resolve=None):
     import httpx
     from urllib.parse import urljoin
 
+    deadline = time.monotonic() + FETCH_DEADLINE_S
+    secure = False
     for _ in range(hops + 1):
         if _blocked(url):
             return None
@@ -267,22 +272,47 @@ def fetch_public(client, url: str, *, hops: int = 3, resolve=None):
         # Check, connect and verify TLS for one spelling of the name: the
         # IDNA ASCII host httpx sends (Python's own codec is IDNA 2003).
         host = named.raw_host.decode("ascii")
+        if (
+            named.port is not None  # web pages on their default ports only
+            or (secure and named.scheme != "https")  # no https -> http downgrade
+        ):
+            return None
+        secure = named.scheme == "https"
         address = _public_address(host, resolve)
         if address is None:
             return None
-        page = client.get(
+        with client.stream(
+            "GET",
             named.copy_with(host=address, userinfo=b""),  # no Basic auth from a URL
             # Connection: close -- a pooled connection is keyed by IP, so it
             # must not carry one name's verified TLS session to another name.
             headers={"Host": named.netloc.decode("ascii"), "Connection": "close"},
             extensions={"sni_hostname": host},
             follow_redirects=False,
-        )
-        if not page.is_redirect:
-            return page
-        location = page.headers.get("location")
+        ) as page:
+            if not page.is_redirect:
+                body = bytearray()
+                for chunk in page.iter_bytes():
+                    body += chunk
+                    if len(body) >= MAX_PAGE_BYTES or time.monotonic() >= deadline:
+                        break  # a huge or trickling page keeps what arrived
+                keep = {
+                    k: v
+                    for k, v in page.headers.items()
+                    if k.lower()
+                    not in ("content-encoding", "content-length", "transfer-encoding")
+                }
+                return httpx.Response(
+                    page.status_code,
+                    headers=keep,
+                    content=bytes(body[:MAX_PAGE_BYTES]),
+                    request=page.request,
+                )
+            location = page.headers.get("location")
         if not location:
             return None  # a redirect to nowhere
+        if time.monotonic() > deadline:
+            return None
         url = urljoin(url, location)
     return None
 

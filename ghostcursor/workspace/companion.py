@@ -52,6 +52,8 @@ _user32.SetTimer.argtypes = (
     ctypes.c_void_p,
 )
 _user32.SetTimer.restype = ctypes.c_size_t
+_user32.SetWindowDisplayAffinity.argtypes = (wintypes.HWND, wintypes.DWORD)
+_user32.SetWindowDisplayAffinity.restype = wintypes.BOOL
 _user32.KillTimer.argtypes = (wintypes.HWND, ctypes.c_size_t)
 _user32.KillTimer.restype = wintypes.BOOL
 
@@ -145,14 +147,18 @@ class Companion:
         win32gui.SetLayeredWindowAttributes(
             self.hwnd, COLOR_KEY, 0, win32con.LWA_COLORKEY
         )
-        _user32.SetWindowDisplayAffinity(
+        # Kept out of screenshots, so perception and the D179 picture never see
+        # it. Where Windows refuses (before 10 2004), the badge never shows.
+        self.capturable = not _user32.SetWindowDisplayAffinity(
             self.hwnd, WDA_EXCLUDEFROMCAPTURE
-        )  # best effort
+        )
         _windows[self.hwnd] = self
 
     def show(self, text: str | None) -> None:
         """Called on the UI thread each island tick."""
 
+        if self.capturable:
+            text = None  # it would appear in screen captures
         if text == self.text:
             return
         if text is None:

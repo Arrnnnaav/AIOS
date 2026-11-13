@@ -217,8 +217,8 @@ def test_the_island_pumps_fast_for_the_resting_dot_too(monkeypatch):
     bar = object.__new__(island_module.Island)
     bar.hwnd, bar.closed = 7, False
     bar.companion = types.SimpleNamespace(text="")
-    bar.idle(0.2)
-    assert len(pumps) >= 3
+    bar.idle(0.35)  # 100 ms for the resting dot
+    assert 3 <= len(pumps) <= 5  # not the 30 ms rate
 
 
 def test_idle_stops_pumping_when_the_badge_hides_and_never_overruns(monkeypatch):
@@ -293,3 +293,12 @@ def test_the_timer_repaints_when_the_dot_changes_and_not_otherwise(monkeypatch):
     badge.started = time.monotonic() - 4.9  # now in a blink
     tick()
     assert painted == [4242, 4242]
+
+
+def test_a_badge_windows_cannot_keep_out_of_captures_never_shows():
+    """EGM design review 13 Nov: if SetWindowDisplayAffinity fails the badge
+    would appear in screenshots and the D179 picture, so it never shows."""
+    badge = object.__new__(Companion)
+    badge.capturable, badge.text, badge.hwnd = True, None, 0
+    badge.show("Thinking")
+    assert badge.text is None

@@ -435,3 +435,58 @@ def test_a_redirect_without_a_location_stops_at_once():
     with httpx.Client(transport=httpx.MockTransport(lambda r: hits.append(r) or httpx.Response(302))) as client:
         assert fetch_public(client, "https://good.com/", resolve=lambda h: {"93.184.216.34"}) is None
     assert len(hits) == 1  # not re-requested until the hops ran out
+
+
+def test_a_page_fetch_reads_a_bounded_body_within_one_deadline(monkeypatch):
+    """EGM design review 13 Nov: a huge or trickling page cannot hold a
+    worker or memory."""
+    import httpx
+
+    from ghostcursor.workspace import research
+    from ghostcursor.workspace.research import fetch_public
+
+    public = lambda h: {"93.184.216.34"}
+    sent = []
+
+    def chunks():
+        for _ in range(40):
+            sent.append(1)
+            yield b"a" * 65536
+
+    huge = lambda r: httpx.Response(200, headers={"content-type": "text/html"}, content=chunks())
+    with httpx.Client(transport=httpx.MockTransport(huge)) as client:
+        page = fetch_public(client, "https://good.com/", resolve=public)
+    assert len(page.content) == research.MAX_PAGE_BYTES and page.headers["content-type"] == "text/html"
+    assert len(sent) <= research.MAX_PAGE_BYTES // 65536 + 1  # stopped reading at the cap
+    monkeypatch.setattr(research, "FETCH_DEADLINE_S", 0.0)
+    with httpx.Client(transport=httpx.MockTransport(huge)) as client:
+        page = fetch_public(client, "https://good.com/", resolve=public)
+    assert len(page.content) == 65536  # the deadline passed: what arrived is kept
+
+
+def test_a_page_fetch_keeps_default_ports_https_and_the_blocklist():
+    import httpx
+
+    from ghostcursor.workspace.research import BLOCKED_HOSTS, fetch_public
+
+    public = lambda h: {"93.184.216.34"}
+
+    def to(location):
+        def handler(request):
+            if request.url.path == "/start":
+                return httpx.Response(302, headers={"location": location})
+            return httpx.Response(200, text="reached")
+        return handler
+
+    for start, location, reached in (
+        ("https://good.com/start", "https://good.com:8443/x", False),  # odd port
+        ("https://good.com/start", "http://good.com/x", False),  # downgrade
+        ("http://good.com/start", "https://good.com/x", True),  # upgrade is fine
+        ("https://good.com/start", "https://good.com:443/x", True),  # default port
+        ("https://good.com/start", f"https://{BLOCKED_HOSTS[0]}/x", False),
+    ):
+        with httpx.Client(transport=httpx.MockTransport(to(location))) as client:
+            page = fetch_public(client, start, resolve=public)
+        assert (page is not None and page.text == "reached") is reached, location
+    with httpx.Client(transport=httpx.MockTransport(to("/x"))) as client:
+        assert fetch_public(client, "http://good.com:25/start", resolve=public) is None
