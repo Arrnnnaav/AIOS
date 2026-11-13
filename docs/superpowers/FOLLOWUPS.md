@@ -2291,6 +2291,12 @@ from 1053b54. Still open:
   packaged exe with throwaway data. Left: Export overwrites the previous
   export in Downloads; documents still enter the Company Brain only through
   /know in the console.
+- Personal Brain audit 14 Nov: a card number written with spaces or dashes
+  (and an SSN) was stored as a lasting memory, and memories are context for
+  the model; eligibility now refuses anything redact.SECRETS recognises. An
+  IBAN written in groups of four was not recognised anywhere; redact now
+  has that form. Left: correcting a superseded memory revives it as a new
+  active one; memories stored before this fix are not re-checked.
 - Tier-1 review 14 Nov (014ee08): no blocking findings. Fixed: the hover
   check in idle() no longer raises when the pointer cannot be read (UAC,
   lock screen) and is skipped once the bar closes; a refused message wait

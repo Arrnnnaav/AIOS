@@ -22,6 +22,8 @@ import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from ghostcursor import redact
+
 ENV_PATH = "ORBYN_BRAIN_PATH"
 CLASSES = ("preference", "goal", "decision", "fact", "procedure")
 ORIGINS = ("user_stated", "model_inferred", "verified_workflow", "user_corrected")
@@ -84,6 +86,8 @@ def eligibility(
         return "refused"
     if _SENSITIVE.search(text) or len(text) > MAX_TEXT:
         return "refused"
+    if redact.scrub(text, redact.SECRETS)[0] != text:
+        return "refused"  # a card, bank or ID number, a key or a token, however spaced
     if origin == "user_corrected":
         return "durable"
     if _TEMPORARY.search(text) or _TEMPORARY.search(user_turn):

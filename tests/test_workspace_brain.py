@@ -80,6 +80,11 @@ def test_unsupported_or_temporary_memories_stay_session_scoped(
         "api key nvapi-abc",
         "card 4111111111111111",
         "token sk-abc",
+        # 14 Nov audit: written the way people write them (redact.SECRETS)
+        "my card is 4111 1111 1111 1111",
+        "my card is 4111-1111-1111-1111",
+        "my IBAN is GB82 WEST 1234 5698 7654 32",
+        "my number is 078-05-1120",
     ],
 )
 def test_sensitive_text_is_never_stored(brain, text):

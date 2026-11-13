@@ -86,3 +86,13 @@ def test_scrub_can_be_limited_to_secrets():
     text, mapping = redact.scrub(f"mail a@b.example, key {key}", redact.SECRETS)
     assert text == "mail a@b.example, key [KEY_1]" and mapping == {"[KEY_1]": key}
     assert "[EMAIL_1]" in redact.scrub("mail a@b.example")[0]  # unlimited: all
+
+
+def test_an_iban_written_in_groups_of_four_is_scrubbed():
+    from ghostcursor import redact
+
+    for text in ("pay GB82 WEST 1234 5698 7654 32 today", "DE89 3704 0044 0532 0130 00"):
+        clean = redact.scrub(text, redact.SECRETS)[0]
+        assert "[IBAN_1]" in clean and "5698" not in clean and "0532" not in clean
+    for text in ("Meet in room AB12 at noon", "See ID42 PLAN 2026 for details"):
+        assert redact.scrub(text, redact.SECRETS)[0] == text  # too short to be one

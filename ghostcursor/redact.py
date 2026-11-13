@@ -45,6 +45,11 @@ _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     # explicit bearer/authorization credential (case-insensitive prefix)
     ("KEY", re.compile(r"(?i)\b(?:bearer|authorization:?)\s+[A-Za-z0-9._~+/=-]{8,}")),
     ("IBAN", re.compile(r"\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b")),
+    # as printed on statements: groups of four, e.g. GB82 WEST 1234 5698 7654 32
+    (
+        "IBAN",
+        re.compile(r"\b[A-Z]{2}\d{2}(?: [A-Z0-9]{4}){3,7}(?: [A-Z0-9]{1,3})?\b"),
+    ),
     ("SSN", re.compile(r"\b\d{3}-\d{2}-\d{4}\b")),
     ("CARD", re.compile(r"\b(?:\d[ -]?){13,19}\b")),  # Luhn-gated below
     ("IP", re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")),
