@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 from pathlib import Path
+
+# The page server is threaded: two switches flipped at once must not lose one.
+_write_lock = threading.Lock()
 
 
 def _path() -> Path:
@@ -34,11 +38,12 @@ def jev_vision(path: Path | None = None) -> bool:
 
 def _set(key: str, on: bool, path: Path | None) -> None:
     path = path or _path()
-    value = load(path) | {key: bool(on)}
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temp = path.with_suffix(".tmp")
-    temp.write_text(json.dumps(value), encoding="utf-8")
-    temp.replace(path)  # never a half-written file
+    with _write_lock:  # read-change-write as one step
+        value = load(path) | {key: bool(on)}
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temp = path.with_suffix(".tmp")
+        temp.write_text(json.dumps(value), encoding="utf-8")
+        temp.replace(path)  # never a half-written file
 
 
 def set_jev_vision(on: bool, path: Path | None = None) -> None:

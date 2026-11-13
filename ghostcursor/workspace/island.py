@@ -346,23 +346,27 @@ class Island:
             _font = win32gui.CreateFontIndirect(font)
         # Before the bar: if this fails no bar window is left behind.
         self.companion = Companion(lambda: _cursor())  # the OS pointer only
-        ensure_class(CLASS, _wnd_proc, _brush)
-        screen = win32api.GetSystemMetrics(win32con.SM_CXSCREEN)
-        width, height = COMPACT
-        self.hwnd = win32gui.CreateWindowEx(
-            win32con.WS_EX_TOPMOST | win32con.WS_EX_TOOLWINDOW,
-            CLASS,
-            "Orbyn · Ready",
-            win32con.WS_POPUP,
-            max(0, (screen - width) // 2),
-            16,
-            width,
-            height,
-            None,
-            None,
-            win32api.GetModuleHandle(None),
-            None,
-        )
+        try:
+            ensure_class(CLASS, _wnd_proc, _brush)
+            screen = win32api.GetSystemMetrics(win32con.SM_CXSCREEN)
+            width, height = COMPACT
+            self.hwnd = win32gui.CreateWindowEx(
+                win32con.WS_EX_TOPMOST | win32con.WS_EX_TOOLWINDOW,
+                CLASS,
+                "Orbyn · Ready",
+                win32con.WS_POPUP,
+                max(0, (screen - width) // 2),
+                16,
+                width,
+                height,
+                None,
+                None,
+                win32api.GetModuleHandle(None),
+                None,
+            )
+        except BaseException:
+            self.companion.destroy()  # no orphan badge window
+            raise
         _windows[self.hwnd] = self
         voice_owns_hotkey = False
         if voice_hotkey:

@@ -100,6 +100,15 @@ def blinking(elapsed: float) -> bool:
     return elapsed % 5.0 >= 4.85
 
 
+def radius(text: str, elapsed: float) -> int:
+    """The dot's radius this frame: a breath, or for the resting dot a
+    slower, smaller breath with a blink now and then (0 = not drawn)."""
+
+    if text:
+        return 4 + round(2 * pulse(elapsed))
+    return 0 if blinking(elapsed) else 3 + round(pulse(elapsed / 2))
+
+
 def _brush(color):
     if color not in _brushes:
         _brushes[color] = win32gui.CreateSolidBrush(color)
@@ -113,6 +122,8 @@ class Companion:
         self.text: str | None = None
         self.started = time.monotonic()
         self.at = None
+        self.frame = None  # the dot radius last painted by the timer
+        self.pointer = None  # the cursor position last looked up
         if _font is None:
             font = win32gui.LOGFONT()
             font.lfHeight, font.lfWeight, font.lfFaceName = -13, 600, "Segoe UI"
@@ -158,6 +169,9 @@ class Companion:
     def follow(self) -> None:
         try:
             cursor = self.cursor()
+            if cursor == self.pointer and self.at is not None:
+                return  # the pointer has not moved: nothing to look up
+            self.pointer = cursor
             monitor = win32api.MonitorFromPoint(
                 cursor, win32con.MONITOR_DEFAULTTONEAREST
             )
@@ -197,10 +211,7 @@ def _paint(companion, hdc) -> None:
     old_pen = win32gui.SelectObject(hdc, win32gui.GetStockObject(win32con.NULL_PEN))
     win32gui.RoundRect(hdc, 0, 0, right, height, height, height)
     color = BLUE if companion.text == "Listening" else AMBER
-    if companion.text:
-        r = 4 + round(2 * pulse(elapsed))
-    else:  # resting: a slower, smaller breath and a blink now and then
-        r = 0 if blinking(elapsed) else 3 + round(pulse(elapsed / 2))
+    r = radius(companion.text, elapsed)
     centre = 15 if companion.text else height // 2
     if r:
         win32gui.SelectObject(hdc, _brush(color))
@@ -231,7 +242,10 @@ def _wnd_proc(hwnd, msg, wparam, lparam):
         return 1  # WM_PAINT fills every pixel; no flash between frames
     if msg == win32con.WM_TIMER and wparam == TIMER_ID and companion is not None:
         companion.follow()
-        win32gui.InvalidateRect(hwnd, None, False)
+        frame = radius(companion.text or "", time.monotonic() - companion.started)
+        if frame != companion.frame:  # repaint only when the dot changes
+            companion.frame = frame
+            win32gui.InvalidateRect(hwnd, None, False)
         return 0
     if msg == win32con.WM_DESTROY:
         _user32.KillTimer(hwnd, TIMER_ID)

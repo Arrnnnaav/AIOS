@@ -2238,4 +2238,13 @@ from 1053b54. Still open:
   0208c14. Left: the rule-3 companion test is a source-string check
   (documentation, not a guard); the badge stays while busy even after the
   user hides the island (intended: work stays visible).
+- Tier-1 review 13 Nov (6051fe0..47f6f6b): no blocking findings. Fixed:
+  settings writes under one lock (a concurrent switch could lose the D179
+  vision value); no orphan badge if the bar fails to create; idle() timing
+  tests; the timer repaints only when the dot changes and skips monitor
+  lookups while the pointer is still. Resting-dot CPU, measured 13 Nov in a
+  20 s session run (terminal only, not a captured file): about 0.9% of one
+  core, against 0.16% for a bare 30 ms sleep loop and 1.2% before the
+  repaint change. Left: a modal loop (MessageBox, menu) in a bar handler
+  still holds the main loop, as before.
 - `ghostcursor.__version__` is still 0.1.0; bump it when a release is cut.

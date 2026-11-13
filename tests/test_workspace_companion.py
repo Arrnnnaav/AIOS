@@ -155,9 +155,14 @@ def test_a_failed_move_never_ends_the_session(monkeypatch):
 
     monkeypatch.setattr(companion_module.win32gui, "SetWindowPos", refuse)
     badge = object.__new__(Companion)
-    badge.cursor, badge.hwnd, badge.at = (lambda: (100, 100)), 0, None
+    badge.cursor, badge.hwnd, badge.at, badge.pointer = (lambda: (100, 100)), 0, None, None
     badge.follow()
     assert badge.at is None  # retried on the next timer tick
+    badge.follow()  # same pointer, but the move failed: it tries again
+    assert badge.at is None
+    monkeypatch.setattr(companion_module.win32gui, "SetWindowPos", lambda *a: None)
+    badge.follow()
+    assert badge.at is not None
 
 
 def test_the_island_pumps_fast_only_while_the_badge_shows(monkeypatch):
@@ -214,3 +219,77 @@ def test_the_island_pumps_fast_for_the_resting_dot_too(monkeypatch):
     bar.companion = types.SimpleNamespace(text="")
     bar.idle(0.2)
     assert len(pumps) >= 3
+
+
+def test_idle_stops_pumping_when_the_badge_hides_and_never_overruns(monkeypatch):
+    """Tier-1 review 13 Nov: idle() must stop fast pumping once the badge is
+    hidden mid-wait, and return within its time so the main loop keeps pace."""
+    import time
+
+    from ghostcursor.workspace import island as island_module
+
+    bar = object.__new__(island_module.Island)
+    bar.hwnd, bar.closed = 7, False
+    bar.companion = types.SimpleNamespace(text="Thinking")
+    pumps = []
+
+    def pump(hwnd):
+        pumps.append(hwnd)
+        if len(pumps) == 2:
+            bar.companion.text = None  # hidden by a tick's message
+
+    monkeypatch.setattr(island_module, "_pump_dialog", pump)
+    start = time.monotonic()
+    bar.idle(0.3)
+    took = time.monotonic() - start
+    assert len(pumps) == 2
+    assert 0.29 <= took < 0.3 + 0.1
+
+
+def test_two_switches_flipped_at_once_both_stick(tmp_path):
+    import threading
+
+    from ghostcursor import settings
+
+    path = tmp_path / "settings.json"
+    keys = [f"k{i}" for i in range(16)]
+    threads = [threading.Thread(target=settings._set, args=(k, True, path)) for k in keys]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert all(settings.load(path).get(k) is True for k in keys)
+
+
+def test_the_dot_changes_only_a_few_times_a_second():
+    """The timer repaints only when radius() changes (13 Nov: 1.2% of a core
+    when it repainted every 30 ms)."""
+    from ghostcursor.workspace.companion import radius
+
+    for text in ("", "Thinking"):
+        frames = [radius(text, t * 0.03) for t in range(200)]  # 6 s at 30 ms
+        changes = sum(a != b for a, b in zip(frames, frames[1:]))
+        assert 0 < changes <= 6 * 8, (text, changes)
+    assert radius("", 4.9) == 0  # blink
+    assert radius("", 0) == 3 and radius("Thinking", 0) == 4 and radius("Thinking", 0.6) == 6
+
+
+def test_the_timer_repaints_when_the_dot_changes_and_not_otherwise(monkeypatch):
+    import time
+
+    import win32con
+
+    painted = []
+    monkeypatch.setattr(companion_module.win32gui, "InvalidateRect", lambda h, r, e: painted.append(h))
+    badge = object.__new__(Companion)
+    badge.text, badge.frame, badge.started = "", None, time.monotonic()
+    badge.follow = lambda: None
+    monkeypatch.setitem(companion_module._windows, 4242, badge)
+    tick = lambda: companion_module._wnd_proc(4242, win32con.WM_TIMER, companion_module.TIMER_ID, 0)
+    tick()
+    assert painted == [4242]  # first frame
+    tick()
+    assert painted == [4242]  # same radius: no repaint
+    badge.started = time.monotonic() - 4.9  # now in a blink
+    tick()
+    assert painted == [4242, 4242]
