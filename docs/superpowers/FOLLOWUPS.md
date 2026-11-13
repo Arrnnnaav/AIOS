@@ -2253,7 +2253,7 @@ from 1053b54. Still open:
   FLOW sections found no blockers, and their code points were fixed (capture
   exclusion failure hides the badge; page fetch byte cap, one deadline,
   default ports, no https->http; 100 ms resting-dot pump). Left: the badge
-  is fixed-pixel (no DPI or large-pointer scaling); a page fetch tries only
+  scales with DPI since 13 Nov but not with a large pointer size; a page fetch tries only
   the first checked address; EGM reviewers ran as general-purpose agents
   reading EGM personas, since its registered adapters (omitClaudeMd) load
   only in a new session.
@@ -2265,6 +2265,15 @@ from 1053b54. Still open:
   Brain (D190, owner decision) -- the rule-6 check of what reaches the
   Company Brain (knowledge.sqlite; the review called it kb.sqlite) was done 13 Nov (see the Modern Web Guidance entry below): no gap.
 - `ghostcursor.__version__` is still 0.1.0; bump it when a release is cut.
+- Native UI polish 13 Nov: the bar's text was the bitmap System font (WM_PAINT
+  and the owner-drawn buttons never selected Segoe UI); its corners were a
+  1-bit region and its buttons GDI RoundRect, both stair-stepped; the badge
+  was colour-keyed (hard edges only); nothing scaled with DPI (125% here).
+  Now: Segoe UI ClearType, Pillow 4x box-averaged shapes (GDI HALFTONE left a
+  dark fringe), DWM rounded corners on Windows 11, a per-pixel-alpha badge via
+  UpdateLayeredWindow inside WM_PAINT, all sizes scaled by the system DPI.
+  Left: no WM_DPICHANGED handling (a monitor with a different scale keeps the
+  start-up scale); the reply card's scrollbar is the stock dark one.
 - Modern Web Guidance pass 13 Nov (GoogleChrome/modern-web-guidance 1.0.0,
   run from the npm package with DISABLE_TELEMETRY=1: its CLI otherwise sends
   search queries to Google). legacy-scan of ghostcursor/workspace found 11

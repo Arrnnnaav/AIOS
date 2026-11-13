@@ -227,7 +227,12 @@ reachable. It grows while work runs, while the voice hotkey is held, and for
 twelve seconds after a background job ends (finished, failed, stopped or
 interrupted). The running-jobs strip is painted only while the Ask panel is open. Its native
 owner-drawn buttons retain Windows focus and click handling while matching the
-amber and navy workspace palette. Open, Stop and Quit use the existing full-window launcher, Stop event
+amber and navy workspace palette. Its pills, dot and field wells are drawn 4x
+with Pillow and box-averaged down (`_shape`, cached), so curves are
+anti-aliased; text is Segoe UI (ClearType), and every size is in 96-DPI
+design units scaled by the system DPI (`_px`). On Windows 11 the window's
+corners come from DWM (`DWMWCP_ROUND`, with its shadow and a hairline
+border); before it, a stepped region. Open, Stop and Quit use the existing full-window launcher, Stop event
 and Quit action. Open launches Edge from a background thread so its positioning
 wait cannot hold the island's Stop control. Hide is allowed only while idle;
 Ctrl+Alt+O (which also opens Ask) or a second default launch restores it. The configured voice key
@@ -247,14 +252,17 @@ HeyClicky's ActivityListening/Thinking. Its position comes only from
 click-through, topmost, no-activate, and excluded from capture
 (`WDA_EXCLUDEFROMCAPTURE`, so perception and the D179 picture never see it);
 where Windows refuses that (before Windows 10 2004) the badge never shows. It
-imports `overlay.dpi` first, and paints only in `WM_PAINT`; its 30 ms timer
+imports `overlay.dpi` first, and paints only in `WM_PAINT`, where it hands a
+Pillow-rendered (4x, box-averaged) premultiplied bitmap to
+`UpdateLayeredWindow`, so the pill has per-pixel alpha and soft edges on any
+background; its 30 ms timer
 moves the window and invalidates only when the dot changes, and a new label
 repaints once (rule 4). It hides whenever `SHQueryUserNotificationState`
 reports a full-screen app, game or presentation, even while work runs (the
 bar itself stays then, for Stop). While a label shows, `Island.idle` pumps
 messages every 30 ms between the 0.25 s ticks so the badge follows the
-pointer; for the resting dot, every 100 ms. Its size and offset are fixed
-pixels, not scaled for DPI or a large pointer.
+pointer; for the resting dot, every 100 ms. Its size and offset scale with
+the system DPI; a large pointer size is not taken into account.
 Brain › Setup "companion" (settings.json `companion_idle`, only a literal
 true, off by default) keeps a breathing, blinking resting dot there when
 Orbyn is idle; an estimate from one 20 s session run on 2026-11-13 put it at

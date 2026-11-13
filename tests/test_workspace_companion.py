@@ -119,16 +119,16 @@ def test_native_companion_is_click_through_follows_and_hides():
         companion.show("Thinking")
         assert win32gui.IsWindowVisible(companion.hwnd)
         assert win32gui.GetWindowRect(companion.hwnd)[:2] == (
-            400 + OFFSET[0],
-            300 + OFFSET[1],
+            400 + round(OFFSET[0] * companion_module._scale),
+            300 + round(OFFSET[1] * companion_module._scale),
         )
         at[0] = (600, 500)
         win32gui.SendMessage(
             companion.hwnd, win32con.WM_TIMER, companion_module.TIMER_ID, 0
         )
         assert win32gui.GetWindowRect(companion.hwnd)[:2] == (
-            600 + OFFSET[0],
-            500 + OFFSET[1],
+            600 + round(OFFSET[0] * companion_module._scale),
+            500 + round(OFFSET[1] * companion_module._scale),
         )
         companion.show("Listening")
         assert win32gui.IsWindowVisible(companion.hwnd)
@@ -343,3 +343,39 @@ def test_the_resting_dot_wait_never_overruns(monkeypatch):
     bar.companion = types.SimpleNamespace(text="")
     bar.idle(0.25)
     assert now[0] == pytest.approx(0.25) and max(slept) <= 0.1 + 1e-9
+
+def test_the_badge_renders_with_soft_edges_at_the_display_scale():
+    """Real per-pixel alpha: the corners are clear, the pill is solid, and
+    its curve has partly transparent pixels (anti-aliased, not stepped)."""
+
+    assert companion_module.size_px(1.25) == (165, 35)  # 132x28 design units
+    for scale in (1.0, 1.25, 2.0):
+        image = companion_module.render("Thinking", 5, scale)
+        assert image.size == companion_module.size_px(scale)
+        alpha = image.getchannel("A")
+        width, height = image.size
+        assert alpha.getpixel((0, 0)) == 0 and alpha.getpixel((width - 1, 0)) == 0
+        assert alpha.getpixel((height // 2, height // 2)) > 200  # inside the pill
+        edge = [alpha.getpixel((x, 0)) for x in range(height)]
+        assert any(0 < a < 230 for a in edge)  # the curve is smoothed
+    dot = companion_module.render("", 3, 1.0)
+    assert dot.getchannel("A").getpixel((dot.width - 1, dot.height // 2)) == 0  # just the disc
+
+
+def test_the_badge_bitmap_is_premultiplied_bgra():
+    from PIL import Image
+
+    image = Image.new("RGBA", (2, 1))
+    image.putpixel((0, 0), (200, 100, 50, 255))
+    image.putpixel((1, 0), (200, 100, 50, 128))
+    data = companion_module._premultiplied(image)
+    assert data[:4] == bytes((50, 100, 200, 255))
+    assert data[4:] == bytes((25, 50, 100, 128))  # colour scaled by alpha
+
+
+def test_the_badge_offset_scales_with_the_display():
+    work = (0, 0, 1920, 1080)
+    assert placement((100, 100), (165, 35), work, 1.25) == (
+        100 + round(OFFSET[0] * 1.25),
+        100 + round(OFFSET[1] * 1.25),
+    )

@@ -7,7 +7,7 @@ import time
 import pytest
 
 from ghostcursor.workspace import island as island_module
-from ghostcursor.workspace.island import ASKING, COMPACT, EXPANDED, HOTKEY_ID, ID_ASK, ID_HIDE, ID_OPEN, ID_QUIT, ID_RESEARCH, ID_SEND, ID_STOP, ID_TALK, SHOW_MESSAGE, Island, _status, _wnd_proc
+from ghostcursor.workspace.island import ASKING, COMPACT, EXPANDED, scaled, HOTKEY_ID, ID_ASK, ID_HIDE, ID_OPEN, ID_QUIT, ID_RESEARCH, ID_SEND, ID_STOP, ID_TALK, SHOW_MESSAGE, Island, _status, _wnd_proc
 
 
 class StubApp:
@@ -65,7 +65,7 @@ def test_native_island_opens_stops_and_quits_without_acting_on_desktop():
     try:
         assert win32gui.IsWindow(island.hwnd)
         assert win32gui.GetWindowLong(island.hwnd, win32con.GWL_EXSTYLE) & win32con.WS_EX_TOPMOST
-        assert win32gui.GetWindowRect(island.hwnd)[2] - win32gui.GetWindowRect(island.hwnd)[0] == COMPACT[0]
+        assert win32gui.GetWindowRect(island.hwnd)[2] - win32gui.GetWindowRect(island.hwnd)[0] == scaled(COMPACT)[0]
         assert win32gui.IsWindowVisible(island.open_button)
         assert win32gui.GetWindowText(island.quit_button) == "Quit"
         assert win32gui.GetWindowLong(island.quit_button, win32con.GWL_STYLE) & win32con.WS_TABSTOP
@@ -149,7 +149,7 @@ def test_island_ask_uses_the_chat_path_and_shows_the_reply_on_a_card():
         _wnd_proc(island.hwnd, win32con.WM_COMMAND, ID_ASK, 0)
         assert island.asking and win32gui.IsWindowVisible(island.input)
         rect = win32gui.GetWindowRect(island.hwnd)
-        assert (rect[2] - rect[0], rect[3] - rect[1]) == ASKING
+        assert (rect[2] - rect[0], rect[3] - rect[1]) == scaled(ASKING)
         assert win32gui.SendMessage(island.hwnd, win32con.WM_USER, 0, 0) & 0xFFFF == ID_SEND  # Enter sends
         _wnd_proc(island.hwnd, win32con.WM_COMMAND, ID_SEND, 0)
         assert app.actions == []  # an empty box sends nothing
@@ -216,16 +216,16 @@ def test_island_bounds_on_real_and_emulated_monitor_layouts(monkeypatch):
                 if work != primary:
                     patch.setattr(win32api, "MonitorFromWindow", lambda *args: 1)
                     patch.setattr(win32api, "GetMonitorInfo", lambda monitor: {"Work": work})
-                for x, y in ((work[0] + 4, work[1] + 4), (work[2] - COMPACT[0] - 4, work[3] - COMPACT[1] - 4)):
-                    win32gui.MoveWindow(island.hwnd, x, y, *COMPACT, True)
+                for x, y in ((work[0] + 4, work[1] + 4), (work[2] - scaled(COMPACT)[0] - 4, work[3] - scaled(COMPACT)[1] - 4)):
+                    win32gui.MoveWindow(island.hwnd, x, y, *scaled(COMPACT), True)
                     island._resize(True)
                     left, top, right, bottom = win32gui.GetWindowRect(island.hwnd)
                     assert work[0] <= left and right <= work[2]
                     assert work[1] <= top and bottom <= work[3]
-                    assert (right - left, bottom - top) == EXPANDED
+                    assert (right - left, bottom - top) == scaled(EXPANDED)
                     island._resize(False)
         # Replay a disconnected secondary: Windows selects the nearest live work area.
-        win32gui.MoveWindow(island.hwnd, 3100, 40, *COMPACT, True)
+        win32gui.MoveWindow(island.hwnd, 3100, 40, *scaled(COMPACT), True)
         _wnd_proc(island.hwnd, win32con.WM_DISPLAYCHANGE, 0, 0)
         left, top, right, bottom = win32gui.GetWindowRect(island.hwnd)
         assert primary[0] <= left and right <= primary[2]
@@ -416,3 +416,38 @@ def test_result_cards_name_the_job_kind():
         import win32gui
 
         win32gui.DestroyWindow(island.hwnd)
+
+
+def test_bar_shapes_are_anti_aliased_and_sizes_follow_display_scaling(monkeypatch):
+    """The pills are drawn large and scaled down: the corner keeps the bar's
+    colour, the middle is the fill, and the curve has blended pixels between
+    (GDI's RoundRect alone gives only the two). Sizes scale with the DPI."""
+
+    import win32gui
+
+    monkeypatch.setattr(island_module, "_scale", 1.25)
+    assert scaled(COMPACT) == (480, 70) and island_module._px(10) == 12
+    width, height = 60, 24
+    screen = win32gui.GetDC(0)
+    memory = win32gui.CreateCompatibleDC(screen)
+    bitmap = win32gui.CreateCompatibleBitmap(screen, width, height)
+    old = win32gui.SelectObject(memory, bitmap)
+    try:
+        island_module._smooth(memory, (0, 0, width, height), island_module.BG, island_module.ACCENT)
+        assert win32gui.GetPixel(memory, 0, 0) == island_module.BG
+        assert win32gui.GetPixel(memory, width // 2, height // 2) == island_module.ACCENT
+        edge = {win32gui.GetPixel(memory, x, 0) for x in range(height // 2)}
+        blended = edge - {island_module.BG, island_module.ACCENT}
+        assert blended  # not stepped
+
+        def channels(c):
+            return (c & 0xFF, c >> 8 & 0xFF, c >> 16 & 0xFF)
+
+        ends = list(zip(channels(island_module.BG), channels(island_module.ACCENT)))
+        for colour in blended:  # each is a mix of the two, not a bitwise artefact
+            assert all(min(e) - 3 <= v <= max(e) + 3 for v, e in zip(channels(colour), ends))
+    finally:
+        win32gui.SelectObject(memory, old)
+        win32gui.DeleteObject(bitmap)
+        win32gui.DeleteDC(memory)
+        win32gui.ReleaseDC(0, screen)

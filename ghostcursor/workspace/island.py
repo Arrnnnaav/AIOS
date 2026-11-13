@@ -11,12 +11,14 @@ the bar steps aside while a full-screen app is in front."""
 from __future__ import annotations
 
 import ctypes
+import functools
 import time
 import threading
 
 import win32api
 import win32con
 import win32gui
+from PIL import Image, ImageDraw
 
 from ghostcursor.overlay.window import ensure_class
 from ghostcursor.workspace.companion import Companion, label as companion_label
@@ -61,10 +63,127 @@ PRESSED = win32api.RGB(202, 147, 67)
 STOP = win32api.RGB(105, 55, 53)
 SECONDARY_PRESSED = win32api.RGB(70, 77, 89)
 STOP_PRESSED = win32api.RGB(132, 70, 67)
+LINE = win32api.RGB(48, 54, 64)
 _windows = {}
 _brush = None
 _field_brush = None
-_font = None
+_font = None  # body text, Segoe UI
+_bold = None  # the heading and the buttons, Segoe UI Semibold
+_scale = 1.0  # display scaling (DPI / 96); layout is in 96-DPI design units
+SMOOTH = 4  # shapes are drawn this many times larger, then scaled down smoothly
+DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND = 33, 2
+DWMWA_BORDER_COLOR = 34
+
+
+def _px(*values):
+    """Design units (96 DPI) to device pixels at the display's scaling."""
+    scaled = tuple(round(v * _scale) for v in values)
+    return scaled[0] if len(scaled) == 1 else scaled
+
+
+def scaled(size):
+    """A design-unit size (COMPACT, EXPANDED, ASKING) in device pixels."""
+    return _px(*size)
+
+
+def _make_font(height, weight):
+    font = win32gui.LOGFONT()
+    font.lfHeight, font.lfWeight = -_px(height), weight
+    font.lfFaceName = "Segoe UI"
+    font.lfQuality = 5  # CLEARTYPE_QUALITY
+    return win32gui.CreateFontIndirect(font)
+
+
+def _rgb(color):
+    """A win32 COLORREF (0x00BBGGRR) as an (r, g, b) tuple."""
+    return color & 0xFF, color >> 8 & 0xFF, color >> 16 & 0xFF
+
+
+@functools.lru_cache(maxsize=128)
+def _shape(width, height, back, color, ring, round_, radius):
+    """The shape's pixels as top-down BGRA rows: drawn SMOOTH times larger
+    and box-averaged down (Image.reduce), so every edge pixel is an exact mix
+    of the two colours -- soft, with no dark fringe."""
+
+    big_w, big_h = width * SMOOTH, height * SMOOTH
+    image = Image.new("RGB", (big_w, big_h), _rgb(back))
+    draw = ImageDraw.Draw(image)
+    inset = 0
+    for fill in (ring, color) if ring is not None else (color,):
+        bounds = (inset, inset, big_w - 1 - inset, big_h - 1 - inset)
+        if round_:
+            corner = radius * SMOOTH if radius else (min(big_w, big_h) - 2 * inset) // 2
+            draw.rounded_rectangle(bounds, radius=corner, fill=_rgb(fill))
+        else:
+            draw.ellipse(bounds, fill=_rgb(fill))
+        inset = _px(2) * SMOOTH
+    return image.reduce(SMOOTH).convert("RGBA").tobytes("raw", "BGRA")
+
+
+class _BitmapHeader(ctypes.Structure):
+    _fields_ = [
+        ("biSize", ctypes.c_uint32),
+        ("biWidth", ctypes.c_int32),
+        ("biHeight", ctypes.c_int32),
+        ("biPlanes", ctypes.c_uint16),
+        ("biBitCount", ctypes.c_uint16),
+        ("biCompression", ctypes.c_uint32),
+        ("biSizeImage", ctypes.c_uint32),
+        ("biXPelsPerMeter", ctypes.c_int32),
+        ("biYPelsPerMeter", ctypes.c_int32),
+        ("biClrUsed", ctypes.c_uint32),
+        ("biClrImportant", ctypes.c_uint32),
+    ]
+
+
+def _smooth(hdc, box, back, color, *, ring=None, round_=True, radius=None):
+    """Fill ``box`` with an anti-aliased pill (or circle, when square) of
+    ``color`` on a known ``back`` colour, instead of GDI's stair-stepped
+    RoundRect. ``ring``, if given, is a 2-unit outline; ``radius`` gives a
+    rounded rectangle instead of a pill."""
+
+    left, top, right, bottom = box
+    width, height = right - left, bottom - top
+    if width <= 0 or height <= 0:
+        return
+    pixels = _shape(width, height, back, color, ring, round_, radius)
+    header = _BitmapHeader(ctypes.sizeof(_BitmapHeader), width, -height, 1, 32)
+    ctypes.windll.gdi32.SetDIBitsToDevice(
+        ctypes.c_void_p(hdc),
+        left,
+        top,
+        width,
+        height,
+        0,
+        0,
+        0,
+        height,
+        pixels,
+        ctypes.byref(header),
+        0,  # DIB_RGB_COLORS
+    )
+
+
+def _smooth_well(hdc, box):
+    """A field's background: a rounded rectangle (radius 10) in SECONDARY."""
+
+    _smooth(hdc, box, BG, SECONDARY, radius=_px(10))
+
+
+def _round_corners(hwnd):
+    """Windows 11 draws the bar's corners anti-aliased, with its shadow and a
+    hairline border. False before Windows 11, where a (stepped) region is
+    the only way to round them."""
+
+    dwm = ctypes.windll.dwmapi
+    preference = ctypes.c_int(DWMWCP_ROUND)
+    if dwm.DwmSetWindowAttribute(
+        ctypes.c_void_p(hwnd), DWMWA_WINDOW_CORNER_PREFERENCE, ctypes.byref(preference), 4
+    ):
+        return False
+    border = ctypes.c_uint(LINE)
+    dwm.DwmSetWindowAttribute(ctypes.c_void_p(hwnd), DWMWA_BORDER_COLOR, ctypes.byref(border), 4)
+    return True
 
 
 class _Point(ctypes.Structure):
@@ -132,21 +251,15 @@ def _draw_button(lparam, island):
         item.CtlID == ID_RESEARCH and island.research
     )
     pressed = bool(item.itemState & win32con.ODS_SELECTED)
+    focused = bool(item.itemState & win32con.ODS_FOCUS)
     if primary:
         color = PRESSED if pressed else ACCENT
     elif item.CtlID == ID_STOP:
         color = STOP_PRESSED if pressed else STOP
     else:
         color = SECONDARY_PRESSED if pressed else SECONDARY
-    brush = win32gui.CreateSolidBrush(color)
-    old_brush = win32gui.SelectObject(hdc, brush)
-    old_pen = win32gui.SelectObject(hdc, win32gui.GetStockObject(win32con.NULL_PEN))
-    try:
-        win32gui.RoundRect(hdc, rect.left, rect.top, rect.right, rect.bottom, 16, 16)
-    finally:
-        win32gui.SelectObject(hdc, old_pen)
-        win32gui.SelectObject(hdc, old_brush)
-        win32gui.DeleteObject(brush)
+    _smooth(hdc, bounds, BG, color, ring=TEXT if focused else None)
+    old_font = win32gui.SelectObject(hdc, _bold)
     win32gui.SetBkMode(hdc, win32con.TRANSPARENT)
     win32gui.SetTextColor(hdc, BG if primary else TEXT)
     win32gui.DrawText(
@@ -156,10 +269,7 @@ def _draw_button(lparam, island):
         bounds,
         win32con.DT_CENTER | win32con.DT_VCENTER | win32con.DT_SINGLELINE,
     )
-    if item.itemState & win32con.ODS_FOCUS:
-        win32gui.DrawFocusRect(
-            hdc, (rect.left + 3, rect.top + 3, rect.right - 3, rect.bottom - 3)
-        )
+    win32gui.SelectObject(hdc, old_font)
 
 
 def _pump_dialog(hwnd):
@@ -203,36 +313,26 @@ def _wnd_proc(hwnd, msg, wparam, lparam):
         hdc, paint = win32gui.BeginPaint(hwnd)
         win32gui.FillRect(hdc, win32gui.GetClientRect(hwnd), _brush)
         if island is not None:
+            wide = island.expanded or island.asking
+            middle = 36 if wide else 28  # the top row's centre line
+            _smooth(hdc, _px(17, middle - 5, 27, middle + 5), BG, ACCENT, round_=False)
+            if island.asking:  # rounded wells behind the field and the card
+                _smooth_well(hdc, _px(12, 74, 360, 110))
+                _smooth_well(hdc, _px(12, 154, 428, 346))
             win32gui.SetBkMode(hdc, win32con.TRANSPARENT)
-            win32gui.SetTextColor(hdc, ACCENT)
-            win32gui.DrawText(hdc, "●", -1, (16, 14, 34, 47), win32con.DT_SINGLELINE)
+            line = win32con.DT_SINGLELINE | win32con.DT_END_ELLIPSIS | win32con.DT_VCENTER
+            edge = 182 if wide else 132
+            old_font = win32gui.SelectObject(hdc, _bold)
             win32gui.SetTextColor(hdc, TEXT)
             heading = "Orbyn · " + island.title if island.expanded else "Orbyn"
-            edge = 182 if island.expanded or island.asking else 135
-            win32gui.DrawText(
-                hdc,
-                heading,
-                -1,
-                (37, 9, edge, 30),
-                win32con.DT_SINGLELINE | win32con.DT_END_ELLIPSIS,
-            )
+            win32gui.DrawText(hdc, heading, -1, _px(36, middle - 19, edge, middle + 1), line)
+            win32gui.SelectObject(hdc, _font)
             win32gui.SetTextColor(hdc, MUTED)
             detail = island.detail if island.expanded else island.title
-            win32gui.DrawText(
-                hdc,
-                detail,
-                -1,
-                (37, 33, edge, 54),
-                win32con.DT_SINGLELINE | win32con.DT_END_ELLIPSIS,
-            )
+            win32gui.DrawText(hdc, detail, -1, _px(36, middle, edge, middle + 18), line)
             if island.asking:
-                win32gui.DrawText(
-                    hdc,
-                    island.strip,
-                    -1,
-                    (192, 118, 424, 144),
-                    win32con.DT_SINGLELINE | win32con.DT_END_ELLIPSIS,
-                )
+                win32gui.DrawText(hdc, island.strip, -1, _px(192, 116, 424, 146), line)
+            win32gui.SelectObject(hdc, old_font)
         win32gui.EndPaint(hwnd, paint)
         return 0
     if island is not None:
@@ -316,7 +416,7 @@ class Island:
     def __init__(
         self, app, url, open_window, *, clock=time.monotonic, voice_hotkey=None
     ):
-        global _brush, _field_brush, _font
+        global _brush, _field_brush, _font, _bold, _scale
         self.app, self.url, self.open_window = app, url, open_window
         self.clock = clock
         self._opening = threading.Event()
@@ -339,17 +439,17 @@ class Island:
         self._shown_jobs = {j["id"] for j in _jobs(app) if j.get("state") != "running"}
         self.title, self.detail = "Ready", "Open your workspace"
         if _brush is None:
+            _scale = ctypes.windll.user32.GetDpiForSystem() / 96  # dpi aware (rule 4)
             _brush = win32gui.CreateSolidBrush(BG)
             _field_brush = win32gui.CreateSolidBrush(SECONDARY)
-            font = win32gui.LOGFONT()
-            font.lfHeight, font.lfFaceName = -15, "Segoe UI"
-            _font = win32gui.CreateFontIndirect(font)
+            _font = _make_font(13, win32con.FW_NORMAL)
+            _bold = _make_font(13, win32con.FW_SEMIBOLD)
         # Before the bar: if this fails no bar window is left behind.
         self.companion = Companion(lambda: _cursor())  # the OS pointer only
         try:
             ensure_class(CLASS, _wnd_proc, _brush)
             screen = win32api.GetSystemMetrics(win32con.SM_CXSCREEN)
-            width, height = COMPACT
+            width, height = scaled(COMPACT)
             self.hwnd = win32gui.CreateWindowEx(
                 win32con.WS_EX_TOPMOST | win32con.WS_EX_TOOLWINDOW,
                 CLASS,
@@ -387,9 +487,7 @@ class Island:
                 ord("O"),
             )
         )
-        win32gui.SetWindowRgn(
-            self.hwnd, win32gui.CreateRoundRectRgn(0, 0, width, height, 30, 30), True
-        )
+        self.dwm_corners = _round_corners(self.hwnd)
         style = (
             win32con.WS_CHILD
             | win32con.WS_VISIBLE
@@ -398,20 +496,20 @@ class Island:
         )
         module = win32api.GetModuleHandle(None)
         self.ask_button = win32gui.CreateWindowEx(
-            0, "BUTTON", "Ask", style, 139, 9, 52, 38, self.hwnd, ID_ASK, module, None
+            0, "BUTTON", "Ask", style, 0, 0, 0, 0, self.hwnd, ID_ASK, module, None
         )
         self.open_button = win32gui.CreateWindowEx(
-            0, "BUTTON", "Open", style, 197, 9, 56, 38, self.hwnd, ID_OPEN, module, None
+            0, "BUTTON", "Open", style, 0, 0, 0, 0, self.hwnd, ID_OPEN, module, None
         )
         self.send_button = win32gui.CreateWindowEx(
             0,
             "BUTTON",
             "Send",
             style,
-            364,
-            73,
-            60,
-            36,
+            0,
+            0,
+            0,
+            0,
             self.hwnd,
             ID_SEND,
             module,
@@ -419,7 +517,7 @@ class Island:
         )
         field = win32con.WS_CHILD | win32con.WS_TABSTOP | win32con.ES_AUTOHSCROLL
         self.input = win32gui.CreateWindowEx(
-            0, "EDIT", "", field, 16, 76, 340, 30, self.hwnd, ID_INPUT, module, None
+            0, "EDIT", "", field, 0, 0, 0, 0, self.hwnd, ID_INPUT, module, None
         )
         panel = style & ~win32con.WS_VISIBLE
         self.talk_button = win32gui.CreateWindowEx(
@@ -427,10 +525,10 @@ class Island:
             "BUTTON",
             "Talk",
             panel,
-            16,
-            114,
-            60,
-            30,
+            0,
+            0,
+            0,
+            0,
             self.hwnd,
             ID_TALK,
             module,
@@ -441,10 +539,10 @@ class Island:
             "BUTTON",
             "Research",
             panel,
-            82,
-            114,
-            100,
-            30,
+            0,
+            0,
+            0,
+            0,
             self.hwnd,
             ID_RESEARCH,
             module,
@@ -458,10 +556,13 @@ class Island:
             | win32con.ES_AUTOVSCROLL
         )
         self.reply = win32gui.CreateWindowEx(
-            0, "EDIT", "", card, 16, 154, 408, 190, self.hwnd, ID_REPLY, module, None
+            0, "EDIT", "", card, 0, 0, 0, 0, self.hwnd, ID_REPLY, module, None
         )
         for child in (self.input, self.reply):
             win32gui.SendMessage(child, win32con.WM_SETFONT, _font, 0)
+            win32gui.SendMessage(  # EM_SETMARGINS: breathing room inside the well
+                child, win32con.EM_SETMARGINS, 3, _px(4) | (_px(4) << 16)
+            )
         ctypes.windll.uxtheme.SetWindowTheme(
             self.reply, "DarkMode_Explorer", None
         )  # dark scrollbar
@@ -474,20 +575,20 @@ class Island:
             "BUTTON",
             "Stop",
             style,
-            309,
-            17,
-            56,
-            38,
+            0,
+            0,
+            0,
+            0,
             self.hwnd,
             ID_STOP,
             module,
             None,
         )
         self.hide_button = win32gui.CreateWindowEx(
-            0, "BUTTON", "Hide", style, 259, 9, 45, 38, self.hwnd, ID_HIDE, module, None
+            0, "BUTTON", "Hide", style, 0, 0, 0, 0, self.hwnd, ID_HIDE, module, None
         )
         self.quit_button = win32gui.CreateWindowEx(
-            0, "BUTTON", "Quit", style, 310, 9, 54, 38, self.hwnd, ID_QUIT, module, None
+            0, "BUTTON", "Quit", style, 0, 0, 0, 0, self.hwnd, ID_QUIT, module, None
         )
         for hidden in (self.stop_button, self.send_button):
             win32gui.ShowWindow(hidden, win32con.SW_HIDE)
@@ -748,6 +849,26 @@ class Island:
             time.sleep(max(0.0, min(step, until - time.monotonic())))
         time.sleep(max(0.0, until - time.monotonic()))
 
+    def _layout(self):
+        """Place every control, in design units scaled to the display."""
+
+        wide = self.expanded or self.asking
+        y = 17 if wide else 9
+        places = {
+            self.ask_button: (189 if wide else 139, y, 52, 38),
+            self.open_button: (247 if wide else 197, y, 56, 38),
+            self.hide_button: (309 if wide else 259, y, 56 if wide else 45, 38),
+            self.quit_button: (371 if wide else 310, y, 52 if wide else 54, 38),
+            self.stop_button: (309, 17, 56, 38),
+            self.input: (20, 83, 332, 22),
+            self.send_button: (366, 73, 58, 36),
+            self.talk_button: (16, 114, 60, 30),
+            self.ask_research: (82, 114, 100, 30),
+            self.reply: (18, 158, 404, 184),
+        }
+        for child, box in places.items():
+            win32gui.MoveWindow(child, *_px(*box), True)
+
     def _size(self, expanded):
         return ASKING if self.asking else EXPANDED if expanded else COMPACT
 
@@ -755,7 +876,7 @@ class Island:
         old_width = (
             win32gui.GetWindowRect(self.hwnd)[2] - win32gui.GetWindowRect(self.hwnd)[0]
         )
-        width, height = self._size(expanded)
+        width, height = scaled(self._size(expanded))
         left, top, _, _ = win32gui.GetWindowRect(self.hwnd)
         left -= (width - old_width) // 2
         monitor = win32api.MonitorFromWindow(
@@ -775,18 +896,13 @@ class Island:
             height,
             win32con.SWP_NOZORDER | win32con.SWP_NOACTIVATE,
         )
-        win32gui.SetWindowRgn(
-            self.hwnd, win32gui.CreateRoundRectRgn(0, 0, width, height, 30, 30), True
-        )
-        wide = expanded or self.asking
-        y = 17 if wide else 9
-        win32gui.MoveWindow(self.ask_button, 189 if wide else 139, y, 52, 38, True)
-        win32gui.MoveWindow(self.open_button, 247 if wide else 197, y, 56, 38, True)
-        win32gui.MoveWindow(
-            self.hide_button, 309 if wide else 259, y, 56 if wide else 45, 38, True
-        )
-        win32gui.MoveWindow(
-            self.quit_button, 371 if wide else 310, y, 52 if wide else 54, 38, True
-        )
+        if not self.dwm_corners:  # before Windows 11: a stepped region
+            radius = _px(30)
+            win32gui.SetWindowRgn(
+                self.hwnd,
+                win32gui.CreateRoundRectRgn(0, 0, width, height, radius, radius),
+                True,
+            )
         self.expanded = expanded
+        self._layout()
         win32gui.InvalidateRect(self.hwnd, None, True)
