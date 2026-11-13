@@ -479,3 +479,63 @@ def test_the_bar_rescales_when_dragged_to_a_monitor_with_other_scaling():
         island.rescale(start)
         win32gui.DestroyWindow(island.hwnd)
     assert island_module._scale == start
+
+
+@pytest.mark.interactive
+def test_buttons_light_under_the_pointer_and_only_one_is_amber():
+    import win32con
+    import win32gui
+
+    island = Island(StubApp(), "http://127.0.0.1:1/?t=local", lambda url: None)
+    try:
+        win32gui.ShowWindow(island.hwnd, win32con.SW_SHOWNOACTIVATE)
+        island_module._pump_dialog(island.hwnd)
+
+        def colour(button):
+            win32gui.UpdateWindow(button)
+            hdc = win32gui.GetDC(button)
+            try:
+                return win32gui.GetPixel(hdc, island_module._px(8), island_module._px(19))
+            finally:
+                win32gui.ReleaseDC(button, hdc)
+
+        assert colour(island.open_button) == island_module.SECONDARY
+        assert colour(island.ask_button) == island_module.ACCENT
+        win32gui.SendMessage(island.hwnd, win32con.WM_SETCURSOR, island.open_button, 0)
+        assert island.hot == island.open_button
+        assert colour(island.open_button) == island_module.SECONDARY_HOVER
+        win32gui.SendMessage(island.hwnd, win32con.WM_SETCURSOR, island.ask_button, 0)
+        assert colour(island.open_button) == island_module.SECONDARY
+        assert colour(island.ask_button) == island_module.HOVER
+        win32gui.SendMessage(island.hwnd, win32con.WM_SETCURSOR, island.input, 0)
+        assert island.hot is None  # a text box is not a button
+        island.unfold()
+        island_module._pump_dialog(island.hwnd)
+        assert colour(island.send_button) == island_module.ACCENT
+        assert colour(island.ask_button) == island_module.SECONDARY  # Done steps back
+    finally:
+        win32gui.DestroyWindow(island.hwnd)
+
+
+@pytest.mark.interactive
+def test_the_reply_scrollbar_shows_only_when_the_text_overflows():
+    import win32con
+    import win32gui
+
+    island = Island(StubApp(), "http://127.0.0.1:1/?t=local", lambda url: None)
+    try:
+        island.unfold()
+
+        def bar():
+            style = win32gui.GetWindowLong(island.reply, win32con.GWL_STYLE)
+            return bool(style & win32con.WS_VSCROLL)
+
+        assert not bar()  # the hint fits
+        island._show("\n".join(f"line {n}" for n in range(60)))
+        assert bar()
+        island.transcript = ""
+        island._render()
+        assert not bar()
+    finally:
+        win32gui.DestroyWindow(island.hwnd)
+

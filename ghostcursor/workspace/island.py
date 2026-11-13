@@ -64,6 +64,9 @@ STOP = win32api.RGB(105, 55, 53)
 SECONDARY_PRESSED = win32api.RGB(70, 77, 89)
 STOP_PRESSED = win32api.RGB(132, 70, 67)
 LINE = win32api.RGB(48, 54, 64)
+HOVER = win32api.RGB(247, 199, 124)
+SECONDARY_HOVER = win32api.RGB(59, 66, 78)
+STOP_HOVER = win32api.RGB(119, 62, 60)
 _windows = {}
 _brush = None
 _field_brush = None
@@ -252,17 +255,19 @@ def _draw_button(lparam, island):
     rect = item.rcItem
     bounds = (rect.left, rect.top, rect.right, rect.bottom)
     win32gui.FillRect(hdc, bounds, _brush)
-    primary = item.CtlID in (ID_ASK, ID_SEND) or (
+    # One amber action at a time: Send while the Ask panel is open, else Ask.
+    primary = item.CtlID == (ID_SEND if island.asking else ID_ASK) or (
         item.CtlID == ID_RESEARCH and island.research
     )
     pressed = bool(item.itemState & win32con.ODS_SELECTED)
     focused = bool(item.itemState & win32con.ODS_FOCUS)
+    state = 1 if pressed else 2 if int(item.hwndItem) == island.hot else 0
     if primary:
-        color = PRESSED if pressed else ACCENT
+        color = (ACCENT, PRESSED, HOVER)[state]
     elif item.CtlID == ID_STOP:
-        color = STOP_PRESSED if pressed else STOP
+        color = (STOP, STOP_PRESSED, STOP_HOVER)[state]
     else:
-        color = SECONDARY_PRESSED if pressed else SECONDARY
+        color = (SECONDARY, SECONDARY_PRESSED, SECONDARY_HOVER)[state]
     _smooth(hdc, bounds, BG, color, ring=TEXT if focused else None)
     old_font = win32gui.SelectObject(hdc, _bold)
     win32gui.SetBkMode(hdc, win32con.TRANSPARENT)
@@ -275,6 +280,15 @@ def _draw_button(lparam, island):
         win32con.DT_CENTER | win32con.DT_VCENTER | win32con.DT_SINGLELINE,
     )
     win32gui.SelectObject(hdc, old_font)
+
+
+def _wait(seconds):
+    """Sleep until a message arrives (a click, a key, a timer) or the time is
+    up, so input is handled at once and an idle bar costs nothing."""
+
+    ctypes.windll.user32.MsgWaitForMultipleObjectsEx(
+        0, None, max(0, int(seconds * 1000)), 0x04FF, 0x0004
+    )  # QS_ALLINPUT, MWMO_INPUTAVAILABLE
 
 
 def _pump_dialog(hwnd):
@@ -352,6 +366,8 @@ def _wnd_proc(hwnd, msg, wparam, lparam):
         if msg == win32con.WM_DRAWITEM and lparam:
             _draw_button(lparam, island)
             return 1
+        if msg == win32con.WM_SETCURSOR:  # sent as the pointer crosses a child
+            island.hover(wparam if wparam != hwnd else None)
         if msg == win32con.WM_NCHITTEST:
             return (
                 win32con.HTCAPTION
@@ -443,6 +459,7 @@ class Island:
         self.asking = False
         self.covered = False  # stepped aside for a full-screen app
         self.research = False
+        self.hot = None  # the button under the pointer
         self.listener = None  # the voice Listener, when listening is on
         self.strip = ""
         self.transcript = ""
@@ -708,6 +725,7 @@ class Island:
     def _render(self):
         self.transcript = self.transcript[-MAX_TRANSCRIPT:]
         win32gui.SetWindowText(self.reply, self.transcript or HINT)
+        self._fit_scrollbar()
         win32gui.SendMessage(
             self.reply, win32con.EM_SETSEL, len(self.transcript), len(self.transcript)
         )
@@ -844,20 +862,53 @@ class Island:
         _pump_dialog(self.hwnd)
 
     def idle(self, seconds):
-        """Wait between ticks. While the badge shows, pump messages every
-        30 ms so it follows the pointer smoothly, not at the 4 Hz tick."""
+        """Wait between ticks, handling messages as they arrive: clicks and
+        typing are answered at once, and the badge's timer moves it smoothly,
+        not at the 4 Hz tick. Never waits past ``seconds``."""
 
         until = time.monotonic() + seconds
-        while (
-            self.companion.text is not None
-            and not self.closed
-            and time.monotonic() < until
-        ):
+        while not self.closed:
+            left = until - time.monotonic()
+            if left <= 0:
+                break
+            _wait(min(left, 0.05) if self.hot else left)
             _pump_dialog(self.hwnd)
-            # the resting dot changes slowly: 100 ms is enough there
-            step = 0.03 if self.companion.text else 0.1
-            time.sleep(max(0.0, min(step, until - time.monotonic())))
-        time.sleep(max(0.0, until - time.monotonic()))
+            if self.hot and win32gui.WindowFromPoint(_cursor()) != self.hot:
+                self.hover(None)  # the pointer left the bar: no message says so
+
+    def hover(self, child):
+        """Light the button under the pointer."""
+
+        buttons = (
+            self.ask_button,
+            self.open_button,
+            self.hide_button,
+            self.quit_button,
+            self.stop_button,
+            self.send_button,
+            self.talk_button,
+            self.ask_research,
+        )
+        child = child if child in buttons else None
+        if child != self.hot:
+            for button in (self.hot, child):
+                if button:
+                    win32gui.InvalidateRect(button, None, False)
+            self.hot = child
+
+    def _fit_scrollbar(self):
+        """Show the reply card's scrollbar only when the text overflows."""
+
+        show = ctypes.windll.user32.ShowScrollBar
+        show(self.reply, win32con.SB_VERT, False)  # measure at the full width
+        lines = win32gui.SendMessage(self.reply, win32con.EM_GETLINECOUNT, 0, 0)
+        hdc = win32gui.GetDC(self.reply)
+        old = win32gui.SelectObject(hdc, _font)
+        line = win32gui.GetTextExtentPoint32(hdc, "Ag")[1]
+        win32gui.SelectObject(hdc, old)
+        win32gui.ReleaseDC(self.reply, hdc)
+        if lines * line > win32gui.GetClientRect(self.reply)[3]:
+            show(self.reply, win32con.SB_VERT, True)
 
     def _set_field_fonts(self):
         for child in (self.input, self.reply):
@@ -899,6 +950,7 @@ class Island:
         }
         for child, box in places.items():
             win32gui.MoveWindow(child, *_px(*box), True)
+        self._fit_scrollbar()
 
     def _size(self, expanded):
         return ASKING if self.asking else EXPANDED if expanded else COMPACT

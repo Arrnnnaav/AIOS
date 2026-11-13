@@ -260,16 +260,24 @@ background; its 30 ms timer
 moves the window and invalidates only when the dot changes, and a new label
 repaints once (rule 4). It hides whenever `SHQueryUserNotificationState`
 reports a full-screen app, game or presentation, even while work runs (the
-bar itself stays then, for Stop). While a label shows, `Island.idle` pumps
-messages every 30 ms between the 0.25 s ticks so the badge follows the
-pointer; for the resting dot, every 100 ms. Its size and offset follow the
+bar itself stays then, for Stop). Between the 0.25 s ticks `Island.idle` waits in
+`MsgWaitForMultipleObjectsEx` and handles each message as it arrives, so a
+click, a key or the badge's 30 ms timer is answered at once and an idle bar
+sleeps; no wait outlasts the tick. The badge glides after the pointer
+(`ease`, about 45 ms to cover most of a gap) and appears in place when first
+shown; it sits 8 units inside its window over a soft shadow, and a working
+dot has a halo. Buttons light under the pointer (`WM_SETCURSOR`; while one
+is lit idle looks every 50 ms for the pointer leaving), only one action is
+amber (Ask, or Send while the panel is open), and the reply card's scrollbar
+shows only when its text overflows. Its size and offset follow the
 scaling of the monitor under the pointer (`GetDpiForMonitor`), and the offset
 grows with the Accessibility pointer size (`CursorBaseSize`, read at start).
 Brain › Setup "companion" (settings.json `companion_idle`, only a literal
 true, off by default) keeps a breathing, blinking resting dot there when
 Orbyn is idle; an estimate from one 20 s session run on 2026-11-13 put it at
 about 0.9% of one core at the earlier 30 ms rate (not a captured file, so not
-evidence; D034). Speaking is not shown:
+evidence; D034; the wait loop changed on 14 Nov and this was not re-measured
+over a session). Speaking is not shown:
 the workspace process never speaks. Resize and display-change handling clamp
 the capsule to the current monitor's work area. A shortcut conflict leaves
 Hide unavailable. On shutdown the voice listener tolerates an already-exited

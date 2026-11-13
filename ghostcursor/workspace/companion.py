@@ -11,7 +11,8 @@ listening, and the island hides it when a full-screen app is in front.
 The badge has real per-pixel alpha: it is rendered (Pillow, 4x, then scaled
 down) to a premultiplied bitmap that WM_PAINT hands to UpdateLayeredWindow,
 so the pill and dot have soft edges on any background, at the scaling of
-the monitor under the pointer and beyond a large pointer. A colour-keyed window can only have hard, stepped edges."""
+the monitor under the pointer and beyond a large pointer. It glides after
+the pointer (ease) instead of jumping, over a soft shadow. A colour-keyed window can only have hard, stepped edges."""
 
 from __future__ import annotations
 
@@ -24,7 +25,7 @@ import time
 from ctypes import wintypes
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 import win32api
 import win32con
@@ -33,13 +34,16 @@ import win32gui
 from ghostcursor.overlay.window import ensure_class
 
 CLASS = "OrbynCompanion"
-OFFSET = (18, 22)  # below-right of the arrow's hotspot, clear of the arrow
-SIZE = (132, 28)
+PAD = 8  # clear space around the pill, for its shadow
+OFFSET = (10, 14)  # the window's corner; the pill is PAD inside, clear of the arrow
+SIZE = (132, 28)  # the pill
+GLIDE = 0.045  # seconds: how quickly the badge catches up with the pointer
 TIMER_ID, TIMER_MS = 9, 30
 WDA_EXCLUDEFROMCAPTURE = 0x11
 WM_DPICHANGED = 0x02E0
 BG = (22, 26, 34, 236)  # RGBA: nearly opaque, so the pill reads on any app
 TEXT = (249, 247, 242, 255)
+EDGE = (255, 255, 255, 34)  # a hairline that defines the pill on dark apps
 AMBER = (239, 182, 96, 255)
 BLUE = (64, 156, 235, 255)
 SMOOTH = 4  # shapes are drawn this many times larger, then scaled down
@@ -135,7 +139,8 @@ _gdi32.DeleteDC.argtypes = (wintypes.HDC,)
 def size_px(scale: float) -> tuple[int, int]:
     """The badge window's size in device pixels at ``scale``."""
 
-    return round(SIZE[0] * scale), round(SIZE[1] * scale)
+    pad = 2 * round(PAD * scale)
+    return round(SIZE[0] * scale) + pad, round(SIZE[1] * scale) + pad
 
 
 def label(app, listener, *, fullscreen=False, idle=False) -> str | None:
@@ -199,6 +204,16 @@ def pointer_scale() -> float:
     return max(1.0, base / 32)
 
 
+def ease(spot, target, elapsed: float):
+    """One step of the badge gliding from ``spot`` toward ``target``: it
+    covers most of the gap every GLIDE seconds and lands exactly."""
+
+    k = 1 - math.exp(-max(0.0, elapsed) / GLIDE)
+    step = tuple(a + (b - a) * k for a, b in zip(spot, target))
+    close = all(abs(b - a) < 0.5 for a, b in zip(step, target))
+    return tuple(float(v) for v in target) if close else step
+
+
 def pulse(elapsed: float) -> float:
     """0..1, one breath every 1.2 s."""
 
@@ -232,10 +247,14 @@ def _font(scale: float):
 def render(text: str, r: int, scale: float) -> Image.Image:
     """The badge as an RGBA image ``size_px(scale)`` big: a pill with a dot
     and ``text``, or just the dot's disc when ``text`` is "" (the resting
-    dot). Shapes are drawn SMOOTH times larger and scaled down, so every
-    curve has soft edges; text is drawn at size, so it stays sharp."""
+    dot), PAD inside the image over a soft shadow. Shapes are drawn SMOOTH
+    times larger and scaled down, so every curve has soft edges; text is
+    drawn at size, so it stays sharp. A working dot has a halo that breathes
+    with it."""
 
-    width, height = size_px(scale)
+    size = size_px(scale)
+    pad = round(PAD * scale)
+    width, height = size[0] - 2 * pad, size[1] - 2 * pad  # the pill
     font = _font(scale)
     label = text
     left_pad, right_pad = 28 * scale, 12 * scale
@@ -246,23 +265,43 @@ def render(text: str, r: int, scale: float) -> Image.Image:
         if text
         else height
     )
-    big = Image.new("RGBA", (width * SMOOTH, height * SMOOTH), (0, 0, 0, 0))
+    big = Image.new("RGBA", (size[0] * SMOOTH, size[1] * SMOOTH), (0, 0, 0, 0))
     draw = ImageDraw.Draw(big)
+    box = (
+        pad * SMOOTH,
+        pad * SMOOTH,
+        (pad + right) * SMOOTH - 1,
+        (pad + height) * SMOOTH - 1,
+    )
     draw.rounded_rectangle(
-        (0, 0, right * SMOOTH - 1, height * SMOOTH - 1),
-        radius=height * SMOOTH // 2,
-        fill=BG,
+        box, radius=height * SMOOTH // 2, fill=BG, outline=EDGE, width=SMOOTH
     )
     if r:
-        cx = (15 * scale if text else height / 2) * SMOOTH
-        cy, rr = height / 2 * SMOOTH, r * scale * SMOOTH
+        cx = (pad + (15 * scale if text else height / 2)) * SMOOTH
+        cy, rr = (pad + height / 2) * SMOOTH, r * scale * SMOOTH
         color = BLUE if text == "Listening" else AMBER
+        if text:  # a halo, drawn on its own layer so it tints the pill
+            glow = Image.new("RGBA", big.size, (0, 0, 0, 0))
+            g = rr * 1.9
+            ImageDraw.Draw(glow).ellipse(
+                (cx - g, cy - g, cx + g, cy + g), fill=color[:3] + (60,)
+            )
+            big = Image.alpha_composite(big, glow)
+            draw = ImageDraw.Draw(big)
         draw.ellipse((cx - rr, cy - rr, cx + rr, cy + rr), fill=color)
     image = big.reduce(SMOOTH)  # box average: exact mixes, no ringing
+    # A soft shadow under the pill lifts it off any background.
+    drop = round(2 * scale)
+    shade = Image.new("L", size, 0)
+    shade.paste(image.getchannel("A"), (0, drop))
+    shade = shade.filter(ImageFilter.GaussianBlur(2.5 * scale)).point(lambda a: a * 2 // 5)
+    shadow = Image.new("RGBA", size, (0, 0, 0, 0))
+    shadow.putalpha(shade)
+    image = Image.alpha_composite(shadow, image)
     if label:
         layer = Image.new("RGBA", image.size, (0, 0, 0, 0))
         ImageDraw.Draw(layer).text(
-            (left_pad, height / 2), label, font=font, fill=TEXT, anchor="lm"
+            (pad + left_pad, pad + height / 2), label, font=font, fill=TEXT, anchor="lm"
         )
         image = Image.alpha_composite(image, layer)
     return image
@@ -326,6 +365,7 @@ class Companion:
         self.at = None
         self.frame = None  # the dot radius last painted by the timer
         self.pointer = None  # the cursor position last looked up
+        self.target = None  # where the badge is gliding to
         self.arrow = pointer_scale()  # read once: a settings change needs a restart
         ensure_class(CLASS, _wnd_proc, 0)
         self.hwnd = win32gui.CreateWindowEx(
@@ -360,6 +400,7 @@ class Companion:
             win32gui.ShowWindow(self.hwnd, win32con.SW_HIDE)
         elif self.text is None:
             self.started = time.monotonic()
+            self.at = None  # appear beside the pointer; glide only afterwards
             self.follow()
             win32gui.ShowWindow(self.hwnd, win32con.SW_SHOWNOACTIVATE)
             _user32.SetTimer(self.hwnd, TIMER_ID, TIMER_MS, None)
@@ -367,22 +408,33 @@ class Companion:
         win32gui.InvalidateRect(self.hwnd, None, True)
 
     def follow(self) -> None:
+        global _scale
+        resized = False
         try:
             cursor = self.cursor()
             if cursor == self.pointer and self.at is not None:
-                return  # the pointer has not moved: nothing to look up
-            self.pointer = cursor
-            monitor = win32api.MonitorFromPoint(
-                cursor, win32con.MONITOR_DEFAULTTONEAREST
-            )
-            work = win32api.GetMonitorInfo(monitor)["Work"]
+                if self.at == self.target:
+                    return  # the pointer has not moved and the badge has arrived
+            else:
+                monitor = win32api.MonitorFromPoint(
+                    cursor, win32con.MONITOR_DEFAULTTONEAREST
+                )
+                work = win32api.GetMonitorInfo(monitor)["Work"]
+                scale = monitor_scale(monitor) or _scale  # each monitor its own
+                resized = scale != _scale
+                _scale = scale
+                self.target = placement(
+                    cursor, size_px(_scale), work, _scale, self.arrow
+                )
+                self.pointer = cursor
         except Exception:
             return  # secure desktop or no pointer: stay where it was
-        global _scale
-        scale = monitor_scale(monitor) or _scale  # each monitor its own scaling
-        resized = scale != _scale
-        _scale = scale
-        at = placement(cursor, size_px(_scale), work, _scale, self.arrow)
+        now = time.monotonic()
+        if self.at is None or resized:
+            spot = tuple(float(v) for v in self.target)  # appear in place
+        else:
+            spot = ease(self.spot, self.target, now - self.moved)
+        at = (round(spot[0]), round(spot[1]))
         if at != self.at or resized:
             try:  # a decoration never ends the session
                 win32gui.SetWindowPos(
@@ -394,9 +446,9 @@ class Companion:
                 )
             except win32gui.error:
                 return
-            self.at = at
             if resized:
                 win32gui.InvalidateRect(self.hwnd, None, False)
+        self.at, self.spot, self.moved = at, spot, now
 
     def destroy(self) -> None:
         if win32gui.IsWindow(self.hwnd):

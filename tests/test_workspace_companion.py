@@ -4,6 +4,7 @@ from anything but the pointer."""
 
 import ctypes
 import threading
+import time
 import types
 
 import pytest
@@ -123,13 +124,20 @@ def test_native_companion_is_click_through_follows_and_hides():
             300 + round(OFFSET[1] * companion_module._scale),
         )
         at[0] = (600, 500)
-        win32gui.SendMessage(
-            companion.hwnd, win32con.WM_TIMER, companion_module.TIMER_ID, 0
-        )
-        assert win32gui.GetWindowRect(companion.hwnd)[:2] == (
+        goal = (
             600 + round(OFFSET[0] * companion_module._scale),
             500 + round(OFFSET[1] * companion_module._scale),
         )
+        seen = []
+        for _ in range(100):  # it glides there over a few timer ticks
+            win32gui.SendMessage(
+                companion.hwnd, win32con.WM_TIMER, companion_module.TIMER_ID, 0
+            )
+            seen.append(win32gui.GetWindowRect(companion.hwnd)[:2])
+            if seen[-1] == goal:
+                break
+            time.sleep(0.02)
+        assert seen[-1] == goal and len(seen) > 1  # arrived, and not in one jump
         companion.show("Listening")
         assert win32gui.IsWindowVisible(companion.hwnd)
         win32gui.UpdateWindow(companion.hwnd)  # paints without raising
@@ -166,25 +174,6 @@ def test_a_failed_move_never_ends_the_session(monkeypatch):
     assert badge.at is not None
 
 
-def test_the_island_pumps_fast_only_while_the_badge_shows(monkeypatch):
-    from ghostcursor.workspace import island as island_module
-
-    pumps = []
-    monkeypatch.setattr(island_module, "_pump_dialog", pumps.append)
-    bar = object.__new__(island_module.Island)
-    bar.hwnd, bar.closed = 7, False
-    bar.companion = types.SimpleNamespace(text=None)
-    bar.idle(0.1)
-    assert pumps == []
-    bar.companion.text = "Thinking"
-    bar.idle(0.2)
-    assert len(pumps) >= 3 and set(pumps) == {7}
-    pumps.clear()
-    bar.closed = True
-    bar.idle(0.05)
-    assert pumps == []
-
-
 def test_the_resting_dot_is_opt_in_and_yields_to_activity():
     from ghostcursor.workspace.companion import blinking
 
@@ -208,52 +197,6 @@ def test_companion_idle_setting_is_off_unless_literally_true(tmp_path):
     for value, on in ((True, True), (False, False), ("true", False), (1, False)):
         path.write_text(json.dumps({"companion_idle": value}), encoding="utf-8")
         assert settings.companion_idle(path) is on, value
-
-
-def test_the_island_pumps_fast_for_the_resting_dot_too(monkeypatch):
-    from ghostcursor.workspace import island as island_module
-
-    pumps = []
-    monkeypatch.setattr(island_module, "_pump_dialog", pumps.append)
-    bar = object.__new__(island_module.Island)
-    bar.hwnd, bar.closed = 7, False
-    bar.companion = types.SimpleNamespace(text="")
-    now = [0.0]
-
-    def sleep(seconds):
-        now[0] += seconds
-
-    monkeypatch.setattr(island_module, "time", types.SimpleNamespace(monotonic=lambda: now[0], sleep=sleep))
-    bar.idle(0.35)
-    assert len(pumps) == 4  # every 100 ms for the resting dot, not every 30 ms
-
-
-def test_idle_stops_pumping_when_the_badge_hides_and_never_overruns(monkeypatch):
-    """Tier-1 review 13 Nov: idle() must stop fast pumping once the badge is
-    hidden mid-wait, and return within its time so the main loop keeps pace."""
-
-    from ghostcursor.workspace import island as island_module
-
-    bar = object.__new__(island_module.Island)
-    bar.hwnd, bar.closed = 7, False
-    bar.companion = types.SimpleNamespace(text="Thinking")
-    pumps = []
-
-    def pump(hwnd):
-        pumps.append(hwnd)
-        if len(pumps) == 2:
-            bar.companion.text = None  # hidden by a tick's message
-
-    monkeypatch.setattr(island_module, "_pump_dialog", pump)
-    now = [0.0]
-
-    def sleep(seconds):
-        now[0] += seconds
-
-    monkeypatch.setattr(island_module, "time", types.SimpleNamespace(monotonic=lambda: now[0], sleep=sleep))
-    bar.idle(0.3)
-    assert len(pumps) == 2
-    assert now[0] == pytest.approx(0.3)  # waits out the rest, never more
 
 
 def test_two_switches_flipped_at_once_both_stick(tmp_path):
@@ -325,31 +268,11 @@ def test_a_badge_windows_cannot_keep_out_of_captures_never_shows():
         mp.undo()
 
 
-def test_the_resting_dot_wait_never_overruns(monkeypatch):
-    """Tier-1 review 13 Nov: the 0.1 s resting step is bounded by the time
-    left. A fake clock makes this exact, not a race with Windows sleeps."""
-    from ghostcursor.workspace import island as island_module
-
-    now = [0.0]
-    slept = []
-
-    def sleep(seconds):
-        slept.append(seconds)
-        now[0] += seconds
-
-    monkeypatch.setattr(island_module, "time", types.SimpleNamespace(monotonic=lambda: now[0], sleep=sleep))
-    monkeypatch.setattr(island_module, "_pump_dialog", lambda hwnd: None)
-    bar = object.__new__(island_module.Island)
-    bar.hwnd, bar.closed = 7, False
-    bar.companion = types.SimpleNamespace(text="")
-    bar.idle(0.25)
-    assert now[0] == pytest.approx(0.25) and max(slept) <= 0.1 + 1e-9
-
 def test_the_badge_renders_with_soft_edges_at_the_display_scale():
     """Real per-pixel alpha: the corners are clear, the pill is solid, and
     its curve has partly transparent pixels (anti-aliased, not stepped)."""
 
-    assert companion_module.size_px(1.25) == (165, 35)  # 132x28 design units
+    assert companion_module.size_px(1.25) == (185, 55)  # a 132x28 pill, 8 clear all round
     for scale in (1.0, 1.25, 2.0):
         image = companion_module.render("Thinking", 5, scale)
         assert image.size == companion_module.size_px(scale)
@@ -357,8 +280,11 @@ def test_the_badge_renders_with_soft_edges_at_the_display_scale():
         width, height = image.size
         assert alpha.getpixel((0, 0)) == 0 and alpha.getpixel((width - 1, 0)) == 0
         assert alpha.getpixel((height // 2, height // 2)) > 200  # inside the pill
-        edge = [alpha.getpixel((x, 0)) for x in range(height)]
+        pad = round(companion_module.PAD * scale)
+        edge = [alpha.getpixel((x, pad)) for x in range(height)]
         assert any(0 < a < 230 for a in edge)  # the curve is smoothed
+        below = alpha.getpixel((width // 3, height - pad + round(2 * scale)))
+        assert 0 < below < 140  # a soft shadow under the pill, not a hard edge
     dot = companion_module.render("", 3, 1.0)
     assert dot.getchannel("A").getpixel((dot.width - 1, dot.height // 2)) == 0  # just the disc
 
@@ -424,3 +350,83 @@ def test_the_pointer_size_setting_is_read_and_bounded(monkeypatch):
 
     monkeypatch.setattr(winreg, "OpenKey", missing)
     assert companion_module.pointer_scale() == 1.0
+
+
+def _bar(monkeypatch, wait):
+    from ghostcursor.workspace import island as island_module
+
+    now = [0.0]
+    waits, pumps = [], []
+
+    def fake_wait(seconds):
+        waits.append(seconds)
+        now[0] += wait(seconds)
+
+    monkeypatch.setattr(island_module, "time", types.SimpleNamespace(monotonic=lambda: now[0]))
+    monkeypatch.setattr(island_module, "_wait", fake_wait)
+    monkeypatch.setattr(island_module, "_pump_dialog", pumps.append)
+    bar = object.__new__(island_module.Island)
+    bar.hwnd, bar.closed, bar.hot = 7, False, None
+    return bar, now, waits, pumps
+
+
+def test_idle_answers_each_message_at_once_and_never_overruns(monkeypatch):
+    """The bar used to sleep a whole tick when no badge showed, so a click or
+    a key waited up to 0.25 s. Now it wakes per message; each wait is bounded
+    by the time left (tier-1 review 13 Nov), so the main loop keeps its pace."""
+
+    bar, now, waits, pumps = _bar(monkeypatch, lambda s: min(s, 0.07))  # a message every 70 ms
+    bar.idle(0.25)
+    assert now[0] == pytest.approx(0.25)
+    assert pumps == [7] * 4  # handled as each one arrived
+    left = 0.25
+    for wait in waits:
+        assert wait <= left + 1e-9
+        left -= min(wait, 0.07)
+
+
+def test_idle_returns_at_once_when_the_bar_closes(monkeypatch):
+    from ghostcursor.workspace import island as island_module
+
+    bar, now, waits, pumps = _bar(monkeypatch, lambda s: 0.01)
+
+    def closing(hwnd):
+        pumps.append(hwnd)
+        bar.closed = True
+
+    monkeypatch.setattr(island_module, "_pump_dialog", closing)
+    bar.idle(0.25)
+    assert pumps == [7] and now[0] == pytest.approx(0.01)
+
+
+def test_a_lit_button_goes_dark_when_the_pointer_leaves_the_bar(monkeypatch):
+    """No message says the pointer left for another window, so while a button
+    is lit idle() looks every 50 ms."""
+
+    from ghostcursor.workspace import island as island_module
+
+    bar, now, waits, pumps = _bar(monkeypatch, lambda s: s)
+    bar.hot = 99
+    cleared = []
+    bar.hover = lambda child: (cleared.append(child), setattr(bar, "hot", None))
+    monkeypatch.setattr(island_module, "_cursor", lambda: (5, 5))
+    monkeypatch.setattr(
+        island_module.win32gui, "WindowFromPoint", lambda point: 99 if now[0] < 0.08 else 1
+    )
+    bar.idle(0.25)
+    assert cleared == [None]
+    assert waits[:2] == [pytest.approx(0.05)] * 2  # short waits while lit
+    assert waits[2] == pytest.approx(0.15)  # then the rest in one
+
+
+def test_the_badge_glides_and_lands_exactly():
+    from ghostcursor.workspace.companion import GLIDE, ease
+
+    assert ease((0.0, 0.0), (100, 50), 0) == (0.0, 0.0)
+    step = ease((0.0, 0.0), (100, 50), GLIDE)
+    assert 55 < step[0] < 70 and 27 < step[1] < 35  # most of the way in one GLIDE
+    spot = (0.0, 0.0)
+    for _ in range(40):
+        spot = ease(spot, (100, 50), 0.03)
+    assert spot == (100.0, 50.0)  # exactly there, no creeping
+

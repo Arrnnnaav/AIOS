@@ -2273,8 +2273,13 @@ from 1053b54. Still open:
   UpdateLayeredWindow inside WM_PAINT, all sizes scaled by the system DPI.
   Later 13 Nov: the bar handles WM_DPICHANGED (fonts, size, layout) and the
   badge takes the pointer monitor's scaling and the pointer-size setting.
-  Left: the reply card's scrollbar is the stock dark one; a pointer-size
-  change while Orbyn runs is picked up at the next start.
+  14 Nov: with no badge showing the bar handled input only at the 4 Hz tick
+  (idle slept the whole 0.25 s); idle now waits on the message queue and
+  answers at once, each wait bounded by the time left. Also: button hover
+  states, one amber action, badge shadow, halo and glide, reply scrollbar
+  only on overflow. Left: the scrollbar, when shown, is the stock dark one; a
+  pointer-size change while Orbyn runs is picked up at the next start; the
+  resting dot's CPU cost was not re-measured over a session.
 - Modern Web Guidance pass 13 Nov (GoogleChrome/modern-web-guidance 1.0.0,
   run from the npm package with DISABLE_TELEMETRY=1: its CLI otherwise sends
   search queries to Google). legacy-scan of ghostcursor/workspace found 11
