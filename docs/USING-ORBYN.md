@@ -28,12 +28,15 @@ Orbyn **auto-starts Ollama** if it is installed, so you normally don't have to.
 
 ## Run
 
-Double-click the **Orbyn** shortcut. A slim window docks to the top-right of your
-screen. Launching it again while it is open just re-focuses that window.
+Double-click the **Orbyn** shortcut. A slim bar appears at the top centre of your
+screen (you can drag it). Launching it again while it is open brings the bar back.
 
 ## The island
 
-The small bar at the top of the screen is always there. Press **Ask** (or
+The small bar sits at the top of the screen. **Hide** tucks it away while
+Orbyn is idle; rest the pointer at the top of the screen near where it was, or
+press **Ctrl+Alt+O**, to bring it back. It comes back by itself when work
+starts or a result arrives, and tucks away again afterwards. Press **Ask** (or
 **Ctrl+Alt+O**), type a question and press Enter; the answer appears under the
 bar. Type again to follow up, press **Esc** to fold it. The full window is
 only needed for plans, the Brain and background work.
@@ -51,6 +54,10 @@ only needed for plans, the Brain and background work.
   version is under **Open › Work**.
 - The bar hides itself while a video, game or slideshow is full screen, unless
   Orbyn is working.
+- While Orbyn works or listens, a small label beside your pointer says what it
+  is doing ("Listening", "Thinking", "Researching"). It never shows your
+  question, clicks pass through it, and it hides over full-screen apps. To keep
+  a quiet dot there all the time, turn on **Brain › Setup › Companion**.
 
 ## First things to try (in the window)
 
@@ -61,10 +68,13 @@ understood here (they belong to the console, below).
 |---|---|
 | **Chat** | `Make an investor deck outline` — Orbyn replies with your configured model |
 | **Plan** | build a step plan from the conversation (a proposal — never auto-acts) |
-| **Brain** | Setup checks readiness; add facts, review, mark private |
-| **Work** | start background research, schedule a routine, read saved results |
+| **Brain** | add facts, review, mark private; **Setup** checks readiness and holds your switches (pictures for Jev, the resting dot, and your organization's model service or crash reports when it offers them) |
+| **Work** | start background research, deep research or a crew, schedule a routine, read saved results |
 
-A routine's later results list what is new since its previous run.
+A routine's later results list what is new since its previous run. If a run
+fails (say the network dropped), it tries again after 5 minutes, then waits
+longer each time, up to an hour. A question you research twice is offered as
+a routine.
 
 **Console (slash commands):** `py -3.12 -m ghostcursor.workspace "<topic>"`,
 then `/doctor`, `/plan`, `/deck`, `/know add ...`, `/related ...`, `/do ...`,
@@ -86,6 +96,12 @@ never clicks for you in Teach.
 - Text bound for an optional cloud model is scrubbed of secrets first; an
   organization policy can only *lower* what may leave.
 - Telemetry is local, off by default, and counts event names only.
+- Three things can send more, and each is off until you turn it on in
+  **Brain › Setup**: a picture of the window you are being guided in, with
+  everything but buttons, tabs and menus greyed out, for Jev when text alone
+  was not enough; your organization's model service, if it set one up; and
+  crash reports (the error's type and where in Orbyn it happened, never its
+  text, your files or your screen) to your organization, if it offers them.
 
 ## If something goes wrong
 

@@ -50,8 +50,10 @@ release acceptance is still pending.
   agents. Unfinished work is marked interrupted after restart.
 - **Brain views** — Personal memory, reviewed Company knowledge and setup
   controls have separate views. Plan's empty page leads back to the composer.
-- **Background research** — start cited research in Work, close the window,
-  and return to a locally saved answer. Download a finished result as Markdown
+- **Background research** — start cited research, deep research (which also
+  files cited claims to the Brain for you to review) or a crew (a goal split
+  into read-only steps) in Work, close the window, and return to a locally
+  saved answer. Download a finished result as Markdown
   directly from its card, ask a one-off follow-up about it (Orbyn sends only
   the parts that match your question), or Keep up to five important results at the top of
   Work so new jobs do not evict them. Archive hides a finished result until you
@@ -61,8 +63,11 @@ release acceptance is still pending.
 - **Routines** — schedule hourly, daily, weekday or weekly research from Work. Enabled
   routines run while Orbyn and the PC are awake, even with the window closed;
   pause, resume, run now, delete or Quit Orbyn there. A missed time runs once
-  after wake, with no catch-up burst. A crash may skip an occurrence rather
-  than repeat it. Results land in the local job inbox.
+  after wake, with no catch-up burst. A failed run (say a network blip) tries
+  again after 5 minutes, then waits longer each time up to an hour, and the
+  count survives a restart. A crash may skip an occurrence rather than repeat
+  it. A question researched twice is offered as a routine. Results land in the
+  local job inbox.
 - **GitHub, read only** — connect a GitHub access token in Work (fine-grained
   recommended) to view a
   bounded repository list and open issues. The token stays in Windows
@@ -128,9 +133,13 @@ on a card there; type again to follow up, **Esc** folds it. It uses the same
 Chat and model as the full workspace. **Research** switches the box to cited
 answers, **Talk** takes a spoken question, finished background research shows
 on the same card, and the bar steps aside for full-screen apps. The island expands while
-work runs and briefly when a background result arrives. **Hide** dismisses it
-while idle; **Ctrl+Alt+O** recalls it. Work and new results reveal a hidden
-island, and **Open** on a new research result goes to Work. **Stop** signals the
+work runs and briefly when a background job ends. **Hide** dismisses it
+while idle; **Ctrl+Alt+O**, or resting the pointer where it was, recalls it.
+Work and new results reveal a hidden island and it tucks away again
+afterwards; **Open** goes to Work while a job runs or has a new result. While
+Orbyn works or listens, a click-through label beside the pointer says what it
+is doing ("Listening", "Thinking"), never your question; Brain › Setup ›
+Companion keeps a resting dot there when idle (off by default). **Stop** signals the
 current run; **Quit** exits Orbyn. If the shortcut is already taken, Hide stays
 unavailable. The full workspace remains local behind a per-launch token.
 On a fresh workspace profile, Chat shows a short getting-started guide. Check
@@ -149,6 +158,9 @@ py -3.12 -m pytest tests -m "not interactive and not pixel and not hung" `
   --basetemp=.tmp\pytest-hermetic -p no:cacheprovider
 ```
 
+GitHub Actions runs this lane on Windows for every push to the working branch
+and every pull request (`.github/workflows/hermetic.yml`).
+
 Desktop lanes (`interactive`, `pixel`) need a real Windows desktop; the
 hung-window lane runs one file at a time with nothing else active. Exact
 commands are in `CLAUDE.md`.
@@ -161,9 +173,10 @@ commands are in `CLAUDE.md`.
   VS Code and Excel are disabled for production Act.
 - Orbyn is becoming an app-agnostic, model-driven harness; PowerPoint is the
   test fixture for that path, not the product's limit.
-- Reusable agents and `/crew` are foreground, sequential workspace operations.
-  Work can continue a read-only research job or scheduled routine after the
-  window closes. Neither can run desktop actions.
+- Reusable agents and the console's `/crew` are foreground, sequential
+  workspace operations. Work can continue a read-only research, deep-research
+  or crew job, or a scheduled routine, after the window closes. None of them
+  can run desktop actions.
 - Deferred: a signed installer and auto-update, tray/startup automation, the
   VLM pointing tier, and broader counted Act acceptance across applications.
 - This is pre-1.0 software under active development. Measured results and their

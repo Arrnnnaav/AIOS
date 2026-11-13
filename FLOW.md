@@ -223,16 +223,38 @@ job is shown on the card once (its first 1500 characters) and a strip counts
 running jobs; that text is local UI only, never the title. While Windows
 reports a full-screen app or presentation (`SHQueryUserNotificationState`) the
 bar hides, but never while work runs or the panel is open, so Stop stays
-reachable. It grows
-while work runs and for twelve seconds when a new result arrives. Its native
+reachable. It grows while work runs, while the voice hotkey is held, and for
+twelve seconds after a background job ends (finished, failed, stopped or
+interrupted). The running-jobs strip is painted only while the Ask panel is open. Its native
 owner-drawn buttons retain Windows focus and click handling while matching the
 amber and navy workspace palette. Open, Stop and Quit use the existing full-window launcher, Stop event
 and Quit action. Open launches Edge from a background thread so its positioning
 wait cannot hold the island's Stop control. Hide is allowed only while idle;
 Ctrl+Alt+O (which also opens Ask) or a second default launch restores it. The configured voice key
 has priority if it uses the same chord. Work or a new research
-result reveals a hidden island automatically, and a new result's Open goes
-directly to the existing Work tab. Resize and display-change handling clamp
+result reveals a hidden island automatically; a bar revealed that way hides
+again once work ends and the pointer has left it. A hidden bar also peeks
+back while the pointer rests within 24 px of it or above it to the screen
+edge (as HeyClicky's notch does). Open goes directly to the Work tab while a
+background job is running or has a new result.
+
+Cursor companion (`ghostcursor/workspace/companion.py`, 2026-11-12/13): the
+island owns a small badge beside the user's own pointer that says
+"Listening", the current activity name from `ACTIVITY_LABELS`, or "Working"
+-- never a goal or screen text -- while Orbyn is busy or listening, like
+HeyClicky's ActivityListening/Thinking. Its position comes only from
+`GetCursorPos` and it points at nothing (rule 3). It is layered,
+click-through, topmost, no-activate, excluded from capture
+(`WDA_EXCLUDEFROMCAPTURE`, so perception and the D179 picture never see it),
+imports `overlay.dpi` first, and paints only in `WM_PAINT`; its 30 ms timer
+moves the window and invalidates only when the dot changes (rule 4). It
+hides over full-screen apps. While it shows, `Island.idle` pumps messages
+every 30 ms between the 0.25 s ticks so the badge follows the pointer.
+Brain › Setup "companion" (settings.json `companion_idle`, only a literal
+true, off by default) keeps a breathing, blinking resting dot there when
+Orbyn is idle; measured at about 0.9% of one core in a 20 s session run on
+2026-11-13 (stated in FOLLOWUPS, not a captured file). Speaking is not shown:
+the workspace process never speaks. Resize and display-change handling clamp
 the capsule to the current monitor's work area. A shortcut conflict leaves
 Hide unavailable. On shutdown the voice listener tolerates an already-exited
 hotkey thread. `--window` opens the movable Edge workspace directly;
@@ -244,8 +266,10 @@ visible. An empty Plan gives a direct route to the Chat composer or drafts
 from an existing goal. Brain separates Personal memory, Company knowledge
 and Setup with an in-page section control. `company_brain_available` in the
 local state prevents presenting Company controls when no knowledge store was
-configured; Setup holds the picture policy, accounts, readiness and scalar
-statistics. These views invoke only their existing actions.
+configured; Setup holds the picture policy, the company-model and
+crash-report opt-ins (when the organisation offers them), the resting-dot
+switch, accounts, readiness and scalar statistics. Settings writes take one
+lock, so two switches flipped at once on the threaded page server both stick. These views invoke only their existing actions.
 The empty Chat view shows a one-time getting-started card until dismissed or a
 message is sent. It links to the existing Brain Setup view or focuses the
 composer; dismissal stays in the dedicated Edge app profile's localStorage.
@@ -267,8 +291,10 @@ the worker starts and a terminal record afterward; startup changes stale
 running records to interrupted. The file contains no goal, screen text, result,
 window identity or error details. A malformed file remains untouched and the
 current session continues with in-memory history. A separate per-topic
-`.jobs.json` inbox stores explicitly started read-only research questions,
-terminal state, and bounded result locally. It uses the same single workspace
+`.jobs.json` inbox stores explicitly started read-only background jobs of
+three kinds (`JOB_KINDS`, D190): research, deep research (which also files
+cited claims to the Brain as candidates for review) and a crew (whose plan
+step only proposes, rule 2), with terminal state and bounded result, locally. It uses the same single workspace
 worker, claim lock, provider policy, and Stop event as foreground work. A
 finished card downloads its existing question and answer as a browser-created
 Markdown file with no server write or model request. The inbox migrates earlier
@@ -293,7 +319,7 @@ scrubs the returned answer before writing the inbox. Stop reaches search-phase
 checks, both Jev calls and the System Two gateway. The
 server stays alive while that worker is busy even if the page closes; after a
 restart, a stale running entry becomes interrupted with no retry. It cannot
-launch Teach, Act, an agent, or a connector. Each topic file has one intended writer;
+launch Teach, Act, a saved agent, or a connector. Each topic file has one intended writer;
 concurrent workspace app processes for the same topic are not coordinated.
 The per-topic `.routines.json` file stores hourly, daily, weekdays (Monday to
 Friday, local time; `app.next_due`) or weekly research questions and next-due
@@ -303,12 +329,35 @@ reschedules from the actual start. Enabled routines keep the app process alive
 after its window closes; Quit stops the process and active job. Pausing a
 routine prevents future starts, and restart never retries an interrupted job.
 The next-due update is persisted before the worker starts; a failed save
-pauses that routine in memory. `_begin_run` checks Quit after clearing a stale
+pauses that routine in memory. If the worker is busy when a routine falls due,
+the old next-due time is restored so the next free tick runs it. A routine
+run that fails (a network blip) is retried sooner than its period:
+`_routine_retry` waits 5, 10, 20 ... minutes, capped at an hour and never
+later than the next period, and saves the count as the row's optional
+`failures` field (1..64, validated on load), so a restart keeps the backoff;
+success removes it, and a paused routine keeps its time. A research question
+asked twice is offered as a daily routine (`suggested_routines`), which the
+user creates or dismisses. `_begin_run` checks Quit after clearing a stale
 Stop event, before a worker is submitted. When the page state is built,
 `new_claims` compares each finished routine result with that routine's
 previous finished result and lists the claims it did not make (rapidfuzz
 token-set >= 90 with the same numbers; source ids ignored). Nothing is stored
 or sent for it.
+Research page fetches (`research.fetch_public`) are the boundary between a
+search result's URL and this machine's network. Every hop's host is
+resolved and every address must be globally routable (`_public_address`,
+`_global`): private, loopback, link-local, reserved and multicast addresses
+are refused, also when an IPv6 form embeds such an IPv4 (mapped, 6to4,
+NAT64 `64:ff9b::/96`, IPv4-compatible `::/96`); a 6to4 address is judged by
+the IPv4 it relays to, and an empty host is refused before resolving (it
+would resolve to this machine). The request connects to the checked address
+itself, IPv4 first, with the name in the Host header and as the TLS SNI, so a
+DNS answer that changes after the check cannot redirect it (rebinding).
+Userinfo is dropped, `Connection: close` keeps a verified connection from
+being reused for another name, redirects are followed by hand at most 3 times
+with each hop checked again, and a redirect with no Location stops. The
+DuckDuckGo and Tavily search calls go to their fixed hosts through the normal
+client.
 Work's GitHub connector is a separate explicit read path:
 `github_connect` validates a supplied token against GitHub before Windows
 Credential Manager stores it; `github_repos` and `github_issues` send fixed
@@ -484,6 +533,11 @@ run.main()
       window.set_hint(hwnd, x, y)
           stores _hint (screen -> client coords via _origin)
           InvalidateRect + UpdateWindow    -> synchronous WM_PAINT
+          a first hint, or a move > cue.FLY_MIN_PX (40), starts a 0.45 s
+          flight (cue.FLY_S) from the OS cursor / the ring's last position;
+          a 15 ms WM_TIMER only invalidates, WM_PAINT draws the ring at
+          cue.fly_position (cubic ease-out, no overshoot) and the timer is
+          killed on landing (2026-11-11)
       window.pump_messages_nonblocking()
 
   window._wnd_proc  on WM_PAINT:           <-- the ONLY place anything is drawn
@@ -502,15 +556,15 @@ run.main()
 |---|---|
 | `ghostcursor/run.py` | entry point, timer loop, ESC/timeout safety, arg parsing, grounder builder for live promotion |
 | `ghostcursor/overlay/dpi.py` | declares DPI awareness at import; one coordinate space |
-| `ghostcursor/overlay/window.py` | layered click-through window, WM_PAINT rendering; Teach hint ring and Act cue (ring, ghost pointer, label plate), plus `measure_label` for real font metrics |
-| `ghostcursor/overlay/cue.py` | pure Act cue layout: glyph outline tipped at the acted point, trust colour, callout placement clear of the control it names |
+| `ghostcursor/overlay/window.py` | layered click-through window, WM_PAINT rendering; Teach hint ring (with its 15 ms flight timer, which only invalidates) and Act cue (ring, ghost pointer, label plate), plus `measure_label` for real font metrics |
+| `ghostcursor/overlay/cue.py` | pure cue layout: Act's glyph outline tipped at the acted point, trust colour, callout placement clear of the control it names; Teach's ring flight (`fly_position`, `FLY_S`, `FLY_MIN_PX`) |
 | `ghostcursor/pointer_path.py` | pure pointer geometry and timing: eased traversal frames, settle, poll points, all derived from a measured paint cost |
 | `ghostcursor/act_presenter.py` | walks one cue on an injected clock and returns its receipts; a completed cue stays up for the dispatch, an aborted one clears and completes nothing |
 | `plugins/sources/powerpoint/payload/ghostcursor/adapter/powerpoint_live_verifier.py` | signed read-only LIVE-state verifier: reads the running deck's slide count and answers a postcondition naming a CHANGE against the pre-cue baseline; AST-scanned to prove it cannot act |
 | `ghostcursor/selectors.py` | loads the signed selector an operation names and proves its digest; an action selector must be `exactly_one` and agree with the operation's control type |
 | `ghostcursor/act_uia_session.py` | composes one UIA node's session: verifier reading as `semantic`, adapter read-only read as identity/rectangle, overlay as the cue |
 | `ghostcursor/act_ui_bridge.py` | manager UI-thread bridge: the worker requests cue presentation and receives receipts while the manager thread exclusively creates/pumps the Win32 overlay |
-| `ghostcursor/verified_python.py` | absolute `-I -S` executable-payload bootstrap: hash one path read against signed authority with no site `.pth`, payload, or PYTHONPATH startup, then compile and execute those same in-memory bytes |
+| `ghostcursor/verified_python.py` | absolute `-I -S` (and `safe_path`) executable-payload bootstrap: hash one path read against signed authority with no site `.pth`, payload, or PYTHONPATH startup, then compile and execute those same in-memory bytes |
 | `ghostcursor/devtools/act_campaign.py` | counts consecutive clean Act attempts; fresh store/output per attempt, target re-checked and restored each time, refuses an `interrupt_probe` record, stops at the first unclean run |
 | `ghostcursor/brief.py` | the stored conversation a plan is proposed from (D113); `bind_brief` re-reads the source so a proposal cannot bind a digest that no longer describes the file; appends turns to a Markdown brief, loads it back, digests the exact bytes; a closed type with no field that could carry anything executable |
 | `ghostcursor/act_staging.py` | transactional artifact output used by the CLI/campaign path: runtime-owned same-volume staging, atomic publish after complete verification, digest binding, and an `.incomplete.json` marker cleared only by successful publication |
@@ -572,7 +626,14 @@ this repo were exactly this and nothing else.
 
 The repository has four executable lanes: hermetic, interactive Win32/UIA,
 pixel, and intentionally hung-window. Exact commands are in `CLAUDE.md` and
-`README.md`; lane ownership is centralized in `tests/conftest.py`. Task 10 ran
+`README.md`; lane ownership is centralized in `tests/conftest.py`. Since
+2026-11-11 GitHub Actions (`.github/workflows/hermetic.yml`) runs the hermetic
+lane on `windows-latest` for every push to `feature/product-shell-task-graphs`
+and every pull request: LF checkout (`core.autocrlf input`, D125 pinned
+bytes), full history for the history tests, actions pinned to commit SHAs, no
+persisted checkout token, `pip install -r requirements.txt pytest`, then the
+hermetic marker expression with `-q` and pytest's default temp folder. The
+desktop lanes stay local (D025). Task 10 ran
 every lane after the authority cutover, and Task 13 repeated the non-desktop
 gates on the final active catalog. The standalone pixel scripts remain
 self-runner modules and are not collected by pytest. The three hung files each
@@ -770,7 +831,12 @@ loop returns to `State.OBSERVING`, which re-grounds and flows back through
 `RENDERING_HINT` to re-show the ring — deliberately the existing path, not a
 second `renderer.show()` call, because `set_hint` ends in a synchronous
 `UpdateWindow` and a second write is a second frame that reaches the screen
-(D027). `wrong_action_rehints` caps that re-assertion at 3 per step, distinct
+(D027). Since 2026-11-11 a new or moved hint flies in for 0.45 s, so the
+intermediate frames show the ring between the pointer and the control. Rule 3
+is read as "the resting ring is on the observed control": the flight's end
+point is the observed control, it never passes it (the first version's
+overshoot was removed after the tier-1 review that day), and every frame is
+painted in WM_PAINT; moves under 40 px snap. `wrong_action_rehints` caps that re-assertion at 3 per step, distinct
 from the unrelated 1-cap on the idle re-hint (idle is inaction; a wrong
 action is an active attempt worth answering, up to a bound). The branch is
 silent by construction whenever the grounded target itself has no
@@ -1181,6 +1247,14 @@ the prepared invitation is not evidence that it was sent.
 `inference.ollama.generate_structured()` is the one bounded request adapter:
 no retry, one response envelope, and preserved generation metadata.
 
+The cloud providers in `ghostcursor/providers/clients.py` (TypeSafe Jev,
+System One; OpenAI-compatible chat, System Two) differ: `_post` gives each
+call a hard deadline and retries once on 429/5xx only if the wait still fits
+before it (`deadline - now > wait + 0.5`). The wait is the response's
+Retry-After seconds capped at 5 (an HTTP-date counts as 1, none as 0.2), plus
+0-0.2 s jitter, slept in 0.1 s slices that check Stop, so Stop frees the
+worker during a wait. Each call opens its own `httpx` client.
+
 ```
 planner.infer_intent(goal)
     -> dynamic nullable planner schema
@@ -1575,7 +1649,11 @@ Python `-I -S` startup isolation. The bootstrap refuses weaker flags before it
 reads the payload, then hashes the target bytes against the signed
 descriptor before compiling and executing those same in-memory bytes. It adds
 the trusted GhostCursor package and explicit interpreter dependency directories
-only after the hash; the plugin payload directory and `PYTHONPATH` never become
+(the system and user site directories, PyWin32's import directories and its
+DLL directory, found by `_dependency_paths`; DLL handles closed on failure)
+only after the hash. The user site is writable by the user: code there already
+runs as that user in every Python they start, so the hash protects the payload
+bytes, not the installed dependencies; the plugin payload directory and `PYTHONPATH` never become
 import paths, and neither system-site nor user-site `.pth` files execute before
 the hash.
 Executable plugin entrypoints are
