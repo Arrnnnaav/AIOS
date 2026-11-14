@@ -73,3 +73,14 @@ KILLED   ghostcursor/redact.py :: if slashes % 2 and found[0] in "nrtfb" -> if s
 KILLED   ghostcursor/providers/gateway.py :: placeholder, json.dumps(plain)[1:-1] -> placeholder, json.dumps(original)[1:-1]
 KILLED   ghostcursor/workspace/app.py :: if urllib.request.getproxies() else urllib.request.urlopen(r -> if False else urllib.request.urlopen(req
 ```
+
+## Fourth check: Google key ending in a hyphen
+
+Mutant: `AIza[-_A-Za-z0-9]{35}(?![-\w])` -> `AIza[-_A-Za-z0-9]{35}\b` (the
+pattern before the fix). Command `py -3.12 -m pytest
+tests/test_workspace_redact.py -x -q --basetemp=.tmp/pytest-mut -p
+no:cacheprovider`, summary line as printed:
+
+```
+1 failed, 18 passed in 1.31s
+```

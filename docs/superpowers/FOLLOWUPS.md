@@ -2565,3 +2565,16 @@ from 1053b54. Still open:
   about Orbyn's planned steps, which go through it); a lower-case path
   such as C:\tina in plain text still keeps "t"; this round was not
   re-reviewed.
+- Tier-1 review 15 Nov (cbaaca3..9180b7c, read at 9180b7c): one BLOCKING
+  finding, fixed: a Google key ending in "-" (about 1 in 64) was not
+  hidden because the fixed-length pattern ended in \b; it now ends in
+  (?![-\w]). Correction to the 9180b7c commit title: a Windows path keeps
+  no letter of a capitalised private word (C:\Users\Bob), but a
+  lower-case folder name starting with n, r, t, f or b still keeps its
+  first letter in plain text (C:\Users\nina -> \n[NAME_1]); plain and
+  JSON text cannot be told apart there. Left from the review: AWS secret
+  access keys, glpat-, npm_, xai-, pplx-, r8_ and the Jev (TypeSafe) key
+  shape are not checked or covered; hf_ also hides identifiers such as
+  hf_transformers_pipeline_cache; an original with a literal backslash
+  sequence in plain text comes back decoded; _post could always use the
+  no-proxy opener. This fix was not re-reviewed.

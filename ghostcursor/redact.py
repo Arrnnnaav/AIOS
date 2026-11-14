@@ -51,7 +51,9 @@ _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
         "KEY",
         re.compile(
             r"\b(?:(?:sk|pk|rk)[-_]|gh[pousr]_|github_pat_|xox[baprs]-|gsk_|nvapi-|tvly-|hf_)[-_A-Za-z0-9]{16,}\b"
-            r"|\bA(?:KI|SI)A[0-9A-Z]{16}\b|\bAIza[-_A-Za-z0-9]{35}\b"
+            # A Google key may end in "-", after which \b never holds; the
+            # fixed length has no shorter match to fall back to (review 15 Nov).
+            r"|\bA(?:KI|SI)A[0-9A-Z]{16}\b|\bAIza[-_A-Za-z0-9]{35}(?![-\w])"
         ),
     ),
     # explicit bearer/authorization credential (case-insensitive prefix)

@@ -249,3 +249,16 @@ def test_a_windows_path_keeps_no_letter_of_a_private_word():
     bs = chr(92)
     out, m = redact.scrub("C:" + bs + "Users" + bs + "Bob" + bs + "notes", terms=("Bob",))
     assert out == "C:" + bs + "Users" + bs + "[NAME_1]" + bs + "notes" and m == {"[NAME_1]": "Bob"}
+
+
+def test_a_google_key_ending_in_a_hyphen_is_hidden():
+    """Tier-1 review 15 Nov (blocking): about 1 Google key in 64 ends in "-"."""
+
+    import json
+
+    from ghostcursor import redact
+
+    key = "AIza" + "B" * 34 + "-"
+    for text in (f"key {key} here", f"key {key}", json.dumps({"t": f"key {key}"})):
+        assert key not in redact.scrub(text)[0], text
+    assert redact.scrub("AIza" + "B" * 36)[0] == "AIza" + "B" * 36  # too long: not this shape
