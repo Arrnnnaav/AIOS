@@ -2312,6 +2312,18 @@ from 1053b54. Still open:
   is scrubbed too; redaction is off by default; research still fetches the
   result pages it found (URLs only, no user text); no count of redactions
   in the audit log.
+- Privacy-first pass 14 Nov (after dark.ai's stated aims and Agent-Reach's
+  read-only reach). Built: Personal Brain text sealed with DPAPI (old plain
+  rows sealed on open; a memory this account cannot open is listed as
+  locked and never sent); a receipt in Setup of the last 20 model requests
+  with a count of hidden details, no content; "Ask a link" -- one https
+  page the person names, fetched directly through research.fetch_public,
+  gated by policy.allows("web"), read-only. Left: Company Brain
+  (knowledge.sqlite, FTS5) and kb.sqlite are not sealed at rest; the Jev
+  channel records no hidden count; a DPAPI-sealed Brain does not roam to
+  another computer or account (by design; no export-with-passphrase yet);
+  Ask a link reads html and plain text only (no PDF, video subtitles or
+  sign-in pages); the receipt does not list web page reads or searches.
 - Tier-1 review 14 Nov (dfe1fd1): no blocking finding. Fixed from it: the
   default scrub rewrote about a quarter of picture reference ids sent to
   Jev (reviewer's probe, 20,000 uuid4), so the D179 picture choice failed

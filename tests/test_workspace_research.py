@@ -539,3 +539,45 @@ def test_each_hop_waits_no_longer_than_the_deadline_left(monkeypatch):
     with httpx.Client(transport=httpx.MockTransport(handler)) as client:
         assert fetch_public(client, "https://good.com/start", resolve=public) is None
     assert timeouts == []
+
+
+def test_read_page_fetches_one_public_page_and_obeys_policy(monkeypatch):
+    import httpx
+    import pytest
+
+    from ghostcursor import policy
+    from ghostcursor.workspace import research
+
+    seen = []
+
+    def handler(request):
+        seen.append(request)
+        if request.headers["host"] == "pdf.com":
+            return httpx.Response(200, content=b"%PDF", headers={"content-type": "application/pdf"})
+        return httpx.Response(
+            200,
+            text="<html><script>x()</script><p>Rates rise in May.</p></html>",
+            headers={"content-type": "text/html"},
+        )
+
+    dns = {"good.com": {"93.184.216.34"}, "pdf.com": {"93.184.216.35"}, "lan.com": {"192.168.1.5"}}
+    transport = httpx.MockTransport(handler)
+    read = lambda url: research.read_page(url, transport=transport, resolve=dns.__getitem__)
+
+    assert read("https://good.com/a") == "Rates rise in May."
+    assert [r.method for r in seen] == ["GET"]  # read-only: one GET, nothing posted
+    with pytest.raises(ValueError):
+        read("https://lan.com/router")  # a private address is never fetched
+    with pytest.raises(ValueError):
+        read("https://pdf.com/x")  # not a page of text
+    assert len(seen) == 2  # the private one made no request at all
+
+    monkeypatch.setattr(policy, "_value", lambda name: {"MaxEgress": 0}.get(name))
+    with pytest.raises(PermissionError):
+        read("https://good.com/a")
+    monkeypatch.setattr(policy, "_value", lambda name: {"AllowedProviders": "company"}.get(name))
+    with pytest.raises(PermissionError):
+        read("https://good.com/a")
+    assert len(seen) == 2  # blocked before anything was sent
+    monkeypatch.setattr(policy, "_value", lambda name: {"AllowedProviders": "company;web"}.get(name))
+    assert read("https://good.com/a") == "Rates rise in May."

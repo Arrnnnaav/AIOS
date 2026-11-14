@@ -1245,6 +1245,27 @@ class App:
             if not text:
                 raise ValueError("ask a question")
             return {"answer": self.run("Researching", lambda: ws.research(text))}
+        if action == "read_link":  # one page the person named; read-only
+            from urllib.parse import urlsplit
+
+            from ghostcursor.workspace import research
+
+            url = body.get("url")
+            if (
+                not isinstance(url, str)
+                or not url.startswith("https://")
+                or len(url) > 2000
+                or any(c.isspace() or ord(c) < 32 for c in url)
+            ):
+                raise ValueError("paste a web address that starts with https://")
+            if redact.scrub(url, redact.SECRETS)[0] != url:
+                # The address itself is sent to that site: no key rides in it.
+                raise ValueError("that address holds a key or number; remove it")
+            return {
+                "name": (urlsplit(url).hostname or "web page")[:120],
+                "material": research.read_page(url),
+                "link": True,
+            }
         if action == "ask_file":
             material = body.get("material")
             if not isinstance(body.get("text"), str) or not text or len(text) > 500:

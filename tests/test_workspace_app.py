@@ -867,6 +867,35 @@ def test_the_receipt_lists_requests_newest_first_without_content(served, tmp_pat
     ]
 
 
+def test_read_link_takes_only_a_plain_https_address(served, monkeypatch):
+    from ghostcursor.workspace import research
+
+    asked = []
+    monkeypatch.setattr(
+        research, "read_page", lambda url: asked.append(url) or "page text"
+    )
+    _, port = served
+    for bad in (
+        None,
+        7,
+        "",
+        "http://example.com/",
+        "file:///c:/secret.txt",
+        "https://example.com/a b",
+        "https://example.com/" + "a" * 2000,
+        "https://example.com/?key=sk-proj-" + "a" * 40,
+    ):
+        assert call(port, "/api/read_link", {"url": bad})[0] == 400, bad
+    assert asked == []  # nothing was fetched for any of them
+    status, body = call(port, "/api/read_link", {"url": "https://example.com/post"})
+    assert status == 200 and json.loads(body) == {
+        "name": "example.com",
+        "material": "page text",
+        "link": True,
+    }
+    assert asked == ["https://example.com/post"]
+
+
 def test_true_is_not_memory_number_one(served):
     app, port = served
     brain = app.ws.brain  # its connection belongs to the worker thread

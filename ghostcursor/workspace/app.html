@@ -420,6 +420,16 @@ function renderWork() {
   head.append(el("h3", "", "Work"));
   const fileAsk = el("button", "secondary", "Ask a file"); fileAsk.dataset.workFocus = "askfile"; fileAsk.disabled = !!S.busy; fileAsk.onclick = openFileAsk;
   head.append(fileAsk);
+  const linkAsk = el("button", "secondary", "Ask a link"); linkAsk.disabled = !!S.busy;
+  linkAsk.onclick = async () => {
+    const url = await askText("Paste a web address (https://) to read and ask about. Orbyn fetches the page itself; only the passages that match your question go to your model.");
+    if (!url) return;
+    linkAsk.disabled = true; linkAsk.textContent = "Reading\u2026";
+    const page = await act("read_link", { url: url.trim() });
+    linkAsk.disabled = false; linkAsk.textContent = "Ask a link";
+    if (page) openFileAsk(page);
+  };
+  head.append(linkAsk);
   const fresh = el("button", "pill go", "New task");
   fresh.dataset.workFocus = "newtask";
   fresh.onclick = () => { setTab("chat"); $("input").focus(); };
@@ -779,7 +789,7 @@ function openFileAsk(offered) {
   const form = el("div", "fileask");
   const file = el("input"); file.type = "file"; file.accept = ".txt,.md,.csv,.json,.py,.js,.ts,.yaml,.yml,.html,.css";
   const fileLabel = el("label", "", "Text file"); fileLabel.append(file);
-  if (offered) { fileLabel.replaceChildren("File: " + offered.name); }
+  if (offered) { fileLabel.replaceChildren((offered.link ? "Page: " : "File: ") + offered.name); }
   const question = el("textarea"); question.rows = 3; question.maxLength = 500; question.placeholder = "What do you want to know?"; question.setAttribute("aria-label", "Question about the file");
   const answer = el("div", "mem"); answer.hidden = true; answer.tabIndex = -1; answer.setAttribute("role", "status");
   const row = el("div", "sheetrow");

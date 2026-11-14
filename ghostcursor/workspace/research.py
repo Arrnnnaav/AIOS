@@ -174,6 +174,30 @@ def _client(transport):
     )
 
 
+def read_page(url: str, *, transport=None, resolve=None) -> str:
+    """The readable text of ONE public web page the person named.
+
+    Fetched straight from that site by this computer (no reader or
+    proxy service in between), through the same guarded fetch research
+    uses: public addresses only, no private redirects, capped size and
+    time. Read-only: one GET, nothing posted (Agent-Reach's rule)."""
+
+    from ghostcursor import audit, policy
+
+    if not policy.allows("web"):  # D180: local only, or not on the allow-list
+        raise PermissionError("your organization does not allow reading web pages")
+    with _client(transport) as client:
+        page = fetch_public(client, url, resolve=resolve)
+    audit.record("egress", provider="web", model=None, failure=None, images=0)
+    kind = page.headers.get("content-type", "") if page is not None else ""
+    if "html" not in kind and "text/plain" not in kind:
+        raise ValueError("that page could not be read")
+    text = _clean(page.text[: MAX_PAGE_CHARS * 4])[:MAX_PAGE_CHARS]
+    if not text.strip():
+        raise ValueError("that page has no readable text")
+    return text
+
+
 def tavily_search(query: str, key: str, *, transport=None) -> list[dict]:
     body = {
         "query": query[:400],
