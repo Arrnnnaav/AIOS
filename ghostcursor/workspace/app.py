@@ -1424,6 +1424,8 @@ class App:
         brain = self.ws.brain
         verb = str(body.get("verb", ""))
         mid = body.get("id")
+        if isinstance(mid, bool):
+            mid = None  # true is not memory #1
         if verb == "forget" and isinstance(mid, int):
             return "forgotten" if brain.forget(mid) else "no such memory"
         if verb == "correct" and isinstance(mid, int):

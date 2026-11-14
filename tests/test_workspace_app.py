@@ -816,6 +816,26 @@ def test_act_needs_a_plan_and_unknown_actions_fail(served):
     status, body = call(port, "/api/act", {"step": 1, "windows": [0]})
     assert status == 400  # no plan / no window: nothing acts
     assert call(port, "/api/nope")[0] == 400
+    # A malformed step is refused the same way, for Teach and for Act.
+    for bad in ("", None, True, [1], 1.5, 10**30, 0, -1):
+        for action in ("act", "teach"):
+            status, _ = call(port, f"/api/{action}", {"step": bad, "windows": [0]})
+            assert status == 400, (action, bad)
+
+
+def test_true_is_not_memory_number_one(served):
+    app, port = served
+    brain = app.ws.brain  # its connection belongs to the worker thread
+
+    def store():
+        with brain._db:
+            return brain._insert(
+                "preference", "I prefer short answers", "user_stated", 0.9, "durable", ""
+            )
+
+    assert app.jobs.submit(store).result() == 1
+    assert call(port, "/api/brain", {"verb": "forget", "id": True})[0] == 400
+    assert app.jobs.submit(lambda: brain.get(1)).result() is not None
 
 
 def test_a_busy_workspace_refuses_new_work_but_takes_signals(served):

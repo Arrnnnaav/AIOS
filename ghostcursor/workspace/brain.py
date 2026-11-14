@@ -77,6 +77,15 @@ def _supported(text: str, user_turn: str) -> bool:
     return bool(words) and len(words & _words(user_turn)) / len(words) >= MIN_SUPPORT
 
 
+def _unsafe(text: str) -> bool:
+    """Never stored, never handed to the model: a credential by name, or a
+    card, bank or ID number, a key or a token, however spaced."""
+
+    return bool(_SENSITIVE.search(text)) or (
+        redact.scrub(text, redact.SECRETS)[0] != text
+    )
+
+
 def eligibility(
     kind: str, text: str, origin: str, confidence: float, user_turn: str
 ) -> str:
@@ -84,10 +93,8 @@ def eligibility(
 
     if kind not in CLASSES or origin not in ORIGINS or not text.strip():
         return "refused"
-    if _SENSITIVE.search(text) or len(text) > MAX_TEXT:
+    if _unsafe(text) or len(text) > MAX_TEXT:
         return "refused"
-    if redact.scrub(text, redact.SECRETS)[0] != text:
-        return "refused"  # a card, bank or ID number, a key or a token, however spaced
     if origin == "user_corrected":
         return "durable"
     if _TEMPORARY.search(text) or _TEMPORARY.search(user_turn):
@@ -243,8 +250,7 @@ class Brain:
         scored = [
             (len(want & _words(m.text)), m)
             for m in self.list()
-            if not _SENSITIVE.search(m.text)
-            and redact.scrub(m.text, redact.SECRETS)[0] == m.text
+            if not _unsafe(m.text)
         ]
         ranked = sorted(
             (s for s in scored if s[0] or s[1].kind == "preference"),

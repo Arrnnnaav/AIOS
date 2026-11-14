@@ -314,5 +314,8 @@ def test_a_number_stored_before_the_rule_never_reaches_the_model(brain):
             "preference", "my card is 4111 1111 1111 1111", "user_stated", 0.9,
             "durable", "",
         )
-    assert len(brain.list()) == 1  # still shown, so it can be forgotten
-    assert brain.relevant("card") == []
+        brain._insert(
+            "preference", "my password is hunter2", "user_stated", 0.9, "durable", ""
+        )
+    assert len(brain.list()) == 2  # still shown, so they can be forgotten
+    assert brain.relevant("card") == [] and brain.relevant("password") == []

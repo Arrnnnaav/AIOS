@@ -2299,6 +2299,17 @@ from 1053b54. Still open:
   corrected back to life, and a memory stored before the rule that today's
   rule would refuse is never handed to the model (it stays in the panel so
   it can be forgotten; it is not deleted).
+- Tier-1 review 14 Nov (45f1728..2f404af): no blocking finding. Done from
+  it: one shared refusal rule for storing and for sending a memory, a test
+  for each half, malformed Teach/Act steps pinned as refused, and `true` no
+  longer accepted as memory #1 by forget/correct. Left: the Brain panel
+  does not mark a memory that is withheld from the model; the console
+  export writes withheld memories to the file the person names.
+- Work page 14 Nov: "Ask a file" passed its click event as the offered
+  file (sheet showed "File: undefined", no chooser, every ask failed);
+  fixed. A sweep of malformed bodies over every local action now returns
+  only 200/400 (ids went through bare int()). Not swept with real input:
+  actions that reach a model, the microphone or Credential Manager.
 - Tier-1 review 14 Nov (fb24b3e..9e2ad27): one BLOCKING finding, fixed: a
   link added again with Private ticked returned the existing normal link,
   dropping the mark. A repeat (link, typed fact, ingested passage) now
