@@ -368,3 +368,39 @@ def test_a_memory_this_account_cannot_open_is_locked_and_never_sent(brain):
         )
     assert [m.text for m in brain.list()] == [LOCKED]  # listed, so it can be forgotten
     assert brain.relevant("anything") == []
+
+
+def test_a_locked_memory_is_never_replaced_or_written_back_as_text(brain):
+    from ghostcursor.workspace.brain import LOCKED
+
+    with brain._db:
+        brain._db.execute(
+            "INSERT INTO memories (kind, text, origin, confidence, scope, status, "
+            "created, expires, source) VALUES "
+            "('preference','dp1:bm90IGEgYmxvYg==','user_stated',0.9,'durable','active',0,NULL,'')"
+        )
+    said = "I use my Windows account on this computer"  # shares the marker's words
+    brain.remember(
+        "preference", said, origin="user_stated", confidence=0.9, user_turn=said
+    )
+    assert LOCKED in [m.text for m in brain.list()]  # still listed, still forgettable
+    locked = next(m for m in brain.list() if m.text == LOCKED)
+    assert brain.correct(locked.mid, LOCKED) is None  # the marker is not a memory
+
+
+def test_a_plain_row_that_only_looks_sealed_by_case_is_still_sealed(tmp_path):
+    from ghostcursor.workspace.brain import Brain
+
+    path = tmp_path / "brain.sqlite"
+    first = Brain(path)
+    with first._db:
+        first._db.execute(
+            "INSERT INTO memories (kind, text, origin, confidence, scope, status, "
+            "created, expires, source) VALUES "
+            "('preference','DP1: is my router name','user_stated',0.9,'durable','active',0,NULL,'')"
+        )
+    first.close()
+    again = Brain(path)
+    assert again._db.execute("SELECT text FROM memories").fetchone()[0].startswith("dp1:")
+    assert [m.text for m in again.list()] == ["DP1: is my router name"]
+    again.close()

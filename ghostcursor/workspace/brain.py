@@ -94,7 +94,7 @@ def eligibility(
 
     if kind not in CLASSES or origin not in ORIGINS or not text.strip():
         return "refused"
-    if _unsafe(text) or len(text) > MAX_TEXT:
+    if _unsafe(text) or len(text) > MAX_TEXT or text == LOCKED:
         return "refused"
     if origin == "user_corrected":
         return "durable"
@@ -170,7 +170,7 @@ class Brain:
         self._db.executescript(_SCHEMA)
         with self._db:  # seal what an older build stored as plain text
             for mid, text in self._db.execute(
-                "SELECT mid, text FROM memories WHERE text NOT LIKE ?", (SEALED + "%",)
+                "SELECT mid, text FROM memories WHERE substr(text, 1, 4) != ?", (SEALED,)
             ).fetchall():
                 self._db.execute(
                     "UPDATE memories SET text=? WHERE mid=?", (_seal(text), mid)
@@ -253,7 +253,10 @@ class Brain:
         for mid, old in self._db.execute(
             "SELECT mid, text FROM memories WHERE kind=? AND status='active'", (kind,)
         ).fetchall():
-            words = _words(_unseal(old))
+            old = _unseal(old)
+            if old == LOCKED:
+                continue  # unreadable here: never replaced by guesswork
+            words = _words(old)
             if new and words and len(new & words) / min(len(new), len(words)) >= 0.5:
                 self._db.execute(
                     "UPDATE memories SET status='superseded' WHERE mid=?", (mid,)

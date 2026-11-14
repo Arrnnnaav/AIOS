@@ -2312,6 +2312,19 @@ from 1053b54. Still open:
   is scrubbed too; redaction is off by default; research still fetches the
   result pages it found (URLs only, no user text); no count of redactions
   in the audit log.
+- Tier-1 review 14 Nov (d4fe6bb..555df5b): one BLOCKING finding (rule 7),
+  fixed: the receipt showed "nothing to hide" for a request sent with
+  hiding switched off, because an empty map meant both "found nothing" and
+  "did not run". The log now records `scrubbed`, and the page says "sent
+  without hiding private details" or "stayed on this computer". Also fixed
+  from it: a locked memory is never superseded or written back as text; a
+  plain row starting "DP1:" is sealed (LIKE ignored case); an error or
+  sign-in page is not returned as the page; NUL stripped; `at` typed. Left:
+  a failed DPAPI call during the sealing migration stops the Brain opening;
+  read_link runs outside the worker (not stoppable for up to 20 s, not
+  refused while busy); an email or phone number in a typed address is sent
+  to that site; the receipt reads the whole log file per click; no
+  action-level test for a non-default port.
 - Privacy-first pass 14 Nov (after dark.ai's stated aims and Agent-Reach's
   read-only reach). Built: Personal Brain text sealed with DPAPI (old plain
   rows sealed on open; a memory this account cannot open is listed as

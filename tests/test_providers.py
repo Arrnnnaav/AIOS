@@ -1001,5 +1001,30 @@ def test_the_request_log_counts_hidden_details_and_never_holds_them(tmp_path):
     )
     gateway.plan(_secret_envelope())
     text = log.read_text(encoding="utf-8")
-    assert json.loads(text.splitlines()[-1])["hidden"] == 2  # the card and the email
+    last = json.loads(text.splitlines()[-1])
+    assert last["hidden"] == 2 and last["scrubbed"] is True  # the card and the email
     assert "ada@acme.io" not in text and "4111" not in text
+
+
+def test_the_log_never_says_nothing_was_hidden_when_the_scrub_did_not_run(
+    tmp_path, monkeypatch
+):
+    """Rule 7: with hiding switched off, or a model on this computer, the line
+    says the scrub did not run -- never a count of 0 that reads as "clean"."""
+
+    from ghostcursor import settings
+
+    monkeypatch.setattr(settings, "redact_egress", lambda: False)
+    transport, calls = _transport(_chat(PLAN))
+    log = tmp_path / "l"
+    gateway = Gateway(
+        system_two=("openrouter",),
+        transport=transport,
+        key_lookup=_keys(openrouter="k"),
+        log_path=log,
+    )
+    gateway.plan(_secret_envelope())
+    assert "ada@acme.io" in calls[0].content.decode()  # it did leave unhidden
+    last = json.loads(log.read_text(encoding="utf-8").splitlines()[-1])
+    assert last["scrubbed"] is False and last["hidden"] is None
+    assert Gateway(redact_egress=True)._outbound([], "ollama") == ([], None)

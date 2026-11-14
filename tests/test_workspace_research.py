@@ -552,6 +552,8 @@ def test_read_page_fetches_one_public_page_and_obeys_policy(monkeypatch):
 
     def handler(request):
         seen.append(request)
+        if request.headers["host"] == "gone.com":
+            return httpx.Response(404, text="<html>Not found</html>", headers={"content-type": "text/html"})
         if request.headers["host"] == "pdf.com":
             return httpx.Response(200, content=b"%PDF", headers={"content-type": "application/pdf"})
         return httpx.Response(
@@ -571,6 +573,10 @@ def test_read_page_fetches_one_public_page_and_obeys_policy(monkeypatch):
     with pytest.raises(ValueError):
         read("https://pdf.com/x")  # not a page of text
     assert len(seen) == 2  # the private one made no request at all
+    dns["gone.com"] = {"93.184.216.36"}
+    with pytest.raises(ValueError):
+        read("https://gone.com/x")  # an error page is not the page
+    seen.pop()
 
     monkeypatch.setattr(policy, "_value", lambda name: {"MaxEgress": 0}.get(name))
     with pytest.raises(PermissionError):

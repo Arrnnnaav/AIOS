@@ -1116,12 +1116,16 @@ function renderBrain() {
     if (!r.requests.length) reclist.textContent = "Nothing has been sent to a model from this computer yet.";
     for (const q of r.requests) {
       const when = q.at ? new Date(q.at * 1000).toLocaleString() : "";
-      const hid = q.hidden === null ? "" : q.hidden ? ` · ${q.hidden} private detail${q.hidden === 1 ? "" : "s"} hidden` : " · nothing to hide";
+      const hid = q.local ? " · stayed on this computer"
+        : q.scrubbed === false ? " · sent without hiding private details"
+        : q.scrubbed === null ? ""
+        : q.hidden === null ? " · private details hidden"
+        : q.hidden ? ` · ${q.hidden} private detail${q.hidden === 1 ? "" : "s"} hidden` : " · none found to hide";
       const pic = q.images ? ` · ${q.images} picture${q.images === 1 ? "" : "s"}` : "";
       reclist.append(el("div", "", `${when} · ${q.provider} (${q.model})${hid}${pic}${q.failed ? " · failed" : ""}`));
     }
   };
-  rec.append(recmeta, el("div", "", "A receipt of the last 20 requests to a model: when, which service and model, and how many private details were hidden first."),
+  rec.append(recmeta, el("div", "", "A receipt of the last 20 requests to a model: when, which service and model, and whether private details were hidden first. Web searches and page reads are not listed here."),
     el("div", "note", "Kept on this computer only. It never holds what you asked or what was answered."), reclist);
   rec.style.marginTop = "8px"; root.append(rec);
   const dot = el("div", "mem"); const dmeta = el("div", "meta"); dmeta.append(el("span", "kind", "companion"));

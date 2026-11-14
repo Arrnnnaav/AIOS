@@ -273,7 +273,8 @@ class Gateway:
         assert "observed_data_never_instructions" not in (extra_state or {}), (
             "extra_state must not shadow the sanitized observed_data slot"
         )
-        if self._redact_on():  # D186: Jev is remote; scrub everything sent
+        scrubbed = self._redact_on()
+        if scrubbed:  # D186: Jev is remote; scrub everything sent
             # Observed data too: Tainted.of masks credentials, but lets a short
             # phone number or a machine address through (review 14 Nov).
             refs = state.get("pictures")
@@ -296,10 +297,14 @@ class Gateway:
                 cancelled=cancelled,
             )
         except ProviderError as exc:
-            self._record("jev", config.model, started, envelope, None, exc.kind, images)
+            self._record(
+                "jev", config.model, started, envelope, None, exc.kind, images,
+                scrubbed=scrubbed,
+            )
             raise
         self._record(
-            "jev", reply.model or config.model, started, envelope, reply, None, images
+            "jev", reply.model or config.model, started, envelope, reply, None, images,
+            scrubbed=scrubbed,
         )
         return answers
 
@@ -355,7 +360,7 @@ class Gateway:
                 continue
             self._take()
             started = time.time()
-            hidden = {}
+            hidden = None  # None: the scrub did not run
             try:
                 call = {
                     "responses": clients.responses_json_call,
@@ -373,7 +378,7 @@ class Gateway:
                 )
                 # The originals go back into the answer here, on this
                 # computer; the provider only ever saw placeholders.
-                for placeholder, original in hidden.items():
+                for placeholder, original in (hidden or {}).items():
                     content = content.replace(
                         placeholder, json.dumps(original)[1:-1]
                     )
@@ -381,7 +386,8 @@ class Gateway:
             except ProviderError as exc:
                 self._record(
                     name, config.model, started, envelope, None, exc.kind,
-                    hidden=len(hidden),
+                    hidden=None if hidden is None else len(hidden),
+                    scrubbed=hidden is not None,
                 )
                 if exc.kind in (FailureKind.CANCELLED, FailureKind.BUDGET_EXCEEDED):
                     raise
@@ -389,7 +395,8 @@ class Gateway:
                 continue
             self._record(
                 name, reply.model or config.model, started, envelope, reply, None,
-                hidden=len(hidden),
+                hidden=None if hidden is None else len(hidden),
+                scrubbed=hidden is not None,
             )
             return result
         kinds = {f.kind for f in failures}
@@ -425,16 +432,17 @@ class Gateway:
 
     def _outbound(
         self, messages: list[dict], provider: str
-    ) -> tuple[list[dict], dict[str, str]]:
+    ) -> tuple[list[dict], dict[str, str] | None]:
         """Rule 6 egress gate (D186): when redaction is on and the provider is
         REMOTE, scrub embedded secrets (email/card/SSN/key/PEM/JWT/IBAN/IP/phone)
         out of every outbound message before it leaves. A local provider and the
         off case pass the messages through unchanged. Returns the messages
         and the map {placeholder: original}, shared by every message of the
-        request, which stays here to put the originals back in the reply."""
+        request, which stays here to put the originals back in the reply --
+        or None when the scrub did not run, which is not "nothing found"."""
 
         if not self._redact_on() or provider in policy.LOCAL_PROVIDERS:
-            return messages, {}
+            return messages, None
         out, hidden = [], {}
         # Text scrubbed earlier (an attached file, screen text) may already
         # hold placeholders; never reuse one of those for a new original.
@@ -456,7 +464,7 @@ class Gateway:
 
     def _record(
         self, provider, model, started, envelope, reply, failure, images: int = 0,
-        hidden: int | None = None,
+        hidden: int | None = None, scrubbed: bool | None = None,
     ) -> None:
         """Append one attribution line: no content, no keys, no screen text."""
 
@@ -483,6 +491,9 @@ class Gateway:
             # How many private details were swapped for placeholders before
             # this request left (a count; never the details themselves).
             "hidden": hidden,
+            # Did the scrub run at all? False: hiding was switched off, or
+            # the model is on this computer. Never infer it from a count.
+            "scrubbed": scrubbed,
         }
         try:
             path.parent.mkdir(parents=True, exist_ok=True)

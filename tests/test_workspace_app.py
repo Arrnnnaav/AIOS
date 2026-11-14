@@ -851,19 +851,23 @@ def test_the_receipt_lists_requests_newest_first_without_content(served, tmp_pat
     app.ws.gateway.log_path = log
     assert json.loads(call(port, "/api/egress_log")[1]) == {"requests": []}
     rows = [
+        {"at": "soon", "provider": "ollama", "model": "o", "scrubbed": False},
         {"at": 1.0, "provider": "jev", "model": "j", "failure": None, "images": 1},
         {"at": 2.0, "provider": "openrouter", "model": "m", "failure": "unavailable",
-         "images": 0, "hidden": 3, "request_sha256": "abc", "goal": "never shown"},
+         "images": 0, "hidden": 3, "scrubbed": True, "request_sha256": "abc",
+         "goal": "never shown"},
     ]
     log.write_text(
         "\n".join(json.dumps(r) for r in rows) + "\nnot json\n[1]\n", encoding="utf-8"
     )
     got = json.loads(call(port, "/api/egress_log")[1])["requests"]
     assert got == [
-        {"at": 2.0, "provider": "openrouter", "model": "m", "failed": True,
-         "images": 0, "hidden": 3},
-        {"at": 1.0, "provider": "jev", "model": "j", "failed": False,
-         "images": 1, "hidden": None},
+        {"at": 2.0, "local": False, "scrubbed": True, "provider": "openrouter",
+         "model": "m", "failed": True, "images": 0, "hidden": 3},
+        {"at": 1.0, "local": False, "scrubbed": None, "provider": "jev",
+         "model": "j", "failed": False, "images": 1, "hidden": None},
+        {"at": None, "local": True, "scrubbed": False, "provider": "ollama",
+         "model": "o", "failed": False, "images": 0, "hidden": None},
     ]
 
 

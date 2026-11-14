@@ -957,9 +957,13 @@ class App:
                 if not isinstance(row, dict):
                     continue
                 images, hidden = row.get("images"), row.get("hidden")
+                at, scrubbed = row.get("at"), row.get("scrubbed")
                 rows.append(
                     {
-                        "at": row.get("at"),
+                        "at": at if isinstance(at, (int, float)) and not isinstance(at, bool) else None,
+                        "local": row.get("provider") in policy.LOCAL_PROVIDERS,
+                        # None: an older line that did not record it.
+                        "scrubbed": scrubbed if isinstance(scrubbed, bool) else None,
                         "provider": str(row.get("provider"))[:40],
                         "model": str(row.get("model"))[:80],
                         "failed": bool(row.get("failure")),
