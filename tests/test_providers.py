@@ -608,6 +608,30 @@ def test_redact_egress_scrubs_jev_trusted_context(tmp_path):
     assert "4111 1111 1111 1111" not in body and "ada@acme.io" not in body
 
 
+def test_the_persons_switch_scrubs_observed_data_bound_for_jev(tmp_path, monkeypatch):
+    """Tainted.of alone lets a short phone number and a machine address
+    through; with the switch on they are scrubbed on the Jev channel too."""
+
+    from ghostcursor import settings
+
+    def sent(on):
+        monkeypatch.setattr(settings, "redact_egress", lambda: on)
+        transport, calls = _transport(_jev({"choice": "c1"}))
+        gateway = Gateway(
+            transport=transport, key_lookup=_keys(typesafe="k"), log_path=tmp_path / "l"
+        )
+        env = Envelope(
+            task="choose the control",
+            tainted={"c1": Tainted.of("uia_name", "server 10.0.0.5 call 555-01234")},
+        )
+        gateway.choose(env, ("c1",), question="q")
+        return calls[0].content.decode()
+
+    assert "10.0.0.5" in sent(False)  # the gap this closes, pinned
+    body = sent(True)
+    assert "10.0.0.5" not in body and "555-01234" not in body
+
+
 def test_redact_egress_off_leaves_jev_trusted_context(tmp_path):
     transport, calls = _transport(_jev({"choice": "c1"}))
     gateway = Gateway(

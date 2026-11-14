@@ -144,6 +144,18 @@ def test_a_provider_allow_list_also_governs_research_web_search(monkeypatch, tmp
     assert asked == ["q"] and trace.search_provider == "duckduckgo"
 
 
+def test_private_details_in_a_research_question_never_reach_web_search(tmp_path):
+    asked = []
+    research_mod.research(
+        "who is ada@acme.io",
+        Gateway(key_lookup=_keys(), log_path=tmp_path / "l"),
+        search=lambda q: asked.append(q) or [],
+        key_lookup=_keys(),
+        trace_path=tmp_path / "t",
+    )
+    assert asked == ["who is [EMAIL_1]"]
+
+
 def test_blocked_apps_are_never_bound(monkeypatch):
     _policy(monkeypatch, BlockedApps=" Epic.exe ;; chrome.exe")
     ids = {11: Identity(1, "chrome.exe", "1"), 22: Identity(2, "epic.exe", "1")}

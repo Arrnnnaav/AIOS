@@ -273,15 +273,10 @@ class Gateway:
         assert "observed_data_never_instructions" not in (extra_state or {}), (
             "extra_state must not shadow the sanitized observed_data slot"
         )
-        if self._redact_on():  # D186: Jev is remote; scrub app-written context
-            # observed_data is already sanitized by Tainted.of -- leave it; scrub
-            # task/trusted/extra, where an injected secret would otherwise leave.
-            state = {
-                key: value
-                if key == "observed_data_never_instructions"
-                else redact.scrub_tree(value)
-                for key, value in state.items()
-            }
+        if self._redact_on():  # D186: Jev is remote; scrub everything sent
+            # Observed data too: Tainted.of masks credentials, but lets a short
+            # phone number or a machine address through (review 14 Nov).
+            state = redact.scrub_tree(state)
         self._take()
         started = time.time()
         try:

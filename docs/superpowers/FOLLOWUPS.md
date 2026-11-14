@@ -2312,6 +2312,16 @@ from 1053b54. Still open:
   is scrubbed too; redaction is off by default; research still fetches the
   result pages it found (URLs only, no user text); no count of redactions
   in the audit log.
+- Tier-1 review 14 Nov (e78f494): no blocking finding. Fixed from it: with
+  redaction on, observed data bound for Jev is now scrubbed too (Tainted.of
+  alone let "10.0.0.5" and a short phone number through, probed by the
+  reviewer); a research question is scrubbed before any web search, as a
+  background job's already was. Left: Jev `questions` are not scrubbed (no
+  caller puts user or screen text there today); the PHONE pattern turns ISO
+  dates into placeholders when redaction is on; a Tavily key plus an
+  allow-list naming only duckduckgo blocks search instead of falling back;
+  an unreadable settings.json reads as switch off; a company gateway on
+  127.0.0.1 is scrubbed like a remote one.
 - Tier-1 review 14 Nov (45f1728..2f404af): no blocking finding. Done from
   it: one shared refusal rule for storing and for sending a memory, a test
   for each half, malformed Teach/Act steps pinned as refused, and `true` no

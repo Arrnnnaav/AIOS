@@ -22,6 +22,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
+from ghostcursor import redact
 from ghostcursor.providers.envelope import Envelope, Tainted
 from ghostcursor.providers.errors import FailureKind, ProviderError
 from ghostcursor.providers.schemas import (
@@ -592,12 +593,15 @@ def research(
     try:
         if provider == "none":  # D180: local only; nothing is searched
             raise PermissionError("blocked by policy")
+        # A search service is remote: private details in the question stay
+        # here, as they already do for a background job.
+        query = redact.scrub(question)[0]
         if search is not None:
-            hits = search(question)
+            hits = search(query)
         elif key:
-            hits = tavily_search(question, key)
+            hits = tavily_search(query, key)
         else:
-            hits = duckduckgo_search(question)
+            hits = duckduckgo_search(query)
     except Exception as exc:  # network: record, never guess
         hits, failures = [], [f"search: {type(exc).__name__}"]
     if cancelled():
