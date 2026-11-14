@@ -139,6 +139,27 @@ def main(argv: list[str]) -> int:
             except subprocess.TimeoutExpired:
                 process.kill()
                 check("quits when asked", False, "had to be killed")
+        # The same exe as a read-only MCP server for another agent (stdio).
+        try:
+            agent = subprocess.run(
+                [str(exe), "--agent-server"],
+                input='{"jsonrpc":"2.0","id":1,"method":"tools/list"}\n'
+                '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"recall","arguments":{"query":"smoke"}}}\n',
+                capture_output=True, text=True, encoding="utf-8", timeout=60, env=env, cwd=data,
+            )
+            replies = [json.loads(x) for x in agent.stdout.splitlines()]
+            check(
+                "answers another agent over stdio",
+                len(replies) == 2 and len(replies[0]["result"]["tools"]) == 3,
+                agent.stdout[:200] + agent.stderr[-200:],
+            )
+            check(
+                "and shares nothing while agent access is off",
+                replies[1]["result"]["isError"] is True
+                and "smoke fact" not in agent.stdout,
+            )
+        except Exception as exc:
+            check("answers another agent over stdio", False, repr(exc))
         crashes = list(Path(data).rglob("crash*"))
         check("left no crash report", not crashes, str([c.name for c in crashes]))
     print("FAILED: " + ", ".join(failed) if failed else "all checks passed")

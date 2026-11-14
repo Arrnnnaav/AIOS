@@ -1114,3 +1114,24 @@ def test_a_private_word_in_a_multi_line_message_never_reaches_a_cloud_model(
     gateway.plan(env)
     body = calls[0].content.decode()
     assert "Acme" not in body and "Health" not in body
+
+
+def test_a_model_on_this_computer_is_never_reached_through_a_proxy(monkeypatch):
+    import httpx
+
+    from ghostcursor.providers import clients
+
+    seen = []
+    real = httpx.Client
+
+    def spy(*args, **kwargs):
+        seen.append((kwargs.get("base_url"), kwargs.get("trust_env")))
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(clients.httpx, "Client", spy)
+    for name in ("ollama", "openrouter"):
+        transport, _ = _transport(_chat(PLAN))
+        Gateway(system_two=(name,), transport=transport, key_lookup=_keys(openrouter="k")).plan(
+            _secret_envelope()
+        )
+    assert [t for _, t in seen] == [False, True]

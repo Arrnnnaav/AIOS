@@ -1074,7 +1074,7 @@ function renderBrain() {
   pmeta.append(vsw);
   priv.append(pmeta, el("div", "", "Let Jev see a picture of the windows you guide when text is not enough."),
     el("div", "note", "Only buttons, tabs and menus are shown; text, lists, documents and titles are greyed out on this computer before anything is sent; parts covered by other windows stay grey too. Orbyn saves nothing; TypeSafe's docs do not say how long it keeps images."));
-  if (S.managed) priv.append(el("div", "note", ["Set by your organization: nothing leaves this computer.", "Set by your organization: text only, no pictures.", "Your organization allows pictures."][S.egress]));
+  if (S.managed) priv.append(el("div", "note", ["Set by your organization: nothing leaves this computer.", "Set by your organization: text only, no pictures.", "Your organization allows pictures."][S.org_egress]));
   priv.lastChild.style.textAlign = "left";
   root.append(priv);
   const gap = el("div", "mem"); const gmeta = el("div", "meta"); gmeta.append(el("span", "kind", "offline"));
@@ -1083,7 +1083,7 @@ function renderBrain() {
   gsw.onclick = () => act("local_only", { on: !S.local_only }, S.local_only ? "Cloud models and the web allowed again" : "Everything now stays on this computer");
   gmeta.append(gsw);
   gap.append(gmeta, el("div", "", "Keep everything on this computer."),
-    el("div", "note", "When on, Orbyn sends nothing anywhere: no cloud model, no Jev, no web search or page read, no GitHub, calendar or mail. Only a model running on this computer (Ollama) answers, so install one first or Orbyn cannot answer. Off by default."));
+    el("div", "note", "When on, Orbyn's own work stays here: no cloud model, no Jev, no web search or page read, no GitHub, calendar or mail, no crash reports, nothing to another agent. Three things you start yourself still use the internet: signing in to ChatGPT, the first download of a voice model, and publishing to a team folder. Only a model running on this computer (Ollama) answers, so install one first or Orbyn cannot answer. Off by default."));
   if (S.local_only && S.local_ready === false) { const w = el("div", "note", "No model is running on this computer, so Orbyn cannot answer right now. Install Ollama (ollama.com), start it, and run: ollama pull qwen3:4b-instruct"); w.setAttribute("role", "alert"); w.style.textAlign = "left"; gap.append(w); }
   gap.style.marginTop = "8px"; root.append(gap);
   const ag = el("div", "mem"); const ameta = el("div", "meta"); ameta.append(el("span", "kind", "other agents"));
@@ -1093,7 +1093,7 @@ function renderBrain() {
   asw.onclick = () => act("agent_access", { on: !S.agent_access }, S.agent_access ? "Agent access off" : "Agent access on");
   ameta.append(asw);
   ag.append(ameta, el("div", "", "Let another agent on this computer read your Company Brain and saved workflows."),
-    el("div", "note", "Read-only, through the Model Context Protocol: the agent can search reviewed facts and read saved workflow steps; it cannot add, change, click or type. Facts marked private are never shared. That agent may send what it reads to its own cloud model, so private details and private words are hidden first, and each request shows in the receipt below. Off by default; not available when everything stays on this computer."));
+    el("div", "note", "Read-only, through the Model Context Protocol: the agent can search reviewed facts and read saved workflow steps; it cannot add, change, click or type. Facts marked private are never shared. That agent may send what it reads to its own cloud model, so private details and private words are always hidden first (even if you switched hiding off for your own model), and each request shows in the receipt below. Off by default; not available when everything stays on this computer."));
   if (S.agent_access) {
     const cmd = el("div", "note", "Add this command to your agent as an MCP server: " + S.agent_command); cmd.style.textAlign = "left"; cmd.style.userSelect = "all"; ag.append(cmd);
   }
@@ -1175,7 +1175,7 @@ function renderBrain() {
   auCheck.onclick = async () => {
     let r; try { r = await api("audit_summary"); } catch (e) { return toast(e.message); }
     auOut.hidden = false; auOut.replaceChildren();
-    auOut.append(el("div", "", r.intact ? `Intact: ${r.lines} entries, none edited, removed or reordered.` : `Broken at entry ${r.broken_at} of ${r.lines}: the record was changed after it was written.`));
+    auOut.append(el("div", "", r.intact ? `Intact: ${r.lines} entries, none edited, reordered or removed from the middle. (Entries cut from the very end cannot be detected.)` : `Broken at entry ${r.broken_at} of ${r.lines}: the record was changed after it was written.`));
     const names = { plan_approved: "plans you approved", act_step: "steps Orbyn performed", act_run: "runs of approved plans", drive_approved: "browser sessions you approved", egress: "requests that left this computer", team_publish: "team publishes", team_sync: "team syncs" };
     const parts = Object.entries(r.events).map(([k, n]) => `${n} ${names[k] || k}`);
     auOut.append(el("div", "", parts.length ? `Last ${r.days} days: ${parts.join(", ")}.` : `Nothing recorded in the last ${r.days} days.`));

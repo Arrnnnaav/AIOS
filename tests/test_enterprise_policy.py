@@ -356,3 +356,18 @@ def test_the_private_word_list_is_sealed_on_disk(tmp_path, monkeypatch):
     monkeypatch.setattr(brain, "_seal", refuse)
     settings.set_private_terms(["Hera"], path)  # Windows cannot seal: still kept
     assert settings.own_private_terms(path) == ("Hera",)
+
+
+def test_an_unreadable_settings_file_does_not_open_the_air_gap(tmp_path):
+    """Tier-1 review 15 Nov: missing means never set; damaged means stay closed."""
+
+    from ghostcursor import settings
+
+    path = tmp_path / "settings.json"
+    assert settings.local_only(path) is False  # no file: never switched on
+    path.write_text("{half a file", encoding="utf-8")
+    assert settings.local_only(path) is True
+    path.write_text("[1]", encoding="utf-8")
+    assert settings.local_only(path) is False  # readable, and not on
+    path.write_text('{"local_only": true}', encoding="utf-8")
+    assert settings.local_only(path) is True

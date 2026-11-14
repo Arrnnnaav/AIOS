@@ -99,6 +99,8 @@ def clean_terms(values, limit: int = MAX_TERMS) -> tuple[str, ...]:
             2 <= len(term) <= MAX_TERM_CHARS
             and term.count(" ") < MAX_TERM_WORDS  # many gaps: a slow pattern
             and not _PLACEHOLDER.search(term)
+            # an edge backslash would match half of an escaped quote in JSON
+            and chr(92) not in (term[0], term[-1])
         ):
             out.setdefault(term.casefold(), term)
     return tuple(out.values())[:limit]
@@ -142,8 +144,8 @@ def scrub(
         category, _, number = placeholder[1:-1].rpartition("_")
         counts[category] = max(counts.get(category, 0), int(number))
 
-    def _sub(category: str, m: re.Match[str]) -> str:
-        original = m.group(0)
+    def _sub(category: str, m) -> str:
+        original = m if isinstance(m, str) else m.group(0)
         if category == "CARD" and not _luhn_ok(original):
             return original  # not a real card: leave it
         if original in seen:
@@ -177,10 +179,20 @@ def scrub(
             + r")(?![^\W\d_])",
             re.IGNORECASE,
         )
+        def _name(m: re.Match[str]) -> str:
+            found, at = m.group(0), m.start()
+            slashes = at - len(m.string[:at].rstrip(chr(92)))
+            if slashes % 2 and found[0] in "nrt" and len(found) > 1:
+                # In JSON text this first letter is the end of a line-break
+                # escape, not of the word: keep it or the JSON breaks, and
+                # hide the rest (review 15 Nov).
+                return found[0] + _sub("NAME", found[1:])
+            return _sub("NAME", found)
+
         # Never inside a placeholder already in the text.
         pieces = re.split(r"(\[[A-Z]+_\d+\])", text)
         for i in range(0, len(pieces), 2):
-            pieces[i] = words.sub(lambda m: _sub("NAME", m), pieces[i])
+            pieces[i] = words.sub(_name, pieces[i])
         text = "".join(pieces)
     return text, mapping
 

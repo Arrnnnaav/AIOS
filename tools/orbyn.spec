@@ -18,6 +18,7 @@ binaries = []
 hiddenimports = [
     "win32clipboard", "win32gui", "win32process", "win32api", "win32con",
     "comtypes.gen.UIAutomationClient", "winsdk", "win32timezone",
+    "pypdf",  # Ask a link reads a PDF on this computer
 ]
 
 # Voice (faster_whisper/ctranslate2) is an OPTIONAL extra (requirements-voice.txt)

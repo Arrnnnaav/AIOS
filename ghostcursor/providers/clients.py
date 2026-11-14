@@ -183,7 +183,13 @@ def _post(
     started = time.monotonic()
     deadline = started + min(deadline_s, config.timeout_s)
     with httpx.Client(
-        base_url=config.base_url, transport=transport, headers=headers
+        base_url=config.base_url,
+        transport=transport,
+        headers=headers,
+        # A model on this computer is reached directly: a proxy set in the
+        # environment must not carry "stayed on this computer" elsewhere.
+        trust_env="//127.0.0.1" not in config.base_url
+        and "//localhost" not in config.base_url,
     ) as client:
         for attempt in (1, 2):
             if cancelled():

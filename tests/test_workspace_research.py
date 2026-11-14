@@ -641,8 +641,9 @@ def test_a_page_read_that_failed_is_recorded_as_failed(monkeypatch):
 
 def test_a_pdf_link_is_read_on_this_computer(monkeypatch):
     import httpx
-    import pypdf
     import pytest
+
+    pypdf = pytest.importorskip("pypdf")  # optional; without it a PDF link is refused
 
     from ghostcursor.workspace import research as research_mod
 

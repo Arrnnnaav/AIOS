@@ -762,10 +762,12 @@ class App:
             "local_ready": _local_model_up() if settings.local_only() else None,
             # Read-only access for another agent on this computer.
             "agent_access": settings.agent_access(),
-            "agent_command": f'"{sys.executable}" -m ghostcursor.agent_server',
+            "agent_command": f'"{sys.executable}" '
+            + ("--agent-server" if getattr(sys, "frozen", False) else "-m ghostcursor.agent_server"),
             "private_terms_org": len(policy.private_terms()),
             "egress": policy.max_egress(),  # D180: set by the organisation
             "managed": policy.managed(),
+            "org_egress": policy.org_max_egress(),
         }
 
     # --- actions ----------------------------------------------------------------
@@ -1297,8 +1299,10 @@ class App:
                     plan = task_skills.load_skill(name, dest_dir=self.skills_dir)
                 except Exception:  # a hand-edited file out of schema
                     continue
-                if plan is not None:
-                    flows.append((name, [hide(s.instruction) for s in plan.steps]))
+                if plan is not None:  # the name is content too
+                    flows.append(
+                        (hide(name.replace("-", " ")), [hide(s.instruction) for s in plan.steps])
+                    )
             self.downloads.mkdir(parents=True, exist_ok=True)
             if action == "evals_export":
                 if not flows:
@@ -1309,7 +1313,7 @@ class App:
                         json.dumps(
                             {
                                 "id": name,
-                                "input": "How do I " + name.replace("-", " ") + "?",
+                                "input": "How do I " + name + "?",
                                 "expected_steps": steps,
                             },
                             ensure_ascii=False,
@@ -1992,6 +1996,10 @@ def main(argv: list[str] | None = None) -> int:
     if argv and argv[0] in ("--help", "-h"):
         print(__doc__)
         return 0
+    if argv and argv[0] == "--agent-server":  # read-only MCP over stdin/stdout
+        from ghostcursor import agent_server
+
+        return agent_server.main(argv[1:])
     offered = None
     if (
         len(argv) == 2 and argv[0] == "--ask-file"

@@ -66,8 +66,12 @@ def max_egress() -> int:
 
     from ghostcursor import settings
 
-    if settings.local_only():
-        return LOCAL
+    return LOCAL if settings.local_only() else org_max_egress()
+
+
+def org_max_egress() -> int:
+    """The organisation's own level, whatever the person switched."""
+
     value = _value("MaxEgress")
     if value is None:
         return PICTURES

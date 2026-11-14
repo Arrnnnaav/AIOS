@@ -65,13 +65,13 @@ def test_recall_shares_only_reviewed_non_sensitive_facts_of_this_scope_scrubbed(
     assert "refund" not in audit.default_path().read_text().casefold()  # never the question
 
 
-def test_keys_never_ride_along_even_with_hiding_off(stores, monkeypatch):
+def test_replies_are_scrubbed_even_with_the_persons_hiding_off(stores, monkeypatch):
     settings.set_agent_access(True)
     settings.set_redact_egress(False)
     key = "sk-" + "B" * 24
     monkeypatch.setattr(agent_server, "call", lambda *a, **k: f"mail a@b.example key {key}")
     text, _ = ask(stores, "recall", {"query": "x"})
-    assert key not in text and "a@b.example" in text
+    assert key not in text and "a@b.example" not in text
 
 
 def test_workflows_are_listed_and_read_never_run(stores):
@@ -119,3 +119,30 @@ def test_a_refused_request_is_recorded_as_refused(stores):
     assert ask(stores, "get_workflow", {"name": "missing"})[1] is True
     assert ask(stores, "list_workflows")[1] is False
     assert events() == [("agents", "refused"), ("agents", None)]
+
+
+def test_the_app_entry_point_starts_the_server(monkeypatch):
+    import sys
+
+    from ghostcursor.workspace import app as app_mod
+
+    seen = []
+    monkeypatch.setattr(agent_server, "main", lambda argv: seen.append(argv) or 0)
+    assert app_mod.main(["--agent-server", "team"]) == 0 and seen == [["team"]]
+    monkeypatch.undo()
+    monkeypatch.setattr(sys, "stdin", None)
+    assert agent_server.main([]) == 2  # windowed, no pipes: exits, no crash
+
+
+def test_a_store_that_cannot_be_read_does_not_end_the_server(stores, monkeypatch):
+    import sqlite3
+
+    settings.set_agent_access(True)
+
+    def locked(*a, **k):
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(agent_server, "call", locked)
+    text, failed = ask(stores, "recall", {"query": "refunds"})
+    assert failed and "locked" not in text
+    assert events() == [("agents", "refused")]

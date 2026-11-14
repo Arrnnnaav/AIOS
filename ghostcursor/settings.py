@@ -146,7 +146,13 @@ def local_only(path: Path | None = None) -> bool:
     model running here answers. Off unless switched on; it only ever
     lowers what the organisation allows (rule 6)."""
 
-    return load(path).get("local_only") is True
+    try:
+        value = json.loads((path or _path()).read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return False  # never set
+    except (OSError, ValueError):
+        return True  # there but unreadable: an air gap does not fail open
+    return isinstance(value, dict) and value.get("local_only") is True
 
 
 def set_local_only(on: bool, path: Path | None = None) -> None:

@@ -181,3 +181,21 @@ def test_a_private_word_of_too_many_words_is_dropped():
     from ghostcursor import redact
 
     assert redact.clean_terms(["a b c d e f g h", "a b c d e f g h i"]) == ("a b c d e f g h",)
+
+
+def test_a_private_word_never_breaks_json_text():
+    """Tier-1 review 15 Nov: a word starting with n, r or t matched the letter
+    of a line-break escape and left invalid JSON."""
+
+    import json
+
+    from ghostcursor import redact
+
+    nl, tab, bs = chr(10), chr(9), chr(92)
+    sent = json.dumps({"t": f"Meet me{nl}at the office, says Nat{tab}TIN and{nl}Nat"}, ensure_ascii=False)
+    out, m = redact.scrub(sent, terms=("Nat", "TIN"))
+    back = json.loads(out)["t"]  # still valid JSON
+    assert "Nat" not in back and "TIN" not in back
+    assert redact.clean_terms([bs + "share", "share" + bs, "CORP" + bs + "ann"]) == ("CORP" + bs + "ann",)
+    # Plain text with a Windows path: the folder name is still hidden.
+    assert "Nat" not in redact.scrub("open C:" + bs + "Nat" + bs + "plan.txt", terms=("Nat",))[0]

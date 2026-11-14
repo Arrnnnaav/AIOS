@@ -2472,22 +2472,26 @@ def test_skills_file_and_test_cases_hold_only_reviewed_scrubbed_content(tmp_path
             {"instruction": "Click Refund", "expected_change": "chosen_disappears"}]}))
         task_skills.save_skill("Issue refund", plan, dest_dir=app.skills_dir)
         (app.skills_dir / "broken.json").write_text("{not a plan", encoding="utf-8")
+        task_skills.save_skill("Call Priya Nair", plan, dest_dir=app.skills_dir)
 
         status, body = call(port, "/api/skills_export", {})
         got = json.loads(body)
-        assert status == 200 and (got["facts"], got["workflows"]) == (1, 1)
+        assert status == 200 and (got["facts"], got["workflows"]) == (1, 2)
+        assert "## call [NAME_1]" in Path(got["path"]).read_text(encoding="utf-8")
         text = Path(got["path"]).read_text(encoding="utf-8")
         assert text.startswith("---\nname: orbyn-acme-team\ndescription: ")
         assert "- Refunds over 500 need [NAME_1], [EMAIL_1] (source: handbook)" in text
-        assert "## issue-refund\n\n1. Open Billing for [NAME_1]\n2. Click Refund" in text
+        assert "## issue refund\n\n1. Open Billing for [NAME_1]\n2. Click Refund" in text
         for leak in ("Priya", "ada@acme.io", "gossip", "Zeus", "broken"):
             assert leak not in text, leak
 
         status, body = call(port, "/api/evals_export", {})
         got = json.loads(body)
-        assert status == 200 and got["cases"] == 1
+        assert status == 200 and got["cases"] == 2
         rows = [json.loads(x) for x in Path(got["path"]).read_text(encoding="utf-8").splitlines()]
-        assert rows == [{"id": "issue-refund", "input": "How do I issue refund?",
+        assert rows[0]["id"] == "call [NAME_1]" and "Priya" not in json.dumps(rows)
+        rows = rows[1:]
+        assert rows == [{"id": "issue refund", "input": "How do I issue refund?",
                          "expected_steps": ["Open Billing for [NAME_1]", "Click Refund"]}]
     finally:
         server.shutdown()
@@ -2532,3 +2536,13 @@ def test_the_page_says_whether_a_local_model_is_up_only_when_offline(served, mon
     assert json.loads(call(port, "/api/state")[1])["local_ready"] is None and not asked
     call(port, "/api/local_only", {"on": True})
     assert json.loads(call(port, "/api/state")[1])["local_ready"] is False and asked
+
+
+def test_the_page_tells_the_organisations_level_from_the_persons_switch(served, monkeypatch):
+    from ghostcursor import policy
+
+    _, port = served
+    monkeypatch.setattr(policy, "_value", lambda name: {"MaxEgress": 1}.get(name))
+    call(port, "/api/local_only", {"on": True})
+    state = json.loads(call(port, "/api/state")[1])
+    assert (state["egress"], state["org_egress"], state["managed"]) == (0, 1, True)

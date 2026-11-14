@@ -2502,3 +2502,28 @@ from 1053b54. Still open:
   not run against any model here; the local-model check is a loopback
   connect to the default Ollama port only; exports overwrite the previous
   file of the same name.
+- Tier-1 review 15 Nov (c2ea2b6..46dc0ef, read at 46dc0ef): no blocking
+  finding. Fixed from it: the offline switch no longer fails open on a
+  damaged settings.json (missing still means never set); replies to
+  another agent are always fully scrubbed, whatever the person's own
+  hiding switch; a private word starting with n, r or t no longer breaks
+  JSON text; a term with a backslash at either end is dropped; workflow
+  names are scrubbed in the two exports; a store that cannot be read no
+  longer ends the agent server; a local model is reached without the
+  environment's proxy; the page shows the organisation's own level
+  separately from the person's switch; the offline, agent and audit cards
+  say only what the code does; pypdf is a listed dependency and is named
+  in the build spec; the packaged app serves agents with
+  `Orbyn.exe --agent-server` (checked by tools/smoke_build.py). Mutation
+  sweep of these fixes: 9 of 9 killed, output recorded in
+  docs/evidence/mutation-sweep-2026-11-15.txt. Earlier sweeps this week
+  (11 of 11, 10 of 10, 13 of 13, 9 of 10) were shown in the session only
+  and are not recorded in a file. Left from the review: ChatGPT sign-in,
+  the first voice-model download and team publish are not gated by the
+  offline switch (the card now says so); a term right after a \u00XX
+  escape in trusted JSON text is missed; in plain text a lowercase word
+  right after a single backslash keeps its first letter; the audit chain
+  cannot show entries cut from its end; the agent server's scope comes
+  from its command line; a sealed word list that cannot be opened reads
+  as no words with no signal; _set stores any text for any key; pypdf
+  parses an untrusted file in-process with no time bound.

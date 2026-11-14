@@ -13,9 +13,10 @@ Rule 6. The other agent may send what it reads to a cloud model, so this is
 egress: it answers only when the person switched "agent access" on AND the
 organisation allows the ``agents`` service (so local-only blocks it); every
 reply is scrubbed like text bound for a cloud model (private details and
-private words) whenever hiding is on; sensitive facts are never returned;
-each call leaves a content-free audit line. Read-only: there is no tool that
-writes, plans, clicks or types.
+private words), always; sensitive facts are never returned; each call that
+is answered or fails leaves a content-free audit line (a call refused
+because access is off shares nothing and records nothing). Read-only: there
+is no tool that writes, plans, clicks or types.
 
 ponytail: three tools and the four methods a client needs; no resources,
 prompts, or streaming. Add them when a client asks for one.
@@ -67,13 +68,11 @@ def allowed() -> bool:
 
 
 def _outbound(text: str) -> str:
-    """What may leave: scrubbed whenever hiding is on, and never long."""
+    """What may leave: always scrubbed, private words too, whatever the
+    person's own hiding switch says -- that switch is about the model
+    they chose, not about an outside agent. And never long."""
 
-    if policy.redact_egress() or settings.redact_egress():
-        text = redact.scrub(text, terms=settings.private_terms())[0]
-    else:  # keys and card numbers never ride along, hiding on or off
-        text = redact.scrub(text, redact.SECRETS)[0]
-    return text[:MAX_REPLY]
+    return redact.scrub(text, terms=settings.private_terms())[0][:MAX_REPLY]
 
 
 def call(name: str, args, scope: str, *, knowledge=None, skills_dir=None) -> str:
@@ -156,6 +155,8 @@ def handle(message, scope: str = "default", **stores) -> dict | None:
                 failed = False
             except ValueError as exc:
                 text, failed = str(exc), True
+            except Exception:  # a locked store, a damaged file: say so, keep serving
+                text, failed = "Orbyn could not read that just now.", True
             audit.record(
                 "egress",
                 provider="agents",
@@ -170,13 +171,18 @@ def handle(message, scope: str = "default", **stores) -> dict | None:
 def main(argv=None, stdin=None, stdout=None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     stdin, stdout = stdin or sys.stdin, stdout or sys.stdout
+    if stdin is None or stdout is None:  # a windowed app started without pipes
+        return 2
+    for stream in (stdin, stdout):  # the protocol is UTF-8, whatever the console is
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
     scope = argv[0] if argv else "default"
     for line in stdin:
         if not line.strip():
             continue
         try:
             reply = handle(json.loads(line), scope)
-        except ValueError:
+        except (ValueError, RecursionError):
             reply = {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "parse error"}}
         if reply is not None:
             stdout.write(json.dumps(reply) + "\n")

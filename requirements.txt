@@ -8,6 +8,7 @@
 comtypes==1.4.16          # UIAutomationCore COM wrapper (perception)
 cryptography==49.0.0      # Ed25519 signed-bundle + trust-policy verification
 httpx==0.28.1             # provider transport (BYOK cloud models)
+pypdf==6.11.0             # Ask a link: read a PDF on this computer
 mss==10.2.0               # screen capture (perception)
 numpy==2.2.6              # perception / image math
 ollama==0.6.2             # local model server client (local-first default)
