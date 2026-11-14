@@ -2427,3 +2427,108 @@ def test_agent_access_is_opt_in_and_shows_in_the_receipt(served, tmp_path):
     audit.record("egress", provider="agents", model=None, failure="refused", images=0, clock=lambda: 3.0)
     got = json.loads(call(port, "/api/egress_log")[1])["requests"]
     assert got == [{"at": 3.0, "web": "agent", "provider": "agents", "failed": True}]
+
+
+def _export_app(tmp_path):
+    from ghostcursor.workspace.knowledge import Knowledge
+
+    kb = Knowledge(tmp_path / "know.sqlite")
+    app = App(
+        "trip",
+        make_workspace=lambda: Workspace(
+            "trip",
+            Gateway(),
+            Brain(tmp_path / "kb.sqlite"),
+            root=tmp_path / "briefs",
+            knowledge=kb,
+            kb_scope="Acme Team",
+        ),
+    )
+    app.downloads, app.skills_dir = tmp_path / "dl", tmp_path / "skills"
+    server = make_server(app, "secret-token")
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return kb, app, server
+
+
+def test_skills_file_and_test_cases_hold_only_reviewed_scrubbed_content(tmp_path):
+    from ghostcursor import settings
+    from ghostcursor.providers import parse_teach_plan
+    from ghostcursor.workspace import task_skills
+
+    kb, app, server = _export_app(tmp_path)
+    port = server.server_port
+    try:
+        assert call(port, "/api/skills_export", {})[0] == 400  # nothing yet
+        assert call(port, "/api/evals_export", {})[0] == 400
+        ok = kb.add_candidate("Refunds over 500 need Priya Nair, ada@acme.io", source="handbook", scope="Acme Team")
+        kb.approve(ok.fid)
+        kb.add_candidate("unreviewed gossip", source="chat", scope="Acme Team")
+        private = kb.add_candidate("Zeus refunds are waived", source="memo", scope="Acme Team")
+        kb.approve(private.fid)
+        kb.classify(private.fid, "sensitive")
+        settings.set_private_terms(["Priya Nair"])
+        plan = parse_teach_plan(json.dumps({"steps": [
+            {"instruction": "Open Billing for Priya Nair", "expected_change": "chosen_disappears"},
+            {"instruction": "Click Refund", "expected_change": "chosen_disappears"}]}))
+        task_skills.save_skill("Issue refund", plan, dest_dir=app.skills_dir)
+        (app.skills_dir / "broken.json").write_text("{not a plan", encoding="utf-8")
+
+        status, body = call(port, "/api/skills_export", {})
+        got = json.loads(body)
+        assert status == 200 and (got["facts"], got["workflows"]) == (1, 1)
+        text = Path(got["path"]).read_text(encoding="utf-8")
+        assert text.startswith("---\nname: orbyn-acme-team\ndescription: ")
+        assert "- Refunds over 500 need [NAME_1], [EMAIL_1] (source: handbook)" in text
+        assert "## issue-refund\n\n1. Open Billing for [NAME_1]\n2. Click Refund" in text
+        for leak in ("Priya", "ada@acme.io", "gossip", "Zeus", "broken"):
+            assert leak not in text, leak
+
+        status, body = call(port, "/api/evals_export", {})
+        got = json.loads(body)
+        assert status == 200 and got["cases"] == 1
+        rows = [json.loads(x) for x in Path(got["path"]).read_text(encoding="utf-8").splitlines()]
+        assert rows == [{"id": "issue-refund", "input": "How do I issue refund?",
+                         "expected_steps": ["Open Billing for [NAME_1]", "Click Refund"]}]
+    finally:
+        server.shutdown()
+        app.close()
+        kb.close()
+
+
+def test_audit_summary_and_export(served, tmp_path):
+    import time as _time
+
+    from ghostcursor import audit
+
+    app, port = served
+    app.downloads = tmp_path / "dl"
+    got = json.loads(call(port, "/api/audit_summary")[1])
+    assert got == {"intact": True, "lines": 0, "broken_at": None, "days": 30, "oldest": None, "events": {}, "sent": {}}
+    now = _time.time()
+    audit.record("egress", provider="openrouter", model="m", failure=None, images=0, clock=lambda: now)
+    audit.record("egress", provider="web", model=None, failure=None, images=0, clock=lambda: now)
+    audit.record("plan_approved", via="teach", steps=2, clock=lambda: now)
+    audit.record("plan_approved", via="teach", steps=2, clock=lambda: now - 40 * 86400)  # too old
+    got = json.loads(call(port, "/api/audit_summary")[1])
+    assert got["intact"] is True and got["lines"] == 4
+    assert got["events"] == {"egress": 2, "plan_approved": 1}
+    assert got["sent"] == {"openrouter": 1, "web": 1}
+    assert got["oldest"] == round(now - 40 * 86400, 3)
+    out = json.loads(call(port, "/api/audit_export", {})[1])
+    assert out["intact"] is True and out["lines"] == 4 and Path(out["path"]).exists()
+    path = audit.default_path()
+    lines = path.read_text(encoding="utf-8").splitlines()
+    path.write_text("\n".join([lines[0], lines[2], lines[3]]) + "\n", encoding="utf-8")  # one removed
+    got = json.loads(call(port, "/api/audit_summary")[1])
+    assert got["intact"] is False and got["broken_at"] == 2
+
+
+def test_the_page_says_whether_a_local_model_is_up_only_when_offline(served, monkeypatch):
+    from ghostcursor.workspace import app as app_mod
+
+    _, port = served
+    asked = []
+    monkeypatch.setattr(app_mod, "_local_model_up", lambda: asked.append(1) or False)
+    assert json.loads(call(port, "/api/state")[1])["local_ready"] is None and not asked
+    call(port, "/api/local_only", {"on": True})
+    assert json.loads(call(port, "/api/state")[1])["local_ready"] is False and asked

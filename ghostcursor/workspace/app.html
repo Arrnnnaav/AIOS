@@ -1084,6 +1084,7 @@ function renderBrain() {
   gmeta.append(gsw);
   gap.append(gmeta, el("div", "", "Keep everything on this computer."),
     el("div", "note", "When on, Orbyn sends nothing anywhere: no cloud model, no Jev, no web search or page read, no GitHub, calendar or mail. Only a model running on this computer (Ollama) answers, so install one first or Orbyn cannot answer. Off by default."));
+  if (S.local_only && S.local_ready === false) { const w = el("div", "note", "No model is running on this computer, so Orbyn cannot answer right now. Install Ollama (ollama.com), start it, and run: ollama pull qwen3:4b-instruct"); w.setAttribute("role", "alert"); w.style.textAlign = "left"; gap.append(w); }
   gap.style.marginTop = "8px"; root.append(gap);
   const ag = el("div", "mem"); const ameta = el("div", "meta"); ameta.append(el("span", "kind", "other agents"));
   const asw = el("button", "switch"); asw.setAttribute("role", "switch"); asw.setAttribute("aria-checked", String(!!S.agent_access));
@@ -1167,6 +1168,25 @@ function renderBrain() {
   rec.append(recmeta, el("div", "", "A receipt of the last 20 requests to a model, web searches, page reads and answers to another agent: when, which service and model, and whether private details were hidden first. For a web search, private details are always hidden from the question; the result pages a search then opens are not listed."),
     el("div", "note", "Kept on this computer only. It never holds what you asked or what was answered."), reclist);
   rec.style.marginTop = "8px"; root.append(rec);
+  const au = el("div", "mem"); const aumeta = el("div", "meta"); aumeta.append(el("span", "kind", "audit record"));
+  const auCheck = el("button", "secondary", "Check"); auCheck.style.marginLeft = "auto";
+  const auSave = el("button", "secondary", "Export"); auSave.style.marginLeft = "6px"; aumeta.append(auCheck, auSave);
+  const auOut = el("div", "note"); auOut.style.textAlign = "left"; auOut.hidden = true; auOut.setAttribute("role", "status");
+  auCheck.onclick = async () => {
+    let r; try { r = await api("audit_summary"); } catch (e) { return toast(e.message); }
+    auOut.hidden = false; auOut.replaceChildren();
+    auOut.append(el("div", "", r.intact ? `Intact: ${r.lines} entries, none edited, removed or reordered.` : `Broken at entry ${r.broken_at} of ${r.lines}: the record was changed after it was written.`));
+    const names = { plan_approved: "plans you approved", act_step: "steps Orbyn performed", act_run: "runs of approved plans", drive_approved: "browser sessions you approved", egress: "requests that left this computer", team_publish: "team publishes", team_sync: "team syncs" };
+    const parts = Object.entries(r.events).map(([k, n]) => `${n} ${names[k] || k}`);
+    auOut.append(el("div", "", parts.length ? `Last ${r.days} days: ${parts.join(", ")}.` : `Nothing recorded in the last ${r.days} days.`));
+    if (r.oldest) auOut.append(el("div", "", "The record goes back to " + new Date(r.oldest * 1000).toLocaleDateString() + ". Orbyn never deletes it."));
+    const to = Object.entries(r.sent).map(([k, n]) => `${k} ${n}`);
+    if (to.length) auOut.append(el("div", "", "Sent to: " + to.join(", ") + "."));
+  };
+  auSave.onclick = () => act("audit_export", {}).then((r) => r && toast("Saved " + r.path + (r.intact ? "" : " (the record is broken)"), true));
+  au.append(aumeta, el("div", "", "A tamper-evident record of what Orbyn did on this computer."),
+    el("div", "note", "Each entry is chained to the one before, so an edited, removed or reordered entry shows. It records events only: plans approved, steps performed, where requests went. Never your goals, screen text, files or answers. Export gives a copy for an auditor."), auOut);
+  au.style.marginTop = "8px"; root.append(au);
   const dot = el("div", "mem"); const dmeta = el("div", "meta"); dmeta.append(el("span", "kind", "companion"));
   const dsw = el("button", "switch"); dsw.setAttribute("role", "switch"); dsw.setAttribute("aria-checked", String(!!S.companion_idle));
   dsw.style.marginLeft = "auto"; dsw.append(document.createTextNode(S.companion_idle ? "On" : "Off"), el("i"));
@@ -1239,6 +1259,10 @@ function companyBrainCard() {
   clipB.onclick = () => act("know_clip", {}, "Clipboard captured").then(renderBrain);
   const expB = el("button", "secondary", "Export"); expB.style.marginLeft = "6px";
   expB.onclick = () => act("know_export", {}).then((r) => r && toast("Saved " + r.path, true));
+  const skB = el("button", "secondary", "Skills file"); skB.style.marginLeft = "6px"; skB.title = "Reviewed facts and saved workflows as one file another agent can load. Private details and private words are hidden.";
+  skB.onclick = () => act("skills_export", {}).then((r) => r && toast("Saved " + r.path + " (" + r.facts + " facts, " + r.workflows + " workflows)", true));
+  const evB = el("button", "secondary", "Test cases"); evB.style.marginLeft = "6px"; evB.title = "Saved workflows as test cases (JSONL) for checking whether a model knows how your team works.";
+  evB.onclick = () => act("evals_export", {}).then((r) => r && toast("Saved " + r.path + " (" + r.cases + " cases)", true));
   const fileIn = el("input"); fileIn.type = "file"; fileIn.accept = ".txt,.md,.log,.csv"; fileIn.hidden = true;
   const fileB = el("button", "secondary", "Add from file"); fileB.style.marginLeft = "6px";
   fileB.title = "Each passage becomes a candidate to review; the file stays on this computer";
@@ -1253,7 +1277,7 @@ function companyBrainCard() {
     if (r) { toast(r.added + " to review" + (r.duplicate ? ", " + r.duplicate + " already known" : ""), true); renderBrain(); }
   };
   cap.style.flexWrap = "wrap"; cap.style.rowGap = "6px";
-  cap.append(inp, addB, clipB, fileB, fileIn, expB); card.append(cap);
+  cap.append(inp, addB, clipB, fileB, fileIn, expB, skB, evB); card.append(cap);
   const list = el("div"); card.append(list);
   api("know_list").then((r) => {
     if (!r.facts || !r.facts.length) { list.append(el("div", "note", "No facts yet.")); return; }

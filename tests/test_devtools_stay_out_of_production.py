@@ -111,7 +111,7 @@ def _dynamic_devtool_references(source: str):
 #: set fails here and names the directory that vanished. They change when the
 #: package changes, deliberately and visibly in a diff.
 _MEASURED_INVENTORY = {
-    "ghostcursor": 44,  # + doctor.py, redact.py (DLP), dictation.py, telemetry.py (D186), audit.py (D187), speech.py (D189), crashreport.py (D191)
+    "ghostcursor": 45,  # + doctor.py, redact.py (DLP), dictation.py, telemetry.py (D186), audit.py (D187), speech.py (D189), crashreport.py (D191), agent_server.py (read-only MCP)
     "ghostcursor/demo": 2,
     "ghostcursor/evaluation": 6,
     "ghostcursor/harness": 12,  # + sketch.py (hand-drawn marks)

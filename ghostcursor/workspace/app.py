@@ -182,6 +182,17 @@ def new_claims(answer: str, previous: str) -> list[str]:
     return [c for c in _claims(answer) if not any(_same_claim(c, s) for s in seen)]
 
 
+def _local_model_up() -> bool:
+    """Is the local model server (Ollama) accepting connections? A loopback
+    connect only; nothing leaves this computer."""
+
+    try:
+        with socket.create_connection(("127.0.0.1", 11434), timeout=0.2):
+            return True
+    except OSError:
+        return False
+
+
 class App:
     """One worker thread owns the Workspace and its Brain (sqlite is
     single-thread); request threads only queue jobs and set events."""
@@ -204,6 +215,7 @@ class App:
         self.offered_file: tuple[str, str] | None = None
         self.paused = False
         self.downloads = Path.home() / "Downloads"  # where a handoff is saved
+        self.skills_dir = None  # saved workflows; None is the usual folder
         self.ws = self.jobs.submit(
             make_workspace or (lambda: _default_workspace(topic))
         ).result()
@@ -745,6 +757,9 @@ class App:
             "private_terms": list(settings.own_private_terms()),
             # The person's own air gap: only a model on this computer answers.
             "local_only": settings.local_only(),
+            # With the air gap on, is a model on this computer answering?
+            # None: not asked (the switch is off).
+            "local_ready": _local_model_up() if settings.local_only() else None,
             # Read-only access for another agent on this computer.
             "agent_access": settings.agent_access(),
             "agent_command": f'"{sys.executable}" -m ghostcursor.agent_server',
@@ -1269,6 +1284,112 @@ class App:
             out.parent.mkdir(parents=True, exist_ok=True)
             out.write_text(md, encoding="utf-8", newline="\n")
             return {"path": str(out)}
+        if action in ("skills_export", "evals_export"):
+            # Files meant to be handed to another agent or a model team
+            # (YC S26 "Company Brain", W27 "Own Your Intelligence"): what
+            # is reviewed and not private, always scrubbed, private words too.
+            from ghostcursor.workspace import task_skills
+
+            hide = lambda text: redact.scrub(text, terms=settings.private_terms())[0]
+            flows = []
+            for name in task_skills.list_skills(dest_dir=self.skills_dir):
+                try:
+                    plan = task_skills.load_skill(name, dest_dir=self.skills_dir)
+                except Exception:  # a hand-edited file out of schema
+                    continue
+                if plan is not None:
+                    flows.append((name, [hide(s.instruction) for s in plan.steps]))
+            self.downloads.mkdir(parents=True, exist_ok=True)
+            if action == "evals_export":
+                if not flows:
+                    raise ValueError("save a workflow first; each one becomes a test case")
+                out = self.downloads / f"{ws.kb_scope}.orbyn-evals.jsonl"
+                out.write_text(
+                    "".join(
+                        json.dumps(
+                            {
+                                "id": name,
+                                "input": "How do I " + name.replace("-", " ") + "?",
+                                "expected_steps": steps,
+                            },
+                            ensure_ascii=False,
+                        )
+                        + "\n"
+                        for name, steps in flows
+                    ),
+                    encoding="utf-8",
+                    newline="\n",
+                )
+                return {"path": str(out), "cases": len(flows)}
+            facts = (
+                ws.knowledge.export_scope(ws.kb_scope)["facts"]
+                if ws.knowledge is not None
+                else []
+            )
+            if not facts and not flows:
+                raise ValueError("nothing to export yet: review a fact or save a workflow")
+            lines = [
+                "---",
+                f"name: orbyn-{re.sub(r'[^a-z0-9]+', '-', ws.kb_scope.lower()).strip('-') or 'default'}",
+                "description: How this team works. Reviewed facts and step-by-step "
+                "workflows exported from Orbyn. Use it before answering or acting on "
+                "this team's processes.",
+                "---",
+                "",
+                "# What we know",
+                "",
+                *[f"- {hide(f['text'])} (source: {hide(f['source'])})" for f in facts],
+                *([] if facts else ["_(no reviewed facts yet)_"]),
+                "",
+                "# Workflows",
+                "",
+            ]
+            for name, steps in flows:
+                lines += [f"## {name}", "", *[f"{n}. {s}" for n, s in enumerate(steps, 1)], ""]
+            if not flows:
+                lines.append("_(no saved workflows yet)_")
+            out = self.downloads / f"{ws.kb_scope}.orbyn-skills.md"
+            out.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8", newline="\n")
+            return {"path": str(out), "facts": len(facts), "workflows": len(flows)}
+        if action == "audit_summary":  # is the record intact, and what is in it
+            from ghostcursor import audit
+
+            intact, lines_read, broken = audit.verify()
+            since, events, sent = time.time() - 30 * 86400, {}, {}
+            oldest = None  # how far back the record goes (log-keeping rules ask)
+            try:
+                raw = audit.default_path().read_text(encoding="utf-8").splitlines()
+            except OSError:
+                raw = []
+            for line in raw:
+                try:
+                    row = json.loads(line)
+                except ValueError:
+                    continue
+                at = row.get("at") if isinstance(row, dict) else None
+                if isinstance(at, (int, float)) and not isinstance(at, bool):
+                    oldest = at if oldest is None else min(oldest, at)
+                if isinstance(at, (int, float)) and at >= since:
+                    name = str(row.get("event"))[:40]
+                    events[name] = events.get(name, 0) + 1
+                    if name == "egress":
+                        to = str(row.get("provider"))[:40]
+                        sent[to] = sent.get(to, 0) + 1
+            return {
+                "intact": intact,
+                "lines": lines_read,
+                "broken_at": broken,
+                "days": 30,
+                "oldest": oldest,
+                "events": events,
+                "sent": sent,
+            }
+        if action == "audit_export":  # a copy for an auditor, verified
+            from ghostcursor import audit
+
+            out = self.downloads / "orbyn-audit.jsonl"
+            intact, lines_read, _ = audit.export(out)
+            return {"path": str(out), "intact": intact, "lines": lines_read}
         if action == "know_conflicts":
             if ws.knowledge is None:
                 return {"conflicts": []}

@@ -2488,3 +2488,17 @@ from 1053b54. Still open:
   packaged app (no console entry point there yet); a new Knowledge
   connection is opened per recall; relations (edges) and the Personal
   Brain are not exposed.
+- Exports and audit 15 Nov (YC S26 "Company Brain", W27 "Own Your
+  Intelligence", F26 "AI-Native Compliance"): Brain page writes a skills
+  file (reviewed, non-sensitive facts plus saved workflows, in the agent
+  skill format) and test cases (one JSONL case per saved workflow), both
+  always scrubbed including private words; Setup shows an audit summary
+  (chain intact or where it breaks, 30-day counts, where requests went,
+  how far back the record goes) and exports a verified copy; the offline
+  card warns when no local model is listening. Mutation sweep 9 of 10
+  killed; the survivor (redact_pii=False on the fact export) is equivalent
+  because every line is scrubbed again. Left: the test cases are steps
+  only (no graded answers, no failures-as-training-data); the eval file is
+  not run against any model here; the local-model check is a loopback
+  connect to the default Ollama port only; exports overwrite the previous
+  file of the same name.
