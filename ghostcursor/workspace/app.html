@@ -157,7 +157,7 @@ section[hidden] { display: none !important; }
 .brain-title { font-size: 18px; margin: 10px 0 12px; }
 
 /* brain */
-.switch { display: inline-flex; align-items: center; gap: 8px; color: var(--dim); font-size: 13px; }
+.switch { display: inline-flex; align-items: center; gap: 8px; color: var(--dim); font-size: 13px; min-height: 28px; }
 .switch i { width: 34px; height: 20px; border-radius: 999px; background: var(--raise); border: 1px solid var(--line); position: relative; transition: .2s; }
 .switch i::after { content: ""; position: absolute; width: 14px; height: 14px; top: 2px; left: 2px; border-radius: 50%; background: var(--dim); transition: .2s; }
 .switch[aria-checked="true"] i { background: var(--amber-soft); border-color: var(--amber); }
@@ -359,6 +359,7 @@ async function api(action, body = {}) {
 }
 let toastTimer;
 function toast(text, ok = false) {
+  text = String(text || ""); text = text.charAt(0).toUpperCase() + text.slice(1);  // server messages start lowercase
   const t = $("toast"); t.textContent = text; t.className = "show" + (ok ? " ok" : "");
   clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.className = ok ? "ok" : ""), 3600);
 }
@@ -768,6 +769,8 @@ async function takeOfferedFile() {
 }
 
 function openFileAsk(offered) {
+  // A button click passes its event here: only a real offered file counts.
+  if (!offered || typeof offered.material !== "string") offered = null;
   sheetOpener = document.activeElement;
   const sheet = $("sheet");
   const heading = el("h3", "", "Ask about a file"); heading.id = "fileAskTitle";
@@ -1125,7 +1128,7 @@ function agentsCard() {
     save.onclick = () => act("agent_save", {}, "Agent saved");
     card.append(save);
   }
-  const inp = el("input"); inp.placeholder = "what should the new agent do?"; inp.disabled = !!S.busy;
+  const inp = el("input"); inp.placeholder = "What should the new agent do?"; inp.setAttribute("aria-label", "What should the new agent do?"); inp.disabled = !!S.busy;
   const make = el("button", "secondary", "Create agent"); make.disabled = !!S.busy;
   make.onclick = () => inp.value.trim() && act("agent_create", { text: inp.value.trim() }, "Agent drafted");
   inp.onkeydown = (e) => { if (e.key === "Enter" && !imeEnter(e)) make.onclick(); };
