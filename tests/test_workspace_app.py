@@ -823,6 +823,28 @@ def test_act_needs_a_plan_and_unknown_actions_fail(served):
             assert status == 400, (action, bad)
 
 
+def test_the_private_details_switch_adds_to_policy_and_never_lowers_it(
+    served, monkeypatch, tmp_path
+):
+    from ghostcursor import policy, settings
+
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    _, port = served
+
+    def state():
+        got = json.loads(call(port, "/api/state")[1])
+        return got["redact"], got["redact_forced"]
+
+    assert state() == (False, False)
+    assert call(port, "/api/redact_egress", {"on": True})[0] == 200
+    assert settings.redact_egress() and state() == (True, False)
+    assert call(port, "/api/redact_egress", {"on": "yes"})[0] == 200  # not True: off
+    assert state() == (False, False)
+    monkeypatch.setattr(policy, "redact_egress", lambda: True)
+    call(port, "/api/redact_egress", {"on": False})
+    assert state() == (True, True)  # the organisation's on survives the switch
+
+
 def test_true_is_not_memory_number_one(served):
     app, port = served
     brain = app.ws.brain  # its connection belongs to the worker thread

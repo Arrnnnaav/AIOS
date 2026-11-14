@@ -2299,6 +2299,19 @@ from 1053b54. Still open:
   corrected back to life, and a memory stored before the rule that today's
   rule would refuse is never handed to the model (it stays in the panel so
   it can be forgotten; it is not deleted).
+- Enterprise privacy audit 14 Nov (cloud model, data stays in-house). Two
+  gaps closed: (1) scrubbing private details before a remote model was
+  reachable only through the RedactEgress registry policy; the person now
+  has their own switch (settings "redact_egress"), which can add to policy
+  and never lower it. (2) AllowedProviders did not cover research web
+  search, so a machine pinned to the company model still sent the question
+  to Tavily/DuckDuckGo; search now asks policy.allows(provider). Left, by
+  design or not built: the scrub is pattern-based (no names of people,
+  companies, projects, no free-text addresses); replies are not rehydrated,
+  so placeholders show in answers; the company gateway counts as remote and
+  is scrubbed too; redaction is off by default; research still fetches the
+  result pages it found (URLs only, no user text); no count of redactions
+  in the audit log.
 - Tier-1 review 14 Nov (45f1728..2f404af): no blocking finding. Done from
   it: one shared refusal rule for storing and for sending a memory, a test
   for each half, malformed Teach/Act steps pinned as refused, and `true` no

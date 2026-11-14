@@ -511,6 +511,27 @@ def test_redact_egress_scrubs_secrets_bound_for_a_remote_model(tmp_path):
     assert "[CARD_1]" in body and "[EMAIL_1]" in body  # placeholders sent instead
 
 
+def test_the_persons_own_switch_turns_egress_redaction_on(tmp_path, monkeypatch):
+    """No policy, caller field off: the person's setting alone scrubs what
+    goes to a remote model, and switching it off sends the text as typed."""
+
+    from ghostcursor import settings
+
+    for on in (True, False):
+        monkeypatch.setattr(settings, "redact_egress", lambda on=on: on)
+        transport, calls = _transport(_chat(PLAN))
+        gateway = Gateway(
+            system_two=("openrouter",),
+            transport=transport,
+            key_lookup=_keys(openrouter="k"),
+            log_path=tmp_path / "l",
+        )
+        gateway.plan(_secret_envelope())
+        body = calls[0].content.decode()
+        assert ("ada@acme.io" not in body) is on
+        assert ("[EMAIL_1]" in body) is on
+
+
 def test_policy_forces_egress_redaction_on_regardless_of_the_field(
     tmp_path, monkeypatch
 ):

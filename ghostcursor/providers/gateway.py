@@ -398,11 +398,18 @@ class Gateway:
 
     def _redact_on(self) -> bool:
         """Effective egress-redaction state, read per request: enterprise policy
-        forces it on; the caller's ``redact_egress`` can only add to that, never
+        forces it on; the caller's ``redact_egress`` and the person's own
+        setting can only add to that, never
         lower it. Reading policy here (not at construction) means a RedactEgress
         policy pushed mid-session applies at the next request."""
 
-        return policy.redact_egress() or self.redact_egress
+        from ghostcursor import settings
+
+        return (
+            policy.redact_egress()
+            or self.redact_egress
+            or settings.redact_egress()  # the person's own switch
+        )
 
     def _outbound(self, messages: list[dict], provider: str) -> list[dict]:
         """Rule 6 egress gate (D186): when redaction is on and the provider is

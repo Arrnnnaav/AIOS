@@ -12,7 +12,9 @@ lowers what the user may switch on; with no policy, behaviour is unchanged.
 - ``BlockedApps`` (REG_SZ): executables never bound, ``;``-separated.
 - ``AllowedApps`` (REG_SZ): if set, ONLY these executables may be bound.
 - ``DisableAct`` (DWORD): 1 -- Orbyn guides only; no step is performed.
-- ``AllowedProviders`` (REG_SZ): if set, only these model providers answer.
+- ``AllowedProviders`` (REG_SZ): if set, only these services are contacted:
+  model providers, and also ``tavily`` / ``duckduckgo`` (research web
+  search), ``github``, ``calendar``, ``mail``, ``crash``.
 - ``CompanyEndpoint`` / ``CompanyModel`` (REG_SZ): the company's own
   OpenAI-compatible model gateway (https), tried before any personal account;
   its key, if it needs one, is ``Orbyn/company`` in Credential Manager.

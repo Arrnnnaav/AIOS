@@ -122,6 +122,28 @@ def test_local_only_research_searches_nothing(monkeypatch, tmp_path):
     assert trace.privacy == "question sent to none"
 
 
+def test_a_provider_allow_list_also_governs_research_web_search(monkeypatch, tmp_path):
+    """IT pinned the company model only: the research question must not go
+    to a public search service either. Naming the service allows it."""
+
+    def run(allowed, search):
+        _policy(monkeypatch, AllowedProviders=allowed)
+        return research_mod.research(
+            "q",
+            Gateway(key_lookup=_keys(), log_path=tmp_path / "l"),
+            search=search,
+            key_lookup=_keys(),
+            trace_path=tmp_path / "t",
+        )[1]
+
+    trace = run("company", lambda q: pytest.fail("searched outside the allow-list"))
+    assert trace.search_provider == "none"
+    assert trace.failures == ("search: PermissionError",)
+    asked = []
+    trace = run("company;duckduckgo", lambda q: asked.append(q) or [])
+    assert asked == ["q"] and trace.search_provider == "duckduckgo"
+
+
 def test_blocked_apps_are_never_bound(monkeypatch):
     _policy(monkeypatch, BlockedApps=" Epic.exe ;; chrome.exe")
     ids = {11: Identity(1, "chrome.exe", "1"), 22: Identity(2, "epic.exe", "1")}

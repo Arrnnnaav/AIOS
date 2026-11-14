@@ -1067,6 +1067,16 @@ function renderBrain() {
   if (S.managed) priv.append(el("div", "note", ["Set by your organization: nothing leaves this computer.", "Set by your organization: text only, no pictures.", "Your organization allows pictures."][S.egress]));
   priv.lastChild.style.textAlign = "left";
   root.append(priv);
+  const red = el("div", "mem"); const rmeta = el("div", "meta"); rmeta.append(el("span", "kind", "private details"));
+  const rsw = el("button", "switch"); rsw.setAttribute("role", "switch"); rsw.setAttribute("aria-checked", String(!!S.redact));
+  rsw.style.marginLeft = "auto"; rsw.append(document.createTextNode(S.redact ? "On" : "Off"), el("i"));
+  rsw.disabled = !!S.redact_forced;
+  rsw.onclick = () => act("redact_egress", { on: !S.redact }, S.redact ? "Private details no longer hidden" : "Private details hidden from cloud models");
+  rmeta.append(rsw);
+  red.append(rmeta, el("div", "", "Hide private details from cloud models."),
+    el("div", "note", "When on, email addresses, phone numbers, card, bank and ID numbers, keys and machine addresses in what you type or attach are swapped for placeholders like [EMAIL_1] on this computer before the text goes to a cloud model. Answers may show the placeholders. Names of people, companies and projects are not recognised and still go. A model running on this computer gets the original text."));
+  if (S.redact_forced) red.append(el("div", "note", "Set by your organization: always on."));
+  red.style.marginTop = "8px"; root.append(red);
   if (S.company_offered) {
     const comp = el("div", "mem"); const cmeta = el("div", "meta"); cmeta.append(el("span", "kind", "company model"));
     const csw = el("button", "switch"); csw.setAttribute("role", "switch"); csw.setAttribute("aria-checked", String(!!S.company_on));

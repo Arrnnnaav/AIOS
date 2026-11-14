@@ -82,6 +82,19 @@ def set_crash_reports(on: bool, path: Path | None = None) -> None:
     _set("crash_reports", on, path)
 
 
+def redact_egress(path: Path | None = None) -> bool:
+    """The person's own switch: scrub private details (email, phone, card,
+    ID, key, address of a machine) out of text bound for a cloud model.
+    It can only add to the organisation's RedactEgress policy, never
+    lower it (rule 6). Off unless turned on."""
+
+    return load(path).get("redact_egress") is True
+
+
+def set_redact_egress(on: bool, path: Path | None = None) -> None:
+    _set("redact_egress", on, path)
+
+
 def companion_idle(path: Path | None = None) -> bool:
     """settings.json "companion_idle": true keeps a small resting dot beside
     the pointer when Orbyn is idle (HeyClicky's docked companion). Off by

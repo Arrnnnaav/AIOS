@@ -585,7 +585,9 @@ def research(
     started = time.monotonic()
     key = (key_lookup or keys.get_key)("tavily")
     provider = "tavily" if key else "duckduckgo"
-    if policy.max_egress() < policy.TEXT:
+    # D180: local only searches nothing, and an AllowedProviders list
+    # that does not name the search service keeps the question here.
+    if not policy.allows(provider):
         provider = "none"
     try:
         if provider == "none":  # D180: local only; nothing is searched

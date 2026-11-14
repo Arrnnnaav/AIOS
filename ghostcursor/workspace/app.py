@@ -737,6 +737,10 @@ class App:
             "crash_offered": policy.crash_endpoint() is not None,
             "crash_on": settings.crash_reports(),
             "companion_idle": self.companion_idle,
+            # Scrub private details before a cloud model: the person's
+            # switch, or forced on by the organisation (never forced off).
+            "redact": policy.redact_egress() or settings.redact_egress(),
+            "redact_forced": policy.redact_egress(),
             "egress": policy.max_egress(),  # D180: set by the organisation
             "managed": policy.managed(),
         }
@@ -933,6 +937,9 @@ class App:
             return {}
         if action == "crash_reports":  # the person's own opt-in (D191)
             settings.set_crash_reports(body.get("on") is True)
+            return {}
+        if action == "redact_egress":  # the person can add, never lower
+            settings.set_redact_egress(body.get("on") is True)
             return {}
         if action == "company_gateway":  # the person's own opt-in (D187)
             settings.set_company_gateway(body.get("on") is True)
