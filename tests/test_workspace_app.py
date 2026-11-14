@@ -2394,3 +2394,20 @@ def test_the_preview_says_when_hiding_is_off(served):
     assert got == {"text": "[EMAIL_1]", "hidden": 1, "on": True}
     call(port, "/api/redact_egress", {"on": False})
     assert json.loads(call(port, "/api/redact_preview", {"text": "x"})[1])["on"] is False
+
+
+def test_the_offline_switch_takes_only_true_or_false(served):
+    from ghostcursor import policy
+
+    _, port = served
+    assert json.loads(call(port, "/api/state")[1])["local_only"] is False
+    assert call(port, "/api/local_only", {"on": True})[0] == 200
+    state = json.loads(call(port, "/api/state")[1])
+    assert state["local_only"] is True and state["egress"] == 0
+    assert not policy.allows("openrouter")
+    for bad in ({}, {"on": None}, {"on": 0}, {"on": "false"}):
+        assert call(port, "/api/local_only", bad)[0] == 400
+    assert json.loads(call(port, "/api/state")[1])["local_only"] is True  # still on
+    assert call(port, "/api/read_link", {"url": "https://example.com/"})[0] == 400
+    assert call(port, "/api/local_only", {"on": False})[0] == 200
+    assert json.loads(call(port, "/api/state")[1])["egress"] == 2

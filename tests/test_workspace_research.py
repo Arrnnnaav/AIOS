@@ -637,3 +637,49 @@ def test_a_page_read_that_failed_is_recorded_as_failed(monkeypatch):
     audit.flush()
     line = json.loads(audit.default_path().read_text().splitlines()[-1])
     assert (line["provider"], line["failure"]) == ("web", "fetch")
+
+
+def test_a_pdf_link_is_read_on_this_computer(monkeypatch):
+    import httpx
+    import pypdf
+    import pytest
+
+    from ghostcursor.workspace import research as research_mod
+
+    class Sheet:
+        def __init__(self, text):
+            self.text = text
+
+        def extract_text(self):
+            return self.text
+
+    class Reader:
+        def __init__(self, stream):
+            assert stream.read() == b"%PDF-bytes"
+            self.pages = [Sheet("Rates rise"), Sheet(None), Sheet("in  May.")]
+
+    monkeypatch.setattr(pypdf, "PdfReader", Reader)
+    transport = httpx.MockTransport(
+        lambda request: httpx.Response(
+            200, content=b"%PDF-bytes", headers={"content-type": "application/pdf"}
+        )
+    )
+    read = lambda: research_mod.read_page(
+        "https://good.com/a.pdf", transport=transport, resolve=lambda h: {"93.184.216.34"}
+    )
+    assert read() == "Rates rise in May."
+
+    class Empty(Reader):
+        def __init__(self, stream):
+            self.pages = [Sheet("")]
+
+    monkeypatch.setattr(pypdf, "PdfReader", Empty)
+    with pytest.raises(ValueError, match="no readable text"):
+        read()
+
+    def broken(stream):
+        raise RuntimeError("encrypted")
+
+    monkeypatch.setattr(pypdf, "PdfReader", broken)
+    with pytest.raises(ValueError, match="could not be read"):
+        read()

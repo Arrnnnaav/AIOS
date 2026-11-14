@@ -743,6 +743,8 @@ class App:
             "redact_forced": policy.redact_egress(),
             # Names no pattern can know; shown only on this computer's page.
             "private_terms": list(settings.own_private_terms()),
+            # The person's own air gap: only a model on this computer answers.
+            "local_only": settings.local_only(),
             "private_terms_org": len(policy.private_terms()),
             "egress": policy.max_egress(),  # D180: set by the organisation
             "managed": policy.managed(),
@@ -1029,6 +1031,12 @@ class App:
         if action == "redact_egress":  # the person can add, never lower
             # Only an explicit false turns it off; anything else keeps it on.
             settings.set_redact_egress(body.get("on") is not False)
+            return {}
+        if action == "local_only":  # the person's own air gap (only lowers)
+            if not isinstance(body.get("on"), bool):
+                # Never switched off by a malformed request.
+                raise ValueError("on must be true or false")
+            settings.set_local_only(body["on"])
             return {}
         if action == "company_gateway":  # the person's own opt-in (D187)
             settings.set_company_gateway(body.get("on") is True)

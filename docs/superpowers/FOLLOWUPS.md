@@ -2462,3 +2462,16 @@ from 1053b54. Still open:
   the System-Two text; the local crash log, saved jobs and settings.json
   hold the words in plain text; a seal that keeps failing leaves old rows
   plain with no signal. The fix commit was not itself re-reviewed.
+- YC RFS pass 14 Nov (Winter 2027 "AI for the Air-Gapped Economy"; also
+  read: Summer 2026 "Company Brain", "Software for Agents"). Built: a
+  person's own offline switch (settings "local_only" lowers
+  policy.max_egress to local only; never raises the organisation's
+  level); the private-words list is sealed with DPAPI in settings.json
+  (an older plain list still reads); a term of more than 8 words is
+  dropped (slow pattern); Ask a link reads a PDF with pypdf on this
+  computer. Mutation sweep 10 of 10 killed. Left: with the offline switch
+  on and no Ollama model installed Orbyn cannot answer and only the
+  switch's note says so; a sealed word list another account cannot open
+  reads as no words, silently; pypdf parses an untrusted file in-process;
+  scanned PDFs have no text; whether the packaged app bundles pypdf was
+  not checked.

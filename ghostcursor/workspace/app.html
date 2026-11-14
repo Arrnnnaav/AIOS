@@ -422,7 +422,7 @@ function renderWork() {
   head.append(fileAsk);
   const linkAsk = el("button", "secondary", "Ask a link"); linkAsk.disabled = !!S.busy;
   linkAsk.onclick = async () => {
-    const url = await askText("Paste a web address (https://) to read and ask about. Orbyn fetches the page itself; only the passages that match your question go to your model.");
+    const url = await askText("Paste a web address (https://) of a page or a PDF to read and ask about. Orbyn fetches the page itself; only the passages that match your question go to your model.");
     if (!url) return;
     linkAsk.disabled = true; linkAsk.textContent = "Reading\u2026";
     const page = await act("read_link", { url: url.trim() });
@@ -1070,13 +1070,21 @@ function renderBrain() {
   const vsw = el("button", "switch"); vsw.setAttribute("role", "switch"); vsw.setAttribute("aria-checked", String(!!S.vision));
   vsw.style.marginLeft = "auto"; vsw.append(document.createTextNode(S.vision ? "On" : "Off"), el("i"));
   vsw.onclick = () => act("vision", { on: !S.vision }, S.vision ? "Pictures off" : "Pictures on");
-  const capped = S.managed && S.egress < 2; vsw.disabled = capped;
+  const capped = S.egress < 2; vsw.disabled = capped;
   pmeta.append(vsw);
   priv.append(pmeta, el("div", "", "Let Jev see a picture of the windows you guide when text is not enough."),
     el("div", "note", "Only buttons, tabs and menus are shown; text, lists, documents and titles are greyed out on this computer before anything is sent; parts covered by other windows stay grey too. Orbyn saves nothing; TypeSafe's docs do not say how long it keeps images."));
   if (S.managed) priv.append(el("div", "note", ["Set by your organization: nothing leaves this computer.", "Set by your organization: text only, no pictures.", "Your organization allows pictures."][S.egress]));
   priv.lastChild.style.textAlign = "left";
   root.append(priv);
+  const gap = el("div", "mem"); const gmeta = el("div", "meta"); gmeta.append(el("span", "kind", "offline"));
+  const gsw = el("button", "switch"); gsw.setAttribute("role", "switch"); gsw.setAttribute("aria-checked", String(!!S.local_only));
+  gsw.style.marginLeft = "auto"; gsw.append(document.createTextNode(S.local_only ? "On" : "Off"), el("i"));
+  gsw.onclick = () => act("local_only", { on: !S.local_only }, S.local_only ? "Cloud models and the web allowed again" : "Everything now stays on this computer");
+  gmeta.append(gsw);
+  gap.append(gmeta, el("div", "", "Keep everything on this computer."),
+    el("div", "note", "When on, Orbyn sends nothing anywhere: no cloud model, no Jev, no web search or page read, no GitHub, calendar or mail. Only a model running on this computer (Ollama) answers, so install one first or Orbyn cannot answer. Off by default."));
+  gap.style.marginTop = "8px"; root.append(gap);
   const red = el("div", "mem"); const rmeta = el("div", "meta"); rmeta.append(el("span", "kind", "private details"));
   const rsw = el("button", "switch"); rsw.setAttribute("role", "switch"); rsw.setAttribute("aria-checked", String(!!S.redact));
   rsw.style.marginLeft = "auto"; rsw.append(document.createTextNode(S.redact ? "On" : "Off"), el("i"));

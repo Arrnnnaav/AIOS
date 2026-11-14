@@ -59,6 +59,14 @@ def _value(name: str):
 
 
 def max_egress() -> int:
+    """What may leave: the organisation's MaxEgress, lowered to local
+    only when this person switched on "keep everything on this
+    computer". Either can only lower it (rule 6)."""
+
+    from ghostcursor import settings
+
+    if settings.local_only():
+        return LOCAL
     value = _value("MaxEgress")
     if value is None:
         return PICTURES

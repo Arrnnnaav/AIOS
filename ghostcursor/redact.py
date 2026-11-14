@@ -82,7 +82,7 @@ def _luhn_ok(digits: str) -> bool:
 
 _PLACEHOLDER = re.compile(r"\[[A-Z]+_\d+\]")
 
-MAX_TERMS, MAX_TERM_CHARS = 200, 80
+MAX_TERMS, MAX_TERM_CHARS, MAX_TERM_WORDS = 200, 80, 8
 
 
 def clean_terms(values, limit: int = MAX_TERMS) -> tuple[str, ...]:
@@ -95,7 +95,11 @@ def clean_terms(values, limit: int = MAX_TERMS) -> tuple[str, ...]:
         if not isinstance(value, str):
             continue
         term = " ".join(value.split())
-        if 2 <= len(term) <= MAX_TERM_CHARS and not _PLACEHOLDER.search(term):
+        if (
+            2 <= len(term) <= MAX_TERM_CHARS
+            and term.count(" ") < MAX_TERM_WORDS  # many gaps: a slow pattern
+            and not _PLACEHOLDER.search(term)
+        ):
             out.setdefault(term.casefold(), term)
     return tuple(out.values())[:limit]
 

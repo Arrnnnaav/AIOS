@@ -39,7 +39,9 @@ def jev_vision(path: Path | None = None) -> bool:
 def _set(key: str, on, path: Path | None) -> None:
     path = path or _path()
     with _write_lock:  # read-change-write as one step
-        value = load(path) | {key: on if isinstance(on, list) else bool(on)}
+        value = load(path) | {
+            key: on if isinstance(on, (list, str)) else bool(on)
+        }
         path.parent.mkdir(parents=True, exist_ok=True)
         temp = path.with_suffix(".tmp")
         temp.write_text(json.dumps(value), encoding="utf-8")
@@ -101,8 +103,15 @@ def own_private_terms(path: Path | None = None) -> tuple[str, ...]:
     projects). Kept on this computer only."""
 
     from ghostcursor import redact
+    from ghostcursor.workspace import brain
 
-    return redact.clean_terms(load(path).get("private_terms"))
+    value = load(path).get("private_terms")
+    if isinstance(value, str):  # sealed to this Windows account
+        try:
+            value = json.loads(brain._unseal(value))
+        except ValueError:  # another account's, or damaged: no words
+            return ()
+    return redact.clean_terms(value)
 
 
 def private_terms(path: Path | None = None) -> tuple[str, ...]:
@@ -122,7 +131,26 @@ def private_terms(path: Path | None = None) -> tuple[str, ...]:
 def set_private_terms(terms, path: Path | None = None) -> None:
     from ghostcursor import redact
 
-    _set("private_terms", list(redact.clean_terms(terms)), path)
+    from ghostcursor.workspace import brain
+
+    words = list(redact.clean_terms(terms))
+    try:  # the names themselves are private: sealed like a memory
+        stored = brain._seal(json.dumps(words))
+    except Exception:  # Windows cannot seal now: keep them, plain
+        stored = words
+    _set("private_terms", stored, path)
+
+
+def local_only(path: Path | None = None) -> bool:
+    """The person's own air gap: nothing leaves this computer, only a
+    model running here answers. Off unless switched on; it only ever
+    lowers what the organisation allows (rule 6)."""
+
+    return load(path).get("local_only") is True
+
+
+def set_local_only(on: bool, path: Path | None = None) -> None:
+    _set("local_only", on, path)
 
 
 def companion_idle(path: Path | None = None) -> bool:

@@ -175,3 +175,9 @@ def test_each_list_of_private_words_keeps_its_own_limit(monkeypatch, tmp_path):
     terms = settings.private_terms(path)
     assert len(terms) == 201 and "Secretco" in terms
     assert redact.scrub("ask Secretco", terms=terms)[0] == "ask [NAME_1]"
+
+
+def test_a_private_word_of_too_many_words_is_dropped():
+    from ghostcursor import redact
+
+    assert redact.clean_terms(["a b c d e f g h", "a b c d e f g h i"]) == ("a b c d e f g h",)

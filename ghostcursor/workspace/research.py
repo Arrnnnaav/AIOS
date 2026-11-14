@@ -199,6 +199,24 @@ def read_page(url: str, *, transport=None, resolve=None) -> str:
             images=0,
         )
     kind = page.headers.get("content-type", "") if page is not None else ""
+    if page is not None and page.status_code == 200 and "application/pdf" in kind:
+        import io
+
+        try:  # read here, on this computer; the first pages up to the cap
+            from pypdf import PdfReader
+
+            parts, size = [], 0
+            for sheet in PdfReader(io.BytesIO(page.content)).pages[:200]:
+                parts.append(sheet.extract_text() or "")
+                size += len(parts[-1])
+                if size >= MAX_PAGE_CHARS:
+                    break
+        except Exception as exc:  # no pypdf, encrypted, damaged
+            raise ValueError("that PDF could not be read") from exc
+        text = " ".join("\n".join(parts).replace("\0", " ").split())[:MAX_PAGE_CHARS]
+        if not text:
+            raise ValueError("that PDF has no readable text (scanned pages?)")
+        return text
     if (
         page is None
         or page.status_code != 200  # an error or sign-in page is not the page

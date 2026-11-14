@@ -311,3 +311,48 @@ def test_private_words_come_from_the_person_and_the_organisation(monkeypatch, tm
     assert policy.private_terms() == () and policy.redact_egress() is True
     path.write_text('{"private_terms": "Orion"}', encoding="utf-8")
     assert settings.own_private_terms(path) == ()  # a hand-edited file: no crash
+
+
+def test_the_persons_own_air_gap_lowers_and_never_raises(monkeypatch, tmp_path):
+    """YC W27 "AI for the air-gapped economy": one switch, and nothing leaves."""
+
+    from ghostcursor import policy, settings
+
+    assert settings.local_only() is False and policy.max_egress() == policy.PICTURES
+    assert policy.allows("openrouter") and policy.allows("web")
+    settings.set_local_only(True)
+    assert policy.max_egress() == policy.LOCAL
+    for name in ("openrouter", "jev", "web", "tavily", "duckduckgo", "github", "mail", "company"):
+        assert not policy.allows(name), name
+    assert policy.allows("ollama") and not policy.allows("ollama", images=1)
+    assert settings.jev_vision() is False
+    assert policy.managed() is False  # the person's switch, not the organisation's
+    settings.set_local_only(False)
+    monkeypatch.setattr(policy, "_value", lambda name: {"MaxEgress": 1}.get(name))
+    assert policy.max_egress() == policy.TEXT  # off never raises the organisation's level
+    path = tmp_path / "s.json"
+    path.write_text('{"local_only": "yes"}', encoding="utf-8")
+    assert settings.local_only(path) is False  # only a literal true
+
+
+def test_the_private_word_list_is_sealed_on_disk(tmp_path, monkeypatch):
+    from ghostcursor import settings
+    from ghostcursor.workspace import brain
+
+    path = tmp_path / "settings.json"
+    settings.set_private_terms(["Project Orion"], path)
+    assert "Orion" not in path.read_text(encoding="utf-8")
+    assert settings.own_private_terms(path) == ("Project Orion",)
+    # A list an older build saved in plain text still reads.
+    path.write_text('{"private_terms": ["Zeus"]}', encoding="utf-8")
+    assert settings.own_private_terms(path) == ("Zeus",)
+    # Another account's seal, or a damaged one: no words, no crash.
+    path.write_text('{"private_terms": "dp1:AAAA"}', encoding="utf-8")
+    assert settings.own_private_terms(path) == ()
+
+    def refuse(text):
+        raise OSError("no profile")
+
+    monkeypatch.setattr(brain, "_seal", refuse)
+    settings.set_private_terms(["Hera"], path)  # Windows cannot seal: still kept
+    assert settings.own_private_terms(path) == ("Hera",)
