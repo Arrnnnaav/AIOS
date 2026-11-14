@@ -939,7 +939,8 @@ class App:
             settings.set_crash_reports(body.get("on") is True)
             return {}
         if action == "redact_egress":  # the person can add, never lower
-            settings.set_redact_egress(body.get("on") is True)
+            # Only an explicit false turns it off; anything else keeps it on.
+            settings.set_redact_egress(body.get("on") is not False)
             return {}
         if action == "company_gateway":  # the person's own opt-in (D187)
             settings.set_company_gateway(body.get("on") is True)

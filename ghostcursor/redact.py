@@ -80,16 +80,27 @@ def _luhn_ok(digits: str) -> bool:
     return total % 10 == 0
 
 
-def scrub(text: str, categories=None) -> tuple[str, dict[str, str]]:
+def scrub(
+    text: str, categories=None, *, mapping=None, avoid: str = ""
+) -> tuple[str, dict[str, str]]:
     """Return (scrubbed_text, map). Every detected entity is replaced by a
     stable ``[CATEGORY_n]`` placeholder; the map {placeholder: original} lets
     the caller rehydrate a reply later. The same original gets the same
     placeholder within one call. The map NEVER leaves with the text.
-    ``categories`` limits the scrub to those categories (e.g. ``SECRETS``)."""
+    ``categories`` limits the scrub to those categories (e.g. ``SECRETS``).
 
-    mapping: dict[str, str] = {}
-    seen: dict[str, str] = {}  # original -> placeholder (dedupe within a scrub)
+    ``mapping`` continues an earlier scrub's map, so several texts of one
+    request share placeholders (the same original gets the same one, and
+    two originals never share one). A placeholder that already occurs in
+    ``avoid`` is never issued: it would be confused with text that was
+    scrubbed elsewhere and whose original this map does not hold."""
+
+    mapping = {} if mapping is None else mapping
+    seen = {original: placeholder for placeholder, original in mapping.items()}
     counts: dict[str, int] = {}
+    for placeholder in mapping:
+        category, _, number = placeholder[1:-1].rpartition("_")
+        counts[category] = max(counts.get(category, 0), int(number))
 
     def _sub(category: str, m: re.Match[str]) -> str:
         original = m.group(0)
@@ -98,6 +109,8 @@ def scrub(text: str, categories=None) -> tuple[str, dict[str, str]]:
         if original in seen:
             return seen[original]
         counts[category] = counts.get(category, 0) + 1
+        while f"[{category}_{counts[category]}]" in avoid:
+            counts[category] += 1
         placeholder = f"[{category}_{counts[category]}]"
         seen[original] = placeholder
         mapping[placeholder] = original

@@ -2312,6 +2312,14 @@ from 1053b54. Still open:
   is scrubbed too; redaction is off by default; research still fetches the
   result pages it found (URLs only, no user text); no count of redactions
   in the audit log.
+- Owner decision 14 Nov 2026: hiding private details from cloud models is
+  ON by default (settings "redact_egress" is on unless explicitly false; a
+  damaged settings file reads as on), and originals are put back into a
+  System-Two answer on this computer (JSON-escaped, one placeholder map per
+  request, never reusing a placeholder already present in the text). Left:
+  a detail scrubbed earlier (attached file, screen text) has no original in
+  the map and still shows as a placeholder; Teach accuracy with scrubbed
+  Jev context (dates read as phone numbers) is not measured.
 - Tier-1 review 14 Nov (e78f494): no blocking finding. Fixed from it: with
   redaction on, observed data bound for Jev is now scrubbed too (Tainted.of
   alone let "10.0.0.5" and a short phone number through, probed by the

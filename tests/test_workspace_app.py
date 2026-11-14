@@ -835,11 +835,11 @@ def test_the_private_details_switch_adds_to_policy_and_never_lowers_it(
         got = json.loads(call(port, "/api/state")[1])
         return got["redact"], got["redact_forced"]
 
-    assert state() == (False, False)
-    assert call(port, "/api/redact_egress", {"on": True})[0] == 200
+    assert state() == (True, False)  # on by default
+    assert call(port, "/api/redact_egress", {"on": False})[0] == 200
+    assert not settings.redact_egress() and state() == (False, False)
+    assert call(port, "/api/redact_egress", {"on": 0})[0] == 200  # not false: on
     assert settings.redact_egress() and state() == (True, False)
-    assert call(port, "/api/redact_egress", {"on": "yes"})[0] == 200  # not True: off
-    assert state() == (False, False)
     monkeypatch.setattr(policy, "redact_egress", lambda: True)
     call(port, "/api/redact_egress", {"on": False})
     assert state() == (True, True)  # the organisation's on survives the switch

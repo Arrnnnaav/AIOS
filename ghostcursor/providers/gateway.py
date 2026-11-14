@@ -355,15 +355,22 @@ class Gateway:
                     "responses": clients.responses_json_call,
                     "anthropic": clients.anthropic_json_call,
                 }.get(config.api, clients.chat_json_call)
+                outbound, hidden = self._outbound(messages, name)
                 content, reply = call(
                     config,
                     key,
-                    self._outbound(messages, name),  # D186 rule-6 egress scrub
+                    outbound,  # D186 rule-6 egress scrub
                     schema,
                     transport=self.transport,
                     deadline_s=deadline_s,
                     cancelled=cancelled,
                 )
+                # The originals go back into the answer here, on this
+                # computer; the provider only ever saw placeholders.
+                for placeholder, original in hidden.items():
+                    content = content.replace(
+                        placeholder, json.dumps(original)[1:-1]
+                    )
                 result = parse(content)
             except ProviderError as exc:
                 self._record(name, config.model, started, envelope, None, exc.kind)
@@ -406,24 +413,32 @@ class Gateway:
             or settings.redact_egress()  # the person's own switch
         )
 
-    def _outbound(self, messages: list[dict], provider: str) -> list[dict]:
+    def _outbound(
+        self, messages: list[dict], provider: str
+    ) -> tuple[list[dict], dict[str, str]]:
         """Rule 6 egress gate (D186): when redaction is on and the provider is
         REMOTE, scrub embedded secrets (email/card/SSN/key/PEM/JWT/IBAN/IP/phone)
         out of every outbound message before it leaves. A local provider and the
-        off case pass the messages through unchanged. One-way here: the closed-
-        schema reply is structure, not the raw secret, so it is not rehydrated."""
+        off case pass the messages through unchanged. Returns the messages
+        and the map {placeholder: original}, shared by every message of the
+        request, which stays here to put the originals back in the reply."""
 
         if not self._redact_on() or provider in policy.LOCAL_PROVIDERS:
-            return messages
-        out = []
+            return messages, {}
+        out, hidden = [], {}
+        # Text scrubbed earlier (an attached file, screen text) may already
+        # hold placeholders; never reuse one of those for a new original.
+        present = " ".join(
+            m["content"] for m in messages if isinstance(m.get("content"), str)
+        )
         for m in messages:
             content = m.get("content")
             if isinstance(content, str):
-                scrubbed, _ = redact.scrub(content)
+                scrubbed, _ = redact.scrub(content, mapping=hidden, avoid=present)
                 out.append({**m, "content": scrubbed})
             else:
                 out.append(m)
-        return out
+        return out, hidden
 
     def _take(self) -> None:
         with self._lock:

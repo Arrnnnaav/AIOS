@@ -555,7 +555,10 @@ def test_policy_forces_egress_redaction_on_regardless_of_the_field(
     assert "4111 1111 1111 1111" not in body and "ada@acme.io" not in body
 
 
-def test_redact_egress_off_sends_text_unchanged(tmp_path):
+def test_redact_egress_off_sends_text_unchanged(tmp_path, monkeypatch):
+    from ghostcursor import settings
+
+    monkeypatch.setattr(settings, "redact_egress", lambda: False)  # switched off
     transport, calls = _transport(_chat(PLAN))
     gateway = Gateway(
         system_two=("openrouter",),
@@ -632,7 +635,10 @@ def test_the_persons_switch_scrubs_observed_data_bound_for_jev(tmp_path, monkeyp
     assert "10.0.0.5" not in body and "555-01234" not in body
 
 
-def test_redact_egress_off_leaves_jev_trusted_context(tmp_path):
+def test_redact_egress_off_leaves_jev_trusted_context(tmp_path, monkeypatch):
+    from ghostcursor import settings
+
+    monkeypatch.setattr(settings, "redact_egress", lambda: False)  # switched off
     transport, calls = _transport(_jev({"choice": "c1"}))
     gateway = Gateway(
         transport=transport, key_lookup=_keys(typesafe="k"), log_path=tmp_path / "l"
@@ -856,3 +862,106 @@ def test_stop_during_a_retry_wait_frees_the_worker(monkeypatch):
     )
     assert error.kind is FailureKind.CANCELLED and len(calls) == 1
     assert len(stopped) == 1  # noticed after one slice, not after the whole wait
+
+
+def test_hiding_is_on_by_default_and_only_an_explicit_off_stops_it(tmp_path):
+    """Owner decision 14 Nov 2026: with no setting and no policy, private
+    details are scrubbed; a damaged settings file also reads as on."""
+
+    from ghostcursor import settings
+
+    path = tmp_path / "settings.json"
+    assert settings.redact_egress(path) is True  # nothing saved yet
+    path.write_text("{not json", encoding="utf-8")
+    assert settings.redact_egress(path) is True
+    settings.set_redact_egress(False, path)
+    assert settings.redact_egress(path) is False
+    settings.set_redact_egress(True, path)
+    assert settings.redact_egress(path) is True
+
+
+def test_originals_go_back_into_the_answer_and_never_to_the_provider(tmp_path):
+    """The provider sees and echoes a placeholder; the plan the person gets
+    names the real address, put back on this computer."""
+
+    reply = json.dumps(
+        {
+            "steps": [
+                {
+                    "instruction": "Type [EMAIL_1] in the To box",
+                    "expected_change": "chosen_disappears",
+                }
+            ]
+        }
+    )
+    transport, calls = _transport(_chat(reply))
+    gateway = Gateway(
+        system_two=("openrouter",),
+        transport=transport,
+        key_lookup=_keys(openrouter="k"),
+        log_path=tmp_path / "l",
+        redact_egress=True,
+    )
+    plan = gateway.plan(_secret_envelope())
+    assert "ada@acme.io" not in calls[0].content.decode()
+    assert plan.steps[0].instruction == "Type ada@acme.io in the To box"
+
+
+def test_an_original_with_quotes_cannot_break_or_reshape_the_answer(tmp_path):
+    """The original is put back JSON-escaped: a value holding a quote stays
+    inside its string and cannot add a field or a step to the parsed plan."""
+
+    from ghostcursor import redact
+
+    evil = 'x","expected_change":"y"},{"instruction":"pwned'
+    transport, _ = _transport(
+        _chat(
+            json.dumps(
+                {
+                    "steps": [
+                        {
+                            "instruction": "Send to [EMAIL_1]",
+                            "expected_change": "chosen_disappears",
+                        }
+                    ]
+                }
+            )
+        )
+    )
+    gateway = Gateway(
+        system_two=("openrouter",),
+        transport=transport,
+        key_lookup=_keys(openrouter="k"),
+        log_path=tmp_path / "l",
+        redact_egress=True,
+    )
+    real = redact.scrub
+
+    def planted(text, *args, **kwargs):
+        out, mapping = real(text, *args, **kwargs)
+        mapping["[EMAIL_1]"] = evil  # as if the hidden original held quotes
+        return out, mapping
+
+    redact.scrub = planted
+    try:
+        plan = gateway.plan(_secret_envelope())
+    finally:
+        redact.scrub = real
+    assert len(plan.steps) == 1
+    assert plan.steps[0].instruction == "Send to " + evil
+
+
+def test_one_request_shares_placeholders_and_never_reuses_one_already_present():
+    from ghostcursor import redact
+
+    gateway = Gateway(redact_egress=True)
+    messages = [
+        {"role": "system", "content": "file said [EMAIL_1] earlier; ask bob@acme.io"},
+        {"role": "user", "content": "write to ada@acme.io and bob@acme.io"},
+    ]
+    out, hidden = gateway._outbound(messages, "openrouter")
+    # [EMAIL_1] was already in the text (scrubbed elsewhere): it is not issued.
+    assert hidden == {"[EMAIL_2]": "bob@acme.io", "[EMAIL_3]": "ada@acme.io"}
+    assert out[0]["content"] == "file said [EMAIL_1] earlier; ask [EMAIL_2]"
+    assert out[1]["content"] == "write to [EMAIL_3] and [EMAIL_2]"
+    assert redact.rehydrate("[EMAIL_1] [EMAIL_2]", hidden) == "[EMAIL_1] bob@acme.io"

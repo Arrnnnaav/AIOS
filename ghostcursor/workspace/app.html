@@ -1074,7 +1074,7 @@ function renderBrain() {
   rsw.onclick = () => act("redact_egress", { on: !S.redact }, S.redact ? "Private details no longer hidden" : "Private details hidden from cloud models");
   rmeta.append(rsw);
   red.append(rmeta, el("div", "", "Hide private details from cloud models."),
-    el("div", "note", "When on, email addresses, phone numbers, card, bank and ID numbers, keys and machine addresses in what you type, attach or have on screen are swapped for placeholders like [EMAIL_1] on this computer before the text goes to a cloud model. Answers may show the placeholders. Names of people, companies and projects are not recognised and still go. A local Ollama model gets the original text."));
+    el("div", "note", "When on, email addresses, phone numbers, card, bank and ID numbers, keys and machine addresses in what you type, attach or have on screen are swapped for placeholders like [EMAIL_1] on this computer before the text goes to a cloud model, and Orbyn puts the originals back into the answer here. A detail from an attached file may still show as a placeholder. On by default. Names of people, companies and projects are not recognised and still go. A local Ollama model gets the original text."));
   if (S.redact_forced) red.append(el("div", "note", "Set by your organization: always on."));
   red.style.marginTop = "8px"; root.append(red);
   if (S.company_offered) {

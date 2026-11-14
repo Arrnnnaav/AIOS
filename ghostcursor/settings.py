@@ -86,9 +86,10 @@ def redact_egress(path: Path | None = None) -> bool:
     """The person's own switch: scrub private details (email, phone, card,
     ID, key, address of a machine) out of text bound for a cloud model.
     It can only add to the organisation's RedactEgress policy, never
-    lower it (rule 6). Off unless turned on."""
+    lower it (rule 6). On unless this person turned it off (owner decision,
+    14 Nov 2026); an unreadable settings file therefore reads as on."""
 
-    return load(path).get("redact_egress") is True
+    return load(path).get("redact_egress") is not False
 
 
 def set_redact_egress(on: bool, path: Path | None = None) -> None:
