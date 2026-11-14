@@ -2475,3 +2475,16 @@ from 1053b54. Still open:
   reads as no words, silently; pypdf parses an untrusted file in-process;
   scanned PDFs have no text; whether the packaged app bundles pypdf was
   not checked.
+- Agent access 15 Nov (tier 1, what leaves; YC S26 "Software for Agents",
+  "Company Brain"): `py -3.12 -m ghostcursor.agent_server [scope]` is a
+  read-only Model Context Protocol server over stdio with three tools
+  (recall, list_workflows, get_workflow). It answers only when the person
+  switched agent access on and policy.allows("agents"); replies are
+  scrubbed (private details and words when hiding is on, keys and numbers
+  always), never include sensitive or unreviewed facts, and each call
+  leaves a content-free audit line shown in the receipt. Mutation sweep
+  13 of 13 killed after one added test. Left: not tried with a real MCP
+  client; the page shows the Python command, which is wrong for the
+  packaged app (no console entry point there yet); a new Knowledge
+  connection is opened per recall; relations (edges) and the Personal
+  Brain are not exposed.

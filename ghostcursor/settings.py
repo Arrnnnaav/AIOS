@@ -153,6 +153,18 @@ def set_local_only(on: bool, path: Path | None = None) -> None:
     _set("local_only", on, path)
 
 
+def agent_access(path: Path | None = None) -> bool:
+    """May another agent on this computer read the Company Brain and
+    saved workflows through ghostcursor.agent_server? Off unless this
+    person turned it on: that agent may pass what it reads to a cloud."""
+
+    return load(path).get("agent_access") is True
+
+
+def set_agent_access(on: bool, path: Path | None = None) -> None:
+    _set("agent_access", on, path)
+
+
 def companion_idle(path: Path | None = None) -> bool:
     """settings.json "companion_idle": true keeps a small resting dot beside
     the pointer when Orbyn is idle (HeyClicky's docked companion). Off by

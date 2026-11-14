@@ -18,7 +18,8 @@ lowers what the user may switch on; with no policy, behaviour is unchanged.
 - ``AllowedProviders`` (REG_SZ): if set, only these services are contacted:
   model providers, and also ``tavily`` / ``duckduckgo`` (research web
   search), ``web`` (reading one page the person named), ``github``,
-  ``calendar``, ``mail``, ``crash``.
+  ``calendar``, ``mail``, ``crash``, ``agents`` (another agent on the
+  PC reading the Company Brain through ghostcursor.agent_server).
 - ``CompanyEndpoint`` / ``CompanyModel`` (REG_SZ): the company's own
   OpenAI-compatible model gateway (https), tried before any personal account;
   its key, if it needs one, is ``Orbyn/company`` in Credential Manager.

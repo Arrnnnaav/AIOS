@@ -745,6 +745,9 @@ class App:
             "private_terms": list(settings.own_private_terms()),
             # The person's own air gap: only a model on this computer answers.
             "local_only": settings.local_only(),
+            # Read-only access for another agent on this computer.
+            "agent_access": settings.agent_access(),
+            "agent_command": f'"{sys.executable}" -m ghostcursor.agent_server',
             "private_terms_org": len(policy.private_terms()),
             "egress": policy.max_egress(),  # D180: set by the organisation
             "managed": policy.managed(),
@@ -996,13 +999,13 @@ class App:
                 if (
                     isinstance(row, dict)
                     and row.get("event") == "egress"
-                    and row.get("provider") in ("web", "tavily", "duckduckgo")
+                    and row.get("provider") in ("web", "tavily", "duckduckgo", "agents")
                 ):
                     at = row.get("at")
                     rows.append(
                         {
                             "at": at if isinstance(at, (int, float)) and not isinstance(at, bool) else None,
-                            "web": "page" if row["provider"] == "web" else "search",
+                            "web": {"web": "page", "agents": "agent"}.get(row["provider"], "search"),
                             "provider": row["provider"],
                             "failed": bool(row.get("failure")),
                         }
@@ -1031,6 +1034,9 @@ class App:
         if action == "redact_egress":  # the person can add, never lower
             # Only an explicit false turns it off; anything else keeps it on.
             settings.set_redact_egress(body.get("on") is not False)
+            return {}
+        if action == "agent_access":  # opt-in; anything but true is off
+            settings.set_agent_access(body.get("on") is True)
             return {}
         if action == "local_only":  # the person's own air gap (only lowers)
             if not isinstance(body.get("on"), bool):

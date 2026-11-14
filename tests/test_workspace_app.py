@@ -2411,3 +2411,19 @@ def test_the_offline_switch_takes_only_true_or_false(served):
     assert call(port, "/api/read_link", {"url": "https://example.com/"})[0] == 400
     assert call(port, "/api/local_only", {"on": False})[0] == 200
     assert json.loads(call(port, "/api/state")[1])["egress"] == 2
+
+
+def test_agent_access_is_opt_in_and_shows_in_the_receipt(served, tmp_path):
+    from ghostcursor import audit
+
+    app, port = served
+    app.ws.gateway.log_path = tmp_path / "requests.jsonl"  # never this PC's log
+    assert json.loads(call(port, "/api/state")[1])["agent_access"] is False
+    call(port, "/api/agent_access", {"on": "yes"})
+    assert json.loads(call(port, "/api/state")[1])["agent_access"] is False  # only true
+    call(port, "/api/agent_access", {"on": True})
+    state = json.loads(call(port, "/api/state")[1])
+    assert state["agent_access"] is True and "ghostcursor.agent_server" in state["agent_command"]
+    audit.record("egress", provider="agents", model=None, failure="refused", images=0, clock=lambda: 3.0)
+    got = json.loads(call(port, "/api/egress_log")[1])["requests"]
+    assert got == [{"at": 3.0, "web": "agent", "provider": "agents", "failed": True}]

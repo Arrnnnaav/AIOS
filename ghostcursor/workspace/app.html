@@ -1085,6 +1085,18 @@ function renderBrain() {
   gap.append(gmeta, el("div", "", "Keep everything on this computer."),
     el("div", "note", "When on, Orbyn sends nothing anywhere: no cloud model, no Jev, no web search or page read, no GitHub, calendar or mail. Only a model running on this computer (Ollama) answers, so install one first or Orbyn cannot answer. Off by default."));
   gap.style.marginTop = "8px"; root.append(gap);
+  const ag = el("div", "mem"); const ameta = el("div", "meta"); ameta.append(el("span", "kind", "other agents"));
+  const asw = el("button", "switch"); asw.setAttribute("role", "switch"); asw.setAttribute("aria-checked", String(!!S.agent_access));
+  asw.style.marginLeft = "auto"; asw.append(document.createTextNode(S.agent_access ? "On" : "Off"), el("i"));
+  asw.disabled = S.egress < 1 && !S.agent_access;
+  asw.onclick = () => act("agent_access", { on: !S.agent_access }, S.agent_access ? "Agent access off" : "Agent access on");
+  ameta.append(asw);
+  ag.append(ameta, el("div", "", "Let another agent on this computer read your Company Brain and saved workflows."),
+    el("div", "note", "Read-only, through the Model Context Protocol: the agent can search reviewed facts and read saved workflow steps; it cannot add, change, click or type. Facts marked private are never shared. That agent may send what it reads to its own cloud model, so private details and private words are hidden first, and each request shows in the receipt below. Off by default; not available when everything stays on this computer."));
+  if (S.agent_access) {
+    const cmd = el("div", "note", "Add this command to your agent as an MCP server: " + S.agent_command); cmd.style.textAlign = "left"; cmd.style.userSelect = "all"; ag.append(cmd);
+  }
+  ag.style.marginTop = "8px"; root.append(ag);
   const red = el("div", "mem"); const rmeta = el("div", "meta"); rmeta.append(el("span", "kind", "private details"));
   const rsw = el("button", "switch"); rsw.setAttribute("role", "switch"); rsw.setAttribute("aria-checked", String(!!S.redact));
   rsw.style.marginLeft = "auto"; rsw.append(document.createTextNode(S.redact ? "On" : "Off"), el("i"));
@@ -1142,7 +1154,7 @@ function renderBrain() {
     if (!r.requests.length) reclist.textContent = "Nothing has been sent from this computer yet.";
     for (const q of r.requests) {
       const when = q.at ? new Date(q.at * 1000).toLocaleString() : "";
-      if (q.web) { reclist.append(el("div", "", `${when} · ${q.web === "page" ? "web page read" : "web search (" + q.provider + ")"}${q.failed ? " · failed" : ""}`)); continue; }
+      if (q.web) { reclist.append(el("div", "", `${when} · ${q.web === "page" ? "web page read" : q.web === "agent" ? (q.failed ? "another agent asked · refused" : "shared with another agent on this computer") : "web search (" + q.provider + ")"}${q.failed && q.web !== "agent" ? " · failed" : ""}`)); continue; }
       const hid = q.local ? " · stayed on this computer"
         : q.scrubbed === false ? " · sent without hiding private details"
         : q.scrubbed === null ? ""
@@ -1152,7 +1164,7 @@ function renderBrain() {
       reclist.append(el("div", "", `${when} · ${q.provider} (${q.model})${hid}${pic}${q.failed ? " · failed" : ""}`));
     }
   };
-  rec.append(recmeta, el("div", "", "A receipt of the last 20 requests to a model, web searches and page reads: when, which service and model, and whether private details were hidden first. For a web search, private details are always hidden from the question; the result pages a search then opens are not listed."),
+  rec.append(recmeta, el("div", "", "A receipt of the last 20 requests to a model, web searches, page reads and answers to another agent: when, which service and model, and whether private details were hidden first. For a web search, private details are always hidden from the question; the result pages a search then opens are not listed."),
     el("div", "note", "Kept on this computer only. It never holds what you asked or what was answered."), reclist);
   rec.style.marginTop = "8px"; root.append(rec);
   const dot = el("div", "mem"); const dmeta = el("div", "meta"); dmeta.append(el("span", "kind", "companion"));
