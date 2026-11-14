@@ -1897,7 +1897,14 @@ def _post(url: str, action: str, body: dict) -> dict:
         data,
         {"Content-Type": "application/json", "X-Orbyn-Token": token},
     )
-    with urllib.request.urlopen(request, timeout=10) as response:
+    # This computer's own app: never through a proxy from the environment
+    # (the request carries the file and the page token).
+    opened = (
+        urllib.request.build_opener(urllib.request.ProxyHandler({})).open(request, timeout=10)
+        if urllib.request.getproxies()
+        else urllib.request.urlopen(request, timeout=10)
+    )
+    with opened as response:
         return json.load(response)
 
 

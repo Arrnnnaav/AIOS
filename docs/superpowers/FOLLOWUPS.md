@@ -2552,3 +2552,16 @@ from 1053b54. Still open:
   Windows path keeps a term's first letter (C:\tina -> C:\t[NAME_1]); a
   term starting with u after a backslash still breaks JSON (fails closed);
   agent_server error strings are fixed today.
+- Tier-1 review 15 Nov (d0e39dd..2f89dc0, read at 2f89dc0): no blocking
+  finding. Done from it: Groq gsk_, NVIDIA nvapi-, Tavily tvly-, Hugging
+  Face hf_, Google AIza and AWS ASIA key shapes are hidden; a Windows path
+  in plain text no longer keeps a private word's first letter (JSON
+  escapes are lower-case only); a name that spanned a JSON escape came
+  back escaped twice and now comes back once; handing a file to the
+  running app skips an environment proxy; the measurement script is
+  checked in (tools/measure_scrub_names.py). Mutation sweep 6 of 6,
+  recorded in docs/evidence/mutation-sweep-2026-11-15.md. Left:
+  keep_secrets_hidden covers Gateway.complete only (the page's promise is
+  about Orbyn's planned steps, which go through it); a lower-case path
+  such as C:\tina in plain text still keeps "t"; this round was not
+  re-reviewed.

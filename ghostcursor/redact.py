@@ -44,12 +44,14 @@ _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     # Each provider's own token shape: the prefix then a separator (or, for
     # AWS, upper-case and digits). A bare "gho"/"sk" start is a word, not a
     # key: "ghostcursor-investor-deck-content" was hidden as a key in 9 of 239
-    # recorded control names (measured 15 Nov 2026 over .artifacts/).
+    # recorded control names (docs/evidence/scrub-on-screen-names-2026-11-15.md).
+    # Also Groq gsk_, NVIDIA nvapi-, Tavily tvly-, Hugging Face hf_, Google
+    # AIza and AWS temporary ASIA keys (review 15 Nov).
     (
         "KEY",
         re.compile(
-            r"\b(?:(?:sk|pk|rk)[-_]|gh[pousr]_|github_pat_|xox[baprs]-)[-_A-Za-z0-9]{16,}\b"
-            r"|\bAKIA[0-9A-Z]{16}\b"
+            r"\b(?:(?:sk|pk|rk)[-_]|gh[pousr]_|github_pat_|xox[baprs]-|gsk_|nvapi-|tvly-|hf_)[-_A-Za-z0-9]{16,}\b"
+            r"|\bA(?:KI|SI)A[0-9A-Z]{16}\b|\bAIza[-_A-Za-z0-9]{35}\b"
         ),
     ),
     # explicit bearer/authorization credential (case-insensitive prefix)
@@ -197,7 +199,7 @@ def scrub(
             slashes = 0
             while at - slashes > 0 and m.string[at - slashes - 1] == chr(92):
                 slashes += 1
-            if slashes % 2 and found[0].lower() in "nrtfb" and len(found) > 1:
+            if slashes % 2 and found[0] in "nrtfb" and len(found) > 1:
                 # In JSON text this first letter is the end of a line-break
                 # escape, not of the word: keep it or the JSON breaks, and
                 # hide the rest (review 15 Nov).

@@ -229,3 +229,23 @@ def test_a_private_word_spans_hyphens_underscores_and_json_escapes():
     tricky = json.dumps({"t": "x" + chr(12) + "red " + chr(8) + "ob"}, ensure_ascii=False)
     back = json.loads(redact.scrub(tricky, terms=("Fred", "Bob"))[0])["t"]
     assert back.startswith("x" + chr(12)) and "red" not in back and "ob" not in back
+
+
+def test_more_provider_key_shapes_are_hidden():
+    """Review 15 Nov: Orbyn's own NVIDIA and Tavily keys among them."""
+
+    from ghostcursor import redact
+
+    for key in ("gsk_" + "a" * 40, "nvapi-" + "b" * 40, "tvly-" + "c" * 32, "hf_" + "d" * 34,
+                "AIza" + "e" * 35, "ASIA" + "ABCDEFGHIJKLMNOP"):
+        assert redact.scrub(f"key={key};")[0] == "key=[KEY_1];", key
+    for word in ("hf_short", "tvly-x", "ASIAN culture festival", "AIzawl"):
+        assert redact.scrub(word)[0] == word, word
+
+
+def test_a_windows_path_keeps_no_letter_of_a_private_word():
+    from ghostcursor import redact
+
+    bs = chr(92)
+    out, m = redact.scrub("C:" + bs + "Users" + bs + "Bob" + bs + "notes", terms=("Bob",))
+    assert out == "C:" + bs + "Users" + bs + "[NAME_1]" + bs + "notes" and m == {"[NAME_1]": "Bob"}

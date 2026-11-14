@@ -386,8 +386,14 @@ class Gateway:
                 for placeholder, original in (hidden or {}).items():
                     if keep and placeholder[1:].rsplit("_", 1)[0] in redact.SECRETS:
                         continue  # the person keeps keys and numbers hidden
+                    try:  # a name taken from JSON text is already escaped
+                        plain = json.loads('"' + original + '"')
+                    except ValueError:
+                        plain = original
+                    if not isinstance(plain, str):
+                        plain = original
                     content = content.replace(
-                        placeholder, json.dumps(original)[1:-1]
+                        placeholder, json.dumps(plain)[1:-1]
                     )
                 result = parse(content)
             except ProviderError as exc:

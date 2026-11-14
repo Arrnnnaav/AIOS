@@ -52,8 +52,24 @@ KILLED   ghostcursor/workspace/app.py :: settings.set_keep_secrets_hidden(body.g
 
 The ollama.py guard changed after this sweep (it now keeps the plain call when
 no proxy is configured). Re-run of that one mutant, `if is_loopback(endpoint)
-and urllib.request.getproxies():` -> `if False:`, pytest summary line as printed:
+and urllib.request.getproxies():` -> `if False:`, command
+`py -3.12 -m pytest tests/test_providers.py -x -q --basetemp=.tmp/pytest-mut
+-p no:cacheprovider`, pytest summary line as printed:
 
 ```
 1 failed, 115 passed in 3.67s
+```
+
+## Third sweep: follow-ups of the third review
+
+As printed:
+
+```
+D018 mutation sweep, third review follow-ups of 15 Nov 2026 (tree after cbaaca3)
+KILLED   ghostcursor/redact.py :: |gsk_|nvapi-|tvly-|hf_) -> )
+KILLED   ghostcursor/redact.py :: A(?:KI|SI)A[0-9A-Z]{16} -> AKIA[0-9A-Z]{16}
+KILLED   ghostcursor/redact.py :: |\bAIza[-_A-Za-z0-9]{35}\b -> (removed)
+KILLED   ghostcursor/redact.py :: if slashes % 2 and found[0] in "nrtfb" -> if slashes % 2 and found[0].lower() in "
+KILLED   ghostcursor/providers/gateway.py :: placeholder, json.dumps(plain)[1:-1] -> placeholder, json.dumps(original)[1:-1]
+KILLED   ghostcursor/workspace/app.py :: if urllib.request.getproxies() else urllib.request.urlopen(r -> if False else urllib.request.urlopen(req
 ```

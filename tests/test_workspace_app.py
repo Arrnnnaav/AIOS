@@ -2555,3 +2555,35 @@ def test_keep_secrets_hidden_is_opt_in(served):
     assert json.loads(call(port, "/api/state")[1])["keep_secrets_hidden"] is False
     call(port, "/api/keep_secrets_hidden", {"on": True})
     assert json.loads(call(port, "/api/state")[1])["keep_secrets_hidden"] is True
+
+
+def test_handing_a_file_to_the_running_app_never_uses_a_proxy(monkeypatch):
+    import urllib.request
+
+    from ghostcursor.workspace import app as app_mod
+
+    seen = []
+
+    class Opened:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self, *a):
+            return b"{}"
+
+    real = urllib.request.build_opener
+
+    def spy(*hs):
+        seen.append([getattr(h, "proxies", "?") for h in hs])
+        opener = real(*hs)
+        opener.open = lambda request, timeout=None: Opened()
+        return opener
+
+    monkeypatch.setattr(urllib.request, "build_opener", spy)
+    monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **k: seen.append("plain") or Opened())
+    monkeypatch.setenv("HTTP_PROXY", "http://proxy.corp:8080")
+    app_mod._post("http://127.0.0.1:9/?t=tok", "offer_file", {"name": "a", "text": "b"})
+    assert seen == [[{}]]  # a proxy is set: the no-proxy opener, never urlopen

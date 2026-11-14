@@ -1196,3 +1196,21 @@ def test_the_teach_planner_reaches_a_local_model_without_a_proxy(monkeypatch):
     ollama.generate_structured(endpoint="http://127.0.0.1:11434", model="m", prompt="p", schema={"type": "object"}, timeout=1)
     ollama.generate_structured(endpoint="https://ollama.example.com", model="m", prompt="p", schema={"type": "object"}, timeout=1)
     assert seen == [[{}], "plain"]  # local: no proxy; remote: the usual path
+
+
+def test_a_name_spanning_a_line_break_comes_back_once_escaped(tmp_path, monkeypatch):
+    """Review 15 Nov: the original was escaped twice, so the answer showed a
+    literal backslash-n."""
+
+    from ghostcursor import settings
+
+    monkeypatch.setattr(settings, "private_terms", lambda: ("Priya Nair",))
+    reply = json.dumps({"steps": [{"instruction": "Write to [NAME_1]", "expected_change": "chosen_disappears"}]})
+    transport, calls = _transport(_chat(reply))
+    gateway = Gateway(system_two=("openrouter",), transport=transport,
+                      key_lookup=_keys(openrouter="k"), log_path=tmp_path / "l")
+    env = Envelope(task="plan the step", trusted={"goal": "g", "message": "to Priya" + chr(10) + "Nair"},
+                   tainted={"screen": Tainted.of("uia_name", "Send")})
+    step = gateway.plan(env).steps[0].instruction
+    assert step == "Write to Priya Nair"  # the plan collapses spaces; no stray backslash-n
+    assert "Priya" not in calls[0].content.decode()
