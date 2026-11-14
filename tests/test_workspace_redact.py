@@ -135,3 +135,43 @@ def test_a_private_word_inside_a_longer_word_is_left_alone():
     from ghostcursor import redact
 
     assert redact.scrub("MegaAcme and Acmeville", terms=("Acme",))[0] == "MegaAcme and Acmeville"
+
+
+def test_a_private_word_next_to_a_digit_or_underscore_is_hidden():
+    """Tier-1 review 14 Nov: file names on screen are the common form."""
+
+    from ghostcursor import redact
+
+    out = redact.scrub("Acme_Proposal_v2.pptx, Acme2026 plan, 7Acme, Acme's", terms=("Acme",))[0]
+    assert "Acme" not in out and out.count("[NAME_1]") == 4
+    assert redact.scrub("Acmeville and MegaAcme", terms=("Acme",))[0] == "Acmeville and MegaAcme"
+
+
+def test_private_words_are_found_in_json_text_too():
+    """Tier-1 review 14 Nov: a System-Two message is JSON, where a line break
+    reads backslash-n and a backslash or quote in a word is doubled."""
+
+    import json
+
+    from ghostcursor import redact
+
+    bs, nl = chr(92), chr(10)
+    account = "CORP" + bs + "jsmith"
+    message = f"Note for Acme{nl}Health and {account}, also{nl}Zorblat and{nl}acme health"
+    sent = json.dumps({"message": message}, ensure_ascii=False)
+    out, m = redact.scrub(sent, terms=("Acme Health", "Zorblat", account))
+    assert not any(w in out.casefold() for w in ("acme", "health", "zorblat", "jsmith"))
+    assert json.loads(out)["message"].count("[NAME_") == 4  # still valid JSON
+    assert redact.scrub(message, terms=("Acme Health", account))[0].count("[NAME_") == 3
+
+
+def test_each_list_of_private_words_keeps_its_own_limit(monkeypatch, tmp_path):
+    from ghostcursor import policy, redact, settings
+
+    path = tmp_path / "settings.json"
+    settings.set_private_terms(["Secretco"], path)
+    org = ";".join(f"org{i}" for i in range(250))
+    monkeypatch.setattr(policy, "_value", lambda name: {"PrivateTerms": org}.get(name))
+    terms = settings.private_terms(path)
+    assert len(terms) == 201 and "Secretco" in terms
+    assert redact.scrub("ask Secretco", terms=terms)[0] == "ask [NAME_1]"

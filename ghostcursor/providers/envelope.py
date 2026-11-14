@@ -259,7 +259,18 @@ def tainted_chunks(source: str, material: str) -> tuple[str, list[Tainted]]:
     # The whole of sanitize first (NFKC, control strip, whitespace collapse):
     # a tag padded past \s{0,8} or split by a zero-width character is only
     # caught once those run, and they must run before the split, not per chunk.
-    material = neutralize(scrub(redact.scrub(sanitize(material, limit=None))[0]))
+    # Private words too, here, before the split: a two-word name cut across
+    # two chunks is seen by no later pass (review 14 Nov).
+    from ghostcursor import policy, settings
+
+    terms = (
+        settings.private_terms()
+        if policy.redact_egress() or settings.redact_egress()
+        else ()
+    )
+    material = neutralize(
+        scrub(redact.scrub(sanitize(material, limit=None), terms=terms)[0])
+    )
     scrubbed, chunks = material, []
     while material:
         part = material[:MAX_TAINTED_CHARS]

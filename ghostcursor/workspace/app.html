@@ -1084,7 +1084,7 @@ function renderBrain() {
   rsw.onclick = () => act("redact_egress", { on: !S.redact }, S.redact ? "Private details no longer hidden" : "Private details hidden from cloud models");
   rmeta.append(rsw);
   red.append(rmeta, el("div", "", "Hide private details from cloud models."),
-    el("div", "note", "When on, email addresses, phone numbers, card, bank and ID numbers, keys and machine addresses in what you type, attach or have on screen are swapped for placeholders like [EMAIL_1] on this computer before the text goes to a cloud model, and Orbyn puts the originals back into the answer here. A detail from an attached file may still show as a placeholder. On by default. Names of people, companies and projects are not recognised on their own: list them under Private words and they are hidden too, as [NAME_1], from cloud models and web searches. A local Ollama model gets the original text."));
+    el("div", "note", "When on, email addresses, phone numbers, card, bank and ID numbers, keys and machine addresses in what you type, attach or have on screen are swapped for placeholders like [EMAIL_1] on this computer before the text goes to a cloud model, and Orbyn puts the originals back into the answer here. A detail from an attached file may still show as a placeholder. On by default. Names of people, companies and projects are not recognised on their own: list them under Private words and they are hidden too, as [NAME_1], from cloud models and web searches. A listed word is matched whole, whatever its capitals, also next to a digit or underscore (Acme_Plan.pptx); it is not found inside a longer word (Acmeville), with a different ending (Acme's is, Acmes is not), or in a picture. A local Ollama model gets the original text."));
   const words = S.private_terms || [];
   const wrow = el("div", "note"); wrow.style.textAlign = "left";
   const wbtn = el("button", "secondary", "Private words (" + words.length + ")");
@@ -1099,7 +1099,7 @@ function renderBrain() {
     const text = await askText("Type or paste some text. Orbyn shows what a cloud model would get; nothing is sent.");
     if (!text) return;
     let r; try { r = await api("redact_preview", { text }); } catch (e) { return toast(e.message); }
-    tout.hidden = false; tout.textContent = r.text + (r.hidden ? "" : "  (nothing found to hide)");
+    tout.hidden = false; tout.textContent = r.on ? r.text + (r.hidden ? "" : "  (nothing found to hide)") : "Hiding is off, so the text would go exactly as typed. With it on, a model would get: " + r.text;
   };
   wrow.append(wbtn, tbtn); red.append(wrow, tout);
   if (S.private_terms_org) red.append(el("div", "note", "Your organization also hides " + S.private_terms_org + " word" + (S.private_terms_org === 1 ? "" : "s") + " of its own."));
@@ -1144,7 +1144,7 @@ function renderBrain() {
       reclist.append(el("div", "", `${when} · ${q.provider} (${q.model})${hid}${pic}${q.failed ? " · failed" : ""}`));
     }
   };
-  rec.append(recmeta, el("div", "", "A receipt of the last 20 requests to a model, web searches and page reads: when, which service and model, and whether private details were hidden first."),
+  rec.append(recmeta, el("div", "", "A receipt of the last 20 requests to a model, web searches and page reads: when, which service and model, and whether private details were hidden first. For a web search, private details are always hidden from the question; the result pages a search then opens are not listed."),
     el("div", "note", "Kept on this computer only. It never holds what you asked or what was answered."), reclist);
   rec.style.marginTop = "8px"; root.append(rec);
   const dot = el("div", "mem"); const dmeta = el("div", "meta"); dmeta.append(el("span", "kind", "companion"));

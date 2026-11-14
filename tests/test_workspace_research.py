@@ -620,3 +620,20 @@ def test_a_search_hides_private_words_and_leaves_a_receipt_line(tmp_path, monkey
     audit.flush()
     assert len(asked) == 1  # blocked: nothing searched, so nothing more recorded
     assert len(audit.default_path().read_text().splitlines()) == 1
+
+
+def test_a_page_read_that_failed_is_recorded_as_failed(monkeypatch):
+    import httpx
+    import pytest
+
+    from ghostcursor import audit
+    from ghostcursor.workspace import research as research_mod
+
+    transport = httpx.MockTransport(lambda request: httpx.Response(404, text="no"))
+    with pytest.raises(ValueError):
+        research_mod.read_page(
+            "https://good.com/a", transport=transport, resolve=lambda h: {"93.184.216.34"}
+        )
+    audit.flush()
+    line = json.loads(audit.default_path().read_text().splitlines()[-1])
+    assert (line["provider"], line["failure"]) == ("web", "fetch")

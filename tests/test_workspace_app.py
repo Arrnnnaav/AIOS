@@ -2357,6 +2357,7 @@ def test_private_words_are_saved_listed_and_previewed_locally(served):
     assert status == 200 and json.loads(body) == {
         "text": "Tell [NAME_1] team: [EMAIL_1]",
         "hidden": 2,
+        "on": True,
     }
     for bad in (None, 5, "a" * 20_001):
         assert call(port, "/api/redact_preview", {"text": bad})[0] == 400
@@ -2385,3 +2386,11 @@ def test_the_receipt_also_lists_web_searches_and_page_reads(served, tmp_path):
         (5.0, None, "openrouter", False),
     ]
     assert set(got[0]) == {"at", "web", "provider", "failed"}
+
+
+def test_the_preview_says_when_hiding_is_off(served):
+    _, port = served
+    got = json.loads(call(port, "/api/redact_preview", {"text": "a@b.example"})[1])
+    assert got == {"text": "[EMAIL_1]", "hidden": 1, "on": True}
+    call(port, "/api/redact_egress", {"on": False})
+    assert json.loads(call(port, "/api/redact_preview", {"text": "x"})[1])["on"] is False

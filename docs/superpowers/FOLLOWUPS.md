@@ -2440,3 +2440,25 @@ from 1053b54. Still open:
   from Jev's view of that control; no stemming (plural or possessive forms
   with a letter attached are not matched); Teach accuracy with words hidden
   is unmeasured.
+- Tier-1 review 14 Nov (c2ea2b6): three BLOCKING findings, all fixed: a
+  two-word private word cut across two chunks of attached material left
+  in full (the words are now taken out before the split); a word holding
+  or spanning a line break, backslash or quote was missed in a System-Two
+  message because that text is JSON (the pattern now reads both forms); a
+  word touching a digit or underscore (Acme_Plan.pptx, Acme2026) was not
+  hidden (the edge of a word is now any non-letter). Also fixed: each list
+  keeps its own 200 limit; the preview says when hiding is off; a failed
+  page read is recorded as failed. Mutation recheck 11 of 11 killed. Left
+  from the review: a put-back word that spanned a line break shows the
+  JSON form of the break; terms are not Unicode-normalised (a combining
+  accent, a compatibility character); the 300-character cut of one screen
+  value can leave the start of a listed word; Jev `questions` and pictures
+  are not scrubbed; a pathological list (200 near-identical long terms) is
+  slow (reviewer's probe, about 31 s on 93,000 characters, not recorded
+  elsewhere); DuckDuckGo result-page fetches are not in the receipt; a
+  search that failed before sending still shows as a failed search; an
+  organisation list whose whole value is the text "unreadable" reads as
+  none; a common word as a term ("Source") also replaces field names in
+  the System-Two text; the local crash log, saved jobs and settings.json
+  hold the words in plain text; a seal that keeps failing leaves old rows
+  plain with no signal. The fix commit was not itself re-reviewed.

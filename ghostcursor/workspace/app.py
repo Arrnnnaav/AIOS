@@ -1020,7 +1020,12 @@ class App:
             if not isinstance(text, str) or len(text) > 20_000:
                 raise ValueError("text must be at most 20,000 characters")
             shown, hidden = redact.scrub(text, terms=settings.private_terms())
-            return {"text": shown, "hidden": len(hidden)}
+            # Rule 7: with hiding off the text would go as typed; say so.
+            return {
+                "text": shown,
+                "hidden": len(hidden),
+                "on": policy.redact_egress() or settings.redact_egress(),
+            }
         if action == "redact_egress":  # the person can add, never lower
             # Only an explicit false turns it off; anything else keeps it on.
             settings.set_redact_egress(body.get("on") is not False)

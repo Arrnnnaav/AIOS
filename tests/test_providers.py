@@ -1075,3 +1075,42 @@ def test_private_words_never_reach_a_cloud_model_and_come_back_in_the_answer(
         question="q",
     )
     assert "orion" not in calls[0].content.decode().casefold()
+
+
+def test_a_private_word_cut_across_two_chunks_of_a_file_is_still_hidden(monkeypatch):
+    """Tier-1 review 14 Nov: the words are taken out before the material is
+    split, since no later pass sees across two chunks."""
+
+    from ghostcursor import settings
+    from ghostcursor.providers.envelope import tainted_chunks
+
+    monkeypatch.setattr(settings, "private_terms", lambda: ("Acme Health",))
+    material = "word " * 59 + "Acme Health is the client. " + "tail " * 30
+    text, chunks = tainted_chunks("attached", material)
+    assert len(chunks) > 1 and "[NAME_1]" in text
+    assert not any("Acme" in str(c) or "Health" in str(c) for c in chunks)
+    monkeypatch.setattr(settings, "redact_egress", lambda: False)  # switched off
+    assert "Acme Health" in tainted_chunks("attached", material)[0]
+
+
+def test_a_private_word_in_a_multi_line_message_never_reaches_a_cloud_model(
+    tmp_path, monkeypatch
+):
+    from ghostcursor import settings
+
+    monkeypatch.setattr(settings, "private_terms", lambda: ("Acme Health",))
+    transport, calls = _transport(_chat(PLAN))
+    gateway = Gateway(
+        system_two=("openrouter",),
+        transport=transport,
+        key_lookup=_keys(openrouter="k"),
+        log_path=tmp_path / "l",
+    )
+    env = Envelope(
+        task="plan the step",
+        trusted={"goal": "g", "message": "Note for Acme" + chr(10) + "Health today"},
+        tainted={"screen": Tainted.of("uia_name", "Send")},
+    )
+    gateway.plan(env)
+    body = calls[0].content.decode()
+    assert "Acme" not in body and "Health" not in body

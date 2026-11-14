@@ -111,7 +111,12 @@ def private_terms(path: Path | None = None) -> tuple[str, ...]:
 
     from ghostcursor import policy, redact
 
-    return redact.clean_terms([*policy.private_terms(), *own_private_terms(path)])
+    # Each list keeps its own limit: a long organisation list never
+    # pushes out a person's words.
+    org = redact.clean_terms(list(policy.private_terms()))
+    return redact.clean_terms(
+        [*org, *own_private_terms(path)], 2 * redact.MAX_TERMS
+    )
 
 
 def set_private_terms(terms, path: Path | None = None) -> None:

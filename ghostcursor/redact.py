@@ -85,7 +85,7 @@ _PLACEHOLDER = re.compile(r"\[[A-Z]+_\d+\]")
 MAX_TERMS, MAX_TERM_CHARS = 200, 80
 
 
-def clean_terms(values) -> tuple[str, ...]:
+def clean_terms(values, limit: int = MAX_TERMS) -> tuple[str, ...]:
     """Private words as they are kept: text of 2 to 80 characters, spaces
     collapsed, one of each whatever the capitals, at most 200. Anything
     else in ``values`` is dropped, not an error (a hand-edited file)."""
@@ -97,7 +97,17 @@ def clean_terms(values) -> tuple[str, ...]:
         term = " ".join(value.split())
         if 2 <= len(term) <= MAX_TERM_CHARS and not _PLACEHOLDER.search(term):
             out.setdefault(term.casefold(), term)
-    return tuple(out.values())[:MAX_TERMS]
+    return tuple(out.values())[:limit]
+
+
+def _word(word: str) -> str:
+    """A pattern for one word of a private term, as typed or as it reads
+    inside JSON text (a backslash or a quote is escaped there)."""
+
+    import json
+
+    plain, quoted = re.escape(word), re.escape(json.dumps(word, ensure_ascii=False)[1:-1])
+    return plain if plain == quoted else f"(?:{quoted}|{plain})"
 
 
 def scrub(
@@ -146,17 +156,21 @@ def scrub(
         if categories is not None and category not in categories:
             continue
         text = pattern.sub(lambda m, c=category: _sub(c, m), text)
-    terms = clean_terms(list(terms))
+    terms = clean_terms(list(terms), 2 * MAX_TERMS)  # a person's and an organisation's
     if terms:
         # After the patterns, so a name inside an email address went with
         # the address; longest first, so "Acme Health" wins over "Acme".
+        # The edge of a word is a non-letter: Acme_Plan.pptx and Acme2026
+        # are hidden, Acmeville is not. The text may be JSON (a System-Two
+        # message): a line break between two words reads backslash-n there,
+        # and a word may follow one directly (review 14 Nov).
         words = re.compile(
-            r"(?<!\w)(?:"
+            r"(?:(?<![^\W\d_])|(?<=\\[nrt]))(?:"
             + "|".join(
-                r"\s+".join(re.escape(w) for w in t.split())
+                r"(?:\s|\\[nrt])+".join(_word(w) for w in t.split())
                 for t in sorted(terms, key=len, reverse=True)
             )
-            + r")(?!\w)",
+            + r")(?![^\W\d_])",
             re.IGNORECASE,
         )
         # Never inside a placeholder already in the text.

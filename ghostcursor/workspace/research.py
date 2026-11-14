@@ -186,11 +186,18 @@ def read_page(url: str, *, transport=None, resolve=None) -> str:
 
     if not policy.allows("web"):  # D180: local only, or not on the allow-list
         raise PermissionError("your organization does not allow reading web pages")
+    page = None
     try:
         with _client(transport) as client:
             page = fetch_public(client, url, resolve=resolve)
     finally:  # an attempt is recorded even when the fetch fails
-        audit.record("egress", provider="web", model=None, failure=None, images=0)
+        audit.record(
+            "egress",
+            provider="web",
+            model=None,
+            failure=None if page is not None and page.status_code == 200 else "fetch",
+            images=0,
+        )
     kind = page.headers.get("content-type", "") if page is not None else ""
     if (
         page is None
