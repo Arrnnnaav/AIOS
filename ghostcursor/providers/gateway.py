@@ -276,7 +276,12 @@ class Gateway:
         if self._redact_on():  # D186: Jev is remote; scrub everything sent
             # Observed data too: Tainted.of masks credentials, but lets a short
             # phone number or a machine address through (review 14 Nov).
+            refs = state.get("pictures")
             state = redact.scrub_tree(state)
+            if refs is not None:
+                # Ids this gateway made to name the attached pictures, not
+                # content: scrubbed, one in four stops matching its picture.
+                state["pictures"] = refs
         self._take()
         started = time.time()
         try:

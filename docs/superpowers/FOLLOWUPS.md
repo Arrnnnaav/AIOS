@@ -2312,6 +2312,18 @@ from 1053b54. Still open:
   is scrubbed too; redaction is off by default; research still fetches the
   result pages it found (URLs only, no user text); no count of redactions
   in the audit log.
+- Tier-1 review 14 Nov (dfe1fd1): no blocking finding. Fixed from it: the
+  default scrub rewrote about a quarter of picture reference ids sent to
+  Jev (reviewer's probe, 20,000 uuid4), so the D179 picture choice failed
+  soft; the ids are now kept. Placeholder avoidance is one regex pass.
+  Left: a hidden key or card number the model echoes is put back like any
+  other original and can reach text Act types (same reach as redaction
+  off; Act still asks before risky controls) -- decide whether SECRETS
+  categories should stay as placeholders in answers; the handoff export
+  uses the lighter envelope scrub; `request_sha256` is over the unscrubbed
+  envelope; a put-back value can push a field past its schema limit (the
+  provider is then skipped); no direct test with a newline or non-BMP
+  original, or for a fresh map per provider attempt.
 - Owner decision 14 Nov 2026: hiding private details from cloud models is
   ON by default (settings "redact_egress" is on unless explicitly false; a
   damaged settings file reads as on), and originals are put back into a

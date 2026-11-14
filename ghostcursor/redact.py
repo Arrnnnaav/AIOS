@@ -80,6 +80,9 @@ def _luhn_ok(digits: str) -> bool:
     return total % 10 == 0
 
 
+_PLACEHOLDER = re.compile(r"\[[A-Z]+_\d+\]")
+
+
 def scrub(
     text: str, categories=None, *, mapping=None, avoid: str = ""
 ) -> tuple[str, dict[str, str]]:
@@ -98,6 +101,7 @@ def scrub(
     mapping = {} if mapping is None else mapping
     seen = {original: placeholder for placeholder, original in mapping.items()}
     counts: dict[str, int] = {}
+    taken = set(_PLACEHOLDER.findall(avoid))  # one pass, however many there are
     for placeholder in mapping:
         category, _, number = placeholder[1:-1].rpartition("_")
         counts[category] = max(counts.get(category, 0), int(number))
@@ -109,7 +113,7 @@ def scrub(
         if original in seen:
             return seen[original]
         counts[category] = counts.get(category, 0) + 1
-        while f"[{category}_{counts[category]}]" in avoid:
+        while f"[{category}_{counts[category]}]" in taken:
             counts[category] += 1
         placeholder = f"[{category}_{counts[category]}]"
         seen[original] = placeholder

@@ -965,3 +965,25 @@ def test_one_request_shares_placeholders_and_never_reuses_one_already_present():
     assert out[0]["content"] == "file said [EMAIL_1] earlier; ask [EMAIL_2]"
     assert out[1]["content"] == "write to [EMAIL_3] and [EMAIL_2]"
     assert redact.rehydrate("[EMAIL_1] [EMAIL_2]", hidden) == "[EMAIL_1] bob@acme.io"
+
+
+def test_picture_references_survive_the_default_scrub(tmp_path, monkeypatch):
+    """The ids naming attached pictures are the gateway's own, not content:
+    scrubbed (a uuid with a long digit run reads as a phone number) they
+    would stop matching the pictures sent beside them."""
+
+    import uuid
+
+    from ghostcursor.providers import gateway as gateway_mod
+
+    ref = uuid.UUID("12345678-1234-4234-8234-123456789012")
+    monkeypatch.setattr(gateway_mod.uuid, "uuid4", lambda: ref)
+    transport, calls = _transport(_jev({"choice": "c1"}))
+    gateway = Gateway(
+        transport=transport, key_lookup=_keys(typesafe="k"), log_path=tmp_path / "l"
+    )
+    env = Envelope(task="choose", tainted={"c1": Tainted.of("uia_name", "Save")})
+    gateway.choose(env, ("c1",), question="q", pictures={"window": b"jpeg"})
+    sent = json.loads(calls[0].content)
+    assert sent["state"]["pictures"] == {"window": str(ref)}
+    assert str(ref) in json.dumps(sent)  # and the picture it names went with it
