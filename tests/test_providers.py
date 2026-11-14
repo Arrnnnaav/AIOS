@@ -987,3 +987,19 @@ def test_picture_references_survive_the_default_scrub(tmp_path, monkeypatch):
     sent = json.loads(calls[0].content)
     assert sent["state"]["pictures"] == {"window": str(ref)}
     assert str(ref) in json.dumps(sent)  # and the picture it names went with it
+
+
+def test_the_request_log_counts_hidden_details_and_never_holds_them(tmp_path):
+    transport, _ = _transport(_chat(PLAN))
+    log = tmp_path / "l"
+    gateway = Gateway(
+        system_two=("openrouter",),
+        transport=transport,
+        key_lookup=_keys(openrouter="k"),
+        log_path=log,
+        redact_egress=True,
+    )
+    gateway.plan(_secret_envelope())
+    text = log.read_text(encoding="utf-8")
+    assert json.loads(text.splitlines()[-1])["hidden"] == 2  # the card and the email
+    assert "ada@acme.io" not in text and "4111" not in text

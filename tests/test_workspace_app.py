@@ -845,6 +845,28 @@ def test_the_private_details_switch_adds_to_policy_and_never_lowers_it(
     assert state() == (True, True)  # the organisation's on survives the switch
 
 
+def test_the_receipt_lists_requests_newest_first_without_content(served, tmp_path):
+    app, port = served
+    log = tmp_path / "requests.jsonl"
+    app.ws.gateway.log_path = log
+    assert json.loads(call(port, "/api/egress_log")[1]) == {"requests": []}
+    rows = [
+        {"at": 1.0, "provider": "jev", "model": "j", "failure": None, "images": 1},
+        {"at": 2.0, "provider": "openrouter", "model": "m", "failure": "unavailable",
+         "images": 0, "hidden": 3, "request_sha256": "abc", "goal": "never shown"},
+    ]
+    log.write_text(
+        "\n".join(json.dumps(r) for r in rows) + "\nnot json\n[1]\n", encoding="utf-8"
+    )
+    got = json.loads(call(port, "/api/egress_log")[1])["requests"]
+    assert got == [
+        {"at": 2.0, "provider": "openrouter", "model": "m", "failed": True,
+         "images": 0, "hidden": 3},
+        {"at": 1.0, "provider": "jev", "model": "j", "failed": False,
+         "images": 1, "hidden": None},
+    ]
+
+
 def test_true_is_not_memory_number_one(served):
     app, port = served
     brain = app.ws.brain  # its connection belongs to the worker thread

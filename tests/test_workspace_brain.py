@@ -319,3 +319,52 @@ def test_a_number_stored_before_the_rule_never_reaches_the_model(brain):
         )
     assert len(brain.list()) == 2  # still shown, so they can be forgotten
     assert brain.relevant("card") == [] and brain.relevant("password") == []
+
+
+def test_memory_text_is_sealed_on_disk_and_reads_back(brain):
+    """Dark-style promise, kept locally: the file holds no readable memory;
+    only this Windows account can open it (DPAPI)."""
+
+    brain.remember(
+        "preference",
+        "I prefer short answers",
+        origin="user_stated",
+        confidence=0.9,
+        user_turn="I prefer short answers",
+    )
+    stored = brain._db.execute("SELECT text FROM memories").fetchone()[0]
+    assert stored.startswith("dp1:") and "short" not in stored
+    brain._db.commit()
+    assert b"short answers" not in brain.path.read_bytes()
+    assert [m.text for m in brain.list()] == ["I prefer short answers"]
+
+
+def test_plain_memories_from_an_older_build_are_sealed_on_open(tmp_path):
+    from ghostcursor.workspace.brain import Brain
+
+    path = tmp_path / "brain.sqlite"
+    first = Brain(path)
+    with first._db:
+        first._db.execute(
+            "INSERT INTO memories (kind, text, origin, confidence, scope, status, "
+            "created, expires, source) VALUES "
+            "('preference','I prefer tea','user_stated',0.9,'durable','active',0,NULL,'')"
+        )
+    first.close()
+    again = Brain(path)
+    assert again._db.execute("SELECT text FROM memories").fetchone()[0].startswith("dp1:")
+    assert [m.text for m in again.list()] == ["I prefer tea"]
+    again.close()
+
+
+def test_a_memory_this_account_cannot_open_is_locked_and_never_sent(brain):
+    from ghostcursor.workspace.brain import LOCKED
+
+    with brain._db:
+        brain._db.execute(
+            "INSERT INTO memories (kind, text, origin, confidence, scope, status, "
+            "created, expires, source) VALUES "
+            "('preference','dp1:bm90IGEgYmxvYg==','user_stated',0.9,'durable','active',0,NULL,'')"
+        )
+    assert [m.text for m in brain.list()] == [LOCKED]  # listed, so it can be forgotten
+    assert brain.relevant("anything") == []

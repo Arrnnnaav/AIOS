@@ -355,6 +355,7 @@ class Gateway:
                 continue
             self._take()
             started = time.time()
+            hidden = {}
             try:
                 call = {
                     "responses": clients.responses_json_call,
@@ -378,13 +379,17 @@ class Gateway:
                     )
                 result = parse(content)
             except ProviderError as exc:
-                self._record(name, config.model, started, envelope, None, exc.kind)
+                self._record(
+                    name, config.model, started, envelope, None, exc.kind,
+                    hidden=len(hidden),
+                )
                 if exc.kind in (FailureKind.CANCELLED, FailureKind.BUDGET_EXCEEDED):
                     raise
                 failures.append(exc)
                 continue
             self._record(
-                name, reply.model or config.model, started, envelope, reply, None
+                name, reply.model or config.model, started, envelope, reply, None,
+                hidden=len(hidden),
             )
             return result
         kinds = {f.kind for f in failures}
@@ -450,7 +455,8 @@ class Gateway:
             self.budget.take()
 
     def _record(
-        self, provider, model, started, envelope, reply, failure, images: int = 0
+        self, provider, model, started, envelope, reply, failure, images: int = 0,
+        hidden: int | None = None,
     ) -> None:
         """Append one attribution line: no content, no keys, no screen text."""
 
@@ -474,6 +480,9 @@ class Gateway:
             "output_tokens": reply.output_tokens if reply else None,
             "failure": failure.value if failure else None,
             "images": images,  # redacted pictures sent (D179); never their bytes
+            # How many private details were swapped for placeholders before
+            # this request left (a count; never the details themselves).
+            "hidden": hidden,
         }
         try:
             path.parent.mkdir(parents=True, exist_ok=True)

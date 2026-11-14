@@ -938,6 +938,40 @@ class App:
         if action == "crash_reports":  # the person's own opt-in (D191)
             settings.set_crash_reports(body.get("on") is True)
             return {}
+        if action == "egress_log":  # the receipt: what left, never its content
+            from ghostcursor.providers import gateway as gateway_mod
+
+            rows = []
+            try:
+                log = getattr(ws.gateway, "log_path", None)
+                lines = (log or gateway_mod._default_log_path()).read_text(
+                    encoding="utf-8"
+                ).splitlines()[-200:]
+            except OSError:
+                lines = []
+            for line in reversed(lines):
+                try:
+                    row = json.loads(line)
+                except ValueError:
+                    continue
+                if not isinstance(row, dict):
+                    continue
+                images, hidden = row.get("images"), row.get("hidden")
+                rows.append(
+                    {
+                        "at": row.get("at"),
+                        "provider": str(row.get("provider"))[:40],
+                        "model": str(row.get("model"))[:80],
+                        "failed": bool(row.get("failure")),
+                        "images": images if isinstance(images, int) else 0,
+                        # None: written before counts were kept, or the Jev
+                        # channel, whose scrub keeps no count.
+                        "hidden": hidden if isinstance(hidden, int) else None,
+                    }
+                )
+                if len(rows) == 20:
+                    break
+            return {"requests": rows}
         if action == "redact_egress":  # the person can add, never lower
             # Only an explicit false turns it off; anything else keeps it on.
             settings.set_redact_egress(body.get("on") is not False)

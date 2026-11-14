@@ -14,6 +14,7 @@ observations) and sessions.sqlite (no goal text there).
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import re
@@ -109,6 +110,36 @@ def eligibility(
     return "session"
 
 
+#: A memory's text is stored sealed with Windows DPAPI: only this Windows
+#: account on this computer can read it back, so a copied brain.sqlite (a
+#: backup, a synced folder, another account) shows nothing.
+SEALED = "dp1:"
+LOCKED = "(locked: saved under another Windows account or computer)"
+
+
+def _seal(text: str) -> str:
+    import win32crypt
+
+    blob = win32crypt.CryptProtectData(
+        text.encode("utf-8"), "Orbyn memory", None, None, None, 0
+    )
+    return SEALED + base64.b64encode(blob).decode("ascii")
+
+
+def _unseal(stored: str) -> str:
+    if not stored.startswith(SEALED):
+        return stored  # written before sealing; sealed when the Brain next opens
+    try:
+        import win32crypt
+
+        blob = base64.b64decode(stored[len(SEALED) :])
+        return win32crypt.CryptUnprotectData(blob, None, None, None, 0)[1].decode(
+            "utf-8"
+        )
+    except Exception:  # another account's, another computer's, or damaged
+        return LOCKED
+
+
 def _default_path() -> Path:
     if os.environ.get(ENV_PATH):
         return Path(os.environ[ENV_PATH])
@@ -137,6 +168,13 @@ class Brain:
         # free page where a file-level read could still recover it.
         self._db.execute("PRAGMA secure_delete = ON")
         self._db.executescript(_SCHEMA)
+        with self._db:  # seal what an older build stored as plain text
+            for mid, text in self._db.execute(
+                "SELECT mid, text FROM memories WHERE text NOT LIKE ?", (SEALED + "%",)
+            ).fetchall():
+                self._db.execute(
+                    "UPDATE memories SET text=? WHERE mid=?", (_seal(text), mid)
+                )
 
     def close(self) -> None:
         self._db.close()
@@ -195,7 +233,7 @@ class Brain:
             "created, expires, source) VALUES (?,?,?,?,?,?,?,?,?)",
             (
                 kind,
-                text,
+                _seal(text),
                 origin,
                 float(confidence),
                 scope,
@@ -215,7 +253,7 @@ class Brain:
         for mid, old in self._db.execute(
             "SELECT mid, text FROM memories WHERE kind=? AND status='active'", (kind,)
         ).fetchall():
-            words = _words(old)
+            words = _words(_unseal(old))
             if new and words and len(new & words) / min(len(new), len(words)) >= 0.5:
                 self._db.execute(
                     "UPDATE memories SET status='superseded' WHERE mid=?", (mid,)
@@ -224,7 +262,8 @@ class Brain:
     # --- the Brain panel -------------------------------------------------------
 
     def _row(self, row) -> PersonalMemory:
-        return PersonalMemory(*row)
+        mid, kind, text, *rest = row
+        return PersonalMemory(mid, kind, _unseal(text), *rest)
 
     def get(self, mid: int) -> PersonalMemory | None:
         row = self._db.execute("SELECT * FROM memories WHERE mid=?", (mid,)).fetchone()
@@ -250,7 +289,7 @@ class Brain:
         scored = [
             (len(want & _words(m.text)), m)
             for m in self.list()
-            if not _unsafe(m.text)
+            if not _unsafe(m.text) and m.text != LOCKED
         ]
         ranked = sorted(
             (s for s in scored if s[0] or s[1].kind == "preference"),
