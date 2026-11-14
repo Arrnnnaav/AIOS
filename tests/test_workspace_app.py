@@ -1165,6 +1165,10 @@ def test_company_brain_review_panel_actions(tmp_path):
         # Retiring one side clears the conflict -- the inline Retire loop closes.
         assert json.loads(call(port, "/api/know_conflicts")[1])["conflicts"] == []
         assert call(port, "/api/know_review", {"fid": 999})[0] == 400  # no such fact
+        # A malformed id is a plain refusal, never a server error.
+        for bad in ([1], {"a": 1}, 1.5, True, 10**30, "abc"):
+            for action, key in (("know_review", "fid"), ("know_review_edge", "eid")):
+                assert call(port, f"/api/{action}", {key: bad})[0] == 400, (action, bad)
     finally:
         server.shutdown()
         app.close()

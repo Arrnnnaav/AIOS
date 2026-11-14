@@ -1008,7 +1008,7 @@ class App:
         if action in ("know_review_edge", "know_expire_edge"):
             if ws.knowledge is None:
                 raise ValueError("no Company Brain")
-            eid = int(body.get("eid") or 0)
+            eid = _whole(body.get("eid"))
             if ws.knowledge.edge(eid) is None:
                 raise ValueError("no such edge")
             meth = "review_edge" if action == "know_review_edge" else "expire_edge"
@@ -1019,12 +1019,12 @@ class App:
                 raise ValueError("no Company Brain")
             sens = "sensitive" if body.get("sensitive") else "normal"
             if action == "know_classify_edge":
-                eid = int(body.get("eid") or 0)
+                eid = _whole(body.get("eid"))
                 if ws.knowledge.edge(eid) is None:
                     raise ValueError("no such edge")
                 ws.knowledge.classify_edge(eid, sens)
                 return {"sensitive": ws.knowledge.edge(eid).sensitivity == "sensitive"}
-            fid = int(body.get("fid") or 0)
+            fid = _whole(body.get("fid"))
             if ws.knowledge.get(fid) is None:
                 raise ValueError("no such fact")
             ws.knowledge.classify(fid, sens)
@@ -1038,7 +1038,7 @@ class App:
         ):
             if ws.knowledge is None:
                 raise ValueError("no Company Brain")
-            fid = int(body.get("fid") or 0)
+            fid = _whole(body.get("fid"))
             if ws.knowledge.get(fid) is None:
                 raise ValueError("no such fact")
             getattr(ws.knowledge, action.split("_")[1])(fid)
@@ -1242,13 +1242,13 @@ class App:
             )
             return {"answer": answer, "sent": ws.last_sent}
         if action == "evidence":
-            return {"text": ws.evidence(int(body.get("n", 0)))}
+            return {"text": ws.evidence(_whole(body.get("n")))}
         if action == "ideate":
             if not self.run("Exploring", ws.ideate):
                 raise ValueError("No ideas: the model is not available.")
             return {}
         if action == "plan":
-            idea = int(body.get("idea", 0) or 0)
+            idea = _whole(body.get("idea"))
             plan = self.run("Planning", lambda: ws.make_plan(idea))
             if plan is None:
                 raise ValueError("No plan: the model is not available.")
@@ -1339,7 +1339,7 @@ class App:
         if action in ("teach", "act"):
             from ghostcursor.workspace.__main__ import teach_seconds
 
-            step = int(body.get("step", 0))
+            step = _whole(body.get("step"))
             seconds = teach_seconds([str(body.get("seconds", 300))])
             if seconds is None:
                 raise ValueError("seconds must be a number from 1 to 3600")
@@ -1452,6 +1452,20 @@ def _default_workspace(topic: str):
     from ghostcursor.workspace.session import Workspace
 
     return Workspace(topic, Gateway(), Brain(), knowledge=Knowledge())
+
+
+def _whole(value) -> int:
+    """A request's id or index as an int; anything else is a plain refusal,
+    not a server error (a list, a float, a number SQLite cannot hold)."""
+
+    if value is None or value == "":
+        return 0
+    if isinstance(value, bool) or not isinstance(value, (int, str)):
+        raise ValueError("expected a whole number")
+    number = int(value)  # a non-numeric string is a ValueError already
+    if abs(number) >= 2**63:
+        raise ValueError("expected a whole number")
+    return number
 
 
 def make_server(app: App, token: str, port: int = 0) -> ThreadingHTTPServer:
