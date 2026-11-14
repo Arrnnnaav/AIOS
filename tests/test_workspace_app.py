@@ -2546,3 +2546,12 @@ def test_the_page_tells_the_organisations_level_from_the_persons_switch(served, 
     call(port, "/api/local_only", {"on": True})
     state = json.loads(call(port, "/api/state")[1])
     assert (state["egress"], state["org_egress"], state["managed"]) == (0, 1, True)
+
+
+def test_keep_secrets_hidden_is_opt_in(served):
+    _, port = served
+    assert json.loads(call(port, "/api/state")[1])["keep_secrets_hidden"] is False
+    call(port, "/api/keep_secrets_hidden", {"on": "yes"})
+    assert json.loads(call(port, "/api/state")[1])["keep_secrets_hidden"] is False
+    call(port, "/api/keep_secrets_hidden", {"on": True})
+    assert json.loads(call(port, "/api/state")[1])["keep_secrets_hidden"] is True

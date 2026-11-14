@@ -2527,3 +2527,10 @@ from 1053b54. Still open:
   from its command line; a sealed word list that cannot be opened reads
   as no words with no signal; _set stores any text for any key; pypdf
   parses an untrusted file in-process with no time bound.
+- Keep keys and numbers hidden in answers, 15 Nov (the open decision from
+  the dfe1fd1 review): a switch in Setup, off by default so the owner's
+  choice to put originals back stands. When on, KEY, PEM, JWT, CARD, IBAN
+  and SSN placeholders are left in a System-Two answer, so text Act types
+  never holds them; emails, phones and private words still come back.
+  Both guards broken on purpose and caught (session output only). Left:
+  no organisation policy forces it on.

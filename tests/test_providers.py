@@ -1135,3 +1135,21 @@ def test_a_model_on_this_computer_is_never_reached_through_a_proxy(monkeypatch):
             _secret_envelope()
         )
     assert [t for _, t in seen] == [False, True]
+
+
+def test_keys_and_numbers_can_stay_hidden_in_the_answer(tmp_path, monkeypatch):
+    from ghostcursor import settings
+
+    reply = json.dumps({"steps": [{"instruction": "Pay [CARD_1] and mail [EMAIL_1]",
+                                   "expected_change": "chosen_disappears"}]})
+
+    def plan():
+        transport, calls = _transport(_chat(reply))
+        gateway = Gateway(system_two=("openrouter",), transport=transport,
+                          key_lookup=_keys(openrouter="k"), log_path=tmp_path / "l",
+                          redact_egress=True)
+        return gateway.plan(_secret_envelope()).steps[0].instruction
+
+    assert plan() == "Pay 4111 1111 1111 1111 and mail ada@acme.io"  # default: put back
+    monkeypatch.setattr(settings, "keep_secrets_hidden", lambda: True)
+    assert plan() == "Pay [CARD_1] and mail ada@acme.io"

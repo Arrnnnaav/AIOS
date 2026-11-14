@@ -380,7 +380,12 @@ class Gateway:
                 )
                 # The originals go back into the answer here, on this
                 # computer; the provider only ever saw placeholders.
+                from ghostcursor import settings
+
+                keep = settings.keep_secrets_hidden()
                 for placeholder, original in (hidden or {}).items():
+                    if keep and placeholder[1:].rsplit("_", 1)[0] in redact.SECRETS:
+                        continue  # the person keeps keys and numbers hidden
                     content = content.replace(
                         placeholder, json.dumps(original)[1:-1]
                     )

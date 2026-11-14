@@ -1125,6 +1125,13 @@ function renderBrain() {
   wrow.append(wbtn, tbtn); red.append(wrow, tout);
   if (S.private_terms_org) red.append(el("div", "note", "Your organization also hides " + S.private_terms_org + " word" + (S.private_terms_org === 1 ? "" : "s") + " of its own."));
   if (S.redact_forced) red.append(el("div", "note", "Set by your organization: always on."));
+  const ksrow = el("div", "meta"); ksrow.style.marginTop = "6px";
+  const kssw = el("button", "switch"); kssw.setAttribute("role", "switch"); kssw.setAttribute("aria-checked", String(!!S.keep_secrets_hidden));
+  kssw.style.marginLeft = "auto"; kssw.append(document.createTextNode(S.keep_secrets_hidden ? "On" : "Off"), el("i"));
+  kssw.setAttribute("aria-label", "Keep keys and numbers hidden in answers");
+  kssw.onclick = () => act("keep_secrets_hidden", { on: !S.keep_secrets_hidden }, S.keep_secrets_hidden ? "Keys and numbers put back in answers" : "Keys and numbers stay hidden in answers");
+  ksrow.append(el("span", "", "Keep keys, card, bank and ID numbers as placeholders in answers too"), kssw);
+  red.append(ksrow, el("div", "note", "When on, an answer shows [KEY_1] or [CARD_1] instead of the real value, so a step Orbyn types never contains it. Email addresses, phone numbers and private words still come back. Off by default."));
   red.style.marginTop = "8px"; root.append(red);
   if (S.company_offered) {
     const comp = el("div", "mem"); const cmeta = el("div", "meta"); cmeta.append(el("span", "kind", "company model"));

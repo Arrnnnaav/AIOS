@@ -171,6 +171,19 @@ def set_agent_access(on: bool, path: Path | None = None) -> None:
     _set("agent_access", on, path)
 
 
+def keep_secrets_hidden(path: Path | None = None) -> bool:
+    """Leave keys, card, bank and ID numbers as placeholders in answers
+    instead of putting the originals back (so text Act types never holds
+    them). Off unless this person turned it on: the owner chose to put
+    originals back (14 Nov 2026)."""
+
+    return load(path).get("keep_secrets_hidden") is True
+
+
+def set_keep_secrets_hidden(on: bool, path: Path | None = None) -> None:
+    _set("keep_secrets_hidden", on, path)
+
+
 def companion_idle(path: Path | None = None) -> bool:
     """settings.json "companion_idle": true keeps a small resting dot beside
     the pointer when Orbyn is idle (HeyClicky's docked companion). Off by

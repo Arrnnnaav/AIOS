@@ -753,6 +753,7 @@ class App:
             # switch, or forced on by the organisation (never forced off).
             "redact": policy.redact_egress() or settings.redact_egress(),
             "redact_forced": policy.redact_egress(),
+            "keep_secrets_hidden": settings.keep_secrets_hidden(),
             # Names no pattern can know; shown only on this computer's page.
             "private_terms": list(settings.own_private_terms()),
             # The person's own air gap: only a model on this computer answers.
@@ -1048,6 +1049,9 @@ class App:
                 "hidden": len(hidden),
                 "on": policy.redact_egress() or settings.redact_egress(),
             }
+        if action == "keep_secrets_hidden":  # only a literal true turns it on
+            settings.set_keep_secrets_hidden(body.get("on") is True)
+            return {}
         if action == "redact_egress":  # the person can add, never lower
             # Only an explicit false turns it off; anything else keeps it on.
             settings.set_redact_egress(body.get("on") is not False)
