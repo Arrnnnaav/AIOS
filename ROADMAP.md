@@ -739,6 +739,11 @@ boundary is untouched (every slice verified against
 | Company Brain | facts/edges, sensitivity, review gate, backlinks | `/know`, `/related` |
 | Skills + learning | draft/replay skills; offer to save a recurring task (Attention Engineering) | `/skill`, recurring-use nudge |
 | Checklist | per-workspace todos; from an approved plan | `/todo`, `/todo from plan` |
+| Private by default | Private details and listed private words (person's list, organisation `PrivateTerms`) swapped for placeholders before a cloud model, Jev or a web search; originals put back in the answer locally; local preview of what a model would get; receipt of what left (models, searches, page reads, other agents); Personal Brain and word list sealed with DPAPI | Brain → Setup |
+| Offline switch | The person's own air gap: only a local model answers; lowers, never raises, the organisation's level; warns when no local model is running | Brain → Setup → offline |
+| Agent access | Read-only MCP server over reviewed Company Brain facts and saved workflows; opt-in, always scrubbed, audited | Brain → Setup → other agents; `Orbyn.exe --agent-server`, `python -m ghostcursor.agent_server` |
+| Exports for agents and audit | Skills file (facts + workflows), test cases (JSONL), audit summary and verified export | Brain → Company; Brain → Setup → audit record |
+| Ask a link | One public https page or PDF the person names, fetched directly, read-only | Work → Ask a link |
 | Library + export | find across saved items; shareable Markdown snapshot (secrets scrubbed) | `/find`, `/export` |
 | Local utilities | file convert (+PDF/subtitle/clipboard image), diff, b64/url/hex/uuid/pass/time/json/slug/sha256 | `/convert`, `/diff`, `/x` |
 | Delight | fuzzy did-you-mean, inline calculator, clipboard history, snippets, global capture hotkey, tips, startup status, sticky pins | palette, `/clips`, `/snippet`, `/capture`, `/pin` |
