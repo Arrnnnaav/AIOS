@@ -2295,8 +2295,10 @@ from 1053b54. Still open:
   (and an SSN) was stored as a lasting memory, and memories are context for
   the model; eligibility now refuses anything redact.SECRETS recognises. An
   IBAN written in groups of four was not recognised anywhere; redact now
-  has that form. Left: correcting a superseded memory revives it as a new
-  active one; memories stored before this fix are not re-checked.
+  has that form. RESOLVED same day: a superseded memory can no longer be
+  corrected back to life, and a memory stored before the rule that today's
+  rule would refuse is never handed to the model (it stays in the panel so
+  it can be forgotten; it is not deleted).
 - Tier-1 review 14 Nov (fb24b3e..9e2ad27): one BLOCKING finding, fixed: a
   link added again with Private ticked returned the existing normal link,
   dropping the mark. A repeat (link, typed fact, ingested passage) now

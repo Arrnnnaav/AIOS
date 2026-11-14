@@ -238,7 +238,14 @@ class Brain:
         """Active memories for a request, best overlap first; minimized to k."""
 
         want = _words(goal)
-        scored = [(len(want & _words(m.text)), m) for m in self.list()]
+        # Stored before a refusal rule existed (a card or ID number): it stays
+        # in the panel to forget, but is never handed to the model.
+        scored = [
+            (len(want & _words(m.text)), m)
+            for m in self.list()
+            if not _SENSITIVE.search(m.text)
+            and redact.scrub(m.text, redact.SECRETS)[0] == m.text
+        ]
         ranked = sorted(
             (s for s in scored if s[0] or s[1].kind == "preference"),
             key=lambda s: (-s[0], -s[1].mid),
@@ -256,8 +263,8 @@ class Brain:
 
         old = self.get(mid)
         text = " ".join(text.split())
-        if old is None:
-            return None
+        if old is None or old.status != "active":
+            return None  # a replaced memory stays replaced; correct its successor
         if eligibility(old.kind, text, "user_corrected", 1.0, "") == "refused":
             return None
         with self._db:

@@ -293,3 +293,26 @@ def test_a_memory_restated_each_turn_is_kept_once(brain):
         user_turn=TURN,
     )
     assert durable.scope == "durable"
+
+
+def test_a_replaced_memory_cannot_be_corrected_back_to_life(brain):
+    old = brain.remember(
+        "preference",
+        "I prefer short answers",
+        origin="user_stated",
+        confidence=0.9,
+        user_turn="I prefer short answers",
+    )
+    new = brain.correct(old.mid, "I prefer long answers")
+    assert brain.correct(old.mid, "I prefer medium answers") is None
+    assert [m.mid for m in brain.list()] == [new.mid]
+
+
+def test_a_number_stored_before_the_rule_never_reaches_the_model(brain):
+    with brain._db:  # as an older build would have stored it
+        brain._insert(
+            "preference", "my card is 4111 1111 1111 1111", "user_stated", 0.9,
+            "durable", "",
+        )
+    assert len(brain.list()) == 1  # still shown, so it can be forgotten
+    assert brain.relevant("card") == []
