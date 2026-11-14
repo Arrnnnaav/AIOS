@@ -2516,7 +2516,7 @@ from 1053b54. Still open:
   in the build spec; the packaged app serves agents with
   `Orbyn.exe --agent-server` (checked by tools/smoke_build.py). Mutation
   sweep of these fixes: 9 of 9 killed, output recorded in
-  docs/evidence/mutation-sweep-2026-11-15.txt. Earlier sweeps this week
+  docs/evidence/mutation-sweep-2026-11-15.md. Earlier sweeps this week
   (11 of 11, 10 of 10, 13 of 13, 9 of 10) were shown in the session only
   and are not recorded in a file. Left from the review: ChatGPT sign-in,
   the first voice-model download and team publish are not gated by the
