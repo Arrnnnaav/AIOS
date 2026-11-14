@@ -146,3 +146,17 @@ def test_a_store_that_cannot_be_read_does_not_end_the_server(stores, monkeypatch
     text, failed = ask(stores, "recall", {"query": "refunds"})
     assert failed and "locked" not in text
     assert events() == [("agents", "refused")]
+
+
+def test_a_private_word_in_a_hyphenated_workflow_name_never_reaches_the_agent(stores):
+    """Tier-1 review 15 Nov (blocking): saved names are slugged with hyphens."""
+
+    from ghostcursor.providers import parse_teach_plan
+
+    settings.set_agent_access(True)
+    settings.set_private_terms(["Priya Nair"])
+    plan = parse_teach_plan(json.dumps({"steps": [{"instruction": "Dial", "expected_change": "chosen_disappears"}]}))
+    task_skills.save_skill("Call Priya Nair", plan, dest_dir=stores["skills_dir"])
+    text, failed = ask(stores, "list_workflows")
+    assert not failed and "priya" not in text.casefold() and "nair" not in text.casefold()
+    assert "call-[NAME_1]" in text

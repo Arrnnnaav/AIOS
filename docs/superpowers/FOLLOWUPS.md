@@ -2534,3 +2534,21 @@ from 1053b54. Still open:
   never holds them; emails, phones and private words still come back.
   Both guards broken on purpose and caught (session output only). Left:
   no organisation policy forces it on.
+- Tier-1 re-review 15 Nov (46dc0ef..d0e39dd, read at d0e39dd): one
+  BLOCKING finding, fixed: a multi-word private word inside a hyphenated
+  workflow name (call-priya-nair) reached another agent through
+  list_workflows. Words of a term now match across spaces, hyphens,
+  underscores and JSON whitespace escapes, in every caller. Also fixed
+  from it: \f and \b escapes; the Teach planner's local Ollama calls skip
+  an environment proxy (they did not before; pre-existing tier-1 gap);
+  loopback is parsed, not substring-matched; agent-server error text is
+  scrubbed; the offline card names team sync. Also this round: the KEY
+  pattern no longer takes any word starting with "gho" or "sk" for a key
+  (measured: 9 of 239 recorded control names were hidden for that reason,
+  0 after; docs/evidence/scrub-on-screen-names-2026-11-15.md). Mutation
+  sweep 10 of 10 killed after one added test, recorded in
+  docs/evidence/mutation-sweep-2026-11-15.md. This fix round was not
+  re-reviewed. Left from the re-review: in plain non-JSON text a lowercase
+  Windows path keeps a term's first letter (C:\tina -> C:\t[NAME_1]); a
+  term starting with u after a backslash still breaks JSON (fails closed);
+  agent_server error strings are fixed today.

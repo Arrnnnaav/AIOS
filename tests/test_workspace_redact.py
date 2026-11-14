@@ -199,3 +199,33 @@ def test_a_private_word_never_breaks_json_text():
     assert redact.clean_terms([bs + "share", "share" + bs, "CORP" + bs + "ann"]) == ("CORP" + bs + "ann",)
     # Plain text with a Windows path: the folder name is still hidden.
     assert "Nat" not in redact.scrub("open C:" + bs + "Nat" + bs + "plan.txt", terms=("Nat",))[0]
+
+
+def test_a_word_that_only_starts_like_a_key_is_not_a_key():
+    """Measured 15 Nov 2026: 9 of 239 recorded control names were hidden as
+    a key only because "ghostcursor-..." starts with "gho"."""
+
+    from ghostcursor import redact
+
+    for word in ("ghostcursor-investor-deck-content", "skyscraper_floorplan_v2_final", "pkgconfig-dependencies-list", "AKIAvery long word here"):
+        assert redact.scrub(word)[0] == word, word
+    for key in ("sk-" + "A" * 20, "sk_live_" + "a" * 20, "ghp_" + "a" * 36, "gho_" + "b" * 36,
+                "github_pat_" + "c" * 30, "xoxb-" + "1" * 20, "AKIA" + "ABCDEFGHIJKLMNOP", "pk_test_" + "d" * 20):
+        assert redact.scrub(f"use {key} now")[0] == "use [KEY_1] now", key
+
+
+def test_a_private_word_spans_hyphens_underscores_and_json_escapes():
+    import json
+
+    from ghostcursor import redact
+
+    for text in ("call-priya-nair", "Priya_Nair.docx", "priya - nair"):
+        assert "priya" not in redact.scrub(text, terms=("Priya Nair",))[0].casefold(), text
+    sent = json.dumps({"t": "x" + chr(12) + "Fred and" + chr(8) + "fred"}, ensure_ascii=False)
+    out = redact.scrub(sent, terms=("Fred",))[0]
+    assert "red" not in json.loads(out)["t"].replace("[NAME_1]", "")  # valid JSON, hidden
+    # A form feed then "red" reads backslash-f-r-e-d in JSON: "Fred" matches
+    # there, and the escape letter must stay or the JSON breaks.
+    tricky = json.dumps({"t": "x" + chr(12) + "red " + chr(8) + "ob"}, ensure_ascii=False)
+    back = json.loads(redact.scrub(tricky, terms=("Fred", "Bob"))[0])["t"]
+    assert back.startswith("x" + chr(12)) and "red" not in back and "ob" not in back

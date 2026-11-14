@@ -1153,3 +1153,46 @@ def test_keys_and_numbers_can_stay_hidden_in_the_answer(tmp_path, monkeypatch):
     assert plan() == "Pay 4111 1111 1111 1111 and mail ada@acme.io"  # default: put back
     monkeypatch.setattr(settings, "keep_secrets_hidden", lambda: True)
     assert plan() == "Pay [CARD_1] and mail ada@acme.io"
+
+
+def test_loopback_is_parsed_not_guessed():
+    from ghostcursor.providers.clients import is_loopback
+
+    for url in ("http://127.0.0.1:11434/v1", "http://localhost:11434", "http://[::1]:11434", "http://127.0.0.2/"):
+        assert is_loopback(url), url
+    for url in ("https://localhost.example.com/v1", "https://api.openai.com/v1", "http://10.0.0.5/", "not a url", "http://[bad"):
+        assert not is_loopback(url), url
+
+
+def test_the_teach_planner_reaches_a_local_model_without_a_proxy(monkeypatch):
+    import urllib.request
+
+    from ghostcursor.inference import ollama
+
+    seen = []
+
+    class Opened:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self):
+            return b'{"response": {}}'
+
+    real = urllib.request.build_opener
+
+    def spy(*hs):
+        seen.append([getattr(h, "proxies", "?") for h in hs])
+        opener = real(*hs)
+        opener.open = lambda request, timeout=None: Opened()
+        return opener
+
+    monkeypatch.setattr(urllib.request, "build_opener", spy)
+    monkeypatch.setattr(urllib.request, "urlopen", lambda request, timeout=None: seen.append("plain") or Opened())
+    monkeypatch.setenv("HTTPS_PROXY", "http://proxy.corp:8080")
+    monkeypatch.setenv("HTTP_PROXY", "http://proxy.corp:8080")
+    ollama.generate_structured(endpoint="http://127.0.0.1:11434", model="m", prompt="p", schema={"type": "object"}, timeout=1)
+    ollama.generate_structured(endpoint="https://ollama.example.com", model="m", prompt="p", schema={"type": "object"}, timeout=1)
+    assert seen == [[{}], "plain"]  # local: no proxy; remote: the usual path

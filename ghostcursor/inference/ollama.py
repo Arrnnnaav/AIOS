@@ -83,7 +83,17 @@ def generate_structured(
         data=json.dumps(body).encode("utf-8"),
         headers={"Content-Type": "application/json"},
     )
-    with urllib.request.urlopen(request, timeout=timeout) as response:
+    from ghostcursor.providers.clients import is_loopback
+
+    # A model on this computer is reached directly, never through a proxy
+    # from the environment (goal and screen text ride in this request).
+    if is_loopback(endpoint) and urllib.request.getproxies():
+        opened = urllib.request.build_opener(urllib.request.ProxyHandler({})).open(
+            request, timeout=timeout
+        )
+    else:
+        opened = urllib.request.urlopen(request, timeout=timeout)
+    with opened as response:
         outer = json.loads(response.read().decode("utf-8"))
     if not isinstance(outer, dict):
         raise ValueError("Ollama response envelope was not an object")

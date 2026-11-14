@@ -1083,7 +1083,7 @@ function renderBrain() {
   gsw.onclick = () => act("local_only", { on: !S.local_only }, S.local_only ? "Cloud models and the web allowed again" : "Everything now stays on this computer");
   gmeta.append(gsw);
   gap.append(gmeta, el("div", "", "Keep everything on this computer."),
-    el("div", "note", "When on, Orbyn's own work stays here: no cloud model, no Jev, no web search or page read, no GitHub, calendar or mail, no crash reports, nothing to another agent. Three things you start yourself still use the internet: signing in to ChatGPT, the first download of a voice model, and publishing to a team folder. Only a model running on this computer (Ollama) answers, so install one first or Orbyn cannot answer. Off by default."));
+    el("div", "note", "When on, Orbyn's own work stays here: no cloud model, no Jev, no web search or page read, no GitHub, calendar or mail, no crash reports, nothing to another agent. Three things you start yourself still use the internet: signing in to ChatGPT, the first download of a voice model, and publishing to or syncing with a team folder (which may copy the audit record there if your organization asks). Only a model running on this computer (Ollama) answers, so install one first or Orbyn cannot answer. Off by default."));
   if (S.local_only && S.local_ready === false) { const w = el("div", "note", "No model is running on this computer, so Orbyn cannot answer right now. Install Ollama (ollama.com), start it, and run: ollama pull qwen3:4b-instruct"); w.setAttribute("role", "alert"); w.style.textAlign = "left"; gap.append(w); }
   gap.style.marginTop = "8px"; root.append(gap);
   const ag = el("div", "mem"); const ameta = el("div", "meta"); ameta.append(el("span", "kind", "other agents"));

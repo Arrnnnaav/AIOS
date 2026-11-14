@@ -153,8 +153,8 @@ def handle(message, scope: str = "default", **stores) -> dict | None:
                     call(params.get("name"), params.get("arguments") or {}, scope, **stores)
                 )
                 failed = False
-            except ValueError as exc:
-                text, failed = str(exc), True
+            except ValueError as exc:  # scrubbed too: it may quote what was read
+                text, failed = _outbound(str(exc)), True
             except Exception:  # a locked store, a damaged file: say so, keep serving
                 text, failed = "Orbyn could not read that just now.", True
             audit.record(

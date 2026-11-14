@@ -41,7 +41,17 @@ _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ),
     ("JWT", re.compile(r"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b")),
     ("EMAIL", re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b")),
-    ("KEY", re.compile(r"\b(?:sk|pk|rk|AKIA|ghp|gho|xox[baprs])[-_A-Za-z0-9]{16,}\b")),
+    # Each provider's own token shape: the prefix then a separator (or, for
+    # AWS, upper-case and digits). A bare "gho"/"sk" start is a word, not a
+    # key: "ghostcursor-investor-deck-content" was hidden as a key in 9 of 239
+    # recorded control names (measured 15 Nov 2026 over .artifacts/).
+    (
+        "KEY",
+        re.compile(
+            r"\b(?:(?:sk|pk|rk)[-_]|gh[pousr]_|github_pat_|xox[baprs]-)[-_A-Za-z0-9]{16,}\b"
+            r"|\bAKIA[0-9A-Z]{16}\b"
+        ),
+    ),
     # explicit bearer/authorization credential (case-insensitive prefix)
     ("KEY", re.compile(r"(?i)\b(?:bearer|authorization:?)\s+[A-Za-z0-9._~+/=-]{8,}")),
     ("IBAN", re.compile(r"\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b")),
@@ -171,9 +181,12 @@ def scrub(
         # message): a line break between two words reads backslash-n there,
         # and a word may follow one directly (review 14 Nov).
         words = re.compile(
-            r"(?:(?<![^\W\d_])|(?<=\\[nrt]))(?:"
+            r"(?:(?<![^\W\d_])|(?<=\\[nrtfb]))(?:"
             + "|".join(
-                r"(?:\s|\\[nrt])+".join(_word(w) for w in t.split())
+                # between words: spaces, a hyphen or underscore (a saved
+                # workflow is named call-priya-nair; review 15 Nov), or a
+                # JSON whitespace escape
+                r"(?:[\s_-]|\\[nrtfb])+".join(_word(w) for w in t.split())
                 for t in sorted(terms, key=len, reverse=True)
             )
             + r")(?![^\W\d_])",
@@ -181,8 +194,10 @@ def scrub(
         )
         def _name(m: re.Match[str]) -> str:
             found, at = m.group(0), m.start()
-            slashes = at - len(m.string[:at].rstrip(chr(92)))
-            if slashes % 2 and found[0] in "nrt" and len(found) > 1:
+            slashes = 0
+            while at - slashes > 0 and m.string[at - slashes - 1] == chr(92):
+                slashes += 1
+            if slashes % 2 and found[0].lower() in "nrtfb" and len(found) > 1:
                 # In JSON text this first letter is the end of a line-break
                 # escape, not of the word: keep it or the JSON breaks, and
                 # hide the rest (review 15 Nov).

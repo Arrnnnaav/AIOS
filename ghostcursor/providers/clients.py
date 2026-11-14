@@ -108,6 +108,25 @@ SYSTEM_TWO = {
 }
 
 
+
+def is_loopback(url: str) -> bool:
+    """Is ``url``'s host this computer? Parsed, not a substring test, so
+    ``[::1]`` counts and ``localhost.example.com`` does not."""
+
+    import ipaddress
+    from urllib.parse import urlsplit
+
+    try:
+        host = urlsplit(url).hostname or ""
+    except ValueError:
+        return False
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
 def system_two(name: str) -> ProviderConfig | None:
     """A System-Two provider's config. ``company`` exists only while an
     organisation policy names its model gateway (CompanyEndpoint, D187) AND
@@ -188,8 +207,7 @@ def _post(
         headers=headers,
         # A model on this computer is reached directly: a proxy set in the
         # environment must not carry "stayed on this computer" elsewhere.
-        trust_env="//127.0.0.1" not in config.base_url
-        and "//localhost" not in config.base_url,
+        trust_env=not is_loopback(config.base_url),
     ) as client:
         for attempt in (1, 2):
             if cancelled():
