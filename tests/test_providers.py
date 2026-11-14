@@ -1028,3 +1028,50 @@ def test_the_log_never_says_nothing_was_hidden_when_the_scrub_did_not_run(
     last = json.loads(log.read_text(encoding="utf-8").splitlines()[-1])
     assert last["scrubbed"] is False and last["hidden"] is None
     assert Gateway(redact_egress=True)._outbound([], "ollama") == ([], None)
+
+
+def test_private_words_never_reach_a_cloud_model_and_come_back_in_the_answer(
+    tmp_path, monkeypatch
+):
+    from ghostcursor import settings
+
+    monkeypatch.setattr(settings, "private_terms", lambda: ("Project Orion",))
+    reply = json.dumps(
+        {
+            "steps": [
+                {
+                    "instruction": "Open the [NAME_1] folder",
+                    "expected_change": "chosen_disappears",
+                }
+            ]
+        }
+    )
+    transport, calls = _transport(_chat(reply))
+    log = tmp_path / "l"
+    gateway = Gateway(
+        system_two=("openrouter",),
+        transport=transport,
+        key_lookup=_keys(openrouter="k"),
+        log_path=log,
+    )
+    env = Envelope(
+        task="plan the step",
+        trusted={"goal": "file the project orion invoice"},
+        tainted={"screen": Tainted.of("uia_name", "Send")},
+    )
+    plan = gateway.plan(env)
+    assert "orion" not in calls[0].content.decode().casefold()
+    assert plan.steps[0].instruction == "Open the project orion folder"
+    assert "orion" not in log.read_text(encoding="utf-8").casefold()
+
+    transport, calls = _transport(_jev({"choice": "c1"}))
+    gateway = Gateway(transport=transport, key_lookup=_keys(typesafe="k"), log_path=log)
+    gateway.choose(
+        Envelope(
+            task="choose the control",
+            tainted={"c1": Tainted.of("uia_name", "Project Orion budget")},
+        ),
+        ("c1",),
+        question="q",
+    )
+    assert "orion" not in calls[0].content.decode().casefold()

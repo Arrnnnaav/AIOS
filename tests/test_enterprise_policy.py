@@ -289,3 +289,25 @@ def test_injection_risk_returns_the_yes_probability(monkeypatch, tmp_path):
 
     monkeypatch.setattr(gw, "judge", boom)
     assert gw.injection_risk("hello") is None  # unscreened, never "clean"
+
+
+def test_private_words_come_from_the_person_and_the_organisation(monkeypatch, tmp_path):
+    from ghostcursor import policy, settings
+
+    path = tmp_path / "settings.json"
+    assert settings.private_terms(path) == ()
+    settings.set_private_terms(["Orion", " orion ", "x", 5], path)
+    assert settings.own_private_terms(path) == ("Orion",)
+    assert settings.redact_egress(path) is True  # saving words keeps other switches
+    monkeypatch.setattr(
+        policy, "_value", lambda name: {"PrivateTerms": "Acme Health; Zeus;"}.get(name)
+    )
+    assert settings.private_terms(path) == ("Acme Health", "Zeus", "Orion")
+    assert policy.redact_egress() is True  # listing words forces hiding on
+    # Unreadable: the words cannot be known, hiding is still forced on.
+    monkeypatch.setattr(
+        policy, "_value", lambda name: "unreadable" if name == "PrivateTerms" else None
+    )
+    assert policy.private_terms() == () and policy.redact_egress() is True
+    path.write_text('{"private_terms": "Orion"}', encoding="utf-8")
+    assert settings.own_private_terms(path) == ()  # a hand-edited file: no crash

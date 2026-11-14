@@ -278,7 +278,9 @@ class Gateway:
             # Observed data too: Tainted.of masks credentials, but lets a short
             # phone number or a machine address through (review 14 Nov).
             refs = state.get("pictures")
-            state = redact.scrub_tree(state)
+            from ghostcursor import settings
+
+            state = redact.scrub_tree(state, settings.private_terms())
             if refs is not None:
                 # Ids this gateway made to name the attached pictures, not
                 # content: scrubbed, one in four stops matching its picture.
@@ -443,7 +445,10 @@ class Gateway:
 
         if not self._redact_on() or provider in policy.LOCAL_PROVIDERS:
             return messages, None
+        from ghostcursor import settings
+
         out, hidden = [], {}
+        terms = settings.private_terms()  # names no pattern can know
         # Text scrubbed earlier (an attached file, screen text) may already
         # hold placeholders; never reuse one of those for a new original.
         present = " ".join(
@@ -452,7 +457,9 @@ class Gateway:
         for m in messages:
             content = m.get("content")
             if isinstance(content, str):
-                scrubbed, _ = redact.scrub(content, mapping=hidden, avoid=present)
+                scrubbed, _ = redact.scrub(
+                    content, mapping=hidden, avoid=present, terms=terms
+                )
                 out.append({**m, "content": scrubbed})
             else:
                 out.append(m)

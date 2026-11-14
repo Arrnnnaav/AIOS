@@ -36,10 +36,10 @@ def jev_vision(path: Path | None = None) -> bool:
     )
 
 
-def _set(key: str, on: bool, path: Path | None) -> None:
+def _set(key: str, on, path: Path | None) -> None:
     path = path or _path()
     with _write_lock:  # read-change-write as one step
-        value = load(path) | {key: bool(on)}
+        value = load(path) | {key: on if isinstance(on, list) else bool(on)}
         path.parent.mkdir(parents=True, exist_ok=True)
         temp = path.with_suffix(".tmp")
         temp.write_text(json.dumps(value), encoding="utf-8")
@@ -94,6 +94,30 @@ def redact_egress(path: Path | None = None) -> bool:
 
 def set_redact_egress(on: bool, path: Path | None = None) -> None:
     _set("redact_egress", on, path)
+
+
+def own_private_terms(path: Path | None = None) -> tuple[str, ...]:
+    """The private words this person listed (names of people, clients,
+    projects). Kept on this computer only."""
+
+    from ghostcursor import redact
+
+    return redact.clean_terms(load(path).get("private_terms"))
+
+
+def private_terms(path: Path | None = None) -> tuple[str, ...]:
+    """Every private word to hide from a remote service: this person's
+    and the organisation's (PrivateTerms). Either can only add (rule 6)."""
+
+    from ghostcursor import policy, redact
+
+    return redact.clean_terms([*policy.private_terms(), *own_private_terms(path)])
+
+
+def set_private_terms(terms, path: Path | None = None) -> None:
+    from ghostcursor import redact
+
+    _set("private_terms", list(redact.clean_terms(terms)), path)
 
 
 def companion_idle(path: Path | None = None) -> bool:

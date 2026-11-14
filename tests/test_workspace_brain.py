@@ -404,3 +404,30 @@ def test_a_plain_row_that_only_looks_sealed_by_case_is_still_sealed(tmp_path):
     assert again._db.execute("SELECT text FROM memories").fetchone()[0].startswith("dp1:")
     assert [m.text for m in again.list()] == ["DP1: is my router name"]
     again.close()
+
+
+def test_the_brain_still_opens_when_windows_cannot_seal(tmp_path, monkeypatch):
+    from ghostcursor.workspace import brain as brain_mod
+
+    path = tmp_path / "brain.sqlite"
+    first = brain_mod.Brain(path)
+    with first._db:
+        first._db.execute(
+            "INSERT INTO memories (kind, text, origin, confidence, scope, status, "
+            "created, expires, source) VALUES "
+            "('preference','I prefer tea','user_stated',0.9,'durable','active',0,NULL,'')"
+        )
+    first.close()
+    seal = brain_mod._seal
+
+    def refuse(text):
+        raise OSError("no profile")
+
+    monkeypatch.setattr(brain_mod, "_seal", refuse)
+    again = brain_mod.Brain(path)  # does not raise
+    assert [m.text for m in again.list()] == ["I prefer tea"]
+    again.close()
+    monkeypatch.setattr(brain_mod, "_seal", seal)
+    later = brain_mod.Brain(path)  # sealed on the next open
+    assert later._db.execute("SELECT text FROM memories").fetchone()[0].startswith("dp1:")
+    later.close()

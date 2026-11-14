@@ -16,6 +16,8 @@
       <string id="Telemetry_Help">Counts event names in a local file for the owner. Nothing leaves the PC.</string>
       <string id="BlockedApps">Apps Orbyn never works in</string>
       <string id="BlockedApps_Help">Executable names separated by semicolons, for example keepass.exe;bank.exe.</string>
+      <string id="PrivateTerms">Private words always hidden from cloud models</string>
+      <string id="PrivateTerms_Help">Names of clients, projects and people, separated by semicolons (up to 200, 2 to 80 characters each). Each is swapped for a placeholder on the PC before text goes to a cloud model or a web search, and put back into the answer on the PC. Setting this also turns hiding of private details on. Users can add words of their own but cannot remove these.</string>
       <string id="AllowedApps">Only these apps (allow-list)</string>
       <string id="AllowedApps_Help">If set, Orbyn works only in these executables (semicolon-separated). Set but unreadable allows none.</string>
       <string id="DisableAct">Guide only: never perform steps</string>
@@ -38,6 +40,7 @@
     <presentationTable>
       <presentation id="MaxEgress"><dropdownList refId="MaxEgress_Value" defaultItem="2">What may leave this PC</dropdownList></presentation>
       <presentation id="BlockedApps"><textBox refId="BlockedApps_Value"><label>Apps Orbyn never works in</label></textBox></presentation>
+      <presentation id="PrivateTerms"><textBox refId="PrivateTerms_Value"><label>Private words (semicolon-separated)</label></textBox></presentation>
       <presentation id="AllowedApps"><textBox refId="AllowedApps_Value"><label>Only these apps (allow-list)</label></textBox></presentation>
       <presentation id="AllowedProviders"><textBox refId="AllowedProviders_Value"><label>Only these model providers</label></textBox></presentation>
       <presentation id="CompanyEndpoint"><textBox refId="CompanyEndpoint_Value"><label>Company model gateway (https)</label></textBox></presentation>

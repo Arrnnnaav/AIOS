@@ -82,9 +82,26 @@ def _luhn_ok(digits: str) -> bool:
 
 _PLACEHOLDER = re.compile(r"\[[A-Z]+_\d+\]")
 
+MAX_TERMS, MAX_TERM_CHARS = 200, 80
+
+
+def clean_terms(values) -> tuple[str, ...]:
+    """Private words as they are kept: text of 2 to 80 characters, spaces
+    collapsed, one of each whatever the capitals, at most 200. Anything
+    else in ``values`` is dropped, not an error (a hand-edited file)."""
+
+    out: dict[str, str] = {}
+    for value in values if isinstance(values, (list, tuple)) else ():
+        if not isinstance(value, str):
+            continue
+        term = " ".join(value.split())
+        if 2 <= len(term) <= MAX_TERM_CHARS and not _PLACEHOLDER.search(term):
+            out.setdefault(term.casefold(), term)
+    return tuple(out.values())[:MAX_TERMS]
+
 
 def scrub(
-    text: str, categories=None, *, mapping=None, avoid: str = ""
+    text: str, categories=None, *, mapping=None, avoid: str = "", terms=()
 ) -> tuple[str, dict[str, str]]:
     """Return (scrubbed_text, map). Every detected entity is replaced by a
     stable ``[CATEGORY_n]`` placeholder; the map {placeholder: original} lets
@@ -96,7 +113,12 @@ def scrub(
     request share placeholders (the same original gets the same one, and
     two originals never share one). A placeholder that already occurs in
     ``avoid`` is never issued: it would be confused with text that was
-    scrubbed elsewhere and whose original this map does not hold."""
+    scrubbed elsewhere and whose original this map does not hold.
+
+    ``terms`` are the person's (or the organisation's) private words --
+    names of people, clients, projects -- which no pattern can know.
+    Each whole-word occurrence, whatever its capitals, becomes a
+    ``[NAME_n]`` placeholder."""
 
     mapping = {} if mapping is None else mapping
     seen = {original: placeholder for placeholder, original in mapping.items()}
@@ -124,6 +146,24 @@ def scrub(
         if categories is not None and category not in categories:
             continue
         text = pattern.sub(lambda m, c=category: _sub(c, m), text)
+    terms = clean_terms(list(terms))
+    if terms:
+        # After the patterns, so a name inside an email address went with
+        # the address; longest first, so "Acme Health" wins over "Acme".
+        words = re.compile(
+            r"(?<!\w)(?:"
+            + "|".join(
+                r"\s+".join(re.escape(w) for w in t.split())
+                for t in sorted(terms, key=len, reverse=True)
+            )
+            + r")(?!\w)",
+            re.IGNORECASE,
+        )
+        # Never inside a placeholder already in the text.
+        pieces = re.split(r"(\[[A-Z]+_\d+\])", text)
+        for i in range(0, len(pieces), 2):
+            pieces[i] = words.sub(lambda m: _sub("NAME", m), pieces[i])
+        text = "".join(pieces)
     return text, mapping
 
 
@@ -136,7 +176,7 @@ def rehydrate(text: str, mapping: dict[str, str]) -> str:
     return text
 
 
-def scrub_tree(value):
+def scrub_tree(value, terms=()):
     """Scrub every string leaf of a JSON-like structure (str / dict / list /
     tuple), returning a scrubbed copy; non-strings pass through. For a one-way
     egress path (no rehydrate), e.g. the System-One/Jev state object -- the
@@ -144,13 +184,13 @@ def scrub_tree(value):
     content)."""
 
     if isinstance(value, str):
-        return scrub(value)[0]
+        return scrub(value, terms=terms)[0]
     if isinstance(value, dict):
-        return {k: scrub_tree(v) for k, v in value.items()}
+        return {k: scrub_tree(v, terms) for k, v in value.items()}
     if isinstance(value, tuple):
-        return tuple(scrub_tree(v) for v in value)
+        return tuple(scrub_tree(v, terms) for v in value)
     if isinstance(value, list):
-        return [scrub_tree(v) for v in value]
+        return [scrub_tree(v, terms) for v in value]
     return value
 
 

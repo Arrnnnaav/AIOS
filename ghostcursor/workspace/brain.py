@@ -172,8 +172,15 @@ class Brain:
             for mid, text in self._db.execute(
                 "SELECT mid, text FROM memories WHERE substr(text, 1, 4) != ?", (SEALED,)
             ).fetchall():
+                try:
+                    sealed = _seal(text)
+                except Exception:
+                    # Windows could not seal now (profile not loaded, a
+                    # service account): the Brain still opens, the row
+                    # stays readable, and the next open tries again.
+                    break
                 self._db.execute(
-                    "UPDATE memories SET text=? WHERE mid=?", (_seal(text), mid)
+                    "UPDATE memories SET text=? WHERE mid=?", (sealed, mid)
                 )
 
     def close(self) -> None:

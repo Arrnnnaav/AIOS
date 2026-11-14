@@ -625,7 +625,9 @@ def research(
             raise PermissionError("blocked by policy")
         # A search service is remote: private details in the question stay
         # here, as they already do for a background job.
-        query = redact.scrub(question)[0]
+        from ghostcursor import settings
+
+        query = redact.scrub(question, terms=settings.private_terms())[0]
         if search is not None:
             hits = search(query)
         elif key:
@@ -634,6 +636,16 @@ def research(
             hits = duckduckgo_search(query)
     except Exception as exc:  # network: record, never guess
         hits, failures = [], [f"search: {type(exc).__name__}"]
+    if provider != "none":  # the receipt lists searches too; no query kept
+        from ghostcursor import audit
+
+        audit.record(
+            "egress",
+            provider=provider,
+            model=None,
+            failure="search" if failures else None,
+            images=0,
+        )
     if cancelled():
         raise CancelledError()
     timings["search"] = round((time.monotonic() - started) * 1000)

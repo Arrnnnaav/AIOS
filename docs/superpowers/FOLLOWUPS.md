@@ -2425,3 +2425,18 @@ from 1053b54. Still open:
   and are scrubbed on egress. Jobs, routines, agent notes and handoffs
   already scrubbed on write. Known ceiling: redact is regex, so a free-text
   password ("the password is swordfish") is not caught.
+- Private words 14 Nov (tier 1, what leaves): a person's list (settings
+  "private_terms") and an organisation's (policy PrivateTerms, which also
+  forces hiding on) are swapped for [NAME_n] before a cloud model, Jev or a
+  web search, whole word, any capitals, and put back into a System-Two
+  answer. Setup shows "See what a model would get" (local preview, nothing
+  sent). The receipt now lists web searches and page reads from the audit
+  log. A failed DPAPI seal during migration no longer stops the Brain
+  opening. Mutation sweep: 19 of 20 killed; the survivor (dropping the
+  `event == "egress"` check in the receipt) is equivalent today because
+  only egress events carry a provider. Left: the word list is plain text in
+  settings.json; a web search for a private word searches the placeholder,
+  so finds nothing useful; a word that is also a control name is hidden
+  from Jev's view of that control; no stemming (plural or possessive forms
+  with a letter attached are not matched); Teach accuracy with words hidden
+  is unmeasured.

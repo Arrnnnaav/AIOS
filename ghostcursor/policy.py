@@ -9,6 +9,9 @@ lowers what the user may switch on; with no policy, behaviour is unchanged.
 - ``RedactEgress`` (DWORD): 0 off (default); 1 on -- scrub embedded secrets
   (email/card/SSN/key/...) out of text bound for a remote model (D186). Absent
   leaves it off (unchanged behaviour); present but unreadable fails safe to on.
+- ``PrivateTerms`` (REG_SZ): private words (client, project and people
+  names), ``;``-separated, always hidden from remote services on top of
+  each person's own list. Setting it also turns RedactEgress on.
 - ``BlockedApps`` (REG_SZ): executables never bound, ``;``-separated.
 - ``AllowedApps`` (REG_SZ): if set, ONLY these executables may be bound.
 - ``DisableAct`` (DWORD): 1 -- Orbyn guides only; no step is performed.
@@ -70,6 +73,8 @@ def redact_egress() -> bool:
     Default off (no policy -> unchanged behaviour); present but unreadable fails
     safe to on, since a managed machine asked for the guard."""
 
+    if _value("PrivateTerms") is not None:
+        return True  # words to hide were listed: hiding cannot be off
     value = _value("RedactEgress")
     if value is None:
         return False
@@ -80,6 +85,16 @@ def redact_egress() -> bool:
     except (TypeError, ValueError):
         return True  # garbage value on a managed machine: fail safe
     return False
+
+
+def private_terms() -> tuple[str, ...]:
+    """The organisation's private words. Unreadable gives none (they
+    cannot be known), but ``redact_egress`` is then still forced on."""
+
+    value = _value("PrivateTerms")
+    if not isinstance(value, str) or value == "unreadable":
+        return ()
+    return tuple(p.strip() for p in value.split(";") if p.strip())
 
 
 def telemetry_enabled() -> bool:

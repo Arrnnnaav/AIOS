@@ -587,3 +587,36 @@ def test_read_page_fetches_one_public_page_and_obeys_policy(monkeypatch):
     assert len(seen) == 2  # blocked before anything was sent
     monkeypatch.setattr(policy, "_value", lambda name: {"AllowedProviders": "company;web"}.get(name))
     assert read("https://good.com/a") == "Rates rise in May."
+
+
+def test_a_search_hides_private_words_and_leaves_a_receipt_line(tmp_path, monkeypatch):
+    from ghostcursor import audit, policy, settings
+
+    monkeypatch.setattr(settings, "private_terms", lambda: ("Orion",))
+    asked = []
+    research(
+        "orion launch date, mail ada@acme.io",
+        FakeGateway({"claims": []}),
+        search=lambda q: asked.append(q) or [],
+        key_lookup=lambda n: None,
+        trace_path=tmp_path / "t.jsonl",
+    )
+    assert asked == ["[NAME_1] launch date, mail [EMAIL_1]"]
+    audit.flush()
+    lines = [json.loads(x) for x in audit.default_path().read_text().splitlines()]
+    assert [(x["event"], x["provider"], x["failure"]) for x in lines] == [
+        ("egress", "duckduckgo", None)
+    ]
+    assert "launch" not in audit.default_path().read_text()  # never the question
+
+    monkeypatch.setattr(policy, "_value", lambda name: {"MaxEgress": 0}.get(name))
+    research(
+        "q",
+        FakeGateway({"claims": []}),
+        search=lambda q: asked.append(q) or [],
+        key_lookup=lambda n: None,
+        trace_path=tmp_path / "t.jsonl",
+    )
+    audit.flush()
+    assert len(asked) == 1  # blocked: nothing searched, so nothing more recorded
+    assert len(audit.default_path().read_text().splitlines()) == 1

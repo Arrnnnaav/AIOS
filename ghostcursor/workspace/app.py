@@ -741,6 +741,9 @@ class App:
             # switch, or forced on by the organisation (never forced off).
             "redact": policy.redact_egress() or settings.redact_egress(),
             "redact_forced": policy.redact_egress(),
+            # Names no pattern can know; shown only on this computer's page.
+            "private_terms": list(settings.own_private_terms()),
+            "private_terms_org": len(policy.private_terms()),
             "egress": policy.max_egress(),  # D180: set by the organisation
             "managed": policy.managed(),
         }
@@ -975,7 +978,49 @@ class App:
                 )
                 if len(rows) == 20:
                     break
-            return {"requests": rows}
+            # Web searches and page reads, from the audit log (events only).
+            from ghostcursor import audit
+
+            audit.flush()
+            try:
+                events = audit.default_path().read_text(encoding="utf-8").splitlines()[-400:]
+            except OSError:
+                events = []
+            for line in events:
+                try:
+                    row = json.loads(line)
+                except ValueError:
+                    continue
+                if (
+                    isinstance(row, dict)
+                    and row.get("event") == "egress"
+                    and row.get("provider") in ("web", "tavily", "duckduckgo")
+                ):
+                    at = row.get("at")
+                    rows.append(
+                        {
+                            "at": at if isinstance(at, (int, float)) and not isinstance(at, bool) else None,
+                            "web": "page" if row["provider"] == "web" else "search",
+                            "provider": row["provider"],
+                            "failed": bool(row.get("failure")),
+                        }
+                    )
+            rows.sort(key=lambda r: r["at"] or 0, reverse=True)
+            return {"requests": rows[:20]}
+        if action == "private_terms":  # the person's own list; local only
+            terms = body.get("terms")
+            if not isinstance(terms, list) or not all(
+                isinstance(t, str) for t in terms
+            ):
+                raise ValueError("terms must be a list of words")
+            settings.set_private_terms(terms)
+            return {"kept": len(settings.own_private_terms())}
+        if action == "redact_preview":  # what a cloud model would get; nothing is sent
+            text = body.get("text")
+            if not isinstance(text, str) or len(text) > 20_000:
+                raise ValueError("text must be at most 20,000 characters")
+            shown, hidden = redact.scrub(text, terms=settings.private_terms())
+            return {"text": shown, "hidden": len(hidden)}
         if action == "redact_egress":  # the person can add, never lower
             # Only an explicit false turns it off; anything else keeps it on.
             settings.set_redact_egress(body.get("on") is not False)

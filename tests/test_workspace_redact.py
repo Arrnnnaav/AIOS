@@ -100,3 +100,38 @@ def test_an_iban_written_in_groups_of_four_is_scrubbed():
         assert "[IBAN_1]" in clean and not any(n in clean for n in ("5698", "0532", "7654"))
     for text in ("Meet in room AB12 at noon", "See ID42 PLAN 2026 for details"):
         assert redact.scrub(text, redact.SECRETS)[0] == text  # too short to be one
+
+
+def test_private_words_are_hidden_whole_word_any_capitals_and_put_back():
+    from ghostcursor import redact
+
+    text = "Draft for ACME Health and acme; Acmeville stays. Ask Priya  Nair, ada@acme.io"
+    out, m = redact.scrub(text, terms=("Acme", "acme health", "Priya Nair"))
+    assert out == "Draft for [NAME_1] and [NAME_2]; Acmeville stays. Ask [NAME_3], [EMAIL_1]"
+    assert m["[NAME_1]"] == "ACME Health"  # the longer word wins over "Acme"
+    assert redact.rehydrate(out, m) == text
+    # No words listed: nothing but the patterns runs.
+    assert redact.scrub("Draft for Acme")[0] == "Draft for Acme"
+    # A word never rewrites a placeholder that is already in the text.
+    assert redact.scrub("see [EMAIL_1] and email", terms=("email", "EMAIL_1"))[0] == (
+        "see [EMAIL_1] and [NAME_1]"
+    )
+    # Characters that mean something to a pattern are taken literally.
+    assert redact.scrub("ship C++ (v2) now", terms=("C++ (v2)",))[0] == "ship [NAME_1] now"
+    assert redact.scrub_tree({"a": ["Acme"], "b": 3}, ("acme",)) == {"a": ["[NAME_1]"], "b": 3}
+
+
+def test_private_words_are_cleaned_before_use():
+    from ghostcursor import redact
+
+    assert redact.clean_terms(
+        ["  Acme   Health ", "ACME HEALTH", "x", "", 7, None, "y" * 81, "[EMAIL_1]", "Orion"]
+    ) == ("Acme Health", "Orion")
+    assert redact.clean_terms("Acme") == () and redact.clean_terms(None) == ()
+    assert len(redact.clean_terms([f"word{i}" for i in range(500)])) == 200
+
+
+def test_a_private_word_inside_a_longer_word_is_left_alone():
+    from ghostcursor import redact
+
+    assert redact.scrub("MegaAcme and Acmeville", terms=("Acme",))[0] == "MegaAcme and Acmeville"

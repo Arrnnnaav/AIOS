@@ -2341,3 +2341,47 @@ def test_the_page_scripts_parse(tmp_path):
             [node, "--check", str(path)], capture_output=True, text=True
         )
         assert result.returncode == 0, result.stderr
+
+
+def test_private_words_are_saved_listed_and_previewed_locally(served):
+    _, port = served
+    for bad in (None, "Acme", [1], {"a": 1}):
+        assert call(port, "/api/private_terms", {"terms": bad})[0] == 400, bad
+    status, body = call(port, "/api/private_terms", {"terms": ["Orion", "orion", "x"]})
+    assert status == 200 and json.loads(body) == {"kept": 1}
+    state = json.loads(call(port, "/api/state")[1])
+    assert state["private_terms"] == ["Orion"] and state["private_terms_org"] == 0
+    status, body = call(
+        port, "/api/redact_preview", {"text": "Tell orion team: ada@acme.io"}
+    )
+    assert status == 200 and json.loads(body) == {
+        "text": "Tell [NAME_1] team: [EMAIL_1]",
+        "hidden": 2,
+    }
+    for bad in (None, 5, "a" * 20_001):
+        assert call(port, "/api/redact_preview", {"text": bad})[0] == 400
+    assert call(port, "/api/private_terms", {"terms": []})[0] == 200
+    assert json.loads(call(port, "/api/state")[1])["private_terms"] == []
+
+
+def test_the_receipt_also_lists_web_searches_and_page_reads(served, tmp_path):
+    from ghostcursor import audit
+
+    app, port = served
+    log = tmp_path / "requests.jsonl"
+    app.ws.gateway.log_path = log
+    log.write_text(
+        json.dumps({"at": 5.0, "provider": "openrouter", "model": "m", "scrubbed": True, "hidden": 0}),
+        encoding="utf-8",
+    )
+    audit.record("egress", provider="web", model=None, failure=None, images=0, clock=lambda: 9.0)
+    audit.record("egress", provider="tavily", model=None, failure="search", images=0, clock=lambda: 7.0)
+    audit.record("egress", provider="openrouter", model="m", failure=None, images=0, clock=lambda: 8.0)
+    audit.record("plan_approved", via="teach", steps=2, clock=lambda: 10.0)
+    got = json.loads(call(port, "/api/egress_log")[1])["requests"]
+    assert [(r["at"], r.get("web"), r["provider"], r["failed"]) for r in got] == [
+        (9.0, "page", "web", False),
+        (7.0, "search", "tavily", True),
+        (5.0, None, "openrouter", False),
+    ]
+    assert set(got[0]) == {"at", "web", "provider", "failed"}

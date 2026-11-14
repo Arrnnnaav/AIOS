@@ -26,6 +26,10 @@
       <parentCategory ref="Orbyn" /><supportedOn ref="SUPPORTED_Orbyn" />
       <elements><text id="BlockedApps_Value" valueName="BlockedApps" maxLength="1024" /></elements>
     </policy>
+    <policy name="PrivateTerms" class="Both" displayName="$(string.PrivateTerms)" explainText="$(string.PrivateTerms_Help)" key="Software\Policies\Orbyn" presentation="$(presentation.PrivateTerms)">
+      <parentCategory ref="Orbyn" /><supportedOn ref="SUPPORTED_Orbyn" />
+      <elements><text id="PrivateTerms_Value" valueName="PrivateTerms" maxLength="4096" /></elements>
+    </policy>
     <policy name="AllowedApps" class="Both" displayName="$(string.AllowedApps)" explainText="$(string.AllowedApps_Help)" key="Software\Policies\Orbyn" presentation="$(presentation.AllowedApps)">
       <parentCategory ref="Orbyn" /><supportedOn ref="SUPPORTED_Orbyn" />
       <elements><text id="AllowedApps_Value" valueName="AllowedApps" maxLength="1024" /></elements>

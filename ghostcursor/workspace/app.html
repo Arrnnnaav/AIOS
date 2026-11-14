@@ -1084,7 +1084,25 @@ function renderBrain() {
   rsw.onclick = () => act("redact_egress", { on: !S.redact }, S.redact ? "Private details no longer hidden" : "Private details hidden from cloud models");
   rmeta.append(rsw);
   red.append(rmeta, el("div", "", "Hide private details from cloud models."),
-    el("div", "note", "When on, email addresses, phone numbers, card, bank and ID numbers, keys and machine addresses in what you type, attach or have on screen are swapped for placeholders like [EMAIL_1] on this computer before the text goes to a cloud model, and Orbyn puts the originals back into the answer here. A detail from an attached file may still show as a placeholder. On by default. Names of people, companies and projects are not recognised and still go. A local Ollama model gets the original text."));
+    el("div", "note", "When on, email addresses, phone numbers, card, bank and ID numbers, keys and machine addresses in what you type, attach or have on screen are swapped for placeholders like [EMAIL_1] on this computer before the text goes to a cloud model, and Orbyn puts the originals back into the answer here. A detail from an attached file may still show as a placeholder. On by default. Names of people, companies and projects are not recognised on their own: list them under Private words and they are hidden too, as [NAME_1], from cloud models and web searches. A local Ollama model gets the original text."));
+  const words = S.private_terms || [];
+  const wrow = el("div", "note"); wrow.style.textAlign = "left";
+  const wbtn = el("button", "secondary", "Private words (" + words.length + ")");
+  wbtn.onclick = async () => {
+    const typed = await askText("Names to always hide from cloud models (people, clients, projects), separated by commas:", words.join(", "));
+    if (typed === null) return;
+    act("private_terms", { terms: String(typed).split(",").map(t => t.trim()).filter(Boolean) }, "Private words saved");
+  };
+  const tbtn = el("button", "secondary", "See what a model would get"); tbtn.style.marginLeft = "8px";
+  const tout = el("div", "note"); tout.style.textAlign = "left"; tout.hidden = true; tout.setAttribute("role", "status");
+  tbtn.onclick = async () => {
+    const text = await askText("Type or paste some text. Orbyn shows what a cloud model would get; nothing is sent.");
+    if (!text) return;
+    let r; try { r = await api("redact_preview", { text }); } catch (e) { return toast(e.message); }
+    tout.hidden = false; tout.textContent = r.text + (r.hidden ? "" : "  (nothing found to hide)");
+  };
+  wrow.append(wbtn, tbtn); red.append(wrow, tout);
+  if (S.private_terms_org) red.append(el("div", "note", "Your organization also hides " + S.private_terms_org + " word" + (S.private_terms_org === 1 ? "" : "s") + " of its own."));
   if (S.redact_forced) red.append(el("div", "note", "Set by your organization: always on."));
   red.style.marginTop = "8px"; root.append(red);
   if (S.company_offered) {
@@ -1113,9 +1131,10 @@ function renderBrain() {
   recbtn.onclick = async () => {
     let r; try { r = await api("egress_log"); } catch (e) { return toast(e.message); }
     reclist.hidden = false; reclist.replaceChildren();
-    if (!r.requests.length) reclist.textContent = "Nothing has been sent to a model from this computer yet.";
+    if (!r.requests.length) reclist.textContent = "Nothing has been sent from this computer yet.";
     for (const q of r.requests) {
       const when = q.at ? new Date(q.at * 1000).toLocaleString() : "";
+      if (q.web) { reclist.append(el("div", "", `${when} · ${q.web === "page" ? "web page read" : "web search (" + q.provider + ")"}${q.failed ? " · failed" : ""}`)); continue; }
       const hid = q.local ? " · stayed on this computer"
         : q.scrubbed === false ? " · sent without hiding private details"
         : q.scrubbed === null ? ""
@@ -1125,7 +1144,7 @@ function renderBrain() {
       reclist.append(el("div", "", `${when} · ${q.provider} (${q.model})${hid}${pic}${q.failed ? " · failed" : ""}`));
     }
   };
-  rec.append(recmeta, el("div", "", "A receipt of the last 20 requests to a model: when, which service and model, and whether private details were hidden first. Web searches and page reads are not listed here."),
+  rec.append(recmeta, el("div", "", "A receipt of the last 20 requests to a model, web searches and page reads: when, which service and model, and whether private details were hidden first."),
     el("div", "note", "Kept on this computer only. It never holds what you asked or what was answered."), reclist);
   rec.style.marginTop = "8px"; root.append(rec);
   const dot = el("div", "mem"); const dmeta = el("div", "meta"); dmeta.append(el("span", "kind", "companion"));
