@@ -232,6 +232,7 @@ def unread(*, limit: int = 10, imap=imaplib.IMAP4_SSL) -> list[dict]:
             name, address = email.utils.parseaddr(_header(message.get("From")))
             rows.append(
                 {
+                    "id": mid.decode("ascii", "replace"),
                     "from": name or address,
                     "subject": _header(message.get("Subject")) or "(no subject)",
                     "date": _short(message.get("Date", ""), 40),
@@ -243,3 +244,46 @@ def unread(*, limit: int = 10, imap=imaplib.IMAP4_SSL) -> list[dict]:
             client.logout()
         except Exception:
             pass
+
+
+MAX_MAIL_CHARS = 100_000
+
+
+def message_text(mid: str, subject: str, *, imap=imaplib.IMAP4_SSL) -> tuple[str, str]:
+    """(subject, plain text) of ONE message the person picked from the
+    unread list, for them to add to the Company Brain. Peeked (nothing is
+    marked read), plain-text part only, capped. ``subject`` is the one the
+    list showed: a different message at that number (the inbox changed)
+    is refused rather than added."""
+
+    if not isinstance(mid, str) or not mid.isdigit() or len(mid) > 12:
+        raise ValueError("choose a message from the unread list")
+    saved = keys.get_key("mail", allow_env=False)
+    if not saved:
+        raise ValueError("connect mail first")
+    account = json.loads(saved)
+    client = _open(account["host"], account["user"], account["password"], imap)
+    try:
+        status, data = client.fetch(mid.encode("ascii"), "(BODY.PEEK[])")
+        if status != "OK" or not data or not isinstance(data[0], tuple):
+            raise ValueError("that message could not be read")
+        message = email.message_from_bytes(data[0][1])
+    finally:
+        try:
+            client.logout()
+        except Exception:
+            pass
+    found = _header(message.get("Subject")) or "(no subject)"
+    if found != subject:
+        raise ValueError("the inbox changed; show unread mail again")
+    parts = message.walk() if message.is_multipart() else [message]
+    text = ""
+    for part in parts:
+        if part.get_content_type() == "text/plain" and not part.get_filename():
+            payload = part.get_payload(decode=True) or b""
+            text = payload.decode(part.get_content_charset() or "utf-8", "replace")
+            break
+    text = text.replace("\0", " ")[:MAX_MAIL_CHARS]
+    if not text.strip():
+        raise ValueError("that message has no plain text to add")
+    return found, text

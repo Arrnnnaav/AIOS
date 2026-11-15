@@ -79,7 +79,7 @@ def test_workflows_are_listed_and_read_never_run(stores):
     assert ask(stores, "list_workflows") == ("issue-refund", False)
     assert ask(stores, "get_workflow", {"name": "Issue refund"}) == (
         "1. Open Billing\n2. Click Refund", False)
-    assert [t["name"] for t in agent_server.TOOLS] == ["recall", "list_workflows", "get_workflow"]
+    assert [t["name"] for t in agent_server.TOOLS] == ["recall", "list_workflows", "get_workflow", "propose_fact"]
     for name, args in (("get_workflow", {"name": "missing"}), ("get_workflow", {"name": "../x"}),
                        ("get_workflow", {"name": 5}), ("recall", {"query": ""}),
                        ("recall", {"query": "a" * 501}), ("recall", {}), ("act", {}),
@@ -110,7 +110,7 @@ def test_the_protocol_handshake_and_a_stream_of_lines(stores, monkeypatch):
              '{"jsonrpc":"2.0","id":3,"method":"ping"}']
     assert agent_server.main([], stdin=io.StringIO("\n".join(lines) + "\n"), stdout=out) == 0
     replies = [json.loads(x) for x in out.getvalue().splitlines()]
-    assert len(replies[0]["result"]["tools"]) == 3
+    assert len(replies[0]["result"]["tools"]) == 4
     assert replies[1]["error"]["code"] == -32700 and replies[2] == {"jsonrpc": "2.0", "id": 3, "result": {}}
 
 
@@ -160,3 +160,28 @@ def test_a_private_word_in_a_hyphenated_workflow_name_never_reaches_the_agent(st
     text, failed = ask(stores, "list_workflows")
     assert not failed and "priya" not in text.casefold() and "nair" not in text.casefold()
     assert "call-[NAME_1]" in text
+
+
+def test_a_proposed_fact_waits_for_review_and_is_never_recalled(stores):
+    k = stores["knowledge"]
+    text, failed = ask(stores, "propose_fact", {"fact": "Invoices go out on the 1st", "source": "billing bot"})
+    assert failed and "off" in text  # access off: nothing added
+    settings.set_agent_access(True)
+    text, failed = ask(stores, "propose_fact", {"fact": "Invoices go out on the 1st", "source": "billing bot"})
+    assert not failed and "candidate" in text
+    (f,) = [f for f in k.list(scope="default") if f.text.startswith("Invoices")]
+    assert f.status == "candidate" and f.source == "agent: billing bot"
+    assert "Invoices" not in ask(stores, "recall", {"query": "invoices"})[0]  # unreviewed
+    assert "Already" in ask(stores, "propose_fact", {"fact": "Invoices go out on the 1st", "source": "x"})[0]
+    for bad in ({"fact": "", "source": "x"}, {"fact": "a" * 601, "source": "x"}, {"fact": "ok fact", "source": ""},
+                {"fact": "ok fact"}, {"fact": 5, "source": "x"}):
+        assert ask(stores, "propose_fact", bad)[1] is True, bad
+
+
+def test_an_agent_cannot_bury_the_review_list(stores, monkeypatch):
+    settings.set_agent_access(True)
+    monkeypatch.setattr(agent_server, "MAX_PENDING", 2)
+    assert ask(stores, "propose_fact", {"fact": "First distinct proposal here", "source": "a"})[1] is False
+    assert ask(stores, "propose_fact", {"fact": "Second quite different idea", "source": "a"})[1] is False
+    text, failed = ask(stores, "propose_fact", {"fact": "Third unrelated statement now", "source": "a"})
+    assert failed and "waiting" in text

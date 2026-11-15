@@ -2587,3 +2587,28 @@ def test_handing_a_file_to_the_running_app_never_uses_a_proxy(monkeypatch):
     monkeypatch.setenv("HTTP_PROXY", "http://proxy.corp:8080")
     app_mod._post("http://127.0.0.1:9/?t=tok", "offer_file", {"name": "a", "text": "b"})
     assert seen == [[{}]]  # a proxy is set: the no-proxy opener, never urlopen
+
+
+def test_a_picked_message_becomes_candidate_facts_for_review(tmp_path, monkeypatch):
+    from ghostcursor.workspace import connectors
+    from ghostcursor.workspace.knowledge import Knowledge
+
+    kb = Knowledge(tmp_path / "know.sqlite")
+    app = App("trip", make_workspace=lambda: Workspace("trip", Gateway(), Brain(tmp_path / "kb.sqlite"),
+              root=tmp_path / "briefs", knowledge=kb, kb_scope="default"))
+    server = make_server(app, "secret-token")
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    monkeypatch.setattr(connectors, "mail_connected", lambda: True)
+    monkeypatch.setattr(connectors, "message_text", lambda mid, subject: (subject, "Refunds over 500 need a manager.\n\nPricing exceptions go to Sam."))
+    try:
+        status, body = call(server.server_port, "/api/mail_to_brain", {"id": "2", "subject": "Policy"})
+        assert status == 200 and json.loads(body) == {"added": 2, "duplicates": 0}
+        facts = kb.list(scope="default")
+        assert {f.status for f in facts} == {"candidate"} and facts[0].source == "mail: Policy"
+        assert kb.recall("refunds", "default") == []  # nothing usable until reviewed
+        status, body = call(server.server_port, "/api/mail_to_brain", {"id": "2", "subject": "Policy"})
+        assert json.loads(body) == {"added": 0, "duplicates": 2}
+    finally:
+        server.shutdown()
+        app.close()
+        kb.close()

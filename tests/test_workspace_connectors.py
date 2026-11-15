@@ -147,6 +147,37 @@ class FakeImap:
         self.calls.append(("logout",))
 
 
+class FakeImapBodies(FakeImap):
+    def fetch(self, mid, spec):
+        self.calls.append(("fetch", mid, spec))
+        if "HEADER" in spec:
+            return super().fetch(mid, spec)
+        raw = (
+            b"From: ana@example.com\r\nSubject: Invoice " + mid + b"\r\n"
+            b"Content-Type: multipart/mixed; boundary=x\r\n\r\n"
+            b"--x\r\nContent-Type: text/plain\r\nContent-Disposition: attachment; filename=a.txt\r\n\r\nattached\r\n"
+            b"--x\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n"
+            b"Refunds over 500 need a manager.\r\n\r\nPricing exceptions go to Sam.\r\n--x--\r\n"
+        )
+        return "OK", [(b"1", raw)]
+
+
+def test_one_picked_message_is_read_as_plain_text_and_never_marked_read(vault):
+    FakeImapBodies.instances.clear()
+    connectors.connect_mail("imap.example.com", "me@example.com", "app-password", imap=FakeImapBodies)
+    subject, text = connectors.message_text("2", "Invoice 2", imap=FakeImapBodies)
+    assert subject == "Invoice 2" and "Refunds over 500" in text and "attached" not in text
+    calls = FakeImapBodies.instances[-1].calls
+    assert ("select", "INBOX", True) in calls and all("PEEK" in c[2] for c in calls if c[0] == "fetch")
+    before = len(FakeImapBodies.instances)
+    for bad in ("", "1;2", "x", "1" * 13, None, "1 2"):
+        with pytest.raises(ValueError):
+            connectors.message_text(bad, "Invoice 2", imap=FakeImapBodies)
+    assert len(FakeImapBodies.instances) == before  # refused before any connection
+    with pytest.raises(ValueError):  # the inbox changed under the list
+        connectors.message_text("2", "Invoice 9", imap=FakeImapBodies)
+
+
 def test_mail_reads_unread_headers_without_marking_anything_read(vault):
     FakeImap.instances.clear()
     connectors.connect_mail(
@@ -154,7 +185,7 @@ def test_mail_reads_unread_headers_without_marking_anything_read(vault):
     )
     assert json.loads(vault["mail"])["host"] == "imap.example.com"
     rows = connectors.unread(imap=FakeImap)
-    assert rows[0] == {"from": "Ana Pérez", "subject": "Invoice 2", "date": ""}
+    assert rows[0] == {"id": "2", "from": "Ana Pérez", "subject": "Invoice 2", "date": ""}
     calls = FakeImap.instances[-1].calls
     assert ("select", "INBOX", True) in calls  # EXAMINE: read-only
     assert all("PEEK" in c[2] for c in calls if c[0] == "fetch")  # never sets \Seen

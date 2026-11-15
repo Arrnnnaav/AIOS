@@ -67,7 +67,8 @@ def test_local_only_sends_nothing_to_jev_or_any_remote_planner(monkeypatch, tmp_
     with pytest.raises(ProviderError) as exc:
         gateway.plan(_envelope())
     assert exc.value.kind is FailureKind.NOT_CONFIGURED
-    assert calls == [] and gateway.budget.used == 0
+    # Nothing left this computer; only the local model was asked (offline Teach).
+    assert all(c.url.host == "127.0.0.1" for c in calls)
     assert gateway.available() == {"jev": False, "nvidia": False, "openrouter": False}
     assert policy.allows("ollama")  # the local model may still answer
 
@@ -80,9 +81,10 @@ def test_text_level_refuses_pictures_but_not_text(monkeypatch, tmp_path):
     )
     with pytest.raises(ProviderError):
         gateway.choose(_envelope(), ("c1",), question="q?", pictures={"w1": b"x"})
-    assert calls == []
+    assert all(c.url.host == "127.0.0.1" for c in calls)  # no picture left the PC
+    before = len(calls)
     gateway.choose(_envelope(), ("c1",), question="q?")
-    assert len(calls) == 1
+    assert len(calls) == before + 1 and calls[-1].url.host != "127.0.0.1"  # text: Jev answers
 
 
 def test_a_local_provider_is_still_refused_pictures_below_the_picture_level(
@@ -396,3 +398,68 @@ def test_identity_terms_reads_office_and_never_raises(monkeypatch):
 
     monkeypatch.setattr(winreg, "OpenKey", missing)
     assert settings.identity_terms() == ()
+
+
+def test_offline_blocks_chatgpt_sign_in_before_the_browser_opens():
+    import pytest
+
+    from ghostcursor import settings
+    from ghostcursor.providers import chatgpt
+
+    settings.set_local_only(True)
+    opened = []
+    with pytest.raises(chatgpt.SignInError):
+        chatgpt.sign_in(open_browser=opened.append, deadline_s=1)
+    assert opened == []
+
+
+def test_offline_never_downloads_voice_or_wake_word_models(monkeypatch):
+    import sys
+    import types
+
+    import pytest
+
+    from ghostcursor import listen, listen_kws, settings
+
+    settings.set_local_only(True)
+    seen = {}
+
+    class Whisper:
+        def __init__(self, name, **kw):
+            seen.update(kw)
+
+    monkeypatch.setitem(sys.modules, "faster_whisper", types.SimpleNamespace(WhisperModel=Whisper))
+    listen._model.cache_clear()
+    listen._model("tiny.en")
+    assert seen.get("local_files_only") is True
+    listen._model.cache_clear()
+    with pytest.raises(RuntimeError):
+        listen_kws._download("https://example.com/x.tar.bz2", "x")
+    settings.set_local_only(False)
+    seen.clear()
+    listen._model("tiny.en")
+    assert seen.get("local_files_only") is False
+    listen._model.cache_clear()
+
+
+def test_offline_dictation_never_downloads_whisper_weights(monkeypatch):
+    import sys
+    import types
+
+    import numpy as np
+
+    from ghostcursor import settings, voice
+
+    seen = {}
+
+    class Whisper:
+        def __init__(self, name, **kw):
+            seen.update(kw)
+
+        def transcribe(self, *a, **k):
+            return [], None
+
+    monkeypatch.setitem(sys.modules, "faster_whisper", types.SimpleNamespace(WhisperModel=Whisper))
+    settings.set_local_only(True)
+    voice.transcribe(np.full(voice.RATE, 0.1, dtype="float32"))
+    assert seen.get("local_files_only") is True

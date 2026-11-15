@@ -34,11 +34,23 @@ instruction); the update check finds it.
   when no local model is running. It only lowers what the organisation
   allows, and a damaged settings file keeps it on.
 
+- Offline Teach (16 Nov): with everything kept on the computer, the local
+  model chooses which control to point at, shown only when its pick also
+  matches the step's words (6 pointers, none wrong, on the 21-step
+  PowerPoint set; tuned on that set: `docs/evidence/teach-offline-powerpoint-2026-11-16.md`).
+  ChatGPT sign-in and voice and wake-word model downloads are blocked
+  offline. Guide: `docs/OFFLINE_INSTALL.md`.
+
 ### Agents and teams
 - Agent access: another agent on this computer can search reviewed,
   non-private Company Brain facts and read saved workflows through the
   Model Context Protocol (`Orbyn.exe --agent-server`). Read-only, off by
   default, always scrubbed, every call in the receipt.
+- Agents can propose a fact (`propose_fact`); it waits as a candidate until
+  you review it. At most 50 agent proposals wait at once.
+- Mail into the Company Brain: "Add to Company Brain" on an unread message
+  adds its passages as candidate facts to review (read-only; the message
+  stays unread; nothing goes to a model).
 - Skills file: reviewed facts and saved workflows as one file an agent can
   load.
 - Test cases: saved workflows as JSONL cases for checking a model.

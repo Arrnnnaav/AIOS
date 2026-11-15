@@ -85,7 +85,11 @@ class Utterances:
 def _model(name: str):
     from faster_whisper import WhisperModel
 
-    return WhisperModel(name, device="cpu", compute_type="int8")
+    from ghostcursor import policy
+
+    # Offline: use only weights already on this computer; never download.
+    local = policy.max_egress() == policy.LOCAL
+    return WhisperModel(name, device="cpu", compute_type="int8", local_files_only=local)
 
 
 def transcribe(samples: np.ndarray, model: str = "base.en", prompt: str = "") -> str:

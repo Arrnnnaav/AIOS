@@ -296,6 +296,11 @@ def sign_in(
 ) -> dict:
     """Interactive browser sign-in; stores and returns the credential record."""
 
+    from ghostcursor import policy
+
+    if not policy.allows("chatgpt"):  # before the browser opens, not after
+        raise SignInError("everything stays on this computer: sign-in is off")
+
     previous = load(path) or {}
     host_id = previous.get("ext_agent_host_id") or f"urn:uuid:{uuid.uuid4()}"
     client_id = previous.get("client_id")

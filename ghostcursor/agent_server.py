@@ -1,4 +1,4 @@
-"""Read-only access to what Orbyn knows, for another agent on this computer.
+"""Access to what Orbyn knows, for another agent on this computer.
 
 A Model Context Protocol server over stdin/stdout (JSON-RPC 2.0, one message
 per line): an agent the person already uses (a coding agent, a desktop
@@ -16,7 +16,9 @@ reply is scrubbed like text bound for a cloud model (private details and
 private words), always; sensitive facts are never returned; each call that
 is answered or fails leaves a content-free audit line (a call refused
 because access is off shares nothing and records nothing). Read-only: there
-is no tool that writes, plans, clicks or types.
+is no tool that plans, clicks or types. The one tool that writes,
+``propose_fact``, adds a CANDIDATE: nothing an agent proposes is recalled,
+exported or sent anywhere until the person reviews it in the Brain.
 
 ponytail: three tools and the four methods a client needs; no resources,
 prompts, or streaming. Add them when a client asks for one.
@@ -30,7 +32,7 @@ import sys
 from ghostcursor import __version__, audit, policy, redact, settings
 
 PROTOCOL = "2024-11-05"
-MAX_QUERY, MAX_REPLY = 500, 12_000
+MAX_QUERY, MAX_REPLY, MAX_FACT = 500, 12_000, 600
 
 TOOLS = [
     {
@@ -60,7 +62,26 @@ TOOLS = [
             "additionalProperties": False,
         },
     },
+    {
+        "name": "propose_fact",
+        "description": "Suggest one fact about how this person or company works. "
+        "It is added as a candidate the person must review before Orbyn or any "
+        "agent can use it.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "fact": {"type": "string", "maxLength": MAX_FACT},
+                "source": {"type": "string", "maxLength": 80},
+            },
+            "required": ["fact", "source"],
+            "additionalProperties": False,
+        },
+    },
 ]
+
+#: Candidates an agent may leave waiting for review at once, so an agent in a
+#: loop cannot bury the person's review list.
+MAX_PENDING = 50
 
 
 def allowed() -> bool:
@@ -111,6 +132,29 @@ def call(name: str, args, scope: str, *, knowledge=None, skills_dir=None) -> str
         return "\n".join(
             f"{n}. {s.instruction}" for n, s in enumerate(plan.steps, start=1)
         )
+    if name == "propose_fact":
+        fact, source = args.get("fact"), args.get("source")
+        if not isinstance(fact, str) or not fact.strip() or len(fact) > MAX_FACT:
+            raise ValueError("fact must be 1 to 600 characters")
+        if not isinstance(source, str) or not source.strip() or len(source) > 80:
+            raise ValueError("source must be 1 to 80 characters")
+        if knowledge is None:
+            from ghostcursor.workspace.knowledge import Knowledge
+
+            knowledge = Knowledge()
+        pending = [
+            f for f in knowledge.list(scope=scope, status="candidate")
+            if f.source.startswith("agent: ")
+        ]
+        if len(pending) >= MAX_PENDING:
+            raise ValueError("too many proposals are waiting for review")
+        (result, _fid), = knowledge.ingest(
+            [fact], source=("agent: " + " ".join(source.split()))[:120], scope=scope
+        )
+        return {
+            "added": "Added as a candidate; the person reviews it in Orbyn before it is used.",
+            "duplicate": "Already known or already proposed; nothing added.",
+        }.get(result, "Nothing added (no words to keep).")
     raise ValueError("unknown tool")
 
 

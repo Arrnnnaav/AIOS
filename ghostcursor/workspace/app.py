@@ -108,6 +108,7 @@ CONNECTOR_ACTIONS = frozenset(
         "mail_connect",
         "mail_disconnect",
         "mail_unread",
+        "mail_to_brain",
     }
 )
 #: Background job kinds -> activity label. All read-only (no Act).
@@ -956,6 +957,24 @@ class App:
                         days=days if isinstance(days, int) else 1
                     )
                 }
+            if action == "mail_to_brain":  # one picked message -> candidate facts
+                if ws.knowledge is None:
+                    raise ValueError("no Company Brain")
+                from ghostcursor.workspace.knowledge import chunk_document
+
+                subject, text = connectors.message_text(
+                    str(body.get("id") or ""), str(body.get("subject") or "")
+                )
+                did = [
+                    result
+                    for result, _fid in ws.knowledge.ingest(
+                        chunk_document(text),
+                        source=("mail: " + subject)[:120],
+                        scope=ws.kb_scope,
+                        episode=text,
+                    )
+                ]
+                return {"added": did.count("added"), "duplicates": did.count("duplicate")}
             return {"mail": connectors.unread()}
         if action == "companion_idle":  # a resting dot beside the pointer
             self.companion_idle = body.get("on") is True

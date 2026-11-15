@@ -251,7 +251,10 @@ def transcribe(samples) -> str:
     print(
         f"Loading {WHISPER_MODEL} (first use downloads model weights; no audio is sent)."
     )
-    model = WhisperModel(WHISPER_MODEL, device="cpu", compute_type="int8")
+    from ghostcursor import policy
+
+    local = policy.max_egress() == policy.LOCAL  # offline: never download weights
+    model = WhisperModel(WHISPER_MODEL, device="cpu", compute_type="int8", local_files_only=local)
     segments, _ = model.transcribe(samples, language="en", beam_size=1, vad_filter=True)
     segments = list(segments)
     text = " ".join(s.text.strip() for s in segments)

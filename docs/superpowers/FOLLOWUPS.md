@@ -2669,3 +2669,21 @@ from 1053b54. Still open:
   remotely). The manager was closed, ending the campaign. Lesson: Act
   approval needs a person physically at the PC; declare a new campaign
   only when the owner can click Approve & run three times.
+- YC gaps closed 16 Nov (from the comparison with W27 Air-Gapped, S26
+  Company Brain, S26 Software for Agents). Offline Teach: Gateway.choose
+  falls back to the local model only when Jev is blocked by the offline
+  switch or policy (never on an outage), sends a compact one-line-per-
+  control view (the full view exceeded the 4,096-token context), accepts a
+  single "probability" for the pick (closed to offered ids), and keeps the
+  pick only when it is also the best name match for the step (else no
+  pointer). Measured: 4b raw 16 shown/5 wrong, 4b + name check 6 shown/0
+  wrong, 7b worse (docs/evidence/teach-offline-powerpoint-2026-11-16.md);
+  the check was tuned on that same corpus. ChatGPT sign-in, Whisper and
+  wake-word downloads blocked offline (local_files_only). Offline install
+  guide docs/OFFLINE_INSTALL.md. Mail to Brain: one picked unread message,
+  BODY.PEEK, text/plain only, subject must match, passages added as
+  candidates with an episode. MCP propose_fact: candidate only, source
+  "agent: ...", 50 pending cap. Sweeps recorded. Not reviewed yet. Left:
+  offline Teach points on few steps; the name check is lexical (fails for
+  synonyms such as "theme" -> Design); no Slack/ticket connectors; agent
+  access still same-PC only.

@@ -1236,3 +1236,104 @@ def test_the_context_a_cloud_model_gets_stays_valid_json_with_private_words(tmp_
     context = json.loads(line.split(": ", 1)[1])
     assert context["message"].startswith("Hi" + chr(10)) and "Nina" not in context["message"]
     assert context["message"].count("[NAME_") == 2
+
+
+def _local_chat(answer):
+    return _chat(json.dumps(answer))
+
+
+def _teach_envelope(step="Save the document"):
+    """The shape Teach sends: a frame of controls and the step."""
+
+    return Envelope(
+        task="teach",
+        trusted={"goal": "finish the report"},
+        tainted={
+            "frame": {
+                "candidates": {
+                    "c1": {"type": Tainted.of("control_type", "Button"), "name": Tainted.of("uia_name", "Close"), "region": Tainted.of("region", "top-right")},
+                    "c2": {"type": Tainted.of("control_type", "Button"), "name": Tainted.of("uia_name", "Save"), "region": Tainted.of("region", "top-left")},
+                }
+            },
+            "step": Tainted.of("model_plan_step", step),
+        },
+    )
+
+
+def test_offline_a_local_model_chooses_from_the_offered_ids_only(tmp_path):
+    """Gap found 15 Nov: offline, Teach could not choose any control (Jev only).
+    Now the local model chooses, through the same closed parser."""
+
+    from ghostcursor import settings
+
+    settings.set_local_only(True)  # Jev and every cloud provider blocked
+    transport, calls = _transport(_local_chat({"choice": "c2", "probabilities": {"c1": 0.1, "c2": 0.85}}))
+    gateway = Gateway(transport=transport, key_lookup=_keys(typesafe="k"), log_path=tmp_path / "l")
+    choice = gateway.choose(_teach_envelope(), ("c1", "c2"), question="Which control?")
+    assert choice.choice == "c2" and choice.top_two() == (0.85, 0.1)
+    assert calls and all(c.url.host == "127.0.0.1" for c in calls)
+    body = json.loads(calls[0].content)
+    assert body["model"] == "qwen3:4b-instruct"
+    assert "Button | Save | top-left" in calls[0].content.decode()  # the compact view
+    # An id the frame never offered is refused, never drawn.
+    transport, _ = _transport(_local_chat({"choice": "c9", "probabilities": {"c9": 1.0}}))
+    gateway = Gateway(transport=transport, key_lookup=_keys(typesafe="k"), log_path=tmp_path / "l")
+    with pytest.raises(ProviderError):
+        gateway.choose(_teach_envelope(), ("c1", "c2"), question="q")
+
+
+def test_offline_a_local_pick_that_does_not_match_the_step_shows_no_pointer(tmp_path):
+    """Measured 16 Nov: the local model is confidently wrong about a quarter
+    of the time; a pick that is not the best name match is withheld."""
+
+    from ghostcursor import settings
+
+    settings.set_local_only(True)
+    transport, _ = _transport(_local_chat({"choice": "c1", "probability": 0.99}))
+    gateway = Gateway(transport=transport, key_lookup=_keys(typesafe="k"), log_path=tmp_path / "l")
+    assert gateway.choose(_teach_envelope("Save the document"), ("c1", "c2"), question="q").abstained
+    # No step text or no controls to check against: withheld too.
+    transport, _ = _transport(_local_chat({"choice": "c2", "probability": 0.99}))
+    gateway = Gateway(transport=transport, key_lookup=_keys(typesafe="k"), log_path=tmp_path / "l")
+    assert gateway.choose(_envelope(), ("c1", "c2"), question="q").abstained
+
+
+def test_online_a_jev_failure_never_falls_back_to_the_local_model(tmp_path):
+    """Only an offline choice uses the local model: a Jev outage or a missing
+    key must not quietly hand guidance to a weaker model."""
+
+    transport, calls = _transport(_local_chat({"choice": "c2", "probability": 0.9}))
+    gateway = Gateway(
+        system_two=("openrouter", "ollama"), transport=transport,
+        key_lookup=_keys(openrouter="k"), log_path=tmp_path / "l",
+    )  # no Jev key, online
+    with pytest.raises(ProviderError):
+        gateway.choose(_teach_envelope(), ("c1", "c2"), question="q")
+    assert calls == []
+
+
+def test_a_stopped_choice_never_asks_the_local_model(tmp_path, monkeypatch):
+    calls = []
+    gateway = Gateway(key_lookup=_keys(typesafe="k"), log_path=tmp_path / "l")
+
+    def stopped(*a, **k):
+        raise ProviderError(FailureKind.CANCELLED)
+
+    monkeypatch.setattr(gateway, "_choose_jev", stopped)
+    monkeypatch.setattr(gateway, "_choose_locally", lambda *a, **k: calls.append(1))
+    with pytest.raises(ProviderError) as raised:
+        gateway.choose(_envelope(), ("c1",), question="q")
+    assert raised.value.kind is FailureKind.CANCELLED and calls == []
+
+
+def test_a_local_models_single_confidence_is_accepted_but_ids_stay_closed():
+    from ghostcursor.providers.gateway import _parse_local_choice
+
+    c = _parse_local_choice('{"choice": "c2", "probability": 0.95}', ("c1", "c2"))
+    assert c.choice == "c2" and c.top_two() == (0.95, 0.0)
+    c = _parse_local_choice('{"choice": "c1", "probabilities": {"c1": 0.7, "Save": 0.2, "c9": 0.1}}', ("c1", "c2"))
+    assert c.probabilities == {"c1": 0.7}  # names and unknown ids dropped
+    for bad in ('{"choice": "c9", "probability": 0.9}', '{"choice": "c1", "probability": 2}', "nope", "[1]",
+                '{"choice": "c1", "confidence": "high"}'):
+        with pytest.raises(ProviderError):
+            _parse_local_choice(bad, ("c1", "c2"))

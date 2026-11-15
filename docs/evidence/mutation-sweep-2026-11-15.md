@@ -194,3 +194,61 @@ KILLED   ghostcursor/updates.py :: url.startswith(f"https://github.com/{REPOSITO
 KILLED   ghostcursor/updates.py :: "newer": latest > mine -> "newer": latest != mine :: 1 failed, 3 passed in 1.28s
 KILLED   ghostcursor/updates.py :: audit.record("egress", provider="updates", model=None, failu -> pass :: 1 failed in 1.30s
 ```
+
+## Tenth to thirteenth sweeps, 16 Nov 2026: offline chooser, mail to Brain, propose_fact, offline gates
+
+Offline chooser, mail and propose_fact, first run (three survivors), as printed:
+
+```
+D018 mutation sweep, offline chooser, mail to Brain, propose_fact, 16 Nov 2026
+KILLED   ghostcursor/providers/gateway.py :: providers=tuple(policy.LOCAL_PROVIDERS), -> (removed) :: 1 failed, 119 passed in 6.76s
+SURVIVED ghostcursor/providers/gateway.py :: if exc.kind is FailureKind.CANCELLED or cancelled(): raise -> (removed) :: 120 passed in 6.73s
+KILLED   ghostcursor/providers/gateway.py :: raise exc from None # no local answer either -> raise # no local answer either :: 1 failed, 57 passed in 3.45s
+KILLED   ghostcursor/providers/gateway.py :: lambda content: parse_choice(json.loads(content), offered), -> lambda content: parse_choice(json.loads( :: 1 failed, 118 passed in 8.04s
+SURVIVED ghostcursor/workspace/connectors.py :: if not isinstance(mid, str) or not mid.isdigit() or len(mid) -> if not isinstance(mid, str): :: 15 passed in 2.49s
+KILLED   ghostcursor/workspace/connectors.py :: if found != subject: -> if False: :: 1 failed, 7 passed in 3.00s
+KILLED   ghostcursor/workspace/connectors.py :: status, data = client.fetch(mid.encode("ascii"), "(BODY.PEEK -> status, data = client.fetch(mid.encode(" :: 1 failed, 7 passed in 2.95s
+SURVIVED ghostcursor/workspace/connectors.py :: if part.get_content_type() == "text/plain" and not part.get_ -> if part.get_content_type() == "text/plai :: 15 passed in 2.55s
+KILLED   ghostcursor/agent_server.py :: if len(pending) >= MAX_PENDING: -> if False: :: 1 failed, 11 passed in 5.23s
+KILLED   ghostcursor/agent_server.py :: [fact], source=("agent: " + " ".join(source.split()))[:120], -> [fact], source=" ".join(source.split())[ :: 1 failed, 10 passed in 4.42s
+```
+
+After adding tests for a stopped choice, malformed message ids and an
+attachment placed first, as printed:
+
+```
+D018 mutation sweep, offline chooser, mail to Brain, propose_fact, 16 Nov 2026
+KILLED   ghostcursor/providers/gateway.py :: providers=tuple(policy.LOCAL_PROVIDERS), -> (removed) :: 1 failed, 119 passed in 6.60s
+KILLED   ghostcursor/providers/gateway.py :: if exc.kind is FailureKind.CANCELLED or cancelled(): raise -> (removed) :: 1 failed, 120 passed in 7.31s
+KILLED   ghostcursor/providers/gateway.py :: raise exc from None # no local answer either -> raise # no local answer either :: 1 failed, 57 passed in 2.96s
+KILLED   ghostcursor/providers/gateway.py :: lambda content: parse_choice(json.loads(content), offered), -> lambda content: parse_choice(json.loads( :: 1 failed, 118 passed in 6.70s
+KILLED   ghostcursor/workspace/connectors.py :: if not isinstance(mid, str) or not mid.isdigit() or len(mid) -> if not isinstance(mid, str): :: 1 failed, 7 passed in 2.28s
+KILLED   ghostcursor/workspace/connectors.py :: if found != subject: -> if False: :: 1 failed, 7 passed in 2.29s
+KILLED   ghostcursor/workspace/connectors.py :: status, data = client.fetch(mid.encode("ascii"), "(BODY.PEEK -> status, data = client.fetch(mid.encode(" :: 1 failed, 7 passed in 2.03s
+KILLED   ghostcursor/workspace/connectors.py :: if part.get_content_type() == "text/plain" and not part.get_ -> if part.get_content_type() == "text/plai :: 1 failed, 7 passed in 2.11s
+KILLED   ghostcursor/agent_server.py :: if len(pending) >= MAX_PENDING: -> if False: :: 1 failed, 11 passed in 3.37s
+KILLED   ghostcursor/agent_server.py :: [fact], source=("agent: " + " ".join(source.split()))[:120], -> [fact], source=" ".join(source.split())[ :: 1 failed, 10 passed in 3.42s
+```
+
+Offline gates and the local answer parser (the last line was run separately
+for voice.py, its summary line as printed):
+
+```
+D018 mutation sweep, offline gates and local answer parser, 16 Nov 2026
+KILLED   ghostcursor/providers/chatgpt.py :: if not policy.allows("chatgpt"): # before the browser opens, -> if False: :: 1 failed, 51 passed in 4.89s
+KILLED   ghostcursor/listen.py :: local = policy.max_egress() == policy.LOCAL -> local = False :: 1 failed, 52 passed in 3.92s
+KILLED   ghostcursor/listen_kws.py :: if policy.max_egress() == policy.LOCAL: # offline: nothing i -> if False: :: 1 failed, 52 passed in 4.73s
+KILLED   ghostcursor/providers/gateway.py :: kept = {k: v for k, v in raw.items() if k in allowed} -> kept = dict(raw) :: 1 failed, 121 passed in 7.24s
+KILLED   ghostcursor/providers/gateway.py :: single = answer.get("probability", answer.get("confidence")) -> single = None :: 1 failed, 121 passed in 7.21s
+ghostcursor/voice.py :: local = policy.max_egress() == policy.LOCAL -> local = False :: 1 failed, 53 deselected in 3.50s
+```
+
+Offline-only fallback and the name check, as printed:
+
+```
+D018 mutation sweep, offline-only fallback and name agreement, 16 Nov 2026
+KILLED   ghostcursor/providers/gateway.py :: if policy.allows("jev"): raise -> (removed) :: 1 failed, 57 passed in 4.07s
+KILLED   ghostcursor/providers/gateway.py :: return _agreed(choice, step, controls) -> return choice :: 1 failed, 119 passed in 7.46s
+KILLED   ghostcursor/providers/gateway.py :: return choice if choice.choice == best else Choice(ABSTAIN,  -> return choice :: 1 failed, 119 passed in 10.74s
+KILLED   ghostcursor/providers/gateway.py :: return Choice(ABSTAIN, {}) if not choice.abstained else choi -> return choice :: 1 failed, 119 passed in 7.92s
+```

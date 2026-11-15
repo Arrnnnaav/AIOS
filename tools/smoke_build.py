@@ -150,7 +150,7 @@ def main(argv: list[str]) -> int:
             replies = [json.loads(x) for x in agent.stdout.splitlines()]
             check(
                 "answers another agent over stdio",
-                len(replies) == 2 and len(replies[0]["result"]["tools"]) == 3,
+                len(replies) == 2 and len(replies[0]["result"]["tools"]) == 4,
                 agent.stdout[:200] + agent.stderr[-200:],
             )
             check(

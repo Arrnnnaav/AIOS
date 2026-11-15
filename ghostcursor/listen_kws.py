@@ -92,6 +92,10 @@ def keywords_text(sp) -> str:
 
 
 def _download(url: str, dest):
+    from ghostcursor import policy
+
+    if policy.max_egress() == policy.LOCAL:  # offline: nothing is fetched
+        raise RuntimeError("everything stays on this computer: copy the wake-word model in by hand")
     import urllib.request
 
     with urllib.request.urlopen(url, timeout=120) as resp:  # noqa: S310 (known host)

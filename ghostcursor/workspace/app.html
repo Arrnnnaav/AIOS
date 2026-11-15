@@ -659,7 +659,17 @@ function inboxCard() {
   }
   if (inboxMail) {
     if (!inboxMail.length) wrap.append(el("p", "note", "No unread mail."));
-    for (const m of inboxMail) wrap.append(el("p", "", m.from + ": " + m.subject));
+    for (const m of inboxMail) {
+      const line = el("p", "", m.from + ": " + m.subject + " ");
+      const keep = el("button", "secondary", "Add to Company Brain");
+      keep.title = "Adds this message's passages as candidate facts for you to review. Nothing goes to a model; the message stays unread.";
+      keep.onclick = async () => {
+        keep.disabled = true;
+        const r = await act("mail_to_brain", { id: m.id, subject: m.subject });
+        keep.disabled = false; if (r) toast(r.added + " candidate fact" + (r.added === 1 ? "" : "s") + " to review in Brain → Company" + (r.duplicates ? " (" + r.duplicates + " already there)" : ""), true);
+      };
+      line.append(keep); wrap.append(line);
+    }
   }
   return wrap;
 }
@@ -1083,7 +1093,7 @@ function renderBrain() {
   gsw.onclick = () => act("local_only", { on: !S.local_only }, S.local_only ? "Cloud models and the web allowed again" : "Everything now stays on this computer");
   gmeta.append(gsw);
   gap.append(gmeta, el("div", "", "Keep everything on this computer."),
-    el("div", "note", "When on, Orbyn's own work stays here: no cloud model, no Jev, no web search or page read, no GitHub, calendar or mail, no crash reports, nothing to another agent. Three things you start yourself still use the internet: signing in to ChatGPT, the first download of a voice model, and publishing to or syncing with a team folder (which may copy the audit record there if your organization asks). Only a model running on this computer (Ollama) answers, so install one first or Orbyn cannot answer. Off by default."));
+    el("div", "note", "When on, Orbyn's own work stays here: no cloud model, no Jev, no web search or page read, no GitHub, calendar or mail, no crash reports, nothing to another agent. Signing in to ChatGPT and voice-model downloads are blocked too (voice works if its model is already on this computer). Publishing to or syncing with a team folder still works, since that folder is your organization's. Only a model running on this computer (Ollama) answers, so install one first or Orbyn cannot answer. Teach still points, chosen by that local model, but only when its pick also matches the step's words, so it points less often than online. Off by default."));
   if (S.local_only && S.local_ready === false) { const w = el("div", "note", "No model is running on this computer, so Orbyn cannot answer right now. Install Ollama (ollama.com), start it, and run: ollama pull qwen3:4b-instruct"); w.setAttribute("role", "alert"); w.style.textAlign = "left"; gap.append(w); }
   gap.style.marginTop = "8px"; root.append(gap);
   const ag = el("div", "mem"); const ameta = el("div", "meta"); ameta.append(el("span", "kind", "other agents"));
@@ -1093,7 +1103,7 @@ function renderBrain() {
   asw.onclick = () => act("agent_access", { on: !S.agent_access }, S.agent_access ? "Agent access off" : "Agent access on");
   ameta.append(asw);
   ag.append(ameta, el("div", "", "Let another agent on this computer read your Company Brain and saved workflows."),
-    el("div", "note", "Read-only, through the Model Context Protocol: the agent can search reviewed facts and read saved workflow steps; it cannot add, change, click or type. Facts marked private are never shared. That agent may send what it reads to its own cloud model, so private details and private words are always hidden first (even if you switched hiding off for your own model), and each request shows in the receipt below. Off by default; not available when everything stays on this computer."));
+    el("div", "note", "Through the Model Context Protocol: the agent can search reviewed facts, read saved workflow steps, and propose a fact, which waits as a candidate until you review it in Brain → Company. It cannot change, click or type. Facts marked private are never shared. That agent may send what it reads to its own cloud model, so private details and private words are always hidden first (even if you switched hiding off for your own model), and each request shows in the receipt below. Off by default; not available when everything stays on this computer."));
   if (S.agent_access) {
     const cmd = el("div", "note", "Add this command to your agent as an MCP server: " + S.agent_command); cmd.style.textAlign = "left"; cmd.style.userSelect = "all"; ag.append(cmd);
   }
