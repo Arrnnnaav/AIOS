@@ -167,6 +167,7 @@ class Brain:
         # A forgotten or erased memory is overwritten on disk, not left in a
         # free page where a file-level read could still recover it.
         self._db.execute("PRAGMA secure_delete = ON")
+        self._db.execute("PRAGMA temp_store = MEMORY")  # VACUUM's copy never in %TEMP%
         self._db.executescript(_SCHEMA)
         with self._db:  # seal what an older build stored as plain text
             for mid, text in self._db.execute(

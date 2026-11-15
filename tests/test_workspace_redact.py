@@ -306,3 +306,15 @@ def test_an_aws_secret_ending_in_slash_or_plus_and_in_json_text_is_hidden():
         sent = json.dumps({"t": f'aws_secret_access_key = "{secret}"'})
         out = redact.scrub(sent, json_text=True)[0]
         assert secret not in out and json.loads(out), end
+
+
+def test_an_aws_secret_after_a_tab_or_line_break_in_json_text_is_hidden():
+    import json
+
+    from ghostcursor import redact
+
+    secret = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+    for sep in ("\t", " =\n", ":\r\n"):
+        sent = json.dumps({"t": "aws_secret_access_key" + sep + secret})
+        out = redact.scrub(sent, json_text=True)[0]
+        assert secret not in out and json.loads(out), repr(sep)

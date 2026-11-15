@@ -62,7 +62,7 @@ _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     (
         "KEY",
         re.compile(
-            r"(?i)(?:(?<=secret_access_key)|(?<=secretaccesskey))[\s\\\"':=]+(?P<key>[A-Za-z0-9/+=]{40})(?![A-Za-z0-9/+=])"
+            r"(?i)(?:(?<=secret_access_key)|(?<=secretaccesskey))(?:[\s\"':=]|\\[\"nrt])+(?P<key>[A-Za-z0-9/+=]{40})(?![A-Za-z0-9/+=])"
         ),
     ),
     ("KEY", re.compile(r"(?i)\b(?:bearer|authorization:?)\s+[A-Za-z0-9._~+/=-]{8,}")),

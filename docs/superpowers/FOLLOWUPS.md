@@ -2619,3 +2619,12 @@ from 1053b54. Still open:
   plain-text message in a JSON request still keeps one letter of a
   lower-case folder name; "secret access key:" and "aws_secret_key=" are
   not matched. Not re-reviewed.
+- Tier-1 review 15 Nov (850a8be..34000d8, read at 34000d8): no blocking
+  finding; the temp-store fix covers every Knowledge connection, and a
+  6000-fact probe including sorting, GROUP BY and journals left no temp
+  file (reviewer's probe, not recorded elsewhere). Fixed from it: an AWS
+  secret after an escaped tab or line break in JSON text is hidden; the
+  Personal Brain also keeps temp data in memory (its erase-all VACUUM);
+  the evidence line with a stray backspace character is corrected and the
+  mutant re-run (docs/evidence/mutation-sweep-2026-11-15.md). Left: the
+  in-memory temp database can still be paged to the Windows pagefile.

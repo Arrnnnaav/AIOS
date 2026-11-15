@@ -132,7 +132,7 @@ Each mutant run with `py -3.12 -m pytest <file> -x -q`; summary lines as printed
 
 ```
 temp_store pragma removed (knowledge.py) -> 1 failed, 43 passed in 2.53s
-AWS secret ending back to  (redact.py) -> 1 failed, 21 passed in 1.16s
+AWS secret ending back to [backspace] (redact.py) -> 1 failed, 21 passed in 1.16s
 ```
 
 Spill probe after the fix (5000 sealed facts of about 700 characters,
@@ -145,3 +145,19 @@ TMP and TEMP pointed at an empty scratch folder, recall run once), as printed:
 Before the fix the reviewer's probe on the same shape listed one
 `etilqs_*` temp file of 4,919,296 bytes (reported by the reviewer, not
 re-run here).
+
+## Correction to the seventh check, and the last follow-ups
+
+In the seventh check above, the line naming the AWS-secret mutant held a
+literal backspace character (0x08) where `` was meant; it is shown above
+as `[backspace]`, the only change made to that captured line. The review of
+34000d8 found that its result line may belong to a different mutant than
+the one named. The mutant is re-run below with the regex text written from
+a script, together with the last review follow-ups. As printed:
+
+```
+D018 mutation sweep, last review follow-ups of 15 Nov 2026 (tree after 34000d8)
+KILLED   ghostcursor/redact.py :: '(?P<key>[A-Za-z0-9/+=]{40})(?![A-Za-z0-9/+=])' -> '(?P<key>[A-Za-z0-9/+=]{40})\\b' :: 1 failed, 23 passed in 1.21s
+KILLED   ghostcursor/redact.py :: '(?:[\\s\\"\':=]|\\\\[\\"nrt])+' -> '[\\s\\\\\\"\':=]+' :: 1 failed, 24 passed in 1.21s
+KILLED   ghostcursor/workspace/brain.py :: 'self._db.execute("PRAGMA temp_store = MEMORY")  # VACUUM\'s copy neve -> '' :: 1 failed, 34 passed in 1.61s
+```

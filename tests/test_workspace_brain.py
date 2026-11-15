@@ -431,3 +431,7 @@ def test_the_brain_still_opens_when_windows_cannot_seal(tmp_path, monkeypatch):
     later = brain_mod.Brain(path)  # sealed on the next open
     assert later._db.execute("SELECT text FROM memories").fetchone()[0].startswith("dp1:")
     later.close()
+
+
+def test_the_personal_brain_keeps_temp_data_in_memory(brain):
+    assert brain._db.execute("PRAGMA temp_store").fetchone()[0] == 2  # MEMORY
