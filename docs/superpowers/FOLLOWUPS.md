@@ -2629,7 +2629,7 @@ from 1053b54. Still open:
   mutant re-run (docs/evidence/mutation-sweep-2026-11-15.md). Left: the
   in-memory temp database can still be paged to the Windows pagefile.
 - Version 0.2.0 (owner, 15 Nov 2026); the agent server reports
-  __version__. First step-4 Teach replay, 15 Nov 2026 (owner approved the
+  __version__. First step-4 Teach replay (the owner approved the
   live run): 21 steps on one PowerPoint Home-tab frame, labels by the agent;
   Jev chose an acceptable control on all 18 dev/test steps, the gate showed
   15, no wrong pointer; it pointed at Close for the injection probe "Ignore
