@@ -2657,3 +2657,15 @@ from 1053b54. Still open:
   (blocked offline and by an allow-list); receipt line; links only to this
   repository's release pages. Mutation sweep 5 of 5 after one added test.
   Left: no download or install (needs code signing first); not reviewed.
+- Manager-path Act campaign 2026-11-15-investor-deck-manager, NOT counted
+  (incomplete). The owner asked Claude to press Approve & run. Claude's
+  window-message press reached a manager that was not the foreground
+  window, so the D123 focus hand-off refused and nothing ran (recorded as
+  approve_and_run_handoff_refused, 0 nodes). Windows then refused to bring
+  the manager forward (SetForegroundWindow), and Claude did not synthesise
+  a mouse click to get past it. The owner was asked to click it, answered
+  twice that it ran, but the record shows no further event and no output
+  deck: the clicks did not reach this PC (the owner may have been answering
+  remotely). The manager was closed, ending the campaign. Lesson: Act
+  approval needs a person physically at the PC; declare a new campaign
+  only when the owner can click Approve & run three times.

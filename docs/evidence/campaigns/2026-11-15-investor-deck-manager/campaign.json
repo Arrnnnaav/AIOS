@@ -1,0 +1,22 @@
+{
+  "attempts": [
+    {
+      "index": 1,
+      "manager_exit": 0,
+      "transcript": "act-live-manager-campaign-attempt-1.jsonl",
+      "transcript_sha256": "27df8f13aa0af02f594e5261c8d6a0007bcdb83b1d37d1ee2e6f0e434b666268"
+    }
+  ],
+  "binding": {
+    "campaign_id": "2026-11-15-investor-deck-manager",
+    "commit": "2bccf2fcb5daa63d0fc7b9e81d13b723f98c8e17",
+    "intent_id": "BUILD_INVESTOR_DECK",
+    "manifest_sha256": "b0d63512d1bcc14bc49f322139613018fc31483f7a7b49007ce0532e35082b4e",
+    "plan_id": "build-investor-deck-v1",
+    "plan_sha256": "84e39d0d2987e153923c537587380e9eeecccfae0a50ede5be586e0238e4fe79",
+    "scope": "orbyn-2026-11-15-manager"
+  },
+  "path": "manager",
+  "refusals": [],
+  "schema_version": 1
+}
