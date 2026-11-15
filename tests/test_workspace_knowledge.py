@@ -945,3 +945,83 @@ def test_a_repeat_never_loosens_and_can_only_tighten(kn):
     kn.tighten(fact.fid, "wiki")
     assert kn.get(fact.fid).sensitivity == "sensitive"  # a normal arrival changes nothing
 
+
+
+def test_fact_and_document_text_are_sealed_on_disk_and_search_still_works(tmp_path):
+    """A copied knowledge.sqlite shows no fact, no source document and no
+    search index; only this Windows account reads it back (DPAPI)."""
+
+    import sqlite3
+
+    path = tmp_path / "k.sqlite"
+    k = Knowledge(path)
+    eid = k.record_episode("Minutes: refunds over 500 need Priya", source="meeting", scope="s")
+    f = k.add_candidate("Refunds over 500 need Priya", source="meeting", scope="s", episode_id=eid)
+    k.approve(f.fid)
+    k.close()
+    raw = path.read_bytes()
+    assert b"Priya" not in raw and b"Refunds" not in raw and b"refund" not in raw
+    names = {r[0] for r in sqlite3.connect(path).execute("SELECT name FROM sqlite_master")}
+    assert not any("fts" in n for n in names)  # no index on disk
+    k = Knowledge(path)
+    assert [x.text for x in k.recall("refunds", "s")] == ["Refunds over 500 need Priya"]
+    assert k.episode(eid).text == "Minutes: refunds over 500 need Priya"
+    k.close()
+
+
+def test_an_older_plain_brain_is_sealed_and_its_index_dropped_on_open(tmp_path):
+    import sqlite3
+
+    path = tmp_path / "k.sqlite"
+    db = sqlite3.connect(path)
+    db.executescript(
+        "CREATE TABLE facts (fid INTEGER PRIMARY KEY AUTOINCREMENT, text TEXT NOT NULL, source TEXT NOT NULL,"
+        " scope TEXT NOT NULL, status TEXT NOT NULL, sensitivity TEXT NOT NULL, added REAL NOT NULL,"
+        " last_verified REAL NOT NULL, valid_until REAL, valid_from REAL NOT NULL DEFAULT 0,"
+        " superseded_by INTEGER, episode_id INTEGER);"
+        "CREATE VIRTUAL TABLE facts_fts USING fts5(text, tokenize='porter unicode61');"
+        "INSERT INTO facts VALUES (1,'Launch is in Q3 for Zeus','plan','s','approved','normal',0,0,NULL,0,NULL,NULL);"
+        "INSERT INTO facts_fts(rowid, text) VALUES (1,'Launch is in Q3 for Zeus');"
+    )
+    db.commit()
+    db.close()
+    k = Knowledge(path)
+    assert [x.text for x in k.recall("launch", "s")] == ["Launch is in Q3 for Zeus"]
+    k.close()
+    assert b"Zeus" not in path.read_bytes()
+
+
+def test_a_fact_this_account_cannot_open_is_never_recalled(tmp_path):
+    from ghostcursor.workspace.brain import LOCKED
+
+    k = Knowledge(tmp_path / "k.sqlite")
+    f = k.add_candidate("Refunds go to finance", source="x", scope="s")
+    k.approve(f.fid)
+    with k._db:
+        k._db.execute("UPDATE facts SET text='dp1:AAAA' WHERE fid=?", (f.fid,))
+    assert k.get(f.fid).text == LOCKED
+    k.close()
+    k = Knowledge(tmp_path / "k.sqlite")
+    assert k.recall("locked account computer", "s") == [] and k.recall("refunds", "s") == []
+    k.close()
+
+
+def test_the_brain_opens_when_windows_cannot_seal(tmp_path, monkeypatch):
+    import sqlite3
+
+    from ghostcursor.workspace import knowledge as kmod
+
+    path = tmp_path / "k.sqlite"
+    Knowledge(path).close()
+    db = sqlite3.connect(path)
+    db.execute("INSERT INTO facts VALUES (1,'Plain fact about tea','x','s','approved','normal',0,0,NULL,0,NULL,NULL)")
+    db.commit()
+    db.close()
+
+    def refuse(text):
+        raise OSError("no profile")
+
+    monkeypatch.setattr(kmod, "_seal", refuse)
+    k = Knowledge(path)  # does not raise
+    assert [x.text for x in k.recall("tea", "s")] == ["Plain fact about tea"]
+    k.close()

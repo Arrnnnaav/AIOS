@@ -110,3 +110,18 @@ KILLED   ghostcursor/redact.py :: if json_text and slashes % 2 -> if slashes % 2
 KILLED   ghostcursor/redact.py :: if json_text and slashes % 2 -> if False and slashes % 2
 KILLED   ghostcursor/providers/gateway.py :: terms=terms, json_text=True -> terms=terms
 ```
+
+## Sixth sweep: Company Brain sealed at rest
+
+Command per mutant `py -3.12 -m pytest tests/test_workspace_knowledge.py -x -q`. As printed:
+
+```
+D018 mutation sweep, Company Brain sealed at rest, 15 Nov 2026 (tree after da8f4ea)
+KILLED   ghostcursor/workspace/knowledge.py :: (_seal(text), source, scope, "candidate", sensitivity, now, now, -> (text, source, scope, "candidate", sensitivity, no
+KILLED   ghostcursor/workspace/knowledge.py :: (_seal(text), source, scope, self.clock()), -> (text, source, scope, self.clock()),
+KILLED   ghostcursor/workspace/knowledge.py :: self._db.execute("DROP TABLE IF EXISTS main.facts_fts") -> (removed)
+KILLED   ghostcursor/workspace/knowledge.py :: "CREATE VIRTUAL TABLE temp.facts_fts USING -> "CREATE VIRTUAL TABLE IF NOT EXISTS main.facts_fts
+KILLED   ghostcursor/workspace/knowledge.py :: and f.text != LOCKED -> (removed)
+KILLED   ghostcursor/workspace/knowledge.py :: except Exception: # cannot seal now; next open tries again break -> except ZeroDivisionError: break
+KILLED   ghostcursor/workspace/knowledge.py :: return Fact(row[0], _unseal(row[1]), *row[2:]) -> return Fact(*row)
+```

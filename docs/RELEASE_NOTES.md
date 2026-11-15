@@ -16,8 +16,9 @@ Version is still 0.1.0; the owner picks the release number.
   sending it.
 - Optional: keep keys and card, bank and ID numbers as placeholders in
   answers too (off by default).
-- Personal Brain memories and the private-words list are encrypted to the
-  Windows account (DPAPI).
+- Personal Brain memories, Company Brain facts and source documents, and the
+  private-words list are encrypted to the Windows account (DPAPI). The
+  Company Brain's search index is kept in memory only.
 - "What left this computer": a receipt of the last 20 model requests, web
   searches, page reads and answers to other agents, without content.
 - Local models are always reached directly, never through a proxy set in
@@ -52,8 +53,9 @@ Version is still 0.1.0; the owner picks the release number.
 - The Brain opens when Windows cannot encrypt an old memory.
 
 ### Known limits
-- The Company Brain and the screen-observation store are not encrypted on
-  disk.
+- Company Brain relations (edges) are not encrypted on disk. The
+  screen-observation store (kb.sqlite) holds application names and control
+  IDs, no screen text, and is not encrypted.
 - A private word is matched whole; other endings ("Acmes") and names inside
   pictures are not hidden.
 - ChatGPT sign-in, the first voice-model download and team publish or sync

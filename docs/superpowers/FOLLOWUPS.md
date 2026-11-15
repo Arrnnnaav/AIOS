@@ -2588,3 +2588,18 @@ from 1053b54. Still open:
   docs/evidence/mutation-sweep-2026-11-15.md. Not re-reviewed. Left: an
   unnamed 40-character AWS secret is not guessed (too many false hits);
   the Jev (TypeSafe) key shape was not checked.
+- Company Brain sealed at rest 15 Nov: fact text and source-document
+  (episode) text in knowledge.sqlite are sealed with DPAPI like the
+  Personal Brain; the FTS5 search index is a temp (in-memory) table built
+  at open, and an older on-disk index is dropped (secure_delete). A fact
+  this account cannot open reads as locked and is never recalled; a failed
+  seal leaves the row plain and the next open retries. Mutation sweep 7 of
+  7, recorded in docs/evidence/mutation-sweep-2026-11-15.md. Not reviewed.
+  Left: edges (subject, predicate, object), sources and scope stay plain
+  (edge merge compares text in SQL); the index rebuild unseals every fact
+  at open (fine for thousands); a sealed Company Brain does not move to
+  another account or computer, which also affects the shared team folder
+  only if the database file itself is copied (team publish exports text).
+  kb.sqlite (screen-observation store) holds app ids, step keys and
+  automation ids, no screen text, and is not sealed: its keys are looked
+  up by value.

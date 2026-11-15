@@ -28,6 +28,11 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+# Fact and source-document text is sealed to this Windows account (DPAPI),
+# as the Personal Brain is: a copied knowledge.sqlite shows no fact.
+# Relations (edges) stay plain: their merge compares text in SQL.
+from ghostcursor.workspace.brain import LOCKED, SEALED, _seal, _unseal
+
 from ghostcursor import redact
 
 ENV_PATH = "ORBYN_KNOWLEDGE_PATH"
@@ -75,12 +80,8 @@ CREATE TABLE IF NOT EXISTS edges (
     added REAL NOT NULL, valid_until REAL,
     sensitivity TEXT NOT NULL DEFAULT 'normal'
 );
--- Full-text index over fact text for BM25-ranked recall (Zep/Mem0/Cognee all
--- rank by relevance, not word count). rowid = fid; Porter stemming so a query
--- 'deploy' matches 'deploys'. Rows are added on add_candidate and backfilled
--- for any pre-existing facts at open; status/validity are filtered after.
-CREATE VIRTUAL TABLE IF NOT EXISTS facts_fts
-    USING fts5(text, tokenize='porter unicode61');
+-- The full-text index (facts_fts) lives in memory only, built at open from
+-- the unsealed text: an index on disk would hold every word in the clear.
 -- Sources whose knowledge is private by default. A fact/edge whose provenance
 -- matches one of these patterns enters 'sensitive' without the owner marking
 -- it each time -- Orbyn's answer to Microsoft Recall's source-identity capture
@@ -231,6 +232,12 @@ def _fts_query(query: str) -> str | None:
     return " OR ".join(sorted(terms)) if terms else None
 
 
+def _fact(row) -> Fact:
+    """A row with its text unsealed (LOCKED when this account cannot)."""
+
+    return Fact(row[0], _unseal(row[1]), *row[2:])
+
+
 class Knowledge:
     """The Company Brain store. Owner-governed: adding makes a *candidate*;
     only an explicit review/approve makes a fact retrievable."""
@@ -259,13 +266,34 @@ class Knowledge:
         fact_cols = {r[1] for r in self._db.execute("PRAGMA table_info(facts)")}
         if "episode_id" not in fact_cols:  # pre-episode DB: add the provenance link
             self._db.execute("ALTER TABLE facts ADD COLUMN episode_id INTEGER")
-        with (
-            self._lock,
-            self._db,
-        ):  # backfill the FTS index for facts added before it existed
-            self._db.execute(
-                "INSERT INTO facts_fts(rowid, text) SELECT fid, text FROM facts "
-                "WHERE fid NOT IN (SELECT rowid FROM facts_fts)"
+        with self._lock, self._db:
+            # An older build kept the index on disk, in plain words: drop it
+            # (secure_delete overwrites its pages) and seal the plain rows.
+            self._db.execute("DROP TABLE IF EXISTS main.facts_fts")
+            for table, key in (("facts", "fid"), ("episodes", "eid")):
+                for rid, text in self._db.execute(
+                    f"SELECT {key}, text FROM {table} WHERE substr(text, 1, 4) != ?",
+                    (SEALED,),
+                ).fetchall():
+                    try:
+                        sealed = _seal(text)
+                    except Exception:  # cannot seal now; next open tries again
+                        break
+                    self._db.execute(
+                        f"UPDATE {table} SET text=? WHERE {key}=?", (sealed, rid)
+                    )
+        # ponytail: the index is rebuilt at every open, one unseal per fact;
+        # fine for thousands of facts, a sealed on-disk index if it grows.
+        self._db.execute(
+            "CREATE VIRTUAL TABLE temp.facts_fts USING fts5(text, tokenize='porter unicode61')"
+        )
+        with self._lock, self._db:
+            self._db.executemany(
+                "INSERT INTO temp.facts_fts(rowid, text) VALUES (?,?)",
+                [
+                    (fid, _unseal(text))
+                    for fid, text in self._db.execute("SELECT fid, text FROM facts")
+                ],
             )
 
     def close(self) -> None:
@@ -302,11 +330,12 @@ class Knowledge:
                 "INSERT INTO facts (text, source, scope, status, sensitivity, "
                 "added, last_verified, valid_until, valid_from, superseded_by, "
                 "episode_id) VALUES (?,?,?,?,?,?,?,?,?,NULL,?)",
-                (text, source, scope, "candidate", sensitivity, now, now,
+                (_seal(text), source, scope, "candidate", sensitivity, now, now,
                  valid_until, now if valid_from is None else valid_from, episode_id),
             )  # fmt: skip
             self._db.execute(
-                "INSERT INTO facts_fts(rowid, text) VALUES (?,?)", (cur.lastrowid, text)
+                "INSERT INTO temp.facts_fts(rowid, text) VALUES (?,?)",
+                (cur.lastrowid, text),
             )
         return self.get(cur.lastrowid)
 
@@ -322,13 +351,13 @@ class Knowledge:
         with self._lock, self._db:
             cur = self._db.execute(
                 "INSERT INTO episodes (text, source, scope, added) VALUES (?,?,?,?)",
-                (text, source, scope, self.clock()),
+                (_seal(text), source, scope, self.clock()),
             )
         return cur.lastrowid
 
     def episode(self, eid: int) -> Episode | None:
         row = self._db.execute("SELECT * FROM episodes WHERE eid=?", (eid,)).fetchone()
-        return Episode(*row) if row else None
+        return Episode(row[0], _unseal(row[1]), *row[2:]) if row else None
 
     def episode_of(self, fid: int) -> Episode | None:
         """The raw input a fact was extracted from, or None (older facts, or a
@@ -585,7 +614,7 @@ class Knowledge:
 
     def get(self, fid: int) -> Fact | None:
         row = self._db.execute("SELECT * FROM facts WHERE fid=?", (fid,)).fetchone()
-        return Fact(*row) if row else None
+        return _fact(row) if row else None
 
     def list(
         self, *, scope: str | None = None, status: str | None = None
@@ -600,7 +629,7 @@ class Knowledge:
             args.append(status)
         if where:
             sql += " WHERE " + " AND ".join(where)
-        return [Fact(*r) for r in self._db.execute(sql + " ORDER BY fid", args)]
+        return [_fact(r) for r in self._db.execute(sql + " ORDER BY fid", args)]
 
     def recall(
         self,
@@ -635,9 +664,10 @@ class Knowledge:
         )
         out = []
         for row in rows:
-            f = Fact(*row)
+            f = _fact(row)
             if (
                 f.status in USABLE
+                and f.text != LOCKED
                 and not f.stale(now)
                 and (include_sensitive or f.sensitivity != "sensitive")
                 and (since is None or f.added >= since)
