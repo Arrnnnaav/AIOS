@@ -18,4 +18,3 @@ pywin32==310              # overlay + Win32 (win32gui/con/api)
 pywinauto==0.6.9          # UIA tree walk (perception; input methods banned, rule 1)
 RapidFuzz==3.14.5         # grounding fuzzy match (rung 4)
 winsdk==1.0.0b10          # Windows runtime APIs
-rapidfuzz==3.14.5          # fuzzy name matching (offline Teach name check, lexical baseline)
