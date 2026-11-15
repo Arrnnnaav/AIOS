@@ -2649,3 +2649,11 @@ from 1053b54. Still open:
   and did not match UserName on this PC, so it is still sent unless the
   person adds it (the page says so); the Windows login name is not added
   (often a common word such as "user").
+- Repository made public 15 Nov (owner's instruction, after a history scan
+  found no credentials; the owner accepted that old commits show a personal
+  email as author). Update check built: ghostcursor/updates.py reads the
+  public latest-release API only when the person presses "Check for
+  updates", generic User-Agent, no other data; policy service "updates"
+  (blocked offline and by an allow-list); receipt line; links only to this
+  repository's release pages. Mutation sweep 5 of 5 after one added test.
+  Left: no download or install (needs code signing first); not reviewed.

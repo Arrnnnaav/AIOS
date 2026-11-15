@@ -1017,13 +1017,13 @@ class App:
                 if (
                     isinstance(row, dict)
                     and row.get("event") == "egress"
-                    and row.get("provider") in ("web", "tavily", "duckduckgo", "agents")
+                    and row.get("provider") in ("web", "tavily", "duckduckgo", "agents", "updates")
                 ):
                     at = row.get("at")
                     rows.append(
                         {
                             "at": at if isinstance(at, (int, float)) and not isinstance(at, bool) else None,
-                            "web": {"web": "page", "agents": "agent"}.get(row["provider"], "search"),
+                            "web": {"web": "page", "agents": "agent", "updates": "update"}.get(row["provider"], "search"),
                             "provider": row["provider"],
                             "failed": bool(row.get("failure")),
                         }
@@ -1056,6 +1056,10 @@ class App:
             # Only an explicit false turns it off; anything else keeps it on.
             settings.set_redact_egress(body.get("on") is not False)
             return {}
+        if action == "check_update":  # one public read, only when pressed
+            from ghostcursor import updates
+
+            return updates.check()
         if action == "agent_access":  # opt-in; anything but true is off
             settings.set_agent_access(body.get("on") is True)
             return {}

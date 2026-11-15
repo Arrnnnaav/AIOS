@@ -170,3 +170,27 @@ Each mutant run with `py -3.12 -m pytest tests/test_enterprise_policy.py -x -q`;
 identity_terms dropped from the private_terms merge (settings.py) -> 1 failed, 49 passed in 1.41s
 OSError from the registry no longer caught (settings.py) -> 1 failed, 50 passed in 1.50s
 ```
+
+## Ninth sweep: update check
+
+First run, as printed (two survivors: no test pinned the headers sent or an older release):
+
+```
+D018 mutation sweep, update check, 15 Nov 2026
+KILLED   ghostcursor/updates.py :: if not policy.allows("updates"): -> if False: :: 1 failed, 2 passed in 1.80s
+SURVIVED ghostcursor/updates.py :: headers={"Accept": "application/vnd.github+json", "User-Agen -> headers={"Accept": "application/vnd.gith :: 3 passed in 1.55s
+KILLED   ghostcursor/updates.py :: url.startswith(f"https://github.com/{REPOSITORY}/releases/") -> url.startswith("https://") :: 1 failed, 1 passed in 2.14s
+SURVIVED ghostcursor/updates.py :: "newer": latest > mine -> "newer": latest != mine :: 3 passed in 1.05s
+KILLED   ghostcursor/updates.py :: audit.record("egress", provider="updates", model=None, failu -> pass :: 1 failed in 2.07s
+```
+
+After adding `test_only_generic_headers_leave_and_an_older_release_is_not_newer`, as printed:
+
+```
+D018 mutation sweep, update check, 15 Nov 2026
+KILLED   ghostcursor/updates.py :: if not policy.allows("updates"): -> if False: :: 1 failed, 2 passed in 1.53s
+KILLED   ghostcursor/updates.py :: headers={"Accept": "application/vnd.github+json", "User-Agen -> headers={"Accept": "application/vnd.gith :: 1 failed, 3 passed in 1.43s
+KILLED   ghostcursor/updates.py :: url.startswith(f"https://github.com/{REPOSITORY}/releases/") -> url.startswith("https://") :: 1 failed, 1 passed in 1.24s
+KILLED   ghostcursor/updates.py :: "newer": latest > mine -> "newer": latest != mine :: 1 failed, 3 passed in 1.28s
+KILLED   ghostcursor/updates.py :: audit.record("egress", provider="updates", model=None, failu -> pass :: 1 failed in 1.30s
+```

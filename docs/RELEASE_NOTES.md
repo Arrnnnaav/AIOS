@@ -44,6 +44,11 @@ published.
 - Audit record: check that the tamper-evident record is intact, see the last
   30 days, export a verified copy.
 
+### Updates
+- "Check for updates" (Brain → Setup): one request to the public release
+  list of github.com/Arrnnnaav/AIOS, only when pressed, with nothing about
+  you; links to the release page; nothing is downloaded or installed.
+
 ### Reach
 - Ask a link: one public https page or PDF you name, fetched directly,
   read-only.
@@ -74,5 +79,5 @@ published.
   smoke test (`tools/smoke_build.py`); D018 mutation sweeps
   (`docs/evidence/mutation-sweep-2026-11-15.md`); independent tier-1
   reviews, with findings in `docs/superpowers/FOLLOWUPS.md`.
-- Not done: code signing, an update channel, an observed first run by a
-  new user, a counted Act campaign.
+- Not done: code signing, automatic download and install of updates, an
+  observed first run by a new user, a counted Act campaign.

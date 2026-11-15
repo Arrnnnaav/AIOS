@@ -1162,7 +1162,7 @@ function renderBrain() {
     if (!r.requests.length) reclist.textContent = "Nothing has been sent from this computer yet.";
     for (const q of r.requests) {
       const when = q.at ? new Date(q.at * 1000).toLocaleString() : "";
-      if (q.web) { reclist.append(el("div", "", `${when} · ${q.web === "page" ? "web page read" : q.web === "agent" ? (q.failed ? "another agent asked · refused" : "shared with another agent on this computer") : "web search (" + q.provider + ")"}${q.failed && q.web !== "agent" ? " · failed" : ""}`)); continue; }
+      if (q.web) { reclist.append(el("div", "", `${when} · ${q.web === "page" ? "web page read" : q.web === "agent" ? (q.failed ? "another agent asked · refused" : "shared with another agent on this computer") : q.web === "update" ? "checked for updates" + (q.failed ? " · failed" : "") : "web search (" + q.provider + ")"}${q.failed && q.web !== "agent" ? " · failed" : ""}`)); continue; }
       const hid = q.local ? " · stayed on this computer"
         : q.scrubbed === false ? " · sent without hiding private details"
         : q.scrubbed === null ? ""
@@ -1175,6 +1175,20 @@ function renderBrain() {
   rec.append(recmeta, el("div", "", "A receipt of the last 20 requests to a model, web searches, page reads and answers to another agent: when, which service and model, and whether private details were hidden first. For a web search, private details are always hidden from the question; the result pages a search then opens are not listed."),
     el("div", "note", "Kept on this computer only. It never holds what you asked or what was answered."), reclist);
   rec.style.marginTop = "8px"; root.append(rec);
+  const up = el("div", "mem"); const upmeta = el("div", "meta"); upmeta.append(el("span", "kind", "updates"));
+  const upbtn = el("button", "secondary", "Check for updates"); upbtn.style.marginLeft = "auto"; upbtn.disabled = S.egress < 1; upmeta.append(upbtn);
+  const upout = el("div", "note"); upout.style.textAlign = "left"; upout.hidden = true; upout.setAttribute("role", "status");
+  upbtn.onclick = async () => {
+    let r; try { r = await api("check_update"); } catch (e) { return toast(e.message); }
+    upout.hidden = false; upout.replaceChildren();
+    if (!r.latest) { upout.textContent = "No release has been published yet. You have Orbyn " + r.current + "."; return; }
+    if (!r.newer) { upout.textContent = "You have the latest version, Orbyn " + r.current + "."; return; }
+    upout.append("Orbyn " + r.latest + " is available (you have " + r.current + "). ");
+    if (r.url) { const a = el("a", "", "Open the release page"); a.href = r.url; a.target = "_blank"; a.rel = "noopener"; upout.append(a); }
+  };
+  up.append(upmeta, el("div", "", "See whether a newer Orbyn has been published."),
+    el("div", "note", "Only when you press the button: one request to GitHub's public release list, with nothing about you or this computer. Nothing is downloaded or installed. Not available when everything stays on this computer."), upout);
+  up.style.marginTop = "8px"; root.append(up);
   const au = el("div", "mem"); const aumeta = el("div", "meta"); aumeta.append(el("span", "kind", "audit record"));
   const auCheck = el("button", "secondary", "Check"); auCheck.style.marginLeft = "auto";
   const auSave = el("button", "secondary", "Export"); auSave.style.marginLeft = "6px"; aumeta.append(auCheck, auSave);
