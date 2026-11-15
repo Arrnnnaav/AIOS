@@ -155,6 +155,8 @@ def no_real_user_settings(monkeypatch, tmp_path_factory):
 
     path = tmp_path_factory.mktemp("settings") / "settings.json"
     monkeypatch.setattr(settings, "_path", lambda: path)
+    # Never this PC's own Office names in a test.
+    monkeypatch.setattr(settings, "identity_terms", lambda: ())
 
 
 @pytest.fixture(autouse=True)

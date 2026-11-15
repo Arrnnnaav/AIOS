@@ -161,3 +161,12 @@ KILLED   ghostcursor/redact.py :: '(?P<key>[A-Za-z0-9/+=]{40})(?![A-Za-z0-9/+=])
 KILLED   ghostcursor/redact.py :: '(?:[\\s\\"\':=]|\\\\[\\"nrt])+' -> '[\\s\\\\\\"\':=]+' :: 1 failed, 24 passed in 1.21s
 KILLED   ghostcursor/workspace/brain.py :: 'self._db.execute("PRAGMA temp_store = MEMORY")  # VACUUM\'s copy neve -> '' :: 1 failed, 34 passed in 1.61s
 ```
+
+## Eighth check: this computer's Office names hidden
+
+Each mutant run with `py -3.12 -m pytest tests/test_enterprise_policy.py -x -q`; summary lines as printed:
+
+```
+identity_terms dropped from the private_terms merge (settings.py) -> 1 failed, 49 passed in 1.41s
+OSError from the registry no longer caught (settings.py) -> 1 failed, 50 passed in 1.50s
+```

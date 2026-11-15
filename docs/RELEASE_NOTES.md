@@ -12,7 +12,8 @@ published.
 - Private words: names of clients, projects and people you list, plus an
   organisation list (Group Policy `PrivateTerms`), are hidden from cloud
   models, Jev and web searches. Users can add words but not remove the
-  organisation's.
+  organisation's. This computer's Office author name and company are
+  hidden automatically, read each time and never stored.
 - "See what a model would get" shows the hidden version of any text without
   sending it.
 - Optional: keep keys and card, bank and ID numbers as placeholders in

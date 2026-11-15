@@ -371,3 +371,28 @@ def test_an_unreadable_settings_file_does_not_open_the_air_gap(tmp_path):
     assert settings.local_only(path) is False  # readable, and not on
     path.write_text('{"local_only": true}', encoding="utf-8")
     assert settings.local_only(path) is True
+
+
+def test_this_computers_office_names_are_hidden_too(monkeypatch, tmp_path):
+    from ghostcursor import redact, settings
+
+    monkeypatch.setattr(settings, "identity_terms", lambda: ("Ada Lovelace", "Analytical Engines Ltd"))
+    terms = settings.private_terms(tmp_path / "settings.json")
+    assert "Ada Lovelace" in terms and "Analytical Engines Ltd" in terms
+    assert settings.own_private_terms(tmp_path / "settings.json") == ()  # never stored or listed
+    out = redact.scrub("Comment by Ada Lovelace, Analytical Engines Ltd", terms=terms)[0]
+    assert "Ada" not in out and "Analytical" not in out
+
+
+def test_identity_terms_reads_office_and_never_raises(monkeypatch):
+    import winreg
+
+    from ghostcursor import settings
+
+    monkeypatch.undo()  # the real function, not conftest's stand-in
+
+    def missing(*a, **k):
+        raise OSError("no key")
+
+    monkeypatch.setattr(winreg, "OpenKey", missing)
+    assert settings.identity_terms() == ()

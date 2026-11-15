@@ -2640,3 +2640,12 @@ from 1053b54. Still open:
   default. Left: a larger corpus over several applications and screen
   states, labelled by a person; the counted Act manager campaign (a person
   presses Approve & run).
+- Identity names 15 Nov: settings.identity_terms() adds this computer's
+  Office author name and company (HKCU Office\Common\UserInfo) to the
+  private words, read each time, never stored; tests replace it with an
+  empty list (conftest). Both guards broken on purpose and caught
+  (docs/evidence/mutation-sweep-2026-11-15.md). Left: the Office account
+  display name shown at the top right of Office apps is stored elsewhere
+  and did not match UserName on this PC, so it is still sent unless the
+  person adds it (the page says so); the Windows login name is not added
+  (often a common word such as "user").

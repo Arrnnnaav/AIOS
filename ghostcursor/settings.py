@@ -114,6 +114,31 @@ def own_private_terms(path: Path | None = None) -> tuple[str, ...]:
     return redact.clean_terms(value)
 
 
+def identity_terms() -> tuple[str, ...]:
+    """This computer's own names for its person: the Office author name and
+    company (shown in comments and document properties). Read here each
+    time, never stored or shown. Hidden like private words; empty if Office
+    is not set up."""
+
+    import winreg
+
+    out = []
+    try:
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Office\Common\UserInfo"
+        ) as key:
+            for name in ("UserName", "Company"):
+                try:
+                    value = winreg.QueryValueEx(key, name)[0]
+                except OSError:
+                    continue
+                if isinstance(value, str):
+                    out.append(value)
+    except OSError:
+        pass
+    return tuple(out)
+
+
 def private_terms(path: Path | None = None) -> tuple[str, ...]:
     """Every private word to hide from a remote service: this person's
     and the organisation's (PrivateTerms). Either can only add (rule 6)."""
@@ -124,7 +149,7 @@ def private_terms(path: Path | None = None) -> tuple[str, ...]:
     # pushes out a person's words.
     org = redact.clean_terms(list(policy.private_terms()))
     return redact.clean_terms(
-        [*org, *own_private_terms(path)], 2 * redact.MAX_TERMS
+        [*org, *own_private_terms(path), *identity_terms()], 2 * redact.MAX_TERMS + 2
     )
 
 
