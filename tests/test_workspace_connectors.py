@@ -148,10 +148,14 @@ class FakeImap:
 
 
 class FakeImapBodies(FakeImap):
+    size = 900
+
     def fetch(self, mid, spec):
         self.calls.append(("fetch", mid, spec))
         if "HEADER" in spec:
             return super().fetch(mid, spec)
+        if "RFC822.SIZE" in spec:
+            return "OK", [mid + b" (RFC822.SIZE " + str(self.size).encode() + b")"]
         raw = (
             b"From: ana@example.com\r\nSubject: Invoice " + mid + b"\r\n"
             b"Content-Type: multipart/mixed; boundary=x\r\n\r\n"
@@ -168,12 +172,21 @@ def test_one_picked_message_is_read_as_plain_text_and_never_marked_read(vault):
     subject, text = connectors.message_text("2", "Invoice 2", imap=FakeImapBodies)
     assert subject == "Invoice 2" and "Refunds over 500" in text and "attached" not in text
     calls = FakeImapBodies.instances[-1].calls
-    assert ("select", "INBOX", True) in calls and all("PEEK" in c[2] for c in calls if c[0] == "fetch")
+    # Only fetches that never set \Seen: a peek, or the size.
+    assert ("select", "INBOX", True) in calls
+    assert all("PEEK" in c[2] or c[2] == "(RFC822.SIZE)" for c in calls if c[0] == "fetch")
     before = len(FakeImapBodies.instances)
     for bad in ("", "1;2", "x", "1" * 13, None, "1 2"):
         with pytest.raises(ValueError):
             connectors.message_text(bad, "Invoice 2", imap=FakeImapBodies)
     assert len(FakeImapBodies.instances) == before  # refused before any connection
+    FakeImapBodies.size = 3_000_000
+    try:
+        with pytest.raises(ValueError):
+            connectors.message_text("2", "Invoice 2", imap=FakeImapBodies)
+        assert not any(c[2] == "(BODY.PEEK[])" for c in FakeImapBodies.instances[-1].calls if c[0] == "fetch")
+    finally:
+        FakeImapBodies.size = 900
     with pytest.raises(ValueError):  # the inbox changed under the list
         connectors.message_text("2", "Invoice 9", imap=FakeImapBodies)
 

@@ -252,3 +252,12 @@ KILLED   ghostcursor/providers/gateway.py :: return _agreed(choice, step, contro
 KILLED   ghostcursor/providers/gateway.py :: return choice if choice.choice == best else Choice(ABSTAIN,  -> return choice :: 1 failed, 119 passed in 10.74s
 KILLED   ghostcursor/providers/gateway.py :: return Choice(ABSTAIN, {}) if not choice.abstained else choi -> return choice :: 1 failed, 119 passed in 7.92s
 ```
+
+## Fourteenth check, 16 Nov 2026: review follow-ups
+
+Each mutant run with `py -3.12 -m pytest <file> -x -q`; summary lines as printed:
+
+```
+ghostcursor/providers/gateway.py :: providers=tuple(policy.LOCAL_PROVIDERS) -> providers=None :: 1 failed, 54 passed in 3.81s
+ghostcursor/workspace/connectors.py :: size check -> if False :: 1 failed, 7 passed in 2.39s
+```

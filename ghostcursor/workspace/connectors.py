@@ -247,6 +247,7 @@ def unread(*, limit: int = 10, imap=imaplib.IMAP4_SSL) -> list[dict]:
 
 
 MAX_MAIL_CHARS = 100_000
+MAX_MAIL_BYTES = 2_000_000
 
 
 def message_text(mid: str, subject: str, *, imap=imaplib.IMAP4_SSL) -> tuple[str, str]:
@@ -264,6 +265,11 @@ def message_text(mid: str, subject: str, *, imap=imaplib.IMAP4_SSL) -> tuple[str
     account = json.loads(saved)
     client = _open(account["host"], account["user"], account["password"], imap)
     try:
+        # Size first: a huge message (attachments) is refused, not downloaded.
+        status, sized = client.fetch(mid.encode("ascii"), "(RFC822.SIZE)")
+        size = re.search(rb"RFC822\.SIZE (\d+)", sized[0] if sized and isinstance(sized[0], bytes) else b"")
+        if status != "OK" or size is None or int(size.group(1)) > MAX_MAIL_BYTES:
+            raise ValueError("that message is too large to add (over 2 MB)")
         status, data = client.fetch(mid.encode("ascii"), "(BODY.PEEK[])")
         if status != "OK" or not data or not isinstance(data[0], tuple):
             raise ValueError("that message could not be read")

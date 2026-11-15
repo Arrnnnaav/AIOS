@@ -463,3 +463,30 @@ def test_offline_dictation_never_downloads_whisper_weights(monkeypatch):
     settings.set_local_only(True)
     voice.transcribe(np.full(voice.RATE, 0.1, dtype="float32"))
     assert seen.get("local_files_only") is True
+
+
+def test_the_offline_chooser_never_reaches_a_cloud_model_the_organisation_allows(monkeypatch, tmp_path):
+    """Review 16 Nov: with Jev left off an allow-list that names a cloud
+    model, the fallback must still ask only the model on this computer."""
+
+    import json as _json
+
+    import httpx
+
+    _policy(monkeypatch, AllowedProviders="openrouter;ollama")  # jev not allowed
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        content = _json.dumps({"choice": "c1", "probability": 0.9})
+        return httpx.Response(200, json={"model": "m", "choices": [{"message": {"content": content}}], "usage": {}})
+
+    gateway = Gateway(
+        system_two=("openrouter", "ollama"), transport=httpx.MockTransport(handler),
+        key_lookup=_keys(typesafe="k", openrouter="k"), log_path=tmp_path / "l",
+    )
+    try:
+        gateway.choose(_envelope(), ("c1",), question="q?")
+    except ProviderError:
+        pass
+    assert calls and all(c.url.host == "127.0.0.1" for c in calls)

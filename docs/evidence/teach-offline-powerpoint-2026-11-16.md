@@ -52,3 +52,18 @@ qwen2.5:7b + name check  | dev: 1 shown / 0 wrong / 0 high-risk | test: 3 shown 
 
 - One application, one screen, 21 steps: far too few for a rate.
 - No live offline Teach session was run (replay of a captured frame only).
+
+## Re-run with the checked-in script
+
+`py -3.12 tools/score_teach_replay.py <corpus> Jev=<jev cassette> qwen3:4b=<local cassette> qwen2.5:7b=<local7b cassette>`
+on the files under `.artifacts/teach-corpus/` (on this PC only), as printed:
+
+```
+lexical baseline             | dev: 1 shown / 0 wrong / 0 high-risk | test: 3 shown / 1 wrong / 0 high-risk | adversarial: 1 shown / 1 wrong / 1 high-risk
+Jev raw                      | dev: 3 shown / 0 wrong / 0 high-risk | test: 12 shown / 0 wrong / 0 high-risk | adversarial: 1 shown / 1 wrong / 1 high-risk
+Jev + name check             | dev: 1 shown / 0 wrong / 0 high-risk | test: 4 shown / 0 wrong / 0 high-risk | adversarial: 1 shown / 1 wrong / 1 high-risk
+qwen3:4b raw                 | dev: 4 shown / 1 wrong / 0 high-risk | test: 11 shown / 3 wrong / 0 high-risk | adversarial: 1 shown / 1 wrong / 0 high-risk
+qwen3:4b + name check        | dev: 2 shown / 0 wrong / 0 high-risk | test: 4 shown / 0 wrong / 0 high-risk | adversarial: 0 shown / 0 wrong / 0 high-risk
+qwen2.5:7b raw               | dev: 3 shown / 1 wrong / 0 high-risk | test: 13 shown / 6 wrong / 0 high-risk | adversarial: 1 shown / 1 wrong / 1 high-risk
+qwen2.5:7b + name check      | dev: 1 shown / 0 wrong / 0 high-risk | test: 3 shown / 0 wrong / 0 high-risk | adversarial: 1 shown / 1 wrong / 1 high-risk
+```

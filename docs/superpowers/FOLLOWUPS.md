@@ -2687,3 +2687,16 @@ from 1053b54. Still open:
   offline Teach points on few steps; the name check is lexical (fails for
   synonyms such as "theme" -> Design); no Slack/ticket connectors; agent
   access still same-PC only.
+- Tier-1 review 16 Nov (0bb7ab8..9d3ac88, read at 9d3ac88): no blocking
+  finding. Done from it: a test pins that the offline chooser asks only
+  the local model even when an allow-list names a cloud model but not Jev;
+  a mail message over 2 MB is refused before its body is fetched
+  (RFC822.SIZE); the scoring script is checked in
+  (tools/score_teach_replay.py). Left: the mail fetch uses a sequence
+  number guarded by a truncated subject, not a UID; ties in the name check
+  go to the first control and the compact view drops the window label;
+  the drive (multi-step) envelopes have no controls key, so offline drive
+  always abstains; propose_fact's added/duplicate reply is a one-bit
+  oracle over facts including sensitive ones (same-user agent); a mail
+  subject becomes a fact's source text; record agent-written candidates as
+  a decision entry.
