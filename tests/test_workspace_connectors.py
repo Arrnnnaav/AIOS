@@ -146,6 +146,15 @@ class FakeImap:
     def logout(self):
         self.calls.append(("logout",))
 
+    def uid(self, command, *args):
+        # Message UIDs, as imaplib's IMAP4.uid passes them on.
+        self.calls.append(("uid", command))
+        if command == "SEARCH":
+            return self.search(*args)
+        if command == "FETCH":
+            return self.fetch(*args)
+        raise AssertionError(command)
+
 
 class FakeImapBodies(FakeImap):
     size = 900
@@ -202,6 +211,8 @@ def test_mail_reads_unread_headers_without_marking_anything_read(vault):
     calls = FakeImap.instances[-1].calls
     assert ("select", "INBOX", True) in calls  # EXAMINE: read-only
     assert all("PEEK" in c[2] for c in calls if c[0] == "fetch")  # never sets \Seen
+    # Every search and fetch went by UID: a sequence number can name another message.
+    assert ("uid", "SEARCH") in calls and calls.count(("uid", "FETCH")) == len([c for c in calls if c[0] == "fetch"])
     assert calls[-1] == ("logout",)
 
 

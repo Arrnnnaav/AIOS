@@ -227,5 +227,6 @@ with the script named at the bottom; edit the curated table by hand.
 - D189 — Freehand marks and speaking while drawing
 - D190 — Background job kinds, agent notes, calendar and mail views
 - D191 — Crash reports for maintenance (owner decision)
+- D192 — Privacy by default, the offline switch, and agents and mail as candidate sources
 
 _Generated from `DECISIONS.md` headings by `py -3.12 tools/render_decisions_index.py`._

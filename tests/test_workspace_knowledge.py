@@ -1034,3 +1034,28 @@ def test_the_in_memory_index_never_spills_to_a_temp_file(tmp_path):
     k = Knowledge(tmp_path / "k.sqlite")
     assert k._db.execute("PRAGMA temp_store").fetchone()[0] == 2  # MEMORY
     k.close()
+
+
+def test_ticket_and_slack_exports_become_one_passage_per_row_or_message():
+    import json
+
+    import pytest
+
+    from ghostcursor.workspace.knowledge import chunk_export
+
+    csv_text = "id,title,resolution\n1,Refund over 500,Needs a manager\n2,,\n3,Login loop,Clear the cache\n"
+    assert chunk_export("tickets.csv", csv_text) == [
+        "id: 1; title: Refund over 500; resolution: Needs a manager",
+        "id: 3; title: Login loop; resolution: Clear the cache",
+    ]
+    slack = [
+        {"type": "message", "text": "Pricing exceptions go to Sam"},
+        {"type": "message", "subtype": "channel_join", "text": "<@U1> has joined the channel"},
+        {"type": "message", "text": "ok"},
+        "junk",
+    ]
+    assert chunk_export("2026-11-01.json", json.dumps(slack)) == ["Pricing exceptions go to Sam"]
+    assert chunk_export("notes.md", "anything") is None
+    for bad in ("{not json", '{"a": 1}'):
+        with pytest.raises(ValueError):
+            chunk_export("x.json", bad)

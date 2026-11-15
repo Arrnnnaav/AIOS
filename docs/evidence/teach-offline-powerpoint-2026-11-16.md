@@ -67,3 +67,23 @@ qwen3:4b + name check        | dev: 2 shown / 0 wrong / 0 high-risk | test: 4 sh
 qwen2.5:7b raw               | dev: 3 shown / 1 wrong / 0 high-risk | test: 13 shown / 6 wrong / 0 high-risk | adversarial: 1 shown / 1 wrong / 1 high-risk
 qwen2.5:7b + name check      | dev: 1 shown / 0 wrong / 0 high-risk | test: 3 shown / 0 wrong / 0 high-risk | adversarial: 1 shown / 1 wrong / 1 high-risk
 ```
+
+## Tried and not adopted: matching by meaning (16 Nov)
+
+Embeddings from the local `nomic-embed-text` model (cosine similarity
+between the step and each control name) instead of, or alongside, the word
+match, over the same recorded answers. Counts over all 21 steps, as printed
+by a one-off script in the session scratchpad (not checked in):
+
+```
+local    lexical   -> kept 6, wrong 0
+local    embedding -> kept 8, wrong 1
+local    either    -> kept 9, wrong 1
+local7b  lexical   -> kept 5, wrong 1
+local7b  embedding -> kept 6, wrong 2
+local7b  either    -> kept 6, wrong 2
+```
+
+Meaning matching shows more pointers but lets a wrong one through, so the
+shipped check stays the word match. (The "local7b lexical" row counts a
+pointer before the gate; the gate's row above shows 4 shown, 0 wrong.)

@@ -1234,13 +1234,16 @@ class App:
                 or "\0" in material
             ):
                 raise ValueError("choose a text file under 100,000 characters")
-            from ghostcursor.workspace.knowledge import chunk_document
+            from ghostcursor.workspace.knowledge import chunk_document, chunk_export
 
             name = " ".join(str(body.get("name") or "").split())[:120] or "document"
+            exported = chunk_export(name, material)  # a Slack or ticket export
             did = [
                 action
                 for action, _fid in ws.knowledge.ingest(
-                    chunk_document(material), source=name, scope=ws.kb_scope
+                    chunk_document(material) if exported is None else exported,
+                    source=name,
+                    scope=ws.kb_scope,
                 )
             ]  # candidates only: nothing is usable, or sent, until reviewed
             return {"added": did.count("added"), "duplicate": did.count("duplicate")}

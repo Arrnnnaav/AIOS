@@ -261,3 +261,12 @@ Each mutant run with `py -3.12 -m pytest <file> -x -q`; summary lines as printed
 ghostcursor/providers/gateway.py :: providers=tuple(policy.LOCAL_PROVIDERS) -> providers=None :: 1 failed, 54 passed in 3.81s
 ghostcursor/workspace/connectors.py :: size check -> if False :: 1 failed, 7 passed in 2.39s
 ```
+
+## Fifteenth check, 16 Nov 2026: mail by UID, export import
+
+Each mutant run with `py -3.12 -m pytest <file> -x -q`; summary lines as printed:
+
+```
+ghostcursor/workspace/connectors.py :: client.uid("SEARCH", ...) -> client.search(...) :: 1 failed, 8 passed in 1.08s
+ghostcursor/workspace/knowledge.py :: len(cells) >= 2 -> cells :: 1 failed, 44 passed in 2.82s
+```

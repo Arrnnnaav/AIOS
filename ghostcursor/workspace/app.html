@@ -1294,7 +1294,7 @@ function companyBrainCard() {
   skB.onclick = () => act("skills_export", {}).then((r) => r && toast("Saved " + r.path + " (" + r.facts + " facts, " + r.workflows + " workflows)", true));
   const evB = el("button", "secondary", "Test cases"); evB.style.marginLeft = "6px"; evB.title = "Saved workflows as test cases (JSONL) for checking whether a model knows how your team works.";
   evB.onclick = () => act("evals_export", {}).then((r) => r && toast("Saved " + r.path + " (" + r.cases + " cases)", true));
-  const fileIn = el("input"); fileIn.type = "file"; fileIn.accept = ".txt,.md,.log,.csv"; fileIn.hidden = true;
+  const fileIn = el("input"); fileIn.type = "file"; fileIn.accept = ".txt,.md,.log,.csv,.json"; fileIn.title = "A text or Markdown document, a ticket or CRM export (.csv, one fact per row) or a Slack export day file (.json, one fact per message)"; fileIn.hidden = true;
   const fileB = el("button", "secondary", "Add from file"); fileB.style.marginLeft = "6px";
   fileB.title = "Each passage becomes a candidate to review; the file stays on this computer";
   fileB.onclick = () => fileIn.click();

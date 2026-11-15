@@ -51,6 +51,9 @@ instruction); the update check finds it.
 - Mail into the Company Brain: "Add to Company Brain" on an unread message
   adds its passages as candidate facts to review (read-only; the message
   stays unread; nothing goes to a model).
+- Ticket and Slack exports: Brain → Company → Add from file takes a ticket
+  or CRM export (.csv, one candidate per row) or a Slack export day file
+  (.json, one candidate per message). No token, no network.
 - Skills file: reviewed facts and saved workflows as one file an agent can
   load.
 - Test cases: saved workflows as JSONL cases for checking a model.

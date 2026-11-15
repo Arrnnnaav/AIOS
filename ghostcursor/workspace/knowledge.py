@@ -193,6 +193,48 @@ MAX_CHUNKS = 200
 MAX_CHUNK_CHARS = 600
 
 
+def chunk_export(name: str, text: str) -> list[str] | None:
+    """Passages from a tool's export, or None for an ordinary document.
+
+    - ``.csv`` (a ticket or CRM export): one passage per row, written as
+      "Column: value; Column: value", empty cells left out.
+    - ``.json`` (a Slack channel's day file from a workspace export, a list
+      of messages): one passage per message text; joins, bots' join notices
+      and empty messages left out.
+    Offline: the person exports the file from the tool and picks it here;
+    no token, no network."""
+
+    import csv
+    import io
+    import json
+
+    lowered = name.casefold()
+    if lowered.endswith(".csv"):
+        rows = csv.DictReader(io.StringIO(text))
+        out = []
+        for row in rows:
+            cells = [f"{k.strip()}: {' '.join(str(v).split())}" for k, v in row.items() if k and v and str(v).strip()]
+            if len(cells) >= 2:  # an id alone is not a fact
+                out.append("; ".join(cells)[:MAX_CHUNK_CHARS])
+        return out[:MAX_CHUNKS]
+    if lowered.endswith(".json"):
+        try:
+            data = json.loads(text)
+        except ValueError:
+            raise ValueError("that JSON file could not be read") from None
+        if not isinstance(data, list):
+            raise ValueError("expected a Slack export day file (a list of messages)")
+        out = []
+        for message in data:
+            if not isinstance(message, dict) or message.get("subtype") in ("channel_join", "channel_leave", "bot_add"):
+                continue
+            words = " ".join(str(message.get("text") or "").split())
+            if len(words.split()) >= 2:
+                out.append(words[:MAX_CHUNK_CHARS])
+        return out[:MAX_CHUNKS]
+    return None
+
+
 def chunk_document(text: str) -> list[str]:
     """Split a document into candidate-sized chunks on blank lines (the simple
     loader Mem0/Cognee use before extraction). Whitespace is collapsed, empties,

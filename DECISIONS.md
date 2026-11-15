@@ -8432,3 +8432,45 @@ raises; the main-thread wait is capped at 5 s.
 D018: 9 mutants, 9 killed (`tests/test_crashreport.py`).
 
 Not built: breadcrumbs, performance tracing, a hosted Orbyn Sentry project.
+
+## D192 — Privacy by default, the offline switch, and agents and mail as candidate sources
+
+Owner requests (14 to 16 November 2026): private details hidden from cloud
+models by default, with originals put back in answers; build on dark.ai's
+privacy aims and three YC requests (W27 "AI for the Air-Gapped Economy", S26
+"Company Brain", S26 "Software for Agents"); make the repository public and
+use its releases as the update channel; version 0.2.0.
+
+- **What leaves (rule 6).** Hiding is on by default (`settings.redact_egress`
+  unless explicitly false); private words (the person's sealed list, the
+  organisation's `PrivateTerms`, this PC's Office author name and company) are
+  hidden too. The person's offline switch (`settings.local_only`) lowers
+  `policy.max_egress` to local and never raises the organisation's level; a
+  damaged settings file keeps it on. Offline, Teach's control choice falls
+  back to the local model only then (never on a Jev outage), through the same
+  closed parser and gate plus a name check: the pick must also be the best
+  word match for the step, because the small model's stated confidence
+  carries no signal (measured, `docs/evidence/teach-offline-powerpoint-2026-11-16.md`).
+- **New sources, candidates only.** Another agent on the PC (MCP
+  `propose_fact`, at most 50 waiting) and a person's picked unread mail
+  message (read-only, by UID, peeked, under 2 MB) add CANDIDATE facts, as
+  research and file ingestion already do. A candidate is never recalled,
+  exported, shared with an agent or sent to a model until the owner reviews
+  it. Agent proposals carry the source "agent: ...". Accepted residual: the
+  added/duplicate reply tells an agent whether a fact already exists (one
+  bit; a same-user agent can read the store file anyway).
+- **At rest.** Personal Brain text, Company Brain fact and episode text and
+  the private-words list are DPAPI-sealed to the Windows account; the Company
+  Brain's search index is an in-memory temp table (`temp_store = MEMORY`).
+  Relations (edges) and kb.sqlite (control ids, no screen text) stay plain.
+- **Updates.** One opt-in GET to the public GitHub "latest release" API when
+  the person presses the button, generic User-Agent, policy service
+  `updates`; nothing is downloaded or installed. 0.2.0 is published unsigned.
+
+Evidence: `docs/evidence/mutation-sweep-2026-11-15.md` (D018 sweeps),
+`docs/evidence/teach-replay-powerpoint-2026-11-15.md`,
+`docs/evidence/teach-offline-powerpoint-2026-11-16.md`,
+`docs/evidence/scrub-on-screen-names-2026-11-15.md`; tier-1 reviews and what
+they left in `docs/superpowers/FOLLOWUPS.md`. Not done: a counted Act
+campaign (2026-11-15 attempt NOT counted: approval needs a person at the PC),
+code signing, an observed first run by a new user.

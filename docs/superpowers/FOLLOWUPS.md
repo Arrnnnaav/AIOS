@@ -2700,3 +2700,10 @@ from 1053b54. Still open:
   oracle over facts including sensitive ones (same-user agent); a mail
   subject becomes a fact's source text; record agent-written candidates as
   a decision entry.
+- 16 Nov, continued: mail is fetched by IMAP UID (search and fetch);
+  ticket/CRM CSV and Slack export day files import as one candidate per row
+  or message (offline, no token); decision D192 records the privacy,
+  offline and candidate-source rules. Meaning-based matching for the
+  offline check was measured and not adopted (lets a wrong pointer
+  through). Sweeps recorded. Left: a whole Slack export zip is not taken in
+  one go (one day file at a time); no live Slack or ticket API connector.
