@@ -2,8 +2,9 @@
 
 ## 0.2.0 (branch feature/product-shell-task-graphs, 14-15 Nov 2026)
 
-Version 0.2.0, chosen by the owner on 15 Nov 2026. Not yet signed or
-published.
+Version 0.2.0, chosen by the owner on 15 Nov 2026. Published unsigned at
+https://github.com/Arrnnnaav/AIOS/releases/tag/v0.2.0 (owner's
+instruction); the update check finds it.
 
 ### Privacy
 - Private details (email, phone, card, bank and ID numbers, keys, machine
