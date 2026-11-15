@@ -468,8 +468,8 @@ class Gateway:
         for m in messages:
             content = m.get("content")
             if isinstance(content, str):
-                scrubbed, _ = redact.scrub(
-                    content, mapping=hidden, avoid=present, terms=terms
+                scrubbed, _ = redact.scrub(  # the envelope text is JSON
+                    content, mapping=hidden, avoid=present, terms=terms, json_text=True
                 )
                 out.append({**m, "content": scrubbed})
             else:

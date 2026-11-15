@@ -50,13 +50,21 @@ _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     (
         "KEY",
         re.compile(
-            r"\b(?:(?:sk|pk|rk)[-_]|gh[pousr]_|github_pat_|xox[baprs]-|gsk_|nvapi-|tvly-|hf_)[-_A-Za-z0-9]{16,}\b"
+            r"\b(?:(?:sk|pk|rk)[-_]|gh[pousr]_|github_pat_|xox[baprs]-|gsk_|nvapi-|tvly-|hf_|glpat-|npm_|xai-|pplx-|r8_)[-_A-Za-z0-9]{16,}\b"
             # A Google key may end in "-", after which \b never holds; the
             # fixed length has no shorter match to fall back to (review 15 Nov).
             r"|\bA(?:KI|SI)A[0-9A-Z]{16}\b|\bAIza[-_A-Za-z0-9]{35}(?![-\w])"
         ),
     ),
     # explicit bearer/authorization credential (case-insensitive prefix)
+    # An AWS secret access key has no prefix of its own: hidden where it is
+    # named (aws_secret_access_key = ..., SecretAccessKey: ...).
+    (
+        "KEY",
+        re.compile(
+            r"(?i)(?:(?<=secret_access_key)|(?<=secretaccesskey))[\s\"':=]+(?P<key>[A-Za-z0-9/+=]{40})\b"
+        ),
+    ),
     ("KEY", re.compile(r"(?i)\b(?:bearer|authorization:?)\s+[A-Za-z0-9._~+/=-]{8,}")),
     ("IBAN", re.compile(r"\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b")),
     # as printed on statements: groups of four, e.g. GB82 WEST 1234 5698 7654 32
@@ -131,7 +139,8 @@ def _word(word: str) -> str:
 
 
 def scrub(
-    text: str, categories=None, *, mapping=None, avoid: str = "", terms=()
+    text: str, categories=None, *, mapping=None, avoid: str = "", terms=(),
+    json_text: bool = False,
 ) -> tuple[str, dict[str, str]]:
     """Return (scrubbed_text, map). Every detected entity is replaced by a
     stable ``[CATEGORY_n]`` placeholder; the map {placeholder: original} lets
@@ -159,6 +168,9 @@ def scrub(
         counts[category] = max(counts.get(category, 0), int(number))
 
     def _sub(category: str, m) -> str:
+        if not isinstance(m, str) and "key" in m.re.groupindex:
+            # Only the named part is the secret; the label before it stays.
+            return m.group(0)[: m.start("key") - m.start()] + _sub(category, m.group("key"))
         original = m if isinstance(m, str) else m.group(0)
         if category == "CARD" and not _luhn_ok(original):
             return original  # not a real card: leave it
@@ -201,7 +213,9 @@ def scrub(
             slashes = 0
             while at - slashes > 0 and m.string[at - slashes - 1] == chr(92):
                 slashes += 1
-            if slashes % 2 and found[0] in "nrtfb" and len(found) > 1:
+            # Only JSON text has escapes; in a plain Windows path the whole
+            # folder name is the word (C:\\Users\\nina; review 15 Nov).
+            if json_text and slashes % 2 and found[0] in "nrtfb" and len(found) > 1:
                 # In JSON text this first letter is the end of a line-break
                 # escape, not of the word: keep it or the JSON breaks, and
                 # hide the rest (review 15 Nov).

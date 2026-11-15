@@ -2578,3 +2578,13 @@ from 1053b54. Still open:
   hf_transformers_pipeline_cache; an original with a literal backslash
   sequence in plain text comes back decoded; _post could always use the
   no-proxy opener. This fix was not re-reviewed.
+- Remaining gaps closed 15 Nov: GitLab glpat-, npm_, xAI xai-, Perplexity
+  pplx- and Replicate r8_ keys are hidden; an AWS secret access key is
+  hidden where it is named (aws_secret_access_key, SecretAccessKey), only
+  the 40 characters, so JSON stays valid; scrub takes json_text=True from
+  the gateway (whose text is JSON), so a plain Windows path hides the whole
+  folder name (C:\Users\nina) while JSON escapes are kept. Mutation sweep
+  5 of 5 after one added test, recorded in
+  docs/evidence/mutation-sweep-2026-11-15.md. Not re-reviewed. Left: an
+  unnamed 40-character AWS secret is not guessed (too many false hits);
+  the Jev (TypeSafe) key shape was not checked.

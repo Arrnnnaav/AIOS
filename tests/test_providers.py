@@ -1214,3 +1214,25 @@ def test_a_name_spanning_a_line_break_comes_back_once_escaped(tmp_path, monkeypa
     step = gateway.plan(env).steps[0].instruction
     assert step == "Write to Priya Nair"  # the plan collapses spaces; no stray backslash-n
     assert "Priya" not in calls[0].content.decode()
+
+
+def test_the_context_a_cloud_model_gets_stays_valid_json_with_private_words(tmp_path, monkeypatch):
+    """A word starting with n right after a line break must not eat the escape."""
+
+    from ghostcursor import settings
+
+    monkeypatch.setattr(settings, "private_terms", lambda: ("Nina",))
+    transport, calls = _transport(_chat(PLAN))
+    gateway = Gateway(system_two=("openrouter",), transport=transport,
+                      key_lookup=_keys(openrouter="k"), log_path=tmp_path / "l")
+    # In the JSON text this reads Hi, backslash, "nina": "Nina" matches from the
+    # escape letter on, and the escape must stay.
+    env = Envelope(task="plan the step", trusted={"goal": "g", "message": "Hi" + chr(10) + "ina and Nina"},
+                   tainted={"screen": Tainted.of("uia_name", "Send")})
+    gateway.plan(env)
+    body = json.loads(calls[0].content.decode())
+    text = " ".join(m["content"] for m in body["messages"] if isinstance(m.get("content"), str))
+    line = next(l for l in text.splitlines() if l.startswith("TRUSTED_CONTEXT"))
+    context = json.loads(line.split(": ", 1)[1])
+    assert context["message"].startswith("Hi" + chr(10)) and "Nina" not in context["message"]
+    assert context["message"].count("[NAME_") == 2

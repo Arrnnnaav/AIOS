@@ -159,7 +159,7 @@ def test_private_words_are_found_in_json_text_too():
     account = "CORP" + bs + "jsmith"
     message = f"Note for Acme{nl}Health and {account}, also{nl}Zorblat and{nl}acme health"
     sent = json.dumps({"message": message}, ensure_ascii=False)
-    out, m = redact.scrub(sent, terms=("Acme Health", "Zorblat", account))
+    out, m = redact.scrub(sent, terms=("Acme Health", "Zorblat", account), json_text=True)
     assert not any(w in out.casefold() for w in ("acme", "health", "zorblat", "jsmith"))
     assert json.loads(out)["message"].count("[NAME_") == 4  # still valid JSON
     assert redact.scrub(message, terms=("Acme Health", account))[0].count("[NAME_") == 3
@@ -193,7 +193,7 @@ def test_a_private_word_never_breaks_json_text():
 
     nl, tab, bs = chr(10), chr(9), chr(92)
     sent = json.dumps({"t": f"Meet me{nl}at the office, says Nat{tab}TIN and{nl}Nat"}, ensure_ascii=False)
-    out, m = redact.scrub(sent, terms=("Nat", "TIN"))
+    out, m = redact.scrub(sent, terms=("Nat", "TIN"), json_text=True)
     back = json.loads(out)["t"]  # still valid JSON
     assert "Nat" not in back and "TIN" not in back
     assert redact.clean_terms([bs + "share", "share" + bs, "CORP" + bs + "ann"]) == ("CORP" + bs + "ann",)
@@ -222,12 +222,12 @@ def test_a_private_word_spans_hyphens_underscores_and_json_escapes():
     for text in ("call-priya-nair", "Priya_Nair.docx", "priya - nair"):
         assert "priya" not in redact.scrub(text, terms=("Priya Nair",))[0].casefold(), text
     sent = json.dumps({"t": "x" + chr(12) + "Fred and" + chr(8) + "fred"}, ensure_ascii=False)
-    out = redact.scrub(sent, terms=("Fred",))[0]
+    out = redact.scrub(sent, terms=("Fred",), json_text=True)[0]
     assert "red" not in json.loads(out)["t"].replace("[NAME_1]", "")  # valid JSON, hidden
     # A form feed then "red" reads backslash-f-r-e-d in JSON: "Fred" matches
     # there, and the escape letter must stay or the JSON breaks.
     tricky = json.dumps({"t": "x" + chr(12) + "red " + chr(8) + "ob"}, ensure_ascii=False)
-    back = json.loads(redact.scrub(tricky, terms=("Fred", "Bob"))[0])["t"]
+    back = json.loads(redact.scrub(tricky, terms=("Fred", "Bob"), json_text=True)[0])["t"]
     assert back.startswith("x" + chr(12)) and "red" not in back and "ob" not in back
 
 
@@ -262,3 +262,34 @@ def test_a_google_key_ending_in_a_hyphen_is_hidden():
     for text in (f"key {key} here", f"key {key}", json.dumps({"t": f"key {key}"})):
         assert key not in redact.scrub(text)[0], text
     assert redact.scrub("AIza" + "B" * 36)[0] == "AIza" + "B" * 36  # too long: not this shape
+
+
+def test_the_rest_of_the_common_key_shapes_are_hidden():
+    from ghostcursor import redact
+
+    secret = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+    for text in ("glpat-" + "a" * 20, "npm_" + "b" * 36, "xai-" + "c" * 40, "pplx-" + "d" * 40,
+                 "r8_" + "e" * 37, "aws_secret_access_key = " + secret, '"SecretAccessKey": "' + secret + '"'):
+        pass
+    assert redact.scrub("aws_secret_access_key = " + secret)[0] == "aws_secret_access_key = [KEY_1]"
+    import json as _json
+    assert _json.loads(redact.scrub(_json.dumps({"SecretAccessKey": secret}), json_text=True)[0]) == {"SecretAccessKey": "[KEY_1]"}
+    for text in ("glpat-" + "a" * 20, "npm_" + "b" * 36, "xai-" + "c" * 40, "pplx-" + "d" * 40,
+                 "r8_" + "e" * 37, "aws_secret_access_key = " + secret, '"SecretAccessKey": "' + secret + '"'):
+        out = redact.scrub(text)[0]
+        assert "[KEY_1]" in out and "aaaa" not in out and secret not in out, text
+    assert redact.scrub("the secret is " + secret)[0] == "the secret is " + secret  # unnamed: not guessed
+
+
+def test_a_lower_case_folder_keeps_no_letter_in_plain_text_but_json_stays_valid():
+    import json
+
+    from ghostcursor import redact
+
+    bs = chr(92)
+    plain = "C:" + bs + "Users" + bs + "nina" + bs + "deck.pptx"
+    out, m = redact.scrub(plain, terms=("Nina",))
+    assert out == "C:" + bs + "Users" + bs + "[NAME_1]" + bs + "deck.pptx" and m == {"[NAME_1]": "nina"}
+    sent = json.dumps({"t": "a" + chr(10) + "ina and Nina"})
+    back = json.loads(redact.scrub(sent, terms=("Nina",), json_text=True)[0])["t"]
+    assert back.startswith("a" + chr(10)) and "Nina" not in back and "ina" not in back.replace("[NAME_", "")

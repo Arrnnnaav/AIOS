@@ -84,3 +84,29 @@ no:cacheprovider`, summary line as printed:
 ```
 1 failed, 18 passed in 1.31s
 ```
+
+## Fifth sweep: remaining key shapes and plain-text paths
+
+First run, as printed (one survivor: no test checked that the context a
+cloud model receives stays valid JSON):
+
+```
+D018 mutation sweep, remaining gaps of 15 Nov 2026 (tree after 29fcfc3)
+KILLED   ghostcursor/redact.py :: |glpat-|npm_|xai-|pplx-|r8_) -> )
+KILLED   ghostcursor/redact.py :: "key" in m.re.groupindex -> False
+KILLED   ghostcursor/redact.py :: if json_text and slashes % 2 -> if slashes % 2
+KILLED   ghostcursor/redact.py :: if json_text and slashes % 2 -> if False and slashes % 2
+SURVIVED ghostcursor/providers/gateway.py :: terms=terms, json_text=True -> terms=terms
+```
+
+After adding `test_the_context_a_cloud_model_gets_stays_valid_json_with_private_words`
+to tests/test_providers.py, as printed:
+
+```
+D018 mutation sweep, remaining gaps of 15 Nov 2026 (tree after 29fcfc3)
+KILLED   ghostcursor/redact.py :: |glpat-|npm_|xai-|pplx-|r8_) -> )
+KILLED   ghostcursor/redact.py :: "key" in m.re.groupindex -> False
+KILLED   ghostcursor/redact.py :: if json_text and slashes % 2 -> if slashes % 2
+KILLED   ghostcursor/redact.py :: if json_text and slashes % 2 -> if False and slashes % 2
+KILLED   ghostcursor/providers/gateway.py :: terms=terms, json_text=True -> terms=terms
+```
