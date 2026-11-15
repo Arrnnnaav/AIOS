@@ -2603,3 +2603,19 @@ from 1053b54. Still open:
   kb.sqlite (screen-observation store) holds app ids, step keys and
   automation ids, no screen text, and is not sealed: its keys are looked
   up by value.
+- Tier-1 review 15 Nov (29fcfc3..850a8be, read at 850a8be): one BLOCKING
+  finding, fixed: the "in memory only" search index spilled to a temp file
+  in %TEMP% once it outgrew the page cache (Python 3.12's SQLite defaults
+  temp_store to file); knowledge.py now sets PRAGMA temp_store = MEMORY
+  (pinned by a test; spill probe after the fix found no temp file, recorded
+  in docs/evidence/mutation-sweep-2026-11-15.md). Also fixed: an AWS secret
+  ending in / + or = and the JSON-escaped form are hidden. Left: the
+  one-time migration's rollback journal holds the old plaintext pages and
+  is deleted, not overwritten; a legacy plain row starting with "dp1:"
+  stays plain and reads as locked; the in-memory index is per process, so
+  facts added by another process (CLI, team sync) are found only after
+  the workspace reopens; a missing win32crypt fails add_candidate without
+  naming the cause; exports include locked facts as "(locked: ...)"; a
+  plain-text message in a JSON request still keeps one letter of a
+  lower-case folder name; "secret access key:" and "aws_secret_key=" are
+  not matched. Not re-reviewed.

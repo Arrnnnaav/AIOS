@@ -293,3 +293,16 @@ def test_a_lower_case_folder_keeps_no_letter_in_plain_text_but_json_stays_valid(
     sent = json.dumps({"t": "a" + chr(10) + "ina and Nina"})
     back = json.loads(redact.scrub(sent, terms=("Nina",), json_text=True)[0])["t"]
     assert back.startswith("a" + chr(10)) and "Nina" not in back and "ina" not in back.replace("[NAME_", "")
+
+
+def test_an_aws_secret_ending_in_slash_or_plus_and_in_json_text_is_hidden():
+    import json
+
+    from ghostcursor import redact
+
+    for end in ("/", "+", "="):
+        secret = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKE" + end
+        assert secret not in redact.scrub(f"aws_secret_access_key = {secret} next")[0], end
+        sent = json.dumps({"t": f'aws_secret_access_key = "{secret}"'})
+        out = redact.scrub(sent, json_text=True)[0]
+        assert secret not in out and json.loads(out), end

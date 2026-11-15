@@ -18,7 +18,8 @@ Version is still 0.1.0; the owner picks the release number.
   answers too (off by default).
 - Personal Brain memories, Company Brain facts and source documents, and the
   private-words list are encrypted to the Windows account (DPAPI). The
-  Company Brain's search index is kept in memory only.
+  Company Brain's search index is kept in memory only (never spilled to a
+  temp file).
 - "What left this computer": a receipt of the last 20 model requests, web
   searches, page reads and answers to other agents, without content.
 - Local models are always reached directly, never through a proxy set in

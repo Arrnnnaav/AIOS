@@ -1025,3 +1025,12 @@ def test_the_brain_opens_when_windows_cannot_seal(tmp_path, monkeypatch):
     k = Knowledge(path)  # does not raise
     assert [x.text for x in k.recall("tea", "s")] == ["Plain fact about tea"]
     k.close()
+
+
+def test_the_in_memory_index_never_spills_to_a_temp_file(tmp_path):
+    """Tier-1 review 15 Nov (blocking): without temp_store=MEMORY a large
+    index spilled to %TEMP%, plaintext and all."""
+
+    k = Knowledge(tmp_path / "k.sqlite")
+    assert k._db.execute("PRAGMA temp_store").fetchone()[0] == 2  # MEMORY
+    k.close()

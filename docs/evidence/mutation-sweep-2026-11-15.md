@@ -125,3 +125,23 @@ KILLED   ghostcursor/workspace/knowledge.py :: and f.text != LOCKED -> (removed)
 KILLED   ghostcursor/workspace/knowledge.py :: except Exception: # cannot seal now; next open tries again break -> except ZeroDivisionError: break
 KILLED   ghostcursor/workspace/knowledge.py :: return Fact(row[0], _unseal(row[1]), *row[2:]) -> return Fact(*row)
 ```
+
+## Seventh check: index spill and AWS secret ending
+
+Each mutant run with `py -3.12 -m pytest <file> -x -q`; summary lines as printed:
+
+```
+temp_store pragma removed (knowledge.py) -> 1 failed, 43 passed in 2.53s
+AWS secret ending back to  (redact.py) -> 1 failed, 21 passed in 1.16s
+```
+
+Spill probe after the fix (5000 sealed facts of about 700 characters,
+TMP and TEMP pointed at an empty scratch folder, recall run once), as printed:
+
+```
+5000 facts of ~700 chars, temp files while open: []
+```
+
+Before the fix the reviewer's probe on the same shape listed one
+`etilqs_*` temp file of 4,919,296 bytes (reported by the reviewer, not
+re-run here).

@@ -254,6 +254,10 @@ class Knowledge:
         self._lock = threading.RLock()
         self._db = sqlite3.connect(self.path, check_same_thread=False)
         self._db.execute("PRAGMA secure_delete = ON")  # retire overwrites on disk
+        # The search index (temp.facts_fts) holds every fact in plain words;
+        # SQLite would spill a large temp database to a file in %TEMP%
+        # (review 15 Nov). Keep it in memory, always.
+        self._db.execute("PRAGMA temp_store = MEMORY")
         self._db.executescript(_SCHEMA)
         # Migrate a pre-temporal-edge DB: add the edge validity column if absent.
         cols = {r[1] for r in self._db.execute("PRAGMA table_info(edges)")}
