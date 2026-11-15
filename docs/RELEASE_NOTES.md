@@ -1,8 +1,9 @@
 # Orbyn release notes
 
-## Unreleased (branch feature/product-shell-task-graphs, 14-15 Nov 2026)
+## 0.2.0 (branch feature/product-shell-task-graphs, 14-15 Nov 2026)
 
-Version is still 0.1.0; the owner picks the release number.
+Version 0.2.0, chosen by the owner on 15 Nov 2026. Not yet signed or
+published.
 
 ### Privacy
 - Private details (email, phone, card, bank and ID numbers, keys, machine
@@ -62,7 +63,10 @@ Version is still 0.1.0; the owner picks the release number.
 - ChatGPT sign-in, the first voice-model download and team publish or sync
   still use the internet when started, even with the offline switch on.
 - Ask a link does not read video subtitles, sign-in pages or scanned PDFs.
-- Teach and Act accuracy with hiding on has not been measured live.
+- Teach was measured once offline on one PowerPoint screen (21 steps,
+  `docs/evidence/teach-replay-powerpoint-2026-11-15.md`): far too small for a
+  rate. Act was not measured; its counted campaign needs a person to press
+  Approve & run.
 
 ### Checks
 - Hermetic lane on CI and locally; interactive desktop lane; packaged-app
@@ -70,4 +74,4 @@ Version is still 0.1.0; the owner picks the release number.
   (`docs/evidence/mutation-sweep-2026-11-15.md`); independent tier-1
   reviews, with findings in `docs/superpowers/FOLLOWUPS.md`.
 - Not done: code signing, an update channel, an observed first run by a
-  new user, live Teach/Act measurement.
+  new user, a counted Act campaign.

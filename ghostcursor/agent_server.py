@@ -27,7 +27,7 @@ from __future__ import annotations
 import json
 import sys
 
-from ghostcursor import audit, policy, redact, settings
+from ghostcursor import __version__, audit, policy, redact, settings
 
 PROTOCOL = "2024-11-05"
 MAX_QUERY, MAX_REPLY = 500, 12_000
@@ -131,7 +131,7 @@ def handle(message, scope: str = "default", **stores) -> dict | None:
             {
                 "protocolVersion": PROTOCOL,
                 "capabilities": {"tools": {}},
-                "serverInfo": {"name": "orbyn", "version": "0.1.0"},
+                "serverInfo": {"name": "orbyn", "version": __version__},
             }
         )
     if method == "ping":
