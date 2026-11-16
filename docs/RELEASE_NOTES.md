@@ -1,5 +1,25 @@
 # Orbyn release notes
 
+## 0.2.1 (16 Nov 2026)
+
+- Offline Teach: with everything kept on the computer, the local model
+  chooses which control to point at; a pointer is shown only when its pick
+  also matches the step's words. ChatGPT sign-in and voice and wake-word
+  model downloads are blocked offline. Guide: `docs/OFFLINE_INSTALL.md`.
+- Company Brain inputs, all as candidates you review: an unread mail
+  message ("Add to Company Brain", by IMAP UID, under 2 MB), ticket or CRM
+  CSV exports and Slack export day files (Add from file), and facts another
+  agent proposes through the MCP server (`propose_fact`, at most 50
+  waiting).
+- First run: Setup now opens on Accounts and Readiness, then Privacy and
+  data. Accounts says how to answer with no account (a local model).
+  Readiness in the packaged app shows plain hints, no developer commands,
+  and checks the model on this computer.
+- Signing: `tools/build_orbyn.ps1` signs `Orbyn.exe` when
+  `ORBYN_SIGN_THUMBPRINT` names a code-signing certificate (tested with a
+  throwaway self-signed certificate). This release is still unsigned.
+- Decision D192 records the privacy, offline and candidate-source rules.
+
 ## 0.2.0 (branch feature/product-shell-task-graphs, 14-15 Nov 2026)
 
 Version 0.2.0, chosen by the owner on 15 Nov 2026. Published unsigned at
@@ -52,8 +72,10 @@ instruction); the update check finds it.
   adds its passages as candidate facts to review (read-only; the message
   stays unread; nothing goes to a model).
 - Ticket and Slack exports: Brain → Company → Add from file takes a ticket
-  or CRM export (.csv, one candidate per row) or a Slack export day file
-  (.json, one candidate per message). No token, no network.
+  or CRM export (.csv, one candidate per row with at least two filled
+  columns) or a Slack export day file (.json, one candidate per message of
+  two or more words; joins and leaves skipped). At most 200 candidates per
+  file, 600 characters each. No token, no network.
 - Skills file: reviewed facts and saved workflows as one file an agent can
   load.
 - Test cases: saved workflows as JSONL cases for checking a model.

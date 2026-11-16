@@ -2707,3 +2707,12 @@ from 1053b54. Still open:
   offline check was measured and not adopted (lets a wrong pointer
   through). Sweeps recorded. Left: a whole Slack export zip is not taken in
   one go (one day file at a time); no live Slack or ticket API connector.
+- 16 Nov, 0.2.1: first-run walkthrough on an empty profile (by the agent,
+  not a new user): "Check setup" landed on eight privacy cards with
+  Accounts and Readiness at the bottom; now first. Key rows put Save beside
+  the box; Accounts names the local-model route; Readiness in the packaged
+  app drops REA and pip/py commands and checks Ollama. Signing step added
+  to build_orbyn.ps1 (self-signed test only; no real certificate). Review
+  of 9d3ac88..f313838: no blocking finding; fixed: nested JSON and
+  CR-only/unclosed-quote CSVs refused with a reason, caps tested, release
+  note states the filters. Left: an observed run by a real new user.

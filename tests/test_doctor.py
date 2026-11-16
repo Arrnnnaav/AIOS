@@ -9,7 +9,7 @@ from ghostcursor import doctor
 def test_checks_cover_every_capability_and_never_raise():
     cs = doctor.checks()
     names = {c.name for c in cs}
-    assert "models (BYOK)" in names
+    assert "cloud models (your accounts)" in names and "model on this computer (Ollama)" in names
     assert any("wake word" in n for n in names)
     assert any("Act" in n for n in names)
     for c in cs:
@@ -52,3 +52,12 @@ def test_json_flag_emits_machine_readable_checks(capsys):
     assert doctor.main(["--json"]) == 0
     data = json.loads(capsys.readouterr().out)
     assert data and all(set(c) == {"name", "ready", "hint"} for c in data)
+
+
+def test_the_packaged_app_shows_no_developer_commands(monkeypatch):
+    import sys
+
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    cs = doctor.checks()
+    assert not any("REA" in c.name for c in cs)
+    assert not any(w in c.hint for c in cs for w in ("py -3.12", ".mcp.json", "pip install"))

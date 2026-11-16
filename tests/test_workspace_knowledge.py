@@ -1059,3 +1059,23 @@ def test_ticket_and_slack_exports_become_one_passage_per_row_or_message():
     for bad in ("{not json", '{"a": 1}'):
         with pytest.raises(ValueError):
             chunk_export("x.json", bad)
+
+
+def test_broken_exports_are_refused_with_a_reason_not_a_crash():
+    import pytest
+
+    from ghostcursor.workspace.knowledge import chunk_export
+
+    for name, text in (
+        ("x.json", "[" * 50_000),  # nested too deep
+        ("x.json", '{"text": "one message"}'),  # one object, not a list
+        ("x.csv", 'a,b\n"open quote,1\n2,3\n'),  # an unclosed quote eats the rest
+    ):
+        with pytest.raises(ValueError):
+            chunk_export(name, text)
+    # Old Mac line breaks (CR only) are read, not a crash.
+    assert chunk_export("x.csv", "title,fix\rLogin loop,Clear cache\r") == ["title: Login loop; fix: Clear cache"]
+    # The caps hold: at most 200 passages, each at most 600 characters.
+    many = "a,b\n" + "".join(f"row {i},value {i}\n" for i in range(300))
+    assert len(chunk_export("x.csv", many)) == 200
+    assert len(chunk_export("x.csv", "a,b\nkey," + "w " * 500 + "\n")[0]) == 600

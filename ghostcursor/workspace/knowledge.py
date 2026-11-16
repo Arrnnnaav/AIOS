@@ -210,20 +210,30 @@ def chunk_export(name: str, text: str) -> list[str] | None:
 
     lowered = name.casefold()
     if lowered.endswith(".csv"):
-        rows = csv.DictReader(io.StringIO(text))
+        rows = csv.DictReader(io.StringIO(text, newline=""))
         out = []
-        for row in rows:
+        try:
+            parsed = list(rows)
+        except csv.Error:
+            raise ValueError("that CSV file could not be read") from None
+        for row in parsed:
             cells = [f"{k.strip()}: {' '.join(str(v).split())}" for k, v in row.items() if k and v and str(v).strip()]
             if len(cells) >= 2:  # an id alone is not a fact
                 out.append("; ".join(cells)[:MAX_CHUNK_CHARS])
+        if not out and len(text.splitlines()) > 1:
+            raise ValueError(
+                "no row of that CSV has two filled columns (an unclosed quote?)"
+            )
         return out[:MAX_CHUNKS]
     if lowered.endswith(".json"):
         try:
             data = json.loads(text)
-        except ValueError:
+        except (ValueError, RecursionError):
             raise ValueError("that JSON file could not be read") from None
         if not isinstance(data, list):
-            raise ValueError("expected a Slack export day file (a list of messages)")
+            raise ValueError(
+                "expected a Slack export day file: a list of messages, not a single object"
+            )
         out = []
         for message in data:
             if not isinstance(message, dict) or message.get("subtype") in ("channel_join", "channel_leave", "bot_add"):

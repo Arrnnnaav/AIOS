@@ -1075,6 +1075,11 @@ function renderBrain() {
     }
     return;
   }
+  // A first-time user comes here from "Check setup": what is ready and which
+  // account answers come first; the privacy controls follow.
+  root.append(accountsCard());
+  root.append(doctorCard());
+  const privHead = el("h3", "", "Privacy and data"); privHead.style.margin = "24px 0 8px"; root.append(privHead);
   const priv = el("div", "mem");
   const pmeta = el("div", "meta"); pmeta.append(el("span", "kind", "privacy"));
   const vsw = el("button", "switch"); vsw.setAttribute("role", "switch"); vsw.setAttribute("aria-checked", String(!!S.vision));
@@ -1226,8 +1231,6 @@ function renderBrain() {
   dot.append(dmeta, el("div", "", "Keep a small dot beside your pointer when Orbyn is idle."),
     el("div", "note", "While Orbyn works or listens, a label beside your pointer says what it is doing; this keeps a quiet dot there the rest of the time. It hides over full-screen apps. Off by default."));
   dot.style.marginTop = "8px"; root.append(dot);
-  root.append(accountsCard());
-  root.append(doctorCard());
   const stats = el("div", "stats"); root.append(stats);
   api("stats").then((s) => { for (const [k, v] of Object.entries(s).filter(([, v]) => typeof v === "number").slice(0, 6)) { const d = el("div", "stat"); d.append(el("b", "", String(v)), el("span", "", k.replace(/_/g, " "))); stats.append(d); } }).catch(() => {});
 }
@@ -1442,13 +1445,15 @@ function accountsCard() {
         rm.onclick = () => act("key_clear", { name }, "Key removed").then(() => renderBrain());
         row(label + " (saved)", rm);
       } else {
-        const wrap = el("span"); const inp = el("input"); inp.type = "password"; inp.placeholder = "paste key"; inp.autocomplete = "off";
+        const wrap = el("span"); wrap.style.display = "flex"; wrap.style.gap = "6px"; wrap.style.alignItems = "center";
+        const inp = el("input"); inp.type = "password"; inp.placeholder = "paste key"; inp.autocomplete = "off"; inp.style.minWidth = "0"; inp.setAttribute("aria-label", label);
         const save = el("button", "secondary", "Save");
         save.onclick = () => inp.value.trim() && act("key_set", { name, key: inp.value.trim() }, "Key saved").then(() => renderBrain());
         wrap.append(inp, save); row(label, wrap);
       }
     }
     body.append(el("div", "note", "Anthropic does not let other apps use a Claude Free/Pro/Max login, so Claude works here with an API key."));
+    body.append(el("div", "note", "No account? Install Ollama (ollama.com) and run: ollama pull qwen3:4b-instruct. Orbyn then answers on this computer, with nothing sent anywhere."));
   }).catch(() => body.append(el("div", "note", "Accounts unavailable.")));
   return card;
 }
