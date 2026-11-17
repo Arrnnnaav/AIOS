@@ -183,6 +183,34 @@ def new_claims(answer: str, previous: str) -> list[str]:
     return [c for c in _claims(answer) if not any(_same_claim(c, s) for s in seen)]
 
 
+def _tail_lines(path: Path, count: int, chunk: int = 256 * 1024) -> list[str]:
+    """The last ``count`` lines of a log, reading only its end, so the receipt
+    stays quick however long the log grows. Raises OSError like read_text."""
+
+    with path.open("rb") as handle:
+        handle.seek(0, 2)
+        size = handle.tell()
+        start = max(0, size - chunk)
+        handle.seek(start)
+        data = handle.read()
+    lines = data.decode("utf-8", "replace").splitlines()
+    if start > 0:
+        lines = lines[1:]  # the first line is probably cut in half
+    return lines[-count:]
+
+
+def _fresh(folder: Path, stem: str, suffix: str) -> Path:
+    """A new file name in ``folder`` that never overwrites an earlier export:
+    stem-YYYYMMDD-HHMMSS.suffix, with -2, -3... if that exists too."""
+
+    folder.mkdir(parents=True, exist_ok=True)
+    base = f"{stem}-{time.strftime('%Y%m%d-%H%M%S')}"
+    out, n = folder / f"{base}{suffix}", 2
+    while out.exists():
+        out, n = folder / f"{base}-{n}{suffix}", n + 1
+    return out
+
+
 def _local_model_up() -> bool:
     """Is the local model server (Ollama) accepting connections? A loopback
     connect only; nothing leaves this computer."""
@@ -989,9 +1017,7 @@ class App:
             rows = []
             try:
                 log = getattr(ws.gateway, "log_path", None)
-                lines = (log or gateway_mod._default_log_path()).read_text(
-                    encoding="utf-8"
-                ).splitlines()[-200:]
+                lines = _tail_lines(log or gateway_mod._default_log_path(), 200)
             except OSError:
                 lines = []
             for line in reversed(lines):
@@ -1025,7 +1051,7 @@ class App:
 
             audit.flush()
             try:
-                events = audit.default_path().read_text(encoding="utf-8").splitlines()[-400:]
+                events = _tail_lines(audit.default_path(), 400)
             except OSError:
                 events = []
             for line in events:
@@ -1312,7 +1338,7 @@ class App:
             if ws.knowledge is None:
                 raise ValueError("no Company Brain")
             md = ws.knowledge.export_markdown(ws.kb_scope)
-            out = self.downloads / f"{ws.kb_scope}.company-brain.md"
+            out = _fresh(self.downloads, f"{ws.kb_scope}.company-brain", ".md")
             out.parent.mkdir(parents=True, exist_ok=True)
             out.write_text(md, encoding="utf-8", newline="\n")
             return {"path": str(out)}
@@ -1337,7 +1363,7 @@ class App:
             if action == "evals_export":
                 if not flows:
                     raise ValueError("save a workflow first; each one becomes a test case")
-                out = self.downloads / f"{ws.kb_scope}.orbyn-evals.jsonl"
+                out = _fresh(self.downloads, f"{ws.kb_scope}.orbyn-evals", ".jsonl")
                 out.write_text(
                     "".join(
                         json.dumps(
@@ -1382,7 +1408,7 @@ class App:
                 lines += [f"## {name}", "", *[f"{n}. {s}" for n, s in enumerate(steps, 1)], ""]
             if not flows:
                 lines.append("_(no saved workflows yet)_")
-            out = self.downloads / f"{ws.kb_scope}.orbyn-skills.md"
+            out = _fresh(self.downloads, f"{ws.kb_scope}.orbyn-skills", ".md")
             out.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8", newline="\n")
             return {"path": str(out), "facts": len(facts), "workflows": len(flows)}
         if action == "audit_summary":  # is the record intact, and what is in it
@@ -1421,7 +1447,7 @@ class App:
         if action == "audit_export":  # a copy for an auditor, verified
             from ghostcursor import audit
 
-            out = self.downloads / "orbyn-audit.jsonl"
+            out = _fresh(self.downloads, "orbyn-audit", ".jsonl")
             intact, lines_read, _ = audit.export(out)
             return {"path": str(out), "intact": intact, "lines": lines_read}
         if action == "know_conflicts":
@@ -1819,6 +1845,12 @@ def make_server(app: App, token: str, port: int = 0) -> ThreadingHTTPServer:
                 result, code = {"error": str(exc)}, 400
             except Exception as exc:  # the page shows it; the app keeps running
                 result, code = {"error": f"{type(exc).__name__}: {exc}"[:300]}, 500
+                try:  # and a local, scrubbed record, so it can be found later
+                    from ghostcursor.workspace import crashlog
+
+                    crashlog.write_crash(exc)
+                except Exception:
+                    pass
             self._send(code, json.dumps(result).encode("utf-8"), "application/json")
 
     return ThreadingHTTPServer(("127.0.0.1", port), Handler)

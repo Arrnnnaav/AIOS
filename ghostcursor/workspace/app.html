@@ -1423,10 +1423,10 @@ async function readZipEntries(blob) {
   if (end < 0) throw new Error("That file is not a zip archive.");
   const count = view.getUint16(end + 10, true); let at = view.getUint32(end + 16, true); const out = [];
   for (let n = 0; n < count && view.getUint32(at, true) === 0x02014b50; n++) {
-    const method = view.getUint16(at + 10, true), size = view.getUint32(at + 20, true);
+    const method = view.getUint16(at + 10, true), size = view.getUint32(at + 20, true), full = view.getUint32(at + 24, true);
     const nameLen = view.getUint16(at + 28, true), extra = view.getUint16(at + 30, true), comment = view.getUint16(at + 32, true);
     const local = view.getUint32(at + 42, true); const name = new TextDecoder().decode(buf.subarray(at + 46, at + 46 + nameLen));
-    out.push({ name, method, size, local }); at += 46 + nameLen + extra + comment;
+    out.push({ name, method, size, full, local }); at += 46 + nameLen + extra + comment;
   }
   return { buf, view, entries: out };
 }
@@ -1445,6 +1445,9 @@ async function importSlackZip(file) {
   let added = 0, known = 0, skipped = 0;
   for (const [i, e] of days.entries()) {
     toast("Reading " + (i + 1) + " of " + days.length + " day files" + String.fromCharCode(8230));
+    // Never unpack what could not be imported anyway (a zip bomb, a damaged or
+    // zip64 entry): the stated sizes must be real and the text small.
+    if (!e.size || !e.full || e.full > 400 * 1024 || e.size === 0xffffffff) { skipped++; continue; }
     let text; try { text = await zipText(zip, e); } catch { skipped++; continue; }
     if (!text.trim() || text.length > 100000 || text.includes("\0")) { skipped++; continue; }
     let r; try { r = await api("know_ingest", { name: "slack: " + e.name, material: text }); } catch { skipped++; continue; }

@@ -2612,3 +2612,38 @@ def test_a_picked_message_becomes_candidate_facts_for_review(tmp_path, monkeypat
         server.shutdown()
         app.close()
         kb.close()
+
+
+def test_exports_never_overwrite_an_earlier_one(tmp_path):
+    from ghostcursor.workspace.app import _fresh
+
+    a = _fresh(tmp_path, "team.company-brain", ".md"); a.write_text("first", encoding="utf-8")
+    b = _fresh(tmp_path, "team.company-brain", ".md")
+    assert a != b and a.read_text(encoding="utf-8") == "first"
+    assert a.name.startswith("team.company-brain-") and a.suffix == ".md"
+
+
+def test_the_receipt_reads_only_the_end_of_a_long_log(tmp_path):
+    from ghostcursor.workspace.app import _tail_lines
+
+    log = tmp_path / "l.jsonl"
+    log.write_text("".join(f"line {i}\n" for i in range(100_000)), encoding="utf-8")
+    assert _tail_lines(log, 3) == ["line 99997", "line 99998", "line 99999"]
+    assert _tail_lines(log, 3, chunk=20) == ["line 99999"]  # 20 bytes: the cut first line is dropped
+    short = tmp_path / "s.jsonl"; short.write_text("a\nb\n", encoding="utf-8")
+    assert _tail_lines(short, 10) == ["a", "b"]
+
+
+def test_an_unexpected_request_error_leaves_a_local_record(served, monkeypatch):
+    from ghostcursor.workspace import crashlog
+
+    app, port = served
+    kept = []
+    monkeypatch.setattr(crashlog, "write_crash", lambda exc: kept.append(type(exc).__name__))
+
+    def boom(*a, **k):
+        raise RuntimeError("store busy")
+
+    monkeypatch.setattr(app, "handle", boom)
+    status, body = call(port, "/api/know_aging", {})
+    assert status == 500 and "store busy" in body.decode() and kept == ["RuntimeError"]

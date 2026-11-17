@@ -1353,3 +1353,13 @@ def test_offline_two_equally_good_matches_show_no_pointer():
     assert _agreed(Choice("c1", {"c1": 0.9}), "Save the file", controls).abstained
     assert _agreed(Choice("c3", {"c3": 0.9}), "Close the window", controls).choice == "c3"
     assert _agreed(Choice("c5", {"c5": 0.9}), "Undo my change", controls).choice == "c5"
+
+
+def test_offline_no_pointer_when_nothing_or_everything_matches():
+    from ghostcursor.providers.gateway import _agreed
+    from ghostcursor.providers.schemas import Choice
+
+    same = {"c1": Tainted.of("control", "w1 | Button | Alpha | top"), "c2": Tainted.of("control", "w1 | Button | Beta | top")}
+    assert _agreed(Choice("c1", {"c1": 0.9}), "zzz qqq", same).abstained  # nothing matches
+    unreadable = {"c1": None, "c2": object()}
+    assert _agreed(Choice("c1", {"c1": 0.9}), "Save", unreadable).abstained  # all tie

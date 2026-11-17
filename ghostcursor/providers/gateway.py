@@ -121,6 +121,8 @@ def _agreed(choice: Choice, step: str, controls: dict) -> Choice:
     scores = {cid: fuzz.token_set_ratio(step, name(cid)) for cid in controls}
     top = max(scores.values())
     best = [cid for cid, score in scores.items() if score == top]
+    if top == 0 or len(best) == len(scores) > 1:
+        return Choice(ABSTAIN, {})  # nothing matches, or everything matches alike
     # Equal matches are fine when they are one control's parts in one window
     # (PowerPoint's Undo button and its drop-down half). The same name in two
     # windows is ambiguous: no pointer, rather than whichever comes first.

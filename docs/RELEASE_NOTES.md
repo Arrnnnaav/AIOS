@@ -7,6 +7,11 @@
   candidates to review.
 - Offline Teach: no pointer when the same name matches equally well in two
   windows.
+- Exports (Company Brain, skills file, test cases, audit) get a date and
+  time in their file name and never overwrite an earlier one.
+- The receipt reads only the end of its logs, so it stays quick.
+- A whole Slack export: entries whose stated size is over 400 KB, zero or
+  zip64 are skipped without being unpacked.
 
 ## 0.2.1 (16 Nov 2026)
 

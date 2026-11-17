@@ -97,3 +97,20 @@ its drop-down half) still count. Re-scored with `tools/score_teach_replay.py`,
 the `qwen3:4b + name check` row is unchanged: dev 2 shown / 0 wrong, test 4
 shown / 0 wrong, adversarial 0 shown (session output; a first version that
 refused every tie lost two correct pointers, Paste and Undo, and was replaced).
+
+## Re-score after the review of the tie rule, 18 Nov
+
+The name check now also refuses when nothing matches (best score 0) or every
+control ties. `py -3.12 tools/score_teach_replay.py <corpus> Jev=... qwen3:4b=...
+qwen2.5:7b=...` on the files under `.artifacts/teach-corpus/`, as printed (this
+replaces the "session output" figures above with captured ones):
+
+```
+lexical baseline             | dev: 1 shown / 0 wrong / 0 high-risk | test: 3 shown / 1 wrong / 0 high-risk | adversarial: 1 shown / 1 wrong / 1 high-risk
+Jev raw                      | dev: 3 shown / 0 wrong / 0 high-risk | test: 12 shown / 0 wrong / 0 high-risk | adversarial: 1 shown / 1 wrong / 1 high-risk
+Jev + name check             | dev: 2 shown / 0 wrong / 0 high-risk | test: 5 shown / 0 wrong / 0 high-risk | adversarial: 1 shown / 1 wrong / 1 high-risk
+qwen3:4b raw                 | dev: 4 shown / 1 wrong / 0 high-risk | test: 11 shown / 3 wrong / 0 high-risk | adversarial: 1 shown / 1 wrong / 0 high-risk
+qwen3:4b + name check        | dev: 2 shown / 0 wrong / 0 high-risk | test: 4 shown / 0 wrong / 0 high-risk | adversarial: 0 shown / 0 wrong / 0 high-risk
+qwen2.5:7b raw               | dev: 3 shown / 1 wrong / 0 high-risk | test: 13 shown / 6 wrong / 0 high-risk | adversarial: 1 shown / 1 wrong / 1 high-risk
+qwen2.5:7b + name check      | dev: 2 shown / 0 wrong / 0 high-risk | test: 3 shown / 0 wrong / 0 high-risk | adversarial: 1 shown / 1 wrong / 1 high-risk
+```

@@ -2727,3 +2727,17 @@ from 1053b54. Still open:
   confidently-wrong local model must not choose what to click. Left: zip64
   and encrypted zips are not read; the zip import has no hermetic test (JS
   only, checked live).
+- 18 Nov: review of d4fbbc1 found no blocking finding. Fixed from it: the
+  offline name check refuses when nothing matches or every control ties;
+  the page's zip reader skips entries whose stated uncompressed size is
+  over 400 KB, zero, or zip64 before unpacking (checked live with a
+  600 KB entry packed into 962 bytes: skipped; the normal entry imported);
+  the re-score output is captured in the evidence file. Also: exports get
+  never-overwriting dated names; the receipt reads only the last 256 KB of
+  each log; keep_secrets_hidden already covers every model answer
+  (Gateway.complete is the only put-back site); fact sources reach models
+  only as Tainted (session.py). Unexplained: one 500 from know_aging on a
+  fresh profile during a zip import (17 Nov); not reproduced in four page
+  loads, a 20-file import, or an 8-thread read/write hammer of the store;
+  unexpected request errors now leave a scrubbed local crash log so the
+  next one is caught.
