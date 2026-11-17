@@ -2716,3 +2716,14 @@ from 1053b54. Still open:
   of 9d3ac88..f313838: no blocking finding; fixed: nested JSON and
   CR-only/unclosed-quote CSVs refused with a reason, caps tested, release
   note states the filters. Left: an observed run by a real new user.
+- 17 Nov: offline name check refuses ties across windows (window label now
+  in the compact view; same-window ties such as a split button still count;
+  re-scored unchanged, 6 shown / 0 wrong). Whole Slack export zips are
+  unpacked in the page (central directory + DecompressionStream
+  "deflate-raw", stored and deflated entries, channel/YYYY-MM-DD.json only,
+  at most 500 files, each through know_ingest); verified live with a
+  sample zip (3 candidates, joins and one-word messages skipped). Offline
+  drive (Orbyn clicking, multi-step) deliberately keeps abstaining: a
+  confidently-wrong local model must not choose what to click. Left: zip64
+  and encrypted zips are not read; the zip import has no hermetic test (JS
+  only, checked live).

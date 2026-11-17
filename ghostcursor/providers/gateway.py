@@ -111,12 +111,21 @@ def _agreed(choice: Choice, step: str, controls: dict) -> Choice:
     if choice.abstained or not step or not controls:
         return Choice(ABSTAIN, {}) if not choice.abstained else choice
 
-    def name(cid: str) -> str:
-        parts = str(getattr(controls.get(cid), "text", "")).split(" | ")
-        return parts[1] if len(parts) > 1 else ""
+    def parts(cid: str) -> list[str]:
+        return str(getattr(controls.get(cid), "text", "")).split(" | ")
 
-    best = max(controls, key=lambda cid: fuzz.token_set_ratio(step, name(cid)))
-    return choice if choice.choice == best else Choice(ABSTAIN, {})
+    def name(cid: str) -> str:  # "w1 | Button | Save | top-left"
+        p = parts(cid)
+        return p[2] if len(p) > 2 else ""
+
+    scores = {cid: fuzz.token_set_ratio(step, name(cid)) for cid in controls}
+    top = max(scores.values())
+    best = [cid for cid, score in scores.items() if score == top]
+    # Equal matches are fine when they are one control's parts in one window
+    # (PowerPoint's Undo button and its drop-down half). The same name in two
+    # windows is ambiguous: no pointer, rather than whichever comes first.
+    one_window = len({parts(cid)[0] for cid in best}) == 1
+    return choice if choice.choice in best and one_window else Choice(ABSTAIN, {})
 
 
 def _compact(envelope: Envelope) -> Envelope:
@@ -127,7 +136,7 @@ def _compact(envelope: Envelope) -> Envelope:
     def line(fields) -> str:
         return " | ".join(
             str(getattr(fields.get(k), "text", fields.get(k)) or "")
-            for k in ("type", "name", "region")
+            for k in ("window", "type", "name", "region")
         )
 
     tainted = {}

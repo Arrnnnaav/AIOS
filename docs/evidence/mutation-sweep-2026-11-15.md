@@ -270,3 +270,12 @@ Each mutant run with `py -3.12 -m pytest <file> -x -q`; summary lines as printed
 ghostcursor/workspace/connectors.py :: client.uid("SEARCH", ...) -> client.search(...) :: 1 failed, 8 passed in 1.08s
 ghostcursor/workspace/knowledge.py :: len(cells) >= 2 -> cells :: 1 failed, 44 passed in 2.82s
 ```
+
+## Sixteenth check, 17 Nov 2026: name-check ties
+
+Mutants run with `py -3.12 -m pytest tests/test_providers.py -x -q`; summary lines as printed:
+
+```
+tie rule removed (any tie allowed, first control wins) -> 1 failed, 123 passed in 20.42s
+ghostcursor/providers/gateway.py :: tie only when one window -> any tie allowed :: 1 failed, 123 passed in 5.93s
+```

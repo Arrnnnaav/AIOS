@@ -1274,7 +1274,7 @@ def test_offline_a_local_model_chooses_from_the_offered_ids_only(tmp_path):
     assert calls and all(c.url.host == "127.0.0.1" for c in calls)
     body = json.loads(calls[0].content)
     assert body["model"] == "qwen3:4b-instruct"
-    assert "Button | Save | top-left" in calls[0].content.decode()  # the compact view
+    assert "Button | Save | top-left" in calls[0].content.decode()  # the compact view (after the window label)
     # An id the frame never offered is refused, never drawn.
     transport, _ = _transport(_local_chat({"choice": "c9", "probabilities": {"c9": 1.0}}))
     gateway = Gateway(transport=transport, key_lookup=_keys(typesafe="k"), log_path=tmp_path / "l")
@@ -1337,3 +1337,19 @@ def test_a_local_models_single_confidence_is_accepted_but_ids_stay_closed():
                 '{"choice": "c1", "confidence": "high"}'):
         with pytest.raises(ProviderError):
             _parse_local_choice(bad, ("c1", "c2"))
+
+
+def test_offline_two_equally_good_matches_show_no_pointer():
+    from ghostcursor.providers.gateway import _agreed
+    from ghostcursor.providers.schemas import Choice
+
+    controls = {
+        "c1": Tainted.of("control", "w1 | Button | Save | top-left"),
+        "c2": Tainted.of("control", "w2 | Button | Save | top-right"),  # same name, other window
+        "c3": Tainted.of("control", "w2 | Button | Close | top-right"),
+        "c4": Tainted.of("control", "w1 | SplitButton | Undo | top-left"),
+        "c5": Tainted.of("control", "w1 | Button | Undo | top-left"),  # one control's two parts
+    }
+    assert _agreed(Choice("c1", {"c1": 0.9}), "Save the file", controls).abstained
+    assert _agreed(Choice("c3", {"c3": 0.9}), "Close the window", controls).choice == "c3"
+    assert _agreed(Choice("c5", {"c5": 0.9}), "Undo my change", controls).choice == "c5"

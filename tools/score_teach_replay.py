@@ -28,7 +28,7 @@ def chooser_for(tape: dict, check: bool):
         if not check:
             return choice
         controls = {
-            c["cid"]: Tainted.of("control", f"{c['type']} | {c['name']} | {c.get('region', '')}")
+            c["cid"]: Tainted.of("control", f"{c['window']} | {c['type']} | {c['name']} | {c.get('region', '')}")
             for c in step.candidates
         }
         return _agreed(choice, step.instruction, controls)

@@ -1297,13 +1297,14 @@ function companyBrainCard() {
   skB.onclick = () => act("skills_export", {}).then((r) => r && toast("Saved " + r.path + " (" + r.facts + " facts, " + r.workflows + " workflows)", true));
   const evB = el("button", "secondary", "Test cases"); evB.style.marginLeft = "6px"; evB.title = "Saved workflows as test cases (JSONL) for checking whether a model knows how your team works.";
   evB.onclick = () => act("evals_export", {}).then((r) => r && toast("Saved " + r.path + " (" + r.cases + " cases)", true));
-  const fileIn = el("input"); fileIn.type = "file"; fileIn.accept = ".txt,.md,.log,.csv,.json"; fileIn.title = "A text or Markdown document, a ticket or CRM export (.csv, one fact per row) or a Slack export day file (.json, one fact per message)"; fileIn.hidden = true;
+  const fileIn = el("input"); fileIn.type = "file"; fileIn.accept = ".txt,.md,.log,.csv,.json,.zip"; fileIn.title = "A text or Markdown document, a ticket or CRM export (.csv, one fact per row), a Slack export day file (.json, one fact per message), or a whole Slack export (.zip)"; fileIn.hidden = true;
   const fileB = el("button", "secondary", "Add from file"); fileB.style.marginLeft = "6px";
   fileB.title = "Each passage becomes a candidate to review; the file stays on this computer";
   fileB.onclick = () => fileIn.click();
   fileIn.onchange = async () => {
     const chosen = fileIn.files[0]; fileIn.value = "";
     if (!chosen) return;
+    if (/\.zip$/i.test(chosen.name)) return importSlackZip(chosen);
     if (chosen.size > 400 * 1024) return toast("Choose a text file under 400 KB.");
     const material = await chosen.text();
     if (!material.trim() || material.length > 100000 || material.includes("\0")) return toast("Choose a text file under 100,000 characters.");
@@ -1408,6 +1409,49 @@ function companyBrainCard() {
     }
   }).catch(() => {});
   return card;
+}
+
+// ---- a whole Slack export (.zip), unpacked here in the page -------------
+// The browser reads the zip (no library: the central directory plus the
+// built-in deflate decoder), keeps only channel day files (folder/YYYY-MM-DD.json)
+// and sends each through the same know_ingest path as one picked file. Nothing
+// leaves this computer; every message becomes a candidate to review.
+async function readZipEntries(blob) {
+  const buf = new Uint8Array(await blob.arrayBuffer()); const view = new DataView(buf.buffer);
+  let end = -1;
+  for (let i = buf.length - 22; i >= Math.max(0, buf.length - 65557); i--) { if (view.getUint32(i, true) === 0x06054b50) { end = i; break; } }
+  if (end < 0) throw new Error("That file is not a zip archive.");
+  const count = view.getUint16(end + 10, true); let at = view.getUint32(end + 16, true); const out = [];
+  for (let n = 0; n < count && view.getUint32(at, true) === 0x02014b50; n++) {
+    const method = view.getUint16(at + 10, true), size = view.getUint32(at + 20, true);
+    const nameLen = view.getUint16(at + 28, true), extra = view.getUint16(at + 30, true), comment = view.getUint16(at + 32, true);
+    const local = view.getUint32(at + 42, true); const name = new TextDecoder().decode(buf.subarray(at + 46, at + 46 + nameLen));
+    out.push({ name, method, size, local }); at += 46 + nameLen + extra + comment;
+  }
+  return { buf, view, entries: out };
+}
+async function zipText(zip, e) {
+  const start = e.local + 30 + zip.view.getUint16(e.local + 26, true) + zip.view.getUint16(e.local + 28, true);
+  const data = zip.buf.subarray(start, start + e.size);
+  if (e.method === 0) return new TextDecoder().decode(data);
+  if (e.method !== 8) throw new Error("unsupported compression");
+  return await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).text();
+}
+async function importSlackZip(file) {
+  if (file.size > 200 * 1024 * 1024) return toast("Choose a Slack export under 200 MB.");
+  let zip; try { zip = await readZipEntries(file); } catch (e) { return toast(e.message); }
+  const days = zip.entries.filter((e) => /^[^/]+\/\d{4}-\d{2}-\d{2}\.json$/.test(e.name)).slice(0, 500);
+  if (!days.length) return toast("No channel day files found: is this a Slack workspace export?");
+  let added = 0, known = 0, skipped = 0;
+  for (const [i, e] of days.entries()) {
+    toast("Reading " + (i + 1) + " of " + days.length + " day files" + String.fromCharCode(8230));
+    let text; try { text = await zipText(zip, e); } catch { skipped++; continue; }
+    if (!text.trim() || text.length > 100000 || text.includes("\0")) { skipped++; continue; }
+    let r; try { r = await api("know_ingest", { name: "slack: " + e.name, material: text }); } catch { skipped++; continue; }
+    added += r.added || 0; known += r.duplicate || 0;
+  }
+  toast(added + " to review from " + days.length + " Slack day files" + (known ? ", " + known + " already known" : "") + (skipped ? ", " + skipped + " skipped" : ""), true);
+  renderBrain();
 }
 
 // ---- readiness: what is on, and how to turn on the rest (D186) --------

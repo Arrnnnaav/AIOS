@@ -87,3 +87,13 @@ local7b  either    -> kept 6, wrong 2
 Meaning matching shows more pointers but lets a wrong one through, so the
 shipped check stays the word match. (The "local7b lexical" row counts a
 pointer before the gate; the gate's row above shows 4 shown, 0 wrong.)
+
+## Tie rule, 17 Nov
+
+The name check now also refuses a pick when another control in a different
+window matches the step equally well, and carries the window label in the
+compact view. Equal matches inside one window (PowerPoint's Undo button and
+its drop-down half) still count. Re-scored with `tools/score_teach_replay.py`,
+the `qwen3:4b + name check` row is unchanged: dev 2 shown / 0 wrong, test 4
+shown / 0 wrong, adversarial 0 shown (session output; a first version that
+refused every tie lost two correct pointers, Paste and Undo, and was replaced).

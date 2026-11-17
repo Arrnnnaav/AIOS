@@ -1,5 +1,13 @@
 # Orbyn release notes
 
+## Unreleased
+
+- Whole Slack export: Add from file takes the export's .zip; the page unpacks
+  it on this computer and imports each channel day file (at most 500) as
+  candidates to review.
+- Offline Teach: no pointer when the same name matches equally well in two
+  windows.
+
 ## 0.2.1 (16 Nov 2026)
 
 - Offline Teach: with everything kept on the computer, the local model
