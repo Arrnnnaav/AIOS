@@ -208,8 +208,11 @@ def cassette_chooser(path: Path) -> Chooser:
 
     def choose(step: Step) -> Choice:
         answer = recorded.get(step.step_id)
-        if answer is None:
-            raise ValueError(f"the cassette has no recording for step {step.step_id!r}")
+        if answer is None or "error" in answer:
+            raise ValueError(
+                f"the cassette has no recording for step {step.step_id!r}"
+                + (f" (the model failed: {answer['error']})" if answer else "")
+            )
         return Choice(answer["choice"], dict(answer["probabilities"]))
 
     return choose
@@ -233,8 +236,13 @@ def gateway_chooser(gateway, record_to: Path | None = None) -> Chooser:
         )
         try:
             choice = gateway.choose(envelope, frame.ids, question=CHOOSE_QUESTION)
-        except ProviderError:
-            choice = Choice(ABSTAIN, {})
+        except ProviderError as exc:
+            # Not an abstention: scored as one, a timeout would count as a
+            # correct abstention (rule 7). Recorded as a failure and raised.
+            tape[step.step_id] = {"error": exc.kind.value}
+            if record_to is not None:
+                record_to.write_text(json.dumps(tape, indent=1, sort_keys=True), "utf-8")
+            raise
         tape[step.step_id] = {
             "choice": choice.choice,
             "probabilities": choice.probabilities,

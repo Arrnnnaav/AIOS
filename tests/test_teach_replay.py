@@ -206,3 +206,19 @@ def test_replay_rehides_a_document_name_from_a_foreign_corpus():
     assert "budget.xlsx" not in json.dumps(
         {k: v["name"].text for k, v in frame.model_view()["candidates"].items()}
     )
+
+
+def test_a_model_failure_is_recorded_as_a_failure_never_an_abstention(tmp_path):
+    from ghostcursor.evaluation.teach_replay import gateway_chooser
+    from ghostcursor.providers import FailureKind, ProviderError
+
+    class Down:
+        def choose(self, *a, **k):
+            raise ProviderError(FailureKind.UNAVAILABLE, "timed out")
+
+    tape = tmp_path / "tape.json"
+    step = parse_record(_record())
+    with pytest.raises(ProviderError):
+        gateway_chooser(Down(), record_to=tape)(step)
+    with pytest.raises(ValueError, match="model failed"):  # not a free "correct abstention"
+        cassette_chooser(tape)(step)
