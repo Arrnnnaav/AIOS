@@ -1064,3 +1064,10 @@ def test_broken_exports_are_refused_with_a_reason_not_a_crash():
     many = "a,b\n" + "".join(f"row {i},value {i}\n" for i in range(300))
     assert len(chunk_export("x.csv", many)) == 200
     assert len(chunk_export("x.csv", "a,b\nkey," + "w " * 500 + "\n")[0]) == 600
+
+
+def test_an_expired_fact_is_not_exported_to_staff_as_live(kn):
+    old = kn.add_candidate("Price is $10.", source="s", scope="acme", valid_until=1500.0)
+    kn.approve(old.fid)
+    kn.now = 2000.0  # past its validity
+    assert kn.export_scope("acme")["facts"] == []

@@ -869,6 +869,7 @@ class Knowledge:
                 tally[cat] = tally.get(cat, 0) + n
             return scrubbed
 
+        now = self.clock()
         facts = [
             {
                 "text": _s(f.text),
@@ -879,6 +880,7 @@ class Knowledge:
             }
             for f in self.list(scope=scope)
             if f.status in USABLE
+            and not f.stale(now)  # an expired fact must not reach staff as live
             and (include_sensitive or f.sensitivity != "sensitive")
         ]
         rows = self._db.execute(
