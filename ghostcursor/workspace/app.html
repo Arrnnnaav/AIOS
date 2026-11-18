@@ -1315,6 +1315,20 @@ function companyBrainCard() {
   const evB = el("button", "secondary", "Test cases"); evB.style.marginLeft = "6px"; evB.title = "Saved workflows as test cases (JSONL) for checking whether a model knows how your team works.";
   evB.onclick = () => act("evals_export", {}).then((r) => r && toast("Saved " + r.path + " (" + r.cases + " cases)", true));
   const fileIn = el("input"); fileIn.type = "file"; fileIn.accept = ".txt,.md,.log,.csv"; fileIn.title = "A text or Markdown document, or a ticket or CRM export (.csv, one fact per row)"; fileIn.hidden = true;
+  const exIn = el("input"); exIn.type = "file"; exIn.accept = ".txt,.md,.log"; exIn.hidden = true;
+  const exB = el("button", "secondary", "Extract facts"); exB.style.marginLeft = "6px";
+  exB.title = "Preview: the model on this computer (Ollama) lists the facts a document states; each becomes a candidate to review. Nothing is sent anywhere.";
+  exB.onclick = () => exIn.click();
+  exIn.onchange = async () => {
+    const chosen = exIn.files[0]; exIn.value = "";
+    if (!chosen) return;
+    const material = await chosen.text();
+    if (!material.trim() || material.length > 20000 || material.includes("\0")) return toast("Choose a text file under 20,000 characters.");
+    exB.disabled = true; exB.textContent = "Extracting" + String.fromCharCode(8230);
+    const r = await act("know_extract", { name: chosen.name, material });
+    exB.disabled = false; exB.textContent = "Extract facts";
+    if (r) { toast(r.added + " facts to review" + (r.duplicate ? ", " + r.duplicate + " already known" : ""), true); renderBrain(); }
+  };
   const fileB = el("button", "secondary", "Add from file"); fileB.style.marginLeft = "6px";
   fileB.title = "Each passage becomes a candidate to review; the file stays on this computer";
   fileB.onclick = () => fileIn.click();
@@ -1328,7 +1342,7 @@ function companyBrainCard() {
     if (r) { toast(r.added + " to review" + (r.duplicate ? ", " + r.duplicate + " already known" : ""), true); renderBrain(); }
   };
   cap.style.flexWrap = "wrap"; cap.style.rowGap = "6px";
-  cap.append(inp, addB, clipB, fileB, fileIn, expB, skB, evB); card.append(cap);
+  cap.append(inp, addB, clipB, fileB, fileIn, exB, exIn, expB, skB, evB); card.append(cap);
   const list = el("div"); card.append(list);
   api("know_list").then((r) => {
     if (!r.facts || !r.facts.length) { list.append(el("div", "note", "No facts yet.")); return; }

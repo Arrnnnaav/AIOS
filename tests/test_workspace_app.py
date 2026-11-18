@@ -2679,3 +2679,37 @@ def test_export_names_stay_inside_downloads_and_request_error_logs_are_rate_limi
     assert _note_request_error(now=1000.0) is True
     assert _note_request_error(now=1030.0) is False  # within a minute
     assert _note_request_error(now=1061.0) is True
+
+
+def test_extracted_facts_land_as_candidates_and_need_a_local_model(tmp_path, monkeypatch):
+    from ghostcursor.providers.errors import FailureKind, ProviderError
+    from ghostcursor.workspace.knowledge import Knowledge
+
+    kb = Knowledge(tmp_path / "know.sqlite")
+    gateway = Gateway()
+    app = App("trip", make_workspace=lambda: Workspace("trip", gateway, Brain(tmp_path / "kb.sqlite"),
+              root=tmp_path / "briefs", knowledge=kb, kb_scope="default"))
+    server = make_server(app, "secret-token")
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    port = server.server_port
+    try:
+        monkeypatch.setattr(gateway, "extract_facts", lambda name, material: ("Refunds over 500 need a manager.",), raising=False)
+        status, body = call(port, "/api/know_extract", {"name": "policy.md", "material": "some policy text"})
+        assert status == 200 and json.loads(body) == {"added": 1, "duplicate": 0, "found": 1}
+        (f,) = kb.list(scope="default")
+        assert f.status == "candidate" and f.source == "extracted: policy.md"
+        assert kb.recall("refunds", "default") == []  # nothing usable before review
+        # Refused before any model is asked (the stand-in above would accept them).
+        for bad in (None, "", "x" * 20_001, "a" + chr(0) + "b"):
+            assert call(port, "/api/know_extract", {"name": "p.md", "material": bad})[0] == 400
+
+        def no_model(name, material):
+            raise ProviderError(FailureKind.NOT_CONFIGURED, "ollama")
+
+        monkeypatch.setattr(gateway, "extract_facts", no_model)
+        status, body = call(port, "/api/know_extract", {"name": "p.md", "material": "text"})
+        assert status == 400 and "start Ollama" in body.decode()
+    finally:
+        server.shutdown()
+        app.close()
+        kb.close()

@@ -2764,3 +2764,10 @@ from 1053b54. Still open:
   would avoid it); _tail_lines drops a last line longer than 256 KB; the
   all-tie refusal also refuses a window whose only two controls are one
   split button.
+- 18 Nov: Extract facts (preview). Gateway.extract_facts sends a document
+  to LOCAL_PROVIDERS only, as tainted chunks; parse_extracted_facts is
+  closed (0..12 facts, each <= 300 chars, < 3 words dropped); know_extract
+  ingests them as candidates with the document as the episode, 20,000-char
+  cap. Sweep 6 of 6 after one test fix. Not measured: extraction quality
+  (the local model server was stopped for low memory and was not
+  restarted unasked); no mail-message variant yet.

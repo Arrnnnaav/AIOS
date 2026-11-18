@@ -1296,6 +1296,33 @@ class App:
             )
             # candidate until reviewed
             return {"fid": f.fid, "status": f.status, "duplicate": False}
+        if action == "know_extract":  # facts pulled by the LOCAL model, as candidates
+            if ws.knowledge is None:
+                raise ValueError("no Company Brain")
+            material = body.get("material")
+            if (
+                not isinstance(material, str)
+                or not material.strip()
+                or len(material) > 20_000
+                or "\0" in material
+            ):
+                raise ValueError("choose a text file under 20,000 characters")
+            from ghostcursor.providers.errors import ProviderError
+
+            name = " ".join(str(body.get("name") or "").split())[:120] or "document"
+            try:
+                facts = ws.gateway.extract_facts(name, material)
+            except ProviderError:
+                raise ValueError(
+                    "no model on this computer answered: start Ollama, or use Add from file"
+                ) from None
+            did = [
+                result
+                for result, _fid in ws.knowledge.ingest(
+                    list(facts), source=("extracted: " + name)[:120], scope=ws.kb_scope, episode=material
+                )
+            ]
+            return {"added": did.count("added"), "duplicate": did.count("duplicate"), "found": len(facts)}
         if action == "know_ingest":  # the page's /know ingest: a document's passages
             if ws.knowledge is None:
                 raise ValueError("no Company Brain")

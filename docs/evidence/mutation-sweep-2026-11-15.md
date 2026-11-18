@@ -299,3 +299,25 @@ KILLED   ghostcursor/workspace/app.py :: if now - _last_error_log[0] < gap_s: ->
 SURVIVED ghostcursor/agent_server.py :: text, failed = DATA_NOTE + _outbound(str(exc)), True -> text, failed = _outbound(str(exc)), True :: 120 passed in 53.76s
 ghostcursor/agent_server.py :: DATA_NOTE on error replies removed (after adding test_error_replies_are_labelled_as_data_too) :: 1 failed, 14 passed in 3.96s
 ```
+
+## Eighteenth sweep, 18 Nov 2026: local fact extraction
+
+First run, as printed (one survivor: the bad-input test ran while a stand-in
+already refused, so the input check was never the reason):
+
+```
+D018 mutation sweep, local fact extraction, 18 Nov 2026
+KILLED   ghostcursor/providers/gateway.py :: purpose="extracting facts on this computer", providers=tuple -> purpose="extracting facts on this comput :: 1 failed, 229 deselected in 31.85s
+KILLED   ghostcursor/providers/gateway.py :: tainted={"document_text": tainted_chunks("document", materia -> tainted={}, trusted_text=material, :: 1 failed, 229 deselected in 6.92s
+KILLED   ghostcursor/providers/schemas.py :: if len(words.split()) >= 3: # a word or two is not a fact -> if True: :: 1 failed, 229 deselected in 5.54s
+KILLED   ghostcursor/providers/schemas.py :: if not isinstance(facts, list) or len(facts) > MAX_EXTRACTED -> if not isinstance(facts, list): :: 1 failed, 1 passed, 229 deselected in 5.69s
+KILLED   ghostcursor/providers/schemas.py :: if not isinstance(fact, str) or len(fact) > MAX_EXTRACTED_CH -> if not isinstance(fact, str): :: 1 failed, 1 passed, 229 deselected in 5.59s
+SURVIVED ghostcursor/workspace/app.py :: or len(material) > 20_000 or "\0" in material ): raise Value -> ): raise ValueError("choose a text file  :: 3 passed, 229 deselected in 5.53s
+```
+
+After moving the bad inputs to where only the input check can refuse them
+(the whole sweep re-run; its last line, as printed):
+
+```
+KILLED   ghostcursor/workspace/app.py :: or len(material) > 20_000 or "\0" in material ): raise Value -> ): raise ValueError("choose a text file  :: 1 failed, 2 passed, 229 deselected in 6.84s
+```

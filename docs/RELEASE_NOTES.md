@@ -1,5 +1,11 @@
 # Orbyn release notes
 
+## Unreleased
+
+- Extract facts (preview): Brain → Company → Extract facts asks the model on
+  this computer (Ollama) to list the facts a document states; each becomes a
+  candidate to review. Never a cloud model. Quality not measured yet.
+
 ## 0.2.2 (18 Nov 2026)
 
 - Agents can suggest a goal (MCP `suggest_goal`): it waits in Chat as a card

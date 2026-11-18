@@ -352,6 +352,41 @@ RESEARCH_PLAN_SCHEMA = {
 }
 
 
+MAX_EXTRACTED, MAX_EXTRACTED_CHARS = 12, 300
+EXTRACT_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["facts"],
+    "properties": {
+        "facts": {
+            "type": "array",
+            "maxItems": MAX_EXTRACTED,
+            "items": {"type": "string", "maxLength": MAX_EXTRACTED_CHARS},
+        }
+    },
+}
+
+
+def parse_extracted_facts(text: str) -> tuple[str, ...]:
+    """Strict, closed parse of facts pulled from a document: 0..12 short
+    statements. Each becomes a CANDIDATE the person reviews; nothing here is
+    trusted or used before that."""
+
+    value = strict_json(text)
+    _exact(value, {"facts"}, "extracted facts")
+    facts = value["facts"]
+    if not isinstance(facts, list) or len(facts) > MAX_EXTRACTED:
+        raise _invalid(f"at most {MAX_EXTRACTED} facts")
+    out = []
+    for fact in facts:
+        if not isinstance(fact, str) or len(fact) > MAX_EXTRACTED_CHARS:
+            raise _invalid("a fact is not a short statement")
+        words = " ".join(fact.split())
+        if len(words.split()) >= 3:  # a word or two is not a fact
+            out.append(words)
+    return tuple(out)
+
+
 def parse_research_plan(text: str) -> tuple[str, ...]:
     """Strict, closed parse of a decomposition -- 1..MAX_SUBQUESTIONS non-empty
     sub-questions, else INVALID_OUTPUT (same discipline as parse_teach_plan)."""
