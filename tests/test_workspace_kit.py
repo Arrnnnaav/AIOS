@@ -48,3 +48,10 @@ def test_json_slug_sha256():
     assert kit.run("sha256", "") == (
         "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     )
+
+
+def test_inputs_that_overflow_or_nest_too_deep_answer_instead_of_crashing():
+    from ghostcursor.workspace import kit
+
+    assert isinstance(kit.run("time", "99999999999999999999"), str)
+    assert isinstance(kit.run("json", "[" * 100000 + "]" * 100000), str)

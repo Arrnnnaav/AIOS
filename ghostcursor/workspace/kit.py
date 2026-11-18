@@ -139,8 +139,9 @@ def run(op: str, arg: str = "") -> str:
         return f"unknown op '{op}'. try: {', '.join(OPS)}"
     try:
         return fn(arg)
-    except ValueError as exc:
-        return str(exc)
+    except (ValueError, OverflowError, OSError, RecursionError) as exc:
+        # "/x time 1e20" or deeply nested JSON must not end the console.
+        return str(exc) or f"{op}: not a valid input"
 
 
 if __name__ == "__main__":  # ponytail: round-trips + the parsers that can fail

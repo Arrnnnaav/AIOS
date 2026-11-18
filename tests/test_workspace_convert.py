@@ -139,3 +139,11 @@ def test_pdf_lib_absent_gives_a_clear_error(tmp_path, monkeypatch):
     (tmp_path / "a.pdf").write_bytes(b"%PDF-1.4")
     with pytest.raises(RuntimeError, match="pypdf is not installed"):
         convert.pdf_to_text(tmp_path / "a.pdf", dest_dir=tmp_path)
+
+
+def test_a_same_format_target_never_rewrites_the_source(tmp_path):
+    src = tmp_path / "s.srt"
+    original = "1\n00:00:01,000 --> 00:00:02,000\nHi\n\nNOTE kept\n"
+    src.write_text(original, encoding="utf-8")
+    out = convert.convert_subtitle(src, "srt")
+    assert out != src and src.read_text(encoding="utf-8") == original

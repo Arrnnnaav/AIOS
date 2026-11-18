@@ -37,7 +37,9 @@ def _dest(src: Path, ext: str, dest_dir: Path | None) -> Path:
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / f"{src.stem}.{ext}"
     n = 1
-    while path.exists() and path.resolve() != src.resolve():
+    # The source itself counts as taken: "notes.srt" to srt must not
+    # rewrite (and drop cues from) the file it is reading.
+    while path.exists() or path.resolve() == src.resolve():
         n += 1
         path = directory / f"{src.stem} ({n}).{ext}"
     return path
