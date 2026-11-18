@@ -30,7 +30,13 @@ def write_crash(exc: BaseException, *, when: float | None = None) -> Path:
     """Write a redacted traceback to a timestamped local file; return its path."""
 
     text = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
-    text = redact.scrub(text)[0]  # mask any embedded secrets before writing
+    try:  # the person's private words too: a message can quote a fact
+        from ghostcursor import settings
+
+        terms = settings.private_terms()
+    except Exception:
+        terms = ()
+    text = redact.scrub(text, terms=terms)[0]  # mask any embedded secrets before writing
     directory = _log_dir()
     directory.mkdir(parents=True, exist_ok=True)
     stamp = time.strftime("%Y%m%d-%H%M%S", time.localtime(when))

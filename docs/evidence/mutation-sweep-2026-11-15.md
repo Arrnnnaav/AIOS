@@ -279,3 +279,23 @@ Mutants run with `py -3.12 -m pytest tests/test_providers.py -x -q`; summary lin
 tie rule removed (any tie allowed, first control wins) -> 1 failed, 123 passed in 20.42s
 ghostcursor/providers/gateway.py :: tie only when one window -> any tie allowed :: 1 failed, 123 passed in 5.93s
 ```
+
+## Seventeenth sweep, 18 Nov 2026: suggested goals and review follow-ups
+
+As printed. Two survivors on the first run: the suggestion-id check is
+equivalent (an id that matches no stored suggestion is refused as "gone"
+anyway); the data label on error replies had no test, added, and the last
+line is that mutant re-run:
+
+```
+D018 mutation sweep, suggested goals and review follow-ups, 18 Nov 2026
+KILLED   ghostcursor/workspace/agent_inbox.py :: if len(rows) >= MAX_WAITING: -> if False: :: 1 failed, 14 passed in 3.58s
+KILLED   ghostcursor/workspace/agent_inbox.py :: if any(r.get("goal", "").casefold() == goal.casefold() for r -> if False: :: 1 failed, 13 passed in 3.97s
+KILLED   ghostcursor/workspace/agent_inbox.py :: temp.write_text(_seal(json.dumps(rows)), encoding="ascii") -> temp.write_text(json.dumps(rows), encodi :: 1 failed, 13 passed in 3.37s
+KILLED   ghostcursor/workspace/app.py :: return {"goal": found["goal"]} if action == "agent_goal_use" -> if action == "agent_goal_use": self.hand :: 1 failed, 118 passed in 53.35s
+SURVIVED ghostcursor/workspace/app.py :: if not isinstance(sid, str) or not sid.isalnum() or len(sid) -> if not isinstance(sid, str): :: 120 passed in 53.43s
+KILLED   ghostcursor/workspace/app.py :: safe = re.sub(r"[^A-Za-z0-9._-]+", "-", stem).strip(".-") or -> safe = stem :: 1 failed, 119 passed in 53.79s
+KILLED   ghostcursor/workspace/app.py :: if now - _last_error_log[0] < gap_s: -> if False: :: 1 failed, 119 passed in 53.48s
+SURVIVED ghostcursor/agent_server.py :: text, failed = DATA_NOTE + _outbound(str(exc)), True -> text, failed = _outbound(str(exc)), True :: 120 passed in 53.76s
+ghostcursor/agent_server.py :: DATA_NOTE on error replies removed (after adding test_error_replies_are_labelled_as_data_too) :: 1 failed, 14 passed in 3.96s
+```

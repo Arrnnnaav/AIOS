@@ -55,8 +55,9 @@ summaries are marked as such. Measurements below were run on this PC.
 - Measured here (qwen3:4b-instruct through Ollama 0.31.1, which returns
   token log-probabilities): asking for the control id alone and reading the
   token probability did not separate right from wrong picks on the 21-step
-  PowerPoint set. Wrong picks scored 0.997, 0.987, 1.000 and 0.932; right
-  picks mostly 1.000. Scored through the real gate (as printed by
+  PowerPoint set. Wrong picks on the dev and test steps scored 0.997, 0.987,
+  1.000 and 0.932, and the wrong pick on the adversarial step ("click Close")
+  1.000; right picks mostly 1.000. Scored through the real gate (as printed by
   `tools/score_teach_replay.py`):
 
 ```

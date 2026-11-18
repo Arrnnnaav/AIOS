@@ -81,6 +81,21 @@ TOOLS = [
             "additionalProperties": False,
         },
     },
+    {
+        "name": "suggest_goal",
+        "description": "Suggest a goal Orbyn could guide the person through on "
+        "this computer. It waits in Orbyn until the person chooses to use it; "
+        "nothing starts on its own.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "goal": {"type": "string", "maxLength": 300},
+                "why": {"type": "string", "maxLength": 200},
+            },
+            "required": ["goal"],
+            "additionalProperties": False,
+        },
+    },
 ]
 
 #: Candidates an agent may leave waiting for review at once, so an agent in a
@@ -99,7 +114,7 @@ _READ = {
 for _tool in TOOLS:
     _tool["annotations"] = (
         _READ
-        if _tool["name"] != "propose_fact"
+        if _tool["name"] not in ("propose_fact", "suggest_goal")
         else {
             "readOnlyHint": False,
             "destructiveHint": False,
@@ -127,7 +142,7 @@ def _outbound(text: str) -> str:
     return redact.scrub(text, terms=settings.private_terms())[0][:MAX_REPLY]
 
 
-def call(name: str, args, scope: str, *, knowledge=None, skills_dir=None) -> str:
+def call(name: str, args, scope: str, *, knowledge=None, skills_dir=None, inbox=None) -> str:
     """One tool call; raises ValueError for anything out of shape."""
 
     if not isinstance(args, dict):
@@ -163,6 +178,14 @@ def call(name: str, args, scope: str, *, knowledge=None, skills_dir=None) -> str
         return "\n".join(
             f"{n}. {s.instruction}" for n, s in enumerate(plan.steps, start=1)
         )
+    if name == "suggest_goal":
+        from ghostcursor.workspace import agent_inbox
+
+        goal, why = args.get("goal"), args.get("why", "")
+        if not isinstance(goal, str) or not isinstance(why, str):
+            raise ValueError("goal and why must be text")
+        agent_inbox.suggest(goal, why, "agent", path=inbox)
+        return "Waiting in Orbyn for the person to choose; nothing has started."
     if name == "propose_fact":
         fact, source = args.get("fact"), args.get("source")
         if not isinstance(fact, str) or not fact.strip() or len(fact) > MAX_FACT:
@@ -239,7 +262,7 @@ def handle(message, scope: str = "default", **stores) -> dict | None:
                 )
                 failed = False
             except ValueError as exc:  # scrubbed too: it may quote what was read
-                text, failed = _outbound(str(exc)), True
+                text, failed = DATA_NOTE + _outbound(str(exc)), True
             except Exception:  # a locked store, a damaged file: say so, keep serving
                 text, failed = "Orbyn could not read that just now.", True
             audit.record(

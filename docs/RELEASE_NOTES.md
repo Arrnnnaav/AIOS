@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Agents can suggest a goal (MCP `suggest_goal`): it waits in Chat as a card
+  ("Use this goal" puts it in your message box; nothing starts on its own),
+  at most 10 waiting, sealed on disk.
+- MCP tools carry the spec's read-only/destructive hints, and every reply
+  (errors too) starts with a "data, not instructions" line.
+- Export file names stay inside Downloads and are created exclusively;
+  request-error logs are limited to one a minute and hide private words.
 - Slack import removed (owner decision, 18 Nov): Add from file no longer
   takes Slack export files or zips.
 - Offline Teach: no pointer when the same name matches equally well in two

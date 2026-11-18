@@ -199,16 +199,50 @@ def _tail_lines(path: Path, count: int, chunk: int = 256 * 1024) -> list[str]:
     return lines[-count:]
 
 
+def _agent_goals() -> list[dict]:
+    """Suggestions waiting for the person (never acted on here)."""
+
+    try:
+        from ghostcursor.workspace import agent_inbox
+
+        return [
+            {"id": r["id"], "goal": str(r.get("goal", ""))[:300], "why": str(r.get("why", ""))[:200]}
+            for r in agent_inbox.waiting()
+        ]
+    except Exception:
+        return []
+
+
+_last_error_log = [0.0]
+
+
+def _note_request_error(now=None, gap_s: float = 60.0) -> bool:
+    """At most one request-error log a minute, so a request that fails on
+    every poll cannot fill the disk."""
+
+    now = time.monotonic() if now is None else now
+    if now - _last_error_log[0] < gap_s:
+        return False
+    _last_error_log[0] = now
+    return True
+
+
 def _fresh(folder: Path, stem: str, suffix: str) -> Path:
     """A new file name in ``folder`` that never overwrites an earlier export:
     stem-YYYYMMDD-HHMMSS.suffix, with -2, -3... if that exists too."""
 
     folder.mkdir(parents=True, exist_ok=True)
-    base = f"{stem}-{time.strftime('%Y%m%d-%H%M%S')}"
-    out, n = folder / f"{base}{suffix}", 2
-    while out.exists():
-        out, n = folder / f"{base}-{n}{suffix}", n + 1
-    return out
+    # A name, never a path: no separators, no "..", whatever the stem holds.
+    safe = re.sub(r"[^A-Za-z0-9._-]+", "-", stem).strip(".-") or "export"
+    base = f"{safe}-{time.strftime('%Y%m%d-%H%M%S')}"
+    n = 1
+    while True:
+        out = folder / (f"{base}{suffix}" if n == 1 else f"{base}-{n}{suffix}")
+        try:  # created here, exclusively: two exports in one second never share it
+            out.open("x").close()
+            return out
+        except FileExistsError:
+            n += 1
 
 
 def _local_model_up() -> bool:
@@ -792,6 +826,8 @@ class App:
             "local_ready": _local_model_up() if settings.local_only() else None,
             # Read-only access for another agent on this computer.
             "agent_access": settings.agent_access(),
+            # Goals another agent suggested, waiting for the person.
+            "agent_goals": _agent_goals(),
             "agent_command": f'"{sys.executable}" '
             + ("--agent-server" if getattr(sys, "frozen", False) else "-m ghostcursor.agent_server"),
             "private_terms_org": len(policy.private_terms()),
@@ -1105,6 +1141,17 @@ class App:
             from ghostcursor import updates
 
             return updates.check()
+        if action in ("agent_goal_use", "agent_goal_dismiss"):
+            from ghostcursor.workspace import agent_inbox
+
+            sid = body.get("id")
+            if not isinstance(sid, str) or not sid.isalnum() or len(sid) > 32:
+                raise ValueError("choose a suggestion")
+            found = agent_inbox.take(sid)
+            if found is None:
+                raise ValueError("that suggestion is gone")
+            # The goal goes to the message box only; the person reads and sends it.
+            return {"goal": found["goal"]} if action == "agent_goal_use" else {}
         if action == "agent_access":  # opt-in; anything but true is off
             settings.set_agent_access(body.get("on") is True)
             return {}
@@ -1848,7 +1895,8 @@ def make_server(app: App, token: str, port: int = 0) -> ThreadingHTTPServer:
                 try:  # and a local, scrubbed record, so it can be found later
                     from ghostcursor.workspace import crashlog
 
-                    crashlog.write_crash(exc)
+                    if _note_request_error():
+                        crashlog.write_crash(exc)
                 except Exception:
                     pass
             self._send(code, json.dumps(result).encode("utf-8"), "application/json")

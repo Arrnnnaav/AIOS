@@ -2647,3 +2647,35 @@ def test_an_unexpected_request_error_leaves_a_local_record(served, monkeypatch):
     monkeypatch.setattr(app, "handle", boom)
     status, body = call(port, "/api/know_aging", {})
     assert status == 500 and "store busy" in body.decode() and kept == ["RuntimeError"]
+
+
+def test_a_suggested_goal_is_shown_and_only_ever_put_in_the_message_box(served, tmp_path, monkeypatch):
+    from ghostcursor.workspace import agent_inbox
+
+    path = tmp_path / "goals.sealed"
+    monkeypatch.setattr(agent_inbox, "_path", lambda: path)
+    sid = agent_inbox.suggest("Build the Q3 deck", "review on Friday", "agent")
+    app, port = served
+    state = json.loads(call(port, "/api/state")[1])
+    assert state["agent_goals"] == [{"id": sid, "goal": "Build the Q3 deck", "why": "review on Friday"}]
+    turns_before = len(state["turns"])
+    status, body = call(port, "/api/agent_goal_use", {"id": sid})
+    assert status == 200 and json.loads(body) == {"goal": "Build the Q3 deck"}
+    state = json.loads(call(port, "/api/state")[1])
+    assert state["agent_goals"] == [] and len(state["turns"]) == turns_before  # nothing sent or started
+    assert call(port, "/api/agent_goal_use", {"id": sid})[0] == 400  # taken once
+    for bad in (None, 5, "../x", "a" * 33):
+        assert call(port, "/api/agent_goal_dismiss", {"id": bad})[0] == 400
+
+
+def test_export_names_stay_inside_downloads_and_request_error_logs_are_rate_limited(tmp_path):
+    from ghostcursor.workspace.app import _fresh, _note_request_error
+
+    out = _fresh(tmp_path / "dl", "../../evil" + chr(92) + "x", ".md")
+    assert out.parent == tmp_path / "dl" and ".." not in out.name and out.exists()
+    from ghostcursor.workspace import app as app_mod
+
+    app_mod._last_error_log[0] = 0.0  # other tests may have logged already
+    assert _note_request_error(now=1000.0) is True
+    assert _note_request_error(now=1030.0) is False  # within a minute
+    assert _note_request_error(now=1061.0) is True

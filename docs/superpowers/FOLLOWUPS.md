@@ -2753,3 +2753,14 @@ from 1053b54. Still open:
   picks scored 0.93-1.00); an id-only prompt not adopted (let a high-risk
   pointer through); a local PII model (GLiNER2-PII) for unknown names is the
   open candidate, needing the owner's choice of a model runtime.
+- 18 Nov: review of d4fbbc1..cf1a408 found no blocking finding. Done from
+  it: _fresh strips separators and ".." and creates the file exclusively;
+  request-error crash logs at most one a minute and scrubbed of private
+  words; DATA_NOTE on error replies too; the research doc names the
+  adversarial wrong pick. New: MCP suggest_goal + workspace/agent_inbox.py
+  (sealed file, 10 waiting, dedup, taken once; the page's "Use this goal"
+  only fills the message box). Left: DATA_NOTE as a text prefix may
+  disturb a client that parses tool text as JSON (MCP structuredContent
+  would avoid it); _tail_lines drops a last line longer than 256 KB; the
+  all-tie refusal also refuses a window whose only two controls are one
+  split button.

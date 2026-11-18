@@ -842,15 +842,32 @@ function renderChat(scrollDown) {
   const thread = $("thread");
   const atBottom = $("main").scrollHeight - $("main").scrollTop - $("main").clientHeight < 80;
   thread.replaceChildren();
-  if (!S.turns.length && !pending) { thread.append(emptyState()); return; }
+  if (!S.turns.length && !pending) { thread.append(emptyState()); for (const g of (S.agent_goals || [])) thread.append(agentGoalEl(g)); return; }
   for (const t of S.turns) thread.append(turnEl(t));
   if (pending) thread.append(turnEl({ speaker: "user", text: pending }));
   if (S.suggest && !S.busy && !pending) thread.append(suggestEl(S.suggest));
+  for (const g of (S.agent_goals || [])) thread.append(agentGoalEl(g));
   if (S.busy === "Thinking" || S.busy === "Researching" || S.busy === "Planning") {
     const m = el("div", "msg assistant"); m.append(el("div", "orb mini"));
     const ty = el("div", "typing"); ty.append(el("i"), el("i"), el("i")); m.append(ty); thread.append(m);
   }
   if (scrollDown || atBottom) $("main").scrollTop = $("main").scrollHeight;
+}
+
+// A goal another agent suggested: the person decides; "Use this goal" only
+// fills the message box, where it is read, sent, planned and approved as usual.
+function agentGoalEl(g) {
+  const card = el("div", "mem"); card.style.margin = "8px 0";
+  const meta = el("div", "meta"); meta.append(el("span", "kind", "an agent suggests"));
+  const use = el("button", "secondary", "Use this goal"); use.style.marginLeft = "auto";
+  const drop = el("button", "secondary", "Dismiss"); drop.style.marginLeft = "6px";
+  use.onclick = async () => { const r = await act("agent_goal_use", { id: g.id }); if (r) { $("input").value = r.goal; $("input").focus(); } };
+  drop.onclick = () => act("agent_goal_dismiss", { id: g.id }, "Suggestion dismissed");
+  meta.append(use, drop);
+  card.append(meta, el("div", "", g.goal));
+  if (g.why) card.append(el("div", "note", "Why: " + g.why));
+  card.append(el("div", "note", "From another agent on this computer. Nothing starts until you send it yourself."));
+  return card;
 }
 
 // Jev's suggestion for the last message: one tap, never automatic.
@@ -1108,7 +1125,7 @@ function renderBrain() {
   asw.onclick = () => act("agent_access", { on: !S.agent_access }, S.agent_access ? "Agent access off" : "Agent access on");
   ameta.append(asw);
   ag.append(ameta, el("div", "", "Let another agent on this computer read your Company Brain and saved workflows."),
-    el("div", "note", "Through the Model Context Protocol: the agent can search reviewed facts, read saved workflow steps, and propose a fact, which waits as a candidate until you review it in Brain → Company. It cannot change, click or type. Facts marked private are never shared. That agent may send what it reads to its own cloud model, so private details and private words are always hidden first (even if you switched hiding off for your own model), and each request shows in the receipt below. Off by default; not available when everything stays on this computer."));
+    el("div", "note", "Through the Model Context Protocol: the agent can search reviewed facts, read saved workflow steps, propose a fact (it waits as a candidate until you review it in Brain → Company), and suggest a goal (it waits in Chat until you choose to use it). It cannot change, click or type. Facts marked private are never shared. That agent may send what it reads to its own cloud model, so private details and private words are always hidden first (even if you switched hiding off for your own model), and each request shows in the receipt below. Off by default; not available when everything stays on this computer."));
   if (S.agent_access) {
     const cmd = el("div", "note", "Add this command to your agent as an MCP server: " + S.agent_command); cmd.style.textAlign = "left"; cmd.style.userSelect = "all"; ag.append(cmd);
   }
