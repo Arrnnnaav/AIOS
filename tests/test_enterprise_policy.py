@@ -490,3 +490,15 @@ def test_the_offline_chooser_never_reaches_a_cloud_model_the_organisation_allows
     except ProviderError:
         pass
     assert calls and all(c.url.host == "127.0.0.1" for c in calls)
+
+
+def test_a_damaged_settings_file_keeps_the_air_gap_when_another_switch_is_set(tmp_path):
+    from ghostcursor import settings
+
+    path = tmp_path / "settings.json"
+    path.write_text("{not json", encoding="utf-8")
+    assert settings.local_only(path) is True  # unreadable: fails closed
+    settings.set_jev_vision(True, path)  # an unrelated switch rewrites the file
+    assert settings.local_only(path) is True
+    settings.set_local_only(False, path)  # only the person turns it off
+    assert settings.local_only(path) is False

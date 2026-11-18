@@ -39,7 +39,12 @@ def jev_vision(path: Path | None = None) -> bool:
 def _set(key: str, on, path: Path | None) -> None:
     path = path or _path()
     with _write_lock:  # read-change-write as one step
-        value = load(path) | {
+        current = load(path)
+        if not current and path.exists() and local_only(path):
+            # Damaged file: local_only() reads it as an air gap; a rewrite of
+            # some other switch must not silently open it (rule 6).
+            current = {"local_only": True}
+        value = current | {
             key: on if isinstance(on, (list, str)) else bool(on)
         }
         path.parent.mkdir(parents=True, exist_ok=True)
