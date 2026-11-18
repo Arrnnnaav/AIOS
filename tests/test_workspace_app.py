@@ -2713,3 +2713,20 @@ def test_extracted_facts_land_as_candidates_and_need_a_local_model(tmp_path, mon
         server.shutdown()
         app.close()
         kb.close()
+
+
+def test_act_from_the_page_keeps_the_agents_deny_list_and_never_runs_with_none(
+    served, monkeypatch
+):
+    # As the console: an emptied box must not drop the agent's list or the
+    # default one (rule 2: Act asks before or refuses risky controls).
+    app, port = served
+    seen = []
+    monkeypatch.setattr(app, "hwnds", lambda numbers: [1])
+    monkeypatch.setattr(app.ws, "teach_plan", lambda step: "plan")
+    monkeypatch.setattr(app, "_teach", lambda *a: seen.append(a[-1]) or 0)
+    call(port, "/api/act", {"step": 1, "windows": [0], "deny": []})
+    app.ws.active_deny = ("archive",)
+    call(port, "/api/act", {"step": 1, "windows": [0], "deny": ["print"]})
+    assert "delete" in seen[0] and "send" in seen[0]
+    assert seen[1] == ["archive", "print"]

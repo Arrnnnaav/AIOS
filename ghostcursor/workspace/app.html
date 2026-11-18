@@ -832,7 +832,7 @@ function renderLive() {
   const hint = { Pointing: "Hover the mouse over what you mean, then press Enter here.", Listening: "Press Enter to start, Enter again when you're done." }[busy];
   $("liveStatus").textContent = (busy === "Pointing" || busy === "Listening") && !last.startsWith("Marked") ? hint : last.replace(/^\[[a-z_]+\]\s*/, "");
   const done = $("doneBtn");
-  const label = { Guiding: "Step done", Pointing: "That's it", Listening: "Start / end" }[busy];
+  const label = { Guiding: "Step done", Acting: "Approve", Pointing: "That's it", Listening: "Start / end" }[busy];
   done.hidden = !label;
   if (label) { done.textContent = label + " "; done.append(el("kbd", "", "Enter")); }
 }
@@ -1615,7 +1615,7 @@ addEventListener("pagehide", () => {
 });
 document.addEventListener("keydown", (e) => {
   if (!S || !S.busy) { if (e.key === "Escape") closeSheet(); return; }
-  if (e.key === "Enter" && !$("ask").open && ["Guiding", "Pointing", "Listening"].includes(S.busy)) { e.preventDefault(); api("signal").catch(() => {}); }
+  if (e.key === "Enter" && !$("ask").open && ["Guiding", "Acting", "Pointing", "Listening"].includes(S.busy)) { e.preventDefault(); api("signal").catch(() => {}); }
   if (e.key === "Escape") api("stop").catch(() => {});
 });
 

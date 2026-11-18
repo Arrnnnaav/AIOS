@@ -150,6 +150,10 @@ def confirm_reference(
     return None
 
 
+#: Act never touches these names unless an agent or the user names its own list.
+DEFAULT_ACT_DENY = ("delete", "send", "pay", "buy", "purchase", "remove")
+
+
 def teach_seconds(args: list[str]) -> float | None:
     """A finite, positive guidance limit, or None: nan or inf would mean the
     deadline never fires (rule 4)."""
@@ -734,7 +738,14 @@ def main(argv: list[str] | None = None) -> int:
                 # the clipboard by default, or on a file via
                 #   /ask file <path> | <question>
                 # Read-only; records nothing to the brief or Brain.
-                if rest.split()[:1] == ["file"] and "|" in rest:
+                if (
+                    rest.split()[:1] == ["file"]
+                    and "|" in rest
+                    and len(rest.partition("|")[0].split()) < 2
+                ):
+                    print("usage: /ask file <path> | <question>")
+                    continue
+                elif rest.split()[:1] == ["file"] and "|" in rest:
                     spec, _, question = rest.partition("|")
                     path = spec.split(maxsplit=1)[1].strip().strip('"')
                     try:
@@ -759,7 +770,10 @@ def main(argv: list[str] | None = None) -> int:
                 # the summary; "file <path>" reads the notes from a file.
                 words = rest.split()
                 to_brain = words[:1] == ["brain"]
-                body = rest.split(maxsplit=1)[1] if to_brain else rest
+                body = rest[len("brain") :].strip() if to_brain else rest
+                if not body:
+                    print("usage: /notes [brain] <notes> | /notes [brain] file <path>")
+                    continue
                 if body.split()[:1] == ["file"] and len(body.split()) >= 2:
                     path = body.split(maxsplit=1)[1].strip().strip('"')
                     try:
@@ -934,10 +948,7 @@ def main(argv: list[str] | None = None) -> int:
                     plan=plan,
                     outcome=outcome,
                     act=command == "/act",
-                    deny=(
-                        list(workspace.active_deny)
-                        or ["delete", "send", "pay", "buy", "purchase", "remove"]
-                    )
+                    deny=(list(workspace.active_deny) or list(DEFAULT_ACT_DENY))
                     if command == "/act"
                     else (),
                 )

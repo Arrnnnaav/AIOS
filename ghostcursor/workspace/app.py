@@ -1723,7 +1723,7 @@ class App:
             self.run("Saving point", keep)
             return {}
         if action in ("teach", "act"):
-            from ghostcursor.workspace.__main__ import teach_seconds
+            from ghostcursor.workspace.__main__ import DEFAULT_ACT_DENY, teach_seconds
 
             step = _whole(body.get("step"))
             seconds = teach_seconds([str(body.get("seconds", 300))])
@@ -1731,7 +1731,11 @@ class App:
                 raise ValueError("seconds must be a number from 1 to 3600")
             hwnds = self.hwnds(body.get("windows", []))
             plan = ws.teach_plan(step)
-            deny = [str(d) for d in body.get("deny", []) if str(d).strip()]
+            typed = [str(d) for d in body.get("deny", []) if str(d).strip()]
+            # As the console: the active agent's list too, and never nothing.
+            deny = list(dict.fromkeys([*ws.active_deny, *typed])) or list(
+                DEFAULT_ACT_DENY
+            )
             return {
                 "result": self.run(
                     "Acting" if action == "act" else "Guiding",
