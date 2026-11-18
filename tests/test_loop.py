@@ -676,3 +676,18 @@ def test_a_repeat_read_while_dwelling_is_not_a_new_observation() -> None:
     assert calls.count(2.0) == 1, (
         f"the same observation was judged {calls.count(2.0)} times: {calls}"
     )
+
+
+def test_a_committed_step_does_not_hand_its_verification_clock_to_the_next():
+    # Step 2 must re-baseline in OBSERVING: a stale clock from step 1 kept
+    # step 1's `_before`, so step 2 could "pass" on step 1's change, or skip
+    # its grounding grace and fail at once.
+    tour = _tour(steps=[_step(), _step(text="Click OK.")])
+    for _ in range(40):
+        if tour.state is State.VERIFYING:
+            break
+        tour.tick()
+    assert tour.state is State.VERIFYING
+    tour._verification_started_at = 1.0  # step 1's action was detected
+    tour.tick()  # commit
+    assert tour.step_index == 1 and tour.verification_started_at is None

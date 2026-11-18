@@ -433,6 +433,8 @@ class GuidedTour:
             self.renderer.clear()
             self._confirmed = False
             self.wrong_action_rehints = 0
+            # The next step starts its own clock and re-baselines `_before`.
+            self._verification_started_at = None
             self.state = State.OBSERVING
 
         return self.state
