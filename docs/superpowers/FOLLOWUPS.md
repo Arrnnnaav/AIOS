@@ -2771,3 +2771,14 @@ from 1053b54. Still open:
   cap. Sweep 6 of 6 after one test fix. Not measured: extraction quality
   (the local model server was stopped for low memory and was not
   restarted unasked); no mail-message variant yet.
+- 19 Nov: review of a57174a..6f57f04 (Extract facts) found no blocking
+  finding; cloud egress, Tainted.of, logs, review bypass and the closed
+  parser checked. Left: the chosen filename rides the trusted channel
+  (gateway.py extract_facts) and should go through Tainted/scrub; add a
+  test that every LOCAL_PROVIDERS base URL is loopback; know_extract has
+  no cancel hook and a 120 s deadline on the request thread, so clicks can
+  stack model calls; the "Nothing is sent anywhere" tooltip does not say
+  the full document is kept in the Brain as an episode; a near-duplicate
+  extracted fact tightens an approved fact's source without review
+  (knowledge.py ingest -> tighten); no app-level test ties know_extract to
+  the local-only gateway path.
