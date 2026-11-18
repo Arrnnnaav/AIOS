@@ -548,7 +548,6 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "candidates": list_candidates(hwnd, args.control_type),
                 "control_type": args.control_type,
                 "executable": args.executable,
-                "hwnd": hwnd,
                 "type": "uia_candidates",
             }
         else:
@@ -566,7 +565,6 @@ def main(argv: Sequence[str] | None = None) -> int:
                 stability,
                 decide_feasibility(observed, stability),
             )
-            payload["hwnd"] = hwnd
             payload["dwell_s"] = args.dwell_s
     finally:
         comtypes.CoUninitialize()
