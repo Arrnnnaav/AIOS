@@ -596,3 +596,17 @@ def test_the_owner_report_survives_a_corrupt_log(tmp_path):
     )
     (row,) = team.report(folder)
     assert row["intact"] is False and row["requests"] == 1 and row["last"] is None
+
+
+def test_publish_is_refused_when_the_organisation_keeps_text_on_this_computer(
+    owner, tmp_path, monkeypatch
+):
+    _policy(monkeypatch, MaxEgress="0")  # as handoff.export: policy only lowers
+    with pytest.raises(team.TeamError, match="organisation"):
+        team.publish(
+            _brain(tmp_path, "boss", "VAT is 20 percent"),
+            scope="default",
+            skills_dir=tmp_path / "e",
+            key_lookup=owner.store.get,
+        )
+    assert not (owner.folder / "orbyn" / "team.json").exists()

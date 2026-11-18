@@ -163,8 +163,11 @@ def publish(
     """Owner only: sign this PC's approved facts, skills and agents into the
     team folder. Returns counts."""
 
+    from ghostcursor import policy
     from ghostcursor.workspace import agents, task_skills
 
+    if policy.max_egress() < policy.TEXT:  # as handoff.export (D180)
+        raise TeamError("your organisation does not allow publishing to the team folder")
     if role(key_lookup=key_lookup) != "owner":
         raise TeamError("only the owner (the holder of TeamOwnerKey) can publish")
     private = _owner_private(key_lookup)
