@@ -2850,3 +2850,14 @@ from 1053b54. Still open:
   screen_hint fallback/loopback; evaluation safety relative imports,
   model_gate synthetic unavailable path, fixture duplicate ids; trusted
   placeholder check.
+- 19 Nov: tier-1 review of ad52028..149ca7c. One blocking finding, fixed:
+  risky chords were judged by spelling ("control+w", "f4+alt" slipped) and
+  a separate "enter" keys step could submit unasked; now judged on key
+  codes, Enter and Del count (sweep 4 of 4). Left: drive_live has no
+  HIGH_RISK question (second Act loop); the act-time CONFIRM_RISK text says
+  "press Enter to show it" though in Act Enter performs it; the page's
+  Approve label stays for the whole Acting run (should show only in
+  APPROVE/CONFIRM_RISK); ctrl+shift+w and backspace not counted; "paste"
+  of the user's clipboard is not checked for a newline; a damaged settings
+  file keeps only local_only (other switches dropped); two same-titled
+  top-level windows now get no OCR at all (say "ambiguous" instead).
