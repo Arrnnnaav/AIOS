@@ -575,6 +575,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         from pathlib import Path
 
         Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+        if Path(args.out).exists():  # never replace captured evidence
+            raise SystemExit(f"refused: output already exists: {args.out}")
         Path(args.out).write_text(text + "\n", encoding="utf-8", newline="\n")
     return 0
 

@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import statistics
 import time
 from dataclasses import dataclass
@@ -104,7 +105,7 @@ class PaintMeasurement:
         hides.
         """
 
-        return max(1, -(-int(self.p99_ms * 1000) // 1000))
+        return max(1, math.ceil(self.p99_ms))  # 2.0004 ms is 3, never 2
 
     def as_dict(self) -> dict:
         return {

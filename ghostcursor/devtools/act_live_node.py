@@ -486,11 +486,13 @@ def main() -> int:
     note("elapsed", f"{elapsed:.2f}s")
 
     if arguments.json is not None:
+        if arguments.json.exists():  # never replace a captured record (D139)
+            raise SystemExit(f"refused: output already exists: {arguments.json}")
         arguments.json.write_text(
             json.dumps(
                 {
                     "elapsed_s": round(elapsed, 3),
-                    "executable": executable,
+                    "executable": Path(executable).name,  # name only: a path never leaves (rule 6)
                     "executable_version": version,
                     "failure": failure,
                     # The runtime bindings above need the real handle; this

@@ -67,3 +67,10 @@ def test_postpaint_disagreement_is_not_recorded_as_a_valid_sample() -> None:
             check=lambda *_args: next(answers),
             paint=lambda *_args: None,
         )
+
+
+def test_the_budget_is_p99_rounded_up_never_below_it():
+    from ghostcursor.devtools.paint_budget import PaintMeasurement
+
+    m = PaintMeasurement(frames=1, samples=(2.0004,), bounds=(0, 0, 1, 1), monitors=1)
+    assert m.budget_ms == 3

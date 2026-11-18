@@ -241,7 +241,8 @@ def run(args) -> int:
         # wrote it. Every peer writer in this repository passes it; this one
         # did not, and it is the tool CLAUDE.md names for the campaign -- the
         # sixth appearance of the same root cause (D125-D127, D130, D132).
-        diagnostics = path.open("w", encoding="utf-8", newline="\n")
+        # "x": never truncate a node-boundary record already cited (D139).
+        diagnostics = path.open("x", encoding="utf-8", newline="\n")
 
         def write_record(record) -> None:
             diagnostics.write(
