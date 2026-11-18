@@ -1390,3 +1390,13 @@ def test_extracted_facts_reject_out_of_shape_answers():
         with pytest.raises(ProviderError):
             parse_extracted_facts(bad)
     assert parse_extracted_facts('{"facts": []}') == ()
+
+
+def test_a_key_straddling_the_length_cap_is_masked_not_cut_and_sent():
+    from ghostcursor.providers.envelope import MAX_TAINTED_CHARS
+
+    key = "sk-" + "Ab1" * 15  # 48 chars, well over every recogniser's minimum
+    text = "x " * ((MAX_TAINTED_CHARS - 10) // 2) + key
+    sent = Tainted.of("doc", text).text
+    assert len(sent) <= MAX_TAINTED_CHARS
+    assert "Ab1Ab1" not in sent  # no unmasked prefix of the key

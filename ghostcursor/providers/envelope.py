@@ -142,10 +142,13 @@ class Tainted:
 
     @staticmethod
     def of(source: str, value: object) -> "Tainted":
-        text = scrub(sanitize(value))
+        # Scrub BEFORE the length cap: a key straddling the cap would be cut
+        # below its recogniser's length and its first part sent unmasked.
+        # The margin covers long tokens (JWTs); text past it is dropped anyway.
+        text = scrub(sanitize(value, MAX_TAINTED_CHARS + 4096))
         for pattern in _CREDENTIALS:
             text = pattern.sub("[token]", text)
-        return Tainted(sanitize(source, 40), text)
+        return Tainted(sanitize(source, 40), scrub(text[:MAX_TAINTED_CHARS]))
 
 
 @dataclass(frozen=True)
