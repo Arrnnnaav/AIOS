@@ -59,10 +59,11 @@ VK_ESCAPE = win32con.VK_ESCAPE
 
 def resolve_target(title_re: str, control_name: str | None) -> tuple[int, int] | None:
     """Screen coordinate to point at, or None if the window isn't open."""
-    bbox = None
+    # A named control that is not found draws nothing: the window's centre
+    # is not that control (rule 3).
     if control_name:
         bbox = uia.find_element(title_re, name_re=control_name)
-    if bbox is None:
+    else:
         bbox = uia.window_bbox(title_re)
     if bbox is None:
         return None
@@ -326,9 +327,10 @@ def confirmation_focus_is_safe(target_hwnd: int, bar_hwnd: int | None = None) ->
 
 def space_confirmation_requested(target_hwnd: int, bar_hwnd: int | None = None) -> bool:
     """Read one safe, explicit confirmation from the live desktop."""
-    return confirmation_focus_is_safe(target_hwnd, bar_hwnd) and key_was_pressed(
-        win32con.VK_SPACE, key_state=win32api.GetAsyncKeyState
-    )
+    # Read (and so clear) the key first: a press made while another window
+    # had focus must not linger and confirm later when focus comes back.
+    pressed = key_was_pressed(win32con.VK_SPACE, key_state=win32api.GetAsyncKeyState)
+    return pressed and confirmation_focus_is_safe(target_hwnd, bar_hwnd)
 
 
 class CompiledTourControls:
@@ -859,7 +861,9 @@ def _run_compiled_tour(
 
         tier2 = tier2_module.build_controller(clock)
     if escape_pressed():
-        return 0
+        # An abort, as in the tour (1): a task graph reads 0 as "node done"
+        # and would go on to the next node after the user pressed ESC.
+        return 1
 
     import sqlite3
 
@@ -1113,10 +1117,6 @@ def pump_messages() -> None:
         pass
 
 
-if __name__ == "__main__":
-    raise SystemExit(main())
-
-
 def _receipt_policy(parser, args):
     """The receipt deadlines a control-driving Act plan needs, or None.
 
@@ -1154,3 +1154,7 @@ def _receipt_policy(parser, args):
     return ReceiptPolicy(
         first_paint_deadline_ms=first, completion_deadline_ms=completion
     )
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -124,9 +124,22 @@ def test_live_confirmation_reads_space_only_with_safe_target_focus(monkeypatch):
     assert space_confirmation_requested(42, 99) is True
     assert reads == [run_module.win32con.VK_SPACE]
 
-    reads.clear()
-    assert space_confirmation_requested(43, 99) is False
-    assert reads == [], "SPACE was consumed while another window owned focus"
+    assert space_confirmation_requested(43, 99) is False  # wrong focus: no
+
+
+def test_space_pressed_in_another_window_does_not_confirm_later(monkeypatch):
+    # GetAsyncKeyState's "pressed since last call" bit: a tap made while
+    # another app had focus must be read (cleared) then, not replayed as a
+    # confirmation once the target window gets focus back.
+    focus = {"hwnd": 43}
+    taps = [run_module._PRESSED_SINCE_LAST_CALL]
+    monkeypatch.setattr(run_module.win32gui, "GetForegroundWindow", lambda: focus["hwnd"])
+    monkeypatch.setattr(
+        run_module.win32api, "GetAsyncKeyState", lambda vk: taps.pop() if taps else 0
+    )
+    assert space_confirmation_requested(42, 99) is False  # tapped elsewhere
+    focus["hwnd"] = 42
+    assert space_confirmation_requested(42, 99) is False  # no new tap
 
 
 def test_space_is_blocked_when_target_hwnd_is_unknown(monkeypatch):
@@ -264,7 +277,8 @@ def test_run_tour_never_creates_overlay_when_revalidation_raises():
             create_overlay=lambda: created.append(True),
         )
     assert created == []
-def test_run_tour_exits_cleanly_when_esc_is_pressed_before_the_tour_starts(monkeypatch):
+def test_run_tour_reports_an_abort_when_esc_is_pressed_before_the_tour_starts(monkeypatch):
+    # Not 0: a task graph treats 0 as "node done" and would run the next node.
     from tests.test_compiled_workflow import _workflow
     import ghostcursor.run as run_module
 
@@ -277,7 +291,7 @@ def test_run_tour_exits_cleanly_when_esc_is_pressed_before_the_tour_starts(monke
         renderer=type("Renderer", (), {"show":lambda *a:None, "clear":lambda *a:None, "settle":lambda *a:None})(),
         observe=lambda: None,
     )
-    assert result == 0
+    assert result == 1
     assert created == []
 def test_run_tour_creates_overlay_only_after_live_revalidation():
     from tests.test_compiled_workflow import PROJECT_ROOT, _window, _workflow
@@ -409,3 +423,21 @@ def test_doctor_flag_prints_readiness_and_exits_zero(monkeypatch, capsys):
     assert run_module.main() == 0
     out = capsys.readouterr().out
     assert "readiness" in out and ("[ok " in out or "[off" in out)
+
+
+def test_the_main_guard_runs_after_every_definition():
+    # A guard placed earlier ran main() before _receipt_policy existed, so
+    # `python -m ghostcursor.run --mode act ...` died with NameError.
+    import ast
+    from pathlib import Path
+
+    tree = ast.parse(Path(__file__).resolve().parents[1].joinpath("ghostcursor", "run.py").read_text(encoding="utf-8"))
+    last = tree.body[-1]
+    assert isinstance(last, ast.If) and "__main__" in ast.unparse(last.test)
+
+
+def test_a_named_control_that_is_missing_is_not_pointed_at(monkeypatch):
+    monkeypatch.setattr(run_module.uia, "find_element", lambda *a, **k: None)
+    monkeypatch.setattr(run_module.uia, "window_bbox", lambda *a, **k: (0, 0, 100, 100))
+    assert run_module.resolve_target(".*", "Save") is None  # not the window centre
+    assert run_module.resolve_target(".*", None) == (50, 50)
