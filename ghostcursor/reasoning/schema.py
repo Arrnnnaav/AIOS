@@ -226,6 +226,7 @@ def _step_from_dict(raw: dict) -> Step:
             kind=VerificationKind(raw["verification_rule"]["kind"]),
             args=raw["verification_rule"].get("args", {}),
             timeout_s=raw["verification_rule"].get("timeout_s", 30.0),
+            selector=raw["verification_rule"].get("selector"),  # to_dict writes it
         ),
         risk=Risk(raw.get("risk", "normal")),
         preconditions=raw.get("preconditions", []),

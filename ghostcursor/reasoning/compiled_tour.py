@@ -494,7 +494,9 @@ def execute_compiled_workflow(
                 provenance=(),
                 steps_completed=0,
                 steps_total=len(steps),
-                detail="aborted before the first observation",
+                # should_abort is the operator's Stop/ESC: say so, or the
+                # session record reads "authority invalidated".
+                detail="aborted by the operator before the first observation",
                 timing=_timing(),
             ))
         if clock() - started >= seconds:

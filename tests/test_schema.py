@@ -284,3 +284,15 @@ def test_timeout_from_hint_requires_a_failure_deadline():
         "requires fail_after_timeout" in error
         for error in validate_step(_step(verification_rule=rule))
     )
+
+
+def test_a_verification_selector_survives_save_and_load(tmp_path):
+    rule = VerificationRule(
+        kind=VerificationKind.ELEMENT_APPEARS,
+        args={"target_descriptor": {"name": "Save"}},
+        selector="status",
+    )
+    recipe = Recipe(app_id="notepad", intent="x", steps=[_step(verification_rule=rule)])
+    path = tmp_path / "r.json"
+    recipe.save(path)
+    assert Recipe.load(path).steps[0].verification_rule.selector == "status"
