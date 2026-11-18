@@ -80,3 +80,12 @@ def test_destroying_the_overlay_forgets_its_ring(monkeypatch):
     ov.set_hint(1, 800, 600)
     ov.destroy_overlay_window(1)
     assert ov._hint is None and ov._flight is None
+
+
+def test_destroying_the_overlay_forgets_its_cue_and_sketch(monkeypatch):
+    ov, _, _ = _overlay(monkeypatch)
+    monkeypatch.setattr(ov.win32gui, "DestroyWindow", lambda h: None)
+    monkeypatch.setattr(ov.win32gui, "PumpWaitingMessages", lambda: None)
+    ov._cue, ov._sketch = object(), object()
+    ov.destroy_overlay_window(1)
+    assert ov._cue is None and ov._sketch is None

@@ -474,8 +474,9 @@ def clear_sketch(hwnd: int) -> None:
 def destroy_overlay_window(hwnd: int) -> None:
     """Tear the overlay down. Always call this on exit — a stranded
     full-screen window is exactly the failure that locks a user out."""
-    global _hint, _flight
-    _hint = _flight = None  # a later overlay must not inherit this ring
+    global _hint, _flight, _cue, _sketch
+    # A later overlay must not inherit this ring, cue or sketch (rule 3).
+    _hint = _flight = _cue = _sketch = None
     try:
         win32gui.DestroyWindow(hwnd)
     except win32gui.error:
