@@ -722,7 +722,9 @@ class PerceptionService:
                 # suppress OCR: that is precisely the situation OCR exists for.
                 # The two halves fail independently; only publication is joint.
                 self._progress(generation, stage="tier2")
-                ocr = self._tier2_payload()
+                # A retired worker must not run tier 2 beside its replacement:
+                # they share one controller, which has no lock.
+                ocr = () if stop.is_set() else self._tier2_payload()
                 self._progress(generation, stage="tier2-complete")
 
                 if walked is not None and not stop.is_set():
