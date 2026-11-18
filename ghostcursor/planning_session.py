@@ -122,6 +122,10 @@ def plan_from_brief(
                 f"not {type(outcome).__name__}"
             )
 
+        if index == max_rounds:
+            # No round is left to plan from an answer: asking now would take
+            # the person's reply and then throw it away.
+            raise PlanningExhausted(index, outcome.questions)
         # The question is recorded before the answer, so a brief read later
         # shows what was asked even if nobody answered it.
         append_turn(

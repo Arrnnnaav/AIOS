@@ -295,3 +295,19 @@ def test_a_missing_goal_is_refused(root, goal):
             answer=lambda q: "x", propose=_proposer(_plan()),
         )
 
+
+
+def test_the_last_round_does_not_ask_a_question_it_cannot_use(root):
+    asked = []
+    with pytest.raises(PlanningExhausted) as raised:
+        plan_from_brief(
+            "deck",
+            "p",
+            "Build a deck.",
+            brief_root=root,
+            answer=lambda q: asked.append(q) or "still vague",
+            propose=_proposer(_clarify("a?"), _clarify("b?")),
+            max_rounds=2,
+        )
+    assert len(asked) == 1  # round 2 gives up instead of taking a reply
+    assert raised.value.questions == ("b?",)
