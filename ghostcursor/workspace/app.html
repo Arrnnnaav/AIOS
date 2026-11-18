@@ -842,7 +842,7 @@ function renderChat(scrollDown) {
   const thread = $("thread");
   const atBottom = $("main").scrollHeight - $("main").scrollTop - $("main").clientHeight < 80;
   thread.replaceChildren();
-  if (!S.turns.length && !pending) { thread.append(emptyState()); for (const g of (S.agent_goals || [])) thread.append(agentGoalEl(g)); return; }
+  if (!S.turns.length && !pending) { for (const g of (S.agent_goals || [])) thread.append(agentGoalEl(g)); thread.append(emptyState()); return; }
   for (const t of S.turns) thread.append(turnEl(t));
   if (pending) thread.append(turnEl({ speaker: "user", text: pending }));
   if (S.suggest && !S.busy && !pending) thread.append(suggestEl(S.suggest));

@@ -1,6 +1,6 @@
 # Orbyn release notes
 
-## Unreleased
+## 0.2.2 (18 Nov 2026)
 
 - Agents can suggest a goal (MCP `suggest_goal`): it waits in Chat as a card
   ("Use this goal" puts it in your message box; nothing starts on its own),
