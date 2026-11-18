@@ -52,6 +52,27 @@ HIGH_RISK = re.compile(
     re.IGNORECASE,
 )
 
+#: Key chords that close, delete or quit without naming a risky control.
+RISKY_CHORDS = frozenset({"alt+f4", "ctrl+w", "ctrl+q", "ctrl+f4", "shift+delete", "shift+del"})
+
+
+def needs_confirm(step, current) -> bool:
+    """Rule 2: ask before a risky step. The control's CURRENT name (an app
+    may relabel it after the gate), the instruction, a chord that closes or
+    deletes, or typed text whose newline would submit or send."""
+
+    action = getattr(step, "action", "click")
+    text = getattr(step, "text", "") or ""
+    if HIGH_RISK.search(getattr(current, "name", "") or "") or HIGH_RISK.search(
+        getattr(step, "instruction", "") or ""
+    ):
+        return True
+    if action == "keys":
+        names = ["".join(n.split()).casefold() for n in text.split("+")]
+        return "+".join(names) in RISKY_CHORDS or bool({"del", "delete"} & set(names))
+    return action in ("type", "paste", "paste_text") and ("\n" in text or "\r" in text)
+
+
 CHOOSE_QUESTION = (
     "The user wants to reach the goal in the trusted data. Which observed "
     "option should the user act on to carry out the step given as 'step' in "
@@ -469,6 +490,7 @@ class ModelTeachSession:
                         self._reask(reason + _sparse_hint(frame))
                     else:
                         self._chosen = self._target = current
+                        self._risk_ok = False  # a new control: not yet confirmed
                         self._before = frame
                         self._request = None
                         self.phase = (
@@ -486,6 +508,7 @@ class ModelTeachSession:
                     self._reask("the control moved or went away")
                 else:
                     self._target, self.phase = current, Phase.SHOWING
+                    self._risk_ok = True  # the user said yes to this control
                 confirm = False
             else:
                 return Display(
@@ -504,6 +527,12 @@ class ModelTeachSession:
                     or current.window in frame.minimized + frame.incomplete
                 ):  # as drive_live: never act on a window that was not fully read
                     self._reask("the control moved or went away")
+                    return Display(self.phase, self.message)
+                if not getattr(self, "_risk_ok", False) and needs_confirm(step, current):
+                    # Relabelled since the gate, or a risky chord/text: ask first.
+                    self._chosen = self._target = current
+                    self.phase = Phase.CONFIRM_RISK
+                    self.message = self._instruction()
                     return Display(self.phase, self.message)
                 name = (current.name or "").casefold()
                 if any(d and d in name for d in self.deny):

@@ -779,3 +779,48 @@ def test_act_never_acts_on_a_window_that_was_not_fully_read():
     session.tick(_frame([_c(1)]))
     session.tick(_frame([_c(1)], frame_id=2, timed_out=True), confirm=True)
     assert done == []  # the read hit its budget: look again, never click
+
+
+@pytest.mark.parametrize(
+    "step",
+    [
+        PlanStep("Dismiss", E.CHOSEN_DISAPPEARS, "keys", "alt+f4"),
+        PlanStep("Dismiss", E.CHOSEN_DISAPPEARS, "keys", "Ctrl + W"),
+        PlanStep("Tidy up", E.CHOSEN_DISAPPEARS, "keys", "del"),
+        PlanStep("Reply", E.CHOSEN_STATE_CHANGES, "type", "ok\n"),
+    ],
+)
+def test_a_chord_that_closes_or_text_that_submits_waits_for_the_user(step):
+    session, done, _ = _session([step], [_choice("c1")])
+    frame = _frame([_c(1, "OK", "Button")])
+    session.tick(frame)
+    session.tick(frame, confirm=True)  # approves the plan
+    assert session.tick(frame).phase is Phase.CONFIRM_RISK and done == []
+    session.tick(frame, confirm=True)
+    assert done == [(step.action, "OK")]
+
+
+def test_a_control_relabelled_risky_after_the_gate_waits_for_the_user():
+    plan = TeachPlan((PlanStep("Continue", E.CHOSEN_STATE_CHANGES),))
+    done, busy = [], [True]
+
+    class Busy(Exception):
+        retry = True
+
+    def perform(step, target):
+        if busy.pop() if busy else False:
+            raise Busy("the user is typing")
+        done.append(target.name)
+        return "ok"
+
+    session = ModelTeachSession(
+        "x", FakeGateway(plan, [_choice("c1")]), SyncSlot(),
+        clock=lambda: 0.0, act=perform,
+    )
+    session.tick(_frame([_c(1, "Review order", "Button")]))
+    session.tick(_frame([_c(1, "Review order", "Button")]), confirm=True)  # gate: safe
+    assert done == []  # deferred: the user was busy
+    relabelled = _frame([_c(1, "Pay $40", "Button")], frame_id=2)
+    assert session.tick(relabelled).phase is Phase.CONFIRM_RISK and done == []
+    session.tick(relabelled, confirm=True)
+    assert done == ["Pay $40"]
