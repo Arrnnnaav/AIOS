@@ -343,3 +343,29 @@ def test_a_long_request_never_carries_the_wake_words():
     listener, sent, _ = _listener(["Hey bro open", "A bro, open the budget sheet now"])
     listener.utterance(_tone(WAKE_MAX_S + 2.0, 0.1))
     assert sent == ["open the budget sheet now"]
+
+
+def test_an_armed_utterance_that_is_only_the_wake_phrase_is_not_sent():
+    # KWS arms while "Hey Bro" is still being said: that utterance is the
+    # wake phrase itself, and the request comes after it.
+    listener, sent, _ = _listener(["Hey bro", "hey bro open the budget", "open mail"])
+    listener.arm("Hey Bro")
+    listener.utterance(_tone(0.6, 0.1))
+    assert sent == []
+    listener.utterance(_tone(2.0, 0.1))
+    assert sent == ["open the budget"]
+
+
+def test_a_comment_only_keywords_file_is_not_an_installed_wake_word(monkeypatch, tmp_path):
+    import sys
+    import types
+
+    from ghostcursor import listen_kws
+
+    monkeypatch.setitem(sys.modules, "sherpa_onnx", types.ModuleType("sherpa_onnx"))
+    monkeypatch.setattr(listen_kws, "model_dir", lambda: tmp_path)
+    (tmp_path / "tokens.txt").write_text("x 1\n", encoding="utf-8")
+    (tmp_path / "hey-bro.txt").write_text("# Could not auto-generate\n", encoding="utf-8")
+    assert listen_kws.available() is False
+    (tmp_path / "hey-bro.txt").write_text("▁HEY ▁B RO :2.0\n", encoding="utf-8")
+    assert listen_kws.available() is True

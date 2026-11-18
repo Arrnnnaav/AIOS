@@ -30,7 +30,16 @@ def available() -> bool:
     except Exception:
         return False
     d = model_dir()
-    return (d / "tokens.txt").exists() and (d / "hey-bro.txt").exists()
+    keywords = d / "hey-bro.txt"
+    if not (d / "tokens.txt").exists() or not keywords.exists():
+        return False
+    # install() leaves a comment-only placeholder when it cannot generate the
+    # keywords; that is not installed, and Whisper's wake check must run.
+    try:
+        lines = keywords.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError):
+        return False
+    return any(line.strip() and not line.lstrip().startswith("#") for line in lines)
 
 
 class Detector:

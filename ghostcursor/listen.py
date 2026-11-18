@@ -188,6 +188,13 @@ class Listener:
         if self.clock() < self.armed_until:
             self.armed_until = 0.0
             text = self.hear(samples)
+            # KWS arms while the wake words are still being spoken, so this
+            # utterance can be "Hey Bro" itself: never send that as a request.
+            rest = wake_match(text) if text else None
+            if rest is not None and len(rest.split()) < 2:
+                self.arm("Hey Bro")
+                return
+            text = rest if rest is not None else text
             if text:
                 self.on_request(text)
             return
