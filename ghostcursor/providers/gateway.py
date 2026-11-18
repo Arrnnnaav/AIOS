@@ -459,8 +459,11 @@ class Gateway:
 
         envelope = Envelope(
             task="extract facts",
-            trusted={"document": str(name)[:120]},
-            tainted={"document_text": tainted_chunks("document", material)[1]},
+            tainted={
+                # The file name is chosen, not typed: it is data like the text.
+                "document_name": Tainted.of("document_name", str(name)[:120]),
+                "document_text": tainted_chunks("document", material)[1],
+            },
         )
         return self.complete(
             envelope,

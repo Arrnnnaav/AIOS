@@ -2773,8 +2773,8 @@ from 1053b54. Still open:
   restarted unasked); no mail-message variant yet.
 - 19 Nov: review of a57174a..6f57f04 (Extract facts) found no blocking
   finding; cloud egress, Tainted.of, logs, review bypass and the closed
-  parser checked. Left: the chosen filename rides the trusted channel
-  (gateway.py extract_facts) and should go through Tainted/scrub; add a
+  parser checked. Done: the chosen file name now travels as Tainted data,
+  not in the trusted channel (test kills the revert). Left: add a
   test that every LOCAL_PROVIDERS base URL is loopback; know_extract has
   no cancel hook and a 120 s deadline on the request thread, so clicks can
   stack model calls; the "Nothing is sent anywhere" tooltip does not say
