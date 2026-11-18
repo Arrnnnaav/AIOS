@@ -122,3 +122,12 @@ def test_policy_gate_defaults_off(monkeypatch):
     assert policy.telemetry_enabled() is False  # unreadable -> off (not a guard)
     monkeypatch.setattr(policy, "_value", lambda name: 1)
     assert policy.telemetry_enabled() is True
+
+
+def test_a_non_object_counts_file_reads_as_empty(tmp_path):
+    from ghostcursor import telemetry
+
+    for raw in ("[]", "null", "5"):
+        path = tmp_path / "t.json"
+        path.write_text(raw, encoding="utf-8")
+        assert telemetry._load(path) == {}

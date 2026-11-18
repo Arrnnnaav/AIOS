@@ -471,3 +471,10 @@ def test_esc_during_a_hung_transcription_stops_dictation():
         assert _voice(transcribe=hung, escape=lambda: next(escapes, True)) is None
     finally:
         release.set()
+
+
+def test_spoken_infinity_is_not_a_number():
+    from ghostcursor.voice import apply_numbers
+
+    for text in ("go to infinity", "set inf", "1e400 slides"):
+        assert apply_numbers(text) == text  # no OverflowError, words kept

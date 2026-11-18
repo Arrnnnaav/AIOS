@@ -13,6 +13,7 @@ goal string (CLAUDE.md rule 1).
 
 from __future__ import annotations
 
+import math
 import re
 
 RATE = 16000
@@ -89,6 +90,8 @@ def _parse_number(tokens: list[str], start: int):
     first = clean(start)
     try:
         value = float(first.replace(",", ""))
+        if not math.isfinite(value):  # "inf", "1e400": not a spoken number
+            raise ValueError(first)
         n = 1
         scale = clean(start + 1) if start + 1 < len(tokens) else ""
         if scale in _BIG:

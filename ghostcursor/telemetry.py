@@ -46,6 +46,8 @@ def _load(path: Path) -> dict[str, int]:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
+    if not isinstance(data, dict):  # "[]" or "null" on disk
+        return {}
     return {k: int(v) for k, v in data.items() if k in EVENTS and isinstance(v, int)}
 
 
