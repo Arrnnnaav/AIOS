@@ -27,14 +27,19 @@ NOTES_SYSTEM = (
 
 def enhance_notes(gateway, raw: str, *, deadline_s: float = 45.0) -> NotesSummary:
     """A structured ``NotesSummary`` for the rough notes in ``raw``. The notes
-    are the user's own input (authoritative), so they ride trusted context."""
+    may be pasted or read from a file (/notes file), so they travel as
+    observed data, as the system prompt says, never as instructions."""
+
+    from ghostcursor.providers.envelope import tainted_chunks
+
 
     raw = raw.strip()
     if not raw:
         raise ValueError("there are no notes to enhance")
     return gateway.complete(
         Envelope(
-            task="tidy the user's rough notes", trusted={"notes": raw}, tainted={}
+            task="tidy the user's rough notes",
+            tainted={"notes": tainted_chunks("notes", raw)[1]},
         ),
         NOTES_SYSTEM,
         NOTES_SCHEMA,
