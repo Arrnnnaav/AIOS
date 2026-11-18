@@ -83,6 +83,8 @@ def sign_out(path: Path | None = None) -> None:
     """Forget the tokens; keep the host id so a later sign-in is the same host."""
 
     record = load(path)
+    with _REFRESH:
+        _UNSAVED.pop(path, None)  # an unsaved refresh is still a token
     (path or store_path()).unlink(missing_ok=True)
     if record and record.get("ext_agent_host_id"):
         save({"ext_agent_host_id": record["ext_agent_host_id"]}, path)
@@ -341,6 +343,8 @@ def sign_in(
     record = complete_sign_in(
         body, client_id=client_id, nonce=nonce, host_id=host_id, now=time.time()
     )
+    with _REFRESH:
+        _UNSAVED.pop(path, None)  # a new account: never the old cached token
     save(record, path)
     return record
 
@@ -357,6 +361,10 @@ def access_token(
     Refreshes are serialized: if OpenAI rotates refresh tokens, two at once
     would void each other and sign the user out."""
 
+    from ghostcursor import policy
+
+    if not policy.allows("chatgpt"):  # IT blocked it: no token leaves (D180)
+        return None
     with _REFRESH:
         try:
             return _current_token(path, transport, now)

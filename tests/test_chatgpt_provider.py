@@ -507,3 +507,23 @@ def test_stop_lands_quickly_even_with_an_idle_preconnect():
             chatgpt.wait_for_code(server, "s", 300.0, stop.is_set)
         idle.close()
     assert time.monotonic() - started < 1.5  # not the old 5 s handler timeout
+
+
+def test_a_blocked_chatgpt_gets_no_token(tmp_path, monkeypatch):
+    from ghostcursor import policy
+
+    path = tmp_path / "c.cred"
+    chatgpt.save(_complete(_reply()), path)
+    monkeypatch.setattr(policy, "allows", lambda provider, **_: provider != "chatgpt")
+    assert chatgpt.access_token(path=path, now=lambda: 2000.0) is None
+
+
+def test_sign_out_also_forgets_a_refresh_that_could_not_be_saved(tmp_path):
+    path = tmp_path / "c.cred"
+    chatgpt.save(_complete(_reply()), path)
+    chatgpt._UNSAVED[path] = {**_complete(_reply()), "access_token": "cached"}
+    try:
+        chatgpt.sign_out(path)
+        assert chatgpt.access_token(path=path, now=lambda: 2000.0) is None
+    finally:
+        chatgpt._UNSAVED.pop(path, None)
