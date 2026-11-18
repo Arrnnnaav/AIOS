@@ -2745,3 +2745,11 @@ from 1053b54. Still open:
   .json day-file branch of chunk_export, their tests and release-note
   lines. Ticket/CRM CSV import stays. Earlier FOLLOWUPS and evidence lines
   about Slack describe what was built then, not the current app.
+- 18 Nov research pass (docs/research/2026-11-18-alternatives-and-papers.md):
+  Cloudflare Code Mode not adopted (four small tools; agent-written code
+  would be a new execution surface); MCP tool annotations and a "data, not
+  instructions" line on every agent_server result adopted; token
+  log-probabilities from the local model measured and not adopted (wrong
+  picks scored 0.93-1.00); an id-only prompt not adopted (let a high-risk
+  pointer through); a local PII model (GLiNER2-PII) for unknown names is the
+  open candidate, needing the owner's choice of a model runtime.
