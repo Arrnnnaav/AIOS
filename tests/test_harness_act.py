@@ -787,6 +787,9 @@ def test_act_never_acts_on_a_window_that_was_not_fully_read():
         PlanStep("Dismiss", E.CHOSEN_DISAPPEARS, "keys", "alt+f4"),
         PlanStep("Dismiss", E.CHOSEN_DISAPPEARS, "keys", "Ctrl + W"),
         PlanStep("Tidy up", E.CHOSEN_DISAPPEARS, "keys", "del"),
+        PlanStep("Dismiss", E.CHOSEN_DISAPPEARS, "keys", "control+w"),
+        PlanStep("Dismiss", E.CHOSEN_DISAPPEARS, "keys", "f4+alt"),
+        PlanStep("Finish", E.CHOSEN_STATE_CHANGES, "keys", "enter"),  # submits
         PlanStep("Reply", E.CHOSEN_STATE_CHANGES, "type", "ok\n"),
     ],
 )

@@ -52,8 +52,25 @@ HIGH_RISK = re.compile(
     re.IGNORECASE,
 )
 
-#: Key chords that close, delete or quit without naming a risky control.
-RISKY_CHORDS = frozenset({"alt+f4", "ctrl+w", "ctrl+q", "ctrl+f4", "shift+delete", "shift+del"})
+_CTRL, _ALT, _DEL, _ENTER, _F4 = 0x11, 0x12, 0x2E, 0x0D, 0x73
+
+
+def _risky_chord(chord: str) -> bool:
+    """Judged on key codes, as act.chord_events sends them, so no spelling
+    ("control+w", "f4+alt") or order slips past: a chord that closes or
+    quits (Alt+F4, Ctrl+W/Q/F4), deletes (Del) or submits (Enter)."""
+
+    from ghostcursor.harness.act import vk_of
+
+    try:
+        vks = {vk_of("".join(n.split())) for n in chord.split("+")}
+    except ValueError:
+        return False  # unknown key: chord_events refuses it, nothing is sent
+    return (
+        {_ALT, _F4} <= vks
+        or (_CTRL in vks and bool(vks & {ord("W"), ord("Q"), _F4}))
+        or bool(vks & {_DEL, _ENTER})
+    )
 
 
 def needs_confirm(step, current) -> bool:
@@ -68,8 +85,7 @@ def needs_confirm(step, current) -> bool:
     ):
         return True
     if action == "keys":
-        names = ["".join(n.split()).casefold() for n in text.split("+")]
-        return "+".join(names) in RISKY_CHORDS or bool({"del", "delete"} & set(names))
+        return _risky_chord(text)
     return action in ("type", "paste", "paste_text") and ("\n" in text or "\r" in text)
 
 
