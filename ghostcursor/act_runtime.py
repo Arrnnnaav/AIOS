@@ -848,6 +848,18 @@ def _execute_approved_graph(
                     tuple(events),
                     approval.output_path,
                 )
+            if approval.expires_at < wall_clock():  # e.g. a long Pause
+                publish("stopped", node, ordinal, "approval expired")
+                return ActRunResult(
+                    ActRunPhase.APPROVAL,
+                    ActRunCode.APPROVAL_STALE,
+                    "the approval expired; approve the plan again",
+                    validated,
+                    tuple(completed),
+                    node.node_id,
+                    tuple(events),
+                    approval.output_path,
+                )
             try:
                 active_sha, generation, plugin_version, manifest_sha, adapter_sha = (
                     current_authority()
@@ -991,9 +1003,13 @@ def _execute_approved_graph(
                     )
                 except NodeRefused as exc:
                     publish("action_failed", node, ordinal, exc.detail)
+                    stopped = (
+                        exc.code is RefusalCode.OPERATOR_STOPPED
+                        or controls.stop_event.is_set()
+                    )
                     return ActRunResult(
                         ActRunPhase.EXECUTION,
-                        ActRunCode.ADAPTER_FAILED,
+                        ActRunCode.STOPPED if stopped else ActRunCode.ADAPTER_FAILED,
                         f"{exc.code.value}: {exc.detail}",
                         validated,
                         tuple(completed),

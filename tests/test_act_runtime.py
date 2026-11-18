@@ -1438,3 +1438,62 @@ def test_stop_during_control_verification_reports_stopped(tmp_path):
     )
     assert record["dispatched"] == ["n001"]
     assert result.code is ActRunCode.STOPPED and "verification stopped" in result.detail
+
+
+def test_an_approval_that_expires_mid_run_stops_before_the_next_node(tmp_path):
+    # A long Pause can outlast the approval; every node re-checks it.
+    registry = _registry()
+    validated = _validated(registry)
+    approval = _approval(tmp_path, validated, registry)
+    now = [101.0]
+
+    def verify(*_):
+        now[0] = approval.expires_at + 1  # time passes after the first node
+        return True
+
+    result = _execute_approved_graph(
+        validated,
+        registry,
+        approval,
+        descriptor=_descriptor(tmp_path),
+        current_authority=_authority,
+        revalidate_target=lambda _: None,
+        verify=verify,
+        controls=ActControls(),
+        wall_clock=lambda: now[0],
+    )
+
+    assert result.code is ActRunCode.APPROVAL_STALE
+    assert result.completed_node_ids == ("create",)
+
+
+def test_stop_during_the_cue_is_reported_as_stopped_not_an_adapter_fault(tmp_path):
+    # Campaigns count ADAPTER_FAILED as a defect; an operator Stop is not one.
+    import dataclasses
+    import time as _time
+
+    session, record = _fake_session(receipts=False)
+    controls = ActControls()
+
+    def present(request, baseline, sink=None):
+        controls.stop_event.set()  # Stop lands while the cue is showing
+        return []
+
+    session = dataclasses.replace(session, present=present)
+    registry = _uia_registry()
+    validated = _uia_graph(registry)
+    approval = _approval(tmp_path, validated, registry, now=_time.time())
+    (tmp_path / "owned").mkdir(exist_ok=True)
+    result = _execute_approved_graph(
+        validated,
+        registry,
+        approval,
+        descriptor=_descriptor(tmp_path),
+        current_authority=_authority,
+        revalidate_target=lambda _target: None,
+        verify=lambda *_: True,
+        controls=controls,
+        uia_session=session,
+    )
+    assert record["dispatched"] == []
+    assert result.code is ActRunCode.STOPPED
