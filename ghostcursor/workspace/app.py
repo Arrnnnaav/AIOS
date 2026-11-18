@@ -1263,7 +1263,7 @@ class App:
             from ghostcursor.workspace.knowledge import chunk_document, chunk_export
 
             name = " ".join(str(body.get("name") or "").split())[:120] or "document"
-            exported = chunk_export(name, material)  # a Slack or ticket export
+            exported = chunk_export(name, material)  # a ticket or CRM export
             did = [
                 action
                 for action, _fid in ws.knowledge.ingest(

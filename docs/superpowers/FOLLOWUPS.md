@@ -2741,3 +2741,7 @@ from 1053b54. Still open:
   loads, a 20-file import, or an 8-thread read/write hammer of the store;
   unexpected request errors now leave a scrubbed local crash log so the
   next one is caught.
+- 18 Nov: Slack import removed (owner decision): the page's zip reader, the
+  .json day-file branch of chunk_export, their tests and release-note
+  lines. Ticket/CRM CSV import stays. Earlier FOLLOWUPS and evidence lines
+  about Slack describe what was built then, not the current app.

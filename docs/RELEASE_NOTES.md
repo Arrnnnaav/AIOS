@@ -2,16 +2,13 @@
 
 ## Unreleased
 
-- Whole Slack export: Add from file takes the export's .zip; the page unpacks
-  it on this computer and imports each channel day file (at most 500) as
-  candidates to review.
+- Slack import removed (owner decision, 18 Nov): Add from file no longer
+  takes Slack export files or zips.
 - Offline Teach: no pointer when the same name matches equally well in two
   windows.
 - Exports (Company Brain, skills file, test cases, audit) get a date and
   time in their file name and never overwrite an earlier one.
 - The receipt reads only the end of its logs, so it stays quick.
-- A whole Slack export: entries whose stated size is over 400 KB, zero or
-  zip64 are skipped without being unpacked.
 
 ## 0.2.1 (16 Nov 2026)
 
@@ -21,7 +18,7 @@
   model downloads are blocked offline. Guide: `docs/OFFLINE_INSTALL.md`.
 - Company Brain inputs, all as candidates you review: an unread mail
   message ("Add to Company Brain", by IMAP UID, under 2 MB), ticket or CRM
-  CSV exports and Slack export day files (Add from file), and facts another
+  CSV exports (Add from file), and facts another
   agent proposes through the MCP server (`propose_fact`, at most 50
   waiting).
 - First run: Setup now opens on Accounts and Readiness, then Privacy and
@@ -84,11 +81,9 @@ instruction); the update check finds it.
 - Mail into the Company Brain: "Add to Company Brain" on an unread message
   adds its passages as candidate facts to review (read-only; the message
   stays unread; nothing goes to a model).
-- Ticket and Slack exports: Brain → Company → Add from file takes a ticket
-  or CRM export (.csv, one candidate per row with at least two filled
-  columns) or a Slack export day file (.json, one candidate per message of
-  two or more words; joins and leaves skipped). At most 200 candidates per
-  file, 600 characters each. No token, no network.
+- Ticket exports: Brain → Company → Add from file takes a ticket or CRM
+  export (.csv, one candidate per row with at least two filled columns). At
+  most 200 candidates per file, 600 characters each. No token, no network.
 - Skills file: reviewed facts and saved workflows as one file an agent can
   load.
 - Test cases: saved workflows as JSONL cases for checking a model.
