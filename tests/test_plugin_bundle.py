@@ -329,3 +329,15 @@ def test_symlink_entries_are_rejected(tmp_path):
         archive.writestr(info, "packs/index.json")
     with pytest.raises(BundleVerificationError, match="symlink"):
         verify_bundle(path, trusted_keys=trusted, core_version=CORE_VERSION)
+
+
+def test_a_member_that_fails_to_inflate_is_refused_not_a_crash(tmp_path):
+    path, trusted = _write_bundle(tmp_path)
+    raw = bytearray(path.read_bytes())
+    with zipfile.ZipFile(path) as archive:
+        info = archive.getinfo("plugin.json")
+    start = info.header_offset + 30 + len(info.filename) + len(info.extra)
+    raw[start : start + 4] = b"\xff\xff\xff\xff"  # damaged data, same length
+    path.write_bytes(bytes(raw))
+    with pytest.raises(BundleVerificationError):
+        verify_bundle(path, trusted_keys=trusted, core_version=CORE_VERSION)

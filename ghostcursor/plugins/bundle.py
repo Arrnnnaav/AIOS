@@ -13,6 +13,7 @@ import math
 import re
 import stat
 import zipfile
+import zlib
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
@@ -399,8 +400,31 @@ def verify_bundle(
     developer_mode: bool = False,
     require_compatible: bool = True,
 ) -> VerifiedBundle:
-    """Verify one bundle completely without writing any of its contents."""
+    """Verify one bundle completely without writing any of its contents.
+    A corrupt archive is refused like any other bad bundle: a member that
+    fails to inflate must not escape as a crash that hides every other
+    plugin in a listing."""
 
+    try:
+        return _verify_bundle(
+            path,
+            trusted_keys=trusted_keys,
+            core_version=core_version,
+            developer_mode=developer_mode,
+            require_compatible=require_compatible,
+        )
+    except (zipfile.BadZipFile, zlib.error, EOFError, NotImplementedError) as exc:
+        raise BundleVerificationError(f"plugin archive is corrupt: {exc}") from exc
+
+
+def _verify_bundle(
+    path: Path,
+    *,
+    trusted_keys: Mapping[str, bytes],
+    core_version: str,
+    developer_mode: bool = False,
+    require_compatible: bool = True,
+) -> VerifiedBundle:
     path = Path(path)
     if path.suffix != ".ghostplugin" or not path.is_file():
         raise BundleVerificationError("plugin must be an existing .ghostplugin file")
