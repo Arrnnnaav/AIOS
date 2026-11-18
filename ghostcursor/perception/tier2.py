@@ -179,7 +179,8 @@ class Tier2Controller:
             return state.elements
 
         captured = self.capture(title_re)
-        if captured is None:
+        if captured is None:  # gone or ambiguous: old boxes are not current
+            state.elements = []
             return state.elements
         frame, rect = captured
 

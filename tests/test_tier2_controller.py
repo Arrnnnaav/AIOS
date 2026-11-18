@@ -134,3 +134,13 @@ def test_a_moved_window_with_the_same_pixels_moves_its_outlines():
     moved = controller.elements_for(0, ".*")
     assert ocr.calls == 1  # no re-read for a move
     assert moved[0].bbox[:2] == (310, 220)
+
+
+def test_a_window_that_goes_away_drops_its_old_outlines():
+    clock, ocr = FakeClock(), FakeOcr()
+    frame = np.zeros((10, 10, 3), dtype=np.uint8)
+    shots = [(frame, (0, 0, 10, 10)), None]
+    controller = Tier2Controller(ocr=ocr, capture=lambda _t: shots.pop(0), clock=clock)
+    assert controller.elements_for(0, ".*")
+    clock.t += 10.0
+    assert controller.elements_for(0, ".*") == []  # not the stale boxes

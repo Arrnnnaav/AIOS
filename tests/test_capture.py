@@ -48,3 +48,15 @@ def test_mismatched_shapes_count_as_changed():
 
 def test_capturing_an_absent_window_returns_none():
     assert capture_window("NoSuchWindowTitleAnywhere12345") is None
+
+
+def test_two_windows_with_the_title_are_ambiguous_and_not_read(monkeypatch):
+    # An empty title matches every window; OCR of the wrong one would draw
+    # its words as pointers at controls that are not the target's (rule 3).
+    from ghostcursor.perception import capture
+
+    monkeypatch.setattr(capture, "windows_matching", lambda _t: [11, 22])
+    monkeypatch.setattr(
+        capture.win32gui, "GetWindowRect", lambda h: (_ for _ in ()).throw(AssertionError)
+    )
+    assert capture_window("") is None

@@ -31,13 +31,15 @@ _PIXEL_DELTA = 30
 
 
 def capture_window(title_re: str, executable_name: str | None = None):
-    """`(frame_bgr, rect)` for the first window matching, or None if absent."""
+    """`(frame_bgr, rect)` for the one window matching, or None if absent
+    or ambiguous: OCR read from another window would place its words as
+    pointers at controls that are not the target's (rule 3)."""
     hwnds = (
         windows_matching_executable(title_re, executable_name)
         if executable_name
         else windows_matching(title_re)
     )
-    if not hwnds:
+    if len(hwnds) != 1:  # none, or two windows (an empty title matches all)
         return None
 
     left, top, right, bottom = win32gui.GetWindowRect(hwnds[0])
