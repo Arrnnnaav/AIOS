@@ -385,3 +385,15 @@ def test_a_good_read_resets_the_miss_count(monkeypatch):
     observer.stop()
     observer.join(2)
     assert observer.lost is None
+
+
+def test_a_risky_control_is_handed_back_not_clicked():
+    # Rule 2: this loop cannot ask, so a risky control is never acted on.
+    r, acted = _engine([_choice("a")], controls=[C("a", "Delete all")])
+    assert r.status == "handed_back" and acted == []
+
+
+def test_esc_during_the_model_call_acts_on_nothing():
+    calls = iter([False, True])  # clear at the loop top, ESC while choose ran
+    r, acted = _engine([_choice("a")], stop=lambda: next(calls))
+    assert r.status == "stopped" and acted == []

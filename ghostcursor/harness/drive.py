@@ -86,6 +86,19 @@ def drive_until(
                 step - 1,
                 tuple(history),
             )
+        from ghostcursor.harness.teach import HIGH_RISK
+
+        if HIGH_RISK.search(control.name or ""):
+            # Rule 2: a risky control needs the person's go-ahead, and this
+            # loop has no way to ask, so it hands the step back.
+            return Result(
+                "handed_back",
+                f"{control.name!r} can change or lose data; do it yourself",
+                step - 1,
+                tuple(history),
+            )
+        if stop():  # choose() can take seconds: ESC during it acts on nothing
+            return Result("stopped", "ESC", step - 1, tuple(history))
         try:
             act(control)
         except Exception as exc:
