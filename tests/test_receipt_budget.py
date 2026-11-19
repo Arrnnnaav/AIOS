@@ -562,3 +562,29 @@ def test_the_measured_deadlines_flag_actually_supplies_them():
                 completion_deadline_ms=8000,
             ),
         )
+
+
+def test_a_rejected_cue_still_prints_the_report_with_its_counts(monkeypatch, capsys):
+    import json
+
+    monkeypatch.setattr(
+        receipt_budget, "measure",
+        lambda *a, **k: {"enforcement_clock_granularity_ms": 1, "cues_measured": 60},
+    )
+    monkeypatch.setattr(
+        receipt_budget, "measure_independent_first_cues",
+        lambda *a, **k: {
+            "cues_measured": 60, "cues_requested": 60, "cues_without_both_receipts": 1
+        },
+    )
+
+    def rejected(report):
+        raise ValueError("an independent first cue was rejected")
+
+    monkeypatch.setattr(receipt_budget, "_first_paint_basis", rejected)
+    argv = ["--cues", "60", "--independent-first-cues", "60", "--traversal-ms",
+            "300", "--settle-ms", "250", "--frame-budget-ms", "2"]  # fmt: skip
+    assert receipt_budget.main(argv) == 2
+    printed = json.loads(capsys.readouterr().out)
+    assert printed["derived"] is None
+    assert printed["independent_first_cues"]["cues_without_both_receipts"] == 1

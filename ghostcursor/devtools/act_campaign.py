@@ -173,8 +173,10 @@ def read_records(stdout: str) -> tuple[dict, ...]:
             continue
         try:
             records.append(json.loads(line))
-        except json.JSONDecodeError:
-            continue
+        except json.JSONDecodeError as exc:
+            # A torn record (a killed child) may be the interrupt_probe or the
+            # result itself: refuse rather than count around it.
+            raise CampaignError(f"a record line could not be read: {exc}") from exc
     return tuple(records)
 
 
@@ -294,6 +296,11 @@ def _attempts(attempts, completed, restore, window_class, settle_s, workspace, r
                 env=scope_environment,
             )
         except Exception as exc:  # TimeoutExpired, OSError, anything: keep what ran
+            # The failing attempt is reported too, never silently dropped.
+            completed.append(
+                Attempt(index, False, type(exc).__name__, 0, None, None,
+                        time.monotonic() - started)
+            )  # fmt: skip
             raise CampaignError(
                 f"attempt {index} could not run to completion ({type(exc).__name__})",
                 completed,
@@ -303,6 +310,7 @@ def _attempts(attempts, completed, restore, window_class, settle_s, workspace, r
         try:
             attempt = attempt_from(index, read_records(proc.stdout), seconds)
         except CampaignError as exc:
+            completed.append(Attempt(index, False, "unreadable", 0, None, None, seconds))
             raise CampaignError(
                 f"{exc}; child {exit_label(proc.returncode)}, last stderr line: "
                 f"{redacted_last_line(getattr(proc, 'stderr', '') or '')}",

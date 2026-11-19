@@ -158,18 +158,21 @@ def read_records(path: Path) -> list[dict[str, Any]]:
         if not line:
             continue
         try:
-            records.append(json.loads(line))
+            value = json.loads(line)
         except json.JSONDecodeError as exc:
-            records.append(
-                {"type": "malformed_line", "line": number, "fault": str(exc)}
-            )
+            value = {"type": "malformed_line", "line": number, "fault": str(exc)}
+        if not isinstance(value, dict):  # `5` or `[]`: a line, not a record
+            value = {"type": "malformed_line", "line": number, "fault": "not an object"}
+        records.append(value)
     return records
 
 
 def summarise(
     records: Iterable[Mapping[str, Any]], *, expected_parts: Sequence[str] = ()
 ) -> dict[str, Any]:
+    records = list(records)
     boundaries = [r for r in records if r.get("type") == "node_boundary"]
+    malformed = [r.get("line") for r in records if r.get("type") == "malformed_line"]
     findings = [classify_boundary(r, expected_parts=expected_parts) for r in boundaries]
     failures = [f for f in findings if f.classification != "verified"]
     seconds = [f.verifier_seconds for f in findings if f.verifier_seconds is not None]
@@ -179,6 +182,8 @@ def summarise(
     return {
         "classifications": dict(sorted(counts.items())),
         "first_failure": failures[0] if failures else None,
+        # A torn last line (a killed run) may be the failing node itself.
+        "malformed_lines": malformed,
         "nodes_recorded": len(boundaries),
         "verifier_seconds_max": max(seconds) if seconds else None,
         "verifier_seconds_total": round(sum(seconds), 3) if seconds else None,
@@ -209,6 +214,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     first = summary.pop("first_failure")
     print(json.dumps(summary, indent=2, sort_keys=True))
     if first is None:
+        if summary["malformed_lines"]:
+            print("\nno failing node recorded, but some lines are unreadable")
+            return 2
         print("\nno failing node recorded")
         return 0
     print(

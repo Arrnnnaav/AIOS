@@ -892,7 +892,10 @@ def test_a_timed_out_attempt_keeps_the_attempts_before_it(tmp_path):
             launch=launch,
             settle_s=0,
         )
-    assert [a.index for a in raised.value.attempts] == [1]
+    # The failing attempt is reported too (CampaignError: "the failing one
+    # included"), marked not completed, never counted as a pass.
+    assert [a.index for a in raised.value.attempts] == [1, 2]
+    assert raised.value.attempts[-1].completed is False
 
 
 def test_a_leaking_record_is_withheld_but_its_attempt_is_kept():
@@ -1148,7 +1151,10 @@ def test_an_attempt_without_a_result_keeps_the_attempts_before_it(tmp_path):
             launch=launch,
             settle_s=0,
         )
-    assert [a.index for a in raised.value.attempts] == [1]
+    # The failing attempt is reported too (CampaignError: "the failing one
+    # included"), marked not completed, never counted as a pass.
+    assert [a.index for a in raised.value.attempts] == [1, 2]
+    assert raised.value.attempts[-1].completed is False
     assert "4460192" not in str(raised.value)
 
 
@@ -1305,7 +1311,10 @@ def test_an_attempt_that_cannot_launch_keeps_the_attempts_before_it(tmp_path):
             launch=launch,
             settle_s=0,
         )
-    assert [a.index for a in raised.value.attempts] == [1]
+    # The failing attempt is reported too (CampaignError: "the failing one
+    # included"), marked not completed, never counted as a pass.
+    assert [a.index for a in raised.value.attempts] == [1, 2]
+    assert raised.value.attempts[-1].completed is False
 
 
 def test_a_missing_bundle_at_preflight_still_writes_a_report(tmp_path):

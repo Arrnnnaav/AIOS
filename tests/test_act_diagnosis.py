@@ -308,3 +308,14 @@ def test_an_unclassified_node_is_reported_as_a_failure_by_the_summary():
 
     assert summary["first_failure"] is not None
     assert summary["first_failure"].classification == "unclassified"
+
+
+def test_a_torn_or_non_object_line_is_never_reported_as_no_failure(tmp_path):
+    from ghostcursor.devtools.act_diagnosis import main, read_records
+
+    path = tmp_path / "d.jsonl"
+    path.write_text('5\n{"type": "node_boundary", "node_id": "n0', encoding="utf-8")
+    records = read_records(path)
+    assert [r["type"] for r in records] == ["malformed_line", "malformed_line"]
+    assert summarise(records)["malformed_lines"] == [1, 2]
+    assert main([str(path)]) == 2  # not "no failing node recorded", exit 0

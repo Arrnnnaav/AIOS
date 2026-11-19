@@ -420,16 +420,23 @@ def main(argv=None) -> int:
     )
     granularity = report["enforcement_clock_granularity_ms"]
     report["margin_over_p99"] = args.margin
-    first_paint_basis = _first_paint_basis(report)
-    report["derived"] = {
-        "first_paint_deadline_ms": _derived(
-            first_paint_basis, args.margin, granularity
-        ),
-        "completion_deadline_ms": _derived(
-            _completion_basis(report), args.margin, granularity
-        ),
-    }
+    try:
+        report["derived"] = {
+            "first_paint_deadline_ms": _derived(
+                _first_paint_basis(report), args.margin, granularity
+            ),
+            "completion_deadline_ms": _derived(
+                _completion_basis(report), args.margin, granularity
+            ),
+        }
+    except ValueError as exc:
+        # A rejected cue means no deadline can be derived, but the report
+        # with its rejection counts is the evidence the operator needs.
+        report["derived"] = None
+        report["not_derived_because"] = str(exc)
     print(json.dumps(report, indent=2, sort_keys=True))
+    if report["derived"] is None:
+        return 2
     independent = report["independent_first_cues"]
     independent_clean = (
         independent["cues_measured"] == independent["cues_requested"]

@@ -352,3 +352,22 @@ def test_two_campaigns_do_not_share_a_scope(tmp_path):
 
     assert first.environments[0][0] != second.environments[0][0]
     assert first.environments[0][1] != second.environments[0][1]
+
+
+def test_an_attempt_that_cannot_run_is_in_the_report_not_dropped(tmp_path):
+    def launch(*a, **k):
+        raise TimeoutError("hung")
+
+    with pytest.raises(CampaignError) as raised:
+        _run(tmp_path, launch=launch)
+    assert [a.index for a in raised.value.attempts] == [1]
+    assert raised.value.attempts[0].completed is False
+
+
+def test_a_torn_record_line_is_refused_not_skipped(tmp_path):
+    torn = SimpleNamespace(
+        stdout='{"type": "interrupt_probe", "code": "sto', stderr="", returncode=1
+    )
+    with pytest.raises(CampaignError) as raised:
+        _run(tmp_path, launch=lambda *a, **k: torn)
+    assert [a.index for a in raised.value.attempts] == [1]
