@@ -2811,17 +2811,14 @@ from 1053b54. Still open:
   activation fails every plugin on any diagnostic (contradicts its
   docstring); compile.py goal reference "my project folder" counts as
   specific so verification never passes; compiled_tour target-less
-  non-observe steps can never verify (latent); harness/drive.py has no stop
-  check before act and no HIGH_RISK, browser.click has no hit-test (no
-  production caller; fix before wiring); plugins/platform does not apply
+  non-observe steps can never verify (latent); browser.click has no
+  hit-test (no production caller; fix before wiring); plugins/platform does not apply
   trust/ key revocations (latent; BLOCKING before trust/ ships);
   candidate_acceptance writes the window title into evidence (rule 6);
-  act_diagnosis ignores malformed lines; act_campaign drops a failed attempt
-  from the report and skips unparseable lines; act_live_node counts every
+  act_live_node counts every
   dispatch as after-stop and runs the unsigned source payload while its
   docs say signed; act_manager_campaign: a refusal before attempt 1 locks
-  the campaign; receipt_budget loses the report on one rejected cue;
-  uia_feasibility drops the constant sources.
+  the campaign; uia_feasibility drops the constant sources.
   Left (minor): policy.blocked_apps unreadable fails open; task graph has no
   total deadline; Whisper download ignores AllowedProviders; manager Start
   during planning dropped; adapter_host start leak; crashreport main-thread
@@ -2866,3 +2863,11 @@ from 1053b54. Still open:
   joins or CoUninitializes (fine for the demo, not for reuse in a
   long-lived process); the "main runs no UIA search" test is a source-text
   match, a behavioural test with a hanging find would pin it better.
+- 20 Nov: fixed from the full-code review list: drive_until (used by
+  drive_live and browser.drive) checks ESC after the model call and hands a
+  HIGH_RISK control back instead of clicking it; act_diagnosis reports torn
+  or non-object lines and exits 2; act_campaign refuses a torn record line
+  and keeps the failing attempt in the report (three evidence tests had
+  pinned the old drop, against CampaignError's own docstring);
+  receipt_budget prints the report with its rejection counts when no
+  deadline can be derived.
