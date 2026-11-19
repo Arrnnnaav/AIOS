@@ -27,6 +27,7 @@ machine.
 
 import argparse
 import os
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -70,6 +71,46 @@ def resolve_target(title_re: str, control_name: str | None) -> tuple[int, int] |
 
     left, top, right, bottom = bbox
     return ((left + right) // 2, (top + bottom) // 2)
+
+
+class TargetLookup:
+    """`resolve_target` on a worker thread (rule 5, D021). The UIA search can
+    block for seconds on a hung window; the UI thread only reads the latest
+    result, so ESC is still polled every tick."""
+
+    def __init__(self, target: str, control: str | None, find=None, interval=REFRESH_SECONDS):
+        self._find = find or resolve_target
+        self._args = (target, control)
+        self._interval = interval
+        self._latest: tuple[bool, tuple[int, int] | None] = (False, None)  # (looked, point)
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._run, daemon=True, name="target-lookup")
+
+    def start(self) -> "TargetLookup":
+        self._thread.start()
+        return self
+
+    def stop(self) -> None:
+        self._stop.set()  # never joined: a hung search must not hold the UI
+
+    def latest(self) -> tuple[bool, tuple[int, int] | None]:
+        return self._latest  # one tuple, replaced whole: no lock needed
+
+    def _run(self) -> None:
+        try:
+            import pythoncom
+
+            pythoncom.CoInitialize()  # UIA is COM; this thread owns its own
+        except Exception:
+            pass
+        while not self._stop.is_set():
+            try:
+                point = self._find(*self._args)
+            except Exception:
+                point = None  # the window went away mid-search
+            if not self._stop.is_set():
+                self._latest = (True, point)
+            self._stop.wait(self._interval)
 
 
 #: GetAsyncKeyState's low-order bit: set when the key was pressed at any
@@ -665,14 +706,17 @@ def main() -> int:
 
     deadline = time.monotonic() + args.seconds
     missing_reported = False
+    lookup = TargetLookup(target, args.control).start()
     try:
         while time.monotonic() < deadline:
             if escape_pressed():
                 print("ESC pressed — exiting.")
                 break
 
-            point = resolve_target(target, args.control)
-            if point is None:
+            looked, point = lookup.latest()
+            if not looked:
+                pass  # the first search is still running
+            elif point is None:
                 window.clear_hint(hwnd)
                 if not missing_reported:
                     print(f"No window matching {target!r} — waiting for it.")
@@ -688,6 +732,7 @@ def main() -> int:
     except KeyboardInterrupt:
         print("Interrupted — exiting.")
     finally:
+        lookup.stop()
         window.destroy_overlay_window(hwnd)
 
     return 0

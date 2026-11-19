@@ -441,3 +441,34 @@ def test_a_named_control_that_is_missing_is_not_pointed_at(monkeypatch):
     monkeypatch.setattr(run_module.uia, "window_bbox", lambda *a, **k: (0, 0, 100, 100))
     assert run_module.resolve_target(".*", "Save") is None  # not the window centre
     assert run_module.resolve_target(".*", None) == (50, 50)
+
+
+def test_a_hung_target_search_never_blocks_the_ui_thread():
+    # Rule 5 / D021: the UIA search runs on a worker; the UI loop only reads
+    # the latest result, so ESC is polled every tick even while it hangs.
+    import inspect
+    import threading
+    import time as _time
+
+    release, threads = threading.Event(), []
+
+    def find(target, control):
+        threads.append(threading.current_thread())
+        release.wait(5)
+        return (5, 6)
+
+    lookup = run_module.TargetLookup(".*", None, find=find, interval=0.01).start()
+    try:
+        started = _time.perf_counter()
+        assert lookup.latest() == (False, None)  # answers while the search hangs
+        assert _time.perf_counter() - started < 0.05
+        release.set()
+        for _ in range(200):
+            if lookup.latest()[0]:
+                break
+            _time.sleep(0.01)
+        assert lookup.latest() == (True, (5, 6))
+        assert threads[0] is not threading.main_thread()
+    finally:
+        lookup.stop()
+    assert "resolve_target(" not in inspect.getsource(run_module.main)

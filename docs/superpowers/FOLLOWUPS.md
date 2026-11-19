@@ -2803,9 +2803,7 @@ from 1053b54. Still open:
   exported; a corrupt bundle member crashed listings; paint budget rounded
   below p99; act_live_node wrote the executable path; devtools outputs
   overwrote captured files.
-  Left (bugs): run.py legacy --target loop runs uia.find_element on the UI
-  thread every tick (rule 5; move to a worker or retire the demo path);
-  planning_session asks on the last round then gives up without planning;
+  Left (bugs): planning_session asks on the last round then gives up without planning;
   background deep/crew jobs can write (Brain candidates, skills, replace the
   plan, append brief turns) though background is called read-only - needs an
   owner decision; listen.py KWS sends the wake phrase alone as a request and
