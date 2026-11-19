@@ -2859,3 +2859,10 @@ from 1053b54. Still open:
   of the user's clipboard is not checked for a newline; a damaged settings
   file keeps only local_only (other switches dropped); two same-titled
   top-level windows now get no OCR at all (say "ambiguous" instead).
+- 19 Nov: review of c0a811e (demo target search on a worker): no blocking
+  finding. Done: a point older than 3 s is not drawn; the worker starts
+  inside the try; a raising search draws nothing (tested). Left: a failed
+  CoInitialize is swallowed and the worker keeps calling UIA; stop() never
+  joins or CoUninitializes (fine for the demo, not for reuse in a
+  long-lived process); the "main runs no UIA search" test is a source-text
+  match, a behavioural test with a hanging find would pin it better.

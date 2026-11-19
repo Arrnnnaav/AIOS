@@ -472,3 +472,40 @@ def test_a_hung_target_search_never_blocks_the_ui_thread():
     finally:
         lookup.stop()
     assert "resolve_target(" not in inspect.getsource(run_module.main)
+
+
+def test_a_search_that_raises_or_a_stale_point_draws_nothing():
+    import threading
+
+    now, done = [0.0], threading.Event()
+    calls = []
+
+    def find(target, control):
+        calls.append(1)
+        if len(calls) > 1:
+            done.set()
+            raise RuntimeError("window went away mid-search")
+        return (5, 6)
+
+    lookup = run_module.TargetLookup(".*", None, find=find, interval=60, clock=lambda: now[0])
+    lookup.start()
+    try:
+        for _ in range(200):
+            if lookup.latest()[0]:
+                break
+            threading.Event().wait(0.01)
+        assert lookup.latest() == (True, (5, 6))
+        now[0] = run_module.TargetLookup.MAX_AGE_S + 1  # the next search hangs
+        assert lookup.latest() == (True, None)  # not the old place
+    finally:
+        lookup.stop()
+    raising = run_module.TargetLookup(".*", None, find=lambda *a: 1 / 0, interval=60)
+    raising.start()
+    try:
+        for _ in range(200):
+            if raising.latest()[0]:
+                break
+            threading.Event().wait(0.01)
+        assert raising.latest() == (True, None)
+    finally:
+        raising.stop()

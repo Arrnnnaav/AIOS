@@ -78,11 +78,16 @@ class TargetLookup:
     block for seconds on a hung window; the UI thread only reads the latest
     result, so ESC is still polled every tick."""
 
-    def __init__(self, target: str, control: str | None, find=None, interval=REFRESH_SECONDS):
+    #: A point older than this is not drawn: while a later search hangs the
+    #: window may have moved (rule 3). Above a slow but healthy UIA walk.
+    MAX_AGE_S = 3.0
+
+    def __init__(self, target: str, control: str | None, find=None, interval=REFRESH_SECONDS, clock=time.monotonic):
         self._find = find or resolve_target
         self._args = (target, control)
         self._interval = interval
-        self._latest: tuple[bool, tuple[int, int] | None] = (False, None)  # (looked, point)
+        self._clock = clock
+        self._latest: tuple[bool, tuple[int, int] | None, float] = (False, None, 0.0)
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True, name="target-lookup")
 
@@ -94,7 +99,10 @@ class TargetLookup:
         self._stop.set()  # never joined: a hung search must not hold the UI
 
     def latest(self) -> tuple[bool, tuple[int, int] | None]:
-        return self._latest  # one tuple, replaced whole: no lock needed
+        looked, point, at = self._latest  # one tuple, replaced whole: no lock
+        if looked and self._clock() - at > self.MAX_AGE_S:
+            return True, None  # stale: draw nothing rather than an old place
+        return looked, point
 
     def _run(self) -> None:
         try:
@@ -109,7 +117,7 @@ class TargetLookup:
             except Exception:
                 point = None  # the window went away mid-search
             if not self._stop.is_set():
-                self._latest = (True, point)
+                self._latest = (True, point, self._clock())
             self._stop.wait(self._interval)
 
 
@@ -706,8 +714,9 @@ def main() -> int:
 
     deadline = time.monotonic() + args.seconds
     missing_reported = False
-    lookup = TargetLookup(target, args.control).start()
+    lookup = TargetLookup(target, args.control)
     try:
+        lookup.start()  # inside the try: the overlay is destroyed either way
         while time.monotonic() < deadline:
             if escape_pressed():
                 print("ESC pressed — exiting.")
