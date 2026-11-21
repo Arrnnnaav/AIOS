@@ -174,7 +174,15 @@ def install() -> None:
     def on_crash(kind, value, tb):
         previous(kind, value, tb)
         if not issubclass(kind, KeyboardInterrupt):
-            send(value, timeout_s=MAIN_TIMEOUT_S)  # the exit waits at most this long
+            # On a daemon thread, joined for at most MAIN_TIMEOUT_S: httpx's
+            # timeout is per phase and does not bound DNS, so a slow resolver
+            # must not hold the crashing process open.
+            sender = threading.Thread(
+                target=send, args=(value,), kwargs={"timeout_s": MAIN_TIMEOUT_S},
+                daemon=True,
+            )
+            sender.start()
+            sender.join(MAIN_TIMEOUT_S)
 
     def on_thread_crash(args):
         previous_thread(args)
