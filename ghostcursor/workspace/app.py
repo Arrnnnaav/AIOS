@@ -2104,6 +2104,22 @@ def _clear_lock() -> None:
         pass
 
 
+def _find_ollama() -> str | None:
+    """ollama.exe from an absolute PATH folder, never the current folder.
+
+    Not shutil.which: on Windows it searches the current folder first even
+    when given explicit folders (unless NoDefaultCurrentDirectoryInExePath is
+    set), and "Ask Orbyn about this file" can start Orbyn in a folder someone
+    else controls, where a planted ollama.exe would run."""
+
+    for folder in os.environ.get("PATH", "").split(os.pathsep):
+        if folder and os.path.isabs(folder):
+            candidate = os.path.join(folder, "ollama.exe")
+            if os.path.isfile(candidate):
+                return candidate
+    return None
+
+
 def _ensure_ollama() -> None:
     """Best-effort: if the local model server is installed but not answering,
     start it so planning/Teach work on first launch instead of reporting
@@ -2118,12 +2134,7 @@ def _ensure_ollama() -> None:
     # Absolute PATH entries only: shutil.which on Windows also searches the
     # current folder, and "Ask Orbyn about this file" can start Orbyn in a
     # folder someone else controls (a planted ollama.exe there would run).
-    exe = shutil.which(
-        "ollama",
-        path=os.pathsep.join(
-            d for d in os.environ.get("PATH", "").split(os.pathsep) if os.path.isabs(d)
-        ),
-    )
+    exe = _find_ollama()
     if not exe:
         return  # not installed; the UI already reports model-unavailable cleanly
     dll_dir = None

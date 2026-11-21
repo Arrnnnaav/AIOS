@@ -101,12 +101,12 @@ def test_ensure_ollama_starts_it_only_when_installed_and_down(monkeypatch):
         raise OSError
 
     monkeypatch.setattr(appmod.socket, "create_connection", _refuse)
-    monkeypatch.setattr(appmod.shutil, "which", lambda name, **k: None)
+    monkeypatch.setattr(appmod, "_find_ollama", lambda: None)
     appmod._ensure_ollama()
     assert calls == []
 
     # down, and installed -> spawn `ollama serve`
-    monkeypatch.setattr(appmod.shutil, "which", lambda name, **k: r"C:\ollama.exe")
+    monkeypatch.setattr(appmod, "_find_ollama", lambda: r"C:\ollama.exe")
     appmod._ensure_ollama()
     assert calls and calls[-1][0].endswith("ollama.exe") and calls[-1][1] == "serve"
 
@@ -120,7 +120,7 @@ def test_frozen_ollama_launch_does_not_export_bundle_dll_path(monkeypatch):
         "create_connection",
         lambda *a, **k: (_ for _ in ()).throw(OSError()),
     )
-    monkeypatch.setattr(appmod.shutil, "which", lambda name, **k: r"C:\ollama.exe")
+    monkeypatch.setattr(appmod, "_find_ollama", lambda: r"C:\ollama.exe")
     monkeypatch.setattr(appmod.sys, "frozen", True, raising=False)
     monkeypatch.setattr(appmod.sys, "_MEIPASS", r"C:\bundle\_internal", raising=False)
     monkeypatch.setattr(
@@ -2741,6 +2741,9 @@ def test_ollama_is_never_looked_up_in_the_current_folder(monkeypatch, tmp_path):
 
     (tmp_path / "ollama.exe").write_bytes(b"")
     monkeypatch.chdir(tmp_path)
+    # The case that matters: a normal shell, where Windows searches the
+    # current folder unless this variable is set.
+    monkeypatch.delenv("NoDefaultCurrentDirectoryInExePath", raising=False)
     monkeypatch.setenv("PATH", r"C:\Windows" + os.pathsep + ".")
 
     def down(*a, **k):
