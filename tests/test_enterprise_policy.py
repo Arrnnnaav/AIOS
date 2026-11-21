@@ -520,3 +520,21 @@ def test_a_block_list_that_is_not_text_blocks_every_app_and_is_never_empty(monke
     _policy(monkeypatch, BlockedApps=5)  # a REG_DWORD where names belong
     blocked = policy.blocked_apps()
     assert "excel.exe" in blocked and bool(blocked)
+
+
+def test_a_policy_value_with_no_data_fails_closed(monkeypatch):
+    # REG_NONE or an empty REG_BINARY reads back as None: present, not absent.
+    import winreg
+
+    class Key:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    monkeypatch.setattr(winreg, "OpenKey", lambda *a, **k: Key())
+    monkeypatch.setattr(winreg, "QueryValueEx", lambda key, name: (None, winreg.REG_NONE))
+    monkeypatch.setattr(policy, "_value", _registry_value)
+    assert policy.max_egress() == policy.LOCAL
+    assert "excel.exe" in policy.blocked_apps()

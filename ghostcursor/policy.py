@@ -52,7 +52,10 @@ def _value(name: str):
     for hive in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
         try:
             with winreg.OpenKey(hive, _KEY) as key:
-                return winreg.QueryValueEx(key, name)[0]
+                value = winreg.QueryValueEx(key, name)[0]
+                # Present with no data (REG_NONE, empty REG_BINARY) is not
+                # "absent": it fails closed like any unreadable value.
+                return "unreadable" if value is None else value
         except FileNotFoundError:
             continue
         except OSError:
