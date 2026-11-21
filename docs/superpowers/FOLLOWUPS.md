@@ -2873,11 +2873,11 @@ from 1053b54. Still open:
   Before shipping a feature: plugins/platform must apply trust/ key
   revocations before any trust/ directory ships; browser drive should read
   labels in an isolated world and hit-test before clicking.
-  Left (minor), as of 23 Nov: overlay ring, label and bar sizes are fixed
-  device pixels (hard to read at 200%), and the Teach path draws UIA rects
-  without the coordinate-space admission Act uses; the team sequence file
+  Left (minor), as of 23 Nov: the control bar's sizes are still fixed
+  device pixels, and the Teach path draws UIA rects without the
+  coordinate-space admission Act uses (needs a measurement on a mixed-DPI
+  desktop before refusing hints); the team sequence file
   is user-writable (whoever can delete it controls the PC anyway); the
-  Brain/Plan tabs re-render over typed input when a poll brings a change;
   act_acceptance keeps absolute paths in retained records (the retention
   rule is to refuse, not scrub; campaigns run inside the repo, not a user
   folder); the manager campaign checks the salt is set but not that it is
@@ -2885,8 +2885,9 @@ from 1053b54. Still open:
   confirmed identity with itself (act_node already compared baseline to
   confirmed, and the adapter re-checks the expected identity); act_cli
   prints the raw target HWND to the operator's console (local; the campaign
-  refuses any retained record that holds it); screen_hint's fallback (no
-  production caller); model_gate exercises a synthetic unavailable path;
+  refuses any retained record that holds it); inference.screen_hint.decide_next_hint has no production caller but
+  carries the only tests of the hint parser's strict rules (kept as an
+  evaluation helper); model_gate exercises a synthetic unavailable path;
   HTML/RTF clipboard formats are not counted (formatting only is lost);
   Extract facts: a near-duplicate tightens an approved fact's source, and
   no app-level test ties the button to the local-only path beyond the
@@ -2903,3 +2904,6 @@ from 1053b54. Still open:
   appends keep exact bytes, refuse non-UTF-8, and are locked per process.
   Local, not removable here: .tmp/pytest-portfolio-review and .pytest-tmp/
   deny access to this account (an administrator can remove them).
+- 23 Nov: also fixed: the Brain and Plan tabs no longer rebuild over text
+  being typed (a Node test drives typingIn); overlay line widths and the
+  label font scale with the display (pixel lane passes at this desktop).
