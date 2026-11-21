@@ -134,6 +134,16 @@ def prepare_attempt(
             },
         )
     campaign = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if (
+        campaign.get("binding") == {"campaign_id": campaign_id}
+        and not campaign.get("attempts")
+        and attempt == 1
+    ):
+        # Only a refusal before attempt 1 was retained (record_refusal): the
+        # cause is fixed and attempt 1 binds the campaign now, keeping the
+        # refusals. Without this the pinned campaign id could never start.
+        campaign["binding"] = binding
+        _write(manifest_path, campaign)
     if campaign.get("binding") != binding:
         raise CampaignPreflightError(
             "this attempt's commit, manifest, plan or scope differs from the "

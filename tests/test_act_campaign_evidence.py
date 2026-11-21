@@ -1827,3 +1827,16 @@ def test_the_real_manager_transcripts_pass_the_event_check():
             plan, f"attempt {n}",
         )
 
+
+
+def test_a_refusal_before_attempt_one_does_not_lock_the_campaign(tmp_path):
+    # The ledger pins the campaign id, so a fresh directory is no way out:
+    # once the cause is fixed, attempt 1 must bind the campaign and run.
+    manager_campaign.record_refusal(tmp_path, CAMPAIGN, "refused: dirty tree")
+    transcript = _prepare(tmp_path, 1, campaign_id=CAMPAIGN)
+    assert transcript.name == manager_campaign.transcript_name(1)
+    campaign = json.loads((tmp_path / manager_campaign.CAMPAIGN_FILE).read_text("utf-8"))
+    assert campaign["refusals"] == ["refused: dirty tree"]  # kept, not erased
+    assert campaign["binding"]["commit"] == COMMIT
+    with pytest.raises(CampaignPreflightError, match="differs from the campaign"):
+        _prepare(tmp_path, 1, campaign_id=CAMPAIGN, commit="d" * 40)
