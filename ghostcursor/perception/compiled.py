@@ -475,7 +475,9 @@ class CompiledPerception:
     def stop(self) -> None:
         """Stop the worker. Safe to call twice, and safe before any start."""
         self._running["started"] = False
-        self.service.stop()
+        # Never join here: this runs on the UI thread at tour end, and a worker
+        # blocked in a UIA walk would freeze the ESC pump for the join (D021).
+        self.service.stop(timeout=0)
 
 
 def build_compiled_perception(

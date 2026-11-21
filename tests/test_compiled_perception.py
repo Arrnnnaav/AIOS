@@ -1867,7 +1867,7 @@ class _StartableService(_HealthService):
         if self.fail_on_start is not None:
             raise self.fail_on_start
 
-    def stop(self):
+    def stop(self, timeout=2.0):
         self.calls.append("stop")
 
 
@@ -1921,7 +1921,7 @@ def test_a_teardown_failure_does_not_replace_the_real_error() -> None:
     now = [0.0]
 
     class _BadStop(_StartableService):
-        def stop(self):
+        def stop(self, timeout=2.0):
             self.calls.append("stop")
             raise RuntimeError("stop also failed")
 
@@ -2506,3 +2506,19 @@ def test_withdrawn_plugin_authority_aborts_within_one_tick() -> None:
     assert result.outcome is RunOutcome.ABORTED
     assert result.detail == "active plugin authority changed during the tour"
     assert result.timing["ended_s"] <= 0.5
+
+
+def test_stopping_at_tour_end_never_waits_on_the_worker():
+    # Runs on the UI thread: a join would freeze the ESC pump (D021).
+    from types import SimpleNamespace
+
+    from ghostcursor.perception.compiled import CompiledPerception
+
+    seen = []
+    perception = object.__new__(CompiledPerception)
+    object.__setattr__(perception, "_running", {"started": True})
+    object.__setattr__(
+        perception, "service", SimpleNamespace(stop=lambda timeout=2.0: seen.append(timeout))
+    )
+    perception.stop()
+    assert seen == [0]

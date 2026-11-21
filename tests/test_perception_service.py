@@ -588,3 +588,24 @@ def test_progress_names_the_blocking_walk_stage():
     finally:
         release.set()
         service.stop()
+
+
+def test_a_restart_gets_a_live_focus_sampler_even_if_the_old_one_is_stuck(monkeypatch):
+    # The old sampler can be blocked in GetFocusedElement after stop(); start()
+    # must not mistake it for a live one and leave focus sampling dead.
+    import threading
+
+    stuck = threading.Event()
+    monkeypatch.setattr(PerceptionService, "_focus_run", lambda self, stop=None: stuck.wait(5))
+    service = _service(lambda *_a, **_k: [EXPORT])
+    try:
+        service.start()
+        first = service._focus_thread
+        service.stop(timeout=0)
+        _wait_until(lambda: not service.is_alive(), what="the worker exited")
+        service.start()
+        assert service._focus_thread is not first
+        assert not service._focus_stop.is_set()
+    finally:
+        stuck.set()
+        service.stop(timeout=1)

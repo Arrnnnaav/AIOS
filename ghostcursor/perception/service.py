@@ -267,11 +267,17 @@ class PerceptionService:
         )
         self._thread.start()
         if self.focus_reader is read_focused_automation_id and (
-            self._focus_thread is None or not self._focus_thread.is_alive()
+            self._focus_thread is None
+            or not self._focus_thread.is_alive()
+            or self._focus_stop.is_set()
         ):
-            self._focus_stop.clear()
+            # A fresh Event per generation: an old focus thread still blocked
+            # in GetFocusedElement keeps its own (set) Event and exits when the
+            # call returns, instead of being mistaken for a live sampler.
+            self._focus_stop = threading.Event()
             self._focus_thread = threading.Thread(
                 target=self._focus_run,
+                args=(self._focus_stop,),
                 name="ghostcursor-focus",
                 daemon=True,
             )
@@ -492,7 +498,7 @@ class PerceptionService:
         except Exception:
             return ""
 
-    def _focus_run(self) -> None:
+    def _focus_run(self, stop: threading.Event | None = None) -> None:
         """Sample the real focus reader without coupling it to UIA walks."""
         pythoncom = None
         try:
@@ -502,7 +508,8 @@ class PerceptionService:
         except Exception:
             pass
         try:
-            while not self._focus_stop.wait(0.01):
+            stop = stop or self._focus_stop
+            while not stop.wait(0.01):
                 with self._focus_lock:
                     hwnd = self._focus_request
                     self._focus_request = 0
