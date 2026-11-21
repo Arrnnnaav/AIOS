@@ -1,7 +1,8 @@
 """Collect live confirmation-to-request timing without calling it acceptance.
 
 Each sample runs the existing one-node PowerPoint diagnostic in a fresh Python
-process. That path launches the signed verifier, confirms the UIA control,
+process. That path launches the verifier on the working-tree payload (not the
+signed bundle), confirms the UIA control,
 mints its diagnostic stand-in authorization, writes the real UIA request, and
 independently verifies that exactly one slide was added. This orchestrator
 only aggregates the two durations observed at that boundary.

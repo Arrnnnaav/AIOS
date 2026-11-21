@@ -3,7 +3,9 @@
 This is the smallest thing that exercises the whole path: read the document,
 read the control, show the pointer travelling to it, hold it there, dispatch
 the pattern on the control the pointer is on, and verify the result from a
-separate signed process. Every one of those has been tested in isolation;
+separate process. That process runs the WORKING-TREE PowerPoint payload
+(`plugins/sources/powerpoint/payload`), not the installed signed bundle: its
+output is never signed evidence. Every one of those has been tested in isolation;
 this is the first caller that makes them run together against real UIA.
 
 It is a DIAGNOSTIC, not the product runner and not an acceptance harness.
@@ -354,7 +356,7 @@ def main() -> int:
 
     started = time.monotonic()
     elapsed_at_stop = {"end": None}
-    dispatched = {"count": 0}
+    dispatched = {"at": []}  # monotonic time of each completed dispatch
     outcome = None
     failure = None
     try:
@@ -427,9 +429,9 @@ def main() -> int:
                     ).hexdigest()
                 ),
                 dispatch=lambda token, confirmed, confirmed_at: (
-                    dispatched.__setitem__("count", dispatched["count"] + 1),
                     session.dispatch(node, token, confirmed, confirmed_at),
-                )[1],
+                    dispatched["at"].append(time.monotonic()),  # only once it ran
+                )[0],
                 verify=lambda _node, baseline: _verify(
                     VerifierHost(verifier_descriptor),
                     node,
@@ -463,7 +465,8 @@ def main() -> int:
     print("--- result ---")
     if stopped["at"] is not None:
         note("stop response", f"{(elapsed_at_stop['end'] - stopped['at']):.4f}s")
-        note("dispatched after stop", str(dispatched["count"]))
+        after = sum(1 for at in dispatched["at"] if at > stopped["at"])
+        note("dispatched after stop", str(after))
     if outcome is not None:
         note("verified", str(outcome.verified))
         note("trust", outcome.trust.value)

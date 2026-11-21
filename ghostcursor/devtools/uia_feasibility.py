@@ -81,6 +81,10 @@ class ObservedTarget:
     patterns: Mapping[str, bool] = field(default_factory=dict)
     legacy_default_action: str | None = None
     match_count: int = 1
+    #: Where each pattern constant came from (type library or literal
+    #: fallback), so a wrong fallback shows up as a disagreement, not as
+    #: "no pattern available".
+    pattern_sources: Mapping[str, str] = field(default_factory=dict)
 
     @property
     def preferred_backend(self) -> str | None:
@@ -320,6 +324,7 @@ def verdict_record(
         "name": observed.name,
         "normalised_name": observed.normalised_name,
         "patterns": dict(sorted(observed.patterns.items())),
+        "pattern_sources": dict(sorted(observed.pattern_sources.items())),
         "reasons": list(verdict.reasons),
         "resolved_cycles": stability.resolved_cycles,
         "runtime_id_stable": stability.runtime_id_stable,
@@ -430,7 +435,7 @@ def _read_target(element, module, control_type, requested_name, match_count):
 
     from ghostcursor.perception.uia import normalise_accessible_name
 
-    patterns, _sources = read_pattern_availability(element, module)
+    patterns, sources = read_pattern_availability(element, module)
     try:
         runtime_id = tuple(int(part) for part in element.GetRuntimeId())
     except Exception:  # noqa: BLE001
@@ -463,6 +468,7 @@ def _read_target(element, module, control_type, requested_name, match_count):
         patterns=patterns,
         legacy_default_action=read_legacy_default_action(element, module),
         match_count=match_count,
+        pattern_sources=sources,
     )
 
 

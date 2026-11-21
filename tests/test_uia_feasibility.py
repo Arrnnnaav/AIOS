@@ -366,3 +366,11 @@ def test_the_live_state_verifier_imports_no_input_synthesis():
 
     assert imported & forbidden == set()
 
+
+
+def test_the_record_says_where_each_pattern_constant_came_from():
+    # A wrong literal fallback must show up as a source, not as "no pattern".
+    target = _target(pattern_sources={"Invoke": "literal", "LegacyIAccessible": "typelib"})
+    stability = probe_stability(lambda: target, cycles=1, sleep=lambda _s: None)
+    record = verdict_record("excel", target, stability, decide_feasibility(target, stability))
+    assert record["pattern_sources"] == {"Invoke": "literal", "LegacyIAccessible": "typelib"}
