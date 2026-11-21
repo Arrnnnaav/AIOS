@@ -617,6 +617,8 @@ class AdapterHost:
         """
 
         if not self.running or self._process is None or self._process.stdin is None:
+            if self._process is not None:
+                self.stop()  # a child that died at once: close its pipes too
             raise AdapterProtocolError("adapter is not running")
         try:
             self._process.stdin.write(

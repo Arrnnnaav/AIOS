@@ -172,3 +172,20 @@ def test_build_brief_renders_every_slide_in_order():
     # bullets kept, in order, under their slide
     assert brief.index("Shipped DLP") < brief.index("3 accounts")
     assert "- Shipped DLP" in brief
+
+
+def test_stop_reaches_the_deck_step_not_only_the_research(monkeypatch):
+    from types import SimpleNamespace
+
+    from ghostcursor.workspace import deck, research
+
+    stop = lambda: True  # noqa: E731
+    seen = {}
+    monkeypatch.setattr(
+        research, "deep_research", lambda *a, **k: SimpleNamespace(graphs=())
+    )
+    monkeypatch.setattr(
+        deck, "plan_deck", lambda *a, **k: seen.setdefault("cancelled", k.get("cancelled"))
+    )
+    deck.research_deck(object(), "topic", cancelled=stop)
+    assert seen["cancelled"] is stop

@@ -177,7 +177,7 @@ class PerceptionService:
         self.title_re = title_re
         self.walker = walker
         #: A compiled observation plan, run ON THIS WORKER in place of the
-        #: walker. It returns `(selector_results, elements)` for one target
+        #: walker. It returns `(selector_results, elements, title)` for one target
         #: HWND. Optional because the v1 walkers are still what production
         #: uses; when it is set, the compiled path gets everything the worker
         #: already provides -- the published slot, tier 2, focus sampling,

@@ -138,5 +138,11 @@ def research_deck(
                 )
                 src = source.url if source and source.url else "research"
                 grounding.append(f"{claim.text} (source: {src})")
-    deck = plan_deck(gateway, topic, grounding=grounding or None)
+    # Stop must reach the deck step too, not only the research before it.
+    deck = plan_deck(
+        gateway,
+        topic,
+        grounding=grounding or None,
+        cancelled=research_kw.get("cancelled", lambda: False),
+    )
     return deck, report

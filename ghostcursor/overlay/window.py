@@ -159,7 +159,9 @@ def _wnd_proc(hwnd, msg, wparam, lparam):
         return 1  # handled in WM_PAINT; returning 1 here prevents flicker
 
     if msg == win32con.WM_DESTROY:
-        win32gui.PostQuitMessage(0)
+        # No PostQuitMessage: the UI thread's queue is shared (the bar refuses
+        # it for the same reason), and a WM_QUIT left behind would end the next
+        # overlay's message loop early. Process exit needs no quit message.
         return 0
 
     return win32gui.DefWindowProc(hwnd, msg, wparam, lparam)

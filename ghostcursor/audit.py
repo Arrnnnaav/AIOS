@@ -193,7 +193,10 @@ def verify(path: Path | None = None) -> tuple[bool, int, int | None]:
     if _pending.get(path):
         flush()  # lines this process queued for this file land first
     try:
-        lines = path.read_bytes().splitlines()
+        # Under the writers' lock: a line another Orbyn process is half-way
+        # through appending must not read as tampering.
+        with _locked(path):
+            lines = path.read_bytes().splitlines()
     except FileNotFoundError:
         return True, 0, None
     prev = GENESIS
