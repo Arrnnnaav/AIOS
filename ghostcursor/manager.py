@@ -1298,6 +1298,10 @@ class NativeManagerWindow:
         self._replace_list(ID_TIMELINE, ("…  Understanding the goal",))
         win32gui.EnableWindow(self._controls[ID_GOAL], False)
         win32gui.EnableWindow(self._controls[ID_MODE], False)
+        # A click while planning runs would be taken and then dropped (the
+        # loop starts no second plan): nothing to click until it answers.
+        win32gui.EnableWindow(self._controls[ID_START], False)
+        win32gui.EnableWindow(self._controls[ID_COMPLEX], False)
 
     def show_unavailable(self, goal: str, explanation: str) -> None:
         self._set_layout(True)
