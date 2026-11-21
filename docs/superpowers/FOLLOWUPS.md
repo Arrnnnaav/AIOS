@@ -2873,23 +2873,33 @@ from 1053b54. Still open:
   Before shipping a feature: plugins/platform must apply trust/ key
   revocations before any trust/ directory ships; browser drive should read
   labels in an isolated world and hit-test before clicking.
-  Left (minor): manager Start during planning dropped and a misleading
-  status at manager.py:1104; crashreport main-thread wait not bounded by
-  DNS; brief CRLF rewrite and unlocked append; audit _clean accepts any
-  short string; coordinate_space process=none; overlay fixed-pixel sizes and
-  no DPI admission on the Teach path; compiled stop joins 2 s on the UI
-  thread; focus thread not restarted after stop/start; tier2 keeps a frame
-  per step; brain _supersede overlap ratio; team sequence file
-  user-writable; know_extract on the request thread with no cancel;
-  MAX_BODY 403 resets the connection; Brain/Plan re-render loses typed
-  input; act_acceptance absolute paths in reports; manager campaign salt
-  unbound; receipt_budget first-cue count; act_uia_session compares an
-  identity with itself; act_cli prints the raw HWND to stdout; gateway Jev
-  questions unscrubbed (fixed text today); screen_hint fallback (no
-  caller); model_gate uses a synthetic unavailable path; registered
-  clipboard formats (PNG, HTML, RTF) not counted; act_staging marker if
-  unlink fails; Extract facts: near-duplicate tightens an approved fact's
-  source, no app-level local-only test; candidate_acceptance writes the
-  window title of fixture apps into evidence.
+  Left (minor), as of 23 Nov: overlay ring, label and bar sizes are fixed
+  device pixels (hard to read at 200%), and the Teach path draws UIA rects
+  without the coordinate-space admission Act uses; the team sequence file
+  is user-writable (whoever can delete it controls the PC anyway); the
+  Brain/Plan tabs re-render over typed input when a poll brings a change;
+  act_acceptance keeps absolute paths in retained records (the retention
+  rule is to refuse, not scrub; campaigns run inside the repo, not a user
+  folder); the manager campaign checks the salt is set but not that it is
+  the same one; act_uia_session's dispatch-time identity check compares the
+  confirmed identity with itself (act_node already compared baseline to
+  confirmed, and the adapter re-checks the expected identity); act_cli
+  prints the raw target HWND to the operator's console (local; the campaign
+  refuses any retained record that holds it); screen_hint's fallback (no
+  production caller); model_gate exercises a synthetic unavailable path;
+  HTML/RTF clipboard formats are not counted (formatting only is lost);
+  Extract facts: a near-duplicate tightens an approved fact's source, and
+  no app-level test ties the button to the local-only path beyond the
+  provider pin; candidate_acceptance writes fixture apps' window titles
+  into evidence; a BlockedApps REG_NONE value now fails closed (done).
+  Fixed 22-23 Nov besides: whole-task deadline re-read before each node and
+  validated; Ollama PATH needs a drive or UNC prefix; over-size requests
+  drained; crash report bounded; Brain supersede by Jaccard; Jev questions
+  scrubbed; tier 2 frees old frames; receipt counts reconcile; focus
+  sampler restarts after a stuck one; tour-end stop never joins on the UI
+  thread; empty policy values fail closed; coordinate records judged on the
+  thread half; PNG counts as a picture for paste; Extract facts runs on the
+  worker and can be stopped; manager Start disabled while planning; brief
+  appends keep exact bytes, refuse non-UTF-8, and are locked per process.
   Local, not removable here: .tmp/pytest-portfolio-review and .pytest-tmp/
   deny access to this account (an administrator can remove them).
