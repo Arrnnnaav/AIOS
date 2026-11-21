@@ -61,3 +61,9 @@ kb.sqlite*
 /.tmppytest*/
 /__agent__/
 /.superpowers/
+
+# Local-only records: evidence documents cite screenshots under output/ and
+# logs under .tmp/ as retained local copies (kept, never published), and the
+# owner's working pitch-deck draft stays off the public tree.
+/output/
+/ORBYN_YIPK_DECK_v2.md
