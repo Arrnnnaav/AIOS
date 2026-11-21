@@ -2772,3 +2772,49 @@ def test_ollama_is_found_in_a_quoted_folder_but_not_a_drive_less_one(monkeypatch
     drive_less = os.path.splitdrive(str(tmp_path))[1]  # "\Users\..." on the current drive
     monkeypatch.setenv("PATH", drive_less)
     assert appmod._find_ollama() is None
+
+
+TYPING_CHECK = r"""const fs = require("fs");
+const page = fs.readFileSync(process.argv[2], "utf8");
+const src = page.match(/function typingIn\(id\) \{[\s\S]*?\n\}/)[0];
+
+function field(tag, value) {
+  return { tagName: tag, value };
+}
+function makeRoot(fields) {
+  return {
+    contains: (n) => fields.includes(n),
+    querySelectorAll: () => fields.filter((f) => f.tagName === "INPUT" || f.tagName === "TEXTAREA"),
+  };
+}
+const empty = field("INPUT", "");
+const filled = field("INPUT", "Refunds need a manager");
+const roots = { a: makeRoot([empty]), b: makeRoot([filled]) };
+const document = { activeElement: null };
+const $ = (id) => roots[id];
+const typingIn = new Function("$", "document", src + "; return typingIn;")($, document);
+
+const results = [];
+results.push(["idle tab re-renders", typingIn("a") === false]);
+results.push(["text in a box holds the render", typingIn("b") === true]);
+document.activeElement = empty;
+results.push(["a focused empty box holds the render", typingIn("a") === true]);
+for (const [name, ok] of results) console.log((ok ? "ok   " : "FAIL ") + name);
+process.exit(results.every(([, ok]) => ok) ? 0 : 1);
+"""
+
+
+def test_a_poll_never_rebuilds_a_tab_over_what_the_person_is_typing(tmp_path):
+    import shutil
+    import subprocess
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node is not installed")
+    script = tmp_path / "typing_check.js"
+    script.write_text(TYPING_CHECK, encoding="utf-8")
+    result = subprocess.run(
+        [node, str(script), str(appmod.PAGE)], capture_output=True, text=True
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+

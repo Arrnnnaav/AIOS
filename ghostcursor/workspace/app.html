@@ -407,9 +407,19 @@ function render(busyChanged) {
   ["pointBtn", "voiceBtn", "researchBtn", "sendBtn"].forEach((id) => ($(id).disabled = !!S.busy));
   $("input").disabled = !!S.busy && S.busy !== "Listening";
   if (tab === "chat") renderChat(busyChanged);
-  else if (tab === "plan") renderPlan();
-  else if (tab === "brain") renderBrain();
+  else if (tab === "plan") { if (!typingIn("tab-plan")) renderPlan(); }
+  else if (tab === "brain") { if (!typingIn("tab-brain")) renderBrain(); }
   else renderWork();
+}
+
+// A poll must not rebuild a tab over what the person is typing: "Add a fact",
+// "Add a step" and "Correct" boxes would lose their text. The tab catches up
+// on the next change once nothing is being typed (actions re-render it).
+function typingIn(id) {
+  const root = $(id);
+  const active = document.activeElement;
+  if (active && root.contains(active) && /^(INPUT|TEXTAREA)$/.test(active.tagName)) return true;
+  return [...root.querySelectorAll("input[type=text], input:not([type]), textarea")].some((f) => f.value.trim());
 }
 
 function renderWork() {
