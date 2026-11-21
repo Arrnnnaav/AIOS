@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from enum import Enum
 from typing import Callable
@@ -32,6 +33,7 @@ class TaskRunCode(str, Enum):
     TARGET_NOT_RUNNING = "target_not_running"
     TARGET_CHOICE_REQUIRED = "target_choice_required"
     NODE_FAILED = "node_failed"
+    TIME_LIMIT = "time_limit"
 
 
 @dataclass(frozen=True)
@@ -113,6 +115,8 @@ def _execute_task_graph(
     authorize: Callable[[object, object], object],
     bind: Callable[..., object],
     run: Callable[..., int],
+    total_seconds: float | None = None,
+    clock: Callable[[], float] = time.monotonic,
 ) -> TaskGraphRunResult:
     """Private seam: tests may replace effects, never production authority."""
 
@@ -140,7 +144,20 @@ def _execute_task_graph(
 
     completed: list[str] = []
     bound_target_hwnd = target_hwnd
+    # One deadline for the whole graph (rule 4): a per-node budget alone let
+    # a long graph run for nodes x budget with no overall limit.
+    deadline = None if total_seconds is None else clock() + total_seconds
     for node in validated.ordered_nodes:
+        remaining = None if deadline is None else deadline - clock()
+        if remaining is not None and remaining <= 0:
+            return TaskGraphRunResult(
+                TaskRunPhase.EXECUTION,
+                TaskRunCode.TIME_LIMIT,
+                "the time limit for the whole task was reached",
+                validated,
+                tuple(completed),
+                node.node_id,
+            )
         try:
             # A disable, upgrade, registry replacement, or any active-catalog
             # publication after validation invalidates the complete proposal.
@@ -186,7 +203,10 @@ def _execute_task_graph(
                 raise RuntimeError("bound workflow changed the graph target HWND")
             exit_code = run(
                 workflow,
-                seconds=seconds_per_node,
+                seconds=(
+                    seconds_per_node if remaining is None
+                    else min(seconds_per_node, remaining)
+                ),
                 guidance_values=_guidance_values(node),
             )
         except Exception as exc:  # fail closed at the node boundary
@@ -232,6 +252,7 @@ def execute_task_graph(
     target_title_re: str | None = None,
     target_hwnd: int | None = None,
     seconds_per_node: float = 60.0,
+    total_seconds: float | None = None,
 ) -> TaskGraphRunResult:
     """Validate then execute a graph through production-selected authority.
 
@@ -257,6 +278,7 @@ def execute_task_graph(
         target_title_re=target_title_re,
         target_hwnd=target_hwnd,
         seconds_per_node=seconds_per_node,
+        total_seconds=total_seconds,
         load_context=load_composition_context,
         authorize=_authorize_capability,
         bind=bind_workflow,

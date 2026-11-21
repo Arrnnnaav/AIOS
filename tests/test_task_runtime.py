@@ -85,7 +85,7 @@ class _Authorization:
     explanation: str = ""
 
 
-def _run(graph=None, *, contexts=None, authorize=None, bind=None, run=None):
+def _run(graph=None, *, contexts=None, authorize=None, bind=None, run=None, **extra):
     registry = _registry()
     contexts = contexts or [SimpleNamespace(catalog=object(), registries={PLUGIN: registry})]
     index = 0
@@ -106,6 +106,7 @@ def _run(graph=None, *, contexts=None, authorize=None, bind=None, run=None):
         authorize=authorize or (lambda _catalog, capability: _Authorization(capability.intent_id)),
         bind=bind or (lambda token, goal, **kwargs: (token, goal, kwargs)),
         run=run or (lambda _workflow, **_kwargs: 0),
+        **extra,
     )
 
 
@@ -275,6 +276,7 @@ def test_public_graph_executor_exposes_no_authority_injection_parameter():
         "target_title_re",
         "target_hwnd",
         "seconds_per_node",
+        "total_seconds",  # a time limit, not an authority seam
     }
 
 
@@ -320,3 +322,27 @@ def test_capability_authorization_uses_its_signed_exact_goal(monkeypatch):
     assert captured[0][1] == "add a slide"
     assert captured[0][2].intent_id == "ADD_SLIDE"
     assert captured[0][2].explanation == "signed capability exact phrase"
+
+
+def test_the_whole_graph_has_one_deadline_not_only_a_budget_per_node():
+    # Rule 4: per-node budgets alone let a long graph run nodes x budget.
+    now = [0.0]
+    budgets = []
+
+    def run(_workflow, **kwargs):
+        budgets.append(kwargs["seconds"])
+        now[0] += 4.0  # the first node uses most of the time
+        return 0
+
+    result = _run(run=run, total_seconds=6.0, clock=lambda: now[0])
+    assert budgets[0] == 5.0 and budgets[1] == 2.0  # capped by what is left
+    now[0] = 0.0
+    budgets.clear()
+
+    def slow(_workflow, **kwargs):
+        budgets.append(kwargs["seconds"])
+        now[0] += 7.0
+        return 0
+
+    result = _run(run=slow, total_seconds=6.0, clock=lambda: now[0])
+    assert result.code is TaskRunCode.TIME_LIMIT and len(budgets) == 1

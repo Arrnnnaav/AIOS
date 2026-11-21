@@ -157,5 +157,8 @@ def test_manager_task_execution_has_no_second_runner_or_authority_path(monkeypat
 
     assert result is expected
     assert captured == [
-        ((graph,), {"target_hwnd": 404, "seconds_per_node": 120.0})
+        (
+            (graph,),
+            {"target_hwnd": 404, "seconds_per_node": 120.0, "total_seconds": 600.0},
+        )
     ]

@@ -481,6 +481,7 @@ def execute_manager_task(request: TaskExecutionRequest) -> object:
         request.graph,
         target_hwnd=request.target_hwnd,
         seconds_per_node=120.0,
+        total_seconds=600.0,  # the whole task, however many steps it has
     )
 
 
