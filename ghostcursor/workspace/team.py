@@ -269,7 +269,10 @@ def sync(knowledge, *, skills_dir=None, agents_root=None) -> dict:
             continue
         kept.add(fid)
         if fact.status != "approved":
-            knowledge.approve(fid)  # the owner already approved it
+            # D187: the review is the owner's. publish() exports only facts the
+            # owner reviewed or approved, and the bundle is verified against
+            # TeamOwnerKey, so its signature carries that review to staff.
+            knowledge.approve(fid)
     for fact in knowledge.list(scope=TEAM_SCOPE):
         if fact.fid not in kept and fact.status not in ("retired", "superseded"):
             knowledge.retire(fact.fid)  # gone from the bundle, or added locally
