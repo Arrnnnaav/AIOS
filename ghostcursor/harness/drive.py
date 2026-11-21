@@ -92,8 +92,9 @@ def drive_until(
             # Rule 2: a risky control needs the person's go-ahead, and this
             # loop has no way to ask, so it hands the step back.
             return Result(
-                "handed_back",
-                f"{control.name!r} can change or lose data; do it yourself",
+                "needs_confirm",  # not "handed_back": a UI can ask, not drop it
+                f"Orbyn will not click {control.name!r} without asking; check "
+                "it, then do it yourself if you meant to",
                 step - 1,
                 tuple(history),
             )

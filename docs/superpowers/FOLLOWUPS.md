@@ -2871,3 +2871,16 @@ from 1053b54. Still open:
   pinned the old drop, against CampaignError's own docstring);
   receipt_budget prints the report with its rejection counts when no
   deadline can be derived.
+- 20 Nov: review of 241cf0d (drive loop): no blocking finding (drive_live
+  and Page.drive have no production caller). Done: drive_live re-checks
+  HIGH_RISK on the name it would click (a control renamed during choose());
+  a risky control gets its own "needs_confirm" status and plainer wording.
+  Must fix before wiring browser drive: Page.drive clicks the stale
+  PageControl with deny=() and never re-reads the node name; the accessible
+  name can hide the visible text (aria-label "Continue" on "Delete
+  account"). Left: HIGH_RISK needs whole words, so "Payment", "Deletes",
+  "Sending" miss and "Place order", "Checkout", "Move to trash", "Empty
+  Recycle Bin", "Unsubscribe", "Publish" are absent (widening also adds
+  Teach confirmations: owner call); drive_live's ESC relies on
+  GetAsyncKeyState's unreliable pressed-since bit, a tick-thread latch
+  would hold a quick tap.

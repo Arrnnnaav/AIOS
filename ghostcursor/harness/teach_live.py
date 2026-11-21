@@ -28,7 +28,12 @@ from ghostcursor.harness.frame import (
     build_frame,
     resolve,
 )
-from ghostcursor.harness.teach import MAX_FRAME_AGE_S, ModelTeachSession, Phase
+from ghostcursor.harness.teach import (
+    HIGH_RISK,
+    MAX_FRAME_AGE_S,
+    ModelTeachSession,
+    Phase,
+)
 from ghostcursor.harness.uia_reader import is_minimized, read_window, window_facts
 
 TICK_S = 0.1
@@ -320,6 +325,8 @@ def drive_live(
             raise RuntimeError("the screen reading is out of date")
         if any(d and d.casefold() in (target.name or "").casefold() for d in deny):
             raise PermissionError(f"{target.name!r} is on the deny list")
+        if HIGH_RISK.search(target.name or ""):  # renamed in place since choose()
+            raise PermissionError(f"Orbyn will not click {target.name!r} without asking")
         did = (
             _perform(click, target)
             if _perform

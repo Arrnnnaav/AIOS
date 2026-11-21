@@ -390,10 +390,47 @@ def test_a_good_read_resets_the_miss_count(monkeypatch):
 def test_a_risky_control_is_handed_back_not_clicked():
     # Rule 2: this loop cannot ask, so a risky control is never acted on.
     r, acted = _engine([_choice("a")], controls=[C("a", "Delete all")])
-    assert r.status == "handed_back" and acted == []
+    assert r.status == "needs_confirm" and acted == []
 
 
 def test_esc_during_the_model_call_acts_on_nothing():
     calls = iter([False, True])  # clear at the loop top, ESC while choose ran
     r, acted = _engine([_choice("a")], stop=lambda: next(calls))
     assert r.status == "stopped" and acted == []
+
+
+def test_drive_live_rechecks_risk_on_the_name_it_would_click():
+    from ghostcursor.harness import teach_live
+    from ghostcursor.providers.schemas import Choice
+
+    @dataclass(frozen=True)
+    class Cand:
+        cid: str
+        name: str
+        rect: tuple = (0, 0, 40, 20)
+        window: str = "w1"
+
+        @property
+        def runtime_id(self):
+            return (self.cid,)
+
+    class Frame:
+        def __init__(self, name):
+            self.candidates = (Cand("w1-1", name),)
+
+        def get(self, cid):
+            return next((c for c in self.candidates if c.cid == cid), None)
+
+    frames = iter([Frame("Insert"), Frame("Delete all")])  # renamed during choose()
+
+    class G:
+        def choose(self, envelope, option_ids, **kw):
+            return Choice("w1-1", {"w1-1": 0.95})
+
+    acted = []
+    r = teach_live.drive_live(
+        "open insert", None, approved=True, gateway=G(), deny=[],
+        _observe=lambda: next(frames),
+        _perform=lambda step, target: acted.append(target.cid) or "clicked",
+    )  # fmt: skip
+    assert r.status == "blocked" and "without asking" in r.reason and acted == []
