@@ -933,14 +933,20 @@ class Workspace:
         nudge = self.usage.nudge(task, kind="skill")
         return f"{result}\n{nudge}" if nudge else result
 
-    def _run_intent(self, intent: str, arg: str, *, fallback: str = "") -> str:
+    def _run_intent(
+        self, intent: str, arg: str, *, fallback: str = "", read_only: bool = False
+    ) -> str:
         """Dispatch one (intent, argument) to the existing reviewed capability
         and return its one-line result. Shared by the one-step router (do) and
         the crew orchestrator so both run the same tested paths. A 'plan' intent
-        only PROPOSES (rule 2); it never acts."""
+        only PROPOSES (rule 2); it never acts. ``read_only`` (a background job)
+        runs research without filing and skips every step that would write:
+        the Brain, a skill, the plan, the brief or a deck."""
 
+        if read_only and intent != "research":
+            return f"[{intent}] skipped: background jobs are read-only; run it from Chat"
         if intent == "research":
-            report = self.deep_dive(arg)
+            report = self.deep_dive(arg, file_to_brain=not read_only)
             return (
                 f"🔎 [research] {len(report.subquestions)} part(s); filed "
                 f"{report.filed_to_brain} cited claim(s) to the Brain (review: "
@@ -1213,9 +1219,10 @@ class Workspace:
             text += "\n(no Company Brain configured; not filed)"
         return summary, text
 
-    def deep_dive(self, question: str, **kw):
+    def deep_dive(self, question: str, *, file_to_brain: bool = True, **kw):
         """Deep research: decompose -> cited research per sub-question -> file
-        cited claims into the Company Brain as reviewable candidates (#5/#3)."""
+        cited claims into the Company Brain as reviewable candidates (#5/#3).
+        A background job passes ``file_to_brain=False``: it is read-only."""
 
         from ghostcursor.workspace.research import deep_research
 
@@ -1224,7 +1231,7 @@ class Workspace:
             self.gateway,
             knowledge=self.knowledge,
             scope=self.kb_scope,
-            file_to_brain=True,
+            file_to_brain=file_to_brain,
             **kw,
         )
         telemetry.record("research_done")
@@ -1243,14 +1250,14 @@ class Workspace:
         except ProviderError:
             return None, None
 
-    def crew(self, goal: str, **kw):
+    def crew(self, goal: str, *, read_only: bool = False, **kw):
         """Agent crew (D186): decompose a goal into ordered capability steps and
         run them in sequence, chaining through the Company Brain. Returns a
         CrewResult. A 'plan' step only proposes -- the crew never acts (rule 2)."""
 
         from ghostcursor.workspace.crew import run_crew
 
-        result = run_crew(self, goal, **kw)
+        result = run_crew(self, goal, read_only=read_only, **kw)
         telemetry.record("crew_run")
         return result
 

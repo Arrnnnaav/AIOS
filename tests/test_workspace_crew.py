@@ -66,7 +66,7 @@ class _FakeWorkspace:
         self.dispatched = []
         self.proposed = False
 
-    def _run_intent(self, intent, arg, *, fallback=""):
+    def _run_intent(self, intent, arg, *, fallback="", read_only=False):
         self.dispatched.append((intent, arg))
         if intent == "plan":
             self.proposed = True
@@ -129,3 +129,26 @@ def test_crew_name_and_missing_and_corrupt_are_handled(tmp_path):
     (bad / "rot.json").write_text('{"steps": [{"intent": "bad"}]}', encoding="utf-8")
     with pytest.raises(ValueError):
         crew.load_crew(tmp_path, "rot")  # re-validated, refused
+
+
+def test_a_read_only_crew_skips_every_step_that_would_write(tmp_path):
+    # Background jobs are read-only: research runs unfiled, nothing else runs.
+    from ghostcursor.workspace.session import Workspace
+
+    calls = []
+
+    class W:
+        _run_intent = Workspace._run_intent
+
+        def deep_dive(self, arg, *, file_to_brain=True):
+            calls.append(("research", file_to_brain))
+            return type("R", (), {"subquestions": (), "filed_to_brain": 0})()
+
+        def __getattr__(self, name):  # any other capability = a write
+            raise AssertionError(f"{name} ran in a read-only crew")
+
+    w = W()
+    for intent in ("remember", "skill", "plan", "deck", "research_deck", "chat"):
+        assert "read-only" in w._run_intent(intent, "x", read_only=True)
+    w._run_intent("research", "x", read_only=True)
+    assert calls == [("research", False)]

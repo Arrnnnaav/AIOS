@@ -2005,8 +2005,9 @@ def test_deep_research_and_crew_run_as_background_jobs(served, kind, method):
         def as_text(self):
             return f"{kind} result"
 
-    def work(question, *, cancelled):
+    def work(question, *, cancelled, **readonly):
         seen["question"], seen["cancelled"] = question, cancelled()
+        seen["readonly"] = readonly  # background jobs must ask for read-only
         return Report()
 
     setattr(app.ws, method, work)
@@ -2016,7 +2017,8 @@ def test_deep_research_and_crew_run_as_background_jobs(served, kind, method):
     assert status == 200
     job = _wait_for_job(app, "finished")
     assert job["answer"] == f"{kind} result" and job["kind"] == kind
-    assert seen == {"question": "Plan our launch", "cancelled": False}
+    assert seen["question"] == "Plan our launch" and seen["cancelled"] is False
+    assert seen["readonly"] in ({"file_to_brain": False}, {"read_only": True})
 
 
 @pytest.mark.parametrize("kind", ["act", "teach", "", 3, None])
@@ -2066,7 +2068,7 @@ def test_stop_lands_between_crew_steps():
 
     ran = []
     ws = type(
-        "W", (), {"_run_intent": lambda self, i, a, fallback: ran.append(a) or a}
+        "W", (), {"_run_intent": lambda self, i, a, fallback, read_only=False: ran.append(a) or a}
     )()
     calls = iter([False, True])
     result = run_crew(

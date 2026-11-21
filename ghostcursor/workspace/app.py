@@ -656,8 +656,14 @@ class App:
             "research": lambda: self.ws.research(
                 question, cancelled=stop, record=False
             ),
-            "deep": lambda: self.ws.deep_dive(question, cancelled=stop).as_text(),
-            "crew": lambda: self.ws.crew(question, cancelled=stop).as_text(),
+            # Background jobs are read-only (CLAUDE.md): nothing filed to the
+            # Brain, no skill, plan, brief or deck written behind the person.
+            "deep": lambda: self.ws.deep_dive(
+                question, cancelled=stop, file_to_brain=False
+            ).as_text(),
+            "crew": lambda: self.ws.crew(
+                question, cancelled=stop, read_only=True
+            ).as_text(),
         }[kind]
         future, row = self._begin_run(JOB_KINDS[kind], work)
         self.background_id = jid
