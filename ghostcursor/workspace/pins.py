@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from ghostcursor.workspace import write_atomic
 
 MAX_TEXT = 300
 MAX_PINS = 20
@@ -31,9 +32,7 @@ def _load(root: Path) -> list[dict]:
 
 
 def _save(root: Path, items: list[dict]) -> None:
-    _store(root).write_text(
-        json.dumps(items, indent=1, ensure_ascii=False), encoding="utf-8", newline="\n"
-    )
+    write_atomic(_store(root), json.dumps(items, indent=1, ensure_ascii=False))
 
 
 def add(root: Path, text: str) -> int:

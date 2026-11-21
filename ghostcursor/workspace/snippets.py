@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from ghostcursor.workspace import write_atomic
 
 MAX_NAME = 60
 MAX_TEXT = 10000
@@ -32,9 +33,7 @@ def _load(root: Path) -> dict[str, str]:
 
 
 def _save(root: Path, data: dict[str, str]) -> None:
-    _store(root).write_text(
-        json.dumps(data, indent=1, ensure_ascii=False), encoding="utf-8", newline="\n"
-    )
+    write_atomic(_store(root), json.dumps(data, indent=1, ensure_ascii=False))
 
 
 def save(root: Path, name: str, text: str) -> str:

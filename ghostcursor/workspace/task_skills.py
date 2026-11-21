@@ -18,6 +18,7 @@ import re
 from pathlib import Path
 
 from ghostcursor.providers import TeachPlan, parse_teach_plan
+from ghostcursor.workspace import write_atomic
 
 
 def _dir(dest_dir: Path | None = None) -> Path:
@@ -57,7 +58,7 @@ def save_skill(name: str, plan: TeachPlan, *, dest_dir: Path | None = None) -> P
         ]
     }
     path = directory / f"{_slug(name)}.json"
-    path.write_text(json.dumps(payload, indent=1), encoding="utf-8", newline="\n")
+    write_atomic(path, json.dumps(payload, indent=1))
     return path
 
 

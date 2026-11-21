@@ -56,3 +56,30 @@ def test_capture_appends_dated_bullets_and_skips_blank(tmp_path: Path):
     ]
     assert len(lines) == 2
     assert "hello world" in lines[0] and "second" in lines[1]
+
+
+def test_a_copied_key_is_not_written_to_the_capture_log(tmp_path):
+    from ghostcursor.workspace import capture
+
+    log = tmp_path / "captures.md"
+    assert capture.append_capture("token AKIA1234567890ABCDEF here", log=log)
+    assert "AKIA1234567890ABCDEF" not in log.read_text(encoding="utf-8")
+
+
+def test_a_save_that_dies_mid_write_leaves_the_old_snippets_whole(tmp_path, monkeypatch):
+    import os
+
+    from ghostcursor.workspace import snippets
+
+    snippets.save(tmp_path, "sig", "Best, Ana")
+
+    def crash(*a, **k):
+        raise OSError("power cut")
+
+    monkeypatch.setattr(os, "replace", crash)
+    try:
+        snippets.save(tmp_path, "addr", "1 Main St")
+    except OSError:
+        pass
+    monkeypatch.undo()
+    assert snippets.names(tmp_path) == ["sig"] and snippets.get(tmp_path, "sig") == "Best, Ana"
