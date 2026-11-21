@@ -101,12 +101,12 @@ def test_ensure_ollama_starts_it_only_when_installed_and_down(monkeypatch):
         raise OSError
 
     monkeypatch.setattr(appmod.socket, "create_connection", _refuse)
-    monkeypatch.setattr(appmod.shutil, "which", lambda name: None)
+    monkeypatch.setattr(appmod.shutil, "which", lambda name, **k: None)
     appmod._ensure_ollama()
     assert calls == []
 
     # down, and installed -> spawn `ollama serve`
-    monkeypatch.setattr(appmod.shutil, "which", lambda name: r"C:\ollama.exe")
+    monkeypatch.setattr(appmod.shutil, "which", lambda name, **k: r"C:\ollama.exe")
     appmod._ensure_ollama()
     assert calls and calls[-1][0].endswith("ollama.exe") and calls[-1][1] == "serve"
 
@@ -120,7 +120,7 @@ def test_frozen_ollama_launch_does_not_export_bundle_dll_path(monkeypatch):
         "create_connection",
         lambda *a, **k: (_ for _ in ()).throw(OSError()),
     )
-    monkeypatch.setattr(appmod.shutil, "which", lambda name: r"C:\ollama.exe")
+    monkeypatch.setattr(appmod.shutil, "which", lambda name, **k: r"C:\ollama.exe")
     monkeypatch.setattr(appmod.sys, "frozen", True, raising=False)
     monkeypatch.setattr(appmod.sys, "_MEIPASS", r"C:\bundle\_internal", raising=False)
     monkeypatch.setattr(
@@ -2732,3 +2732,22 @@ def test_act_from_the_page_keeps_the_agents_deny_list_and_never_runs_with_none(
     call(port, "/api/act", {"step": 1, "windows": [0], "deny": ["print"]})
     assert "delete" in seen[0] and "send" in seen[0]
     assert seen[1] == ["archive", "print"]
+
+
+def test_ollama_is_never_looked_up_in_the_current_folder(monkeypatch, tmp_path):
+    # "Ask Orbyn about this file" can start Orbyn in a folder someone else
+    # controls; a planted ollama.exe there must not be found.
+    import os
+
+    (tmp_path / "ollama.exe").write_bytes(b"")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("PATH", r"C:\Windows" + os.pathsep + ".")
+
+    def down(*a, **k):
+        raise OSError
+
+    monkeypatch.setattr(appmod.socket, "create_connection", down)
+    started = []
+    monkeypatch.setattr(appmod.subprocess, "Popen", lambda *a, **k: started.append(a[0]))
+    appmod._ensure_ollama()
+    assert started == []

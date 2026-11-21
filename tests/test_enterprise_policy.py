@@ -502,3 +502,15 @@ def test_a_damaged_settings_file_keeps_the_air_gap_when_another_switch_is_set(tm
     assert settings.local_only(path) is True
     settings.set_local_only(False, path)  # only the person turns it off
     assert settings.local_only(path) is False
+
+
+def test_an_unreadable_block_list_blocks_every_app(monkeypatch):
+    from ghostcursor.harness.binding import denied
+
+    _policy(monkeypatch, BlockedApps="unreadable")  # present, not readable
+    assert "excel.exe" in policy.blocked_apps() and denied("excel.exe")
+
+
+def test_the_speech_model_is_not_downloaded_when_hugging_face_is_not_allowed(monkeypatch):
+    _policy(monkeypatch, AllowedProviders="ollama")
+    assert not policy.allows("huggingface")  # voice.py passes local_files_only

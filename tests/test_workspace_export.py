@@ -42,3 +42,11 @@ def test_export_handles_an_empty_workspace(tmp_path):
     md = ws.export_md()
     assert "_(no plan yet)_" in md and "no todos" in md
     brain.close()
+
+
+def test_a_key_typed_into_the_goal_is_scrubbed_from_the_export(tmp_path, monkeypatch):
+    brain = Brain(tmp_path / "b.sqlite")
+    ws = Workspace("launch-plan", object(), brain, root=tmp_path / "br")
+    monkeypatch.setattr(Workspace, "goal", property(lambda self: "Use key AKIA1234567890ABCDEF"))
+    assert "AKIA1234567890ABCDEF" not in ws.export_md()
+    brain.close()

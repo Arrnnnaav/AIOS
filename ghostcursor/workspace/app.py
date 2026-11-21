@@ -2115,7 +2115,15 @@ def _ensure_ollama() -> None:
     except OSError:
         pass
 
-    exe = shutil.which("ollama")
+    # Absolute PATH entries only: shutil.which on Windows also searches the
+    # current folder, and "Ask Orbyn about this file" can start Orbyn in a
+    # folder someone else controls (a planted ollama.exe there would run).
+    exe = shutil.which(
+        "ollama",
+        path=os.pathsep.join(
+            d for d in os.environ.get("PATH", "").split(os.pathsep) if os.path.isabs(d)
+        ),
+    )
     if not exe:
         return  # not installed; the UI already reports model-unavailable cleanly
     dll_dir = None

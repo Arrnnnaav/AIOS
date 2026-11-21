@@ -256,7 +256,9 @@ def transcribe(samples) -> str:
     )
     from ghostcursor import policy
 
-    local = policy.max_egress() == policy.LOCAL  # offline: never download weights
+    # Never download weights unless the organisation lets Hugging Face be
+    # contacted: local-only, or an AllowedProviders list that omits it.
+    local = not policy.allows("huggingface")
     model = WhisperModel(WHISPER_MODEL, device="cpu", compute_type="int8", local_files_only=local)
     segments, _ = model.transcribe(samples, language="en", beam_size=1, vad_filter=True)
     segments = list(segments)

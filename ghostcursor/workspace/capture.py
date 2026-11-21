@@ -34,6 +34,10 @@ def append_capture(
     text = " ".join((text or "").split())
     if not text:
         return False
+    from ghostcursor import redact
+
+    # A copied password or key must not land in a plain-text file.
+    text = redact.scrub(text, redact.SECRETS)[0]
     path = log or _default_log()
     path.parent.mkdir(parents=True, exist_ok=True)
     stamp = time.strftime("%Y-%m-%d %H:%M", time.localtime(clock()))

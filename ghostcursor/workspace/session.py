@@ -1148,12 +1148,11 @@ class Workspace:
 
         lines = [f"# Workspace: {self.topic}"]
         if self.goal:
-            lines += ["", f"**Goal:** {self.goal}"]
+            # Scrubbed like the steps: this file is meant to be shared.
+            lines += ["", f"**Goal:** {redact.scrub(self.goal)[0]}"]
         plan = self.plan
         lines += ["", "## Plan"]
         if plan and plan.steps:
-            from ghostcursor import redact
-
             lines += [
                 f"{n}. {redact.scrub(s.instruction)[0]}"
                 for n, s in enumerate(plan.steps, 1)

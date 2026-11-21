@@ -127,8 +127,18 @@ def telemetry_enabled() -> bool:
         return False
 
 
+class _Everything(frozenset):
+    """A block list that blocks every app: BlockedApps was present but could
+    not be read, and a policy meant to lower what Orbyn may touch fails closed."""
+
+    def __contains__(self, item) -> bool:
+        return True
+
+
 def blocked_apps() -> frozenset[str]:
     value = _value("BlockedApps")
+    if value == "unreadable":
+        return _Everything()
     if not isinstance(value, str):
         return frozenset()
     return frozenset(
