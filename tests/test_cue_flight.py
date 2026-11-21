@@ -89,3 +89,14 @@ def test_destroying_the_overlay_forgets_its_cue_and_sketch(monkeypatch):
     ov._cue, ov._sketch = object(), object()
     ov.destroy_overlay_window(1)
     assert ov._cue is None and ov._sketch is None
+
+
+def test_lines_and_label_grow_with_display_scaling(monkeypatch):
+    from ghostcursor.overlay import window as ov
+
+    monkeypatch.setattr(ov, "_scale", None)
+    monkeypatch.setattr(ov.dpi, "scale_factor", lambda: 2.0)
+    assert ov._scaled(ov.LABEL_FONT_HEIGHT) == 30 and ov._scaled(3) == 6
+    monkeypatch.setattr(ov, "_scale", None)
+    monkeypatch.setattr(ov.dpi, "scale_factor", lambda: 0.5)  # never shrinks
+    assert ov._scaled(3) == 3

@@ -51,6 +51,22 @@ LABEL_TEXT_COLOR = win32api.RGB(255, 255, 255)
 LABEL_PLATE_COLOR = win32api.RGB(24, 24, 28)
 LABEL_FONT_HEIGHT = 15
 
+#: The display's scale (1.5 at 150%), read once: line widths and the label
+#: font are drawn in physical pixels, so at 200% a 15 px label is ~5 pt.
+_scale: float | None = None
+
+
+def _scaled(px: int) -> int:
+    """``px`` logical pixels in physical pixels, never smaller than ``px``."""
+
+    global _scale
+    if _scale is None:
+        try:
+            _scale = max(1.0, float(dpi.scale_factor()))
+        except Exception:  # no display to ask (tests, a service session)
+            _scale = 1.0
+    return max(px, round(px * _scale))
+
 _CLASS_NAME = "GhostCursorOverlay"
 
 # Module-level so the GDI handles outlive every call that uses them.
@@ -120,7 +136,7 @@ def _paint_ring(hdc, x: int, y: int, radius: int, freshness) -> None:
 
     colour = ring_colour_for(freshness)
     radius += pulse_delta(time.monotonic())  # breathe to draw the eye (HeyClicky)
-    pen = win32gui.CreatePen(win32con.PS_SOLID, RING_THICKNESS, colour)
+    pen = win32gui.CreatePen(win32con.PS_SOLID, _scaled(RING_THICKNESS), colour)
     old_pen = win32gui.SelectObject(hdc, pen)
     old_brush = win32gui.SelectObject(hdc, win32gui.GetStockObject(win32con.NULL_BRUSH))
     win32gui.Ellipse(hdc, x - radius, y - radius, x + radius, y + radius)
@@ -306,7 +322,7 @@ def _ensure_label_font():
         # CreateFontIndirect with a LOGFONT, not CreateFont: pywin32's
         # win32gui does not expose the latter at all.
         logfont = win32gui.LOGFONT()
-        logfont.lfHeight = LABEL_FONT_HEIGHT
+        logfont.lfHeight = _scaled(LABEL_FONT_HEIGHT)
         logfont.lfWeight = win32con.FW_SEMIBOLD
         logfont.lfCharSet = win32con.DEFAULT_CHARSET
         logfont.lfOutPrecision = win32con.OUT_DEFAULT_PRECIS
@@ -356,7 +372,7 @@ def _paint_cue(hdc, scene) -> None:
 
     if scene.target is not None:
         left, top, right, bottom = scene.target
-        pen = win32gui.CreatePen(win32con.PS_SOLID, CUE_RING_THICKNESS, colour)
+        pen = win32gui.CreatePen(win32con.PS_SOLID, _scaled(CUE_RING_THICKNESS), colour)
         old_pen = win32gui.SelectObject(hdc, pen)
         old_brush = win32gui.SelectObject(
             hdc, win32gui.GetStockObject(win32con.NULL_BRUSH)
