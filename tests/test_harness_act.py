@@ -827,3 +827,37 @@ def test_a_control_relabelled_risky_after_the_gate_waits_for_the_user():
     assert session.tick(relabelled).phase is Phase.CONFIRM_RISK and done == []
     session.tick(relabelled, confirm=True)
     assert done == ["Pay $40"]
+
+
+def test_paste_refuses_when_text_sits_beside_a_picture(monkeypatch):
+    # The restore puts back text only: the picture would be lost.
+    import sys
+    import types
+
+    fake = types.SimpleNamespace(
+        CF_UNICODETEXT=13,
+        IsClipboardFormatAvailable=lambda f: f in (13, 8),  # text + a DIB
+        GetClipboardData=lambda f: "hello",
+        CountClipboardFormats=lambda: 2,
+        CloseClipboard=lambda: None,
+        OpenClipboard=lambda *a: None,
+    )
+    monkeypatch.setitem(sys.modules, "win32clipboard", fake)
+    monkeypatch.setattr(act, "_open_clipboard", lambda c, tries=5: None)
+    with pytest.raises(PermissionError, match="picture"):
+        act.get_clipboard_text()
+    fake.IsClipboardFormatAvailable = lambda f: f == 13  # text only: fine
+    assert act.get_clipboard_text() == "hello"
+
+
+def test_a_window_that_changed_owner_is_not_acted_on(monkeypatch):
+    # The observer re-checks the binding once a round; a reused HWND could
+    # belong to another app by the time the step runs, so act checks again.
+    from ghostcursor.harness import teach_live
+
+    sent = []
+    monkeypatch.setattr(teach_live, "still_bound", lambda binding: False)
+    monkeypatch.setattr(act, "perform", lambda *a, **k: sent.append(a) or "done")
+    with pytest.raises(PermissionError, match="changed"):
+        teach_live._live_perform(None, None, 9, "excel.exe", binding=object())
+    assert sent == []

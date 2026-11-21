@@ -403,3 +403,25 @@ def test_a_staging_area_is_frozen(owned):
     with pytest.raises(Exception):
         area.final = Path("elsewhere")
     assert isinstance(area, Staging)
+
+
+def test_a_file_that_appears_during_publishing_is_never_overwritten(owned, monkeypatch):
+    # Act never overwrites: the exists-check and the final rename are apart in
+    # time, so the rename itself must refuse an existing path.
+    import ghostcursor.act_staging as staging
+
+    area = _area(owned)
+    _write(area)
+    real = staging._digest
+    calls = []
+
+    def digest(path):
+        calls.append(path)
+        if len(calls) == 3:  # after the copy: someone saves at the final path
+            area.final.write_bytes(b"the person's own file")
+        return real(path)
+
+    monkeypatch.setattr(staging, "_digest", digest)
+    with pytest.raises(StagingError):
+        publish(area)
+    assert area.final.read_bytes() == b"the person's own file"

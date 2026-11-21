@@ -180,6 +180,12 @@ def get_clipboard_text() -> str | None:
     _open_clipboard(c)
     try:
         if c.IsClipboardFormatAvailable(c.CF_UNICODETEXT):
+            # Text beside a picture or files: the restore puts back text only,
+            # so the picture would be lost. Refuse that case as for a picture.
+            if any(c.IsClipboardFormatAvailable(f) for f in _NON_TEXT_FORMATS):
+                raise PermissionError(
+                    "the clipboard holds a picture or files, so Orbyn did not paste over it"
+                )
             return c.GetClipboardData(c.CF_UNICODETEXT)
         if c.CountClipboardFormats():
             raise PermissionError(
@@ -188,6 +194,11 @@ def get_clipboard_text() -> str | None:
         return None
     finally:
         c.CloseClipboard()
+
+
+#: CF_BITMAP, CF_DIB, CF_ENHMETAFILE, CF_HDROP, CF_DIBV5: what a text-only
+#: restore cannot put back.
+_NON_TEXT_FORMATS = (2, 8, 14, 15, 17)
 
 
 def set_clipboard_text(text: str | None) -> None:

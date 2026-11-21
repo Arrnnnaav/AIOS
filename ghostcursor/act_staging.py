@@ -192,8 +192,24 @@ def publish(area: Staging) -> str:
                 f"the published copy does not match what was staged "
                 f"({copied} != {before}); nothing was published"
             )
-        # The one moment the final path comes into existence.
-        os.replace(partial, area.final)
+        # The one moment the final path comes into existence. A hard link
+        # fails if the path exists, so a file that appeared since the check
+        # above is never overwritten ("Act never overwrites"); os.replace
+        # would silently replace it on Windows.
+        try:
+            os.link(partial, area.final)
+        except FileExistsError:
+            raise StagingError(
+                f"the approved output path appeared during publishing: {area.final}"
+            ) from None
+        except OSError:  # a volume without hard links (FAT, some shares)
+            if area.final.exists():
+                raise StagingError(
+                    f"the approved output path already exists: {area.final}"
+                ) from None
+            os.replace(partial, area.final)
+        else:
+            partial.unlink()
     except Exception:
         # The final path is untouched on every failing path. `os.replace` is
         # the last statement precisely so that nothing before it can leave a

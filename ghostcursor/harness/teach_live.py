@@ -373,9 +373,14 @@ def _default_gateway():
     return Gateway()
 
 
-def _live_perform(step, target, window: int, app: str | None = None):
+def _live_perform(step, target, window: int, app: str | None = None, binding=None):
     """``app`` is the bound window's executable, known since binding; without
-    it the window is identified here (an OpenProcess on this thread)."""
+    it the window is identified here (an OpenProcess on this thread).
+    ``binding``: checked right before acting, since the observer's check can
+    be seconds old and a reused HWND may now belong to another app."""
+
+    if binding is not None and not still_bound(binding):
+        raise PermissionError("the chosen window changed since it was bound; nothing was done")
 
     from ghostcursor import audit
     from ghostcursor.harness import act as act_mod
@@ -468,10 +473,15 @@ def run_model_teach(
         if act:  # D182: the user approves the plan; Orbyn performs each step
             windows = {b.label: b.hwnd for b in bindings}
             apps = {b.label: b.identity.executable for b in bindings}
+            bound = {b.label: b for b in bindings}
 
             def perform(step, target):
                 return _live_perform(
-                    step, target, windows[target.window], apps[target.window]
+                    step,
+                    target,
+                    windows[target.window],
+                    apps[target.window],
+                    bound[target.window],
                 )
         session = ModelTeachSession(
             goal,
