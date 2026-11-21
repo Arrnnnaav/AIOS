@@ -143,3 +143,18 @@ def test_legacy_rows_are_quarantined_and_never_hydrated(tmp_path):
     with ObservationStore(path) as store:
         assert store.quarantined_legacy_count() == 1
         assert store.observations_for("k", "app.exe") == []
+
+
+def test_forget_all_also_erases_the_quarantined_legacy_rows(tmp_path):
+    import sqlite3
+
+    from ghostcursor.memory.store import ObservationStore
+
+    path = tmp_path / "kb.sqlite"
+    with ObservationStore(path) as store:
+        store._conn.execute("CREATE TABLE IF NOT EXISTS legacy_observations (x TEXT)")
+        store._conn.execute("INSERT INTO legacy_observations VALUES ('Save As')")
+        store._conn.commit()
+        store.forget_all()
+    with sqlite3.connect(path) as raw:
+        assert raw.execute("SELECT COUNT(*) FROM legacy_observations").fetchone()[0] == 0

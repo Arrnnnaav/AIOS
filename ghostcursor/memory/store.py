@@ -72,8 +72,12 @@ class ObservationStore:
         # library default.
         self._conn.execute("PRAGMA busy_timeout = 2000")
         self._conn.row_factory = sqlite3.Row
-        self._ensure_schema()
-        self._conn.commit()
+        try:
+            self._ensure_schema()
+            self._conn.commit()
+        except BaseException:
+            self._conn.close()  # never leave kb.sqlite locked on a bad schema
+            raise
 
     def _ensure_schema(self) -> None:
         """Create v2 storage or quarantine the unscoped legacy table once."""
@@ -193,8 +197,16 @@ class ObservationStore:
         ]
 
     def forget_all(self) -> None:
-        """Erase everything. The user-facing equivalent is deleting the file."""
+        """Erase everything. The user-facing equivalent is deleting the file.
+        Including the quarantined pre-plugin rows: they hold screen-derived
+        control names too, and "everything" means everything."""
         self._conn.execute("DELETE FROM observations")
+        legacy = self._conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' "
+            "AND name='legacy_observations'"
+        ).fetchone()
+        if legacy:
+            self._conn.execute("DELETE FROM legacy_observations")
         self._conn.commit()
 
     def purge_plugin(self, plugin_id: str, plugin_version: str | None = None) -> int:
