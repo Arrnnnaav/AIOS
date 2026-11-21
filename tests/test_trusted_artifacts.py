@@ -839,3 +839,30 @@ def test_trusted_directory_resolution_rejects_files_and_symlink_components(
     )
     with pytest.raises(ValueError, match="symlink"):
         resolve_trusted_directory(tmp_path, "packs/vscode")
+
+
+def test_a_placeholder_glued_to_a_word_is_refused(tmp_path):
+    import pytest
+
+    title_rule = {
+        "kind": "window_title_matches",
+        "args": {
+            "completion_title_suffixes": ["visual studio code"],
+            "goal_reference": {
+                "strip_leading_token": "open",
+                "alias": "vscode_names",
+                "nonspecific_templates": ["a{alias}"],  # never substitutes
+                "strip_trailing_alias_clause": {"preposition": "in"},
+                "basename_separators": ["/"],
+                "minimum_length": 2,
+            },
+            "fail_after_timeout": True,
+        },
+        "timeout_s": 20.0,
+    }
+    recipe = _recipe(
+        selectors={"export_button": _selector()},
+        steps=[_step(verification_rule=title_rule)],
+    )
+    with pytest.raises(ValueError, match="placeholder"):
+        _load_json(tmp_path, recipe, ArtifactSchema.RECIPE)

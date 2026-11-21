@@ -65,6 +65,10 @@ def assert_live_parity(
 ) -> dict[str, object]:
     """Compare identity exactly and geometry structurally, never pixel-for-pixel."""
     required_ids = {element.automation_id for element in fixture.elements}
+    seen = [e.automation_id for e in live_elements if e.automation_id in required_ids]
+    twins = sorted({i for i in seen if seen.count(i) > 1})
+    if twins:  # a dict would keep only the last one and hide the duplicate
+        raise AssertionError(f"live tree repeats required automation ids: {twins}")
     live_by_id = {
         element.automation_id: element
         for element in live_elements

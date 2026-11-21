@@ -798,7 +798,12 @@ def _validate_goal_reference(value: Any, verification_label: str) -> None:
     )
     for index, template in enumerate(templates):
         remainder = template.replace("{alias}", "")
-        if template.count("{alias}") != 1 or "{" in remainder or "}" in remainder:
+        if (
+            template.count("{alias}") != 1
+            or "{alias}" not in template.split()  # "a{alias}" never substitutes
+            or "{" in remainder
+            or "}" in remainder
+        ):
             raise ValueError(
                 f"{label}.nonspecific_templates[{index}] has invalid placeholder"
             )

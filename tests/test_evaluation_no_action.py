@@ -44,3 +44,8 @@ def test_an_aliased_or_dynamic_input_call_is_still_caught(tmp_path, source):
 
     (tmp_path / "sneaky.py").write_text(source, encoding="utf-8")
     assert evaluation_safety_violations(tmp_path)
+
+
+def test_a_relative_import_cannot_slip_past_the_scan(tmp_path):
+    (tmp_path / "bad.py").write_text("from ..run import run_tour" + chr(10), encoding="utf-8")
+    assert any("relative-import" in v for v in evaluation_safety_violations(Path(tmp_path)))

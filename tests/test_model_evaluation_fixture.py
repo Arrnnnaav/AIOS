@@ -41,3 +41,10 @@ def test_parity_rejects_identity_drift():
 
     with pytest.raises(AssertionError, match="name drifted"):
         assert_live_parity(fixture, live, (0, 0, 2000, 2000))
+
+
+def test_parity_rejects_a_repeated_required_id():
+    fixture = load_fixture()
+    live = list(fixture.elements) + [fixture.elements[0]]  # a duplicate control
+    with pytest.raises(AssertionError, match="repeats"):
+        assert_live_parity(fixture, live, (0, 0, 2000, 2000))

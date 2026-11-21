@@ -44,6 +44,8 @@ def evaluation_safety_violations(root: Path | None = None) -> list[str]:
                 for alias in node.names:
                     _check_import(alias.name, path, node.lineno, violations)
             elif isinstance(node, ast.ImportFrom):
+                if node.level:  # `from ..run import x` would slip the prefix check
+                    violations.append(f"{path.name}:{node.lineno}:relative-import")
                 _check_import(node.module or "", path, node.lineno, violations)
                 for alias in node.names:  # `from x import SendInput as s`
                     if alias.name in FORBIDDEN_CALLS:
