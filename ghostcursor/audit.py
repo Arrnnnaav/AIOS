@@ -5,7 +5,8 @@ audit\\audit.jsonl``. Each line carries the SHA-256 of the line before it, so
 an edited, removed or reordered line breaks the chain and ``verify`` names
 where. Events, not content (D141): an allow-list of event names and fields,
 numbers and short identifiers only -- never a goal, screen text, window title,
-handle, PID or path (rule 6). Recording never raises: an audit failure must
+handle, PID or path (rule 6). Text fields are capped at MAX_FIELD characters
+but not checked for content: keeping them identifiers is each caller's job. Recording never raises: an audit failure must
 not stop the user's work, and it never blocks Stop.
 
     py -3.12 -m ghostcursor.audit verify
