@@ -225,7 +225,14 @@ def from_record(value: Mapping[str, Any]) -> CoordinateSpace:
     # awareness beside it: "none" is emitted only alongside UNKNOWN_AWARENESS, so
     # a record claiming a real awareness answered by no API is internally
     # impossible and previously parsed. Same class as the units contradiction.
-    answered = "none" not in api
+    # Judged on the THREAD half only: capture() writes "thread=X;process=Y",
+    # and a failed process query ("process=none") says nothing about the
+    # thread awareness this record's rectangles are in.
+    thread_half = next(
+        (part[len("thread="):] for part in api.split(";") if part.startswith("thread=")),
+        api,
+    )
+    answered = thread_half != "none"
     known = value["thread_awareness"] != dpi.UNKNOWN_AWARENESS
     if known != answered:
         raise ValueError(

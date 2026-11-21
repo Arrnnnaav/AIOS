@@ -998,3 +998,9 @@ def test_a_monitors_field_that_is_not_a_list_is_refused_as_such():
 
     with pytest.raises(ValueError, match="monitors is invalid"):
         from_record(record)
+
+
+def test_a_failed_process_query_does_not_refuse_a_known_thread_awareness():
+    record = _space().as_record()
+    record["awareness_api"] = "thread=GetThreadDpiAwarenessContext;process=none"
+    assert from_record(record).awareness_api.endswith("process=none")
