@@ -2803,48 +2803,7 @@ from 1053b54. Still open:
   exported; a corrupt bundle member crashed listings; paint budget rounded
   below p99; act_live_node wrote the executable path; devtools outputs
   overwrote captured files.
-  Left (bugs): planning_session asks on the last round then gives up without planning;
-  background deep/crew jobs can write (Brain candidates, skills, replace the
-  plan, append brief turns) though background is called read-only - needs an
-  owner decision; listen.py KWS sends the wake phrase alone as a request and
-  listen_kws treats a comment-only keywords file as installed; packs
-  activation fails every plugin on any diagnostic (contradicts its
-  docstring); compile.py goal reference "my project folder" counts as
-  specific so verification never passes; compiled_tour target-less
-  non-observe steps can never verify (latent); browser.click has no
-  hit-test (no production caller; fix before wiring); plugins/platform does not apply
-  trust/ key revocations (latent; BLOCKING before trust/ ships);
-  candidate_acceptance writes the window title into evidence (rule 6);
-  act_live_node counts every
-  dispatch as after-stop and runs the unsigned source payload while its
-  docs say signed; act_manager_campaign: a refusal before attempt 1 locks
-  the campaign; uia_feasibility drops the constant sources.
-  Left (minor): policy.blocked_apps unreadable fails open; task graph has no
-  total deadline; Whisper download ignores AllowedProviders; manager Start
-  during planning dropped; adapter_host start leak; crashreport main-thread
-  wait unbounded by DNS; brief CRLF/lock; audit verify unlocked and _clean
-  loose; coordinate_space process=none; overlay fixed-pixel sizes,
-  PostQuitMessage, Teach path skips DPI admission; compiled stop joins 2 s on
-  the UI thread; focus thread not restarted after stop/start; tier2 keeps a
-  frame per step; crew TypeError and short forms; non-atomic writes
-  (snippets, pins, todos, task_skills, crew); capture.py keeps clipboard text
-  unsealed; agenda shows yesterday's all-day events; IMAP socket leak;
-  research _blocked substring; deck plan not cancellable; brain _supersede
-  overlap; knowledge supersede self; team sequence file user-writable; team
-  sync auto-approves owner facts (needs a D187 note); know_extract on the
-  request thread; MAX_BODY 403 resets; shutil.which("ollama") can run a
-  planted exe from cwd; export_md goal unscrubbed; Brain/Plan re-render
-  loses typed input; act_acceptance absolute paths in reports; manager
-  campaign salt unbound; receipt_budget count; act_uia_session compares
-  identity with itself; still_bound not checked at act time; paste_text
-  restores text only; act_staging exists-then-replace race; HIGH_RISK lacks
-  submit/publish/empty/clear/install; act_cli prints the raw HWND; gateway
-  Jev questions unscrubbed; PICTURE_NOTE sent to the local fallback;
-  chatgpt listener allow_reuse_address; bundle drive-prefixed names; store
-  uninstall order; memory conn leak and forget_all keeps legacy rows;
-  screen_hint fallback/loopback; evaluation safety relative imports,
-  model_gate synthetic unavailable path, fixture duplicate ids; trusted
-  placeholder check.
+  Left: see the 22 Nov entry below (it supersedes this list).
 - 19 Nov: tier-1 review of ad52028..149ca7c. One blocking finding, fixed:
   risky chords were judged by spelling ("control+w", "f4+alt" slipped) and
   a separate "enter" keys step could submit unasked; now judged on key
@@ -2884,3 +2843,53 @@ from 1053b54. Still open:
   Teach confirmations: owner call); drive_live's ESC relies on
   GetAsyncKeyState's unreliable pressed-since bit, a tick-thread latch
   would hold a quick tap.
+- 22 Nov: full-review list, current state. Fixed since 19 Nov (with tests,
+  tier-1 ones mutation-swept and independently reviewed): background deep
+  and crew jobs are read-only; team sync's approval documented as the
+  owner's review (D187); drive_live and browser drive re-check the label at
+  click time; manager campaign no longer locked by a pre-attempt refusal;
+  act_live_node stop count and signed/unsigned wording; uia_feasibility
+  pattern sources; unreadable or non-text BlockedApps blocks all; Whisper
+  download gated on Hugging Face being allowed; Ollama found only in
+  absolute PATH folders (shutil.which searched the current folder: review
+  blocking finding, fixed); export and capture scrub keys; research host
+  match; damaged crew file; fact superseding itself; agenda all-day end;
+  IMAP socket close; atomic workspace stores; memory forget_all and schema
+  close; bundle drive names; uninstall order; PICTURE_NOTE; exclusive
+  sign-in port; publish by atomic rename (never replaces); paste refuses
+  text beside a picture; binding re-checked before each Act step; deck Stop;
+  dead adapter child stopped; audit verify locked; overlay posts no
+  WM_QUIT; evaluation scan relative imports; parity duplicate ids; trusted
+  placeholder; a whole task graph has one deadline (manager: 600 s); the
+  local-provider loopback test; Extract tooltip says the document is kept.
+  Owner decisions (deliberately not changed): packs activation fails every
+  plugin on any diagnostic (stricter than its docstring, fails closed; a
+  per-plugin scope also needs plugins/store.py); the compiled VS Code goal
+  reference must stay in parity with the legacy matcher ("my project folder"
+  never verifies; pack disabled, D130); target-less observe steps are valid
+  in the trusted schema but cannot ground at run time (no shipped recipe
+  has one); HIGH_RISK lacks submit/publish/empty/clear/install/checkout and
+  needs whole words (widening adds Teach confirmations).
+  Before shipping a feature: plugins/platform must apply trust/ key
+  revocations before any trust/ directory ships; browser drive should read
+  labels in an isolated world and hit-test before clicking.
+  Left (minor): manager Start during planning dropped and a misleading
+  status at manager.py:1104; crashreport main-thread wait not bounded by
+  DNS; brief CRLF rewrite and unlocked append; audit _clean accepts any
+  short string; coordinate_space process=none; overlay fixed-pixel sizes and
+  no DPI admission on the Teach path; compiled stop joins 2 s on the UI
+  thread; focus thread not restarted after stop/start; tier2 keeps a frame
+  per step; brain _supersede overlap ratio; team sequence file
+  user-writable; know_extract on the request thread with no cancel;
+  MAX_BODY 403 resets the connection; Brain/Plan re-render loses typed
+  input; act_acceptance absolute paths in reports; manager campaign salt
+  unbound; receipt_budget first-cue count; act_uia_session compares an
+  identity with itself; act_cli prints the raw HWND to stdout; gateway Jev
+  questions unscrubbed (fixed text today); screen_hint fallback (no
+  caller); model_gate uses a synthetic unavailable path; registered
+  clipboard formats (PNG, HTML, RTF) not counted; act_staging marker if
+  unlink fails; Extract facts: near-duplicate tightens an approved fact's
+  source, no app-level local-only test; candidate_acceptance writes the
+  window title of fixture apps into evidence.
+  Local, not removable here: .tmp/pytest-portfolio-review and .pytest-tmp/
+  deny access to this account (an administrator can remove them).
