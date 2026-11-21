@@ -527,3 +527,7 @@ def test_sign_out_also_forgets_a_refresh_that_could_not_be_saved(tmp_path):
         assert chatgpt.access_token(path=path, now=lambda: 2000.0) is None
     finally:
         chatgpt._UNSAVED.pop(path, None)
+
+
+def test_the_sign_in_listener_does_not_share_its_port():
+    assert chatgpt._ExclusiveServer.allow_reuse_address is False

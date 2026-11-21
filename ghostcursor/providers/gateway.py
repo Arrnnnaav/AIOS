@@ -244,11 +244,12 @@ class Gateway:
                 "format": "jpg",
                 "data_base64": base64.b64encode(jpeg).decode("ascii"),
             }
-        if refs:
-            question += PICTURE_NOTE
+        # Only Jev gets the pictures, so only Jev is told they are attached;
+        # the local fallback below gets the plain question.
+        jev_question = question + PICTURE_NOTE if refs else question
         try:
             answers = self._choose_jev(
-                envelope, question, criteria, refs, assets, deadline_s, cancelled
+                envelope, jev_question, criteria, refs, assets, deadline_s, cancelled
             )
         except ProviderError as exc:
             # Jev blocked (offline, policy), missing or failing: a model on this

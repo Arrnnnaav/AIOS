@@ -79,6 +79,13 @@ def save(record: dict, path: Path | None = None) -> None:
     os.replace(temporary, path)
 
 
+class _ExclusiveServer(http.server.HTTPServer):
+    """No SO_REUSEADDR: on Windows it lets another local process bind the
+    same port beside this one and receive the sign-in redirect."""
+
+    allow_reuse_address = False
+
+
 def sign_out(path: Path | None = None) -> None:
     """Forget the tokens; keep the host id so a later sign-in is the same host."""
 
@@ -132,7 +139,7 @@ def authorize_url(
 def listen(port: int) -> http.server.HTTPServer:
     """A one-shot loopback listener. Binds 127.0.0.1 only, never all interfaces."""
 
-    server = http.server.HTTPServer(("127.0.0.1", port), _CallbackHandler)
+    server = _ExclusiveServer(("127.0.0.1", port), _CallbackHandler)
     server.callback = None
     server.timeout = 0.5
     return server
