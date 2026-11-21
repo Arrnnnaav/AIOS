@@ -434,3 +434,29 @@ def test_drive_live_rechecks_risk_on_the_name_it_would_click():
         _perform=lambda step, target: acted.append(target.cid) or "clicked",
     )  # fmt: skip
     assert r.status == "blocked" and "without asking" in r.reason and acted == []
+
+
+def test_browser_drive_rechecks_the_label_the_person_sees_at_click_time(monkeypatch):
+    # An aria-label ("Continue") can hide the visible text ("Delete account"),
+    # and a page can rename a node after observe: both are re-read before a click.
+    from ghostcursor.harness import browser
+    from ghostcursor.providers.schemas import Choice
+
+    page = object.__new__(browser.Page)
+    control = browser.PageControl("button", "Continue", 7, (0, 0, 10, 10))
+    clicked = []
+    replies = {
+        "Accessibility.getPartialAXTree": {"nodes": [{"name": {"value": "Continue"}}]},
+        "DOM.resolveNode": {"object": {"objectId": "o1"}},
+        "Runtime.callFunctionOn": {"result": {"value": "Delete account"}},
+    }
+    page.cmd = lambda method, params=None: replies[method]
+    page.controls = lambda: [control]
+    page.click = lambda c, **k: clicked.append(c)
+
+    class G:
+        def choose(self, envelope, option_ids, **kw):
+            return Choice("7", {"7": 0.95})
+
+    r = page.drive("continue", G(), approved=True)
+    assert clicked == [] and r.status == "blocked" and "without asking" in r.reason

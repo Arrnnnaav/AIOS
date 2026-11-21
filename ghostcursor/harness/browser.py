@@ -207,6 +207,41 @@ class Page:
         xs, ys = box[0::2], box[1::2]
         return (int(min(xs)), int(min(ys)), int(max(xs)), int(max(ys)))
 
+    def label_now(self, backend_node_id: int) -> str:
+        """The node's accessible name AND visible text, read now. Both, since
+        an aria-label ("Continue") can hide what the person sees ("Delete
+        account"), and a single-page app can rename a node after observe."""
+
+        parts = []
+        try:
+            nodes = self.cmd(
+                "Accessibility.getPartialAXTree",
+                {"backendNodeId": backend_node_id, "fetchRelatives": False},
+            ).get("nodes", [])
+            parts += [(n.get("name") or {}).get("value", "") for n in nodes]
+        except RuntimeError:
+            pass
+        try:
+            obj = (
+                self.cmd("DOM.resolveNode", {"backendNodeId": backend_node_id})
+                .get("object", {})
+                .get("objectId")
+            )
+            if obj:
+                got = self.cmd(
+                    "Runtime.callFunctionOn",
+                    {
+                        "objectId": obj,
+                        "functionDeclaration": "function(){return String("
+                        "this.innerText||this.value||this.title||'').slice(0,300)}",
+                        "returnByValue": True,
+                    },
+                )
+                parts.append(str(got.get("result", {}).get("value", "")))
+        except RuntimeError:
+            pass
+        return " | ".join(" ".join(str(p).split()) for p in parts if p)
+
     # --- actions (gated exactly like Act, D182) --------------------------
 
     def _guard(self, control: PageControl, approved: bool, deny) -> None:
@@ -296,7 +331,17 @@ class Page:
             )
 
         def act(pick):
-            self.click(observe.handles[pick.id], approved=True, deny=())
+            from ghostcursor.harness.teach import HIGH_RISK
+
+            control = observe.handles[pick.id]
+            # Re-read at click time (rule 2): the node may have been renamed
+            # since observe, or its label may hide a risky visible text.
+            now = self.label_now(control.backend_node_id) or control.name
+            if any(d and d.casefold() in now.casefold() for d in deny or ()):
+                raise PermissionError(f"{now!r} is on the deny list")
+            if HIGH_RISK.search(now):
+                raise PermissionError(f"Orbyn will not click {now!r} without asking")
+            self.click(control, approved=True, deny=())
 
         return drive_until(
             goal,
