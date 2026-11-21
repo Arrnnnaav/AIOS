@@ -23,6 +23,7 @@ from dataclasses import dataclass
 
 from ghostcursor.providers import CREW_PLAN_SCHEMA, Envelope, parse_crew_plan
 from ghostcursor.providers.errors import ProviderError
+from ghostcursor.workspace import write_atomic
 
 MANAGER_SYSTEM = (
     "You are a manager. Break the user's goal into 1-6 ORDERED steps, each a "
@@ -136,7 +137,7 @@ def save_crew(root: Path, name: str, steps) -> Path:
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / f"{slug}.json"
     payload = {"name": slug, "steps": [{"intent": i, "argument": a} for i, a in steps]}
-    path.write_text(json.dumps(payload, indent=1), encoding="utf-8", newline="\n")
+    write_atomic(path, json.dumps(payload, indent=1))
     return path
 
 
@@ -153,6 +154,8 @@ def load_crew(root: Path, name: str) -> tuple[tuple[str, str], ...]:
     try:
         # read then re-serialise just the steps array for the strict parser
         data = json.loads(raw)
+        if not isinstance(data, dict):  # "[]" on disk is damaged, not a crash
+            raise ValueError(f"crew {slug!r} is damaged")
         return parse_crew_plan(json.dumps({"steps": data["steps"]}))
     except (ValueError, KeyError, ProviderError) as exc:
         raise ValueError(f"crew {slug!r} is corrupt: {exc}") from exc

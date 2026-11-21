@@ -125,8 +125,10 @@ def _clean(fragment: str) -> str:
 
 def _blocked(url: str) -> bool:
     host = urlparse(url).netloc.lower()
+    host = host.rsplit("@", 1)[-1].split(":", 1)[0]  # no userinfo or port
+    # The host or a subdomain of it: "x.com" must not block dropbox.com.
     return not url.startswith(("http://", "https://")) or any(
-        b in host for b in BLOCKED_HOSTS
+        host == b or host.endswith("." + b) for b in BLOCKED_HOSTS
     )
 
 

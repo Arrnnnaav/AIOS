@@ -150,7 +150,9 @@ def agenda(
     rows = [
         e
         for e in parse_ics(_fetch_ics(url, transport))
-        if e["start"] < end and (e.get("end") or e["start"]) >= begin
+        # DTEND is exclusive: yesterday's all-day event ends at today 00:00.
+        if e["start"] < end
+        and (e["end"] > begin if e.get("end") else e["start"] >= begin)
     ]
     rows.sort(key=lambda e: e["start"])
     return [
@@ -176,15 +178,29 @@ def _open(host: str, user: str, password: str, imap=imaplib.IMAP4_SSL):
         raise ValueError("mail is blocked by the organisation's egress policy")
     if not HOST.fullmatch(host or "") or not user or not password:
         raise ValueError("enter the IMAP server, your address and an app password")
+    client = None
     try:
         client = imap(host, 993, timeout=10)
         client.login(user, password)
         status, _ = client.select("INBOX", readonly=True)  # EXAMINE: changes nothing
     except (OSError, imaplib.IMAP4.error):
+        _close(client)
         raise ValueError("the mail server refused the sign-in") from None
     if status != "OK":
+        _close(client)
         raise ValueError("the inbox could not be opened")
     return client
+
+
+def _close(client) -> None:
+    """Never leave the socket open on a refusal."""
+
+    if client is None:
+        return
+    try:
+        client.logout()
+    except Exception:  # noqa: BLE001 - already failing; just let go of it
+        pass
 
 
 def connect_mail(

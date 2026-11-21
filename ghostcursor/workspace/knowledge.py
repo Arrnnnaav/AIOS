@@ -469,6 +469,10 @@ class Knowledge:
 
         if self.get(by_fid) is None:
             raise ValueError("the replacing fact does not exist")
+        if old_fid == by_fid:  # would lock the fact out of review for good
+            raise ValueError("a fact cannot replace itself")
+        if self.get(old_fid) is None:
+            raise ValueError("the fact to replace does not exist")
         with self._lock, self._db:
             self._db.execute(
                 "UPDATE facts SET status='superseded', superseded_by=?, "

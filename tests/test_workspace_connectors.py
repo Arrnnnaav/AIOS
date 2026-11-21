@@ -246,3 +246,27 @@ def test_an_inbox_that_will_not_open_read_only_keeps_nothing(vault):
     with pytest.raises(ValueError, match="inbox"):
         connectors.connect_mail("imap.example.com", "me@example.com", "app-password", imap=NoExamine)
     assert "mail" not in vault
+
+
+def test_yesterdays_all_day_event_is_not_on_todays_agenda(vault):
+    # DTEND is exclusive: an all-day event on the 4th ends at the 5th 00:00.
+    ics = ICS.replace(
+        "DTSTART;VALUE=DATE:20261105",
+        "DTSTART;VALUE=DATE:20261104" + chr(13) + chr(10) + "DTEND;VALUE=DATE:20261105",
+    )
+    transport = _transport({URL: (200, ics, {})})
+    connectors.connect_calendar(URL, transport=transport)
+    titles = [r["title"] for r in connectors.agenda(now=NOW, transport=transport)]
+    assert titles == ["Stand-up, team"]
+
+
+def test_a_refused_mailbox_does_not_leave_the_socket_open(vault):
+    class Refusing(FakeImap):
+        def select(self, box, readonly=False):
+            return "NO", [b""]
+
+    with pytest.raises(ValueError):
+        connectors.connect_mail(
+            "imap.example.com", "me@example.com", "app-password", imap=Refusing
+        )
+    assert ("logout",) in FakeImap.instances[-1].calls

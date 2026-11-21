@@ -152,3 +152,14 @@ def test_a_read_only_crew_skips_every_step_that_would_write(tmp_path):
         assert "read-only" in w._run_intent(intent, "x", read_only=True)
     w._run_intent("research", "x", read_only=True)
     assert calls == [("research", False)]
+
+
+def test_a_damaged_saved_crew_is_refused_not_a_crash(tmp_path):
+    from ghostcursor.workspace import crew
+
+    path = crew.save_crew(tmp_path, "Pitch", (("research", "x"),))
+    path.write_text("[]", encoding="utf-8")
+    import pytest
+
+    with pytest.raises(ValueError, match="damaged"):
+        crew.load_crew(tmp_path, "pitch")

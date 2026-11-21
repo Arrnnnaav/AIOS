@@ -1071,3 +1071,14 @@ def test_an_expired_fact_is_not_exported_to_staff_as_live(kn):
     kn.approve(old.fid)
     kn.now = 2000.0  # past its validity
     assert kn.export_scope("acme")["facts"] == []
+
+
+def test_a_fact_cannot_replace_itself_or_a_missing_fact(kn):
+    import pytest
+
+    f = kn.add_candidate("Deploys run on Fridays.", source="s", scope="acme")
+    with pytest.raises(ValueError, match="itself"):
+        kn.supersede(f.fid, f.fid)
+    with pytest.raises(ValueError, match="does not exist"):
+        kn.supersede(9999, f.fid)
+    assert kn.get(f.fid).status == "candidate"

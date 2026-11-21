@@ -684,3 +684,11 @@ def test_a_pdf_link_is_read_on_this_computer(monkeypatch):
     monkeypatch.setattr(pypdf, "PdfReader", broken)
     with pytest.raises(ValueError, match="could not be read"):
         read()
+
+
+def test_a_blocked_host_blocks_its_subdomains_but_not_lookalikes():
+    from ghostcursor.workspace.research import _blocked
+
+    assert _blocked("https://x.com/a") and _blocked("https://m.x.com/a")
+    assert not _blocked("https://dropbox.com/a")  # ends in "x.com", is not it
+    assert not _blocked("https://box.com/a")
