@@ -11,7 +11,6 @@ import argparse
 import hashlib
 import json
 import threading
-import uuid
 import time
 from pathlib import Path
 

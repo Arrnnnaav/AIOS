@@ -272,7 +272,6 @@ class Gateway:
         probabilities over the offered ids, parsed by the same closed
         parser as Jev's answer. Raises when no local model answers."""
 
-        ids = list(offered) + [ABSTAIN]
         schema = {
             "type": "object",
             "required": ["choice", "probabilities"],

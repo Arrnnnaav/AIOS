@@ -111,11 +111,6 @@ def windows_matching_executable(title_re: str, executable_name: str) -> list[int
     ]
 
 
-def first_matching_hwnd_for_executable(title_re: str, executable_name: str) -> int:
-    matches = windows_matching_executable(title_re, executable_name)
-    return matches[0] if matches else 0
-
-
 def _raw_window_rect(title_re: str) -> tuple[int, int, int, int] | None:
     """Fallback: raw win32gui geometry for a visible, non-minimized top-level
     window matching title_re, for the cases where UIA exposes no usable
