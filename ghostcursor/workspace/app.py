@@ -96,6 +96,7 @@ ACTIVITY_LABELS = frozenset(
         "Guiding",
         "Listening",
         "Brain",
+        "Extracting facts",
         "Counting",
         "Work",
     }
@@ -1317,7 +1318,14 @@ class App:
 
             name = " ".join(str(body.get("name") or "").split())[:120] or "document"
             try:
-                facts = ws.gateway.extract_facts(name, material)
+                # On the worker under the one-job claim (a second click is
+                # refused, not stacked) and stoppable from the page.
+                facts = self.run(
+                    "Extracting facts",
+                    lambda: ws.gateway.extract_facts(
+                        name, material, cancelled=self.stop.is_set
+                    ),
+                )
             except ProviderError:
                 raise ValueError(
                     "no model on this computer answered: start Ollama, or use Add from file"

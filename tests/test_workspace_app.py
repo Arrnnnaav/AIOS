@@ -2695,17 +2695,24 @@ def test_extracted_facts_land_as_candidates_and_need_a_local_model(tmp_path, mon
     threading.Thread(target=server.serve_forever, daemon=True).start()
     port = server.server_port
     try:
-        monkeypatch.setattr(gateway, "extract_facts", lambda name, material: ("Refunds over 500 need a manager.",), raising=False)
+        seen = {}
+
+        def extract(name, material, *, cancelled):
+            seen["cancelled"] = cancelled  # the page's Stop reaches the model call
+            return ("Refunds over 500 need a manager.",)
+
+        monkeypatch.setattr(gateway, "extract_facts", extract, raising=False)
         status, body = call(port, "/api/know_extract", {"name": "policy.md", "material": "some policy text"})
         assert status == 200 and json.loads(body) == {"added": 1, "duplicate": 0, "found": 1}
         (f,) = kb.list(scope="default")
         assert f.status == "candidate" and f.source == "extracted: policy.md"
         assert kb.recall("refunds", "default") == []  # nothing usable before review
+        assert seen["cancelled"] == app.stop.is_set
         # Refused before any model is asked (the stand-in above would accept them).
         for bad in (None, "", "x" * 20_001, "a" + chr(0) + "b"):
             assert call(port, "/api/know_extract", {"name": "p.md", "material": bad})[0] == 400
 
-        def no_model(name, material):
+        def no_model(name, material, *, cancelled):
             raise ProviderError(FailureKind.NOT_CONFIGURED, "ollama")
 
         monkeypatch.setattr(gateway, "extract_facts", no_model)
