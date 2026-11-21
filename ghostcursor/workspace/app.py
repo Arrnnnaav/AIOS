@@ -1912,6 +1912,14 @@ def make_server(app: App, token: str, port: int = 0) -> ThreadingHTTPServer:
             # Read the body even when refusing: closing with unread bytes
             # resets the connection instead of delivering the 403.
             raw = self.rfile.read(length) if 0 < length <= MAX_BODY else b""
+            if length > MAX_BODY:  # drain a bounded amount, then close, so the
+                self.close_connection = True  # page sees the 403, not a reset
+                left = min(length, 16 * MAX_BODY)
+                while left > 0:
+                    chunk = self.rfile.read(min(65536, left))
+                    if not chunk:
+                        break
+                    left -= len(chunk)
             if (
                 not self.path.startswith("/api/")
                 or not self._allowed()
@@ -2113,7 +2121,10 @@ def _find_ollama() -> str | None:
     else controls, where a planted ollama.exe would run."""
 
     for folder in os.environ.get("PATH", "").split(os.pathsep):
-        if folder and os.path.isabs(folder):
+        folder = folder.strip().strip('"')  # PATH entries may be quoted
+        # A drive or UNC prefix: "\tools" is absolute in ntpath yet means
+        # "the current drive", which is not a fixed place either.
+        if folder and os.path.isabs(folder) and os.path.splitdrive(folder)[0]:
             candidate = os.path.join(folder, "ollama.exe")
             if os.path.isfile(candidate):
                 return candidate

@@ -346,3 +346,9 @@ def test_the_whole_graph_has_one_deadline_not_only_a_budget_per_node():
 
     result = _run(run=slow, total_seconds=6.0, clock=lambda: now[0])
     assert result.code is TaskRunCode.TIME_LIMIT and len(budgets) == 1
+
+
+def test_a_whole_task_limit_that_is_not_a_positive_number_is_refused():
+    for bad in (float("nan"), 0.0, -1.0, float("inf")):
+        result = execute_task_graph(_graph(), total_seconds=bad)
+        assert result.code is TaskRunCode.VALIDATION_REJECTED, bad

@@ -201,6 +201,17 @@ def _execute_task_graph(
                 and int(workflow_hwnd) != bound_target_hwnd
             ):
                 raise RuntimeError("bound workflow changed the graph target HWND")
+            if deadline is not None:  # binding took time: what is left now
+                remaining = deadline - clock()
+                if remaining <= 0:
+                    return TaskGraphRunResult(
+                        TaskRunPhase.EXECUTION,
+                        TaskRunCode.TIME_LIMIT,
+                        "the time limit for the whole task was reached",
+                        validated,
+                        tuple(completed),
+                        node.node_id,
+                    )
             exit_code = run(
                 workflow,
                 seconds=(
@@ -266,6 +277,16 @@ def execute_task_graph(
             TaskRunPhase.VALIDATION,
             TaskRunCode.VALIDATION_REJECTED,
             "seconds_per_node must be positive",
+        )
+    import math
+
+    if total_seconds is not None and not (
+        math.isfinite(total_seconds) and total_seconds > 0
+    ):  # NaN would mean no limit at all
+        return TaskGraphRunResult(
+            TaskRunPhase.VALIDATION,
+            TaskRunCode.VALIDATION_REJECTED,
+            "total_seconds must be a positive number",
         )
 
     from ghostcursor.packs.workflow import bind_workflow

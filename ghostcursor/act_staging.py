@@ -203,7 +203,7 @@ def publish(area: Staging) -> str:
                 f"the approved output path appeared during publishing: {area.final}"
             ) from None
     except Exception:
-        # The final path is untouched on every failing path. `os.replace` is
+        # The final path is untouched on every failing path. `os.rename` is
         # the last statement precisely so that nothing before it can leave a
         # half-written file where a finished one belongs.
         if partial.exists():

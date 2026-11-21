@@ -2754,3 +2754,14 @@ def test_ollama_is_never_looked_up_in_the_current_folder(monkeypatch, tmp_path):
     monkeypatch.setattr(appmod.subprocess, "Popen", lambda *a, **k: started.append(a[0]))
     appmod._ensure_ollama()
     assert started == []
+
+
+def test_ollama_is_found_in_a_quoted_folder_but_not_a_drive_less_one(monkeypatch, tmp_path):
+    import os
+
+    (tmp_path / "ollama.exe").write_bytes(b"")
+    monkeypatch.setenv("PATH", '"' + str(tmp_path) + '"')
+    assert appmod._find_ollama() == os.path.join(str(tmp_path), "ollama.exe")
+    drive_less = os.path.splitdrive(str(tmp_path))[1]  # "\Users\..." on the current drive
+    monkeypatch.setenv("PATH", drive_less)
+    assert appmod._find_ollama() is None
