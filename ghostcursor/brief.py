@@ -31,6 +31,7 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -117,7 +118,26 @@ def append_turn(
     path.parent.mkdir(parents=True, exist_ok=True)
     moment = at or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     block = f"{_heading(speaker, moment)}\n\n{text.rstrip()}\n\n"
-    existing = path.read_text(encoding="utf-8") if path.exists() else ""
+    # ponytail: one lock per process; two Orbyn processes appending to one
+    # topic at once could still race (a file lock if that ever happens).
+    with _APPEND_LOCK:
+        return _append(path, topic, block)
+
+
+#: Read-change-write of one brief at a time within this process.
+_APPEND_LOCK = threading.Lock()
+
+
+def _append(path: Path, topic: str, block: str) -> Path:
+    # Bytes, not text: universal-newline reading turned a CRLF brief into LF
+    # on every append, changing its bytes (and digest, D113) behind its back.
+    existing_bytes = path.read_bytes() if path.exists() else b""
+    try:
+        existing = existing_bytes.decode("utf-8")
+    except UnicodeDecodeError:
+        raise BriefError(
+            f"topic {topic!r} is not UTF-8 text; it was not changed"
+        ) from None
     if not existing:
         block = f"# {topic}\n\n" + block
     if len((existing + block).encode("utf-8")) > MAX_BRIEF_BYTES:
@@ -128,7 +148,7 @@ def append_turn(
     # platform that appended the turn.
     # Write-then-rename: a crash mid-write must not truncate the history.
     partial = path.with_name(path.name + ".partial")
-    partial.write_text(existing + block, encoding="utf-8", newline="\n")
+    partial.write_bytes(existing_bytes + block.encode("utf-8"))
     for attempt in range(5):  # a reader (the page's poll) may hold the file
         try:
             os.replace(partial, path)

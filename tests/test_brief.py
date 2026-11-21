@@ -386,3 +386,22 @@ def test_a_full_topic_refuses_a_turn_instead_of_locking_itself(tmp_path, monkeyp
     with pytest.raises(brief.BriefError, match="full"):
         brief.append_turn(tmp_path, "t", "user", "x" * 300)
     assert brief.load_brief(brief.brief_path(tmp_path, "t"))  # still readable
+
+
+def test_appending_keeps_the_existing_bytes_exactly(tmp_path):
+    import pytest
+
+    from ghostcursor.brief import BriefError, append_turn, brief_path
+
+    path = brief_path(tmp_path, "crlf")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    original = b"# crlf\r\n\r\nan old note\r\n"
+    path.write_bytes(original)
+    append_turn(tmp_path, "crlf", "user", "hello")
+    assert path.read_bytes().startswith(original)  # not rewritten as LF
+
+    bad = brief_path(tmp_path, "latin")
+    bad.write_bytes(b"caf\xe9")
+    with pytest.raises(BriefError, match="UTF-8"):
+        append_turn(tmp_path, "latin", "user", "hello")
+    assert bad.read_bytes() == b"caf\xe9"
