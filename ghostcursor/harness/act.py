@@ -196,9 +196,9 @@ def get_clipboard_text() -> str | None:
         c.CloseClipboard()
 
 
-#: CF_BITMAP, CF_DIB, CF_ENHMETAFILE, CF_HDROP, CF_DIBV5: what a text-only
-#: restore cannot put back.
-_NON_TEXT_FORMATS = (2, 8, 14, 15, 17)
+#: CF_BITMAP, CF_METAFILEPICT, CF_TIFF, CF_DIB, CF_ENHMETAFILE, CF_HDROP,
+#: CF_DIBV5: what a text-only restore cannot put back.
+_NON_TEXT_FORMATS = (2, 3, 6, 8, 14, 15, 17)
 
 
 def set_clipboard_text(text: str | None) -> None:

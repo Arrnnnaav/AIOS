@@ -514,3 +514,9 @@ def test_an_unreadable_block_list_blocks_every_app(monkeypatch):
 def test_the_speech_model_is_not_downloaded_when_hugging_face_is_not_allowed(monkeypatch):
     _policy(monkeypatch, AllowedProviders="ollama")
     assert not policy.allows("huggingface")  # voice.py passes local_files_only
+
+
+def test_a_block_list_that_is_not_text_blocks_every_app_and_is_never_empty(monkeypatch):
+    _policy(monkeypatch, BlockedApps=5)  # a REG_DWORD where names belong
+    blocked = policy.blocked_apps()
+    assert "excel.exe" in blocked and bool(blocked)

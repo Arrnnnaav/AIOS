@@ -531,3 +531,14 @@ def test_sign_out_also_forgets_a_refresh_that_could_not_be_saved(tmp_path):
 
 def test_the_sign_in_listener_does_not_share_its_port():
     assert chatgpt._ExclusiveServer.allow_reuse_address is False
+
+
+def test_the_sign_in_listener_binds_its_port_exclusively():
+    import socket
+
+    server = chatgpt._ExclusiveServer(("127.0.0.1", 0), chatgpt._CallbackHandler)
+    try:
+        if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+            assert server.socket.getsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE)
+    finally:
+        server.server_close()

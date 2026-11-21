@@ -85,6 +85,14 @@ class _ExclusiveServer(http.server.HTTPServer):
 
     allow_reuse_address = False
 
+    def server_bind(self) -> None:
+        import socket
+
+        exclusive = getattr(socket, "SO_EXCLUSIVEADDRUSE", None)  # Windows only
+        if exclusive is not None:  # no other process may bind this port too
+            self.socket.setsockopt(socket.SOL_SOCKET, exclusive, 1)
+        super().server_bind()
+
 
 def sign_out(path: Path | None = None) -> None:
     """Forget the tokens; keep the host id so a later sign-in is the same host."""

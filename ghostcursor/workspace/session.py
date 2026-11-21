@@ -947,6 +947,11 @@ class Workspace:
             return f"[{intent}] skipped: background jobs are read-only; run it from Chat"
         if intent == "research":
             report = self.deep_dive(arg, file_to_brain=not read_only)
+            if read_only:
+                return (
+                    f"🔎 [research] {len(report.subquestions)} part(s); nothing "
+                    "filed to the Brain (background jobs are read-only)"
+                )
             return (
                 f"🔎 [research] {len(report.subquestions)} part(s); filed "
                 f"{report.filed_to_brain} cited claim(s) to the Brain (review: "

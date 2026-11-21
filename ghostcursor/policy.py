@@ -134,13 +134,16 @@ class _Everything(frozenset):
     def __contains__(self, item) -> bool:
         return True
 
+    def __bool__(self) -> bool:  # never "nothing is blocked"
+        return True
+
 
 def blocked_apps() -> frozenset[str]:
     value = _value("BlockedApps")
-    if value == "unreadable":
-        return _Everything()
-    if not isinstance(value, str):
+    if value is None:
         return frozenset()
+    if value == "unreadable" or not isinstance(value, str):
+        return _Everything()  # present but not a list of names: fail closed
     return frozenset(
         ntpath.basename(p.strip()).casefold() for p in value.split(";") if p.strip()
     )
