@@ -102,7 +102,9 @@ def _entry_name(name: str) -> str:
     if not name or "\\" in name or name.startswith("/") or name.endswith("/"):
         raise BundleVerificationError(f"non-canonical bundle entry: {name!r}")
     path = PurePosixPath(name)
-    if path.is_absolute() or any(part in {"", ".", ".."} for part in path.parts):
+    if path.is_absolute() or any(
+        part in {"", ".", ".."} or ":" in part for part in path.parts
+    ):  # ":" too: "D:/x" is drive-relative on Windows, not inside staging
         raise BundleVerificationError(f"unsafe bundle entry: {name!r}")
     canonical = path.as_posix()
     if canonical != name:

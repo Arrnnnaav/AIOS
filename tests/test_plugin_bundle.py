@@ -341,3 +341,11 @@ def test_a_member_that_fails_to_inflate_is_refused_not_a_crash(tmp_path):
     path.write_bytes(bytes(raw))
     with pytest.raises(BundleVerificationError):
         verify_bundle(path, trusted_keys=trusted, core_version=CORE_VERSION)
+
+
+def test_a_drive_prefixed_entry_is_refused():
+    from ghostcursor.plugins.bundle import _entry_name
+
+    with pytest.raises(BundleVerificationError):
+        _entry_name("D:/x")
+    assert _entry_name("ghostcursor/x.json") == "ghostcursor/x.json"

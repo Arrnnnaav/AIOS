@@ -739,11 +739,9 @@ class PluginStore:
                 "refusing to remove a path outside installed root"
             ) from exc
         version_root = bundle_path.parent
-        if version_root.exists():
-            shutil.rmtree(version_root)
         catalog_version = self.root / "catalogs" / plugin_id / version
-        if catalog_version.exists():
-            shutil.rmtree(catalog_version)
+        # The index first, then the files: a crash in between leaves stray
+        # files nothing points at, never an index pointing at removed files.
         installed, _ = self._read_index("installed.json")
         plugins = dict(installed["plugins"])
         plugin = dict(plugins[plugin_id])
@@ -755,6 +753,10 @@ class PluginStore:
         else:
             del plugins[plugin_id]
         self._write_index("installed.json", {"schema_version": 1, "plugins": plugins})
+        if version_root.exists():
+            shutil.rmtree(version_root)
+        if catalog_version.exists():
+            shutil.rmtree(catalog_version)
         if self.observation_store_path is not None:
             from ghostcursor.memory.store import ObservationStore
 
