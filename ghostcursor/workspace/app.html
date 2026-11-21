@@ -1317,7 +1317,7 @@ function companyBrainCard() {
   const fileIn = el("input"); fileIn.type = "file"; fileIn.accept = ".txt,.md,.log,.csv"; fileIn.title = "A text or Markdown document, or a ticket or CRM export (.csv, one fact per row)"; fileIn.hidden = true;
   const exIn = el("input"); exIn.type = "file"; exIn.accept = ".txt,.md,.log"; exIn.hidden = true;
   const exB = el("button", "secondary", "Extract facts"); exB.style.marginLeft = "6px";
-  exB.title = "Preview: the model on this computer (Ollama) lists the facts a document states; each becomes a candidate to review. Nothing is sent anywhere.";
+  exB.title = "Preview: the model on this computer (Ollama) lists the facts a document states; each becomes a candidate to review. Nothing is sent anywhere; the document is kept in your Brain on this computer.";
   exB.onclick = () => exIn.click();
   exIn.onchange = async () => {
     const chosen = exIn.files[0]; exIn.value = "";

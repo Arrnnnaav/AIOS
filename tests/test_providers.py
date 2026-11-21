@@ -1400,3 +1400,16 @@ def test_a_key_straddling_the_length_cap_is_masked_not_cut_and_sent():
     sent = Tainted.of("doc", text).text
     assert len(sent) <= MAX_TAINTED_CHARS
     assert "Ab1Ab1" not in sent  # no unmasked prefix of the key
+
+
+def test_every_local_provider_is_on_this_computer():
+    # "local" is what keeps a document on this PC (Extract facts, local-only
+    # mode); an override that pointed one elsewhere would be quiet egress.
+    from urllib.parse import urlparse
+
+    from ghostcursor import policy
+    from ghostcursor.providers import clients
+
+    for name in policy.LOCAL_PROVIDERS:
+        host = urlparse(clients.SYSTEM_TWO[name].base_url).hostname
+        assert host in ("127.0.0.1", "localhost", "::1"), (name, host)
