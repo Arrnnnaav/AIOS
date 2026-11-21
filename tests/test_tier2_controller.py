@@ -144,3 +144,13 @@ def test_a_window_that_goes_away_drops_its_old_outlines():
     assert controller.elements_for(0, ".*")
     clock.t += 10.0
     assert controller.elements_for(0, ".*") == []  # not the stale boxes
+
+
+def test_starting_a_new_step_frees_the_last_steps_frame():
+    clock, ocr = FakeClock(), FakeOcr()
+    controller = _controller(clock, ocr)
+    controller.elements_for(0, ".*")
+    assert controller._steps[0].last_frame is not None
+    controller.elements_for(1, ".*")
+    assert controller._steps[0].last_frame is None  # megabytes, never read again
+    assert controller._steps[0].reads  # what it read is kept

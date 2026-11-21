@@ -124,6 +124,11 @@ class Tier2Controller:
         self._steps: dict[int, _StepState] = {}
 
     def _state(self, step_index: int) -> _StepState:
+        if step_index not in self._steps:
+            # A new step: earlier steps' frames are never read again, and a
+            # full window frame is megabytes. Their reads and counts stay.
+            for other in self._steps.values():
+                other.last_frame = None
         return self._steps.setdefault(step_index, _StepState())
 
     def exhausted(self, step_index: int) -> bool:

@@ -180,6 +180,9 @@ def measure(cues: int, budget: CueBudget) -> dict:
     return {
         "cues_requested": cues,
         "cues_measured": len(first_paint),
+        # The settled first cue is measured too, separately; with it the
+        # counts reconcile: measured_in_total + rejected == requested.
+        "measured_in_total": len(first_paint) + len(settled_first_paint),
         "cues_without_both_receipts": rejected,
         "budget": {
             "traversal_ms": budget.traversal_ms,

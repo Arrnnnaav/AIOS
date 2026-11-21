@@ -265,7 +265,9 @@ class Brain:
             if old == LOCKED:
                 continue  # unreadable here: never replaced by guesswork
             words = _words(old)
-            if new and words and len(new & words) / min(len(new), len(words)) >= 0.5:
+            # Shared words over ALL words (Jaccard): over the shorter one, a
+            # two-word memory "replaced" any longer one that mentioned them.
+            if new and words and len(new & words) / len(new | words) >= 0.5:
                 self._db.execute(
                     "UPDATE memories SET status='superseded' WHERE mid=?", (mid,)
                 )

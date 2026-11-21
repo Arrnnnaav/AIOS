@@ -435,3 +435,15 @@ def test_the_brain_still_opens_when_windows_cannot_seal(tmp_path, monkeypatch):
 
 def test_the_personal_brain_keeps_temp_data_in_memory(brain):
     assert brain._db.execute("PRAGMA temp_store").fetchone()[0] == 2  # MEMORY
+
+
+def test_a_short_memory_does_not_replace_a_longer_unrelated_one(brain):
+    long = brain.remember(
+        "preference", "dark theme on laptop screens in the office",
+        origin="user_stated", confidence=0.9, user_turn=TURN,
+    )  # fmt: skip
+    brain.remember(
+        "preference", "dark mode", origin="user_stated", confidence=0.9,
+        user_turn=TURN + " dark mode",
+    )  # fmt: skip
+    assert brain.get(long.mid).status == "active"

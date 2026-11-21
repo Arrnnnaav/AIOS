@@ -417,6 +417,9 @@ class Gateway:
             from ghostcursor import settings
 
             state = redact.scrub_tree(state, settings.private_terms())
+            # The questions go to Jev too; fixed text today, but a caller that
+            # put screen or goal text in a criterion must not bypass the scrub.
+            questions = redact.scrub_tree(questions, settings.private_terms())
             if refs is not None:
                 # Ids this gateway made to name the attached pictures, not
                 # content: scrubbed, one in four stops matching its picture.
