@@ -182,7 +182,10 @@ def get_clipboard_text() -> str | None:
         if c.IsClipboardFormatAvailable(c.CF_UNICODETEXT):
             # Text beside a picture or files: the restore puts back text only,
             # so the picture would be lost. Refuse that case as for a picture.
-            if any(c.IsClipboardFormatAvailable(f) for f in _NON_TEXT_FORMATS):
+            # PNG is a registered format (browsers copy images as it); HTML
+            # and RTF are not counted: only formatting is lost with them.
+            png = c.RegisterClipboardFormat("PNG")
+            if any(c.IsClipboardFormatAvailable(f) for f in (*_NON_TEXT_FORMATS, png)):
                 raise PermissionError(
                     "the clipboard holds a picture or files, so Orbyn did not paste over it"
                 )

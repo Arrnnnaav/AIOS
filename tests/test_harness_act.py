@@ -839,6 +839,7 @@ def test_paste_refuses_when_text_sits_beside_a_picture(monkeypatch):
         IsClipboardFormatAvailable=lambda f: f in (13, 8),  # text + a DIB
         GetClipboardData=lambda f: "hello",
         CountClipboardFormats=lambda: 2,
+        RegisterClipboardFormat=lambda name: 0xC100,
         CloseClipboard=lambda: None,
         OpenClipboard=lambda *a: None,
     )
@@ -861,3 +862,21 @@ def test_a_window_that_changed_owner_is_not_acted_on(monkeypatch):
     with pytest.raises(PermissionError, match="changed"):
         teach_live._live_perform(None, None, 9, "excel.exe", binding=object())
     assert sent == []
+
+
+def test_paste_refuses_when_text_sits_beside_a_png(monkeypatch):
+    import sys
+    import types
+
+    fake = types.SimpleNamespace(
+        CF_UNICODETEXT=13,
+        IsClipboardFormatAvailable=lambda f: f in (13, 0xC100),  # text + PNG
+        GetClipboardData=lambda f: "hello",
+        CountClipboardFormats=lambda: 2,
+        RegisterClipboardFormat=lambda name: 0xC100 if name == "PNG" else 0xC200,
+        CloseClipboard=lambda: None,
+    )
+    monkeypatch.setitem(sys.modules, "win32clipboard", fake)
+    monkeypatch.setattr(act, "_open_clipboard", lambda c, tries=5: None)
+    with pytest.raises(PermissionError, match="picture"):
+        act.get_clipboard_text()
