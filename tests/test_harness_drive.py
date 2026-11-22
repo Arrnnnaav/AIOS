@@ -594,3 +594,21 @@ def test_one_isolated_world_is_reused_and_remade_after_a_reload():
     assert page._isolated_object(7) == "o6"
     assert sum(m == "Page.createIsolatedWorld" for m, _ in sent) == 2
 
+
+def test_a_removed_node_does_not_throw_away_a_working_isolated_world():
+    sent = []
+
+    def resolve(params):
+        raise RuntimeError("No node with given id found")
+
+    page = _fake_page(
+        {
+            "Page.getFrameTree": {"frameTree": {"frame": {"id": "f"}}},
+            "Page.createIsolatedWorld": {"executionContextId": 5},
+            "DOM.resolveNode": resolve,
+        },
+        sent,
+    )
+    assert page._isolated_object(7) is None  # still fails closed
+    assert page._isolated_object(8) is None
+    assert sum(m == "Page.createIsolatedWorld" for m, _ in sent) == 1  # not rebuilt

@@ -237,6 +237,9 @@ def _stored_sequence(owner_key: str) -> int:
     try:
         return int(keys.get_key(_sequence_key(owner_key), allow_env=False) or 0)
     except Exception:  # noqa: BLE001 - no vault: the file still guards
+        # Recorded, so a PC whose second rollback guard is down can be told
+        # apart from one that has it.
+        audit.record("team_sync", outcome="vault_unavailable")
         return 0
 
 

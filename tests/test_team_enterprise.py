@@ -599,3 +599,14 @@ def test_the_sequence_is_kept_per_owner_key_and_survives_a_broken_vault(monkeypa
     monkeypatch.setattr(team.keys, "get_key", broken)
     assert team._stored_sequence("owner-A") == 0
 
+
+def test_a_broken_vault_is_written_to_the_audit_log(monkeypatch):
+    recorded = []
+    monkeypatch.setattr(team.audit, "record", lambda event, **f: recorded.append((event, f)))
+
+    def broken(*a, **k):
+        raise OSError("vault unavailable")
+
+    monkeypatch.setattr(team.keys, "get_key", broken)
+    assert team._stored_sequence("owner-A") == 0
+    assert recorded == [("team_sync", {"outcome": "vault_unavailable"})]

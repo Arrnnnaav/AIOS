@@ -2959,3 +2959,9 @@ from 1053b54. Still open:
   input (D184). Left, minor: a resolveNode error from a removed node also
   re-creates the isolated world (extra round-trip, still fails closed); a
   vault-less read is not audit-logged.
+- 23 Nov: the two last minor items are done: a resolveNode error that is
+  not a lost context (a removed node) no longer rebuilds the isolated world;
+  a Credential Manager read failure on team sync is written to the audit log
+  (team_sync, outcome vault_unavailable). Nothing from the full-code review
+  remains open. One property is inherent and stays: the browser hit test runs
+  just before the click, not atomically with it.

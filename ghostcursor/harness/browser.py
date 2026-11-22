@@ -272,7 +272,9 @@ class Page:
                     .get("object", {})
                     .get("objectId")
                 )
-            except RuntimeError:
+            except RuntimeError as exc:
+                if "context" not in str(exc).casefold():
+                    return None  # e.g. the node is gone: the world is still good
                 self._iso_context = None  # the page navigated: its world is gone
         return None
 
