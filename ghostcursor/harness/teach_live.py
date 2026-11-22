@@ -141,7 +141,7 @@ def _console_enter() -> bool:
 
 
 def _escape_pressed() -> bool:
-    """Polled like run.escape_pressed: down now or tapped since the last poll."""
+    """ESC down now or tapped since the last poll (GetAsyncKeyState)."""
 
     import win32api
     import win32con
@@ -390,6 +390,12 @@ def _live_perform(step, target, window: int, app: str | None = None, binding=Non
 
         identity = identify(window)
         app = identity.executable if identity else ""
+    from ghostcursor.harness.binding import denied
+
+    if app and denied(app):
+        # Re-checked at every step, not only at bind time: an organisation's
+        # AllowedApps/BlockedApps pushed mid-session must stop Act (D180).
+        raise PermissionError(f"your organisation does not allow Orbyn to act in {app}")
     fields = dict(
         via="harness",
         action=getattr(step, "action", None),

@@ -910,3 +910,18 @@ def test_the_risky_list_catches_hyphens_curly_apostrophes_and_word_endings(name)
     from ghostcursor.harness.teach import HIGH_RISK
 
     assert HIGH_RISK.search(name), name
+
+
+def test_an_app_blocked_mid_session_stops_the_next_act_step(monkeypatch):
+    # The organisation's app lists are re-checked at every step, not only at
+    # bind time: a policy pushed after approval still stops Act (D180).
+    from ghostcursor.harness import binding, teach_live
+
+    sent = []
+    monkeypatch.setattr(binding, "denied", lambda exe: exe == "excel.exe")
+    monkeypatch.setattr(act, "perform", lambda *a, **k: sent.append(a) or "done")
+    with pytest.raises(PermissionError, match="does not allow"):
+        teach_live._live_perform(None, None, 9, "excel.exe")
+    assert sent == []
+    teach_live._live_perform(None, None, 9, "powerpnt.exe")
+    assert len(sent) == 1
