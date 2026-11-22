@@ -43,7 +43,7 @@ and read only those entries. Never read the whole of `DECISIONS.md`, `FLOW.md`,
 3. **A pointer that is shown is a pointer at a real, observed control.** Never
    draw at a model-supplied position.
 4. **Kill switch:** ESC and the session time limit always stop a session;
-   Stop reaches a running Act at once (D020). The overlay is click-through,
+   ESC is polled every tick and before every Act step (D020). The overlay is click-through,
    topmost, draws only in `WM_PAINT`, and imports `ghostcursor.overlay.dpi` first.
 5. **UIA reads never run on the UI thread** (D021/D022): the harness observer
    thread owns COM/UIA; only frozen frames cross threads.

@@ -13,7 +13,7 @@ agents still run through the gated Teach/Act path (plan approval, observed
 controls, deny list, ESC).
 
 What the bundle never holds: sensitive facts, candidates, screen text, the
-conversation, or anything from ``kb.sqlite``/``sessions.sqlite`` (rule 6).
+conversation, or anything from the Personal Brain (rule 6).
 Fact text is scrubbed of embedded secrets on export (``redact``).
 
     py -3.12 -m ghostcursor.workspace.team init       # owner: make the key

@@ -2,7 +2,7 @@
 (MP7 phase 21A; D070's reserved `knowledge.sqlite`).
 
 This is NOT the Personal Brain and NOT a dump of documents. It is distinct
-from screen-derived `kb.sqlite`/`brain.sqlite`: a separate store with its own
+from the Personal Brain (`brain.sqlite`): a separate store with its own
 lifecycle and no execution authority. Every fact carries source, scope
 (tenant/owner), a review STATUS, when it was added and last verified, and a
 sensitivity. Knowledge moves through states an owner governs:

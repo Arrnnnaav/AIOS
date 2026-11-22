@@ -16,11 +16,9 @@ type rather than a dict.
 from, so "the brief" has to mean one specific byte sequence. Not the parsed
 turns, not a normalised form: the bytes, as read.
 
-**It is a separate store from everything else.** Not `sessions.sqlite`, which
-must not hold goals or instructions by default; not `kb.sqlite`, which holds
-screen-derived observations and is erasable; not the signed plan artifacts,
-which are the only things that authorize anything. A conversation is a fourth
-kind of thing and gets its own place, local only (D017).
+**It is a separate store from everything else.** Not the Personal Brain or
+the Company Brain, which hold reviewed memories and facts; a conversation is
+its own kind of thing and gets its own place, local only (D017).
 
 Markdown, because a person has to be able to read it, edit it, and see it in
 a diff. A brief someone cannot inspect is a brief they cannot correct.

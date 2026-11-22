@@ -2931,3 +2931,11 @@ from 1053b54. Still open:
   with the click, and developer-mode trust (now moot: no plugin store).
   Pixel lane is empty (its tests covered retired drawing); the overlay
   self-check `python -m tests.test_overlay` (16 checks) still runs.
+- 23 Nov: review of the D193 retirement: no blocking finding. Done: the
+  record-history test bounds an archived record's original-path history at
+  the move (CI caught the delete commit counted as an edit); the harness
+  re-checks AllowedApps/BlockedApps before every Act step (the retired
+  runtime did, the harness only at bind time; tested); stale store names in
+  docstrings; a vacuous import assertion retargeted; CLAUDE.md rule 4 says
+  what is checked. Left: the input-synthesis scan covers ghostcursor/ only,
+  not tools/orbyn_app.py (it only imports the app).

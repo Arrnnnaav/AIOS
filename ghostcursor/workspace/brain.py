@@ -8,8 +8,8 @@ session-scoped and expires. An explicit user correction always wins.
 
 Stored only at %LOCALAPPDATA%\\GhostCursor\\brain.sqlite (``ORBYN_BRAIN_PATH``
 overrides). Never synced, never sent anywhere except as minimized, tainted
-context of a request the user started. Separate from kb.sqlite (screen
-observations) and sessions.sqlite (no goal text there).
+context of a request the user started. Separate from the Company Brain
+(knowledge.py) and the conversation briefs (brief.py).
 """
 
 from __future__ import annotations

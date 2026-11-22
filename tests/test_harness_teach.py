@@ -312,7 +312,8 @@ def test_model_teach_imports_no_memory():
             for alias in node.names
         }
         assert not any(
-            m.startswith(("ghostcursor.memory", "ghostcursor.session_store"))
+            # Learned screen observations never feed the Brain stores (D070).
+            m.startswith(("ghostcursor.workspace.brain", "ghostcursor.workspace.knowledge"))
             for m in imported
         ), (name, imported)
 

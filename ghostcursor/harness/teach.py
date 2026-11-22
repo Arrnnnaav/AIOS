@@ -8,8 +8,8 @@ when the harness observes the change the plan promised, or the user confirms.
 The session is driven by ``tick`` on the UI thread and never waits on a model:
 calls go through one overwritten :class:`RequestSlot` on a worker (spec section
 4, D020). Nothing here writes memory: a model-selected target is shown in the
-INFERRED colour and never reaches ``kb.sqlite`` (D070, D147; this module
-imports no memory code, and a test holds it to that).
+INFERRED colour and is never written to a Brain store (D070, D147; this
+module imports no store code, and a test holds it to that).
 """
 
 from __future__ import annotations
