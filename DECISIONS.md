@@ -8510,3 +8510,12 @@ freeze it, or keep it, the owner chose to retire it fully.
   workspace, harness and island entry points reached 86 of 178 modules), yet
   it carried most of the maintenance: the 19-23 November review fixed bugs and
   ran tier-1 reviews on code the product never ran.
+- **Accepted, not open (23 November).** (1) The browser drive checks what is
+  under the click point (`DOM.getNodeForLocation`) immediately before
+  `Input.dispatchMouseEvent`; CDP offers no atomic check-and-click, and
+  clicking the node from script instead would send an untrusted event many
+  sites ignore. The residual window is accepted; the label re-read, the
+  isolated world and the deny/risk checks all run first. (2) `.tmp/` keeps
+  exactly the local files committed evidence cites (43 at this date); they
+  stay untracked because some hold private desktop content (owner decision:
+  delete everything else, keep the cited ones).

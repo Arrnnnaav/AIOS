@@ -2963,5 +2963,6 @@ from 1053b54. Still open:
   not a lost context (a removed node) no longer rebuilds the isolated world;
   a Credential Manager read failure on team sync is written to the audit log
   (team_sync, outcome vault_unavailable). Nothing from the full-code review
-  remains open. One property is inherent and stays: the browser hit test runs
-  just before the click, not atomically with it.
+  remains open. The browser hit test running just before the click (not
+  atomically) and the cited local files kept in .tmp/ are accepted in D193,
+  not open items. The follow-up list from the full-code review is empty.
