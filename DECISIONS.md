@@ -8515,7 +8515,11 @@ freeze it, or keep it, the owner chose to retire it fully.
   `Input.dispatchMouseEvent`; CDP offers no atomic check-and-click, and
   clicking the node from script instead would send an untrusted event many
   sites ignore. The residual window is accepted; the label re-read, the
-  isolated world and the deny/risk checks all run first. (2) `.tmp/` keeps
-  exactly the local files committed evidence cites (43 at this date); they
-  stay untracked because some hold private desktop content (owner decision:
-  delete everything else, keep the cited ones).
+  isolated world and the deny/risk checks all run first.
+- **Local copies deleted (owner decision, 23 November).** The untracked local
+  files that evidence documents cite under `.tmp/`, `.artifacts/` and
+  `output/` were deleted at the owner's request. Those documents are not
+  edited (rule 7); where one names such a local file, the file no longer
+  exists on this machine, and the document's own text and any digest it
+  publishes are the remaining record. Tracked, digest-checked records are
+  unaffected (`docs/evidence/`, `docs/archive/retained-plugins/`).

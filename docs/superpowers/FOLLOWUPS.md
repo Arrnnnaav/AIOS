@@ -2964,5 +2964,6 @@ from 1053b54. Still open:
   a Credential Manager read failure on team sync is written to the audit log
   (team_sync, outcome vault_unavailable). Nothing from the full-code review
   remains open. The browser hit test running just before the click (not
-  atomically) and the cited local files kept in .tmp/ are accepted in D193,
-  not open items. The follow-up list from the full-code review is empty.
+  atomically) is accepted in D193; the cited local copies under .tmp/,
+  .artifacts/ and output/ were deleted at the owner's request (D193). The
+  follow-up list from the full-code review is empty.
