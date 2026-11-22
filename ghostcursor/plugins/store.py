@@ -40,6 +40,11 @@ class PluginStoreError(ValueError):
 STORE_LOCK_TIMEOUT_MS = 100
 
 
+class CatalogInvalid(PluginStoreError):
+    """A verified plugin whose own pack catalog does not load. The only error
+    that leaves one plugin out of the active set instead of failing it all."""
+
+
 class PluginEffectiveState(str, Enum):
     DISABLED = "disabled"
     ENABLED_COMPATIBLE = "enabled_compatible"
@@ -133,6 +138,8 @@ def _canonical(value: Mapping[str, Any]) -> bytes:
 
 
 class PluginStore:
+    skipped_plugins: Mapping[str, str] = MappingProxyType({})
+
     """The sole lifecycle authority for one production or developer store."""
 
     def __init__(
@@ -380,7 +387,7 @@ class PluginStore:
         catalog = load_catalog(self._verify_payload(bundle))
         if not catalog.root_valid or catalog.diagnostics:
             detail = "; ".join(item.detail for item in catalog.diagnostics)
-            raise PluginStoreError(
+            raise CatalogInvalid(
                 f"plugin {bundle.plugin_id} pack catalog is invalid: "
                 f"{detail or 'invalid root'}"
             )
@@ -466,8 +473,11 @@ class PluginStore:
         )
 
     def _prospective_plugins(
-        self, active: Mapping[str, Any]
+        self, active: Mapping[str, Any], *, require: str | None = None
     ) -> dict[str, VerifiedBundle]:
+        """The usable active set. A plugin whose own catalog no longer loads
+        is left out (``skipped_plugins``), except ``require`` -- the plugin
+        being enabled -- which is refused instead."""
         bundles: dict[str, VerifiedBundle] = {}
         identities: dict[tuple[str, str], str] = {}
         for plugin_id, ref in active.items():
@@ -495,8 +505,14 @@ class PluginStore:
                     )
                 identities[identity] = plugin_id
             bundles[plugin_id] = bundle
-        self._merge_catalogs(bundles, generation=0, active_index_sha256="0" * 64)
-        return bundles
+        self._merge_catalogs(
+            bundles, generation=0, active_index_sha256="0" * 64, skip_faulty=True,
+            require=require,
+        )  # fmt: skip
+        #: Plugins left out of the active set, and why (never re-assigned
+        #: by a later merge of the already-filtered set).
+        self.skipped_plugins = dict(self._last_skipped)
+        return {k: v for k, v in bundles.items() if k not in self.skipped_plugins}
 
     def _merge_catalogs(
         self,
@@ -504,13 +520,28 @@ class PluginStore:
         *,
         generation: int,
         active_index_sha256: str,
+        skip_faulty: bool = False,
+        require: str | None = None,
     ):
+        """``skip_faulty`` (loading the active set): a plugin whose own catalog
+        is invalid is left out, alone, and named in ``skipped_plugins``; the
+        others still load (owner decision, 23 Nov). Enabling still refuses a
+        faulty plugin, and a conflict BETWEEN plugins still fails the whole
+        set: no plugin may win a duplicate by load order."""
+
         from ghostcursor.packs.activation import merge_catalogs
 
-        catalogs = {
-            plugin_id: self._bundle_catalog(bundle)
-            for plugin_id, bundle in bundles.items()
-        }
+        catalogs = {}
+        skipped: dict[str, str] = {}
+        for plugin_id, bundle in bundles.items():
+            try:
+                catalogs[plugin_id] = self._bundle_catalog(bundle)
+            except CatalogInvalid as exc:  # never a tampered payload: that stays loud
+                if not skip_faulty or plugin_id == require:
+                    raise
+                skipped[plugin_id] = str(exc)
+        self._last_skipped = skipped
+        bundles = {k: v for k, v in bundles.items() if k not in skipped}
         metadata = {
             plugin_id: (bundle.version, bundle.manifest_sha256)
             for plugin_id, bundle in bundles.items()
@@ -683,7 +714,7 @@ class PluginStore:
             "version": version,
             "manifest_sha256": bundle.manifest_sha256,
         }
-        self._prospective_plugins(plugins)
+        self._prospective_plugins(plugins, require=plugin_id)
         self._write_index(
             "active.json",
             {
@@ -854,6 +885,7 @@ class PluginStore:
                 active.plugins,
                 generation=active.generation,
                 active_index_sha256=active.active_index_sha256,
+                skip_faulty=True,
             )
 
     def load_composition_context(self) -> CompositionContext:
@@ -865,14 +897,18 @@ class PluginStore:
                 active.plugins,
                 generation=active.generation,
                 active_index_sha256=active.active_index_sha256,
+                skip_faulty=True,
             )
+            usable = {
+                k: v for k, v in active.plugins.items() if k not in self.skipped_plugins
+            }
             registries = self._capability_registries(
-                active.plugins,
+                usable,
                 catalog,
                 generation=active.generation,
                 active_index_sha256=active.active_index_sha256,
             )
-            adapters = self._adapter_descriptors(active.plugins)
+            adapters = self._adapter_descriptors(usable)
             return self._remember_composition_context(
                 CompositionContext(
                     catalog=catalog,

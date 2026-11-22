@@ -693,3 +693,47 @@ def test_a_bundle_swapped_after_verifying_is_not_installed(tmp_path, monkeypatch
     monkeypatch.setattr("ghostcursor.plugins.store.shutil.copyfile", swap)
     with pytest.raises(PluginStoreError, match="changed while"):
         store.install(bundle)
+
+
+def test_one_faulty_plugin_is_left_out_and_the_others_still_load(tmp_path, monkeypatch):
+    # Owner decision (23 Nov): a plugin whose own catalog no longer loads is
+    # left out alone; enabling one is still refused, tampering stays loud.
+    from ghostcursor.plugins.store import CatalogInvalid
+
+    private, trusted = _key()
+    store = PluginStore(tmp_path / "store", trusted_keys=trusted, core_version="0.1.0")
+    one = store.install(_bundle(tmp_path, private, files=_common_pack_files()))
+    two = store.install(
+        _bundle(tmp_path, private, plugin_id="ghostcursor.two", executable="Two.exe")
+    )
+    store.enable(one.plugin_id, one.version)
+    store.enable(two.plugin_id, two.version)
+
+    real = store._bundle_catalog
+
+    def catalog(bundle):
+        if bundle.plugin_id == "ghostcursor.two":
+            raise CatalogInvalid("plugin ghostcursor.two pack catalog is invalid: expired")
+        return real(bundle)
+
+    monkeypatch.setattr(store, "_bundle_catalog", catalog)
+    context = store.load_composition_context()
+    assert "common" in context.catalog.packs  # the good plugin still works
+    assert "ghostcursor.two" in store.skipped_plugins
+    assert "ghostcursor.two" not in context.registries
+
+
+def test_enabling_a_faulty_plugin_is_still_refused(tmp_path, monkeypatch):
+    from ghostcursor.plugins.store import CatalogInvalid
+
+    private, trusted = _key()
+    store = PluginStore(tmp_path / "store", trusted_keys=trusted, core_version="0.1.0")
+    one = store.install(_bundle(tmp_path, private, files=_common_pack_files()))
+
+    def catalog(bundle):
+        raise CatalogInvalid("plugin ghostcursor.one pack catalog is invalid: bad")
+
+    monkeypatch.setattr(store, "_bundle_catalog", catalog)
+    with pytest.raises(CatalogInvalid):
+        store.enable(one.plugin_id, one.version)
+
