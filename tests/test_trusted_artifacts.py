@@ -605,7 +605,7 @@ def test_targeted_action_requires_a_claimed_identity(tmp_path):
 def test_elevated_step_cannot_use_any_meaningful_change(tmp_path):
     step = _step(
         user_action="observe",
-        target_selector=None,
+        target_selector="export_button",
         risk="elevated",
         verification_rule={
             "kind": "any_meaningful_change",
@@ -615,7 +615,10 @@ def test_elevated_step_cannot_use_any_meaningful_change(tmp_path):
     )
     recipe = _recipe(
         context_selectors=["world_state"],
-        selectors={"world_state": _selector(cardinality="at_least_one")},
+        selectors={
+            "export_button": _selector(),
+            "world_state": _selector(cardinality="at_least_one"),
+        },
         steps=[step],
     )
     with pytest.raises(ValueError, match="elevated-risk"):
@@ -700,7 +703,7 @@ def test_property_changes_accepts_the_action_selector_it_can_attribute(tmp_path)
         },
         steps=[
             _step(verification_rule=rule),
-            _step(target_selector=None, user_action="observe"),
+            _step(target_selector="export_button", user_action="observe"),
         ],
     )
     loaded = _load_json(tmp_path, recipe, ArtifactSchema.RECIPE)
@@ -710,7 +713,7 @@ def test_property_changes_accepts_the_action_selector_it_can_attribute(tmp_path)
 def test_any_meaningful_change_requires_context_selector(tmp_path):
     step = _step(
         user_action="observe",
-        target_selector=None,
+        target_selector="export_button",
         verification_rule={
             "kind": "any_meaningful_change",
             "args": {"scope": {}},
@@ -722,7 +725,10 @@ def test_any_meaningful_change_requires_context_selector(tmp_path):
 
     recipe = _recipe(
         context_selectors=["world_state"],
-        selectors={"world_state": _selector(cardinality="at_least_one")},
+        selectors={
+            "export_button": _selector(),
+            "world_state": _selector(cardinality="at_least_one"),
+        },
         steps=[step],
     )
     assert _load_json(tmp_path, recipe, ArtifactSchema.RECIPE).value[
@@ -866,3 +872,11 @@ def test_a_placeholder_glued_to_a_word_is_refused(tmp_path):
     )
     with pytest.raises(ValueError, match="placeholder"):
         _load_json(tmp_path, recipe, ArtifactSchema.RECIPE)
+
+
+def test_a_step_without_a_target_is_refused_when_the_recipe_loads(tmp_path):
+    # Owner decision (23 Nov): it could never be confirmed done at run time.
+    recipe = _recipe(steps=[_step(user_action="observe", target_selector=None)])
+    with pytest.raises(ValueError, match="target_selector is required"):
+        _load_json(tmp_path, recipe, ArtifactSchema.RECIPE)
+

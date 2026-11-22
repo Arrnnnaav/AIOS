@@ -611,7 +611,10 @@ def _validate_step(
         if selectors[target]["cardinality"] != "exactly_one":
             raise ValueError("action target selectors must use exactly_one cardinality")
         referenced.add(target)
-    elif action in _TARGETED_ACTIONS:
+    else:
+        # Every step needs one (owner decision, 23 Nov): the compiled grounder
+        # places no hint without a target, so a target-less step could never
+        # be confirmed done and would only fail at run time.
         raise ValueError(f"{label}.target_selector is required for {action}")
 
     descriptor = step["target_descriptor"]
