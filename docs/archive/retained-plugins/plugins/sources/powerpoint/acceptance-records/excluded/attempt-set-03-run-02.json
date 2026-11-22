@@ -1,0 +1,37 @@
+{
+  "application_identity": {
+    "kind": "executable_version",
+    "value": "16.0.20326.20112"
+  },
+  "detail": "",
+  "digests": {
+    "intent": "b977a9e62a2e9810e479bf137c92edffdec9578984399780543642856be3caa3",
+    "pack": "0b099d868a13477ce1ae281062d303f441120a13a427ce1f6bda1bf589d1b5fc",
+    "recipe": "96ad179d9e4349b1846014c2592c113cf7f0ddd6f33c195fecef589cf23dcad1"
+  },
+  "grounded_by_uia_only": true,
+  "grounding_provenance": [
+    "uia"
+  ],
+  "intent_id": "ADD_SLIDE",
+  "is_acceptance_evidence": true,
+  "outcome": "passed",
+  "pack_id": "powerpoint",
+  "record_kind": "run",
+  "steps": {
+    "completed": 1,
+    "total": 1
+  },
+  "target": {
+    "executable": "powerpnt.exe",
+    "target_ref": "window-5599713c",
+    "target_scope": "290e31e704bc",
+    "title": "live.pptx  -  Last saved by user - PowerPoint"
+  },
+  "timing": {
+    "ended_s": 4.782,
+    "first_hint_s": 1.5,
+    "first_observation_s": 0.75,
+    "verification_started_s": 4.266
+  }
+}

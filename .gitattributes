@@ -17,3 +17,6 @@ plugins/**/*.json text eol=lf
 plugins/**/*.md text eol=lf
 # The campaign ledger is append-only and byte-compared across history (D155).
 docs/campaigns/*.jsonl text eol=lf
+
+# D193: retained plugin-era records, kept byte-exact (their digests are cited).
+docs/archive/retained-plugins/** -text

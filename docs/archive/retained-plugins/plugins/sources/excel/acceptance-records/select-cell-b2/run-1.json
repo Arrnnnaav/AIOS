@@ -1,0 +1,36 @@
+{
+  "application_identity": {
+    "kind": "executable_version",
+    "value": "16.0.20326.20112"
+  },
+  "detail": "",
+  "digests": {
+    "intent": "4694ddcb3ad6c207edf12e45542bf80ea9705adf15e9c9c08779cbec1683c2f4",
+    "pack": "6f98f07ede9c14ddc2c9abe96b018520145243cd7f09c875e422444b8d6f5101",
+    "recipe": "164f8540c4c4af9439e209b3f3be37c977b5d66b38ebfb4b553586d0e74e5fb2"
+  },
+  "grounded_by_uia_only": true,
+  "grounding_provenance": [
+    "uia"
+  ],
+  "intent_id": "SELECT_CELL_B2",
+  "is_acceptance_evidence": true,
+  "outcome": "passed",
+  "pack_id": "excel",
+  "record_kind": "run",
+  "steps": {
+    "completed": 1,
+    "total": 1
+  },
+  "target": {
+    "executable": "excel.exe",
+    "target_ref": "window-11e7dbc6",
+    "target_scope": "1ecb7cb84683",
+    "title": "plugin-excel-proof.xlsx - Excel"
+  },
+  "timing": {
+    "ended_s": 7.312,
+    "first_hint_s": 1.5,
+    "first_observation_s": 0.75
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "aliases": {
+    "powerpoint_names": [
+      "microsoft powerpoint",
+      "powerpoint"
+    ]
+  },
+  "display_name": "Microsoft PowerPoint",
+  "executable_names": [
+    "powerpnt.exe"
+  ],
+  "pack_id": "powerpoint",
+  "pack_kind": "application",
+  "schema_version": 2,
+  "tier2_capture": "disabled",
+  "title_patterns": [
+    ".+ - PowerPoint$"
+  ],
+  "version_identity": {
+    "kind": "executable_version"
+  }
+}

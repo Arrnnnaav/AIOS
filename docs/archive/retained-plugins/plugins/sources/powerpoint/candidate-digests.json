@@ -1,0 +1,18 @@
+{
+  "artifacts": {
+    "intents/add_slide.json": "b977a9e62a2e9810e479bf137c92edffdec9578984399780543642856be3caa3",
+    "intents/build_animation_catalog.json": "c327a987f286622930dd92bf01461476538321a191bc30763c25484e752c2bfd",
+    "intents/build_investor_deck.json": "b6d82dd7a8978ca99605f1c785744f2c431810f5e73f2a8f286055f2f6cdab07",
+    "intents/insert_bar_chart.json": "431b61c9ceec3575369bd9316fa6a4d1646a7c5eef936d17596f91c7bc364068",
+    "intents/open_comment_editor.json": "cec291243647e9e953dc1662e8a35f43924bfc6270f8fb1e04aba65d95b0af32",
+    "intents/open_normal_view.json": "785c408b1ebc481c1db3a3f8a49b4dd35cd4e8f24a6db353c834db3bb81365b6",
+    "intents/open_slide_sorter.json": "425d61b1deb2b3f7661d5fc67ee6dd32c89b6e9c8071802367bc3c6552af9ef9",
+    "pack/powerpoint.json": "0b099d868a13477ce1ae281062d303f441120a13a427ce1f6bda1bf589d1b5fc",
+    "recipes/add_slide.json": "96ad179d9e4349b1846014c2592c113cf7f0ddd6f33c195fecef589cf23dcad1",
+    "recipes/insert_bar_chart.json": "c80c0465657289a9bafdfa050ad34b49d4ca863b6d24b4ec3c5428a2da50faef",
+    "recipes/open_comment_editor.json": "1ffab9bd8aac72a88d41e3a72ced0cd93fc61e7d284da2c5e5c494666dcef5af",
+    "recipes/open_normal_view.json": "2c87112c462d4e48f6d775c03dbd498e2743864564bd250f0cafda6ee3f03000",
+    "recipes/open_slide_sorter.json": "e0a158b181316f2296e80ddc16319252652f8cc7e1b91e3de206d5377f8c26bb"
+  },
+  "schema_version": 1
+}

@@ -32,14 +32,14 @@ RECORD_GLOBS = (
     "docs/evidence/**/*.json",
     "docs/evidence/*.jsonl",
     "docs/evidence/**/*.jsonl",
-    "plugins/sources/*/acceptance-records/**/*.json",
+    "docs/archive/retained-plugins/plugins/sources/*/acceptance-records/**/*.json",
 )
 
 #: Pattern -> the exact abbreviated commits that edited matching records after
 #: capture, oldest first, and where that is disclosed.
 KNOWN_EDITS = {
     # Checked first: fnmatch takes the first pattern that matches.
-    "plugins/sources/powerpoint/acceptance-records/add-slide/run-*.json": (
+    "docs/archive/retained-plugins/plugins/sources/powerpoint/acceptance-records/add-slide/run-*.json": (
         ("1907006", "2e718f0", "3e8ad17", "3d4956f"),
         "withdrawn to excluded/ by 1907006 and replaced by three new stamped runs "
         "in 2e718f0 (both commits describe it); then the instance-4 rewrites",
@@ -49,7 +49,7 @@ KNOWN_EDITS = {
         "whole records re-captured by new live runs and re-derived (ROADMAP "
         "Phase E receipt budget; independent review READY at 63c5ca5)",
     ),
-    "plugins/sources/*/acceptance-records/**/*.json": (
+    "docs/archive/retained-plugins/plugins/sources/*/acceptance-records/**/*.json": (
         ("3e8ad17", "3d4956f"),
         "target_ref rewritten in place twice; falsified-transcripts-disclosure.md "
         "instance 4",
@@ -70,10 +70,14 @@ def _records() -> list[str]:
     return sorted(set(_git("ls-files", *RECORD_GLOBS).split()))
 
 
-def _edits_since_creation(path: str) -> tuple[str, ...]:
-    """Every commit that touched `path` after its first creation, oldest first:
-    modifications, deletions and re-creations alike."""
+#: D193 moved the plugin acceptance records, byte for byte, from `plugins/`
+#: into the evidence tree when the plugin system was retired. Their history is
+#: still read at the ORIGINAL literal path (no rename guessing), so an edit
+#: made before the move cannot escape by the move.
+MOVED_FROM = "docs/archive/retained-plugins/"
 
+
+def _touches(path: str) -> list[str]:
     log = _git("log", "--reverse", "--format=%h", "--name-status", "--", path)
     touched: list[str] = []
     commit = None
@@ -84,7 +88,19 @@ def _edits_since_creation(path: str) -> tuple[str, ...]:
             commit = line.strip()[:7]
             continue
         touched.append(commit)
-    return tuple(touched[1:])
+    return touched
+
+
+def _edits_since_creation(path: str) -> tuple[str, ...]:
+    """Every commit that touched `path` after its first creation, oldest first:
+    modifications, deletions and re-creations alike."""
+
+    if not path.startswith(MOVED_FROM):
+        return tuple(_touches(path)[1:])
+    here = _touches(path)
+    moved_in = here[0] if here else None  # the move itself (D193)
+    before = [c for c in _touches(path[len(MOVED_FROM):]) if c != moved_in]
+    return tuple(before[1:] + here[1:])
 
 
 def _governing(path: str) -> str | None:
@@ -136,8 +152,8 @@ def test_the_history_walk_sees_an_edit_and_stops_at_creation():
     excluded record has only the two in-place rewrites, and a single-commit
     transcript none."""
 
-    edited = "plugins/sources/powerpoint/acceptance-records/add-slide/run-1.json"
-    rewritten = "plugins/sources/powerpoint/acceptance-records/excluded/attempt-set-01-run-01.json"
+    edited = "docs/archive/retained-plugins/plugins/sources/powerpoint/acceptance-records/add-slide/run-1.json"
+    rewritten = "docs/archive/retained-plugins/plugins/sources/powerpoint/acceptance-records/excluded/attempt-set-01-run-01.json"
     clean = "docs/evidence/act-live-manager-d131-r1.jsonl"
     assert _edits_since_creation(edited) == ("1907006", "2e718f0", "3e8ad17", "3d4956f")
     assert _edits_since_creation(rewritten) == ("3e8ad17", "3d4956f")

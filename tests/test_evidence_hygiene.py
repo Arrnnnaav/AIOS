@@ -715,8 +715,9 @@ def test_the_scan_covers_the_places_handles_have_actually_leaked():
     assert len(scanned) >= 50
     assert any(n.startswith("docs/evidence/") for n in scanned)
     assert any("payload/docs/evidence/" in n for n in scanned)
-    assert any(
-        n.startswith("plugins/sources/") and "acceptance-records" in n for n in scanned
+    assert any(  # moved here byte for byte when plugins were retired (D193)
+        n.startswith("docs/archive/retained-plugins/") and "acceptance-records" in n
+        for n in scanned
     )
     assert any(n.startswith("docs/superpowers/") for n in scanned)
     assert any(n.endswith(".jsonl") for n in scanned)
