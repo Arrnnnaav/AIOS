@@ -37,7 +37,10 @@ def folder_reference_from_goal(goal: str) -> str:
     if "\\" in text or "/" in text:
         segments = [segment for segment in re.split(r"[\\/]+", text) if segment]
         text = segments[-1] if segments else ""
-    return normalize_title_text(text)
+        return normalize_title_text(text)  # a path segment is a literal name
+    from ghostcursor.packs.compile import strip_description
+
+    return normalize_title_text(strip_description(text))
 
 
 def is_valid_vscode_workspace_title(title: str) -> bool:

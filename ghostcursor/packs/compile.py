@@ -679,6 +679,25 @@ def compile_goal_reference(
     )
 
 
+#: A folder DESCRIBED rather than named ("my project folder", "the Demo
+#: folder"): the determiner and the generic nouns name nothing a title will
+#: contain, so they are dropped (owner decision, 23 Nov). A bare "Project"
+#: with no determiner is still a name.
+_DETERMINERS = frozenset({"my", "the", "this", "that", "our", "your", "a", "an"})
+_GENERIC_NOUNS = frozenset(
+    {"folder", "project", "directory", "workspace", "repo", "repository"}
+)
+
+
+def strip_description(text: str) -> str:
+    words = text.split()
+    if words and words[0].casefold() in _DETERMINERS:
+        words = words[1:]
+        while words and words[-1].casefold() in _GENERIC_NOUNS:
+            words.pop()
+    return " ".join(words)
+
+
 def derive_goal_reference(spec: GoalReferenceSpec, goal: str) -> str:
     """Reduce a goal to the reference a completed title must contain.
 
@@ -724,9 +743,10 @@ def derive_goal_reference(spec: GoalReferenceSpec, goal: str) -> str:
         pattern = "[" + "".join(re.escape(s) for s in spec.basename_separators) + "]+"
         segments = [segment for segment in re.split(pattern, text) if segment]
         text = segments[-1] if segments else ""
+        return normalise_title_text(text)  # a path segment is a literal name
 
-    # 6.
-    return normalise_title_text(text)
+    # 6. (and a described folder names nothing: see strip_description)
+    return normalise_title_text(strip_description(text))
 
 
 def reference_is_specific(spec: GoalReferenceSpec, reference: str) -> bool:

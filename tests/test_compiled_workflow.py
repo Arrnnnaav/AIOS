@@ -267,6 +267,9 @@ PARITY_GOALS = [
     "open .",
     "open the report and/or the sheet in vs code",
     "OPEN C:\\Users\\user\\AIOS IN VISUAL STUDIO CODE",
+    "Open my project folder in vscode",
+    "Open the Demo folder in VS Code",
+    "Open Project",
 ]
 
 
@@ -2411,3 +2414,14 @@ def test_every_production_caller_of_the_executor_consumes_its_timing() -> None:
     assert not missing, (
         f"these call the compiled executor and ignore its timing: {missing}"
     )
+
+
+def test_a_described_folder_names_nothing_and_a_named_one_keeps_its_name():
+    # Owner decision (23 Nov): "my project folder" never appeared in a title,
+    # so the run could not pass however the person opened the folder.
+    assert derive_goal_reference(SPEC, "Open my project folder in vscode") == ""
+    assert not reference_is_specific(SPEC, "")
+    assert derive_goal_reference(SPEC, "Open the Demo folder in VS Code") == "demo"
+    assert derive_goal_reference(SPEC, "Open Project") == "project"  # a bare name
+    assert derive_goal_reference(SPEC, "Open /home/user/my app in VS Code") == "my app"
+
