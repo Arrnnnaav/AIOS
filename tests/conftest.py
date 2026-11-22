@@ -38,6 +38,17 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
 
 
 @pytest.fixture(autouse=True)
+def no_real_team_sequence(monkeypatch):
+    """No test writes the team bundle sequence to the real Credential Manager."""
+
+    from ghostcursor.workspace import team
+
+    store = {"value": 0}
+    monkeypatch.setattr(team, "_stored_sequence", lambda: store["value"])
+    monkeypatch.setattr(team, "_store_sequence", lambda n: store.update(value=n))
+
+
+@pytest.fixture(autouse=True)
 def no_real_chatgpt_sign_in(monkeypatch, tmp_path_factory):
     """No test reads the owner's real Sign in with ChatGPT record: a signed-in
     machine would otherwise send hermetic-test prompts to their plan."""

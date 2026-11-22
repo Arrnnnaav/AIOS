@@ -564,3 +564,20 @@ def test_publish_is_refused_when_the_organisation_keeps_text_on_this_computer(
             key_lookup=owner.store.get,
         )
     assert not (owner.folder / "orbyn" / "team.json").exists()
+
+
+def test_deleting_the_sequence_file_does_not_allow_an_older_bundle(owner, tmp_path):
+    # The highest sequence is kept in Credential Manager too (conftest fakes it).
+    boss = _brain(tmp_path, "boss", "VAT is 20 percent")
+    team.publish(boss, scope="default", skills_dir=tmp_path / "e", key_lookup=owner.store.get)
+    old = {n: (owner.folder / "orbyn" / n).read_bytes() for n in ("team.json", "team.sig")}
+    staff = Knowledge(tmp_path / "staff.sqlite")
+    team.sync(staff, skills_dir=tmp_path / "ss")
+    team.publish(boss, scope="default", skills_dir=tmp_path / "e", key_lookup=owner.store.get)
+    team.sync(staff, skills_dir=tmp_path / "ss")
+    team._seen_path(staff).unlink()  # the staff member deletes the file
+    for name, data in old.items():
+        (owner.folder / "orbyn" / name).write_bytes(data)
+    with pytest.raises(team.TeamError, match="older bundle"):
+        team.sync(staff, skills_dir=tmp_path / "ss")
+
