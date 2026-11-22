@@ -569,3 +569,28 @@ def test_a_label_that_cannot_be_read_is_not_clicked():
     r = page.drive("continue", G(), approved=True)
     assert clicked == [] and r.status == "blocked" and "could not read" in r.reason
 
+
+def test_one_isolated_world_is_reused_and_remade_after_a_reload():
+    sent = []
+    worlds = iter([5, 6])
+    gone = {"now": False}
+
+    def resolve(params):
+        if gone["now"] and params["executionContextId"] == 5:
+            raise RuntimeError("Cannot find context with specified id")
+        return {"object": {"objectId": "o%d" % params["executionContextId"]}}
+
+    page = _fake_page(
+        {
+            "Page.getFrameTree": {"frameTree": {"frame": {"id": "f"}}},
+            "Page.createIsolatedWorld": lambda p: {"executionContextId": next(worlds)},
+            "DOM.resolveNode": resolve,
+        },
+        sent,
+    )
+    assert page._isolated_object(7) == "o5" and page._isolated_object(8) == "o5"
+    assert sum(m == "Page.createIsolatedWorld" for m, _ in sent) == 1  # reused
+    gone["now"] = True  # the page navigated
+    assert page._isolated_object(7) == "o6"
+    assert sum(m == "Page.createIsolatedWorld" for m, _ in sent) == 2
+

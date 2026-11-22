@@ -243,29 +243,38 @@ class Page:
         hostile page cannot override innerText/value to report something
         harmless. None when the browser offers none."""
 
+        cached = getattr(self, "_iso_context", None)
+        if cached is not None:
+            return cached
         try:
             frame = self.cmd("Page.getFrameTree")["frameTree"]["frame"]["id"]
-            return self.cmd(
+            self._iso_context = self.cmd(
                 "Page.createIsolatedWorld", {"frameId": frame, "worldName": "orbyn-read"}
             ).get("executionContextId")
         except (RuntimeError, KeyError, TypeError):
-            return None
+            self._iso_context = None
+        return self._iso_context
 
     def _isolated_object(self, backend_node_id: int) -> str | None:
         """The node's handle in the isolated world, or None. Never the page's
         main world: there the page could override what is read."""
 
-        context = self._isolated_world()
-        if context is None:
-            return None
-        return (
-            self.cmd(
-                "DOM.resolveNode",
-                {"backendNodeId": backend_node_id, "executionContextId": context},
-            )
-            .get("object", {})
-            .get("objectId")
-        )
+        for _attempt in range(2):  # one world per page, made again after a reload
+            context = self._isolated_world()
+            if context is None:
+                return None
+            try:
+                return (
+                    self.cmd(
+                        "DOM.resolveNode",
+                        {"backendNodeId": backend_node_id, "executionContextId": context},
+                    )
+                    .get("object", {})
+                    .get("objectId")
+                )
+            except RuntimeError:
+                self._iso_context = None  # the page navigated: its world is gone
+        return None
 
     def visible_text_now(self, backend_node_id: int) -> str | None:
         """What the person sees on the node, read in the isolated world; None
