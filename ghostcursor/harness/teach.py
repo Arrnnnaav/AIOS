@@ -46,9 +46,12 @@ ACT_SETTLE_S = 2.0
 
 #: A pointer at one of these needs the user's explicit go-ahead first.
 HIGH_RISK = re.compile(
-    r"\b(delete|remove|send|pay|purchase|buy|sign ?in|log ?in|password|"
-    r"uninstall|format|erase|discard|overwrite|replace|reset|close|quit|exit|"
-    r"don'?t save|do not save)\b",
+    # Stems, not whole words only: "Payment", "Deletes", "Sending" must match.
+    r"\b(delet\w*|remov\w*|send\w*|sent|pay\w*|purchas\w*|buy\w*|"
+    r"sign ?in|log ?in|password|uninstall\w*|install\w*|format|erase\w*|"
+    r"discard\w*|overwrit\w*|replac\w*|reset\w*|close|quit|exit|"
+    r"don'?t save|do not save|submit\w*|publish\w*|empty|clear\w*|"
+    r"check ?out|place order|order now|unsubscrib\w*|trash)\b",
     re.IGNORECASE,
 )
 

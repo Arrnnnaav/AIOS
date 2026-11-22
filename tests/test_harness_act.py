@@ -880,3 +880,22 @@ def test_paste_refuses_when_text_sits_beside_a_png(monkeypatch):
     monkeypatch.setattr(act, "_open_clipboard", lambda c, tries=5: None)
     with pytest.raises(PermissionError, match="picture"):
         act.get_clipboard_text()
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["Confirm payment", "Deletes the file", "Sending...", "Submit order", "Publish",
+     "Empty Recycle Bin", "Clear all", "Install update", "Checkout", "Place order",
+     "Unsubscribe", "Move to trash"],
+)
+def test_the_risky_list_catches_word_forms_and_the_missing_verbs(name):
+    from ghostcursor.harness.teach import HIGH_RISK
+
+    assert HIGH_RISK.search(name), name
+
+
+@pytest.mark.parametrize("name", ["Insert", "Design", "New Slide", "Paste", "Next"])
+def test_everyday_controls_are_not_risky(name):
+    from ghostcursor.harness.teach import HIGH_RISK
+
+    assert not HIGH_RISK.search(name), name
