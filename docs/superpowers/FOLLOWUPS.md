@@ -2862,17 +2862,16 @@ from 1053b54. Still open:
   WM_QUIT; evaluation scan relative imports; parity duplicate ids; trusted
   placeholder; a whole task graph has one deadline (manager: 600 s); the
   local-provider loopback test; Extract tooltip says the document is kept.
-  Owner decisions (deliberately not changed): packs activation fails every
-  plugin on any diagnostic (stricter than its docstring, fails closed; a
-  per-plugin scope also needs plugins/store.py); the compiled VS Code goal
-  reference must stay in parity with the legacy matcher ("my project folder"
-  never verifies; pack disabled, D130); target-less observe steps are valid
-  in the trusted schema but cannot ground at run time (no shipped recipe
-  has one); HIGH_RISK lacks submit/publish/empty/clear/install/checkout and
-  needs whole words (widening adds Teach confirmations).
-  Before shipping a feature: plugins/platform must apply trust/ key
-  revocations before any trust/ directory ships; browser drive should read
-  labels in an isolated world and hit-test before clicking.
+  Owner decisions (asked and done, 23 Nov): a plugin whose own catalog no
+  longer loads is left out alone (CatalogInvalid only; tamper stays loud;
+  shown as blocked_invalid_catalog); described VS Code folders ("my project
+  folder") name nothing, path segments stay literal, legacy matcher follows;
+  the risky list matches stems, hyphens, curly apostrophes and the added
+  verbs; a recipe step without a target is refused at load. Note: a folder
+  literally named "This Project" now reads as described (accepted).
+  Before shipping (done 23 Nov): browser drive reads labels in an isolated
+  world and hit-tests the click point; with a root-signed trust/ policy the
+  production store trusts only that policy's current keys.
   Left (minor), as of 23 Nov: the control bar's sizes are still fixed
   device pixels, and the Teach path draws UIA rects without the
   coordinate-space admission Act uses (needs a measurement on a mixed-DPI
