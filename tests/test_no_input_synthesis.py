@@ -248,3 +248,17 @@ def test_the_actuator_is_the_only_module_that_synthesizes_input():
         if banned_calls_in(tree)
     }
     assert users == {ACTUATOR}
+
+
+def test_tools_contain_no_input_synthesis():
+    # tools/orbyn_app.py is the packaged app's entry point; the scans above
+    # cover ghostcursor/ only, so tools/ is held to the same ban here.
+    tools = sorted((ROOT.parent / "tools").glob("*.py"))
+    assert any(p.name == "orbyn_app.py" for p in tools)
+    hits = [
+        f"{p.name}:{hit}"
+        for p in tools
+        for tree in [ast.parse(p.read_text(encoding="utf-8"), filename=str(p))]
+        for hit in banned_calls_in(tree) + banned_imports_in(tree)
+    ]
+    assert hits == [], hits
