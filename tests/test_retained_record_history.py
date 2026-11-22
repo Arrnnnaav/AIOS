@@ -77,8 +77,9 @@ def _records() -> list[str]:
 MOVED_FROM = "docs/archive/retained-plugins/"
 
 
-def _touches(path: str) -> list[str]:
-    log = _git("log", "--reverse", "--format=%h", "--name-status", "--", path)
+def _touches(path: str, until: str | None = None) -> list[str]:
+    revs = [until] if until else []
+    log = _git("log", "--reverse", "--format=%h", "--name-status", *revs, "--", path)
     touched: list[str] = []
     commit = None
     for line in log.splitlines():
@@ -98,8 +99,11 @@ def _edits_since_creation(path: str) -> tuple[str, ...]:
     if not path.startswith(MOVED_FROM):
         return tuple(_touches(path)[1:])
     here = _touches(path)
-    moved_in = here[0] if here else None  # the move itself (D193)
-    before = [c for c in _touches(path[len(MOVED_FROM):]) if c != moved_in]
+    if not here:
+        return ()
+    # The original path's history up to (not including) the move: its later
+    # deletion, when the plugin tree was removed, is the move, not an edit.
+    before = _touches(path[len(MOVED_FROM):], until=f"{here[0]}^")
     return tuple(before[1:] + here[1:])
 
 
