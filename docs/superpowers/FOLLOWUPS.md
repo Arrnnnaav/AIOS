@@ -2939,3 +2939,14 @@ from 1053b54. Still open:
   docstrings; a vacuous import assertion retargeted; CLAUDE.md rule 4 says
   what is checked. Left: the input-synthesis scan covers ghostcursor/ only,
   not tools/orbyn_app.py (it only imports the app).
+- 23 Nov: last open items closed. The input-synthesis ban now also scans
+  tools/ (the packaged entry point lives there; a planted import fails it).
+  Browser drive keeps one isolated world per page and makes it again after
+  a navigation. The team bundle's highest sequence is also kept in
+  Credential Manager, so deleting team-sequence.txt no longer allows an
+  older bundle (tested; conftest fakes the vault). The harness refuses to
+  draw pointers when this thread's DPI awareness is known to be "system" or
+  "unaware" (an unknown answer still proceeds). The manager campaign salt
+  item is moot: the campaign tooling was retired (D193). Not done, by
+  nature: the browser hit test runs just before the click and cannot be
+  atomic with it.
