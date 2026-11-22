@@ -2950,3 +2950,12 @@ from 1053b54. Still open:
   item is moot: the campaign tooling was retired (D193). Not done, by
   nature: the browser hit test runs just before the click and cannot be
   atomic with it.
+- 23 Nov: review of the last fixes: no blocking finding. Done: the DPI guard
+  is an allow-list (per-monitor modes or unknown; "System (Enhanced)" is
+  refused, with a fix-it message); the team sequence is kept per owner key
+  (a rotated key starts fresh instead of locking staff out) and the real
+  vault functions are tested (conftest now fakes only the vault); the tools/
+  scan is recursive; CLAUDE.md rule 1 names the browser's approval-gated CDP
+  input (D184). Left, minor: a resolveNode error from a removed node also
+  re-creates the isolated world (extra round-trip, still fails closed); a
+  vault-less read is not audit-logged.

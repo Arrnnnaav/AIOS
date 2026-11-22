@@ -43,9 +43,19 @@ def no_real_team_sequence(monkeypatch):
 
     from ghostcursor.workspace import team
 
-    store = {"value": 0}
-    monkeypatch.setattr(team, "_stored_sequence", lambda: store["value"])
-    monkeypatch.setattr(team, "_store_sequence", lambda n: store.update(value=n))
+    store: dict[str, str] = {}
+    monkeypatch.setattr(
+        team.keys, "get_key",
+        lambda name, allow_env=True, _real=team.keys.get_key: (
+            store.get(name) if name.startswith("TeamBundleSequence") else _real(name, allow_env=allow_env)
+        ),
+    )
+    monkeypatch.setattr(
+        team.keys, "set_key",
+        lambda name, value, _real=team.keys.set_key: (
+            store.__setitem__(name, value) if name.startswith("TeamBundleSequence") else _real(name, value)
+        ),
+    )
 
 
 @pytest.fixture(autouse=True)

@@ -929,7 +929,7 @@ def test_an_app_blocked_mid_session_stops_the_next_act_step(monkeypatch):
 
 @pytest.mark.parametrize("awareness, refused", [
     ("per-monitor-v2", False), ("per-monitor", False), ("unknown", False),
-    ("system", True), ("unaware", True),
+    ("system", True), ("unaware", True), ("unaware-gdi-scaled", True),
 ])
 def test_a_known_wrong_dpi_mode_refuses_to_draw_pointers(monkeypatch, awareness, refused):
     # Rule 3: in system/unaware mode a UIA rect would be drawn offset from its

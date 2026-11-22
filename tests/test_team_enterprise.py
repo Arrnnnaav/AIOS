@@ -581,3 +581,21 @@ def test_deleting_the_sequence_file_does_not_allow_an_older_bundle(owner, tmp_pa
     with pytest.raises(team.TeamError, match="older bundle"):
         team.sync(staff, skills_dir=tmp_path / "ss")
 
+
+def test_the_sequence_is_kept_per_owner_key_and_survives_a_broken_vault(monkeypatch):
+    # The real functions (conftest fakes only the vault): one entry per owner
+    # key, an int round-trip, and 0 (the file alone guards) when the vault fails.
+    saved = {}
+    monkeypatch.setattr(team.keys, "set_key", lambda name, value: saved.__setitem__(name, value))
+    monkeypatch.setattr(team.keys, "get_key", lambda name, allow_env=True: saved.get(name))
+    team._store_sequence("owner-A", 7)
+    assert team._stored_sequence("owner-A") == 7
+    assert team._stored_sequence("owner-B") == 0  # a rotated key starts fresh
+    assert len(saved) == 1 and all(k.startswith("TeamBundleSequence-") for k in saved)
+
+    def broken(*a, **k):
+        raise OSError("vault unavailable")
+
+    monkeypatch.setattr(team.keys, "get_key", broken)
+    assert team._stored_sequence("owner-A") == 0
+

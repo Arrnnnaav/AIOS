@@ -224,19 +224,25 @@ def _seen_path(knowledge) -> Path:
 #: The highest bundle sequence this PC loaded, kept in Credential Manager as
 #: well as the file: deleting the file alone must not let an older signed
 #: bundle load again (rollback). The higher of the two wins.
-_SEQUENCE_KEY = "TeamBundleSequence"
+def _sequence_key(owner_key: str) -> str:
+    """One entry per owner key: a rotated key starts a new sequence instead of
+    locking staff out against the old key's numbers."""
+
+    import hashlib
+
+    return "TeamBundleSequence-" + hashlib.sha256(owner_key.encode()).hexdigest()[:12]
 
 
-def _stored_sequence() -> int:
+def _stored_sequence(owner_key: str) -> int:
     try:
-        return int(keys.get_key(_SEQUENCE_KEY, allow_env=False) or 0)
+        return int(keys.get_key(_sequence_key(owner_key), allow_env=False) or 0)
     except Exception:  # noqa: BLE001 - no vault: the file still guards
         return 0
 
 
-def _store_sequence(sequence: int) -> None:
+def _store_sequence(owner_key: str, sequence: int) -> None:
     try:
-        keys.set_key(_SEQUENCE_KEY, str(sequence))
+        keys.set_key(_sequence_key(owner_key), str(sequence))
     except Exception:  # noqa: BLE001 - the file is still written
         pass
 
@@ -273,7 +279,7 @@ def sync(knowledge, *, skills_dir=None, agents_root=None) -> dict:
         seen = int(seen_path.read_text(encoding="utf-8").strip() or 0)
     except (OSError, ValueError):
         seen = 0
-    seen = max(seen, _stored_sequence())
+    seen = max(seen, _stored_sequence(pinned))
     if bundle["sequence"] < seen:
         audit.record("team_sync", outcome="rollback")
         raise TeamError("the team folder holds an older bundle than this PC loaded")
@@ -326,7 +332,7 @@ def sync(knowledge, *, skills_dir=None, agents_root=None) -> dict:
                 continue
     seen_path.parent.mkdir(parents=True, exist_ok=True)
     seen_path.write_text(str(bundle["sequence"]), encoding="utf-8")
-    _store_sequence(bundle["sequence"])
+    _store_sequence(pinned, bundle["sequence"])
     counts = {"facts": len(kept), "skills": skills, "agents": count}
     audit.record("team_sync", outcome="loaded", **counts)
     return counts

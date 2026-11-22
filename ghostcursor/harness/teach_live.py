@@ -145,16 +145,20 @@ def _require_physical_pixels() -> None:
     overlay draws them where they are only if this thread is per-monitor DPI
     aware. A KNOWN other awareness (another library set "system" or
     "unaware" first) would draw every pointer offset from its control, so the
-    session is refused. An unknown answer is not refused: it cannot be told
-    apart from an older Windows that answers no query."""
+    session is refused. Only per-monitor modes pass; an unknown answer is
+    not refused: it cannot be told apart from an older Windows that answers
+    no query."""
 
     from ghostcursor.overlay import dpi
 
     awareness, _api = dpi.queried_thread_awareness()
-    if awareness in ("system", "unaware"):
+    # An allow-list: "unaware-gdi-scaled" (the "System (Enhanced)" override)
+    # and any future mode are refused as well as "system" and "unaware".
+    if awareness not in ("per-monitor-v2", "per-monitor", dpi.UNKNOWN_AWARENESS):
         raise RuntimeError(
             f"display scaling is in {awareness!r} mode for this window, so Orbyn's "
-            "pointer could miss the control; restart Orbyn"
+            "pointer could miss the control; remove any compatibility "
+            "'high DPI scaling override' on Python or Orbyn, then restart it"
         )
 
 

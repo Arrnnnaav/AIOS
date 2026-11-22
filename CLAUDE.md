@@ -36,6 +36,8 @@ and read only those entries. Never read the whole of `DECISIONS.md`, `FLOW.md`,
 1. **Input synthesis lives in one module:** `ghostcursor/harness/act.py`
    (D182, owner decision: Act on any application). The input-synthesis scan
    (`tests/test_no_input_synthesis.py`) pins it as the only one; keep it green.
+   The one other input path is the browser drive's CDP input
+   (`harness/browser.py`, D184), behind the same approval and policy gate.
 2. **Act acts only after the user approves the whole plan,** only on a control
    the harness observed (never a model-supplied position), still asks before
    risky controls (`harness/teach.py` HIGH_RISK: delete, send, pay, submit,

@@ -253,7 +253,7 @@ def test_the_actuator_is_the_only_module_that_synthesizes_input():
 def test_tools_contain_no_input_synthesis():
     # tools/orbyn_app.py is the packaged app's entry point; the scans above
     # cover ghostcursor/ only, so tools/ is held to the same ban here.
-    tools = sorted((ROOT.parent / "tools").glob("*.py"))
+    tools = sorted((ROOT.parent / "tools").rglob("*.py"))
     assert any(p.name == "orbyn_app.py" for p in tools)
     hits = [
         f"{p.name}:{hit}"
