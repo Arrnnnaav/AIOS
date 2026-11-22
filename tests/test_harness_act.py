@@ -925,3 +925,22 @@ def test_an_app_blocked_mid_session_stops_the_next_act_step(monkeypatch):
     assert sent == []
     teach_live._live_perform(None, None, 9, "powerpnt.exe")
     assert len(sent) == 1
+
+
+@pytest.mark.parametrize("awareness, refused", [
+    ("per-monitor-v2", False), ("per-monitor", False), ("unknown", False),
+    ("system", True), ("unaware", True),
+])
+def test_a_known_wrong_dpi_mode_refuses_to_draw_pointers(monkeypatch, awareness, refused):
+    # Rule 3: in system/unaware mode a UIA rect would be drawn offset from its
+    # control on a mixed-DPI desktop.
+    from ghostcursor.harness import teach_live
+    from ghostcursor.overlay import dpi
+
+    monkeypatch.setattr(dpi, "queried_thread_awareness", lambda: (awareness, "test"))
+    if refused:
+        with pytest.raises(RuntimeError, match="display scaling"):
+            teach_live._require_physical_pixels()
+    else:
+        teach_live._require_physical_pixels()
+

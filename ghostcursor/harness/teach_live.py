@@ -140,6 +140,24 @@ def _console_enter() -> bool:
     return pressed
 
 
+def _require_physical_pixels() -> None:
+    """Rule 3 on a mixed-DPI desktop: UIA reports physical pixels, and the
+    overlay draws them where they are only if this thread is per-monitor DPI
+    aware. A KNOWN other awareness (another library set "system" or
+    "unaware" first) would draw every pointer offset from its control, so the
+    session is refused. An unknown answer is not refused: it cannot be told
+    apart from an older Windows that answers no query."""
+
+    from ghostcursor.overlay import dpi
+
+    awareness, _api = dpi.queried_thread_awareness()
+    if awareness in ("system", "unaware"):
+        raise RuntimeError(
+            f"display scaling is in {awareness!r} mode for this window, so Orbyn's "
+            "pointer could miss the control; restart Orbyn"
+        )
+
+
 def _escape_pressed() -> bool:
     """ESC down now or tapped since the last poll (GetAsyncKeyState)."""
 
@@ -277,6 +295,7 @@ def drive_live(
         apps = {b.label: b.identity.executable for b in observer.bindings}
         observer.start()
         try:
+            _require_physical_pixels()
             overlay = window.create_overlay_window(hidden_from_capture=True)
             banner = _acting_banner()
         except BaseException:
@@ -498,6 +517,7 @@ def run_model_teach(
             act=perform,
             deny=deny,
         )
+        _require_physical_pixels()
         overlay = window.create_overlay_window(hidden_from_capture=True)
         banner = _acting_banner() if act else None
         say(
