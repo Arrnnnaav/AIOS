@@ -222,11 +222,7 @@ class Page:
         except RuntimeError:
             pass
         try:
-            obj = (
-                self.cmd("DOM.resolveNode", {"backendNodeId": backend_node_id})
-                .get("object", {})
-                .get("objectId")
-            )
+            obj = self._isolated_object(backend_node_id)
             if obj:
                 got = self.cmd(
                     "Runtime.callFunctionOn",
@@ -241,6 +237,55 @@ class Page:
         except RuntimeError:
             pass
         return " | ".join(" ".join(str(p).split()) for p in parts if p)
+
+    def _isolated_world(self) -> int | None:
+        """An execution context the page's own scripts cannot reach: there a
+        hostile page cannot override innerText/value to report something
+        harmless. None when the browser offers none."""
+
+        try:
+            frame = self.cmd("Page.getFrameTree")["frameTree"]["frame"]["id"]
+            return self.cmd(
+                "Page.createIsolatedWorld", {"frameId": frame, "worldName": "orbyn-read"}
+            ).get("executionContextId")
+        except (RuntimeError, KeyError, TypeError):
+            return None
+
+    def _isolated_object(self, backend_node_id: int) -> str | None:
+        params = {"backendNodeId": backend_node_id}
+        context = self._isolated_world()
+        if context is not None:
+            params["executionContextId"] = context
+        return self.cmd("DOM.resolveNode", params).get("object", {}).get("objectId")
+
+    def _hit_is(self, backend_node_id: int, x: int, y: int) -> bool:
+        """Is the node at (x, y) the control or inside it? A cookie banner or a
+        transparent overlay placed over it would take the click otherwise."""
+
+        try:
+            hit = self.cmd(
+                "DOM.getNodeForLocation",
+                {"x": x, "y": y, "includeUserAgentShadowDOM": True},
+            ).get("backendNodeId")
+            if hit is None:
+                return False
+            if hit == backend_node_id:
+                return True
+            target, at = self._isolated_object(backend_node_id), self._isolated_object(hit)
+            if not target or not at:
+                return False
+            got = self.cmd(
+                "Runtime.callFunctionOn",
+                {
+                    "objectId": target,
+                    "functionDeclaration": "function(n){return this.contains(n)}",
+                    "arguments": [{"objectId": at}],
+                    "returnByValue": True,
+                },
+            )
+            return got.get("result", {}).get("value") is True
+        except RuntimeError:
+            return False
 
     # --- actions (gated exactly like Act, D182) --------------------------
 
@@ -270,6 +315,10 @@ class Page:
         if rect is None:
             raise RuntimeError("the control has no on-screen box")
         x, y = (rect[0] + rect[2]) // 2, (rect[1] + rect[3]) // 2
+        if not self._hit_is(control.backend_node_id, x, y):
+            raise PermissionError(
+                f"something else is over {control.name!r}; Orbyn did not click"
+            )
         for kind in ("mousePressed", "mouseReleased"):
             self.cmd(
                 "Input.dispatchMouseEvent",

@@ -460,3 +460,83 @@ def test_browser_drive_rechecks_the_label_the_person_sees_at_click_time(monkeypa
 
     r = page.drive("continue", G(), approved=True)
     assert clicked == [] and r.status == "blocked" and "without asking" in r.reason
+
+
+def _fake_page(replies, sent=None):
+    from ghostcursor.harness import browser
+
+    page = object.__new__(browser.Page)
+
+    def cmd(method, params=None):
+        if sent is not None:
+            sent.append((method, params))
+        reply = replies[method]
+        return reply(params) if callable(reply) else reply
+
+    page.cmd = cmd
+    return page
+
+
+def test_a_covered_control_is_not_clicked():
+    import pytest
+
+    # A banner or transparent overlay over the control would take the click.
+    from ghostcursor.harness import browser
+
+    sent = []
+    page = _fake_page(
+        {
+            "DOM.scrollIntoViewIfNeeded": {},
+            "DOM.getBoxModel": {"model": {"border": [0, 0, 10, 0, 10, 10, 0, 10]}},
+            "DOM.getNodeForLocation": {"backendNodeId": 99},  # something else
+            "Page.getFrameTree": {"frameTree": {"frame": {"id": "f"}}},
+            "Page.createIsolatedWorld": {"executionContextId": 5},
+            "DOM.resolveNode": lambda p: {"object": {"objectId": f"o{p['backendNodeId']}"}},
+            "Runtime.callFunctionOn": {"result": {"value": False}},  # not inside
+            "Input.dispatchMouseEvent": {},
+        },
+        sent,
+    )
+    control = browser.PageControl("button", "Save", 7, (0, 0, 10, 10))
+    with pytest.raises(PermissionError, match="something else"):
+        page.click(control, approved=True)
+    assert not any(m == "Input.dispatchMouseEvent" for m, _ in sent)
+
+
+def test_a_click_landing_on_a_child_of_the_control_goes_ahead():
+    from ghostcursor.harness import browser
+
+    sent = []
+    page = _fake_page(
+        {
+            "DOM.scrollIntoViewIfNeeded": {},
+            "DOM.getBoxModel": {"model": {"border": [0, 0, 10, 0, 10, 10, 0, 10]}},
+            "DOM.getNodeForLocation": {"backendNodeId": 8},  # the label span inside
+            "Page.getFrameTree": {"frameTree": {"frame": {"id": "f"}}},
+            "Page.createIsolatedWorld": {"executionContextId": 5},
+            "DOM.resolveNode": lambda p: {"object": {"objectId": f"o{p['backendNodeId']}"}},
+            "Runtime.callFunctionOn": {"result": {"value": True}},
+            "Input.dispatchMouseEvent": {},
+        },
+        sent,
+    )
+    page.click(browser.PageControl("button", "Save", 7, (0, 0, 10, 10)), approved=True)
+    assert sum(m == "Input.dispatchMouseEvent" for m, _ in sent) == 2
+
+
+def test_the_label_is_read_where_page_scripts_cannot_reach():
+    sent = []
+    page = _fake_page(
+        {
+            "Accessibility.getPartialAXTree": {"nodes": [{"name": {"value": "Continue"}}]},
+            "Page.getFrameTree": {"frameTree": {"frame": {"id": "f"}}},
+            "Page.createIsolatedWorld": {"executionContextId": 5},
+            "DOM.resolveNode": {"object": {"objectId": "o1"}},
+            "Runtime.callFunctionOn": {"result": {"value": "Delete account"}},
+        },
+        sent,
+    )
+    assert "Delete account" in page.label_now(7)
+    resolve = [p for m, p in sent if m == "DOM.resolveNode"]
+    assert resolve and resolve[0].get("executionContextId") == 5
+
