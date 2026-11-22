@@ -51,6 +51,8 @@ class PluginEffectiveState(str, Enum):
     BLOCKED_INCOMPATIBLE = "blocked_incompatible"
     #: Enabled, but its own pack catalog no longer loads: left out (23 Nov).
     BLOCKED_INVALID_CATALOG = "blocked_invalid_catalog"
+    #: Enabled, but its bundle is revoked by the signed policy: left out.
+    BLOCKED_REVOKED = "blocked_revoked"
 
 
 @dataclass(frozen=True)
@@ -816,6 +818,8 @@ class PluginStore:
                 desired = active["plugins"].get(plugin_id)
                 if desired is None or desired.get("version") != version:
                     state = PluginEffectiveState.DISABLED
+                elif bundle.manifest_sha256 in self.revoked_digests:
+                    state = PluginEffectiveState.BLOCKED_REVOKED
                 elif compatibility.compatible:
                     try:
                         self._bundle_catalog(bundle)

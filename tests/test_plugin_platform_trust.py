@@ -196,3 +196,20 @@ def test_with_a_signed_policy_the_store_trusts_only_its_current_keys(monkeypatch
     platform.production_store(bootstrap=False)
     assert seen["trusted_keys"] == {"current": b"k" * 32}
     assert seen["revoked_digests"] == frozenset({"d1"})
+
+
+def test_a_present_but_broken_trust_folder_stops_the_store(tmp_path, monkeypatch):
+    # Fail closed: a trust/ folder missing its signed revocations must not be
+    # read as "no policy" (which would un-revoke everything).
+    import pytest
+
+    from ghostcursor.plugins import platform
+
+    trust = tmp_path / "trust"
+    trust.mkdir()
+    (trust / "root.b64").write_text("AAAA", encoding="utf-8")
+    monkeypatch.setattr(platform, "_TRUST_POLICY_DIR", trust)
+    monkeypatch.setattr(platform, "PluginStore", lambda *a, **k: object())
+    with pytest.raises(Exception):
+        platform.production_store(bootstrap=False)
+

@@ -752,3 +752,17 @@ def test_a_left_out_plugin_is_listed_as_blocked_not_working(tmp_path, monkeypatc
     monkeypatch.setattr(store, "_bundle_catalog", catalog)
     (listed,) = store.list_installed()
     assert listed.state is PluginEffectiveState.BLOCKED_INVALID_CATALOG
+
+
+def test_a_revoked_enabled_bundle_is_listed_as_blocked(tmp_path):
+    private, trusted = _key()
+    store = PluginStore(tmp_path / "store", trusted_keys=trusted, core_version="0.1.0")
+    one = store.install(_bundle(tmp_path, private, files=_common_pack_files()))
+    store.enable(one.plugin_id, one.version)
+    revoked = PluginStore(
+        tmp_path / "store", trusted_keys=trusted, core_version="0.1.0",
+        revoked_digests=frozenset({one.manifest_sha256}),
+    )  # fmt: skip
+    (listed,) = revoked.list_installed()
+    assert listed.state is PluginEffectiveState.BLOCKED_REVOKED
+
