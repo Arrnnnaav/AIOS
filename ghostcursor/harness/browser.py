@@ -252,11 +252,41 @@ class Page:
             return None
 
     def _isolated_object(self, backend_node_id: int) -> str | None:
-        params = {"backendNodeId": backend_node_id}
+        """The node's handle in the isolated world, or None. Never the page's
+        main world: there the page could override what is read."""
+
         context = self._isolated_world()
-        if context is not None:
-            params["executionContextId"] = context
-        return self.cmd("DOM.resolveNode", params).get("object", {}).get("objectId")
+        if context is None:
+            return None
+        return (
+            self.cmd(
+                "DOM.resolveNode",
+                {"backendNodeId": backend_node_id, "executionContextId": context},
+            )
+            .get("object", {})
+            .get("objectId")
+        )
+
+    def visible_text_now(self, backend_node_id: int) -> str | None:
+        """What the person sees on the node, read in the isolated world; None
+        when it cannot be read (no isolated world, a cross-origin frame)."""
+
+        try:
+            obj = self._isolated_object(backend_node_id)
+            if not obj:
+                return None
+            got = self.cmd(
+                "Runtime.callFunctionOn",
+                {
+                    "objectId": obj,
+                    "functionDeclaration": "function(){return String("
+                    "this.innerText||this.value||this.title||'').slice(0,300)}",
+                    "returnByValue": True,
+                },
+            )
+            return str(got.get("result", {}).get("value", ""))
+        except RuntimeError:
+            return None
 
     def _hit_is(self, backend_node_id: int, x: int, y: int) -> bool:
         """Is the node at (x, y) the control or inside it? A cookie banner or a
@@ -265,7 +295,8 @@ class Page:
         try:
             hit = self.cmd(
                 "DOM.getNodeForLocation",
-                {"x": x, "y": y, "includeUserAgentShadowDOM": True},
+                # False: an <input>'s own inner shadow node is not "else".
+                {"x": x, "y": y, "includeUserAgentShadowDOM": False},
             ).get("backendNodeId")
             if hit is None:
                 return False
@@ -385,6 +416,12 @@ class Page:
             control = observe.handles[pick.id]
             # Re-read at click time (rule 2): the node may have been renamed
             # since observe, or its label may hide a risky visible text.
+            if self.visible_text_now(control.backend_node_id) is None:
+                # Unread is not harmless: without the visible text a label
+                # ("Continue") could hide "Delete account". Fail closed.
+                raise PermissionError(
+                    f"Orbyn could not read what {control.name!r} shows; did not click"
+                )
             now = self.label_now(control.backend_node_id) or control.name
             if any(d and d.casefold() in now.casefold() for d in deny or ()):
                 raise PermissionError(f"{now!r} is on the deny list")

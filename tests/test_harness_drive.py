@@ -449,6 +449,8 @@ def test_browser_drive_rechecks_the_label_the_person_sees_at_click_time(monkeypa
         "Accessibility.getPartialAXTree": {"nodes": [{"name": {"value": "Continue"}}]},
         "DOM.resolveNode": {"object": {"objectId": "o1"}},
         "Runtime.callFunctionOn": {"result": {"value": "Delete account"}},
+        "Page.getFrameTree": {"frameTree": {"frame": {"id": "f"}}},
+        "Page.createIsolatedWorld": {"executionContextId": 5},
     }
     page.cmd = lambda method, params=None: replies[method]
     page.controls = lambda: [control]
@@ -539,4 +541,31 @@ def test_the_label_is_read_where_page_scripts_cannot_reach():
     assert "Delete account" in page.label_now(7)
     resolve = [p for m, p in sent if m == "DOM.resolveNode"]
     assert resolve and resolve[0].get("executionContextId") == 5
+
+
+def test_a_label_that_cannot_be_read_is_not_clicked():
+    # No isolated world (or a cross-origin frame): the visible text is unknown,
+    # so an aria-label could be hiding "Delete account". Fail closed.
+    from ghostcursor.harness import browser
+    from ghostcursor.providers.schemas import Choice
+
+    page = object.__new__(browser.Page)
+    control = browser.PageControl("button", "Continue", 7, (0, 0, 10, 10))
+    clicked = []
+
+    def cmd(method, params=None):
+        if method == "Page.getFrameTree":
+            raise RuntimeError("no frame tree")
+        return {"nodes": [{"name": {"value": "Continue"}}]}
+
+    page.cmd = cmd
+    page.controls = lambda: [control]
+    page.click = lambda c, **k: clicked.append(c)
+
+    class G:
+        def choose(self, envelope, option_ids, **kw):
+            return Choice("7", {"7": 0.95})
+
+    r = page.drive("continue", G(), approved=True)
+    assert clicked == [] and r.status == "blocked" and "could not read" in r.reason
 
