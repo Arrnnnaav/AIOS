@@ -175,3 +175,24 @@ def test_end_to_end_signed_policy_revokes_a_real_bundle(tmp_path):
     )
     with pytest.raises(PluginStoreError, match="revoked"):
         store.install(bundle)
+
+
+def test_with_a_signed_policy_the_store_trusts_only_its_current_keys(monkeypatch):
+    # A revoked or expired release key must stop verifying bundles, not only
+    # the individually revoked bundle digests.
+    from types import SimpleNamespace
+
+    from ghostcursor.plugins import platform
+
+    policy = SimpleNamespace(
+        trusted_keys={"current": b"k" * 32}, revoked_bundle_digests=frozenset({"d1"})
+    )
+    seen = {}
+    monkeypatch.setattr(platform, "signed_trust_policy", lambda *a, **k: policy)
+    monkeypatch.setattr(
+        platform, "trusted_release_keys", lambda: {"revoked-old": b"x" * 32, "current": b"k" * 32}
+    )
+    monkeypatch.setattr(platform, "PluginStore", lambda *a, **k: seen.update(k) or object())
+    platform.production_store(bootstrap=False)
+    assert seen["trusted_keys"] == {"current": b"k" * 32}
+    assert seen["revoked_digests"] == frozenset({"d1"})

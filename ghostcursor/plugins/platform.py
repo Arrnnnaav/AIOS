@@ -117,6 +117,16 @@ def _read_sequence_floor(path: Path) -> tuple[int, int]:
 def signed_revoked_digests(
     trust_dir: Path | None = None, *, floor_path: Path | None = None
 ) -> frozenset[str]:
+    """Revoked bundle digests (see signed_trust_policy); empty when no
+    root-signed policy is configured."""
+
+    policy = signed_trust_policy(trust_dir, floor_path=floor_path)
+    return frozenset() if policy is None else policy.revoked_bundle_digests
+
+
+def signed_trust_policy(
+    trust_dir: Path | None = None, *, floor_path: Path | None = None
+):
     """Revoked bundle digests from a root-signed revocation policy.
 
     If ``trust_dir`` (default ``_TRUST_POLICY_DIR``) does not exist, the policy
@@ -134,7 +144,7 @@ def signed_revoked_digests(
 
     trust_dir = trust_dir or _TRUST_POLICY_DIR
     if not trust_dir.exists():
-        return frozenset()
+        return None
     floor_path = floor_path or (default_plugin_root() / "trust-floor.json")
     km_floor, rev_floor = _read_sequence_floor(floor_path)
     try:
@@ -167,16 +177,24 @@ def signed_revoked_digests(
             )
         except OSError:
             pass  # a read-only FS loses rollback persistence, not authenticity
-    return policy.revoked_bundle_digests
+    return policy
 
 
 def production_store(*, bootstrap: bool = True) -> PluginStore:
+    # With a root-signed policy, ITS keys are the trusted ones: a revoked or
+    # out-of-window release key must stop verifying bundles, not only the
+    # individually revoked digests (the flat file is used only without one).
+    policy = signed_trust_policy()
     store = PluginStore(
         default_plugin_root(),
-        trusted_keys=trusted_release_keys(),
+        trusted_keys=(
+            trusted_release_keys() if policy is None else dict(policy.trusted_keys)
+        ),
         core_version=CORE_VERSION,
         observation_store_path=default_db_path(),
-        revoked_digests=signed_revoked_digests(),
+        revoked_digests=(
+            frozenset() if policy is None else policy.revoked_bundle_digests
+        ),
     )
     if bootstrap:
         _bootstrap(store)
