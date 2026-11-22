@@ -2918,3 +2918,16 @@ from 1053b54. Still open:
   the store's; the manager campaign salt is not bound (past ledger
   campaigns carry no salt digest, so binding it would block continuing
   them).
+- 23 Nov: D193 retired the per-app plugin system (c1c2773, 48b0cd0). Every
+  open item above that names plugins/, packs/, compiled recipes, task graphs,
+  the manager window, run.py, act_*.py, adapter_host, the perception service,
+  tier 2/OCR, the observation store, screen_hint, model_gate, campaigns,
+  receipt/paint/confirmation budgets, uia_feasibility, act_cli or
+  candidate_acceptance is closed as moot: that code no longer exists. Still
+  open from the lists above, for the code that remains: the control bar is
+  gone, so only the Teach-path DPI admission (harness overlay rects; measure
+  on a mixed-DPI desktop first), the team sequence file, one isolated world
+  per browser read (cache per frame), the browser hit test not being atomic
+  with the click, and developer-mode trust (now moot: no plugin store).
+  Pixel lane is empty (its tests covered retired drawing); the overlay
+  self-check `python -m tests.test_overlay` (16 checks) still runs.
