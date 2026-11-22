@@ -45,7 +45,8 @@ def test_requirements_are_pinned_and_cover_the_runtime_deps():
         assert m, f"unpinned or malformed requirement: {line!r}"
         pins[m.group(1).casefold()] = m.group(2)
 
-    # The deps the overlay, perception, trust and provider paths cannot run
-    # without -- a dropped pin here is a broken production build.
-    for required in ("pywin32", "pywinauto", "numpy", "cryptography", "ollama"):
+    # The deps the overlay, UIA reads, team bundles and providers cannot run
+    # without -- a dropped pin here is a broken production build. (Ollama is
+    # reached over HTTP, so its Python client is not a dependency.)
+    for required in ("pywin32", "pywinauto", "numpy", "cryptography", "httpx"):
         assert required.casefold() in pins, f"{required} missing from requirements.txt"

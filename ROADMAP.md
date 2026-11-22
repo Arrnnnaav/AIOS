@@ -21,6 +21,13 @@ reconciled against what the repository actually contains.
 
 ## Where we are
 
+**23 November 2026 (D193):** the per-app plugin system (signed bundles, packs,
+compiled recipes, task graphs, the manager window, `run.py`, the signed
+PowerPoint Act runtime and its campaign tooling) is retired. Teach and Act run
+only through the app-agnostic harness. Phases below that build or measure that
+path are history; their evidence stays in `docs/evidence/` and
+`docs/archive/retained-plugins/`.
+
 **Current product surface (28 October 2026):** the workspace app (D178,
 `ghostcursor/workspace/app.py`): a desktop island plus a full Edge workspace
 with Chat, Plan, Brain and Work. Work runs read-only background research and

@@ -14,10 +14,10 @@ _ROOT = os.path.dirname(SPECPATH)  # SPECPATH = <repo>/tools ; _ROOT = <repo>
 datas = [(os.path.join(_ROOT, "ghostcursor", "workspace", "app.html"), "ghostcursor/workspace")]
 datas += [(os.path.join(_ROOT, "ghostcursor", "workspace", "skills"), "ghostcursor/workspace/skills")]
 binaries = []
-# pywin32 / UIA / winsdk and the local Whisper stack are imported dynamically.
+# pywin32 / UIA and the local Whisper stack are imported dynamically.
 hiddenimports = [
     "win32clipboard", "win32gui", "win32process", "win32api", "win32con",
-    "comtypes.gen.UIAutomationClient", "winsdk", "win32timezone",
+    "comtypes.gen.UIAutomationClient", "win32timezone",
     "pypdf",  # Ask a link reads a PDF on this computer
 ]
 

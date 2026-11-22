@@ -1164,40 +1164,6 @@ def test_loopback_is_parsed_not_guessed():
         assert not is_loopback(url), url
 
 
-def test_the_teach_planner_reaches_a_local_model_without_a_proxy(monkeypatch):
-    import urllib.request
-
-    from ghostcursor.inference import ollama
-
-    seen = []
-
-    class Opened:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *a):
-            return False
-
-        def read(self):
-            return b'{"response": {}}'
-
-    real = urllib.request.build_opener
-
-    def spy(*hs):
-        seen.append([getattr(h, "proxies", "?") for h in hs])
-        opener = real(*hs)
-        opener.open = lambda request, timeout=None: Opened()
-        return opener
-
-    monkeypatch.setattr(urllib.request, "build_opener", spy)
-    monkeypatch.setattr(urllib.request, "urlopen", lambda request, timeout=None: seen.append("plain") or Opened())
-    monkeypatch.setenv("HTTPS_PROXY", "http://proxy.corp:8080")
-    monkeypatch.setenv("HTTP_PROXY", "http://proxy.corp:8080")
-    ollama.generate_structured(endpoint="http://127.0.0.1:11434", model="m", prompt="p", schema={"type": "object"}, timeout=1)
-    ollama.generate_structured(endpoint="https://ollama.example.com", model="m", prompt="p", schema={"type": "object"}, timeout=1)
-    assert seen == [[{}], "plain"]  # local: no proxy; remote: the usual path
-
-
 def test_a_name_spanning_a_line_break_comes_back_once_escaped(tmp_path, monkeypatch):
     """Review 15 Nov: the original was escaped twice, so the answer showed a
     literal backslash-n."""

@@ -1,6 +1,17 @@
 # FLOW.md
 
-## Current execution authority — schema v2
+> **D193 (23 November 2026): the per-app plugin path is retired.** Teach and
+> Act run only through the model-driven harness: the workspace (`/teach`,
+> `/act`, the island) calls `ghostcursor/harness/teach_live.py`, which binds
+> windows (`binding.py`), observes them on its own thread (`uia_reader.py`,
+> `frame.py`), lets the model choose a control (`teach.py` via
+> `providers/gateway.py`) and, for Act, performs approved steps in
+> `harness/act.py` only. Everything below that names `run.py`, `manager.py`,
+> `plugins/`, `packs/`, compiled recipes, task graphs, `act_*.py`,
+> `adapter_host.py` or the perception service describes that retired path and
+> is kept as history, not as current architecture.
+
+## Current execution authority — schema v2 (retired by D193)
 
 Production goal execution now flows through `run.main()` →
 `planner.plan_compiled_goal()` → `plugins.platform.load_runtime_catalog()` →

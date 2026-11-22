@@ -8474,3 +8474,39 @@ Evidence: `docs/evidence/mutation-sweep-2026-11-15.md` (D018 sweeps),
 they left in `docs/superpowers/FOLLOWUPS.md`. Not done: a counted Act
 campaign (2026-11-15 attempt NOT counted: approval needs a person at the PC),
 code signing, an observed first run by a new user.
+
+## D193 — The harness is the only Teach and Act path; the per-app plugin system is retired
+
+Owner decision (23 November 2026): "we are making a general harness, no plugin
+for every app"; asked whether to retire the per-app plugin system fully,
+freeze it, or keep it, the owner chose to retire it fully.
+
+- **What stays.** The workspace app and console (D178), the island, the
+  model-driven harness (`ghostcursor/harness/`, D164) for Teach and Act on any
+  application (D182), the providers, the Company Brain, and the harness
+  evaluation tools (`evaluation/teach_replay.py`, `evaluation/safety.py`,
+  `devtools/teach_capture.py`, `devtools/jev_replay.py`,
+  `devtools/sketch_demo.py`, `tools/score_teach_replay.py`). Input synthesis
+  still lives only in `ghostcursor/harness/act.py` (rule 1).
+- **What is removed.** Everything reachable only through the per-app path:
+  signed plugin bundles and their store, trust and marketplace
+  (`ghostcursor/plugins/`, `plugins/`); hand-written packs and compiled recipes
+  (`ghostcursor/packs/`, the compiled tour in `ghostcursor/reasoning/`); the
+  signed Act runtime (`act_*.py`, `action*.py`, `adapter_host.py`,
+  `verified_python.py`, `coordinate_space.py`, `uia_identity.py`,
+  `selectors.py`, `stages.py`); task graphs and the planner
+  (`task_graph.py`, `task_planner.py`, `task_runtime.py`,
+  `planning_session.py`); the manager window (`manager.py`), the compiled
+  Teach CLI (`run.py`), its control bar, session store and pointer path; the
+  old perception service, OCR tier and learned-observation store
+  (`perception/` except `uia.py`, `memory/`); the screen-hint inference,
+  model gate and synthetic fixture app; the campaign, budget and feasibility
+  devtools and their renderers in `tools/`.
+- **Evidence.** Nothing is rewritten. The accepted PowerPoint harness-path
+  campaign (D160) and every earlier record stay in `docs/evidence/` and in git
+  history as evidence about an earlier design; they no longer describe a
+  shipping path. Hard rule 2's "second, narrower Act" is withdrawn.
+- **Why.** None of it was reachable from the product (an import walk from the
+  workspace, harness and island entry points reached 86 of 178 modules), yet
+  it carried most of the maintenance: the 19-23 November review fixed bugs and
+  ran tier-1 reviews on code the product never ran.

@@ -26,8 +26,25 @@ the cue at all.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
 
-from ghostcursor.act_protocol import TrustClass
+
+class TrustClass(str, Enum):
+    """How strongly a step was proven, for presentation (the colour key)."""
+
+    #: Verified by reading the saved artifact.
+    ARTIFACT = "artifact"
+    #: Verified from fresh live UI state after a true UIA pattern.
+    LIVE_STATE = "live_state"
+    #: Verified from live state after a LegacyIAccessible default action.
+    #: Weaker targeting semantics than LIVE_STATE, and never presented as it.
+    LEGACY_LIVE_STATE = "legacy_live_state"
+    #: Inferred, or a raw-input action.
+    INFERRED = "inferred"
+    #: Nothing proven yet.
+    NEUTRAL = "neutral"
+    #: Refused or failed.
+    REFUSED = "refused"
 
 #: The overlay's transparent colour. Any cue painted in exactly this value
 #: would be punched out of the window rather than drawn, so it is imported

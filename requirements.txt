@@ -5,16 +5,14 @@
 #
 #   py -3.12 -m pip install -r requirements.txt
 
-comtypes==1.4.16          # UIAutomationCore COM wrapper (perception)
-cryptography==49.0.0      # Ed25519 signed-bundle + trust-policy verification
+comtypes==1.4.16          # UIAutomationCore COM wrapper (UIA reads)
+cryptography==49.0.0      # Ed25519 team bundles (owner signs, staff verify)
 httpx==0.28.1             # provider transport (BYOK cloud models)
 pypdf==6.11.0             # Ask a link: read a PDF on this computer
-mss==10.2.0               # screen capture (perception)
-numpy==2.2.6              # perception / image math
-ollama==0.6.2             # local model server client (local-first default)
+mss==10.2.0               # screen capture (vision pictures, overlay check)
+numpy==2.2.6              # audio and image arrays
 Pillow==11.3.0            # image handling (vision egress, D179)
 PyJWT[crypto]==2.14.0     # Sign in with ChatGPT
 pywin32==310              # overlay + Win32 (win32gui/con/api)
 pywinauto==0.6.9          # UIA tree walk (perception; input methods banned, rule 1)
-RapidFuzz==3.14.5         # grounding fuzzy match (rung 4)
-winsdk==1.0.0b10          # Windows runtime APIs
+RapidFuzz==3.14.5         # fuzzy name matching

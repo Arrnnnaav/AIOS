@@ -2,9 +2,9 @@
 
 Orbyn is a **local-first Windows desktop guide** that watches the screen, works
 out the next step toward your stated goal, and shows you **where to act** with a
-transparent overlay. It can also, down a narrow and signed path, **perform
-approved steps for you** in approved applications — only after you approve the
-whole plan, only on a control it actually observed, and ESC always stops it.
+transparent overlay. It can also **perform approved steps for you** in any
+application — only after you approve the whole plan, only on a control it
+actually observed, asking before risky ones, and ESC always stops it.
 
 Local Brain and work files stay on the machine. Configured cloud models and web
 research can receive request text and selected context; screen-derived text is
@@ -13,8 +13,8 @@ other remote text depends on policy or caller settings. (Code name and package:
 `ghostcursor`.)
 
 > Status: pre-1.0 (`0.1.0`). Teach works across observed Windows applications.
-> Act code and a signed PowerPoint path exist, but Act activation and packaged
-> release acceptance remain open. See **Honest scope** below.
+> Act runs through the same harness; live Act measurement and packaged release
+> acceptance remain open. See **Honest scope** below.
 
 ## The two modes
 
@@ -25,11 +25,11 @@ position — and a pointer that is shown is a pointer at a real control.
 
 **Act** — the same plan, but Orbyn performs the steps. It acts **only after you
 approve the whole plan**, only on controls the harness observed, still asks
-before risky controls (delete, send, pay, overwrite), and ESC/Stop are required
-to halt a running session promptly. All input synthesis lives in **one
-auditable module** (`ghostcursor/harness/act.py`); a test fails if any other
-module can synthesize input. The PowerPoint path is a signed test fixture;
-release acceptance is still pending.
+before risky controls (delete, send, pay, submit, overwrite...), and ESC/Stop
+halt a running session promptly. All input synthesis lives in **one auditable
+module** (`ghostcursor/harness/act.py`); a test fails if any other module can
+synthesize input. There are no per-app plugins: the same harness works in any
+application (D193).
 
 ## What else is in the box
 
@@ -77,19 +77,16 @@ release acceptance is still pending.
 - **Ask a file** — choose a small text or code file in Work and ask one
   question about it. The answer stays in that sheet; the file and question are
   not added to the Brief or Brain. Text may go to the configured model provider.
-- **Signed plugins** — bundle verification and a read-only catalog exist.
-  Publisher identity and signed revocation for the marketplace still have
-  release gates.
 
 ## Privacy and safety, by construction
 
 - No window handles, process IDs, credentials, keys, executable paths, or
-  screenshots leave the device. `kb.sqlite` and `sessions.sqlite` never sync.
+  screenshots leave the device. The local stores (Brain, Company Brain,
+  briefs) never sync, except a team bundle the owner signs and publishes.
 - Text bound for a remote model goes through a scrub that masks emails, keys,
   card/account numbers and the like; a managed machine can force redaction on.
-- Signed-bundle verification and a monotonic anti-rollback floor protect signed
-  trust documents. Telemetry and sync are not production paths in this build.
-- The kill switch (ESC, Stop/Pause, and a `--seconds` budget) always stops a
+- Telemetry and sync are not production paths in this build.
+- The kill switch (ESC, Stop, and the session time limit) always stops a
   session; the model can never synthesize ESC to defeat your stop key.
 
 ## Install
@@ -122,9 +119,6 @@ in `docs/evidence/workspace-live-acceptance-2026-10-26.md`.
 py -3.12 -m ghostcursor.workspace.app <topic>          # compact desktop island
 py -3.12 -m ghostcursor.workspace.app --window <topic> # full floating workspace
 py -3.12 -m ghostcursor.workspace.app --dock <topic>   # right-side workspace
-py -3.12 -m ghostcursor.run --manager           # the manager window
-py -3.12 -m ghostcursor.run --goal "<goal>"     # Teach from the CLI; ESC quits
-py -3.12 -m ghostcursor.plugins list            # installed plugins
 ```
 
 Orbyn.cmd launches a small, draggable, always-on-top island. **Ask** (or
@@ -167,12 +161,10 @@ commands are in `CLAUDE.md`.
 
 ## Honest scope
 
-- **Act is not release-accepted yet.** The signed PowerPoint path has test and
-  diagnostic evidence, but the activation review has not returned READY. The
-  bundled plugin index in this checkout does not include a PowerPoint bundle;
-  VS Code and Excel are disabled for production Act.
-- Orbyn is becoming an app-agnostic, model-driven harness; PowerPoint is the
-  test fixture for that path, not the product's limit.
+- **Act is not release-accepted yet.** It runs through the app-agnostic
+  harness; live Act measurement across applications is still open. The earlier
+  per-app plugin path (signed PowerPoint, Excel and VS Code bundles) was retired
+  in D193; its measured evidence stays in `docs/evidence/`.
 - Reusable agents and the console's `/crew` are foreground, sequential
   workspace operations. Work can continue a read-only research, deep-research
   or crew job, or a scheduled routine, after the window closes. None of them

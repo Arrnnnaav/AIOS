@@ -17,7 +17,7 @@ def test_evaluation_package_has_no_tour_or_input_synthesis_path():
 def test_evaluation_scan_rejects_tour_import_and_input_call(tmp_path):
     module = tmp_path / "bad.py"
     module.write_text(
-        "from ghostcursor.run import run_tour\n"
+        "from ghostcursor.harness.act import perform\n"
         "run_tour('recipe', 'target', 10)\n"
         "SendInput(1, None, 0)\n",
         encoding="utf-8",
@@ -25,7 +25,7 @@ def test_evaluation_scan_rejects_tour_import_and_input_call(tmp_path):
 
     violations = evaluation_safety_violations(Path(tmp_path))
 
-    assert any("forbidden-import:ghostcursor.run" in item for item in violations)
+    assert any("forbidden-import:ghostcursor.harness.act" in item for item in violations)
     assert any("call:run_tour" in item for item in violations)
     assert any("call:SendInput" in item for item in violations)
 

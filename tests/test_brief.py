@@ -346,19 +346,6 @@ def test_only_a_brief_can_be_bound(value):
         bind_brief(value)
 
 
-def test_a_proposal_records_whether_it_had_a_brief_at_all():
-    """None is meaningfully different from a digest, and is not a default
-    that hides a missing brief."""
-
-    from ghostcursor.task_planner import TaskGraphProposal
-
-    fields = TaskGraphProposal.__dataclass_fields__
-
-    assert "brief_sha256" in fields
-    assert fields["brief_sha256"].default is None
-
-
-
 def test_a_failed_append_leaves_the_existing_brief_intact(tmp_path, monkeypatch):
     import os
 

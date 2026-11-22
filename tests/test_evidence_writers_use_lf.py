@@ -12,9 +12,8 @@ hashed -- a payload, an evidence artifact, a campaign transcript -- then
 reproduces only on the platform that wrote it, so a digest quoted in a document
 is a fact about one machine rather than about the repository.
 
-`act_acceptance.py` is the sharpest case: CLAUDE.md names it as the tool for the
-instrumented acceptance campaign, so its output is exactly what a counted
-campaign would retain.
+`teach_capture.py` is the sharpest case today: its records are the corpus the
+Teach replay scores are computed from.
 """
 
 import ast
@@ -31,10 +30,7 @@ ROOT = Path(__file__).resolve().parents[1]
 #: removing an entry passed the whole lane (D133). A new writer is covered the
 #: moment it is committed, without anyone remembering to add it.
 _EXTRA_WRITERS = (
-    "ghostcursor/act_staging.py",
     "ghostcursor/brief.py",
-    "ghostcursor/reasoning/schema.py",
-    "ghostcursor/evaluation/model_gate.py",
 )
 
 
@@ -104,12 +100,11 @@ def test_the_writer_set_is_derived_and_covers_the_known_tools():
 
     missing = [name for name in modules if not (ROOT / name).is_file()]
     assert not missing, missing
-    assert len(modules) >= 20, len(modules)
+    # D193 retired the campaign and acceptance writers with the plugins.
+    assert len(modules) >= 10, len(modules)
     for required in (
-        "ghostcursor/devtools/act_acceptance.py",
-        "ghostcursor/devtools/act_campaign.py",
-        "ghostcursor/devtools/act_deck_observation.py",
-        "tools/render_add_slide_evidence.py",
+        "ghostcursor/devtools/teach_capture.py",
+        "tools/score_teach_replay.py",
         "ghostcursor/brief.py",
     ):
         assert required in modules, required

@@ -22,7 +22,6 @@ import math
 import os
 import re
 import secrets
-import shutil
 import socket
 import subprocess
 import sys

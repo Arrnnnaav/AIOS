@@ -111,19 +111,16 @@ def _dynamic_devtool_references(source: str):
 #: set fails here and names the directory that vanished. They change when the
 #: package changes, deliberately and visibly in a diff.
 _MEASURED_INVENTORY = {
-    "ghostcursor": 46,  # + doctor.py, redact.py (DLP), dictation.py, telemetry.py (D186), audit.py (D187), speech.py (D189), crashreport.py (D191), agent_server.py (read-only MCP), updates.py
-    "ghostcursor/demo": 2,
-    "ghostcursor/evaluation": 6,
-    "ghostcursor/harness": 12,  # + sketch.py (hand-drawn marks)
-    "ghostcursor/inference": 3,
-    "ghostcursor/memory": 2,
-    "ghostcursor/overlay": 5,
-    "ghostcursor/packs": 7,
-    "ghostcursor/perception": 11,
-    "ghostcursor/plugins": 9,  # + marketplace.py (D186 first-party catalog)
+    # D193 retired the per-app plugin system: 92 modules unreachable from the
+    # product were removed, so these are the counts that remain.
+    "ghostcursor": 16,
+    "ghostcursor/evaluation": 3,  # safety, teach_replay
+    "ghostcursor/harness": 12,
+    "ghostcursor/overlay": 4,
+    "ghostcursor/perception": 3,  # uia, appinfo
     "ghostcursor/providers": 10,
-    "ghostcursor/reasoning": 11,
-    "ghostcursor/workspace": 36,  # + island.py (D178), team.py (D187), connectors.py (D190), companion.py, agent_inbox.py
+    "ghostcursor/reasoning": 2,  # staleness
+    "ghostcursor/workspace": 36,
 }
 
 
@@ -145,17 +142,17 @@ def test_the_production_module_set_matches_the_measured_inventory():
         "the scanned production set no longer matches the measured inventory. "
         f"missing/changed: {set(_MEASURED_INVENTORY.items()) ^ set(counted.items())}"
     )
-    assert sum(_MEASURED_INVENTORY.values()) == len(modules) == 160
+    assert sum(_MEASURED_INVENTORY.values()) == len(modules) == 86
 
     for required in (
-        "ghostcursor/act_runtime.py",
-        "ghostcursor/manager.py",
-        "ghostcursor/act_cli.py",
-        "ghostcursor/run.py",
-        # One from a subpackage, because the narrowing that survived kept every
+        "ghostcursor/agent_server.py",
+        "ghostcursor/policy.py",
+        # From subpackages, because the narrowing that survived kept every
         # top-level module and dropped every nested one.
-        "ghostcursor/reasoning/loop.py",
-        "ghostcursor/plugins/store.py",
+        "ghostcursor/harness/act.py",
+        "ghostcursor/harness/teach_live.py",
+        "ghostcursor/workspace/app.py",
+        "ghostcursor/reasoning/staleness.py",
     ):
         assert required in modules, required
     assert not any(m.startswith("ghostcursor/devtools/") for m in modules)

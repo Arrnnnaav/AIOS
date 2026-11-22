@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from ghostcursor.act_protocol import Backend, LifecycleState, TrustClass, trust_for
+from ghostcursor.overlay.cue import TrustClass
 from ghostcursor.overlay.cue import (
     COLORKEY_RGB,
     TRUST_COLOURS,
@@ -92,31 +92,6 @@ def test_each_trust_class_is_visually_distinct():
     believes they can tell them apart."""
 
     assert len(set(TRUST_COLOURS.values())) == len(TRUST_COLOURS)
-
-
-def test_an_unproven_node_is_never_drawn_in_a_verified_colour():
-    """The colour comes from `trust_for`, which collapses every unproven state
-    to NEUTRAL -- including VERIFYING, where the effect has happened and its
-    result is not yet known."""
-
-    executing = cue_colour(trust_for(Backend.UIA_PATTERN, LifecycleState.EXECUTING))
-    verifying = cue_colour(trust_for(Backend.UIA_PATTERN, LifecycleState.VERIFYING))
-    verified = cue_colour(trust_for(Backend.UIA_PATTERN, LifecycleState.VERIFIED))
-
-    assert executing == verifying == TRUST_COLOURS[TrustClass.NEUTRAL]
-    assert verified == TRUST_COLOURS[TrustClass.LIVE_STATE]
-    assert verified != executing
-
-
-def test_a_uia_action_is_not_drawn_in_the_object_model_colour():
-    """Reading the saved file and reading live UI state are different
-    evidence, and D109 says they never share a colour."""
-
-    artifact = cue_colour(trust_for(Backend.OBJECT_MODEL, LifecycleState.VERIFIED))
-    live = cue_colour(trust_for(Backend.UIA_PATTERN, LifecycleState.VERIFIED))
-    legacy = cue_colour(trust_for(Backend.LEGACY_IACCESSIBLE, LifecycleState.VERIFIED))
-
-    assert len({artifact, live, legacy}) == 3
 
 
 def test_a_colour_cannot_be_asked_for_by_anything_but_a_trust_class():

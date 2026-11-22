@@ -1,9 +1,0 @@
-{
-  "packs": [
-    {"pack_id": "common", "path": "common"},
-    {"pack_id": "notepad", "path": "notepad"},
-    {"pack_id": "synthetic", "path": "synthetic"},
-    {"pack_id": "vscode", "path": "vscode"}
-  ],
-  "schema_version": 2
-}

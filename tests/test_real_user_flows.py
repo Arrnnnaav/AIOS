@@ -15,8 +15,6 @@ import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from ghostcursor.plugins.marketplace import catalog, search, sort_entries
-from ghostcursor.plugins.store import PluginStore, PluginStoreError
 from ghostcursor.providers import ExpectedChange, PlanStep, TeachPlan
 from ghostcursor.workspace import clips as clips_mod
 from ghostcursor.workspace import convert, diffs, kit, palette, pins, snippets, todos
@@ -183,32 +181,3 @@ def _bundle(root, private, *, plugin_id="ghostcursor.one", version="1.0.0"):
     return path
 
 
-def test_user_browses_a_messy_bundle_folder_and_a_revoked_one_is_refused(tmp_path):
-    private, trusted = _key()
-    bundles = tmp_path / "bundles"
-    bundles.mkdir()
-    good = _bundle(bundles, private, plugin_id="ghostcursor.good")
-    (bundles / "corrupt.ghostplugin").write_bytes(b"not a zip at all")
-
-    entries = catalog(bundles, trusted_keys=trusted, core_version="1.0.0")
-    # the corrupt file is listed WITH its error, not silently dropped
-    assert any(e.error for e in entries)
-    assert any(e.plugin_id == "ghostcursor.good" and not e.error for e in entries)
-    # search + sort still work over the mix
-    assert search(entries, "good")
-    assert sort_entries(entries, by="id")  # does not raise
-
-    # the user installs the good one, it is later revoked, reinstall is refused
-    digest = (
-        PluginStore(tmp_path / "probe", trusted_keys=trusted, core_version="1.0.0")
-        .inspect(good)
-        .manifest_sha256
-    )
-    store = PluginStore(
-        tmp_path / "store",
-        trusted_keys=trusted,
-        core_version="1.0.0",
-        revoked_digests=frozenset({digest}),
-    )
-    with pytest.raises(PluginStoreError, match="revoked"):
-        store.install(good)

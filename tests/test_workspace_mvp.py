@@ -242,23 +242,6 @@ def test_the_user_keeps_picks_or_discards_the_resolution():
         assert confirm_reference(REF, answer) is None
 
 
-@pytest.mark.parametrize(
-    "goal, topic",
-    [
-        ("Make my Investor Deck!", "make-my-investor-deck"),
-        ("", "workspace"),
-        ("../../etc/passwd", "etc-passwd"),
-        ("Café ünïcode — only", "caf-n-code-only"),
-        ("a " * 50, "a-a-a-a-a-a"),
-    ],
-)
-def test_the_manager_opens_a_valid_workspace_topic(goal, topic, tmp_path):
-    from ghostcursor.manager import workspace_topic
-
-    assert workspace_topic(goal) == topic
-    brief_path(tmp_path, topic)  # a valid topic name
-
-
 def test_measures_count_without_text(planned, monkeypatch):
     from ghostcursor import telemetry
     from ghostcursor.workspace.session import measures

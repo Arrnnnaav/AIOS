@@ -23,10 +23,9 @@ import pytest
 
 
 MODULES = [
-    "ghostcursor.devtools.act_acceptance",
-    "ghostcursor.devtools.act_probe",
-    "ghostcursor.devtools.act_diagnosis",
-    "ghostcursor.devtools.uia_feasibility",
+    "ghostcursor.devtools.teach_capture",
+    "ghostcursor.devtools.jev_replay",
+    "ghostcursor.devtools.sketch_demo",
 ]
 
 #: Bound by the import machinery, never by the source itself.
@@ -140,22 +139,3 @@ def test_a_lazily_imported_name_inside_a_function_is_accepted():
     assert _unbound_names(source, "<planted>") == set()
 
 
-def test_the_acceptance_harness_still_imports_the_probe_it_wires():
-    module = importlib.import_module("ghostcursor.devtools.act_acceptance")
-    from ghostcursor.devtools.act_probe import ActBoundaryProbe
-
-    assert module.ActBoundaryProbe is ActBoundaryProbe
-
-
-def test_the_harness_passes_the_observer_under_the_name_core_expects():
-    """A renamed keyword would be a TypeError only once the run started."""
-
-    import inspect
-
-    from ghostcursor.act_runtime import execute_approved_graph
-
-    module = importlib.import_module("ghostcursor.devtools.act_acceptance")
-    source = Path(module.__file__).read_text(encoding="utf-8")
-
-    assert "verify_observer=verify_observer," in source
-    assert "verify_observer" in inspect.signature(execute_approved_graph).parameters

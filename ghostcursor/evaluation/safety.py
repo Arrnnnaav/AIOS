@@ -7,20 +7,20 @@ from pathlib import Path
 
 
 ALLOWED_GHOSTCURSOR_IMPORTS = (
-    "ghostcursor.demo.synthetic_export_app",
     "ghostcursor.evaluation",
     "ghostcursor.harness.binding",
     "ghostcursor.harness.frame",
     "ghostcursor.harness.teach",
-    "ghostcursor.inference.ollama",
-    "ghostcursor.inference.screen_hint",
     "ghostcursor.perception.uia",
     "ghostcursor.providers",
-    "ghostcursor.reasoning.planner",
 )
+#: The harness modules that act or drive a live session (D193: the harness is
+#: the only Teach and Act path): evaluation reads and scores, never acts.
 FORBIDDEN_IMPORT_PREFIXES = (
-    "ghostcursor.run",
-    "ghostcursor.reasoning.loop",
+    "ghostcursor.harness.act",
+    "ghostcursor.harness.drive",
+    "ghostcursor.harness.teach_live",
+    "ghostcursor.harness.browser",
 )
 FORBIDDEN_CALLS = {
     "SendInput",

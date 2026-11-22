@@ -108,12 +108,11 @@ as a document refresh when Markdown, documents, or evidence changed.
 | Area | Start here | Typical implementation paths |
 |---|---|---|
 | Product phase and priorities | `ROADMAP.md` | linked evidence and decisions |
-| Runtime architecture | `FLOW.md` | `ghostcursor/act_*.py`, `ghostcursor/run.py` |
-| Plugin authority | `CLAUDE.md` plugin-platform rules; D077–D082, D100, D108 | `ghostcursor/plugins/`, `ghostcursor/adapter_host.py`, `plugins/sources/<app>/`, `tests/test_plugin_*.py` |
-| Perception | `CLAUDE.md` perception rules | `ghostcursor/perception/`, `ghostcursor/reasoning/grounding.py` |
-| Overlay and pointer | D006, D009, D010, D109, D115–D118 | `ghostcursor/overlay/`, `ghostcursor/act_overlay.py` |
-| Planning and local models | `ROADMAP.md` Phase 3 build-order items 7–8 | `idea.txt`, `ghostcursor/brief.py`, `ghostcursor/task_graph.py`, `ghostcursor/inference/ollama.py`, `tests/test_brief.py`, `tests/test_task_graph.py` |
-| Manager/panel | `FLOW.md` manager section; D088, D098, D099, D118 | `ghostcursor/manager.py`, `ghostcursor/act_ui_bridge.py`, `tests/test_manager.py`, `tests/test_manager_window.py`, `tests/test_manager_act_bridge.py`, `tests/test_act_ui_bridge.py` |
+| Teach and Act (the harness) | `CLAUDE.md` hard rules; D164, D182, D193 | `ghostcursor/harness/` (`teach.py`, `teach_live.py`, `act.py`, `drive.py`, `browser.py`), `tests/test_harness_*.py` |
+| Perception | `CLAUDE.md` rule 5 | `ghostcursor/perception/uia.py`, `ghostcursor/harness/uia_reader.py`, `ghostcursor/harness/frame.py` |
+| Overlay and pointer | D006, D009, D010, D109 | `ghostcursor/overlay/` |
+| Workspace and providers | D178, D186, D187 | `ghostcursor/workspace/`, `ghostcursor/providers/`, `tests/test_workspace_*.py` |
+| Retired plugin path | D193 (do not rebuild it) | evidence only: `docs/evidence/`, `docs/archive/retained-plugins/` |
 | Evidence or release | D032, D034 and release rules | `docs/evidence/`, activation and acceptance tools |
 | Product evolution plan | `docs/orbyn-plan/README.md`, `MVP.md`, and the relevant Mega Phase; current status still comes from `ROADMAP.md` | `docs/orbyn-plan/`, `DECISIONS.md` |
 

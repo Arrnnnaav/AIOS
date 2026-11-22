@@ -24,7 +24,6 @@ from ghostcursor.providers.gateway import Gateway
 from ghostcursor.providers.schemas import ExpectedChange, PlanStep
 from ghostcursor.workspace import task_skills, team
 from ghostcursor.workspace.knowledge import Knowledge
-from tests.test_act_runtime import _approval, _registry, _validated
 from tests.test_providers import _envelope
 
 
@@ -66,13 +65,6 @@ def test_disable_act_stops_the_harness_before_any_input(monkeypatch):
             step, target, click=lambda x, y: sent.append((x, y)), send=sent.append
         )
     assert sent == []
-
-
-def test_disable_act_refuses_a_signed_plan_approval(monkeypatch, tmp_path):
-    _policy(monkeypatch, DisableAct=1)
-    registry = _registry()
-    with pytest.raises(ValueError, match="guide, not act"):
-        _approval(tmp_path, _validated(registry), registry)
 
 
 @pytest.mark.parametrize(
@@ -365,20 +357,6 @@ def test_a_lookalike_local_endpoint_is_refused(monkeypatch, url):
     assert policy.company_endpoint() is None
 
 
-def test_disable_act_pushed_after_approval_still_stops_the_run(monkeypatch, tmp_path):
-    from ghostcursor.act_runtime import ActRunCode, execute_approved_graph
-
-    registry = _registry()
-    validated = _validated(registry)
-    approval = _approval(tmp_path, validated, registry)
-    _policy(monkeypatch, DisableAct=1)
-    result = execute_approved_graph(
-        validated, registry, approval, descriptor=None,
-        current_authority=None, revalidate_target=None, controls=None,
-    )  # fmt: skip
-    assert result.code is ActRunCode.APPROVAL_REQUIRED and not result.completed_node_ids
-
-
 def test_teach_does_not_ask_to_approve_act_that_policy_disables(monkeypatch):
     from ghostcursor.harness.teach import ModelTeachSession, Phase
     from tests.test_harness_teach import SyncSlot, _frame
@@ -527,16 +505,6 @@ def test_browser_input_obeys_disable_act_and_the_app_lists(monkeypatch):
         page._guard(control, True, ())
 
 
-@pytest.mark.parametrize(
-    "values", [{"AllowedApps": "excel.exe"}, {"BlockedApps": "powerpnt.exe"}]
-)
-def test_the_signed_path_obeys_the_app_lists(monkeypatch, tmp_path, values):
-    _policy(monkeypatch, **values)
-    registry = _registry()
-    with pytest.raises(ValueError, match="not allow Orbyn in this app"):
-        _approval(tmp_path, _validated(registry), registry)
-
-
 def test_a_harness_act_run_lands_in_the_one_audit_log():
     bindings = [SimpleNamespace(identity=SimpleNamespace(executable="excel.exe"))]
     teach_live._audit(bindings, [(1, "you confirmed"), (2, "observed change")], 0)
@@ -549,20 +517,6 @@ def test_a_harness_act_run_lands_in_the_one_audit_log():
         "0",
     )
     assert "confirmed" not in audit.default_path().read_text()
-
-
-def test_an_app_list_pushed_after_approval_still_stops_the_run(monkeypatch, tmp_path):
-    from ghostcursor.act_runtime import ActRunCode, execute_approved_graph
-
-    registry = _registry()
-    validated = _validated(registry)
-    approval = _approval(tmp_path, validated, registry)
-    _policy(monkeypatch, BlockedApps="powerpnt.exe")
-    result = execute_approved_graph(
-        validated, registry, approval, descriptor=None,
-        current_authority=None, revalidate_target=None, controls=None,
-    )  # fmt: skip
-    assert result.code is ActRunCode.APPROVAL_REQUIRED and "this app" in result.detail
 
 
 def test_record_returns_while_the_disk_is_stuck(monkeypatch):

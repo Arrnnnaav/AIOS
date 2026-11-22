@@ -310,7 +310,7 @@ def test_step_verification_lets_the_step_stand_when_jev_is_unsure(monkeypatch):
     session.tick(frame())
     session.tick(frame(), confirm=True)
     clock.now = ACT_SETTLE_S
-    out = session.tick(frame(fid=2))
+    session.tick(frame(fid=2))
     assert session.completed == [(1, "acted (Jev: likely done)")]  # fail-open
 
 
