@@ -49,6 +49,8 @@ class PluginEffectiveState(str, Enum):
     DISABLED = "disabled"
     ENABLED_COMPATIBLE = "enabled_compatible"
     BLOCKED_INCOMPATIBLE = "blocked_incompatible"
+    #: Enabled, but its own pack catalog no longer loads: left out (23 Nov).
+    BLOCKED_INVALID_CATALOG = "blocked_invalid_catalog"
 
 
 @dataclass(frozen=True)
@@ -138,9 +140,11 @@ def _canonical(value: Mapping[str, Any]) -> bytes:
 
 
 class PluginStore:
-    skipped_plugins: Mapping[str, str] = MappingProxyType({})
-
     """The sole lifecycle authority for one production or developer store."""
+
+    #: Plugins left out of the active set, and why (CatalogInvalid only).
+    skipped_plugins: Mapping[str, str] = MappingProxyType({})
+    _last_skipped: Mapping[str, str] = MappingProxyType({})
 
     def __init__(
         self,
@@ -813,7 +817,11 @@ class PluginStore:
                 if desired is None or desired.get("version") != version:
                     state = PluginEffectiveState.DISABLED
                 elif compatibility.compatible:
-                    state = PluginEffectiveState.ENABLED_COMPATIBLE
+                    try:
+                        self._bundle_catalog(bundle)
+                        state = PluginEffectiveState.ENABLED_COMPATIBLE
+                    except CatalogInvalid:  # shown, not reported as working
+                        state = PluginEffectiveState.BLOCKED_INVALID_CATALOG
                 else:
                     state = PluginEffectiveState.BLOCKED_INCOMPATIBLE
                 result.append(
@@ -899,9 +907,8 @@ class PluginStore:
                 active_index_sha256=active.active_index_sha256,
                 skip_faulty=True,
             )
-            usable = {
-                k: v for k, v in active.plugins.items() if k not in self.skipped_plugins
-            }
+            # active.plugins is already the usable set (_prospective_plugins).
+            usable = active.plugins
             registries = self._capability_registries(
                 usable,
                 catalog,

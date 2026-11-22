@@ -737,3 +737,18 @@ def test_enabling_a_faulty_plugin_is_still_refused(tmp_path, monkeypatch):
     with pytest.raises(CatalogInvalid):
         store.enable(one.plugin_id, one.version)
 
+
+def test_a_left_out_plugin_is_listed_as_blocked_not_working(tmp_path, monkeypatch):
+    from ghostcursor.plugins.store import CatalogInvalid
+
+    private, trusted = _key()
+    store = PluginStore(tmp_path / "store", trusted_keys=trusted, core_version="0.1.0")
+    one = store.install(_bundle(tmp_path, private, files=_common_pack_files()))
+    store.enable(one.plugin_id, one.version)
+
+    def catalog(bundle):
+        raise CatalogInvalid("plugin ghostcursor.one pack catalog is invalid: expired")
+
+    monkeypatch.setattr(store, "_bundle_catalog", catalog)
+    (listed,) = store.list_installed()
+    assert listed.state is PluginEffectiveState.BLOCKED_INVALID_CATALOG
