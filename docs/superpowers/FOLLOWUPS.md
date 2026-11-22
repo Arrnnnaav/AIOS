@@ -2888,9 +2888,9 @@ from 1053b54. Still open:
   carries the only tests of the hint parser's strict rules (kept as an
   evaluation helper); model_gate exercises a synthetic unavailable path;
   HTML/RTF clipboard formats are not counted (formatting only is lost);
-  Extract facts: a near-duplicate tightens an approved fact's source, and
-  no app-level test ties the button to the local-only path beyond the
-  provider pin; candidate_acceptance writes fixture apps' window titles
+  Extract facts: no app-level test ties the button to the local-only
+  path beyond the provider pin (a near-duplicate only ever tightens
+  sensitivity, never the source: not a bug); candidate_acceptance writes fixture apps' window titles
   into evidence; a BlockedApps REG_NONE value now fails closed (done).
   Fixed 22-23 Nov besides: whole-task deadline re-read before each node and
   validated; Ollama PATH needs a drive or UNC prefix; over-size requests
@@ -2906,3 +2906,15 @@ from 1053b54. Still open:
 - 23 Nov: also fixed: the Brain and Plan tabs no longer rebuild over text
   being typed (a Node test drives typingIn); overlay line widths and the
   label font scale with the display (pixel lane passes at this desktop).
+- 23 Nov: review of the browser and trust changes: no blocking finding.
+  Done: no main-world fallback (a label that cannot be read in the isolated
+  world, e.g. in a cross-origin frame, is not clicked); input fields are
+  not refused for their own shadow node; Closed, Emptied, sign/log out are
+  risky; a revoked enabled bundle lists as blocked_revoked; a present but
+  broken trust/ folder stops the production store (tested). Left: one
+  isolated world per read (cache per frame); the hit test runs just before
+  the click, not atomically with it; developer_store ignores a signed trust
+  policy; the plugins CLI marketplace re-reads revocations instead of using
+  the store's; the manager campaign salt is not bound (past ledger
+  campaigns carry no salt digest, so binding it would block continuing
+  them).
