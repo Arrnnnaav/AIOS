@@ -894,7 +894,7 @@ def test_the_risky_list_catches_word_forms_and_the_missing_verbs(name):
     assert HIGH_RISK.search(name), name
 
 
-@pytest.mark.parametrize("name", ["Insert", "Design", "New Slide", "Paste", "Next"])
+@pytest.mark.parametrize("name", ["Insert", "Design", "New Slide", "Paste", "Next", "Closet", "Layout"])
 def test_everyday_controls_are_not_risky(name):
     from ghostcursor.harness.teach import HIGH_RISK
 
@@ -902,7 +902,9 @@ def test_everyday_controls_are_not_risky(name):
 
 
 @pytest.mark.parametrize(
-    "name", ["Sign-in", "Log-in", "Check-out", "Closes", "Emptying", "Trashed", "Don\u2019t Save"]
+    "name",
+    ["Sign-in", "Log-in", "Check-out", "Closes", "Emptying", "Trashed", "Don\u2019t Save",
+     "Closed", "Emptied", "Sign out", "Log out"],
 )
 def test_the_risky_list_catches_hyphens_curly_apostrophes_and_word_endings(name):
     from ghostcursor.harness.teach import HIGH_RISK

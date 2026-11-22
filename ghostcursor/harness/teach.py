@@ -49,8 +49,9 @@ HIGH_RISK = re.compile(
     # Stems, not whole words only: "Payment", "Deletes", "Sending" must match.
     r"\b(delet\w*|remov\w*|send\w*|sent|pay\w*|purchas\w*|buy\w*|"
     r"sign[- ]?in|log[- ]?in|password|uninstall\w*|install\w*|format|erase\w*|"
-    r"discard\w*|overwrit\w*|replac\w*|reset\w*|clos(?:e|es|ing)|quit|exit|"
-    r"don['\u2019]?t save|do not save|submit\w*|publish\w*|empt(?:y|ies|ying)|clear\w*|"
+    r"discard\w*|overwrit\w*|replac\w*|reset\w*|clos(?:e|es|ed|ing)|quit|exit|"
+    r"sign[- ]?out|log[- ]?out|"
+    r"don['\u2019]?t save|do not save|submit\w*|publish\w*|empt(?:y|ies|ied|ying)|clear\w*|"
     r"check[- ]?out|place order|order now|unsubscrib\w*|trash\w*)\b",
     re.IGNORECASE,
 )
