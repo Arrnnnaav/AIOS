@@ -111,7 +111,8 @@ py -3.12 tools\score_teach_replay.py <corpus.jsonl> [label=tape.json ...]  # sco
 - Keep this file short: a new rule belongs here only if breaking it is a
   tier-1 risk. Everything else goes to `DECISIONS.md` or `FOLLOWUPS.md`.
 - Dependencies: system Python 3.12 (`py -3.12`), pywin32, pywinauto, numpy,
-  mss, winsdk, Pillow, rapidfuzz, ollama, httpx, PyJWT[crypto] (Sign in with ChatGPT).
+  mss, Pillow, rapidfuzz, httpx, pypdf, cryptography, PyJWT[crypto] (Sign in with
+  ChatGPT). Ollama is reached over HTTP; no Python client.
 - Voice (optional): faster-whisper, sounddevice; the "Hey Bro" fast wake word
   additionally wants sherpa-onnx plus the KWS model under
   `%LOCALAPPDATA%\GhostCursor\kws\` (Orbyn falls back to Whisper without it).
