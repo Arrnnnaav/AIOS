@@ -4,6 +4,8 @@ risky controls still wait for the user; nothing acts before approval."""
 
 from __future__ import annotations
 
+import sys
+
 import pytest
 
 from ghostcursor.harness import act
@@ -786,10 +788,14 @@ def _paste(target, **kw):
         click=lambda x, y: None,
         pause=lambda s: None,
         check=lambda x, y, window: None,
+        clip_seq=lambda: 1,
+        window=7,
+        focus=lambda: 7,
     )
     values.update(kw)
     return act.perform(
-        PlanStep("Paste", E.CHOSEN_STATE_CHANGES, "paste_text", "ours"), target, **values, window=7, focus=lambda: 7)
+        PlanStep("Paste", E.CHOSEN_STATE_CHANGES, "paste_text", "ours"), target, **values
+    )
 
 
 @pytest.mark.usefixtures("fake_bound")
@@ -805,6 +811,46 @@ def test_paste_text_restores_after_the_step_returns():
     assert out == "pasted 4 characters" and clip_writes == ["ours"] and len(jobs) == 1
     jobs[0]()
     assert clip_writes == ["ours", "PRIOR"]
+
+
+@pytest.mark.usefixtures("fake_bound")
+def test_a_copy_made_during_the_paste_wait_is_kept():
+    # FOLLOWUPS (tier-1 review of 5fd3722..c8f7f6e): the restore overwrote a
+    # copy the user made in the 0.2 s before it.
+    target = _frame([_c(1, "Body", "Edit")]).candidates[0]
+    clip_writes, jobs, seq = [], [], [5]
+    _paste(
+        target, get_clip=lambda: "PRIOR", set_clip=clip_writes.append,
+        later=jobs.append, clip_seq=lambda: seq[0],
+    )
+    seq[0] = 6  # the user pressed Ctrl+C meanwhile
+    jobs[0]()
+    assert clip_writes == ["ours"]
+
+
+def test_orbyns_clipboard_text_stays_out_of_history_and_cloud_sync(monkeypatch):
+    import types
+
+    calls = []
+    fake = types.SimpleNamespace(
+        CF_UNICODETEXT=13,
+        OpenClipboard=lambda: None,
+        CloseClipboard=lambda: None,
+        EmptyClipboard=lambda: calls.append("empty"),
+        SetClipboardData=lambda fmt, data: calls.append((fmt, data)),
+        RegisterClipboardFormat=lambda name: name,
+    )
+    monkeypatch.setitem(sys.modules, "win32clipboard", fake)
+    act.set_clipboard_text("ours")
+    assert calls[:2] == ["empty", (13, "ours")]
+    assert {f for f, _ in calls[2:]} == {
+        "ExcludeClipboardContentFromMonitorProcessing",
+        "CanIncludeInClipboardHistory",
+        "CanUploadToCloudClipboard",
+    }
+    calls.clear()
+    act.set_clipboard_text(None)
+    assert calls == ["empty"]
 
 
 def test_paste_text_over_a_picture_is_refused_before_any_input():

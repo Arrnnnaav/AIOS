@@ -204,11 +204,23 @@ def get_clipboard_text() -> str | None:
 _NON_TEXT_FORMATS = (2, 3, 6, 8, 14, 15, 17)
 
 
+#: Registered formats that keep a clipboard entry out of Windows clipboard
+#: history, cloud clipboard sync and clipboard monitors: what Orbyn puts there
+#: is plan text on its way into one field, not something to keep or upload.
+_PRIVATE_FORMATS = (
+    ("ExcludeClipboardContentFromMonitorProcessing", b"\x00\x00\x00\x00"),
+    ("CanIncludeInClipboardHistory", b"\x00\x00\x00\x00"),
+    ("CanUploadToCloudClipboard", b"\x00\x00\x00\x00"),
+)
+
+
 def set_clipboard_text(text: str | None) -> None:
     """Put ``text`` on the clipboard, or clear it when ``text`` is falsy. Used
     to carry known text into an app and to restore the prior clipboard after;
     Orbyn's text is never left behind (restore clears it when the prior
-    clipboard was empty or non-text)."""
+    clipboard was empty or non-text). Neither write enters clipboard history
+    or cloud sync: Orbyn's text is not the user's, and the user's restored
+    text is already there from when they copied it."""
 
     import win32clipboard as c
 
@@ -217,8 +229,16 @@ def set_clipboard_text(text: str | None) -> None:
         c.EmptyClipboard()
         if text:
             c.SetClipboardData(c.CF_UNICODETEXT, text)
+            for name, value in _PRIVATE_FORMATS:
+                c.SetClipboardData(c.RegisterClipboardFormat(name), value)
     finally:
         c.CloseClipboard()
+
+
+def clipboard_sequence() -> int:
+    """Windows' clipboard change counter: it moves on every new copy."""
+
+    return _user32.GetClipboardSequenceNumber()
 
 
 #: The clipboard restore still running from the last paste_text, if any.
@@ -415,6 +435,7 @@ def perform(
     held=None,
     later=_in_background,
     focused_id=None,
+    clip_seq=clipboard_sequence,
 ) -> str:
     """Do ``step`` on ``target`` (a Candidate in the latest frame); returns a
     short description for the status line. ``window`` is the bound window
@@ -489,6 +510,7 @@ def perform(
             return "nothing to paste"
         try:
             set_clip(step.text)
+            ours = clip_seq()
             send(chord_events("ctrl+v"))
         except BaseException:
             _quietly(set_clip, saved)  # always restore, even if the paste raised
@@ -498,6 +520,8 @@ def perform(
             pause(0.2)  # ponytail: fixed wait for the app to read the clipboard
             #            before we restore; a slow app could miss it -- raise it
             #            if that shows up, or gate restore on a paste ack.
+            if clip_seq() != ours:
+                return  # the user copied something since: keep theirs
             _quietly(set_clip, saved)
 
         later(restore)  # off the step, so Stop is read again within D020's 0.5 s
