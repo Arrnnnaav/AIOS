@@ -238,7 +238,9 @@ def set_clipboard_text(text: str | None) -> None:
 def clipboard_sequence() -> int:
     """Windows' clipboard change counter: it moves on every new copy."""
 
-    return _user32.GetClipboardSequenceNumber()
+    get = _user32.GetClipboardSequenceNumber
+    get.restype = wintypes.DWORD
+    return get()
 
 
 #: The clipboard restore still running from the last paste_text, if any.
