@@ -215,6 +215,14 @@ def test_the_linear_scrub_matches_the_patterns_it_replaces():
             lambda m: "[number]" if sum(c.isdigit() for c in m.group()) >= 9 else m.group(), text
         )
 
+    edges = (
+        "a" * 30,  # letters only: not a key
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZAB",  # one case, no digit: not a key
+        "abcdefghijklmnopqrstuvwxyz-ab\u0663",  # a non-ASCII digit just past the run
+        "abcdefghijklmnopqrstuvwxyz-ab1",
+    )
+    for text in edges:
+        assert envelope.scrub(text) == reference(text), text
     parts = list("aaaBBB111---___\u00e9\u0663 /+=@.?#:xyzQ") + ["www.", "https://", "AIza", "top-10-sales-tips"]
     rng = random.Random(7)
     for _ in range(4000):

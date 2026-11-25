@@ -649,6 +649,42 @@ def test_a_key_that_stays_held_ends_the_session_with_a_reason():
     assert shown.phase is Phase.BLOCKED and "held down" in shown.message
 
 
+def test_the_held_key_count_starts_again_after_a_step_is_done():
+    from ghostcursor.harness.teach import MAX_BUSY_TICKS
+
+    busy = [MAX_BUSY_TICKS - 1]
+    done = []
+
+    def perform(step, target):
+        if busy[0]:
+            busy[0] -= 1
+            raise act.UserBusy("you are holding a key or mouse button, so Orbyn is waiting")
+        busy[0] = MAX_BUSY_TICKS - 1  # the next step waits as long again
+        done.append(target.name)
+        return "ok"
+
+    plan = TeachPlan((
+        PlanStep("Click Insert", E.CHOSEN_STATE_CHANGES),
+        PlanStep("Click Insert again", E.CHOSEN_STATE_CHANGES),
+    ))
+    clock = Clock()
+    session = ModelTeachSession(
+        "x", FakeGateway(plan, [_choice("c1"), _choice("c1")]), SyncSlot(), clock=clock, plan=plan, act=perform
+    )
+    frame = _frame([_c(1)])
+    session.tick(frame, confirm=True)
+    for _ in range(MAX_BUSY_TICKS):
+        session.tick(frame)
+    assert done == ["Insert"]
+    clock.now = ACT_SETTLE_S  # step 1 settles; step 2 starts
+    for n in range(2 * MAX_BUSY_TICKS):
+        shown = session.tick(_frame([_c(1)], frame_id=2 + n))
+        assert shown.phase is not Phase.BLOCKED, shown.message
+        if len(done) == 2:
+            break
+    assert done == ["Insert", "Insert"]
+
+
 def test_every_event_orbyn_sends_carries_its_signature():
     events = act.text_events("a") + act.chord_events("ctrl+s")
     assert {e.u.ki.dwExtraInfo for e in events} == {act.INPUT_SIGNATURE}
