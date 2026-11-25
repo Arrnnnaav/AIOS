@@ -934,19 +934,26 @@ class Workspace:
         return f"{result}\n{nudge}" if nudge else result
 
     def _run_intent(
-        self, intent: str, arg: str, *, fallback: str = "", read_only: bool = False
+        self,
+        intent: str,
+        arg: str,
+        *,
+        fallback: str = "",
+        read_only: bool = False,
+        cancelled=lambda: False,
     ) -> str:
         """Dispatch one (intent, argument) to the existing reviewed capability
         and return its one-line result. Shared by the one-step router (do) and
         the crew orchestrator so both run the same tested paths. A 'plan' intent
         only PROPOSES (rule 2); it never acts. ``read_only`` (a background job)
         runs research without filing and skips every step that would write:
-        the Brain, a skill, the plan, the brief or a deck."""
+        the Brain, a skill, the plan, the brief or a deck. ``cancelled`` lets
+        a Stop land inside a research step, between its sub-questions."""
 
         if read_only and intent != "research":
             return f"[{intent}] skipped: background jobs are read-only; run it from Chat"
         if intent == "research":
-            report = self.deep_dive(arg, file_to_brain=not read_only)
+            report = self.deep_dive(arg, file_to_brain=not read_only, cancelled=cancelled)
             if read_only:
                 return (
                     f"🔎 [research] {len(report.subquestions)} part(s); nothing "

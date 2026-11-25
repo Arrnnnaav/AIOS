@@ -66,7 +66,7 @@ class _FakeWorkspace:
         self.dispatched = []
         self.proposed = False
 
-    def _run_intent(self, intent, arg, *, fallback="", read_only=False):
+    def _run_intent(self, intent, arg, *, fallback="", read_only=False, cancelled=None):
         self.dispatched.append((intent, arg))
         if intent == "plan":
             self.proposed = True
@@ -135,13 +135,14 @@ def test_a_read_only_crew_skips_every_step_that_would_write(tmp_path):
     # Background jobs are read-only: research runs unfiled, nothing else runs.
     from ghostcursor.workspace.session import Workspace
 
-    calls = []
+    calls, stops = [], []
 
     class W:
         _run_intent = Workspace._run_intent
 
-        def deep_dive(self, arg, *, file_to_brain=True):
+        def deep_dive(self, arg, *, file_to_brain=True, cancelled=None):
             calls.append(("research", file_to_brain))
+            stops.append(cancelled)
             return type("R", (), {"subquestions": (), "filed_to_brain": 0})()
 
         def __getattr__(self, name):  # any other capability = a write
@@ -152,6 +153,10 @@ def test_a_read_only_crew_skips_every_step_that_would_write(tmp_path):
         assert "read-only" in w._run_intent(intent, "x", read_only=True)
     w._run_intent("research", "x", read_only=True)
     assert calls == [("research", False)]
+    # Stop reaches inside a research step (between its sub-questions).
+    stop = lambda: True  # noqa: E731
+    w._run_intent("research", "x", read_only=True, cancelled=stop)
+    assert stops[-1] is stop
 
 
 def test_a_damaged_saved_crew_is_refused_not_a_crash(tmp_path):

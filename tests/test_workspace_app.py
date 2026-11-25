@@ -2068,7 +2068,7 @@ def test_stop_lands_between_crew_steps():
 
     ran = []
     ws = type(
-        "W", (), {"_run_intent": lambda self, i, a, fallback, read_only=False: ran.append(a) or a}
+        "W", (), {"_run_intent": lambda self, i, a, fallback, read_only=False, cancelled=None: ran.append(a) or a}
     )()
     calls = iter([False, True])
     result = run_crew(

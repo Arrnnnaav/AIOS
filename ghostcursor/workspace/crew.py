@@ -94,7 +94,9 @@ def run_crew(
         if cancelled():  # a background job's Stop lands between steps
             break
         results.append(
-            workspace._run_intent(intent, arg, fallback=arg, read_only=read_only)
+            workspace._run_intent(
+                intent, arg, fallback=arg, read_only=read_only, cancelled=cancelled
+            )
         )
     steps = tuple(steps)[: len(results)]
     return CrewResult(goal=goal, steps=steps, results=tuple(results))
