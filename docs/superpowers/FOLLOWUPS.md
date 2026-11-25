@@ -2993,10 +2993,20 @@ from 1053b54. Still open:
   readable, not valid JSON); async SAPI on a non-pumping thread: confirm a
   stop silences speech at once on a real voice.
   Still open, needs a live desktop or the owner: live counted Teach and Act
-  runs through the harness (the owner approves each Act plan); the desktop
-  lanes; unowned same-app popups refused as covered; one emoji typed in
+  runs through the harness (the owner approves each Act plan); unowned same-app popups refused as covered; one emoji typed in
   Notepad/PowerPoint; region-mark capture gesture; Speaker latency; a real
   full-screen app, a second display and a screen reader for the island;
   provider contracts (DPA, retention), app signing and an update channel.
   Accepted ceilings stay as documented above (free-text passwords need NER,
   local skills hold step text in clear, a skill slug collision overwrites).
+  26 Nov: the re-check of 22c0dc0..a6ffef1 found one BLOCKING, fixed in
+  050d60f (excluding braces from a secret value let "password={hunter2}"
+  through; now only closing brackets at its end stay; 4/4 mutants killed).
+  Left from it: the paste-restore sequence check is unverified against an
+  ANSI target app or a clipboard manager (if the number moves, Orbyn's text
+  stays and the prior clipboard is lost); a copy made between that check
+  and the restore is still overwritten; the restored copy is marked out of
+  history (it is already there from the user's own copy). Desktop lanes run
+  26 Nov at 0e7b9d9, one at a time: interactive 48 passed, overlay
+  self-check 16/16, hung window 4 passed (terminal output, not a captured
+  file); hermetic 1583 passed.
