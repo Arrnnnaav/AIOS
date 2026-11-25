@@ -307,6 +307,7 @@ class ModelTeachSession:
         self.plan: TeachPlan | None = plan
         self.step = 0
         self.reasks = 0
+        self._busy = 0  # Act ticks in a row spent waiting for a held key
         self.message = "planning"
         #: (step number, why it completed) -- "you confirmed" or the observed
         #: change; printed live so a false completion is visible (D167).
@@ -590,7 +591,7 @@ class ModelTeachSession:
                     did = self.act(step, current)
                 except Exception as exc:  # a refused chord, a failed SendInput
                     if getattr(exc, "retry", False):  # the user is busy: next tick
-                        self._busy = getattr(self, "_busy", 0) + 1
+                        self._busy += 1
                         if self._busy > MAX_BUSY_TICKS:
                             self._block(
                                 f"step {self.step + 1} waited too long: a key or mouse "

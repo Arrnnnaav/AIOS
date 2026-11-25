@@ -75,8 +75,11 @@ def _replace_found(pattern: re.Pattern, text: str) -> str:
 
 def neutralize(text: str) -> str:
     """TEXT with fake role tags and section markers replaced, also when
-    they are spelled with look-alike Cyrillic or Greek letters."""
+    they are spelled with look-alike Cyrillic or Greek letters. The text as
+    written is scanned first: on the folded copy a look-alike letter beside a
+    marker reads as a Latin one and would hide it (tier-1 review, 25 Nov)."""
 
+    text = _FAKE_MARKER.sub(FAKE_BOUNDARY, _FAKE_TAG.sub(FAKE_BOUNDARY, text))
     return _replace_found(_FAKE_MARKER, _replace_found(_FAKE_TAG, text))
 
 

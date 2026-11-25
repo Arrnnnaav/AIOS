@@ -40,7 +40,10 @@ _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
         ),
     ),
     ("JWT", re.compile(r"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b")),
-    ("EMAIL", re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b")),
+    # Starts only where a run of address characters starts (scrub repeats
+    # the pass for addresses that follow one another): a start inside a run
+    # without "@" retried to its end, so "a-" * 50k took 24 s (review 25 Nov).
+    ("EMAIL", re.compile(r"(?<![\w.+-])[\w.+-]+@[\w-]+\.[\w.-]+\b")),
     # Each provider's own token shape: the prefix then a separator (or, for
     # AWS, upper-case and digits). A bare "gho"/"sk" start is a word, not a
     # key: "ghostcursor-investor-deck-content" was hidden as a key in 9 of 239
@@ -76,7 +79,7 @@ _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
             r"(?i)(?<![A-Za-z0-9])[A-Za-z0-9_.-]{0,40}?"
             r"(?:password|passwd|pwd|secret|token|api[_-]?key|access[_-]?key|private[_-]?key)"
             r"[A-Za-z0-9_.-]{0,40}(?:\\?[\"'])?[ \t]{0,3}[:=][ \t]{0,3}(?:\\?[\"'])?"
-            r"(?!\[[A-Z]+_\d+\])(?P<key>[^\s\"'\\,;]{4,200})"
+            r"(?!\[[A-Z]+_\d+\])(?P<key>[^\s\"'\\,;{}\[\]]{4,200})"
         ),
     ),
     ("IBAN", re.compile(r"\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b")),
@@ -201,6 +204,12 @@ def scrub(
         if categories is not None and category not in categories:
             continue
         text = pattern.sub(lambda m, c=category: _sub(c, m), text)
+        if category == "EMAIL":
+            for _ in range(50):  # an address right after the last one replaced
+                again = pattern.sub(lambda m, c=category: _sub(c, m), text)
+                if again == text:
+                    break
+                text = again
     terms = clean_terms(list(terms), 2 * MAX_TERMS)  # a person's and an organisation's
     if terms:
         # After the patterns, so a name inside an email address went with

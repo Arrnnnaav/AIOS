@@ -348,3 +348,15 @@ def test_the_secret_name_recognizer_stays_linear_on_hostile_text():
     for text in ("password" * 6000 + "=", "a" * 50000, "secret_" * 7000 + ":", "-" * 50000 + "token"):
         redact.scrub(text)
     assert time.perf_counter() - start < 1.0
+
+
+def test_review_25_nov_email_scan_is_linear_and_json_keeps_its_braces():
+    import time
+
+    started = time.perf_counter()
+    redact.scrub("a-" * 20_000)  # quadratic took about 4 s at this size
+    redact.scrub("a." * 20_000)
+    assert time.perf_counter() - started < 1.0
+    out = redact.scrub("x@a.io+y@b.io, z@c.io")[0]
+    assert "@" not in out
+    assert redact.scrub('{"password_len":12345}')[0].endswith("}")
