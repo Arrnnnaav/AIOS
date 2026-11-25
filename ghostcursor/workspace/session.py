@@ -908,6 +908,7 @@ class Workspace:
                     "research: answer a question from web sources; "
                     "deck: make a slide outline; "
                     "research_deck: research then make a deck; "
+                    "deck_build: propose a plan to build a deck in PowerPoint; "
                     "plan: step-by-step plan to do something in an app; "
                     "remember: save a fact to the Company Brain; "
                     "skill: create a reusable task skill from a need; "
@@ -977,6 +978,9 @@ class Workspace:
                 return "[research_deck] model unavailable"
             filed = report.filed_to_brain if report else 0
             return f"📊 [research+deck] {deck.title} ({len(deck.slides)} slides); filed {filed} claim(s)"
+        if intent == "deck_build":  # proposes a build plan; /act runs it (rule 2)
+            _deck, message = self.build_deck(arg)
+            return "🛠 [deck build] " + message
         if intent == "remember" and self.knowledge is not None:
             f = self.knowledge.add_candidate(arg, source="task", scope=self.kb_scope)
             return f"🧠 [remember] saved as candidate #{f.fid} (review: /know review {f.fid})"

@@ -149,7 +149,7 @@ def test_a_read_only_crew_skips_every_step_that_would_write(tmp_path):
             raise AssertionError(f"{name} ran in a read-only crew")
 
     w = W()
-    for intent in ("remember", "skill", "plan", "deck", "research_deck", "chat"):
+    for intent in ("remember", "skill", "plan", "deck", "research_deck", "deck_build", "chat"):
         assert "read-only" in w._run_intent(intent, "x", read_only=True)
     w._run_intent("research", "x", read_only=True)
     assert calls == [("research", False)]
@@ -157,6 +157,30 @@ def test_a_read_only_crew_skips_every_step_that_would_write(tmp_path):
     stop = lambda: True  # noqa: E731
     w._run_intent("research", "x", read_only=True, cancelled=stop)
     assert stops[-1] is stop
+
+
+def test_a_crew_deck_build_step_only_proposes_the_build_plan():
+    # ROADMAP "not yet": /crew emitting a /deck build step (research -> outline
+    # -> propose). It proposes; /act still needs the user's approval.
+    from ghostcursor.providers import parse_crew_plan
+    from ghostcursor.workspace.session import Workspace
+
+    built = []
+
+    class W:
+        _run_intent = Workspace._run_intent
+
+        def build_deck(self, topic):
+            built.append(topic)
+            return None, "proposed a 6-step build plan; approve it with /act 1"
+
+        def __getattr__(self, name):  # nothing else may run
+            raise AssertionError(f"{name} ran for a deck_build step")
+
+    out = W()._run_intent("deck_build", "Q3 pitch")
+    assert built == ["Q3 pitch"] and out.startswith("🛠 [deck build]") and "/act" in out
+    steps = parse_crew_plan('{"steps": [{"intent": "research", "argument": "market"}, {"intent": "deck_build", "argument": "pitch"}]}')
+    assert [s[0] for s in steps] == ["research", "deck_build"]
 
 
 def test_a_damaged_saved_crew_is_refused_not_a_crash(tmp_path):

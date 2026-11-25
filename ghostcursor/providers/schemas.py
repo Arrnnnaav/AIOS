@@ -31,6 +31,7 @@ TASK_INTENTS = (
     "research",
     "deck",
     "research_deck",
+    "deck_build",
     "plan",
     "remember",
     "skill",
