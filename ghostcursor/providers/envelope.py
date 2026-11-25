@@ -53,10 +53,31 @@ _CONTROL = re.compile(r"[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f​-
 _CREDENTIALS = tuple(p for c, p in redact._PATTERNS if c in ("PEM", "JWT", "KEY"))
 
 
-def neutralize(text: str) -> str:
-    """TEXT with fake role tags and section markers replaced."""
+#: Cyrillic and Greek letters that look like the Latin ones in a role tag
+#: (``<ѕystem>``). Matched on a copy with these folded, one character for
+#: one, so the spans found fit the original text.
+_LOOKALIKES = str.maketrans(
+    "\u0430\u0441\u0435\u0456\u0458\u043e\u0440\u0455\u0445\u0443\u0410\u0412\u0421\u0415\u041d\u0406"
+    "\u0408\u041a\u041c\u041e\u0420\u0405\u0422\u0425\u0423\u03bf\u03b1\u03b9\u039f\u0391\u0392\u0395"
+    "\u0397\u0399\u039a\u039c\u039d\u03a1\u03a4\u03a5\u03a7",
+    "aceijopsxyABCEHIJKMOPSTXYoaiOABEHIKMNPTYX",
+)
 
-    return _FAKE_MARKER.sub(FAKE_BOUNDARY, _FAKE_TAG.sub(FAKE_BOUNDARY, text))
+
+def _replace_found(pattern: re.Pattern, text: str) -> str:
+    folded = text.translate(_LOOKALIKES)
+    out, last = [], 0
+    for found in pattern.finditer(folded):
+        out += [text[last : found.start()], FAKE_BOUNDARY]
+        last = found.end()
+    return "".join(out) + text[last:]
+
+
+def neutralize(text: str) -> str:
+    """TEXT with fake role tags and section markers replaced, also when
+    they are spelled with look-alike Cyrillic or Greek letters."""
+
+    return _replace_found(_FAKE_MARKER, _replace_found(_FAKE_TAG, text))
 
 
 def sanitize(text: object, limit: int | None = MAX_TAINTED_CHARS) -> str:
@@ -74,13 +95,15 @@ def sanitize(text: object, limit: int | None = MAX_TAINTED_CHARS) -> str:
 #: plan a step (D180): masked before it leaves. The local frame keeps the
 #: original; only the copy that is sent is masked.
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+#: Where a search for the next address may start: where a run of address
+#: characters starts. A later start in the same run reaches the same "@",
+#: so it can only fail too; trying each one made a long run quadratic.
+_EMAIL_START = re.compile(r"(?<![\w.+-])" + _EMAIL.pattern)
 _QUERY = re.compile(r"(\b(?:https?://|www\.)[^\s?#]+)[?#]\S*", re.IGNORECASE)
 _DIGITS = re.compile(r"\+?\d[\d ().-]{6,}\d")
-_TOKEN = re.compile(
-    r"\b(?=[A-Za-z0-9_-]*\d)(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9_-]{24,}\b"
-)
-#: base64url keys with no digit (Google ``AIza...``): mixed case, 24+ chars.
-_MIXED = re.compile(r"\b(?=[\w-]*[a-z])(?=[\w-]*[A-Z])[A-Za-z0-9_-]{24,}\b")
+#: Key-like runs (scrub, through _runs): 24+ of [A-Za-z0-9_-] between word
+#: boundaries, with a digit and a letter (any key), or with lower and upper
+#: case and no digit (base64url keys such as Google ``AIza...``).
 #: base64-style secrets (``/``, ``+``, ``=``) of 32+ characters.
 _SECRET = re.compile(r"(?<![\w/+])[A-Za-z0-9/+]{32,}={0,2}(?![\w/+])")
 
@@ -114,14 +137,92 @@ def _mixed(m: re.Match) -> str:
     return _token(m)
 
 
+_RUN = re.compile(r"[A-Za-z0-9_-]+")
+_WORD = re.compile(r"\w")
+_WORDS = re.compile(r"[\w-]*")
+
+
+def _is_word(text: str, i: int) -> bool:
+    return 0 <= i < len(text) and _WORD.match(text, i) is not None
+
+
+def _runs(text: str, ahead: re.Pattern, needs, repl) -> str:
+    """``re.sub`` of ``\\b(?=AHEAD needs)[A-Za-z0-9_-]{24,}\\b`` -- the
+    same matches, found in linear time. That pattern retried from every
+    word boundary of a run, each try scanning to the run's end, so one long
+    hyphenated run took seconds (review of d7675b1). Within one run of
+    [A-Za-z0-9_-] a later start sees less, so only the first boundary can
+    match; the end is the last boundary at least 24 characters on."""
+
+    out, last = [], 0
+    for run in _RUN.finditer(text):
+        pos, end = run.start(), run.end()
+        while pos < end:
+            start = next(
+                (i for i in range(pos, end) if _is_word(text, i - 1) != _is_word(text, i)),
+                None,
+            )
+            if start is None:
+                break
+            # One character past the run too: a lookahead's \d may be a
+            # non-ASCII digit just after it.
+            reach = text[start : ahead.match(text, start).end() + 1]
+            if not all(c.search(reach) for c in needs):
+                break
+            stop = next(
+                (
+                    e
+                    for e in range(end, start + 23, -1)
+                    if _is_word(text, e - 1) != _is_word(text, e)
+                ),
+                None,
+            )
+            if stop is None:
+                break
+            out += [text[last:start], repl(text, start, stop)]
+            last = pos = stop
+    return "".join(out) + text[last:]
+
+
+class _Found:
+    """The parts of a match ``_token`` and ``_mixed`` read."""
+
+    def __init__(self, text: str, start: int, stop: int):
+        self.string, self._start, self._stop = text, start, stop
+
+    def group(self) -> str:
+        return self.string[self._start : self._stop]
+
+    def start(self) -> int:
+        return self._start
+
+
+def _emails(text: str) -> str:
+    """``_EMAIL.sub("[email]", text)`` in linear time. A match may follow
+    the previous one directly, as in ``re.sub``."""
+
+    out, last = [], 0
+    while (found := _EMAIL_START.search(text, last)) is not None:
+        out += [text[last : found.start()], "[email]"]
+        last = found.end()
+        while (chained := _EMAIL.match(text, last)) is not None:
+            out.append("[email]")
+            last = chained.end()
+    return "".join(out) + text[last:]
+
+
+_DIGIT, _ALPHA = re.compile(r"\d"), re.compile(r"[A-Za-z]")
+_LOWER, _UPPER = re.compile(r"[a-z]"), re.compile(r"[A-Z]")
+
+
 def scrub(text: str) -> str:
     """Mask emails, URL queries, key-like tokens and long numbers (9+ digits:
     phones, cards, accounts). Short numbers, dates and versions stay."""
 
-    text = _EMAIL.sub("[email]", text)
+    text = _emails(text)
     text = _QUERY.sub(r"\1?[query]", text)
-    text = _TOKEN.sub(_token, text)
-    text = _MIXED.sub(_mixed, text)
+    text = _runs(text, _RUN, (_DIGIT, _ALPHA), lambda t, a, b: _token(_Found(t, a, b)))
+    text = _runs(text, _WORDS, (_LOWER, _UPPER), lambda t, a, b: _mixed(_Found(t, a, b)))
     text = _SECRET.sub("[token]", text)
     return _DIGITS.sub(
         lambda m: "[number]" if sum(c.isdigit() for c in m.group()) >= 9 else m.group(),
