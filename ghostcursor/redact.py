@@ -66,6 +66,19 @@ _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
         ),
     ),
     ("KEY", re.compile(r"(?i)\b(?:bearer|authorization:?)\s+[A-Za-z0-9._~+/=-]{8,}")),
+    # A value assigned to a name that says it is a secret, however short:
+    # DB_PASSWORD=prod_admin_2024, "api_key": "abc123", token: xyz (live run
+    # 16 Oct). Only the value goes; the name stays. Every quantifier is
+    # bounded (no ReDoS) and a placeholder already there is left alone.
+    (
+        "KEY",
+        re.compile(
+            r"(?i)(?<![A-Za-z0-9])[A-Za-z0-9_.-]{0,40}?"
+            r"(?:password|passwd|pwd|secret|token|api[_-]?key|access[_-]?key|private[_-]?key)"
+            r"[A-Za-z0-9_.-]{0,40}(?:\\?[\"'])?[ \t]{0,3}[:=][ \t]{0,3}(?:\\?[\"'])?"
+            r"(?!\[[A-Z]+_\d+\])(?P<key>[^\s\"'\\,;]{4,200})"
+        ),
+    ),
     ("IBAN", re.compile(r"\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b")),
     # as printed on statements: groups of four, e.g. GB82 WEST 1234 5698 7654 32
     (

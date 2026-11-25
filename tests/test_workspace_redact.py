@@ -318,3 +318,33 @@ def test_an_aws_secret_after_a_tab_or_line_break_in_json_text_is_hidden():
         sent = json.dumps({"t": "aws_secret_access_key" + sep + secret})
         out = redact.scrub(sent, json_text=True)[0]
         assert secret not in out and json.loads(out), repr(sep)
+
+
+def test_a_short_value_assigned_to_a_secret_name_is_hidden():
+    # FOLLOWUPS (live run 16 Oct): short env secrets were never masked.
+    import json
+
+    cases = {
+        "DB_PASSWORD=prod_admin_secret_2024": "DB_PASSWORD=[KEY_1]",
+        "api_key: abc123xyz": "api_key: [KEY_1]",
+        "export GITHUB_TOKEN = t0k3n99": "export GITHUB_TOKEN = [KEY_1]",
+        "client.secret='s3cr3t!'": "client.secret='[KEY_1]'",
+    }
+    for text, want in cases.items():
+        assert redact.scrub(text)[0] == want, text
+        assert redact.scrub(text, redact.SECRETS)[0] == want, text
+    sent = json.dumps({"t": 'password="hunter22"'})
+    out = redact.scrub(sent, json_text=True)[0]
+    assert "hunter22" not in out and json.loads(out)["t"] == 'password="[KEY_1]"'
+    # Prose without an assignment, and a placeholder already there, stay.
+    for text in ("the password is swordfish", "token: [KEY_1]", "Reset password"):
+        assert redact.scrub(text)[0] == text
+
+
+def test_the_secret_name_recognizer_stays_linear_on_hostile_text():
+    import time
+
+    start = time.perf_counter()
+    for text in ("password" * 6000 + "=", "a" * 50000, "secret_" * 7000 + ":", "-" * 50000 + "token"):
+        redact.scrub(text)
+    assert time.perf_counter() - start < 1.0
