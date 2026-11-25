@@ -270,3 +270,37 @@ def test_a_refused_mailbox_does_not_leave_the_socket_open(vault):
             "imap.example.com", "me@example.com", "app-password", imap=Refusing
         )
     assert ("logout",) in FakeImap.instances[-1].calls
+
+
+def test_a_calendar_that_keeps_redirecting_is_refused_after_four_hops(vault):
+    # FOLLOWUPS (D189-D191 review): the redirect cap had no test.
+    hops = [f"https://hop{n}.example.com/c.ics" for n in range(6)]
+    routes = {URL: (302, "", {"Location": hops[0]})}
+    routes.update({a: (302, "", {"Location": b}) for a, b in zip(hops, hops[1:])})
+    routes[hops[-1]] = (200, ICS, {})
+    seen = []
+    inner = _transport(routes)
+
+    def handle(request):
+        seen.append(str(request.url))
+        return inner.handle_request(request)
+
+    with pytest.raises(ValueError, match="did not return a calendar"):
+        connectors.connect_calendar(URL, transport=httpx.MockTransport(handle))
+    assert len(seen) == 4 and "calendar" not in vault
+
+
+def test_an_imap_password_never_appears_in_an_error(vault):
+    secret = "Sup3r-Secret-App-Pw"
+
+    class Leaky(FakeImap):
+        def login(self, user, password):
+            import imaplib
+
+            raise imaplib.IMAP4.error(f"LOGIN failed for {user} with {password}")
+
+    with pytest.raises(ValueError) as info:
+        connectors.connect_mail("imap.example.com", "me@example.com", secret, imap=Leaky)
+    error = info.value
+    assert secret not in str(error) and error.__cause__ is None
+    assert error.__suppress_context__ is True and "mail" not in vault
