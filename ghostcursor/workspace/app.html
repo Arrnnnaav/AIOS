@@ -59,6 +59,12 @@ header { padding: 14px 16px 10px; display: flex; gap: 12px; align-items: center;
 .goal { color: var(--dim); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .iconbtn { width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center; color: var(--dim); }
 .iconbtn:hover:not(:disabled) { background: var(--raise); color: var(--text); }
+.iconbtn[aria-pressed="true"] { background: var(--raise); color: var(--text); }
+details.more { margin: 18px 0 6px; border-top: 1px solid var(--line, rgba(127,127,127,.2)); padding-top: 10px; }
+details.more > summary { cursor: pointer; color: var(--dim); font-weight: 600; padding: 6px 0; list-style: none; }
+details.more > summary::before { content: "\25B8  "; }
+details.more[open] > summary::before { content: "\25BE  "; }
+.settingshead { display: flex; align-items: center; justify-content: space-between; }
 
 nav { display: flex; gap: 4px; margin: 0 16px 8px; padding: 3px; background: var(--surface); border: 1px solid var(--line); border-radius: 11px; }
 nav button { flex: 1; padding: 6px 0; border-radius: 8px; color: var(--dim); font-weight: 500; font-size: 13px; }
@@ -280,12 +286,11 @@ select { font: inherit; color: var(--text); background: var(--bg); border: 1px s
     <div class="topic" id="topic">Workspace</div>
     <div class="goal" id="goal">Tell Orbyn what you want to get done</div>
   </div>
-  <button class="iconbtn" id="themeBtn" title="Switch light/dark" aria-label="Switch theme"></button>
+  <button class="iconbtn" id="settingsBtn" title="Settings: memory, company knowledge, setup" aria-label="Settings" aria-pressed="false" aria-controls="tab-brain"></button>
 </header>
 <nav role="tablist">
   <button id="nav-chat" role="tab" data-tab="chat" aria-controls="tab-chat" aria-selected="true" tabindex="0">Chat</button>
   <button id="nav-plan" role="tab" data-tab="plan" aria-controls="tab-plan" aria-selected="false" tabindex="-1">Plan<span class="count" id="planCount"></span></button>
-  <button id="nav-brain" role="tab" data-tab="brain" aria-controls="tab-brain" aria-selected="false" tabindex="-1">Brain<span class="count" id="memCount"></span></button>
   <button id="nav-work" role="tab" data-tab="work" aria-controls="tab-work" aria-selected="false" tabindex="-1">Work<span class="count" id="workCount"></span></button>
 </nav>
 <div id="live" role="status" aria-live="polite">
@@ -299,7 +304,7 @@ select { font: inherit; color: var(--text); background: var(--bg); border: 1px s
 <main id="main">
   <section id="tab-chat" role="tabpanel" aria-labelledby="nav-chat"><div id="thread"></div></section>
   <section id="tab-plan" role="tabpanel" aria-labelledby="nav-plan" hidden></section>
-  <section id="tab-brain" role="tabpanel" aria-labelledby="nav-brain" hidden></section>
+  <section id="tab-brain" role="region" aria-label="Settings" hidden></section>
   <section id="tab-work" role="tabpanel" aria-labelledby="nav-work" hidden></section>
 </main>
 <footer>
@@ -335,6 +340,7 @@ const ICON = {
   plan: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1.2"/><circle cx="4.5" cy="12" r="1.2"/><circle cx="4.5" cy="18" r="1.2"/></svg>',
   play: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>',
   brain: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M9 4a3 3 0 0 0-3 3 3 3 0 0 0-2 5 3 3 0 0 0 2 5 3 3 0 0 0 6 0V7a3 3 0 0 0-3-3zM15 4a3 3 0 0 1 3 3 3 3 0 0 1 2 5 3 3 0 0 1-2 5 3 3 0 0 1-6 0"/></svg>',
+  gear: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
   moon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg>',
   check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg>',
 };
@@ -401,7 +407,7 @@ function render(busyChanged) {
   $("topic").textContent = S.topic.replace(/-/g, " ");
   $("goal").textContent = S.goal || "Tell Orbyn what you want to get done";
   $("planCount").textContent = S.plan ? S.plan.steps.length : "";
-  $("memCount").textContent = S.memories.length || "";
+
   $("workCount").textContent = S.activity.length || "";
   renderLive();
   ["pointBtn", "voiceBtn", "researchBtn", "sendBtn"].forEach((id) => ($(id).disabled = !!S.busy));
@@ -422,6 +428,7 @@ function typingIn(id) {
   return [...root.querySelectorAll("input[type=text], input:not([type]), textarea")].some((f) => f.value.trim());
 }
 
+let workMoreOpen = false;  // Work's "Routines and connections" fold
 function renderWork() {
   const root = $("tab-work");
   const focusedCardControl = root.contains(document.activeElement) ? document.activeElement.dataset.workFocus : null;
@@ -444,11 +451,15 @@ function renderWork() {
   fresh.dataset.workFocus = "newtask";
   fresh.onclick = () => { setTab("chat"); $("input").focus(); };
   head.append(fresh); root.append(head);
-  const stage = workStage(); root.append(stage);
+  // Nothing to show yet: Chat already says where to start, so no card here.
+  const stage = workStage(); if (!stage.dataset.empty) root.append(stage);
   root.append(backgroundJobs());
-  root.append(routinesCard());
-  root.append(githubCard());
-  root.append(inboxCard());
+  // Less-used parts folded away; the fold stays as the person left it
+  // across the page's refreshes.
+  const more = el("details", "more"); more.open = workMoreOpen;
+  more.ontoggle = () => { workMoreOpen = more.open; };
+  more.append(el("summary", "", "Routines, agents and connections"), routinesCard(), agentsCard(), githubCard(), inboxCard());
+  root.append(more);
   root.append(el("h3", "", "Recent work"));
   if (!S.activity.length) {
     root.append(el("p", "note", "Tasks started here appear below. Create a task or run a saved agent."));
@@ -471,7 +482,6 @@ function renderWork() {
     root.append(list);
     root.append(el("p", "note", "The latest 20 states are saved locally. Interrupted work is not resumed after restart."));
   }
-  root.append(agentsCard());
   if (focusedCardControl) {
     const target = root.querySelector('[data-work-focus="' + focusedCardControl + '"]');
     (target && !target.disabled ? target : stage).focus({ preventScroll: true });
@@ -765,9 +775,10 @@ function workStage() {
   const answer = [...S.turns].reverse().find((t) => t.speaker === "assistant" && !/^\[(teach|plan)\b/.test(t.text));
   if (answer) card("LATEST ANSWER", "Continue where you left off", answer.text.slice(0, 480), "Open answer", () => setTab("chat"));
   if (S.plan && S.plan.steps.length) card("CURRENT PLAN", "Plan revision " + S.plan.revision, S.plan.steps.slice(0, 2).join("\n") + (S.plan.steps.length > 2 ? "\n…and " + (S.plan.steps.length - 2) + " more steps" : ""), "Review plan", () => setTab("plan"));
-  if (!cards.length) card("START HERE", "What should Orbyn help with?", "Ask a question, make a plan, or point to a control on your screen.", "Start a task", () => { setTab("chat"); $("input").focus(); });
+  const empty = !cards.length;
+  if (empty) card("START HERE", "What should Orbyn help with?", "Ask a question, make a plan, or point to a control on your screen.", "Start a task", () => { setTab("chat"); $("input").focus(); });
   workCardIndex = Math.min(workCardIndex, cards.length - 1);
-  const stage = el("div", "workstage"); stage.setAttribute("role", "region"); stage.setAttribute("aria-label", "Current work cards"); stage.tabIndex = 0; stage.dataset.workFocus = "stage";
+  const stage = el("div", "workstage"); if (empty) stage.dataset.empty = "1"; stage.setAttribute("role", "region"); stage.setAttribute("aria-label", "Current work cards"); stage.tabIndex = 0; stage.dataset.workFocus = "stage";
   const bar = el("div", "workstagebar");
   bar.append(el("strong", "", "At a glance"));
   const count = el("span");
@@ -1055,9 +1066,12 @@ function renderPlan() {
 function renderBrain() {
   const root = $("tab-brain");
   const focusedView = root.contains(document.activeElement) ? document.activeElement.dataset.brainView : null;
-  root.replaceChildren(el("h3", "brain-title", "Brain"));
-  const nav = el("div", "brainviews"); nav.setAttribute("role", "group"); nav.setAttribute("aria-label", "Brain sections");
-  for (const [name, label] of [["personal", "Personal"], ["company", "Company"], ["setup", "Setup"]]) {
+  const head = el("div", "settingshead"); head.append(el("h3", "brain-title", "Settings"));
+  const theme = el("button", "iconbtn"); theme.innerHTML = ICON.moon;
+  theme.title = "Switch light/dark"; theme.setAttribute("aria-label", "Switch theme"); theme.onclick = switchTheme;
+  head.append(theme); root.replaceChildren(head);
+  const nav = el("div", "brainviews"); nav.setAttribute("role", "group"); nav.setAttribute("aria-label", "Settings sections");
+  for (const [name, label] of [["personal", "Memory"], ["company", "Company"], ["setup", "Setup"]]) {
     const button = el("button", "", label); button.dataset.brainView = name;
     button.setAttribute("aria-pressed", String(brainView === name));
     button.onclick = () => { brainView = name; renderBrain(); $("main").scrollTop = 0; };
@@ -1636,8 +1650,11 @@ function setTab(name) {
     b.setAttribute("aria-selected", String(active)); b.tabIndex = active ? 0 : -1;
   });
   for (const t of ["chat", "plan", "brain", "work"]) $("tab-" + t).hidden = t !== name;
+  $("settingsBtn").setAttribute("aria-pressed", String(name === "brain"));
   if (S) render(name === "chat");
 }
+$("settingsBtn").innerHTML = ICON.gear;
+$("settingsBtn").onclick = () => setTab(tab === "brain" ? "chat" : "brain");
 document.querySelectorAll("nav button").forEach((b) => (b.onclick = () => setTab(b.dataset.tab)));
 document.querySelector("nav").addEventListener("keydown", (e) => {
   const tabs = [...document.querySelectorAll('nav button[role="tab"]')];
@@ -1648,13 +1665,12 @@ document.querySelector("nav").addEventListener("keydown", (e) => {
 });
 
 // theme
-$("themeBtn").innerHTML = ICON.moon;
-$("themeBtn").onclick = () => {
+function switchTheme() {
   // The opposite of what is shown; choosing what Windows already uses clears
   // the override, so the page follows Windows again.
   const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark"; applyTheme(next);
   try { if (next === systemTheme()) localStorage.removeItem("orbyn-theme"); else localStorage.setItem("orbyn-theme", next); } catch {}
-};
+}
 
 $("pointBtn").innerHTML = ICON.point + "Point";
 $("voiceBtn").innerHTML = ICON.mic + "Voice";

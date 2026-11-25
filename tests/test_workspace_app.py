@@ -1295,10 +1295,10 @@ def test_chat_plan_and_brain_views_keep_a_clear_next_action(served):
                 page.evaluate("document.activeElement.getAttribute('aria-label')")
                 == "Message"
             )
-            page.get_by_role("tab", name="Brain").click()
-            sections = page.get_by_role("group", name="Brain sections")
+            page.get_by_role("button", name="Settings").click()
+            sections = page.get_by_role("group", name="Settings sections")
             assert (
-                sections.get_by_role("button", name="Personal").get_attribute(
+                sections.get_by_role("button", name="Memory").get_attribute(
                     "aria-pressed"
                 )
                 == "true"
@@ -1330,7 +1330,7 @@ def test_first_run_guide_uses_existing_setup_and_remembers_dismissal(served):
             guide = page.get_by_role("region", name="Getting started")
             guide.get_by_role("button", name="Check setup").click()
             assert (
-                page.get_by_role("tab", name="Brain").get_attribute("aria-selected")
+                page.get_by_role("button", name="Settings").get_attribute("aria-pressed")
                 == "true"
             )
             assert (
