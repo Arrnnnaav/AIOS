@@ -1082,3 +1082,35 @@ def test_a_fact_cannot_replace_itself_or_a_missing_fact(kn):
     with pytest.raises(ValueError, match="does not exist"):
         kn.supersede(9999, f.fid)
     assert kn.get(f.fid).status == "candidate"
+
+
+def test_follow_ups_25_nov_expire_marking_and_episodes(kn):
+    """FOLLOWUPS (D186 reviews), closed 25 Nov: expiring is not a re-check;
+    marking a source private tightens what is already stored from it; a blank
+    unmark is refused like a blank mark; an episode is read only in its own
+    scope and is deleted once no fact in use links to it."""
+
+    f = kn.add_candidate("Office moves in May.", source="wiki", scope="acme")
+    kn.now = 2000.0
+    assert kn.expire(f.fid).last_verified == 1000.0
+
+    old = kn.add_candidate("Salaries rise in April.", source="Payroll export", scope="acme")
+    link = kn.relate("Dana", "earns", "band 4", source="payroll sheet", scope="acme")
+    other = kn.add_candidate("Lunch is at noon.", source="chat", scope="acme")
+    kn.mark_source_sensitive("payroll")
+    assert kn.get(old.fid).sensitivity == "sensitive"
+    assert kn.edge(link.eid).sensitivity == "sensitive"
+    assert kn.get(other.fid).sensitivity == "normal"
+    kn.unmark_source_sensitive("payroll")
+    assert kn.get(old.fid).sensitivity == "sensitive"  # never loosened
+    with pytest.raises(ValueError):
+        kn.unmark_source_sensitive("  ")
+
+    doc = "Minutes: the launch is in June. The budget is 40k."
+    a, b = kn.ingest(["The launch is in June.", "The budget is 40k."], source="minutes", scope="acme", episode=doc)
+    ep = kn.episode_of(a[1])
+    assert ep is not None and kn.episode(ep.eid, scope="other") is None
+    kn.retire(a[1])
+    assert kn.episode(ep.eid) is not None  # the budget fact still uses it
+    kn.retire(b[1])
+    assert kn.episode(ep.eid) is None

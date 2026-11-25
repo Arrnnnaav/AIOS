@@ -24,7 +24,7 @@ _ACTION_PHRASING = {
 
 
 def _step_line(index: int, step, redact_pii: bool) -> str:
-    instruction = step.instruction
+    instruction = getattr(step, "instruction", "") or ""
     text = getattr(step, "text", "") or ""
     if redact_pii:
         instruction = redact.scrub(instruction)[0]

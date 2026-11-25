@@ -390,9 +390,13 @@ class Knowledge:
             )
         return cur.lastrowid
 
-    def episode(self, eid: int) -> Episode | None:
+    def episode(self, eid: int, *, scope: str | None = None) -> Episode | None:
+        """One raw input by id; with ``scope``, only an episode of that scope."""
+
         row = self._db.execute("SELECT * FROM episodes WHERE eid=?", (eid,)).fetchone()
-        return Episode(row[0], _unseal(row[1]), *row[2:]) if row else None
+        if row is None or (scope is not None and row[3] != scope):
+            return None
+        return Episode(row[0], _unseal(row[1]), *row[2:])
 
     def episode_of(self, fid: int) -> Episode | None:
         """The raw input a fact was extracted from, or None (older facts, or a
@@ -401,7 +405,7 @@ class Knowledge:
         fact = self.get(fid)
         if fact is None or fact.episode_id is None:
             return None
-        return self.episode(fact.episode_id)
+        return self.episode(fact.episode_id, scope=fact.scope)
 
     #: Two incoming texts this similar (word Jaccard) are the same fact, so the
     #: second is not added again. High on purpose: only near-identical wording
@@ -504,8 +508,19 @@ class Knowledge:
         return self._set_status(fid, "approved")
 
     def retire(self, fid: int) -> Fact | None:
-        """Remove a fact from use; kept only as superseded history."""
-        return self._set_status(fid, "retired")
+        """Remove a fact from use; kept only as superseded history. The raw
+        input it came from is deleted once no fact still in use links to it,
+        so retired knowledge does not keep its whole source document."""
+
+        fact = self._set_status(fid, "retired")
+        if fact is not None and fact.episode_id is not None:
+            with self._lock, self._db:
+                self._db.execute(
+                    "DELETE FROM episodes WHERE eid=? AND NOT EXISTS (SELECT 1 FROM "
+                    "facts WHERE episode_id=? AND status!='retired')",
+                    (fact.episode_id, fact.episode_id),
+                )
+        return fact
 
     def verify(self, fid: int) -> Fact | None:
         """Mark a fact re-checked now (freshness)."""
@@ -520,13 +535,13 @@ class Knowledge:
         at ``when``, default now). It stays as history with its validity window;
         recall skips it once past ``when`` -- Graphiti temporal invalidation,
         not a delete. Unlike retire (an immediate drop), this keeps the fact
-        valid for the window before ``when``."""
+        valid for the window before ``when``. It does not count as a re-check:
+        last_verified is left alone."""
 
-        now = self.clock()
         with self._lock, self._db:
             self._db.execute(
-                "UPDATE facts SET valid_until=?, last_verified=? WHERE fid=?",
-                (now if when is None else when, now, fid),
+                "UPDATE facts SET valid_until=? WHERE fid=?",
+                (self.clock() if when is None else when, fid),
             )
         return self.get(fid)
 
@@ -573,25 +588,40 @@ class Knowledge:
     # --- source-scoped sensitivity (private-by-default sources) ---------
 
     def mark_source_sensitive(self, pattern: str) -> None:
-        """Register a source whose knowledge is private by default: any later
-        candidate whose ``source`` contains ``pattern`` (case-insensitive)
-        enters 'sensitive', so the owner need not mark each one. Ported from
-        Recall's source-identity capture exclusion (D186)."""
+        """Register a source whose knowledge is private: any candidate whose
+        ``source`` contains ``pattern`` (case-insensitive) is 'sensitive', so
+        the owner need not mark each one. Facts and links already stored from
+        a matching source are made sensitive too (only ever tightens). Ported
+        from Recall's source-identity capture exclusion (D186)."""
 
         pattern = " ".join(str(pattern).split())
         if not pattern:
             raise ValueError("a sensitive-source pattern cannot be empty")
+        low = pattern.lower()
         with self._lock, self._db:
             self._db.execute(
                 "INSERT OR IGNORE INTO sensitive_sources (pattern) VALUES (?)",
                 (pattern,),
             )
+            for table, key in (("facts", "fid"), ("edges", "eid")):
+                ids = [
+                    (row[0],)
+                    for row in self._db.execute(
+                        f"SELECT {key}, source FROM {table} WHERE sensitivity!='sensitive'"
+                    )
+                    if low in row[1].lower()
+                ]
+                self._db.executemany(
+                    f"UPDATE {table} SET sensitivity='sensitive' WHERE {key}=?", ids
+                )
 
     def unmark_source_sensitive(self, pattern: str) -> bool:
         """Drop a sensitive-source pattern. Returns whether one was removed.
         Existing facts/edges keep whatever sensitivity they were given."""
 
         pattern = " ".join(str(pattern).split())
+        if not pattern:
+            raise ValueError("a sensitive-source pattern cannot be empty")
         with self._lock, self._db:
             cur = self._db.execute(
                 "DELETE FROM sensitive_sources WHERE pattern=?", (pattern,)

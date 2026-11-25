@@ -407,7 +407,7 @@ def know_command(knowledge, scope: str, args: list[str]) -> str:
     if verb == "private-source" and rest:
         knowledge.mark_source_sensitive(rest.strip())
         return f"new knowledge from sources matching '{rest.strip()}' is private"
-    if verb == "unmark-source" and rest:
+    if verb == "unmark-source" and rest.strip():
         removed = knowledge.unmark_source_sensitive(rest.strip())
         return "removed" if removed else "no such sensitive-source pattern"
     if verb == "private-sources":
