@@ -2967,3 +2967,36 @@ from 1053b54. Still open:
   atomically) is accepted in D193; the cited local copies under .tmp/,
   .artifacts/ and output/ were deleted at the owner's request (D193). The
   follow-up list from the full-code review is empty.
+- 25-26 Nov: older follow-ups closed (hermetic 1582 passed; D018 17/17 and
+  5/5; tier-1 review of ec8aeda..2de8c09 found one BLOCKING, fixed in
+  710cbc8). Company Brain: expire() no longer counts as a re-check; marking
+  a source private also tightens facts and links already stored from it; a
+  blank unmark is refused like a blank mark; episode() takes a scope and an
+  episode is deleted when its last fact in use is retired; guide reads a
+  step's instruction with getattr. Crew Stop reaches inside a research step.
+  Tests now pin the calendar's four-hop redirect cap and that an IMAP
+  password never reaches an error. A handoff export never overwrites an
+  earlier one. Redact hides a value assigned to a secret-named key however
+  short (DB_PASSWORD=..., api_key: ...) and its email scan is linear. The
+  screen-text scrub (envelope.scrub) is linear with identical output (a
+  seeded test compares it with the old patterns) and role tags or section
+  markers written with look-alike Cyrillic/Greek letters are removed. Act:
+  a plan whose key chord cannot be sent stops before approval; a key held
+  for 40 ticks ends the step with a reason; perform() requires the bound
+  window; a copy made during the paste-restore wait is kept; Orbyn's
+  clipboard text stays out of clipboard history and cloud sync. Speech runs
+  on its own thread. /crew and /do can plan a deck_build step (proposes
+  only). ROADMAP's current state rewritten after D193.
+  Left from the review (minor): secret-assignment misses quoted values with
+  spaces, values under 4 characters and the names pass/passphrase/pin/
+  credential; a secret value in JSON text loses its quotes (the text stays
+  readable, not valid JSON); async SAPI on a non-pumping thread: confirm a
+  stop silences speech at once on a real voice.
+  Still open, needs a live desktop or the owner: live counted Teach and Act
+  runs through the harness (the owner approves each Act plan); the desktop
+  lanes; unowned same-app popups refused as covered; one emoji typed in
+  Notepad/PowerPoint; region-mark capture gesture; Speaker latency; a real
+  full-screen app, a second display and a screen reader for the island;
+  provider contracts (DPA, retention), app signing and an update channel.
+  Accepted ceilings stay as documented above (free-text passwords need NER,
+  local skills hold step text in clear, a skill slug collision overwrites).
