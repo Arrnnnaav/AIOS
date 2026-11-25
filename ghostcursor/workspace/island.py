@@ -6,7 +6,12 @@ notch: the question goes through the same Chat path as the workspace page
 leaves the device, and the reply shows on a card under the bar for follow-ups.
 Escape folds it. Talk arms the existing voice listener, and anything it hears
 lands on the same card. Finished background research is shown there too, and
-the bar steps aside while a full-screen app is in front."""
+the bar steps aside while a full-screen app is in front.
+
+At rest the bar is tucked into a thin pill at the top edge that clicks pass
+through, so it never covers what is under it (HeyClicky's notch). Resting the
+pointer on the pill, Ctrl+Alt+O, work running or a new result bring the bar
+out; it tucks away again once the pointer has left it."""
 
 from __future__ import annotations
 
@@ -41,9 +46,17 @@ CLASS = "OrbynWorkspaceIsland"
 HOTKEY_ID = 5
 SHOW_MESSAGE = win32con.WM_APP + 1
 DM_GETDEFID, DC_HASDEFID = win32con.WM_USER, 0x534B
-COMPACT = (384, 56)
+COMPACT = (326, 56)
 EXPANDED = (440, 72)
 ASKING = (440, 360)
+#: The tucked pill at the top edge; the whole bar shows only when wanted.
+TUCKED = (110, 6)
+#: The pointer rests on the pill this long before the bar comes out, so
+#: passing over the top of the screen (to a tab, say) does not open it.
+PEEK_DWELL_S = 0.2
+#: The bar tucks away once the pointer has been off it this long.
+TUCK_AFTER_S = 0.8
+PILL = win32api.RGB(92, 100, 114)
 MAX_TRANSCRIPT = 20_000
 HINT = (
     "Replies show here. Type again to follow up; Esc folds; Open shows the full chat."
@@ -74,7 +87,8 @@ _font = None  # body text, Segoe UI
 _bold = None  # the heading and the buttons, Segoe UI Semibold
 _scale = 1.0  # display scaling (DPI / 96); layout is in 96-DPI design units
 SMOOTH = 4  # shapes are drawn this many times larger, then scaled down smoothly
-DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND = 33, 2
+DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND, DWMWCP_DONOTROUND = 33, 2, 1
+DWMWA_COLOR_NONE = 0xFFFFFFFE
 DWMWA_BORDER_COLOR = 34
 WM_DPICHANGED = 0x02E0
 
@@ -178,12 +192,21 @@ def _smooth_well(hdc, box):
     _smooth(hdc, box, BG, SECONDARY, radius=_px(10))
 
 
-def _round_corners(hwnd):
+def _round_corners(hwnd, round_=True):
     """Windows 11 draws the bar's corners anti-aliased, with its shadow and a
     hairline border. False before Windows 11, where a (stepped) region is
-    the only way to round them."""
+    the only way to round them. ``round_=False`` turns all of it off, for the
+    tucked pill: a frame and shadow around a few pixels look like a box."""
 
     dwm = ctypes.windll.dwmapi
+    if not round_:
+        for attribute, value in (
+            (DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_DONOTROUND),
+            (DWMWA_BORDER_COLOR, DWMWA_COLOR_NONE),
+        ):
+            setting = ctypes.c_uint(value)
+            dwm.DwmSetWindowAttribute(ctypes.c_void_p(hwnd), attribute, ctypes.byref(setting), 4)
+        return True
     preference = ctypes.c_int(DWMWCP_ROUND)
     if dwm.DwmSetWindowAttribute(
         ctypes.c_void_p(hwnd), DWMWA_WINDOW_CORNER_PREFERENCE, ctypes.byref(preference), 4
@@ -333,7 +356,11 @@ def _wnd_proc(hwnd, msg, wparam, lparam):
     if msg == win32con.WM_PAINT:
         hdc, paint = win32gui.BeginPaint(hwnd)
         win32gui.FillRect(hdc, win32gui.GetClientRect(hwnd), _brush)
-        if island is not None:
+        if island is not None and island.hidden:  # the tucked pill (its region shapes it)
+            color = win32gui.CreateSolidBrush(ACCENT if island.strip else PILL)
+            win32gui.FillRect(hdc, win32gui.GetClientRect(hwnd), color)
+            win32gui.DeleteObject(color)
+        elif island is not None:
             wide = island.expanded or island.asking
             middle = 36 if wide else 28  # the top row's centre line
             _smooth(hdc, _px(17, middle - 5, 27, middle + 5), BG, ACCENT, round_=False)
@@ -619,11 +646,12 @@ class Island:
         self.quit_button = win32gui.CreateWindowEx(
             0, "BUTTON", "Quit", style, 0, 0, 0, 0, self.hwnd, ID_QUIT, module, None
         )
-        for hidden in (self.stop_button, self.send_button):
-            win32gui.ShowWindow(hidden, win32con.SW_HIDE)
-        if not self.hotkey_available:
-            win32gui.ShowWindow(self.hide_button, win32con.SW_HIDE)
+        for hidden in (self.stop_button, self.send_button, self.hide_button):
+            win32gui.ShowWindow(hidden, win32con.SW_HIDE)  # tucking is automatic now
+        self._hover_since = self._left_since = None
         self._resize(False)  # initial placement must respect a top/side taskbar
+        self.hidden, self.peek_armed = True, True
+        self._tuck()  # at rest: a pill at the top edge, not a bar over the page
         win32gui.ShowWindow(self.hwnd, win32con.SW_SHOWNOACTIVATE)
         win32gui.UpdateWindow(self.hwnd)
 
@@ -751,18 +779,78 @@ class Island:
         )
 
     def hide(self):
-        if self.app.busy or not self.hotkey_available:
-            return  # the Stop surface stays reachable during work
+        """Tuck the bar into the pill. Never while work runs: Stop stays."""
+
+        if self.app.busy:
+            return
+        if self.asking:
+            self.fold()
         self.peek_armed = False  # the pointer is on the bar now; peek after it leaves
         self._notice_until = 0.0
         self.auto_revealed = False
         self.hidden = True
-        win32gui.ShowWindow(self.hwnd, win32con.SW_HIDE)
+        self._hover_since = self._left_since = None
+        self._tuck()
+
+    def _bar_children(self):
+        return (self.ask_button, self.open_button, self.quit_button)
+
+    def _tuck(self):
+        for child in (*self._bar_children(), self.stop_button, *self._panel()):
+            win32gui.ShowWindow(child, win32con.SW_HIDE)
+        style = win32gui.GetWindowLong(self.hwnd, win32con.GWL_EXSTYLE)
+        # Click-through: the pill never takes a click meant for what is under
+        # it; it is found by where the pointer rests, not by clicks.
+        win32gui.SetWindowLong(
+            self.hwnd,
+            win32con.GWL_EXSTYLE,
+            style | win32con.WS_EX_LAYERED | win32con.WS_EX_TRANSPARENT,
+        )
+        win32gui.SetLayeredWindowAttributes(self.hwnd, 0, 235, win32con.LWA_ALPHA)
+        width, height = scaled(TUCKED)
+        left, _, right, _ = win32gui.GetWindowRect(self.hwnd)
+        monitor = win32api.MonitorFromWindow(
+            self.hwnd, win32con.MONITOR_DEFAULTTONEAREST
+        )
+        top = win32api.GetMonitorInfo(monitor)["Monitor"][1]
+        win32gui.SetWindowPos(
+            self.hwnd, 0, (left + right - width) // 2, top, width, height,
+            win32con.SWP_NOZORDER | win32con.SWP_NOACTIVATE,
+        )
+        _round_corners(self.hwnd, round_=False)
+        win32gui.SetWindowRgn(  # the pill's own shape, ends fully round
+            self.hwnd,
+            win32gui.CreateRoundRectRgn(0, 0, width + 1, height + 1, height, height),
+            True,
+        )
+        win32gui.InvalidateRect(self.hwnd, None, True)
 
     def show(self, *, automatic=False):
-        self._resize(self.expanded)  # a disconnected monitor may have held it
+        was_tucked = self.hidden
         self.hidden = False
         self.auto_revealed = automatic
+        self._hover_since = self._left_since = None
+        if was_tucked:
+            style = win32gui.GetWindowLong(self.hwnd, win32con.GWL_EXSTYLE)
+            win32gui.SetWindowLong(
+                self.hwnd,
+                win32con.GWL_EXSTYLE,
+                style & ~(win32con.WS_EX_LAYERED | win32con.WS_EX_TRANSPARENT),
+            )
+            left, top, _, _ = win32gui.GetWindowRect(self.hwnd)
+            work_top = win32api.GetMonitorInfo(
+                win32api.MonitorFromWindow(self.hwnd, win32con.MONITOR_DEFAULTTONEAREST)
+            )["Work"][1]
+            win32gui.SetWindowPos(  # out from the pill, just below the top edge
+                self.hwnd, 0, left, work_top + _px(8), 0, 0,
+                win32con.SWP_NOZORDER | win32con.SWP_NOACTIVATE | win32con.SWP_NOSIZE,
+            )
+            for child in self._bar_children():
+                win32gui.ShowWindow(child, win32con.SW_SHOWNA)
+            if self.dwm_corners:  # Windows 11 rounds and frames the bar again
+                win32gui.SetWindowRgn(self.hwnd, None, True)
+                _round_corners(self.hwnd)
+        self._resize(self.expanded)  # a disconnected monitor may have held it
         win32gui.ShowWindow(self.hwnd, win32con.SW_SHOWNOACTIVATE)
 
     def tick(self):
@@ -816,18 +904,36 @@ class Island:
         )  # hold-to-talk
         expanded = bool(self.app.busy) or listening or self.clock() < self._notice_until
         hovered = self._hovered()
+        now = self.clock()
+        if hovered:
+            self._left_since = None
+            if self._hover_since is None:
+                self._hover_since = now
+        else:
+            self._hover_since = None
+            if self._left_since is None:
+                self._left_since = now
         if self.hidden and not hovered:
             self.peek_armed = True
-        if self.hidden and (expanded or (hovered and self.peek_armed)):
+        rested = hovered and now - self._hover_since >= PEEK_DWELL_S
+        if self.hidden and (expanded or (rested and self.peek_armed)):
             self.show(automatic=True)
-        elif self.auto_revealed and not expanded and not self.asking and not hovered:
+        elif (
+            not self.hidden
+            and not expanded
+            and not self.asking
+            and not hovered
+            and now - self._left_since >= TUCK_AFTER_S
+        ):
             self.hide()
-        if expanded != self.expanded:
+        if expanded != self.expanded and not self.hidden:
             self._resize(expanded)
+        elif self.hidden:
+            self.expanded = expanded
         win32gui.ShowWindow(
             self.ask_button,
             win32con.SW_HIDE
-            if self.app.busy and not self.asking
+            if self.hidden or (self.app.busy and not self.asking)
             else win32con.SW_SHOWNA,
         )
         title, detail = (
@@ -839,20 +945,16 @@ class Island:
             win32gui.InvalidateRect(self.hwnd, None, True)
         busy = bool(self.app.busy)
         # Step aside for a full-screen app, never while work runs (Stop stays reachable).
-        covered = not busy and not self.asking and not self.hidden and _fullscreen()
+        covered = not busy and not self.asking and _fullscreen()
         if covered != self.covered:
             self.covered = covered
-            if covered:
-                win32gui.ShowWindow(self.hwnd, win32con.SW_HIDE)
-            elif not self.hidden:
-                win32gui.ShowWindow(self.hwnd, win32con.SW_SHOWNOACTIVATE)
-        win32gui.ShowWindow(
-            self.stop_button, win32con.SW_SHOWNA if busy else win32con.SW_HIDE
-        )
-        if self.hotkey_available:
             win32gui.ShowWindow(
-                self.hide_button, win32con.SW_HIDE if busy else win32con.SW_SHOWNA
+                self.hwnd, win32con.SW_HIDE if covered else win32con.SW_SHOWNOACTIVATE
             )
+        win32gui.ShowWindow(
+            self.stop_button,
+            win32con.SW_SHOWNA if busy and not self.hidden else win32con.SW_HIDE,
+        )
         self.companion.show(
             companion_label(
                 self.app,
@@ -947,8 +1049,8 @@ class Island:
         places = {
             self.ask_button: (189 if wide else 139, y, 52, 38),
             self.open_button: (247 if wide else 197, y, 56, 38),
-            self.hide_button: (309 if wide else 259, y, 56 if wide else 45, 38),
-            self.quit_button: (371 if wide else 310, y, 52 if wide else 54, 38),
+            self.hide_button: (0, 0, 0, 0),  # tucking is automatic
+            self.quit_button: (371 if wide else 259, y, 52 if wide else 54, 38),
             self.stop_button: (309, 17, 56, 38),
             self.input: (20, 83, 332, 22),
             self.send_button: (366, 73, 58, 36),

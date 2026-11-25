@@ -7,7 +7,7 @@ import time
 import pytest
 
 from ghostcursor.workspace import island as island_module
-from ghostcursor.workspace.island import ASKING, COMPACT, EXPANDED, scaled, HOTKEY_ID, ID_ASK, ID_HIDE, ID_OPEN, ID_QUIT, ID_RESEARCH, ID_SEND, ID_STOP, ID_TALK, SHOW_MESSAGE, Island, _status, _wnd_proc
+from ghostcursor.workspace.island import ASKING, COMPACT, EXPANDED, TUCKED, PEEK_DWELL_S, scaled, HOTKEY_ID, ID_ASK, ID_HIDE, ID_OPEN, ID_QUIT, ID_RESEARCH, ID_SEND, ID_STOP, ID_TALK, SHOW_MESSAGE, Island, _status, _wnd_proc
 
 
 class StubApp:
@@ -64,7 +64,14 @@ def test_native_island_opens_stops_and_quits_without_acting_on_desktop():
     island = Island(app, "http://127.0.0.1:1/?t=local", open_window, clock=lambda: now[0])
     try:
         assert win32gui.IsWindow(island.hwnd)
-        assert win32gui.GetWindowLong(island.hwnd, win32con.GWL_EXSTYLE) & win32con.WS_EX_TOPMOST
+        style = win32gui.GetWindowLong(island.hwnd, win32con.GWL_EXSTYLE)
+        assert style & win32con.WS_EX_TOPMOST
+        # At rest: a click-through pill at the top edge, covering nothing.
+        assert island.hidden and style & win32con.WS_EX_TRANSPARENT
+        assert win32gui.GetWindowRect(island.hwnd)[2] - win32gui.GetWindowRect(island.hwnd)[0] == scaled(TUCKED)[0]
+        assert not win32gui.IsWindowVisible(island.open_button)
+        island.show()
+        assert not win32gui.GetWindowLong(island.hwnd, win32con.GWL_EXSTYLE) & win32con.WS_EX_TRANSPARENT
         assert win32gui.GetWindowRect(island.hwnd)[2] - win32gui.GetWindowRect(island.hwnd)[0] == scaled(COMPACT)[0]
         assert win32gui.IsWindowVisible(island.open_button)
         assert win32gui.GetWindowText(island.quit_button) == "Quit"
@@ -81,7 +88,7 @@ def test_native_island_opens_stops_and_quits_without_acting_on_desktop():
         assert island.expanded  # the finished result remains visible briefly
         now[0] += 13
         island.tick()
-        assert not island.expanded
+        assert not island.expanded and island.hidden  # tucked once nothing needs it
         _wnd_proc(island.hwnd, win32con.WM_COMMAND, ID_OPEN, 0)
         _wnd_proc(island.hwnd, win32con.WM_COMMAND, ID_STOP, 0)
         assert opened_event.wait(1)
@@ -106,8 +113,7 @@ def test_island_hide_recall_and_result_auto_reveal():
     registered = island.hotkey_available
     island.hotkey_available = True  # exercise visibility even if another app owns the shortcut
     try:
-        _wnd_proc(island.hwnd, win32con.WM_COMMAND, ID_HIDE, 0)
-        assert island.hidden and not win32gui.IsWindowVisible(island.hwnd)
+        assert island.hidden and win32gui.IsWindowVisible(island.hwnd)  # the pill
         win32gui.PostMessage(island.hwnd, SHOW_MESSAGE, 0, 0)
         island.tick()
         assert not island.hidden and win32gui.IsWindowVisible(island.hwnd)
@@ -121,7 +127,7 @@ def test_island_hide_recall_and_result_auto_reveal():
         island.tick()
         assert not island.hidden and island.auto_revealed
         island.hide()
-        assert win32gui.IsWindowVisible(island.hwnd)  # Stop surface cannot be hidden
+        assert not island.hidden  # the Stop surface cannot be tucked away
         app.busy = ""
         app.background_jobs.append({"id": "new", "state": "finished"})
         island.tick()
@@ -132,7 +138,7 @@ def test_island_hide_recall_and_result_auto_reveal():
         assert opened == ["http://127.0.0.1:1/?t=local#work"]
         now[0] += 13
         island.tick()
-        assert island.hidden and not win32gui.IsWindowVisible(island.hwnd)
+        assert island.hidden and not win32gui.IsWindowVisible(island.open_button)
     finally:
         island.hotkey_available = registered
         win32gui.DestroyWindow(island.hwnd)
@@ -240,11 +246,16 @@ def test_initial_island_placement_respects_a_top_taskbar(monkeypatch):
     import win32gui
 
     monkeypatch.setattr(win32api, "MonitorFromWindow", lambda *args: 1)
-    monkeypatch.setattr(win32api, "GetMonitorInfo", lambda monitor: {"Work": (0, 64, 1920, 1080)})
+    monkeypatch.setattr(
+        win32api, "GetMonitorInfo",
+        lambda monitor: {"Work": (0, 64, 1920, 1080), "Monitor": (0, 0, 1920, 1080)},
+    )
     island = Island(StubApp(), "http://127.0.0.1:1/?t=local", lambda url: None)
     try:
+        assert win32gui.GetWindowRect(island.hwnd)[1] == 0  # the pill sits on the top edge
+        island.show()
         left, top, right, bottom = win32gui.GetWindowRect(island.hwnd)
-        assert top == 64 and bottom <= 1080
+        assert top == 64 + island_module._px(8) and bottom <= 1080
         assert 0 <= left and right <= 1920
     finally:
         win32gui.DestroyWindow(island.hwnd)
@@ -264,8 +275,10 @@ def test_shortcut_conflict_keeps_hide_unavailable():
         try:
             assert not island.hotkey_available
             assert not win32gui.IsWindowVisible(island.hide_button)
+            island.show()
             _wnd_proc(island.hwnd, win32con.WM_COMMAND, ID_HIDE, 0)
-            assert not island.hidden and win32gui.IsWindowVisible(island.hwnd)
+            # Without the shortcut the pill still brings it back.
+            assert island.hidden and win32gui.IsWindowVisible(island.hwnd)
         finally:
             win32gui.DestroyWindow(island.hwnd)
     finally:
@@ -379,24 +392,36 @@ def test_a_hidden_bar_peeks_when_the_pointer_comes_to_it(monkeypatch):
     registered = island.hotkey_available
     island.hotkey_available = True
     try:
+        island.show()
         left, top, right, bottom = win32gui.GetWindowRect(island.hwnd)
         on_bar = ((left + right) // 2, (top + bottom) // 2)
         pointer = [on_bar]
         monkeypatch.setattr(island_module, "_cursor", lambda: pointer[0])
         _wnd_proc(island.hwnd, win32con.WM_COMMAND, ID_HIDE, 0)
+        left, top, right, bottom = win32gui.GetWindowRect(island.hwnd)
+        on_pill = ((left + right) // 2, top + 2)
+        pointer[0] = on_pill
         island.tick()
-        assert island.hidden  # the pointer is still where Hide was clicked: no instant return
+        time.sleep(PEEK_DWELL_S + 0.05)
+        island.tick()
+        assert island.hidden  # the pointer is still where it tucked: no instant return
         pointer[0] = (-30000, -30000)
         island.tick()
         assert island.hidden and island.peek_armed
-        pointer[0] = on_bar
+        pointer[0] = on_pill
         island.tick()
-        assert not island.hidden and win32gui.IsWindowVisible(island.hwnd)
+        assert island.hidden  # passing over the pill does not open it
+        time.sleep(PEEK_DWELL_S + 0.05)
+        island.tick()
+        assert not island.hidden and win32gui.IsWindowVisible(island.open_button)
         island.tick()
         assert not island.hidden  # stays while the pointer rests on it
         pointer[0] = (-30000, -30000)
         island.tick()
-        assert island.hidden  # and folds away when it leaves
+        assert not island.hidden  # a moment's grace after the pointer leaves
+        time.sleep(island_module.TUCK_AFTER_S + 0.05)
+        island.tick()
+        assert island.hidden  # then tucks away
     finally:
         island.hotkey_available = registered
         win32gui.DestroyWindow(island.hwnd)
@@ -426,7 +451,7 @@ def test_bar_shapes_are_anti_aliased_and_sizes_follow_display_scaling(monkeypatc
     import win32gui
 
     monkeypatch.setattr(island_module, "_scale", 1.25)
-    assert scaled(COMPACT) == (480, 70) and island_module._px(10) == 12
+    assert scaled(COMPACT) == (408, 70) and island_module._px(10) == 12
     width, height = 60, 24
     screen = win32gui.GetDC(0)
     memory = win32gui.CreateCompatibleDC(screen)
@@ -462,6 +487,7 @@ def test_the_bar_rescales_when_dragged_to_a_monitor_with_other_scaling():
     start = island_module._scale
     island = Island(StubApp(), "http://127.0.0.1:1/?t=local", lambda url: None)
     try:
+        island.show()
         left, top, _, _ = win32gui.GetWindowRect(island.hwnd)
         dpi = round(start * 96 * 1.5)
         width, height = (round(v * dpi / 96) for v in COMPACT)
@@ -488,7 +514,7 @@ def test_buttons_light_under_the_pointer_and_only_one_is_amber():
 
     island = Island(StubApp(), "http://127.0.0.1:1/?t=local", lambda url: None)
     try:
-        win32gui.ShowWindow(island.hwnd, win32con.SW_SHOWNOACTIVATE)
+        island.show()
         island_module._pump_dialog(island.hwnd)
 
         def colour(button):
