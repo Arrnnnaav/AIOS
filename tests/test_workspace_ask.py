@@ -93,7 +93,7 @@ def test_ask_empty_question_and_no_model(tmp_path):
     brain.close()
 
     ws2, brain2 = _ws(tmp_path, AskGateway(fail=True))
-    assert "not available" in ws2.ask("q", "m")
+    assert "no model answered" in ws2.ask("q", "m")
     brain2.close()
 
 
