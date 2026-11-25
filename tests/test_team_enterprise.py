@@ -62,7 +62,7 @@ def test_disable_act_stops_the_harness_before_any_input(monkeypatch):
     target = SimpleNamespace(rect=(0, 0, 10, 10), name="Save", control_type="Button")
     with pytest.raises(PermissionError, match="guide, not act"):
         act_mod.perform(
-            step, target, click=lambda x, y: sent.append((x, y)), send=sent.append
+            step, target, window=7, click=lambda x, y: sent.append((x, y)), send=sent.append
         )
     assert sent == []
 

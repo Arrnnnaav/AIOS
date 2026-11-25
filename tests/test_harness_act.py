@@ -25,6 +25,14 @@ def _nothing_held(monkeypatch):
     monkeypatch.setattr(act, "held_input", lambda: False)
 
 
+@pytest.fixture
+def fake_bound(monkeypatch):
+    """perform() needs a bound window; these tests use the fake handle 7 and
+    count the point and the focus as on it when they name that handle."""
+
+    monkeypatch.setattr(act, "_on_bound_window", lambda root, window: root == window)
+
+
 class Clock:
     def __init__(self):
         self.now = 0.0
@@ -116,14 +124,14 @@ def test_a_failed_action_blocks_instead_of_retrying_blind():
             target,
             send=lambda e: None,
             click=lambda x, y: None,
-            check=lambda x, y, window: None,
-        ),
+            check=lambda x, y, window: None, window=7, focus=lambda: 7),
     )
     frame = _frame([_c(1)])
     session.tick(frame, confirm=True)
     assert session.tick(frame).phase is Phase.BLOCKED
 
 
+@pytest.mark.usefixtures("fake_bound")
 def test_perform_clicks_the_observed_centre_then_sends_the_action():
     clicks, sent = [], []
     target = _frame([_c(1, "Title", "Edit", rect=(100, 200, 300, 240))]).candidates[0]
@@ -136,8 +144,7 @@ def test_perform_clicks_the_observed_centre_then_sends_the_action():
             send=sent.append,
             click=lambda x, y: clicks.append((x, y)),
             pause=lambda s: None,
-            check=lambda x, y, window: None,
-        )
+            check=lambda x, y, window: None, window=7, focus=lambda: 7)
 
     assert run("click") == "clicked Title" and clicks == [(200, 220)] and not sent
     run("type", "hi\n")
@@ -221,8 +228,7 @@ def test_a_blocked_desktop_or_elevated_window_gets_no_input():
             PlanStep("s", E.TITLE_CHANGES),
             target,
             click=lambda x, y: clicks.append((x, y)),
-            check=lambda x, y, window: "that window runs as administrator",
-        )
+            check=lambda x, y, window: "that window runs as administrator", window=7, focus=lambda: 7)
     assert clicks == []
 
 
@@ -314,6 +320,7 @@ def test_step_verification_lets_the_step_stand_when_jev_is_unsure(monkeypatch):
     assert session.completed == [(1, "acted (Jev: likely done)")]  # fail-open
 
 
+@pytest.mark.usefixtures("fake_bound")
 def test_paste_text_carries_known_text_then_restores_the_clipboard():
     """Cross-app context carry (D182 activation): paste_text puts Orbyn's text
     on the clipboard, focuses the observed control, pastes with ctrl+v, then
@@ -333,8 +340,7 @@ def test_paste_text_carries_known_text_then_restores_the_clipboard():
         check=lambda x, y, window: None,
         get_clip=lambda: "USER PRIOR",
         set_clip=clip_writes.append,
-        later=lambda job: job(),
-    )
+        later=lambda job: job(), window=7, focus=lambda: 7)
     assert out == "pasted 13 characters"
     assert clicks == [(200, 220)]  # focused the observed control first
     assert [e.u.ki.wVk for e in sent[0]] == [0x11, 0x56, 0x56, 0x11]  # ctrl+v
@@ -342,6 +348,7 @@ def test_paste_text_carries_known_text_then_restores_the_clipboard():
     assert clip_writes == ["221B Baker St", "USER PRIOR"]
 
 
+@pytest.mark.usefixtures("fake_bound")
 def test_paste_text_restores_the_clipboard_even_if_the_paste_fails():
     """The guard (D018 mutation target): the restore is in a finally, so a
     failed paste still puts the user's clipboard back -- Orbyn's text is never
@@ -363,12 +370,12 @@ def test_paste_text_restores_the_clipboard_even_if_the_paste_fails():
             check=lambda x, y, window: None,
             get_clip=lambda: "USER PRIOR",
             set_clip=clip_writes.append,
-            later=lambda job: job(),
-        )
+            later=lambda job: job(), window=7, focus=lambda: 7)
     assert clip_writes[-1] == "USER PRIOR"  # restored despite the failure
     assert "secret-carry" not in clip_writes[-1:]  # ours is not what's left
 
 
+@pytest.mark.usefixtures("fake_bound")
 def test_paste_text_with_no_text_touches_nothing():
     target = _frame([_c(1, "Body", "Edit")]).candidates[0]
     clip_writes, clicks = [], []
@@ -381,8 +388,7 @@ def test_paste_text_with_no_text_touches_nothing():
         check=lambda x, y, window: None,
         get_clip=lambda: "USER PRIOR",
         set_clip=clip_writes.append,
-        later=lambda job: job(),
-    )
+        later=lambda job: job(), window=7, focus=lambda: 7)
     assert out == "nothing to paste" and clip_writes == []
 
 
@@ -401,11 +407,11 @@ def test_paste_text_is_refused_on_a_blocked_or_elevated_window():
             check=lambda x, y, window: "that window runs as administrator",
             get_clip=lambda: "PRIOR",
             set_clip=clip_writes.append,
-            later=lambda job: job(),
-        )
+            later=lambda job: job(), window=7, focus=lambda: 7)
     assert clip_writes == []  # nothing written to the clipboard
 
 
+@pytest.mark.usefixtures("fake_bound")
 def test_paste_text_restore_failure_does_not_mask_the_real_error():
     """Tier-1 review followup: if restoring the clipboard itself fails, that
     must not propagate or hide the paste's own error."""
@@ -429,8 +435,7 @@ def test_paste_text_restore_failure_does_not_mask_the_real_error():
             check=lambda x, y, window: None,
             get_clip=lambda: "PRIOR",
             set_clip=flaky_set,
-            later=lambda job: job(),
-        )
+            later=lambda job: job(), window=7, focus=lambda: 7)
     # happy paste, restore fails -> still returns cleanly (error swallowed)
     calls["n"] = 0
     out = act.perform(
@@ -442,8 +447,7 @@ def test_paste_text_restore_failure_does_not_mask_the_real_error():
         check=lambda x, y, window: None,
         get_clip=lambda: "PRIOR",
         set_clip=flaky_set,
-        later=lambda job: job(),
-    )
+        later=lambda job: job(), window=7, focus=lambda: 7)
     assert out == "pasted 2 characters"
 
 
@@ -583,8 +587,7 @@ def test_a_held_key_means_nothing_is_clicked_or_sent():
             pause=lambda s: None,
             click=lambda x, y: clicks.append((x, y)),
             send=sent.append,
-            check=lambda x, y, window: None,
-        )
+            check=lambda x, y, window: None, window=7, focus=lambda: 7)
     assert clicks == [] and sent == []
 
 
@@ -608,6 +611,42 @@ def test_a_busy_user_makes_teach_wait_a_tick_instead_of_blocking():
     busy[0] = False
     session.tick(frame)
     assert done == ["Insert"]
+
+
+@pytest.mark.parametrize("chord", ["win+r", "alt+tab", "ctrl+bogus", "", "esc"])
+def test_a_plan_with_a_chord_that_cannot_be_sent_stops_before_approval(chord):
+    # FOLLOWUPS (review of 8f8e092): a bad chord stopped the run after approval.
+    plan = TeachPlan((
+        PlanStep("Click Insert", E.CHOSEN_STATE_CHANGES),
+        PlanStep("Press the keys", E.CHOSEN_STATE_CHANGES, action="keys", text=chord),
+    ))
+    done = []
+    session = ModelTeachSession(
+        "x", FakeGateway(plan, [_choice("c1")]), SyncSlot(), clock=lambda: 0.0, plan=plan,
+        act=lambda step, target: done.append(target.name) or "ok",
+    )
+    shown = session.tick(_frame([_c(1)]), confirm=True)
+    assert shown.phase is Phase.BLOCKED and "step 2" in shown.message and done == []
+
+
+def test_a_key_that_stays_held_ends_the_session_with_a_reason():
+    # FOLLOWUPS (review of 436d779): the retry had no cap.
+    from ghostcursor.harness.teach import MAX_BUSY_TICKS
+
+    plan = TeachPlan((PlanStep("Click Insert", E.CHOSEN_STATE_CHANGES),))
+
+    def perform(step, target):
+        raise act.UserBusy("you are holding a key or mouse button, so Orbyn is waiting")
+
+    session = ModelTeachSession(
+        "x", FakeGateway(plan, [_choice("c1")]), SyncSlot(), clock=lambda: 0.0, plan=plan, act=perform
+    )
+    frame = _frame([_c(1)])
+    session.tick(frame, confirm=True)  # approve; the first try waits
+    for _ in range(MAX_BUSY_TICKS - 1):
+        assert session.tick(frame).phase is Phase.SHOWING
+    shown = session.tick(frame)
+    assert shown.phase is Phase.BLOCKED and "held down" in shown.message
 
 
 def test_every_event_orbyn_sends_carries_its_signature():
@@ -636,6 +675,7 @@ def test_the_held_key_scan_never_reads_escape(monkeypatch):
     assert 0x1B not in read and {0x01, 0x10, 0x41} <= set(read)
 
 
+@pytest.mark.usefixtures("fake_bound")
 def test_a_whole_step_with_a_held_key_stays_inside_the_stop_budget():
     pauses, calls = [], [0]
 
@@ -652,8 +692,7 @@ def test_a_whole_step_with_a_held_key_stays_inside_the_stop_budget():
         send=lambda e: None,
         check=lambda x, y, window: None,
         set_clip=lambda t: None,
-        get_clip=lambda: None,
-    )
+        get_clip=lambda: None, window=7, focus=lambda: 7)
     assert sum(pauses) < 0.5  # D020: Stop reaches a running Act within 0.5 s
 
 
@@ -714,10 +753,10 @@ def _paste(target, **kw):
     )
     values.update(kw)
     return act.perform(
-        PlanStep("Paste", E.CHOSEN_STATE_CHANGES, "paste_text", "ours"), target, **values
-    )
+        PlanStep("Paste", E.CHOSEN_STATE_CHANGES, "paste_text", "ours"), target, **values, window=7, focus=lambda: 7)
 
 
+@pytest.mark.usefixtures("fake_bound")
 def test_paste_text_restores_after_the_step_returns():
     """The 0.2 s wait and the restore run off the step, so Stop is read again
     within D020's 0.5 s; the restore still happens."""
@@ -749,6 +788,7 @@ def test_paste_text_over_a_picture_is_refused_before_any_input():
     assert clicks == [] and clip_writes == []
 
 
+@pytest.mark.usefixtures("fake_bound")
 def test_a_new_step_waits_for_the_last_paste_to_restore():
     import threading
 
@@ -767,8 +807,7 @@ def test_a_new_step_waits_for_the_last_paste_to_restore():
         target,
         click=lambda x, y: seen.append(list(clip_writes)),
         pause=lambda s: None,
-        check=lambda x, y, window: None,
-    )
+        check=lambda x, y, window: None, window=7, focus=lambda: 7)
     assert seen == [["ours", "PRIOR"]]  # restored before the click went out
 
 
@@ -944,3 +983,16 @@ def test_a_known_wrong_dpi_mode_refuses_to_draw_pointers(monkeypatch, awareness,
     else:
         teach_live._require_physical_pixels()
 
+
+
+@pytest.mark.parametrize("window", [None, 0])
+def test_perform_without_a_bound_window_sends_nothing(window):
+    # FOLLOWUPS (review of d0f3e5a): perform(window=None) skipped the check.
+    sent = []
+    step = PlanStep("Click Insert", E.CHOSEN_STATE_CHANGES)
+    with pytest.raises(PermissionError, match="no bound window"):
+        act.perform(
+            step, _c(1), window=window, check=lambda x, y, w: None,
+            click=lambda x, y: sent.append((x, y)), send=sent.append,
+        )
+    assert sent == []

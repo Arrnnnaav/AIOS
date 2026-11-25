@@ -40,6 +40,10 @@ MARGIN = 0.2
 MAX_FRAME_AGE_S = 3.0
 #: Re-asks per step before the session says it is stuck.
 MAX_REASKS = 3
+#: Act: ticks in a row a step may wait for a held key or button before the
+#: session stops with a reason (a key that reads as stuck down -- a remote
+#: session, a ghost key, a pedal -- would otherwise wait until the deadline).
+MAX_BUSY_TICKS = 40
 #: Act (D182): after acting, wait this long for the expected change, then
 #: count the step done anyway (typing rarely changes what UIA reports).
 ACT_SETTLE_S = 2.0
@@ -75,6 +79,23 @@ def _risky_chord(chord: str) -> bool:
         or (_CTRL in vks and bool(vks & {ord("W"), ord("Q"), _F4}))
         or bool(vks & {_DEL, _ENTER})
     )
+
+
+def _unsendable_chord(plan) -> str:
+    """Why a "keys" step of the plan could never be sent (an unknown key,
+    the Windows key, Alt+Tab, ESC), or "". Checked when the plan is shown,
+    so a bad chord stops the run before approval, not halfway through it."""
+
+    from ghostcursor.harness.act import chord_events
+
+    for n, step in enumerate(plan.steps, start=1):
+        if getattr(step, "action", "click") != "keys":
+            continue
+        try:
+            chord_events(getattr(step, "text", "") or "")
+        except ValueError as exc:
+            return f"step {n} cannot be done: {exc}; nothing was done"
+    return ""
 
 
 def needs_confirm(step, current) -> bool:
@@ -461,6 +482,10 @@ class ModelTeachSession:
             if policy.act_disabled():  # D187: say so before asking to approve
                 self._block("your organisation allows Orbyn to guide, not act")
                 return Display(self.phase, self.message)
+            bad = _unsendable_chord(self.plan)
+            if bad:  # before approval, not after earlier steps already acted
+                self._block(bad)
+                return Display(self.phase, self.message)
             if not confirm:
                 steps = "; ".join(
                     f"{n}. {s.instruction}"
@@ -565,11 +590,19 @@ class ModelTeachSession:
                     did = self.act(step, current)
                 except Exception as exc:  # a refused chord, a failed SendInput
                     if getattr(exc, "retry", False):  # the user is busy: next tick
+                        self._busy = getattr(self, "_busy", 0) + 1
+                        if self._busy > MAX_BUSY_TICKS:
+                            self._block(
+                                f"step {self.step + 1} waited too long: a key or mouse "
+                                "button still reads as held down (release it, then start again)"
+                            )
+                            return Display(self.phase, self.message)
                         self.message = f"{self._instruction()} -- {exc}"
                         return Display(self.phase, self.message)
                     self._block(f"could not act on step {self.step + 1}: {exc}")
                     return Display(self.phase, self.message)
                 self._acted_at = self.clock()
+                self._busy = 0
                 self.message = f"{self._instruction()} -- {did}"
                 return Display(self.phase, self.message, current)
             settled = (

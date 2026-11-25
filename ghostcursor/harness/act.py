@@ -404,7 +404,7 @@ def perform(
     step,
     target,
     *,
-    window: int | None = None,
+    window: int,
     send=_send,
     click=click_at,
     pause=time.sleep,
@@ -418,12 +418,15 @@ def perform(
 ) -> str:
     """Do ``step`` on ``target`` (a Candidate in the latest frame); returns a
     short description for the status line. ``window`` is the bound window
-    ``target`` was observed in; the live callers always pass it."""
+    ``target`` was observed in: required, so no caller can skip the check
+    that the point and the focus are still on that window."""
 
     from ghostcursor import policy
 
     if policy.act_disabled():  # D180: the organisation allows guidance only
         raise PermissionError("your organisation allows Orbyn to guide, not act")
+    if not window:
+        raise PermissionError("no bound window, so Orbyn will not act")
     left, top, right, bottom = target.rect
     x, y = (left + right) // 2, (top + bottom) // 2
     action = step.action
