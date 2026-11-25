@@ -54,7 +54,8 @@ SYSTEM_TWO = {
     "nvidia": ProviderConfig(
         "nvidia",
         "https://integrate.api.nvidia.com/v1",
-        "nvidia/nemotron-3-super-120b-a12b",
+        # nemotron-3-super-120b was retired (HTTP 410, 26 Nov 2026).
+        "nvidia/nemotron-3-ultra-550b-a55b",
         "nvidia",
         45.0,
         (("chat_template_kwargs", {"enable_thinking": False}),),

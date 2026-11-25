@@ -310,6 +310,23 @@ def _within(items, budget: int) -> list:
     return kept[::-1]
 
 
+
+def why_unavailable(exc) -> str:
+    """What the person can do when no model answered, in plain words."""
+
+    detail = str(exc)
+    if "usage_limit" in detail:
+        return (
+            "your ChatGPT plan has used up its allowance for apps like Orbyn; it "
+            "resets on OpenAI's schedule. Until then another model answers if one "
+            "is set up (Brain › Setup)"
+        )
+    if exc.kind.value == "not_configured":
+        return "no model is set up yet; add one in Brain › Setup"
+    if exc.kind.value == "rate_limited":
+        return "every model is at its limit right now; try again in a few minutes"
+    return "no model answered (check the connection, or Brain › Setup)"
+
 @dataclass
 class Workspace:
     topic: str
@@ -571,7 +588,7 @@ class Workspace:
                 cancelled=cancelled,
             )
         except ProviderError as exc:
-            return f"(no answer: the model is not available -- {exc.kind.value})"
+            return f"(no answer: {why_unavailable(exc)})"
         return answer.reply
 
     def discuss(self, message: str, *, cancelled=lambda: False) -> str:
@@ -594,7 +611,7 @@ class Workspace:
                 cancelled=cancelled,
             )
         except ProviderError as exc:
-            reply = f"(no reply: the model is not available -- {exc.kind.value})"
+            reply = f"(no reply: {why_unavailable(exc)})"
             self._say("assistant", reply)  # show the failure, don't vanish silently
             return reply
         self.suggestion, candidates = self._check(message, answer.memories)

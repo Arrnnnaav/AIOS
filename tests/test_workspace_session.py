@@ -566,3 +566,17 @@ def test_stop_reaches_the_checkpoint_and_is_not_counted_as_a_failure(tmp_path):
     ws._context("q")  # not backed off: the next message tries again
     assert ws.checkpoint[0] > 0
     brain.close()
+
+
+def test_a_failed_reply_says_why_in_plain_words():
+    from ghostcursor.providers.errors import FailureKind, ProviderError
+    from ghostcursor.workspace.session import why_unavailable
+
+    spent = ProviderError(
+        FailureKind.RATE_LIMITED,
+        "every discussion provider declined (rate_limited: chatgpt: "
+        "subscription_sharing_usage_limit_exceeded; unavailable: nvidia: HTTP 410)",
+    )
+    assert "ChatGPT plan" in why_unavailable(spent)
+    assert "Setup" in why_unavailable(ProviderError(FailureKind.NOT_CONFIGURED, "x"))
+    assert "limit" in why_unavailable(ProviderError(FailureKind.RATE_LIMITED, "x"))
