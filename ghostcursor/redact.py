@@ -79,7 +79,10 @@ _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
             r"(?i)(?<![A-Za-z0-9])[A-Za-z0-9_.-]{0,40}?"
             r"(?:password|passwd|pwd|secret|token|api[_-]?key|access[_-]?key|private[_-]?key)"
             r"[A-Za-z0-9_.-]{0,40}(?:\\?[\"'])?[ \t]{0,3}[:=][ \t]{0,3}(?:\\?[\"'])?"
-            r"(?!\[[A-Z]+_\d+\])(?P<key>[^\s\"'\\,;{}\[\]]{4,200})"
+            # The value may hold braces; only closing brackets at its very
+            # end stay, so JSON keeps its "}" (review 26 Nov: excluding them
+            # everywhere let "password={hunter2}" through in the clear).
+            r"(?!\[[A-Z]+_\d+\])(?P<key>[^\s\"'\\,;]{4,200}?)(?=[}\]]{0,8}(?:[\s\"'\\,;]|$))"
         ),
     ),
     ("IBAN", re.compile(r"\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b")),
@@ -99,6 +102,26 @@ _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
 #: (the Company Brain, knowledge.sqlite, scrubs these on write). Contact details -- email, phone, IP -- are
 #: legitimate company facts and stay; they are scrubbed on egress instead.
 SECRETS = frozenset({"PEM", "JWT", "KEY", "IBAN", "SSN", "CARD"})
+
+
+#: An address anywhere, for the one that directly follows a replaced one.
+_EMAIL_AT = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+\b")
+
+
+def _each_email(text: str, replace) -> str:
+    """Every address replaced, in linear time: a search starts only where a
+    run of address characters starts, and an address that follows the last
+    one directly (a+b@x.io joined by "+") is matched in place."""
+
+    pattern = dict(_PATTERNS)["EMAIL"]
+    out, last = [], 0
+    while (found := pattern.search(text, last)) is not None:
+        out += [text[last : found.start()], replace(found)]
+        last = found.end()
+        while (chained := _EMAIL_AT.match(text, last)) is not None:
+            out.append(replace(chained))
+            last = chained.end()
+    return "".join(out) + text[last:]
 
 
 def _luhn_ok(digits: str) -> bool:
@@ -203,13 +226,10 @@ def scrub(
     for category, pattern in _PATTERNS:
         if categories is not None and category not in categories:
             continue
-        text = pattern.sub(lambda m, c=category: _sub(c, m), text)
         if category == "EMAIL":
-            for _ in range(50):  # an address right after the last one replaced
-                again = pattern.sub(lambda m, c=category: _sub(c, m), text)
-                if again == text:
-                    break
-                text = again
+            text = _each_email(text, lambda m: _sub("EMAIL", m))
+            continue
+        text = pattern.sub(lambda m, c=category: _sub(c, m), text)
     terms = clean_terms(list(terms), 2 * MAX_TERMS)  # a person's and an organisation's
     if terms:
         # After the patterns, so a name inside an email address went with

@@ -360,3 +360,22 @@ def test_review_25_nov_email_scan_is_linear_and_json_keeps_its_braces():
     out = redact.scrub("x@a.io+y@b.io, z@c.io")[0]
     assert "@" not in out
     assert redact.scrub('{"password_len":12345}')[0].endswith("}")
+
+
+def test_review_26_nov_a_secret_holding_braces_is_still_hidden():
+    from ghostcursor.providers.envelope import Tainted
+
+    for text, secret in (
+        ("DB_PASSWORD=[Tr0ub4dor]", "Tr0ub4dor"),
+        ("password={hunter2pass}", "hunter2pass"),
+        ("pwd: [Kx9mQ2zR]", "Kx9mQ2zR"),
+        ('password: "{Zq8!rT4w}"', "Zq8!rT4w"),
+        ("password=ab{cdefgh}", "cdefgh"),
+        ("token: x}Y7pLm2QwErT", "Y7pLm2QwErT"),
+        ("api_key={sk1234567890abcdef}", "1234567890"),
+    ):
+        assert secret not in redact.scrub(text)[0], text
+        assert secret not in Tainted.of("screen_text", text).text, text
+    assert redact.scrub('{"password_len":12345}')[0] == '{"password_len":[KEY_1]}'
+    chain = "+".join(f"u{n}@d{n}.io" for n in range(60))
+    assert "@" not in redact.scrub(chain)[0]
