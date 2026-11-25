@@ -36,21 +36,23 @@ previous run. A user-level installer stages updates with rollback. Slash
 commands belong to the console (`python -m ghostcursor.workspace`), not the
 app window. Teach/Act release acceptance below is still open.
 
-**Phase 1 is substantially complete. Phase 3's "limited Act" has an implemented
-object-model boundary, but its 11 September 3/3 runs are diagnostic under D139.
-Act acceptance remains open: the UIA slice, animation catalog, fresh counted
-runs, independent desktop lanes, budget review, and D032 activation review
-still gate closure.**
-Phase 2 is partly built; its telemetry/sync conflict is resolved by D141 and
-re-sequenced by D147 (see the note under it). The agent/skills/marketplace program is recorded
-below, before Phase 4, and starts only after the activation review.
+**What is open now (25 November 2026).** Teach and Act through the harness
+(D182, D193) are built and covered by the hermetic lane, but have no counted
+live run: the latest Teach evidence is an offline replay of 21 PowerPoint
+steps (`docs/evidence/teach-replay-powerpoint-2026-11-15.md`,
+`teach-offline-powerpoint-2026-11-16.md`), and every live Act record in
+`docs/evidence/` comes from the retired plugin path. Next, in order: (1) live
+Teach, then Act, through the harness on two or three real applications, with
+the owner approving each Act plan (an agent may not), recorded in
+`docs/evidence/`; (2) the desktop lanes, one at a time; (3) release work: app
+signing, an update channel, a novice first-run trial.
 
-Interaction modes are canonical contracts in `ghostcursor/interaction.py`.
-Of the seven modes the planning docs name, the repo implements a narrower
-set — Ideate, Plan, Teach, Assist, Act — and Discuss, Autopilot and Watch are
-not modelled at all. That is a deliberate narrowing, not an oversight, but it
-means the mode list in `02_modular_ideation_execution.md` §4 is intent rather
-than current design.
+Phases 1-3 and the agent/marketplace program below describe the retired
+plugin path (D193) and stay as history. Their gates (the D032 activation
+review, counted campaigns, budgets) closed with it; Act now runs only through
+the harness, behind whole-plan approval, the risky-control check and ESC.
+The interaction-mode contracts (`ghostcursor/interaction.py`) went with it;
+the workspace's Chat, Plan, Ideate, Teach and Act are the modes today.
 
 ---
 
@@ -61,7 +63,8 @@ are an application-agnostic harness driven by a model, across several
 applications at once; PowerPoint is the test fixture (D164). Owner direction, 30 September 2026: guidance
 for any application comes from a large model plus Jev choosing among the
 controls the harness observed, instead of hand-curated per-application packs.
-Teach only; Act stays on the signed plugin path. Design:
+Act joined Teach on the harness for any application (D182); since D193 it
+is the only Act path. Design:
 `docs/superpowers/specs/2026-10-01-model-driven-teach-design.md`.
 
 Order: (1) provider gateway + Jev transport, (2) `ObservationFrame`, (3) corpus
@@ -85,7 +88,7 @@ section 4):
 | 2 | Ideate: 2-4 approaches with assumptions and unknowns; plan from the chosen one; the plan shows which memories informed it | MP3 Phase 10, Phase 9 retrieval | built |
 | 3 | Jev in the workspace: composer intent suggestion; Brain check beside the deterministic rule | D179 table | built |
 | 4 | Multiplayer V1 seed: hand a mission (goal, plan, sources) to a teammate as a file; what arrives is data, never their goal or authority | Unified 4.2 (YC RFS Multiplayer), MP7 | built |
-| 5 | Act from the workspace | MP0/MP4 | stays refused until the Act activation review is READY (tier 1) |
+| 5 | Act from the workspace | MP0/MP4 | built on the harness (D182, D193): whole-plan approval, risky controls ask, ESC stops; live measurement open |
 | 6 | Company Brain / Context Graph, self-maintaining APIs | Unified 4.1, 4.4; MP7, MP8 | later; needs D017-amendment and sandbox work first |
 
 ---
@@ -111,7 +114,7 @@ action.
 
 ---
 
-## Phase 1 — Reliable Guided Runtime
+## Phase 1 — Reliable Guided Runtime (history: plugin path, retired D193)
 
 > Core, VS Code plugin, intent normalization, declarative workflows, UI
 > perception, overlay, Ask/Pause/Stop, verification, safe failure, basic
@@ -159,7 +162,7 @@ outstanding.
 
 ---
 
-## Phase 3 — B2C
+## Phase 3 — B2C (history: plugin-path Act, retired D193)
 
 > Voice, skill model, personal memory, Experts, Teach/Assist, plugin packs,
 > limited Act, undo/recovery.
@@ -560,7 +563,7 @@ adapter or a signed generic UIA adapter (D108), on approved applications.
 
 ---
 
-## Agent, skills, and first-party marketplace program
+## Agent, skills, and first-party marketplace program (history: plugin marketplace retired D193)
 
 **Source:** the owner's plan of 11 September 2026
 (`ghostcursor_agent_skills_marketplace_plan.md`, kept outside the repo).
@@ -775,9 +778,11 @@ has a one-time, local first-run guide to the composer and Brain Setup
 Critic/Evaluation (`/critique`) reviews the current plan for gaps and risks
 before Act — advisory, read-only.
 
-**Not yet (recorded, not built):** `/crew` emitting a `/deck build` step for a
-one-goal research→outline→propose chain; dictation→`act.py` typing (tier-1,
-D006 amendment); capture→steps recording. These stay named, not faked.
+Built since: `/crew` can plan a `deck_build` step (research, outline, then a
+proposed build plan the user approves with /act; 25 Nov), and dictation types
+into the field the user clicked through `act.py` (D188, `/dictate type`).
+**Not yet (recorded, not built):** capture→steps recording. It stays named,
+not faked.
 
 ---
 
@@ -785,12 +790,12 @@ D006 amendment); capture→steps recording. These stay named, not faked.
 
 | Item | Deferred by |
 |---|---|
-| Mouse/keyboard synthesis | D006 — needs its own reviewed amendment |
+| Mouse/keyboard synthesis | **Not deferred.** D182: only in `harness/act.py` (and the browser drive's CDP input, D184), after whole-plan approval |
 | VLM perception tier 3 | Teach-only when it lands; never action authority |
-| Cross-application task graphs | D087/D090 single-plugin boundary |
+| Cross-application task graphs | Retired with the plugin system (D193); the harness binds several windows per session (D166) |
 | Telemetry, sync | D141 — off by default, events not content; not yet built |
 | Cloud reasoning models | **Not deferred.** D147 makes a configured cloud provider the trial-period default; local stays supported |
 | Side-effecting connectors | D141/D144 — scoped tokens, vault, audit, revocation first |
-| Key rotation and revocation | D144 design required before any re-key or marketplace stage |
+| Key rotation and revocation | Plugin keys retired (D193); the team bundle keeps a sequence per owner key, so a rotated key starts fresh (D187) |
 | In-place editing of user files | Needs backup/rollback/recovery decision |
 | Installer, tray, startup, web retrieval | `docs/superpowers/FOLLOWUPS.md` |
