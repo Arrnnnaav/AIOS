@@ -236,9 +236,12 @@ def test_speech_says_the_instruction_and_stops_cleanly():
     voice = type("V", (), {"Speak": lambda self, text, flags: calls.append((text, flags))})()
     speaker = speech.Speaker(voice)
     speaker.say("  Click   Save ")
+    assert speaker.wait()
     speaker.say("")
     speaker.stop()
+    assert speaker.wait()
     assert calls == [("Click Save", 3), ("", 3)]
+    speaker.close()
     assert speech.spoken("Step 2/5 (suggested): Click Save -- typed 4 characters") == "Click Save"
     assert speech.spoken("all steps done") == "all steps done"
 
@@ -252,6 +255,31 @@ def test_a_pc_without_a_voice_still_draws():
     speaker = speech.Speaker(type("V", (), {"Speak": broken})())
     speaker.say("Click Save")
     speaker.stop()
+    assert speaker.wait()
+    speaker.close()
+
+
+def test_a_slow_voice_never_holds_the_teach_loop():
+    # FOLLOWUPS (D189-D191 review): SAPI Speak ran on the Teach loop thread,
+    # and a first call can block while the audio device starts.
+    import threading
+    import time
+
+    from ghostcursor import speech
+
+    release = threading.Event()
+    voice = type("V", (), {"Speak": lambda self, text, flags: release.wait(5)})()
+    speaker = speech.Speaker(voice)
+    started = time.perf_counter()
+    speaker.say("Click Save")
+    speaker.say("Click Close")
+    speaker.stop()
+    assert time.perf_counter() - started < 0.05
+    release.set()
+    assert speaker.wait()
+    speaker.close()
+    speaker._thread.join(2)
+    assert not speaker._thread.is_alive()
 
 
 def test_esc_silences_the_voice(monkeypatch):

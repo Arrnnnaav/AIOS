@@ -607,6 +607,8 @@ def run_model_teach(
     finally:
         if speaker is not None:
             speaker.stop()  # ESC, Stop and the deadline silence it too (rule 4)
+            if hasattr(speaker, "close"):
+                speaker.close()  # its own thread ends; never waited on here
         session.stop()
         observer.stop()
         window.destroy_overlay_window(overlay)
