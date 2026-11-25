@@ -5,6 +5,7 @@ never the receiver's goal; anything outside the closed shape is refused."""
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -98,10 +99,13 @@ def test_app_saves_and_opens_a_handoff(tmp_path):
     app = App("sender", make_workspace=lambda: _sent(tmp_path)[0])
     app.downloads = tmp_path / "dl"
     path = app.handle("handoff_export", {"name": "Asha"})["path"]
+    again = app.handle("handoff_export", {"name": "Asha"})["path"]
     app.close()
+    assert again != path  # a second handoff never overwrites the first
     other = App("receiver", make_workspace=lambda: _ws(tmp_path, "receiver"))
-    data = (tmp_path / "dl" / "sender.orbyn-handoff.json").read_text(encoding="utf-8")
-    assert path.endswith("sender.orbyn-handoff.json")
+    data = open(path, encoding="utf-8").read()
+    name = Path(path).name
+    assert name.startswith("sender.orbyn-handoff-") and name.endswith(".json")
     assert other.handle("handoff_import", {"data": data}) == {"from": "Asha"}
     assert other.state()["plan"]["revision"] == 1
     other.close()

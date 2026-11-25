@@ -1683,8 +1683,7 @@ class App:
 
             def save():
                 text = handoff.export(ws, str(body.get("name", "")))
-                out = self.downloads / f"{ws.topic}.orbyn-handoff.json"
-                out.parent.mkdir(parents=True, exist_ok=True)
+                out = _fresh(self.downloads, f"{ws.topic}.orbyn-handoff", ".json")
                 out.write_text(text, encoding="utf-8", newline="\n")
                 return str(out)
 
