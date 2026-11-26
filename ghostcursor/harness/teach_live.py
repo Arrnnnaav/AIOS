@@ -460,6 +460,7 @@ def run_model_teach(
     sketch: bool = False,
     speak: bool = False,
     speaker=None,
+    rated=lambda: None,
 ) -> int:
     """``sketch`` (prototype) draws each step as a hand-drawn circle with an
     arrow from the previous step's control (harness/sketch.py). ``speak``
@@ -551,6 +552,8 @@ def run_model_teach(
         raise
     reported = 0
     shown = None
+    shown_target = None
+    apps_by_label = {b.label: b.identity.executable for b in bindings}
     code = 0
     if speak and speaker is None:
         from ghostcursor.speech import Speaker
@@ -570,8 +573,21 @@ def run_model_teach(
                 code = 3
                 break
             done = confirm()
+            verdict = rated()  # "right" / "wrong" on the pointer shown, or None
+            if verdict and shown_target is not None:
+                from ghostcursor.harness import ratings
+
+                ratings.record(
+                    verdict,
+                    app=apps_by_label.get(shown_target.window, ""),
+                    control_type=shown_target.control_type,
+                    step=session.step + 1,
+                )
+                if verdict == "wrong" and session.reject():
+                    say("Looking again without that control.")
             frame = observer.latest()  # one frame per tick, for Teach and the sketch
             display = session.tick(frame, confirm=done)
+            shown_target = display.target
             for number, why in session.completed[reported:]:
                 say(f"[done] step {number}: {why}")
             reported = len(session.completed)

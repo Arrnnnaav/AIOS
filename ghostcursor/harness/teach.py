@@ -366,7 +366,13 @@ class ModelTeachSession:
         envelope = self._envelope(
             frame, step=Tainted.of("model_plan_step", step.instruction)
         )
-        ids = frame.ids
+        # A control the person said was wrong for this step is never offered
+        # again for it (ratings.py); with none left, the step needs them.
+        rejected = getattr(self, "_rejected", set())
+        ids = tuple(c.cid for c in frame.candidates if (c.window, c.runtime_id) not in rejected)
+        if not ids:
+            self._block(f"step {self.step + 1}: no other control fits; do this step yourself")
+            return
         self._asked = frame
         look = self.look if self._looking else None
         self._asked_seen = False
@@ -407,10 +413,24 @@ class ModelTeachSession:
         else:
             self.phase, self.message = Phase.CHOOSING, f"re-looking ({reason})"
 
+    def reject(self) -> bool:
+        """The person says the control shown is the wrong one: never offer it
+        again for this step and look again. True if there was one shown."""
+
+        if self.phase is not Phase.SHOWING or self._chosen is None or self.act is not None:
+            return False  # Act has already acted by the time it shows; Teach only
+        rejected = getattr(self, "_rejected", set())
+        rejected.add((self._chosen.window, self._chosen.runtime_id))
+        self._rejected = rejected
+        self._target = None
+        self._reask("you said that was not the right control")
+        return True
+
     def _advance(self) -> None:
         self.slot.cancel()  # an answer for the step just left is never used
         self.step += 1
         self.reasks = 0
+        self._rejected = set()
         self._request = self._chosen = self._before = self._target = None
         self._acted_at = None
         self._looking = False  # each step starts text-only again
