@@ -852,6 +852,7 @@ class App:
             "read_aloud": settings.read_aloud(),
             "skills": _skill_names(self.skills_dir),
             "team_owner": _team_role() == "owner",
+            "runs": self.runs()[:10],
             "skill_repair": None
             if self.skill_repair is None
             else {"skill": self.skill_repair["skill"], "changes": self.skill_repair["changes"]},
@@ -924,6 +925,21 @@ class App:
                 task_skills.save_skill(repair["skill"], repair["plan"], dest_dir=self.skills_dir)
                 return {"updated": len(repair["changes"])}
             return {"updated": 0}
+        if action == "undo_plan":  # reverse the last Do-it-for-me run, as a plan to approve
+            last = next((r for r in self.runs() if r.get("mode") == "act" and r.get("done")), None)
+            if last is None:
+                raise ValueError("no Do it for me run to undo")
+            apps = ", ".join(last.get("apps") or []) or "the app"
+            need = (
+                f"Undo the last {last['done']} change(s) Orbyn just made in {apps}, "
+                "using the app's own Undo (its button, or the Edit menu's Undo), "
+                "once per change, and nothing else"
+            )
+            plan = self.run("Planning", lambda: ws._plan_for(need))
+            if plan is None:
+                raise ValueError("No plan: the model is not available.")
+            ws._propose(plan)
+            return {"steps": len(plan.steps)}
         if action == "playbook_report":  # the owner's view: where people get stuck
             from ghostcursor.workspace import team
 
@@ -1944,7 +1960,48 @@ class App:
             skill=getattr(self.ws, "active_skill", "") if step == 1 else "",
         )
         self._offer_skill_repair(step, plan, used)
+        self._remember_run(step, plan, hwnds, outcome, code, act)
         return self.ws.record_teach(step, outcome, code)
+
+    #: Runs kept in the Work tab's history (newest first).
+    MAX_RUNS = 20
+
+    def _runs_path(self):
+        return self.ws.root / f"{self.ws.topic}.runs.json"
+
+    def runs(self) -> list[dict]:
+        try:
+            rows = json.loads(self._runs_path().read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return []
+        return [r for r in rows if isinstance(r, dict)][: self.MAX_RUNS] if isinstance(rows, list) else []
+
+    def _remember_run(self, start, plan, hwnds, outcome, code, act) -> None:
+        """One line per Guide me / Do it for me run: when, which apps, steps
+        done of how many, how it ended. No control names or screen text."""
+
+        from ghostcursor.harness.binding import identify
+
+        apps = []
+        for hwnd in hwnds:
+            try:
+                identity = identify(hwnd)
+            except Exception:  # noqa: BLE001 - a window gone since: name unknown
+                identity = None
+            apps.append(identity.executable if identity else "")
+        row = {
+            "at": round(self.clock()),
+            "mode": "act" if act else "guide",
+            "from_step": start,
+            "done": len(outcome),
+            "total": len(plan.steps),
+            "ended": {0: "finished", 2: "blocked", 3: "a window changed"}.get(code, "stopped"),
+            "apps": sorted({a for a in apps if a}),
+        }
+        from ghostcursor.workspace import write_atomic
+
+        self._runs_path().parent.mkdir(parents=True, exist_ok=True)
+        write_atomic(self._runs_path(), json.dumps([row, *self.runs()][: self.MAX_RUNS], indent=1))
 
     def _offer_skill_repair(self, start, plan, used) -> None:
         """A replayed skill whose recorded control now has another name (the

@@ -438,6 +438,24 @@ function typingIn(id) {
   return [...root.querySelectorAll("input[type=text], input:not([type]), textarea")].some((f) => f.value.trim());
 }
 
+// Guide me / Do it for me runs: when, where, how far, how it ended.
+function runsCard() {
+  const card = el("div", "mem"); card.style.marginTop = "8px";
+  const meta = el("div", "meta"); meta.append(el("span", "kind", "recent runs")); card.append(meta);
+  const lastAct = S.runs.find((r) => r.mode === "act" && r.done);
+  for (const r of S.runs.slice(0, 5)) {
+    const when = new Date(r.at * 1000).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+    card.append(el("div", "", `${when} \u00b7 ${r.mode === "act" ? "Did it for you" : "Guided you"} in ${(r.apps || []).join(", ") || "an app"} \u00b7 ${r.done} of ${r.total} step(s) \u00b7 ${r.ended}`));
+  }
+  if (lastAct) {
+    const undo = el("button", "secondary", "Undo this run"); undo.disabled = !!S.busy; undo.style.marginTop = "6px";
+    undo.title = "Drafts a plan that uses the app's own Undo; you see it and approve it before anything happens";
+    undo.onclick = async () => { const r = await act("undo_plan", {}); if (r) { toast("An undo plan is ready: check it, then Do it for me", true); setTab("plan"); } };
+    card.append(undo);
+  }
+  return card;
+}
+
 let todayData = null, todayLoading = false;
 // The day at a glance. Fetched when Work is opened (and on Refresh), never
 // by the 700 ms poll: it may reach the calendar and mail.
@@ -495,6 +513,7 @@ function renderWork() {
   fresh.onclick = () => { setTab("chat"); $("input").focus(); };
   head.append(fresh); root.append(head);
   root.append(todayCard());
+  if ((S.runs || []).length) root.append(runsCard());
   // Nothing to show yet: Chat already says where to start, so no card here.
   const stage = workStage(); if (!stage.dataset.empty) root.append(stage);
   root.append(backgroundJobs());
