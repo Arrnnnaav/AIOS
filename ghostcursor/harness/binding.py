@@ -14,6 +14,7 @@ a tracked file, or persisted in the session store.
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from typing import Callable, Sequence
 
@@ -70,10 +71,16 @@ TERMINAL_CLASSES = frozenset(
 )
 
 
-def is_terminal(app: str | None, window: int | None, class_of=None) -> bool:
-    """A command line: by its program, or by its window's class."""
+#: A terminal inside another app (VS Code, JetBrains IDEs, Windows Terminal
+#: panes) names its own control so: "Terminal 1, powershell", "Terminal input".
+_TERMINAL_CONTROL = re.compile(r"(?i)\b(terminal|console|command prompt|powershell)\b")
 
-    if (app or "").lower() in TERMINALS:
+
+def is_terminal(app: str | None, window: int | None, class_of=None, control: str = "") -> bool:
+    """A command line: by its program, its window's class, or the name of
+    the control Orbyn would type into (a terminal inside an editor)."""
+
+    if (app or "").lower() in TERMINALS or _TERMINAL_CONTROL.search(control or ""):
         return True
     if not window:
         return False

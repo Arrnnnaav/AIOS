@@ -416,7 +416,7 @@ def _live_perform(step, target, window: int, app: str | None = None, binding=Non
     from ghostcursor.harness.binding import denied, is_terminal
 
     if getattr(step, "action", "click") not in ("click", "none") and is_terminal(
-        app, window
+        app, window, control=getattr(target, "name", "") or ""
     ):
         raise PermissionError(
             f"Orbyn does not type or press keys in a command line ({app}); do this step yourself"
