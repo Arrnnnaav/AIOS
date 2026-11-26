@@ -400,7 +400,12 @@ async function poll(force) {
   lastJson = json; S = s;
   render(busyChanged);
 }
-setInterval(poll, 700);
+// While Orbyn works, a reply or a step shows within 150 ms (a state read
+// costs about 2 ms); idle 700 ms; a hidden window looks every 2 s.
+(function pollLoop() {
+  poll().finally(() => setTimeout(pollLoop, document.hidden ? 2000 : S && S.busy ? 150 : 700));
+})();
+document.addEventListener("visibilitychange", () => { if (!document.hidden) poll(true); });
 
 function render(busyChanged) {
   document.body.classList.toggle("busy", !!S.busy);
