@@ -48,3 +48,27 @@ def test_the_loopback_capture_returns_16k_mono():
     from ghostcursor import loopback
 
     assert loopback.RATE == 16_000  # what Whisper listens at
+
+
+def test_the_resampler_keeps_the_pitch_across_blocks():
+    import numpy as np
+
+    from ghostcursor.loopback import _Resampler
+
+    for rate in (44_100, 48_000):
+        r = _Resampler(rate)
+        t = np.arange(rate * 2) / rate
+        tone = np.sin(2 * np.pi * 440 * t).astype(np.float32)
+        step = rate // 100  # 10 ms blocks, as Windows hands them over
+        out = np.concatenate([r.feed(np.stack([tone[i:i + step]] * 2, axis=1)) for i in range(0, len(tone), step)])
+        assert abs(len(out) - 32_000) <= 2
+        assert int(np.argmax(np.abs(np.fft.rfft(out[:16_000])))) == 440
+
+
+def test_the_audio_format_struct_matches_windows_layout():
+    import ctypes
+
+    from ghostcursor import loopback
+
+    assert ctypes.sizeof(loopback.WAVEFORMATEX) == 18  # packed, as mmreg.h declares it
+    assert ctypes.sizeof(loopback.WAVEFORMATEXTENSIBLE) == 40

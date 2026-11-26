@@ -24,6 +24,7 @@ _SILENT = 0x2  # AUDCLNT_BUFFERFLAGS_SILENT
 
 
 class WAVEFORMATEX(ctypes.Structure):
+    _pack_ = 1  # as Windows declares it: 18 bytes, no padding
     _fields_ = [
         ("wFormatTag", WORD),
         ("nChannels", WORD),
@@ -36,6 +37,7 @@ class WAVEFORMATEX(ctypes.Structure):
 
 
 class WAVEFORMATEXTENSIBLE(ctypes.Structure):
+    _pack_ = 1
     _fields_ = [
         ("Format", WAVEFORMATEX),
         ("wValidBitsPerSample", WORD),
@@ -172,22 +174,52 @@ class IMMDeviceEnumerator(IUnknown):
 _ENUMERATOR = GUID("{BCDE0395-E52F-467C-8E3D-C4579291692E}")
 
 
+class _Resampler:
+    """Streaming linear resampling to 16 kHz mono that carries its position
+    across blocks: resampling each 10 ms block alone put a seam every block
+    and moved a 440 Hz tone's peak to 240 Hz (measured 27 Nov)."""
+
+    def __init__(self, rate: int):
+        self.step = rate / RATE  # native samples per output sample
+        self.tail = None  # the last native sample of the previous block
+        self.pos = 0.0  # next output position, in native samples from the tail
+
+    def feed(self, block):
+        import numpy as np
+
+        mono = block.mean(axis=1, dtype=np.float32)
+        if not len(mono):
+            return np.zeros(0, dtype=np.float32)
+        if self.step == 1.0:
+            return mono
+        buf = mono if self.tail is None else np.concatenate(([self.tail], mono))
+        last = len(buf) - 1
+        count = int((last - self.pos) // self.step) + 1 if last >= self.pos else 0
+        positions = self.pos + self.step * np.arange(count, dtype=np.float64)
+        out = np.interp(positions, np.arange(len(buf)), buf).astype(np.float32)
+        self.pos = (self.pos + self.step * count) - last  # relative to the new tail
+        self.tail = buf[-1]
+        return out
+
+
 def record(stop, *, max_seconds: float = 900.0, sleep=time.sleep):
     """Capture what the default speakers play until STOP() or MAX_SECONDS.
     Returns 16 kHz mono float32 samples (a numpy array). Silence while
-    nothing plays is captured as silence."""
+    nothing plays is captured as silence. Each block is turned into 16 kHz
+    mono as it arrives, so 15 minutes stay under 60 MB whatever the device
+    (a 192 kHz 7.1 mix kept as is would take gigabytes; review 27 Nov)."""
 
     import numpy as np
 
     comtypes.CoInitialize()
+    enumerator = device = client = capture = None
+    fmt = None
+    chunks: list = []
+    resampler = None
     try:
-        enumerator = comtypes.CoCreateInstance(
-            _ENUMERATOR, IMMDeviceEnumerator, CLSCTX_ALL
-        )
+        enumerator = comtypes.CoCreateInstance(_ENUMERATOR, IMMDeviceEnumerator, CLSCTX_ALL)
         device = enumerator.GetDefaultAudioEndpoint(0, 1)  # eRender, eMultimedia
-        client = device.Activate(
-            byref(IAudioClient._iid_), CLSCTX_ALL, None
-        ).QueryInterface(IAudioClient)
+        client = device.Activate(byref(IAudioClient._iid_), CLSCTX_ALL, None).QueryInterface(IAudioClient)
         fmt = client.GetMixFormat()
         mix = fmt.contents
         channels, rate, bits = mix.nChannels, mix.nSamplesPerSec, mix.wBitsPerSample
@@ -195,51 +227,47 @@ def record(stop, *, max_seconds: float = 900.0, sleep=time.sleep):
             mix.wFormatTag == 3
             or (
                 mix.wFormatTag == 0xFFFE
-                and ctypes.cast(fmt, POINTER(WAVEFORMATEXTENSIBLE)).contents.SubFormat
-                == _FLOAT
+                and ctypes.cast(fmt, POINTER(WAVEFORMATEXTENSIBLE)).contents.SubFormat == _FLOAT
             )
         )
+        resampler = _Resampler(rate)
         client.Initialize(0, _LOOPBACK, 10_000_000, 0, fmt, None)  # shared, 1 s buffer
-        capture = client.GetService(byref(IAudioCaptureClient._iid_)).QueryInterface(
-            IAudioCaptureClient
-        )
+        capture = client.GetService(byref(IAudioCaptureClient._iid_)).QueryInterface(IAudioCaptureClient)
         client.Start()
-        chunks, until = [], time.monotonic() + max_seconds
+        until = time.monotonic() + max_seconds
         try:
             while not stop() and time.monotonic() < until:
                 sleep(0.02)
                 while capture.GetNextPacketSize():
                     data, frames, flags, _pos, _qpc = capture.GetBuffer()
-                    if frames:
+                    try:
+                        if not frames:
+                            continue
                         if flags & _SILENT or not data:
-                            chunks.append(
-                                np.zeros((frames, channels), dtype=np.float32)
-                            )
+                            block = np.zeros((frames, channels), dtype=np.float32)
                         elif is_float:
                             buf = (c_float * (frames * channels)).from_address(data)
-                            chunks.append(
-                                np.frombuffer(buf, dtype=np.float32)
-                                .reshape(frames, channels)
-                                .copy()
-                            )
+                            block = np.frombuffer(buf, dtype=np.float32).reshape(frames, channels)
                         else:  # 16-bit PCM mix formats
                             buf = (c_int16 * (frames * channels)).from_address(data)
-                            chunks.append(
-                                np.frombuffer(buf, dtype=np.int16)
-                                .reshape(frames, channels)
-                                .astype(np.float32)
-                                / 32768
-                            )
-                    capture.ReleaseBuffer(frames)
+                            block = np.frombuffer(buf, dtype=np.int16).reshape(frames, channels).astype(np.float32) / 32768
+                        chunks.append(resampler.feed(block))  # copies before the release
+                    finally:
+                        capture.ReleaseBuffer(frames)
         finally:
-            client.Stop()
-            ctypes.windll.ole32.CoTaskMemFree(fmt)
+            try:
+                client.Stop()
+            except Exception:  # noqa: BLE001 - never hide the error that stopped it
+                pass
     finally:
+        if fmt is not None:
+            ctypes.windll.ole32.CoTaskMemFree(fmt)
+        # Every COM object goes before the apartment does (review 27 Nov).
+        enumerator = device = client = capture = None
+        import gc
+
+        gc.collect()
         comtypes.CoUninitialize()
     if not chunks:
         return np.zeros(0, dtype=np.float32)
-    mono = np.concatenate(chunks).mean(axis=1)
-    if rate != RATE:  # linear resampling is plenty for speech recognition
-        positions = np.arange(0, len(mono), rate / RATE)
-        mono = np.interp(positions, np.arange(len(mono)), mono).astype(np.float32)
-    return mono.astype(np.float32)
+    return np.concatenate(chunks).astype(np.float32)
