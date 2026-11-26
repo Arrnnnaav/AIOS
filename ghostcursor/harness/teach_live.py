@@ -413,8 +413,15 @@ def _live_perform(step, target, window: int, app: str | None = None, binding=Non
 
         identity = identify(window)
         app = identity.executable if identity else ""
-    from ghostcursor.harness.binding import denied
+    from ghostcursor.harness.binding import TERMINALS, denied
 
+    if (app or "").lower() in TERMINALS and getattr(step, "action", "click") not in (
+        "click",
+        "none",
+    ):
+        raise PermissionError(
+            f"Orbyn does not type or press keys in a command line ({app}); do this step yourself"
+        )
     if app and denied(app):
         # Re-checked at every step, not only at bind time: an organisation's
         # AllowedApps/BlockedApps pushed mid-session must stop Act (D180).

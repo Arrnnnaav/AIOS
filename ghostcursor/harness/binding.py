@@ -35,6 +35,25 @@ DENYLIST = frozenset(
     }
 )
 
+#: Command lines: Orbyn may click in them but never types, pastes or presses
+#: keys there -- one typed line plus Enter runs a command (audit 26 Nov).
+TERMINALS = frozenset(
+    {
+        "cmd.exe",
+        "powershell.exe",
+        "pwsh.exe",
+        "windowsterminal.exe",
+        "openconsole.exe",
+        "conhost.exe",
+        "wsl.exe",
+        "bash.exe",
+        "mintty.exe",
+        "putty.exe",
+        "alacritty.exe",
+        "wezterm-gui.exe",
+    }
+)
+
 #: At most this many windows in one session.
 MAX_WINDOWS = 4
 
