@@ -65,3 +65,13 @@ def test_teach_records_which_control_did_each_step():
     session.tick(_frame([_c(1, "Insert ribbon tab", "TabItem")]))
     session.tick(_frame([_c(1, "Insert ribbon tab", "TabItem")], frame_id=2), confirm=True)
     assert session.used == [(1, "Insert ribbon tab", "TabItem")]
+
+
+def test_a_different_kind_of_control_is_not_a_rename(tmp_path):
+    app = _app(tmp_path)
+    try:
+        # Teach used a menu item where the skill recorded a button: not the same control renamed.
+        app._offer_skill_repair(1, app.ws.plan, [(2, "Export as...", "MenuItem")])
+        assert app.state()["skill_repair"] is None
+    finally:
+        app.close()
