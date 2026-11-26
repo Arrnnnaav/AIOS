@@ -337,7 +337,7 @@ def test_a_short_value_assigned_to_a_secret_name_is_hidden():
     out = redact.scrub(sent, json_text=True)[0]
     assert "hunter22" not in out and json.loads(out)["t"] == 'password="[KEY_1]"'
     # Prose without an assignment, and a placeholder already there, stay.
-    for text in ("the password is swordfish", "token: [KEY_1]", "Reset password"):
+    for text in ("token: [KEY_1]", "Reset password"):
         assert redact.scrub(text)[0] == text
 
 
@@ -379,3 +379,26 @@ def test_review_26_nov_a_secret_holding_braces_is_still_hidden():
     assert redact.scrub('{"password_len":12345}')[0] == '{"password_len":[KEY_1]}'
     chain = "+".join(f"u{n}@d{n}.io" for n in range(60))
     assert "@" not in redact.scrub(chain)[0]
+
+
+
+def test_review_26_nov_quoted_short_and_spoken_secrets_are_hidden():
+    import json
+
+    for text, secret in (
+        ('password = "hunter2 more words"', "hunter2 more words"),
+        ("pwd: abc", "abc"),
+        ("DB_PIN=4821", "4821"),
+        ("pass=xyz9", "xyz9"),
+        ("passphrase: correct-horse", "correct-horse"),
+        ("credentials=s3cret", "s3cret"),
+        ("the password is swordfish.", "swordfish"),
+        ("My PIN was 9934", "9934"),
+    ):
+        out = redact.scrub(text)[0]
+        assert not any(word in out for word in secret.split()), text  # every word of it
+    sent = json.dumps({"t": 'password = "two words"'})
+    out = redact.scrub(sent, json_text=True)[0]
+    assert "two words" not in out and json.loads(out)
+    for text in ("Spinning: on", "compass: north", "The password is incorrect.", "Password is required"):
+        assert redact.scrub(text)[0] == text, text

@@ -1935,6 +1935,7 @@ def test_an_offered_file_is_shown_once_and_needs_the_token(served):
 
 
 def test_a_second_instance_sends_the_file_as_utf8_not_escapes(monkeypatch):
+    import urllib.error
     import urllib.request
 
     sent = {}
@@ -2560,6 +2561,7 @@ def test_keep_secrets_hidden_is_opt_in(served):
 
 
 def test_handing_a_file_to_the_running_app_never_uses_a_proxy(monkeypatch):
+    import urllib.error
     import urllib.request
 
     from ghostcursor.workspace import app as app_mod
@@ -2844,3 +2846,24 @@ def test_the_approval_line_is_never_cut(tmp_path):
         assert len(app.status[-1]) == 300
     finally:
         app.close()
+
+
+
+def test_without_edge_the_page_opens_with_a_one_time_code(served, monkeypatch):
+    # Audit 26 Nov: the default browser kept the page token in its history.
+    import urllib.error
+    import urllib.request
+
+    app, port = served
+    opened = []
+    monkeypatch.setattr(appmod, "EDGE", Path("Z:/no/msedge.exe"))
+    monkeypatch.setattr("webbrowser.open", opened.append)
+    appmod.open_window(f"http://127.0.0.1:{port}/?t=secret-token")
+    assert len(opened) == 1 and "secret-token" not in opened[0] and "?c=" in opened[0]
+    first = urllib.request.urlopen(opened[0], timeout=5)
+    assert first.status == 200 and b"secret-token" in first.read()
+    with pytest.raises(urllib.error.HTTPError):
+        urllib.request.urlopen(opened[0], timeout=5)  # used once: dead in the history
+    code = app.launch_code()
+    app.clock = lambda: time.time() + 3600
+    assert not app.use_launch_code(code)  # and it expires

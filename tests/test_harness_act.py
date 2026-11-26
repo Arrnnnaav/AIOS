@@ -1108,3 +1108,49 @@ def test_approval_shows_what_each_step_types_or_presses():
     assert shown.phase is Phase.APPROVE
     assert 'types "Best, Sam" (with a line break)' in shown.message
     assert "presses alt+s" in shown.message and "3. Click Save" in shown.message
+
+
+
+def test_the_restore_checks_and_writes_while_holding_the_clipboard(monkeypatch):
+    # FOLLOWUPS (re-check 26 Nov): a copy between the check and the restore
+    # was overwritten; both now happen inside one OpenClipboard.
+    import types
+
+    calls, seq = [], [5]
+    held = []
+    fake = types.SimpleNamespace(
+        CF_UNICODETEXT=13,
+        OpenClipboard=lambda: held.append(True),
+        CloseClipboard=lambda: held.pop(),
+        EmptyClipboard=lambda: calls.append(("empty", bool(held))),
+        SetClipboardData=lambda fmt, data: calls.append((fmt, data)),
+        RegisterClipboardFormat=lambda name: name,
+    )
+    monkeypatch.setitem(sys.modules, "win32clipboard", fake)
+    reads = []
+
+    def sequence():
+        reads.append(bool(held))
+        return seq[0]
+
+    assert act.restore_clipboard_text("PRIOR", 5, sequence) is True
+    assert reads == [True] and ("empty", True) in calls and (13, "PRIOR") in calls
+    calls.clear()
+    seq[0] = 6  # the user copied something
+    assert act.restore_clipboard_text("PRIOR", 5, sequence) is False
+    assert calls == [] and held == []
+
+
+@pytest.mark.parametrize("app", ["cmd.exe", "PowerShell.exe", "WindowsTerminal.exe"])
+def test_act_never_types_or_presses_keys_in_a_command_line(app, monkeypatch):
+    # Audit 26 Nov: a typed line plus Enter in a terminal runs a command.
+    from ghostcursor.harness import teach_live
+
+    sent = []
+    monkeypatch.setattr(act, "perform", lambda *a, **kw: sent.append(a) or "clicked")
+    for action, text in (("type", "dir"), ("keys", "enter"), ("paste_text", "x"), ("paste", "")):
+        with pytest.raises(PermissionError, match="command line"):
+            teach_live._live_perform(PlanStep("Run it", E.CHOSEN_STATE_CHANGES, action, text), _c(1), 9, app)
+    assert sent == []
+    teach_live._live_perform(PlanStep("Click the tab", E.CHOSEN_STATE_CHANGES), _c(1), 9, app)
+    assert len(sent) == 1  # a click is still fine
