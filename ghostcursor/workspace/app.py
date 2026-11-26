@@ -712,8 +712,11 @@ class App:
         unlike the page token."""
 
         code = secrets.token_urlsafe(24)
+        now = self.clock()
         with self._codes_lock:
-            self._codes[code] = self.clock() + self.LAUNCH_CODE_S
+            for old in [c for c, until in self._codes.items() if until < now]:
+                del self._codes[old]  # expired, never used
+            self._codes[code] = now + self.LAUNCH_CODE_S
         return code
 
     def use_launch_code(self, code: str) -> bool:

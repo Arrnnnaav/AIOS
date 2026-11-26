@@ -2868,3 +2868,17 @@ def test_without_edge_the_page_opens_with_a_one_time_code(served, monkeypatch):
     code = app.launch_code()
     app.clock = lambda: time.time() + 3600
     assert not app.use_launch_code(code)  # and it expires
+
+
+
+def test_expired_launch_codes_are_dropped(tmp_path):
+    app = App("codes", make_workspace=lambda: Workspace("codes", Gateway(), Brain(tmp_path / "b.sqlite"), root=tmp_path / "r"))
+    try:
+        now = [1000.0]
+        app.clock = lambda: now[0]
+        old = app.launch_code()
+        now[0] += app.LAUNCH_CODE_S + 1
+        app.launch_code()
+        assert old not in app._codes and len(app._codes) == 1
+    finally:
+        app.close()
