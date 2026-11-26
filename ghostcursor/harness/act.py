@@ -226,11 +226,33 @@ def set_clipboard_text(text: str | None) -> None:
 
     _open_clipboard(c)
     try:
-        c.EmptyClipboard()
-        if text:
-            c.SetClipboardData(c.CF_UNICODETEXT, text)
-            for name, value in _PRIVATE_FORMATS:
-                c.SetClipboardData(c.RegisterClipboardFormat(name), value)
+        _write_clipboard(c, text)
+    finally:
+        c.CloseClipboard()
+
+
+def _write_clipboard(c, text) -> None:
+    c.EmptyClipboard()
+    if text:
+        c.SetClipboardData(c.CF_UNICODETEXT, text)
+        for name, value in _PRIVATE_FORMATS:
+            c.SetClipboardData(c.RegisterClipboardFormat(name), value)
+
+
+def restore_clipboard_text(text, ours: int, sequence=None) -> bool:
+    """Put the user's prior clipboard back, unless they copied something
+    since Orbyn set its text (the change counter moved from OURS). Checked
+    and written while the clipboard is held open, so a copy cannot slip in
+    between the check and the write. Returns whether it restored."""
+
+    import win32clipboard as c
+
+    _open_clipboard(c)
+    try:
+        if (sequence or clipboard_sequence)() != ours:
+            return False  # the user's newer copy stays
+        _write_clipboard(c, text)
+        return True
     finally:
         c.CloseClipboard()
 
@@ -522,9 +544,10 @@ def perform(
             pause(0.2)  # ponytail: fixed wait for the app to read the clipboard
             #            before we restore; a slow app could miss it -- raise it
             #            if that shows up, or gate restore on a paste ack.
-            if clip_seq() != ours:
-                return  # the user copied something since: keep theirs
-            _quietly(set_clip, saved)
+            if set_clip is set_clipboard_text:  # the real clipboard: one held check
+                _quietly(restore_clipboard_text, saved, ours, clip_seq)
+            elif clip_seq() == ours:  # an injected clipboard (tests)
+                _quietly(set_clip, saved)
 
         later(restore)  # off the step, so Stop is read again within D020's 0.5 s
         return f"pasted {len(step.text)} characters"
