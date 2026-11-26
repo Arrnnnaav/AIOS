@@ -3010,3 +3010,20 @@ from 1053b54. Still open:
   26 Nov at 0e7b9d9, one at a time: interactive 48 passed, overlay
   self-check 16/16, hung window 4 passed (terminal output, not a captured
   file); hermetic 1583 passed.
+- 26 Nov: owner's UI feedback. Chat replied "no model available": the
+  ChatGPT plan's allowance for apps was spent
+  (subscription_sharing_usage_limit_exceeded) and NVIDIA had retired
+  nemotron-3-super (HTTP 410); NVIDIA now uses nemotron-3-ultra and a failed
+  reply says why. The island rests as a click-through pill at the top edge
+  and comes out on a 0.2 s rest, Ctrl+Alt+O, running work or a new result,
+  tucking 0.8 s after the pointer leaves (HeyClicky's notch). The workspace
+  window has three tabs (Chat, Plan, Work); memory, company knowledge, setup
+  and the theme sit behind a Settings gear; Work folds routines, agents and
+  connections. Review of 55a9b8b..1c180fc: no blocking finding; fixed: no
+  peek over full-screen apps, pill kept on a display change, Stop and
+  click-through pinned by tests (D018 7/7). Hermetic 1584 passed.
+  Left (minor): the bar comes out where a click meant for an app's top strip
+  can land on Open/Quit after a peek; why_unavailable matches "usage_limit"
+  as text, not a parsed code; the Settings gear's aria-controls names a
+  region, not a tabpanel; hover, DPI and full-screen behaviour were checked
+  on this desktop by screenshot only (not on a second display).
