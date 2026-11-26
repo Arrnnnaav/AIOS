@@ -435,7 +435,7 @@ def test_export_then_import_shares_facts_as_reviewable_candidates(tmp_path):
     f1 = a.add_candidate("Deploys run on Fridays.", source="runbook", scope="team")
     a.approve(f1.fid)
     secret = a.add_candidate(
-        "Root password is hunter2.",
+        "Dana's salary is 140k.",  # private, not a secret the Brain refuses to keep
         source="vault",
         scope="team",
         sensitivity="sensitive",
@@ -525,7 +525,7 @@ def test_export_markdown_is_readable_and_hides_sensitive(kn):
 
     ok = kn.add_candidate("Prod deploys on Friday.", source="runbook", scope="acme")
     sec = kn.add_candidate(
-        "Root password is hunter2.",
+        "Dana's salary is 140k.",  # private, not a secret the Brain refuses to keep
         source="vault",
         scope="acme",
         sensitivity="sensitive",
@@ -539,8 +539,8 @@ def test_export_markdown_is_readable_and_hides_sensitive(kn):
     assert "# Company Brain export: acme" in md
     assert "Prod deploys on Friday." in md and "runbook" in md
     assert "Acme → uses → PostgreSQL" in md
-    assert "hunter2" not in md  # sensitive excluded
-    assert "hunter2" in kn.export_markdown("acme", include_sensitive=True)
+    assert "140k" not in md  # sensitive excluded
+    assert "140k" in kn.export_markdown("acme", include_sensitive=True)
     assert "_(none)_" in kn.export_markdown("beta")  # empty scope renders cleanly
 
 

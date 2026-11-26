@@ -29,6 +29,13 @@ import re
 # (category, pattern). ORDER MATTERS: most specific first so a card is not
 # eaten by the loose phone pattern, etc. Each match becomes a stable
 # placeholder [CATEGORY_n] (n per distinct original value within one scrub).
+#: Names that say a value is a secret. "pin" and "pass" only as their own
+#: word part (DB_PIN, pass=), never inside one ("spinning", "compass").
+_SECRET_NAME = (
+    r"(?:password|passwd|passphrase|passcode|pwd|secret|token|credentials?|"
+    r"api[_-]?key|access[_-]?key|private[_-]?key|(?<![A-Za-z])(?:pin|pass)(?![A-Za-z]))"
+)
+
 _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     # PEM FIRST so the whole key block goes before EMAIL eats an address inside
     # it. `.*?` is lazy and bounded by the END anchor -> linear, no ReDoS.
@@ -73,16 +80,38 @@ _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     # DB_PASSWORD=prod_admin_2024, "api_key": "abc123", token: xyz (live run
     # 16 Oct). Only the value goes; the name stays. Every quantifier is
     # bounded (no ReDoS) and a placeholder already there is left alone.
+    # Quoted first, so a value with spaces goes whole (review 26 Nov). A try
+    # starts only on a letter or digit after a non-one: from every position,
+    # a run of 50,000 dashes took 0.6 s.
     (
         "KEY",
         re.compile(
-            r"(?i)(?<![A-Za-z0-9])[A-Za-z0-9_.-]{0,40}?"
-            r"(?:password|passwd|pwd|secret|token|api[_-]?key|access[_-]?key|private[_-]?key)"
-            r"[A-Za-z0-9_.-]{0,40}(?:\\?[\"'])?[ \t]{0,3}[:=][ \t]{0,3}(?:\\?[\"'])?"
+            r"(?i)(?<![A-Za-z0-9])(?=[A-Za-z0-9])[A-Za-z0-9_.-]{0,40}?" + _SECRET_NAME
+            + r"[A-Za-z0-9_.-]{0,40}(?:\\?[\"'])?[ \t]{0,3}[:=][ \t]{0,3}"
+            r"(?P<quote>\\?[\"'])(?!\[[A-Z]+_\d+\])(?P<key>[^\"'\\\n]{1,200})(?=(?P=quote))"
+        ),
+    ),
+    (
+        "KEY",
+        re.compile(
+            r"(?i)(?<![A-Za-z0-9])(?=[A-Za-z0-9])[A-Za-z0-9_.-]{0,40}?" + _SECRET_NAME
+            + r"[A-Za-z0-9_.-]{0,40}(?:\\?[\"'])?[ \t]{0,3}[:=][ \t]{0,3}(?:\\?[\"'])?"
             # The value may hold braces; only closing brackets at its very
             # end stay, so JSON keeps its "}" (review 26 Nov: excluding them
             # everywhere let "password={hunter2}" through in the clear).
-            r"(?!\[[A-Z]+_\d+\])(?P<key>[^\s\"'\\,;]{4,200}?)(?=[}\]]{0,8}(?:[\s\"'\\,;]|$))"
+            r"(?!\[[A-Z]+_\d+\])(?P<key>[^\s\"'\\,;]{3,200}?)(?=[}\]]{0,8}(?:[\s\"'\\,;]|$))"
+        ),
+    ),
+    # In a sentence: "the password is swordfish" (a value no pattern of its
+    # own would know). Words that describe the password rather than give it
+    # are left alone.
+    (
+        "KEY",
+        re.compile(
+            r"(?i)\b(?:password|passcode|passphrase|pin)[ \t]{1,3}(?:is|was)[ \t]{1,3}[\"']?"
+            r"(?!(?:incorrect|wrong|required|invalid|missing|empty|too|not|set|correct|"
+            r"expired|changed|needed|a|an|the|now|still|being|case)\b)"
+            r"(?P<key>[^\s\"',;]{3,200}?)(?=[.!?]?(?:[\s\"',;]|$))"
         ),
     ),
     ("IBAN", re.compile(r"\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b")),
@@ -97,6 +126,11 @@ _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("PHONE", re.compile(r"\+?\d[\d ()-]{7,}\d")),
 ]
 
+
+#: The patterns that need a secret-like word, and a cheap test for one: text
+#: without any (most of it) skips them.
+_NEEDS_NAME = frozenset(p for _, p in _PATTERNS if "password|passwd|passphrase" in p.pattern or "(?:password|passcode" in p.pattern)
+_NAME_HINT = re.compile(r"(?i)pass|pwd|secret|token|credential|api[_-]?key|access[_-]?key|private[_-]?key|pin")
 
 #: Credentials and identifiers that have no business at rest in a local store
 #: (the Company Brain, knowledge.sqlite, scrubs these on write). Contact details -- email, phone, IP -- are
@@ -223,9 +257,12 @@ def scrub(
         mapping[placeholder] = original
         return placeholder
 
+    named = _NAME_HINT.search(text) is not None
     for category, pattern in _PATTERNS:
         if categories is not None and category not in categories:
             continue
+        if pattern in _NEEDS_NAME and not named:
+            continue  # no secret-like word anywhere: these cannot match
         if category == "EMAIL":
             text = _each_email(text, lambda m: _sub("EMAIL", m))
             continue
