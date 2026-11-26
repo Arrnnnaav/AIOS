@@ -65,6 +65,7 @@ details.more > summary { cursor: pointer; color: var(--dim); font-weight: 600; p
 details.more > summary::before { content: "\25B8  "; }
 details.more[open] > summary::before { content: "\25BE  "; }
 .settingshead { display: flex; align-items: center; justify-content: space-between; }
+.note.answered { margin: -4px 0 8px 46px; font-size: 11px; }
 
 nav { display: flex; gap: 4px; margin: 0 16px 8px; padding: 3px; background: var(--surface); border: 1px solid var(--line); border-radius: 11px; }
 nav button { flex: 1; padding: 6px 0; border-radius: 8px; color: var(--dim); font-weight: 500; font-size: 13px; }
@@ -286,6 +287,7 @@ select { font: inherit; color: var(--text); background: var(--bg); border: 1px s
     <div class="topic" id="topic">Workspace</div>
     <div class="goal" id="goal">Tell Orbyn what you want to get done</div>
   </div>
+  <button class="iconbtn" id="newChatBtn" title="New chat: start over with a new goal (this chat stays saved)" aria-label="New chat"></button>
   <button class="iconbtn" id="settingsBtn" title="Settings: memory, company knowledge, setup" aria-label="Settings" aria-pressed="false"></button>
 </header>
 <nav role="tablist">
@@ -340,6 +342,7 @@ const ICON = {
   plan: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1.2"/><circle cx="4.5" cy="12" r="1.2"/><circle cx="4.5" cy="18" r="1.2"/></svg>',
   play: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>',
   brain: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M9 4a3 3 0 0 0-3 3 3 3 0 0 0-2 5 3 3 0 0 0 2 5 3 3 0 0 0 6 0V7a3 3 0 0 0-3-3zM15 4a3 3 0 0 1 3 3 3 3 0 0 1 2 5 3 3 0 0 1-2 5 3 3 0 0 1-6 0"/></svg>',
+  plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
   gear: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
   moon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg>',
   check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg>',
@@ -870,6 +873,10 @@ function renderChat(scrollDown) {
   thread.replaceChildren();
   if (!S.turns.length && !pending) { for (const g of (S.agent_goals || [])) thread.append(agentGoalEl(g)); thread.append(emptyState()); return; }
   for (const t of S.turns) thread.append(turnEl(t));
+  const last = S.turns[S.turns.length - 1];
+  if (S.answered_by && last && last.speaker === "assistant" && !pending) {
+    thread.append(el("div", "note answered", "answered by " + S.answered_by));
+  }
   if (pending) thread.append(turnEl({ speaker: "user", text: pending }));
   if (S.suggest && !S.busy && !pending) thread.append(suggestEl(S.suggest));
   for (const g of (S.agent_goals || [])) thread.append(agentGoalEl(g));
@@ -916,7 +923,7 @@ function emptyState() {
   e.append(el("h2", "", "Start with what you want to do."), el("p", "", "Type a goal below, talk it through, or choose a way to begin."));
   if (!welcomeSeen) {
     const card = el("div", "welcome"); card.setAttribute("role", "region"); card.setAttribute("aria-label", "Getting started");
-    card.append(el("b", "", "New to Orbyn?"), el("p", "", "Start with a goal. For model answers, check what is ready and choose an account in Brain Setup."));
+    card.append(el("b", "", "New to Orbyn?"), el("p", "", "Start with a goal. For model answers, check what is ready and choose an account in Settings (the gear) › Setup."));
     const row = el("div", "sheetrow");
     const setup = el("button", "pill go", "Check setup");
     setup.onclick = () => { finishWelcome(); brainView = "setup"; setTab("brain"); $("tab-brain").querySelector('[data-brain-view="setup"]').focus(); };
@@ -1277,6 +1284,15 @@ function renderBrain() {
   dot.append(dmeta, el("div", "", "Keep a small dot beside your pointer when Orbyn is idle."),
     el("div", "note", "While Orbyn works or listens, a label beside your pointer says what it is doing; this keeps a quiet dot there the rest of the time. It hides over full-screen apps. Off by default."));
   dot.style.marginTop = "8px"; root.append(dot);
+  const boot = el("div", "mem"); const bmeta = el("div", "meta"); bmeta.append(el("span", "kind", "start with Windows"));
+  const bsw = el("button", "switch"); bsw.setAttribute("role", "switch"); bsw.setAttribute("aria-checked", String(!!S.autostart));
+  bsw.style.marginLeft = "auto"; bsw.disabled = !S.autostart_possible && !S.autostart;
+  bsw.append(document.createTextNode(S.autostart ? "On" : "Off"), el("i"));
+  bsw.onclick = () => act("autostart", { on: !S.autostart }, S.autostart ? "Orbyn will not start with Windows" : "Orbyn starts when you sign in");
+  bmeta.append(bsw);
+  boot.append(bmeta, el("div", "", "Open Orbyn's bar when you sign in to Windows."),
+    el("div", "note", S.autostart_possible ? "A shortcut in your Startup folder; turn it off here or remove it there. Off by default." : "Available in the installed app."));
+  boot.style.marginTop = "8px"; root.append(boot);
   const stats = el("div", "stats"); root.append(stats);
   api("stats").then((s) => { for (const [k, v] of Object.entries(s).filter(([, v]) => typeof v === "number").slice(0, 6)) { const d = el("div", "stat"); d.append(el("b", "", String(v)), el("span", "", k.replace(/_/g, " "))); stats.append(d); } }).catch(() => {});
 }
@@ -1659,6 +1675,12 @@ function setTab(name) {
   if (S) render(name === "chat");
 }
 $("settingsBtn").innerHTML = ICON.gear;
+$("newChatBtn").innerHTML = ICON.plus;
+$("newChatBtn").onclick = async () => {
+  if (S && S.busy) return toast("Orbyn is working; Stop first or wait.");
+  if (S && S.turns.length && !(await askConfirm("Start a new chat? This one stays saved on this computer.", "New chat"))) return;
+  await act("new_chat", {}); setTab("chat"); $("input").focus();
+};
 $("settingsBtn").onclick = () => setTab(tab === "brain" ? "chat" : "brain");
 document.querySelectorAll("nav button").forEach((b) => (b.onclick = () => setTab(b.dataset.tab)));
 document.querySelector("nav").addEventListener("keydown", (e) => {

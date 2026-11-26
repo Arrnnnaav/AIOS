@@ -311,6 +311,10 @@ def _within(items, budget: int) -> list:
 
 
 
+#: The marker "New chat" leaves in the brief (an assistant turn, so it can
+#: never be taken for something the user said).
+NEW_CHAT = "[new chat]"
+
 def why_unavailable(exc) -> str:
     """What the person can do when no model answered, in plain words."""
 
@@ -319,13 +323,13 @@ def why_unavailable(exc) -> str:
         return (
             "your ChatGPT plan has used up its allowance for apps like Orbyn; it "
             "resets on OpenAI's schedule. Until then another model answers if one "
-            "is set up (Brain › Setup)"
+            "is set up (Settings › Setup)"
         )
     if exc.kind.value == "not_configured":
-        return "no model is set up yet; add one in Brain › Setup"
+        return "no model is set up yet; add one in Settings › Setup"
     if exc.kind.value == "rate_limited":
         return "every model is at its limit right now; try again in a few minutes"
-    return "no model answered (check the connection, or Brain › Setup)"
+    return "no model answered (check the connection, or Settings › Setup)"
 
 @dataclass
 class Workspace:
@@ -369,9 +373,26 @@ class Workspace:
     # --- the brief ------------------------------------------------------------
 
     @property
-    def turns(self):
+    def all_turns(self):
         path = brief_path(self.root, self.topic)
         return load_brief(path).turns if path.exists() else ()
+
+    @property
+    def turns(self):
+        """This chat: the turns after the last "New chat". Earlier ones stay
+        in the brief on disk, but no longer shape the goal or the context."""
+
+        turns = self.all_turns
+        for n in range(len(turns) - 1, -1, -1):
+            if turns[n].speaker == "assistant" and turns[n].text.strip() == NEW_CHAT:
+                return turns[n + 1 :]
+        return turns
+
+    def new_chat(self) -> None:
+        """Start over: a fresh goal, context and suggestion; the plan stays."""
+
+        self._say("assistant", NEW_CHAT)
+        self.suggestion = ""
 
     @property
     def plan(self) -> TeachPlan | None:
@@ -389,7 +410,9 @@ class Workspace:
             (
                 t.text
                 for t in self.turns
-                if t.speaker == "user" and not t.text.startswith(POINT_PREFIX)
+                if t.speaker == "user"
+                and not t.text.startswith(POINT_PREFIX)
+                and not t.text.lstrip().startswith("/")  # a command is not a goal
             ),
             "",
         )

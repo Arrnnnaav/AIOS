@@ -793,6 +793,7 @@ class App:
             "topic": ws.topic,
             "goal": ws.goal,
             "turns": [{"speaker": t.speaker, "text": t.text} for t in ws.turns[-200:]],
+            "answered_by": getattr(ws.gateway, "last_answer_provider", None),
             "plan": None
             if proposal is None
             else {
@@ -843,6 +844,8 @@ class App:
             "crash_offered": policy.crash_endpoint() is not None,
             "crash_on": settings.crash_reports(),
             "companion_idle": self.companion_idle,
+            "autostart": autostart_on(),
+            "autostart_possible": _packaged_exe() is not None,
             # Scrub private details before a cloud model: the person's
             # switch, or forced on by the organisation (never forced off).
             "redact": policy.redact_egress() or settings.redact_egress(),
@@ -873,6 +876,9 @@ class App:
         ws = self.ws
         text = body.get("text")
         text = text.strip() if isinstance(text, str) else ""
+        if action == "new_chat":
+            ws.new_chat()
+            return {}
         if action == "launch_code":
             return {"code": self.launch_code()}
         if action == "state":
@@ -1073,6 +1079,9 @@ class App:
                 ]
                 return {"added": did.count("added"), "duplicates": did.count("duplicate")}
             return {"mail": connectors.unread()}
+        if action == "autostart":  # start with Windows: a Startup shortcut, the person's choice
+            set_autostart(body.get("on") is True)
+            return {"on": autostart_on()}
         if action == "companion_idle":  # a resting dot beside the pointer
             self.companion_idle = body.get("on") is True
             settings.set_companion_idle(self.companion_idle)
@@ -2085,6 +2094,43 @@ def open_window(url: str, *, docked: bool = False) -> None:
                 win32gui.MoveWindow(new.pop(), left, top, width, height, True)
             break
         time.sleep(0.05)
+
+
+def _startup_link() -> Path:
+    base = os.environ.get("APPDATA") or str(Path.home() / "AppData" / "Roaming")
+    return Path(base) / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup" / "Orbyn.lnk"
+
+
+def _packaged_exe() -> Path | None:
+    """Orbyn.exe when running packaged; None from source (nothing to start)."""
+
+    exe = Path(sys.executable)
+    return exe if getattr(sys, "frozen", False) and exe.name.lower() == "orbyn.exe" else None
+
+
+def autostart_on() -> bool:
+    return _startup_link().exists()
+
+
+def set_autostart(on: bool, *, exe: Path | None = None) -> None:
+    """A shortcut in this user's Startup folder (no registry, no service):
+    Orbyn opens as the island when the person signs in. Off removes it."""
+
+    link = _startup_link()
+    if not on:
+        link.unlink(missing_ok=True)
+        return
+    exe = exe or _packaged_exe()
+    if exe is None:
+        raise ValueError("Start with Windows needs the installed Orbyn app")
+    import win32com.client
+
+    link.parent.mkdir(parents=True, exist_ok=True)
+    shortcut = win32com.client.Dispatch("WScript.Shell").CreateShortcut(str(link))
+    shortcut.TargetPath = str(exe)
+    shortcut.WorkingDirectory = str(exe.parent)
+    shortcut.Description = "Orbyn"
+    shortcut.Save()
 
 
 def _lock_path() -> Path:

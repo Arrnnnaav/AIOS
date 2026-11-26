@@ -179,6 +179,9 @@ class Gateway:
     #: The provider that answered the last request, for "who powers this" --
     #: so a BYOK user can see their own account is in use (one slot, benign).
     last_provider: str | None = field(default=None, repr=False)
+    #: The System Two provider that wrote the last answer (not Jev's checks),
+    #: shown under a reply so the person knows which account answered.
+    last_answer_provider: str | None = field(default=None, repr=False)
     #: D186: when True, scrub embedded secrets out of text bound for a REMOTE
     #: model before it leaves. This is an ADD-ON to enterprise policy: the
     #: effective state is `policy.redact_egress() or redact_egress` read per
@@ -577,6 +580,7 @@ class Gateway:
                     raise
                 failures.append(exc)
                 continue
+            self.last_answer_provider = name
             self._record(
                 name, reply.model or config.model, started, envelope, reply, None,
                 hidden=None if hidden is None else len(hidden),

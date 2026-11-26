@@ -2884,3 +2884,31 @@ def test_expired_launch_codes_are_dropped(tmp_path):
         assert old not in app._codes and len(app._codes) == 1
     finally:
         app.close()
+
+
+
+def test_start_with_windows_is_a_startup_shortcut_on_and_off(tmp_path, monkeypatch):
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    exe = tmp_path / "Orbyn" / "Orbyn.exe"
+    exe.parent.mkdir()
+    exe.write_bytes(b"")
+    assert not appmod.autostart_on()
+    appmod.set_autostart(True, exe=exe)
+    assert appmod.autostart_on() and appmod._startup_link().name == "Orbyn.lnk"
+    appmod.set_autostart(False)
+    assert not appmod.autostart_on()
+    with pytest.raises(ValueError, match="installed"):
+        appmod.set_autostart(True)  # from source there is nothing to start
+
+
+def test_new_chat_starts_a_fresh_goal_and_a_slash_command_is_never_the_goal(tmp_path):
+    ws = Workspace("fresh", Gateway(), Brain(tmp_path / "b.sqlite"), root=tmp_path / "r")
+    from ghostcursor.brief import append_turn
+
+    append_turn(ws.root, ws.topic, "user", "/doctor")
+    append_turn(ws.root, ws.topic, "user", "Plan the Q3 offsite")
+    assert ws.goal == "Plan the Q3 offsite"
+    ws.new_chat()
+    assert ws.goal == "" and ws.turns == ()
+    append_turn(ws.root, ws.topic, "user", "Book a room")
+    assert ws.goal == "Book a room" and len(ws.all_turns) == 4  # the old chat stays saved
