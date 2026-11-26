@@ -267,6 +267,8 @@ class App:
         self.stop = threading.Event()  # the page's Stop button
         self.status: deque[str] = deque(maxlen=40)
         self._codes: dict[str, float] = {}  # one-time launch codes -> expiry
+        self._rating: str | None = None  # Right/Wrong on the pointer shown
+        self._speaker = None  # read-aloud voice, made on first use
         self._codes_lock = threading.Lock()
         self.busy = ""
         self._claim = threading.Lock()
@@ -845,6 +847,7 @@ class App:
             "crash_on": settings.crash_reports(),
             "companion_idle": self.companion_idle,
             "autostart": autostart_on(),
+            "read_aloud": settings.read_aloud(),
             "autostart_possible": _packaged_exe() is not None,
             # Scrub private details before a cloud model: the person's
             # switch, or forced on by the organisation (never forced off).
@@ -876,6 +879,25 @@ class App:
         ws = self.ws
         text = body.get("text")
         text = text.strip() if isinstance(text, str) else ""
+        if action == "read_aloud":  # say chat replies with Windows' voice
+            settings.set_read_aloud(body.get("on") is True)
+            if not settings.read_aloud() and self._speaker is not None:
+                self._speaker.stop()
+            return {}
+        if action == "today":  # asked for, never polled: it may reach the calendar and mail
+            return self.today()
+        if action == "rate_step":  # the person's verdict on the pointer shown
+            verdict = str(body.get("verdict", ""))
+            if verdict not in ("right", "wrong"):
+                raise ValueError("verdict is right or wrong")
+            if self.busy != "Guiding":
+                raise ValueError("nothing is being shown right now")
+            self._rating = verdict
+            return {}
+        if action == "teach_ratings":
+            from ghostcursor.harness import ratings
+
+            return {"apps": ratings.summary()}
         if action == "new_chat":
             ws.new_chat()
             return {}
@@ -1608,11 +1630,9 @@ class App:
         if action == "say":
             if not text:
                 raise ValueError("say something")
-            return {
-                "reply": self.run(
-                    "Thinking", lambda: ws.discuss(text, cancelled=self.stop.is_set)
-                )
-            }
+            reply = self.run("Thinking", lambda: ws.discuss(text, cancelled=self.stop.is_set))
+            self.speak(reply)
+            return {"reply": reply}
         if action == "research":
             if not text:
                 raise ValueError("ask a question")
@@ -1848,8 +1868,57 @@ class App:
             stop=self.stop.is_set,
             act=act,
             deny=deny,
+            rated=self._take_rating,
         )
         return self.ws.record_teach(step, outcome, code)
+
+    def speak(self, text) -> None:
+        """Read a reply aloud when the person turned that on (on this PC,
+        on its own thread: never holds the request)."""
+
+        if not isinstance(text, str) or not text.strip() or not settings.read_aloud():
+            return
+        if self._speaker is None:
+            from ghostcursor.speech import Speaker
+
+            self._speaker = Speaker()
+        self._speaker.say(text[:1200])
+
+    def today(self) -> dict:
+        """The day at a glance: today's events and unread mail headers when
+        those read-only views are connected, and research finished in the
+        last day. Each part says why it is missing rather than failing."""
+
+        from ghostcursor.workspace import connectors
+
+        out: dict = {"events": [], "mail": [], "finished": [], "notes": []}
+        if connectors.calendar_connected():
+            try:
+                out["events"] = connectors.agenda(days=1)
+            except Exception as exc:  # noqa: BLE001 - shown on the card
+                out["notes"].append(f"Calendar: {exc}")
+        else:
+            out["notes"].append("Calendar not connected (Work › Routines, agents and connections).")
+        if connectors.mail_connected():
+            try:
+                out["mail"] = connectors.unread(limit=5)
+            except Exception as exc:  # noqa: BLE001 - shown on the card
+                out["notes"].append(f"Mail: {exc}")
+        else:
+            out["notes"].append("Mail not connected (Work › Routines, agents and connections).")
+        day_ago = self.clock() - 24 * 3600
+        with self._job_lock:
+            jobs = list(self.background_jobs)
+        out["finished"] = [
+            {"question": j.get("question", ""), "id": j.get("id")}
+            for j in jobs
+            if j.get("state") == "finished" and (j.get("ended") or 0) >= day_ago
+        ][-5:]
+        return out
+
+    def _take_rating(self):
+        verdict, self._rating = self._rating, None
+        return verdict
 
     def _voice(self):
         from ghostcursor.harness.teach_live import _escape_pressed

@@ -347,7 +347,9 @@ def test_the_secret_name_recognizer_stays_linear_on_hostile_text():
     start = time.perf_counter()
     for text in ("password" * 6000 + "=", "a" * 50000, "secret_" * 7000 + ":", "-" * 50000 + "token"):
         redact.scrub(text)
-    assert time.perf_counter() - start < 1.0
+    # About 0.36 s alone; a quadratic scan takes many seconds. 2 s leaves room
+    # for a loaded machine (it failed once at 1 s inside the full lane).
+    assert time.perf_counter() - start < 2.0
 
 
 def test_review_25_nov_email_scan_is_linear_and_json_keeps_its_braces():

@@ -299,6 +299,8 @@ select { font: inherit; color: var(--text); background: var(--bg); border: 1px s
   <div class="row">
     <span class="pulse"></span><span id="liveLabel">Working</span>
     <button class="pill go" id="doneBtn" hidden></button>
+    <button class="pill ghost" id="rightBtn" hidden title="Orbyn is pointing at the right control">Right</button>
+    <button class="pill ghost" id="wrongBtn" hidden title="Wrong control: Orbyn looks again without it">Wrong</button>
     <button class="pill ghost" id="stopBtn">Stop <kbd>Esc</kbd></button>
   </div>
   <div id="liveStatus"></div>
@@ -436,6 +438,39 @@ function typingIn(id) {
   return [...root.querySelectorAll("input[type=text], input:not([type]), textarea")].some((f) => f.value.trim());
 }
 
+let todayData = null, todayLoading = false;
+// The day at a glance. Fetched when Work is opened (and on Refresh), never
+// by the 700 ms poll: it may reach the calendar and mail.
+function loadToday() {
+  if (todayLoading) return;
+  todayLoading = true;
+  api("today").then((d) => { todayData = d; }).catch((e) => { todayData = { events: [], mail: [], finished: [], notes: [e.message] }; })
+    .finally(() => { todayLoading = false; if (tab === "work") renderWork(); });
+}
+function todayCard() {
+  const card = el("div", "mem today"); card.setAttribute("role", "region"); card.setAttribute("aria-label", "Today");
+  const head = el("div", "meta"); head.append(el("span", "kind", "today"));
+  const refresh = el("button", "secondary", todayLoading ? "Loading\u2026" : "Refresh"); refresh.style.marginLeft = "auto";
+  refresh.disabled = todayLoading; refresh.onclick = loadToday; head.append(refresh); card.append(head);
+  if (!todayData) { if (!todayLoading) loadToday(); card.append(el("div", "note", "Getting today\u2019s events, unread mail and finished research\u2026")); return card; }
+  const d = todayData;
+  if (d.events.length) {
+    card.append(el("b", "", "Today\u2019s events"));
+    for (const e of d.events) card.append(el("div", "", (e.all_day ? "All day" : e.start.slice(11, 16)) + "  " + e.title + (e.location ? " \u00b7 " + e.location : "")));
+  }
+  if (d.mail.length) {
+    card.append(el("b", "", "Unread mail"));
+    for (const m of d.mail) card.append(el("div", "", (m.sender || m.from || "") + " \u2014 " + (m.subject || "")));
+  }
+  if (d.finished.length) {
+    card.append(el("b", "", "Research finished today"));
+    for (const j of d.finished) card.append(el("div", "", j.question));
+  }
+  if (!d.events.length && !d.mail.length && !d.finished.length) card.append(el("div", "", "Nothing on today\u2019s list yet."));
+  for (const n of d.notes) card.append(el("div", "note", n));
+  return card;
+}
+
 let workMoreOpen = false;  // Work's "Routines and connections" fold
 function renderWork() {
   const root = $("tab-work");
@@ -459,6 +494,7 @@ function renderWork() {
   fresh.dataset.workFocus = "newtask";
   fresh.onclick = () => { setTab("chat"); $("input").focus(); };
   head.append(fresh); root.append(head);
+  root.append(todayCard());
   // Nothing to show yet: Chat already says where to start, so no card here.
   const stage = workStage(); if (!stage.dataset.empty) root.append(stage);
   root.append(backgroundJobs());
@@ -860,6 +896,7 @@ function renderLive() {
   const last = S.status.length ? S.status[S.status.length - 1] : "";
   const hint = { Pointing: "Hover the mouse over what you mean, then press Enter here.", Listening: "Press Enter to start, Enter again when you're done." }[busy];
   $("liveStatus").textContent = (busy === "Pointing" || busy === "Listening") && !last.startsWith("Marked") ? hint : last.replace(/^\[[a-z_]+\]\s*/, "");
+  for (const id of ["rightBtn", "wrongBtn"]) $(id).hidden = busy !== "Guiding";
   const done = $("doneBtn");
   const label = { Guiding: "Step done", Acting: "Approve", Pointing: "That's it", Listening: "Start / end" }[busy];
   done.hidden = !label;
@@ -1284,15 +1321,30 @@ function renderBrain() {
   dot.append(dmeta, el("div", "", "Keep a small dot beside your pointer when Orbyn is idle."),
     el("div", "note", "While Orbyn works or listens, a label beside your pointer says what it is doing; this keeps a quiet dot there the rest of the time. It hides over full-screen apps. Off by default."));
   dot.style.marginTop = "8px"; root.append(dot);
-  const boot = el("div", "mem"); const bmeta = el("div", "meta"); bmeta.append(el("span", "kind", "start with Windows"));
-  const bsw = el("button", "switch"); bsw.setAttribute("role", "switch"); bsw.setAttribute("aria-checked", String(!!S.autostart));
-  bsw.style.marginLeft = "auto"; bsw.disabled = !S.autostart_possible && !S.autostart;
-  bsw.append(document.createTextNode(S.autostart ? "On" : "Off"), el("i"));
-  bsw.onclick = () => act("autostart", { on: !S.autostart }, S.autostart ? "Orbyn will not start with Windows" : "Orbyn starts when you sign in");
-  bmeta.append(bsw);
-  boot.append(bmeta, el("div", "", "Open Orbyn's bar when you sign in to Windows."),
+  const bootCard = el("div", "mem"); const bootMeta = el("div", "meta"); bootMeta.append(el("span", "kind", "start with Windows"));
+  const bootSw = el("button", "switch"); bootSw.setAttribute("role", "switch"); bootSw.setAttribute("aria-checked", String(!!S.autostart));
+  bootSw.style.marginLeft = "auto"; bootSw.disabled = !S.autostart_possible && !S.autostart;
+  bootSw.append(document.createTextNode(S.autostart ? "On" : "Off"), el("i"));
+  bootSw.onclick = () => act("autostart", { on: !S.autostart }, S.autostart ? "Orbyn will not start with Windows" : "Orbyn starts when you sign in");
+  bootMeta.append(bootSw);
+  bootCard.append(bootMeta, el("div", "", "Open Orbyn's bar when you sign in to Windows."),
     el("div", "note", S.autostart_possible ? "A shortcut in your Startup folder; turn it off here or remove it there. Off by default." : "Available in the installed app."));
-  boot.style.marginTop = "8px"; root.append(boot);
+  bootCard.style.marginTop = "8px"; root.append(bootCard);
+  const aloudCard = el("div", "mem"); const aloudMeta = el("div", "meta"); aloudMeta.append(el("span", "kind", "read replies aloud"));
+  const aloudSw = el("button", "switch"); aloudSw.setAttribute("role", "switch"); aloudSw.setAttribute("aria-checked", String(!!S.read_aloud));
+  aloudSw.style.marginLeft = "auto"; aloudSw.append(document.createTextNode(S.read_aloud ? "On" : "Off"), el("i"));
+  aloudSw.onclick = () => act("read_aloud", { on: !S.read_aloud }, S.read_aloud ? "Replies stay silent" : "Replies are read aloud");
+  aloudMeta.append(aloudSw);
+  aloudCard.append(aloudMeta, el("div", "", "Say each chat reply with Windows\u2019 own aloudCard."),
+    el("div", "note", "Spoken on this computer; nothing is sent anywhere. Off by default."));
+  aloudCard.style.marginTop = "8px"; root.append(aloudCard);
+  const ratedCard = el("div", "mem"); const ratedMeta = el("div", "meta"); ratedMeta.append(el("span", "kind", "guided steps you ratedCard"));
+  ratedCard.append(ratedMeta); ratedCard.style.marginTop = "8px"; root.append(ratedCard);
+  api("teach_ratings").then((r) => {
+    const apps = Object.entries(r.apps || {});
+    if (!apps.length) { ratedCard.append(el("div", "note", "While Orbyn guides you, press Right or Wrong under the step. The counts show here and stay on this computer.")); return; }
+    for (const [app, c] of apps) ratedCard.append(el("div", "", `${app}: ${c.right} right, ${c.wrong} wrong (${Math.round(100 * c.right / Math.max(1, c.right + c.wrong))}% right)`));
+  }).catch(() => {});
   const stats = el("div", "stats"); root.append(stats);
   api("stats").then((s) => { for (const [k, v] of Object.entries(s).filter(([, v]) => typeof v === "number").slice(0, 6)) { const d = el("div", "stat"); d.append(el("b", "", String(v)), el("span", "", k.replace(/_/g, " "))); stats.append(d); } }).catch(() => {});
 }
@@ -1653,6 +1705,8 @@ $("voiceBtn").onclick = async () => {
   else if (r) toast("Nothing was heard.");
 };
 $("doneBtn").onclick = () => api("signal").catch(() => {});
+$("rightBtn").onclick = () => act("rate_step", { verdict: "right" }, "Thanks: noted as right");
+$("wrongBtn").onclick = () => act("rate_step", { verdict: "wrong" }, "Looking again without that control");
 $("stopBtn").onclick = () => api("stop").catch(() => {});
 // Closing the window mid-session stops it (ESC and the deadline do anyway).
 addEventListener("pagehide", () => {

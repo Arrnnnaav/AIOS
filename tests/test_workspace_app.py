@@ -2912,3 +2912,45 @@ def test_new_chat_starts_a_fresh_goal_and_a_slash_command_is_never_the_goal(tmp_
     assert ws.goal == "" and ws.turns == ()
     append_turn(ws.root, ws.topic, "user", "Book a room")
     assert ws.goal == "Book a room" and len(ws.all_turns) == 4  # the old chat stays saved
+
+
+def test_today_gathers_events_mail_and_finished_research_and_says_what_is_missing(tmp_path, monkeypatch):
+    from ghostcursor.workspace import connectors
+
+    app = App("today", make_workspace=lambda: Workspace("today", Gateway(), Brain(tmp_path / "b.sqlite"), root=tmp_path / "r"))
+    try:
+        monkeypatch.setattr(connectors, "calendar_connected", lambda: True)
+        monkeypatch.setattr(connectors, "agenda", lambda days=1: [{"start": "2026-11-27T09:00", "all_day": False, "title": "Stand-up", "location": ""}])
+        monkeypatch.setattr(connectors, "mail_connected", lambda: False)
+        now = app.clock()
+        app.background_jobs[:] = [
+            {"id": "a", "question": "Q3 market", "state": "finished", "ended": now - 3600},
+            {"id": "b", "question": "old one", "state": "finished", "ended": now - 3 * 86400},
+        ]
+        d = app.handle("today", {})
+        assert [e["title"] for e in d["events"]] == ["Stand-up"] and d["mail"] == []
+        assert [j["question"] for j in d["finished"]] == ["Q3 market"]
+        assert any("Mail not connected" in n for n in d["notes"])
+        monkeypatch.setattr(connectors, "agenda", lambda days=1: (_ for _ in ()).throw(ValueError("calendar down")))
+        assert any("calendar down" in n for n in app.handle("today", {})["notes"])  # a part fails, the card stays
+    finally:
+        app.close()
+
+
+def test_replies_are_read_aloud_only_when_switched_on(tmp_path, monkeypatch):
+    from ghostcursor import settings
+
+    monkeypatch.setattr(settings, "_default_path", lambda: tmp_path / "settings.json", raising=False)
+    app = App("aloud", make_workspace=lambda: Workspace("aloud", Gateway(), Brain(tmp_path / "b.sqlite"), root=tmp_path / "r"))
+    said = []
+    app._speaker = type("S", (), {"say": lambda self, t: said.append(t), "stop": lambda self: None})()
+    try:
+        monkeypatch.setattr(settings, "read_aloud", lambda path=None: False)
+        app.speak("hello")
+        assert said == []
+        monkeypatch.setattr(settings, "read_aloud", lambda path=None: True)
+        app.speak("hello")
+        app.speak("   ")
+        assert said == ["hello"]
+    finally:
+        app.close()

@@ -226,6 +226,17 @@ def set_companion_idle(on: bool, path: Path | None = None) -> None:
     _set("companion_idle", on, path)
 
 
+def read_aloud(path: Path | None = None) -> bool:
+    """settings.json "read_aloud": true says each chat reply with Windows'
+    own voice, on this computer. Off by default."""
+
+    return load(path).get("read_aloud") is True
+
+
+def set_read_aloud(on: bool, path: Path | None = None) -> None:
+    _set("read_aloud", on, path)
+
+
 def listening(path: Path | None = None) -> tuple[bool, str | None]:
     """(wake word on, hotkey or None) -- "Hey Bro" and Ctrl+Alt+Space by
     default (D182); settings.json "wake_word": false / "hotkey": "" turn
