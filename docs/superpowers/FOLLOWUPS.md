@@ -3066,3 +3066,23 @@ from 1053b54. Still open:
   link shows a 404; paste_text still has no paste acknowledgement; live
   counted Teach/Act runs; a second display; app signing and an update
   channel; provider contracts.
+- 26 Nov, the four "accepted limits": two fixed, two tried and taken back.
+  Fixed: a terminal inside an editor (VS Code, JetBrains) is recognised by
+  the name of the control Orbyn would type into ("Terminal 1, powershell");
+  a reloaded or restored one-time link shows a "this link was already used"
+  page (410). Taken back after the tier-1 review (three BLOCKING): a paste
+  acknowledged by delayed clipboard rendering -- an app that reads every
+  new clipboard at once (Remote Desktop's msrdc.exe did on this PC) fakes
+  the acknowledgement, and the user's restored clipboard could then be
+  pasted, so the fixed 1 s wait stays (a paste cannot be acknowledged
+  safely in general); a guard for made-up chained names ("pin:password=x")
+  -- it let real passwords such as DB_PASSWORD=Secret1= through, so it was
+  reverted. Also fixed from that review: the held-clipboard restore of
+  d0fa0f3 called _quietly with too many arguments (it would have left
+  Orbyn's text on the clipboard; caught by the real-clipboard test), and a
+  pending restore no longer blocks the next step unbounded (it is busy and
+  retried after the ESC poll). Interactive lane 49 passed; hermetic 1612.
+  Left (minor): the control-name check misses localised names ("Konsole")
+  and a bare shell name without "Terminal"; if an app keeps the clipboard
+  open past the restore's retries, Orbyn's text stays on it; the 410 page
+  answers any code, used or mistyped.
