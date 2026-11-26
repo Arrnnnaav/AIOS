@@ -36,13 +36,6 @@ _SECRET_NAME = (
     r"api[_-]?key|access[_-]?key|private[_-]?key|(?<![A-Za-z])(?:pin|pass)(?![A-Za-z]))"
 )
 
-#: A value that is itself a secret name being assigned ("pin:password=x")
-#: is not taken as the value: the later assignment is, so x is hidden.
-_NOT_A_NAME = (
-    r"(?![A-Za-z0-9_.-]{0,40}?" + _SECRET_NAME
-    + r"[A-Za-z0-9_.-]{0,40}(?:\\?[\"'])?[ \t]{0,3}[:=])"
-)
-
 _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     # PEM FIRST so the whole key block goes before EMAIL eats an address inside
     # it. `.*?` is lazy and bounded by the END anchor -> linear, no ReDoS.
@@ -95,7 +88,7 @@ _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
         re.compile(
             r"(?i)(?<![A-Za-z0-9])(?=[A-Za-z0-9])[A-Za-z0-9_.-]{0,40}?" + _SECRET_NAME
             + r"[A-Za-z0-9_.-]{0,40}(?:\\?[\"'])?[ \t]{0,3}[:=][ \t]{0,3}"
-            r"(?P<quote>\\?[\"'])" + _NOT_A_NAME + r"(?!\[[A-Z]+_\d+\])(?P<key>[^\"'\\\n]{1,200})(?=(?P=quote))"
+            r"(?P<quote>\\?[\"'])(?!\[[A-Z]+_\d+\])(?P<key>[^\"'\\\n]{1,200})(?=(?P=quote))"
         ),
     ),
     (
@@ -106,7 +99,7 @@ _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
             # The value may hold braces; only closing brackets at its very
             # end stay, so JSON keeps its "}" (review 26 Nov: excluding them
             # everywhere let "password={hunter2}" through in the clear).
-            + _NOT_A_NAME + r"(?!\[[A-Z]+_\d+\])(?P<key>[^\s\"'\\,;]{3,200}?)(?=[}\]]{0,8}(?:[\s\"'\\,;]|$))"
+            r"(?!\[[A-Z]+_\d+\])(?P<key>[^\s\"'\\,;]{3,200}?)(?=[}\]]{0,8}(?:[\s\"'\\,;]|$))"
         ),
     ),
     # In a sentence: "the password is swordfish" (a value no pattern of its
