@@ -1905,6 +1905,16 @@ def _whole(value) -> int:
     return number
 
 
+#: What a reloaded or restored one-time link shows (it opens Orbyn only once).
+USED_LINK = (
+    b"<!doctype html><meta charset=utf-8><title>Orbyn</title>"
+    b"<body style='font:16px Segoe UI,sans-serif;margin:40px;max-width:520px'>"
+    b"<h2>This Orbyn link was already used</h2><p>For your privacy each link "
+    b"opens Orbyn once. Open Orbyn again from its bar at the top of the "
+    b"screen (Open) or from the Start menu.</p>"
+)
+
+
 def make_server(app: App, token: str, port: int = 0) -> ThreadingHTTPServer:
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *_args):  # the page's text never reaches a log
@@ -1942,6 +1952,8 @@ def make_server(app: App, token: str, port: int = 0) -> ThreadingHTTPServer:
                     or (code and app.use_launch_code(code))
                 )
             ):
+                if code and path == "/" and self._allowed():  # reloaded or restored
+                    return self._send(410, USED_LINK, "text/html; charset=utf-8")
                 return self._send(404, b"", "text/plain")
             page = PAGE.read_text(encoding="utf-8").replace("__TOKEN__", token)
             self._send(200, page.encode("utf-8"), "text/html; charset=utf-8")
