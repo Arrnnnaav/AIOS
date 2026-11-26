@@ -2832,3 +2832,15 @@ def test_the_plan_tab_shows_what_each_step_types_or_presses(tmp_path):
         assert app.state()["plan"]["steps"] == ["Tidy the draft [presses alt+s]"]
     finally:
         app.close()
+
+
+def test_the_approval_line_is_never_cut(tmp_path):
+    app = App("cut", make_workspace=lambda: Workspace("cut", Gateway(), Brain(tmp_path / "b.sqlite"), root=tmp_path / "r"))
+    try:
+        steps = "; ".join(f"{n}. Step {n} [types \"{'x' * 60}\"]" for n in range(1, 21))
+        app.say("Approve to let Orbyn do: " + steps)
+        app.say("y" * 1000)
+        assert app.status[-2].endswith("20. Step 20 [types \"" + "x" * 60 + "\"]")
+        assert len(app.status[-1]) == 300
+    finally:
+        app.close()

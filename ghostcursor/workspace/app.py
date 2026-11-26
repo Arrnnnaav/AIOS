@@ -702,7 +702,9 @@ class App:
         return jid
 
     def say(self, line: str) -> None:
-        self.status.append(str(line)[:300])
+        line = str(line)
+        # The whole plan is shown before approval (rule 2): never cut it.
+        self.status.append(line if line.startswith("Approve to let Orbyn do") else line[:300])
 
     def heard(self, text: str) -> None:
         """A spoken request ("Hey Bro ..." or the hotkey, D182): a message to
