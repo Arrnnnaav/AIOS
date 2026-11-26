@@ -40,7 +40,10 @@ def test_reject_does_nothing_when_no_pointer_or_while_acting():
         "x", FakeGateway(plan, [_choice("c1")]), SyncSlot(), clock=lambda: 0.0, plan=plan,
         act=lambda step, target: "ok",
     )
-    assert acting.reject() is False
+    frame = _frame([_c(1, "Insert")])
+    acting.tick(frame, confirm=True)  # approve
+    assert acting.tick(frame).phase is Phase.SHOWING  # it has already acted
+    assert acting.reject() is False  # too late to take back: Teach only
 
 
 def test_ratings_are_kept_locally_without_names(tmp_path):
