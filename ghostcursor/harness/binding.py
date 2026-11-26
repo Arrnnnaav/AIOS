@@ -51,8 +51,43 @@ TERMINALS = frozenset(
         "putty.exe",
         "alacritty.exe",
         "wezterm-gui.exe",
+        "powershell_ise.exe",
+        "conemu.exe",
+        "conemu64.exe",
+        "mobaxterm.exe",
+        "kitty.exe",
+        "tabby.exe",
+        "hyper.exe",
+        "warp.exe",
+        "ssh.exe",
     }
 )
+#: Console window classes: a classic console reports the program running in
+#: it (ssh.exe, python.exe, psql.exe...), not the shell, so the window's own
+#: class is checked too (review 26 Nov).
+TERMINAL_CLASSES = frozenset(
+    {"ConsoleWindowClass", "CASCADIA_HOSTING_WINDOW_CLASS", "PseudoConsoleWindow"}
+)
+
+
+def is_terminal(app: str | None, window: int | None, class_of=None) -> bool:
+    """A command line: by its program, or by its window's class."""
+
+    if (app or "").lower() in TERMINALS:
+        return True
+    if not window:
+        return False
+    try:
+        if class_of is None:
+            import win32gui
+
+            root = win32gui.GetAncestor(window, 2)  # GA_ROOT
+            name = win32gui.GetClassName(root or window)
+        else:
+            name = class_of(window)
+    except Exception:  # noqa: BLE001 - an unreadable window is judged by its program
+        return False
+    return name in TERMINAL_CLASSES
 
 #: At most this many windows in one session.
 MAX_WINDOWS = 4

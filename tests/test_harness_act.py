@@ -1154,3 +1154,15 @@ def test_act_never_types_or_presses_keys_in_a_command_line(app, monkeypatch):
     assert sent == []
     teach_live._live_perform(PlanStep("Click the tab", E.CHOSEN_STATE_CHANGES), _c(1), 9, app)
     assert len(sent) == 1  # a click is still fine
+
+
+
+def test_a_console_window_is_a_command_line_whatever_runs_in_it():
+    # Review 26 Nov: a classic console reports ssh.exe or python.exe.
+    from ghostcursor.harness.binding import is_terminal
+
+    assert is_terminal("ssh.exe", None) and is_terminal("PowerShell_ISE.exe", None)
+    assert is_terminal("python.exe", 7, class_of=lambda w: "ConsoleWindowClass")
+    assert is_terminal("psql.exe", 7, class_of=lambda w: "CASCADIA_HOSTING_WINDOW_CLASS")
+    assert not is_terminal("notepad.exe", 7, class_of=lambda w: "Notepad")
+    assert not is_terminal("python.exe", 7, class_of=lambda w: (_ for _ in ()).throw(OSError()))
