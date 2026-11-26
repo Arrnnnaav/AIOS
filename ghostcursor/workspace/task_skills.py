@@ -38,12 +38,25 @@ def _slug(name: str) -> str:
     return slug
 
 
-def save_skill(name: str, plan: TeachPlan, *, dest_dir: Path | None = None) -> Path:
+#: Names starting so belong to the team's signed bundle (team.sync).
+TEAM_PREFIX = "team-"
+_TEAM_MANIFEST = ".team-skills.json"
+
+
+def save_skill(
+    name: str, plan: TeachPlan, *, dest_dir: Path | None = None, team: bool = False
+) -> Path:
     """Persist a TeachPlan under ``name``. Overwrites an existing skill of the
-    same slug. Returns the file path."""
+    same slug. Returns the file path. Only the team sync (``team=True``) may
+    write a "team-" name: a personal skill can neither pose as the team's nor
+    overwrite one."""
 
     if not getattr(plan, "steps", None):
         raise ValueError("a skill needs at least one step")
+    if _slug(name).startswith(TEAM_PREFIX) and not team:
+        raise ValueError(
+            "names starting with 'team' are kept for your team's skills; choose another name"
+        )
     directory = _dir(dest_dir)
     directory.mkdir(parents=True, exist_ok=True)
     payload = {
@@ -88,3 +101,21 @@ def delete_skill(name: str, *, dest_dir: Path | None = None) -> bool:
         return False
     path.unlink()
     return True
+
+
+def set_team_skills(names, *, dest_dir: Path | None = None) -> None:
+    """The team skills the last verified bundle installed (team.sync only)."""
+
+    directory = _dir(dest_dir)
+    directory.mkdir(parents=True, exist_ok=True)
+    write_atomic(directory / _TEAM_MANIFEST, json.dumps(sorted(set(names))))
+
+
+def team_skill_names(*, dest_dir: Path | None = None) -> set[str]:
+    """Skills a verified team bundle installed; anything else is personal."""
+
+    try:
+        names = json.loads((_dir(dest_dir) / _TEAM_MANIFEST).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return set()
+    return {n for n in names if isinstance(n, str) and n.startswith(TEAM_PREFIX)} if isinstance(names, list) else set()

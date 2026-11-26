@@ -931,9 +931,9 @@ class App:
                 raise ValueError("no Do it for me run to undo")
             apps = ", ".join(last.get("apps") or []) or "the app"
             need = (
-                f"Undo the last {last['done']} change(s) Orbyn just made in {apps}, "
-                "using the app's own Undo (its button, or the Edit menu's Undo), "
-                "once per change, and nothing else"
+                f"Undo the changes Orbyn just made in {apps} (it did {last['done']} "
+                "step(s); some may have changed nothing), using the app's own Undo "
+                "(its button, or the Edit menu's Undo), and nothing else"
             )
             plan = self.run("Planning", lambda: ws._plan_for(need))
             if plan is None:
@@ -1944,6 +1944,7 @@ class App:
 
         outcome: list = []
         used: list = []
+        apps = _app_names(hwnds)  # now, while the windows are the ones bound
         code = run_model_teach(
             self.ws.goal,
             hwnds,
@@ -1957,10 +1958,10 @@ class App:
             deny=deny,
             rated=self._take_rating,
             used=used,
-            skill=getattr(self.ws, "active_skill", "") if step == 1 else "",
+            skill=self._team_skill() if step == 1 else "",
         )
         self._offer_skill_repair(step, plan, used)
-        self._remember_run(step, plan, hwnds, outcome, code, act)
+        self._remember_run(step, plan, apps, outcome, code, act)
         return self.ws.record_teach(step, outcome, code)
 
     #: Runs kept in the Work tab's history (newest first).
@@ -1976,19 +1977,10 @@ class App:
             return []
         return [r for r in rows if isinstance(r, dict)][: self.MAX_RUNS] if isinstance(rows, list) else []
 
-    def _remember_run(self, start, plan, hwnds, outcome, code, act) -> None:
+    def _remember_run(self, start, plan, apps, outcome, code, act) -> None:
         """One line per Guide me / Do it for me run: when, which apps, steps
         done of how many, how it ended. No control names or screen text."""
 
-        from ghostcursor.harness.binding import identify
-
-        apps = []
-        for hwnd in hwnds:
-            try:
-                identity = identify(hwnd)
-            except Exception:  # noqa: BLE001 - a window gone since: name unknown
-                identity = None
-            apps.append(identity.executable if identity else "")
         row = {
             "at": round(self.clock()),
             "mode": "act" if act else "guide",
@@ -2002,6 +1994,15 @@ class App:
 
         self._runs_path().parent.mkdir(parents=True, exist_ok=True)
         write_atomic(self._runs_path(), json.dumps([row, *self.runs()][: self.MAX_RUNS], indent=1))
+
+    def _team_skill(self) -> str:
+        """The skill being replayed, if a verified team bundle installed it
+        (its ratings go to the owner); "" for anything personal."""
+
+        from ghostcursor.workspace import task_skills
+
+        skill = getattr(self.ws, "active_skill", "")
+        return skill if skill in task_skills.team_skill_names(dest_dir=self.skills_dir) else ""
 
     def _offer_skill_repair(self, start, plan, used) -> None:
         """A replayed skill whose recorded control now has another name (the
@@ -2022,6 +2023,7 @@ class App:
             if not 0 <= index < len(steps) or not name or kind in CONTENT_TYPES:
                 continue
             match = _RECORDED.fullmatch(steps[index].instruction)
+            name = " ".join(name.replace('"', "'").split())[:80]  # one quoted name, never more text
             if match and match.group("name") != name and match.group("kind") == kind:
                 old = match.group("name")
                 steps[index] = replace(
@@ -2388,6 +2390,19 @@ def open_window(url: str, *, docked: bool = False) -> None:
 
 #: A step Watch me recorded: Click "Name" (Type), or Click into "Name" (Type) and type.
 _RECORDED = re.compile(r'Click (?:into )?"(?P<name>[^"]*)" \((?P<kind>\w+)\)(?: and type)?')
+
+
+def _app_names(hwnds) -> list[str]:
+    from ghostcursor.harness.binding import identify
+
+    names = []
+    for hwnd in hwnds:
+        try:
+            identity = identify(hwnd)
+        except Exception:  # noqa: BLE001 - a window gone: name unknown
+            identity = None
+        names.append(identity.executable if identity else "")
+    return names
 
 
 def _team_role() -> str:

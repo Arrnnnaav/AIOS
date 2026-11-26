@@ -51,3 +51,39 @@ def test_only_the_owner_gets_the_report_from_the_page(tmp_path, monkeypatch):
         assert app.handle("playbook_report", {})["rows"][0]["wrong"] == 2
     finally:
         app.close()
+
+
+def test_a_personal_skill_cannot_take_a_team_name_and_only_synced_ones_count(tmp_path):
+    import pytest
+
+    from ghostcursor.providers import ExpectedChange as E
+    from ghostcursor.providers import PlanStep, TeachPlan
+    from ghostcursor.workspace import task_skills
+
+    plan = TeachPlan((PlanStep("Click Save", E.CHOSEN_STATE_CHANGES),))
+    with pytest.raises(ValueError, match="team"):
+        task_skills.save_skill("Team budget for Acme layoffs", plan, dest_dir=tmp_path)
+    task_skills.save_skill("team-expenses", plan, dest_dir=tmp_path, team=True)
+    assert task_skills.team_skill_names(dest_dir=tmp_path) == set()  # not in the verified manifest
+    task_skills.set_team_skills(["team-expenses", "not-team"], dest_dir=tmp_path)
+    assert task_skills.team_skill_names(dest_dir=tmp_path) == {"team-expenses"}
+
+
+def test_a_rating_reaches_the_owner_only_for_a_synced_team_skill(tmp_path):
+    from ghostcursor.providers import Gateway
+    from ghostcursor.workspace import task_skills
+    from ghostcursor.workspace.app import App
+    from ghostcursor.workspace.brain import Brain
+    from ghostcursor.workspace.session import Workspace
+
+    app = App("pb", make_workspace=lambda: Workspace("pb", Gateway(), Brain(tmp_path / "b.sqlite"), root=tmp_path / "r"))
+    app.skills_dir = tmp_path / "skills"
+    try:
+        app.ws.active_skill = "team-expenses"
+        assert app._team_skill() == ""  # a hand-placed file is not the team's
+        task_skills.set_team_skills(["team-expenses"], dest_dir=app.skills_dir)
+        assert app._team_skill() == "team-expenses"
+        app.ws.active_skill = "my-own"
+        assert app._team_skill() == ""
+    finally:
+        app.close()

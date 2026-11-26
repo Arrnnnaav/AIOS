@@ -308,13 +308,20 @@ def sync(knowledge, *, skills_dir=None, agents_root=None) -> dict:
             knowledge.retire(fact.fid)  # gone from the bundle, or added locally
 
     skills = 0
+    installed = []
     for name, steps in bundle["skills"].items():
         try:
             plan = parse_teach_plan(json.dumps({"steps": steps}))  # closed schema
-            task_skills.save_skill(SKILL_PREFIX + str(name), plan, dest_dir=skills_dir)
+            path = task_skills.save_skill(
+                SKILL_PREFIX + str(name), plan, dest_dir=skills_dir, team=True
+            )
+            installed.append(path.stem)
             skills += 1
         except (ProviderError, ValueError):
             continue
+    # The verified bundle's skills, by name: only these count as the team's
+    # (their ratings go to the owner's playbook report).
+    task_skills.set_team_skills(installed, dest_dir=skills_dir)
     count = 0
     if agents_root is not None:
         for value in bundle["agents"]:
