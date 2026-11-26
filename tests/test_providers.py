@@ -1445,3 +1445,29 @@ def test_every_local_provider_is_on_this_computer():
     for name in policy.LOCAL_PROVIDERS:
         host = urlparse(clients.SYSTEM_TWO[name].base_url).hostname
         assert host in ("127.0.0.1", "localhost", "::1"), (name, host)
+
+
+def test_model_calls_reuse_one_connection_pool_per_address_and_keep_no_cookies():
+    """Kept-alive connections save a TLS handshake per request (about 0.4 s,
+    measured 26 Nov), but the pool must stay stateless: no key on the pool,
+    no cookie kept or sent back."""
+
+    import httpx
+
+    from ghostcursor.providers import clients
+
+    clients._POOLS.clear()
+    with clients._client("https://example.invalid/v1", None) as first:
+        pass
+    with clients._client("https://example.invalid/v1", None) as again:
+        pass
+    assert first is again and "authorization" not in {k.lower() for k in first.headers}
+    request = httpx.Request("GET", "https://example.invalid/v1/x")
+    response = httpx.Response(200, headers={"set-cookie": "track=1; Path=/"}, request=request)
+    first.cookies.extract_cookies(response)
+    assert not list(first.cookies.jar)
+    with clients._client("https://example.invalid/v1", None, trust_env=False) as local:
+        assert local is not first  # a loopback model never shares a proxied pool
+    first.close()
+    local.close()
+    clients._POOLS.clear()

@@ -3,8 +3,10 @@
 Patterns ported, with attribution, from the separate Spatial project
 (`D:\\PROJECTS\\Spatial\\server\\app\\system_one.py`): a hard time budget and at
 most one retry on 429/5xx inside it, waiting Retry-After (capped at 5 s) plus
-jitter in 0.1 s slices that Stop can cut short. Each call opens its own
-``httpx`` client (Spatial kept one alive per provider).
+jitter in 0.1 s slices that Stop can cut short. Connections are kept
+alive per provider address (as Spatial did): a fresh TLS handshake cost
+0.4 s per request (OpenAI 777 -> 314 ms, NVIDIA 405 -> 38 ms, Jev 662 ->
+283 ms, measured 26 Nov 2026). Keys travel per request, never on the pool.
 Only the transport is ported -- no prompt building, and no fallback to the
 model's free text when a structured answer is missing.
 
@@ -14,16 +16,50 @@ cassettes without a network or a key.
 
 from __future__ import annotations
 
+import http.cookiejar
 import json
 import os
 import random
 import threading
 import time
+from contextlib import nullcontext
 from dataclasses import dataclass
 
 import httpx
 
 from ghostcursor.providers.errors import FailureKind, ProviderError
+
+
+class _NoCookies(http.cookiejar.DefaultCookiePolicy):
+    """A kept-alive client must stay as stateless as one per request: a
+    cookie a provider sets is never kept or sent back."""
+
+    def set_ok(self, cookie, request):
+        return False
+
+    def return_ok(self, cookie, request):
+        return False
+
+
+_POOLS: dict[tuple[str, bool], httpx.Client] = {}
+_POOLS_LOCK = threading.Lock()
+
+
+def _client(base_url: str, transport, *, trust_env: bool = True):
+    """A kept-alive client for BASE_URL (no headers: the key goes with each
+    request), or, with an injected transport (tests), a client of its own."""
+
+    if transport is not None:
+        return httpx.Client(base_url=base_url, transport=transport, trust_env=trust_env)
+    with _POOLS_LOCK:
+        pool = _POOLS.get((base_url, trust_env))
+        if pool is None or pool.is_closed:
+            pool = _POOLS[(base_url, trust_env)] = httpx.Client(
+                base_url=base_url,
+                trust_env=trust_env,
+                cookies=http.cookiejar.CookieJar(policy=_NoCookies()),
+            )
+    return nullcontext(pool)
 
 
 @dataclass(frozen=True)
@@ -202,10 +238,9 @@ def _post(
     headers |= extra_headers or {}
     started = time.monotonic()
     deadline = started + min(deadline_s, config.timeout_s)
-    with httpx.Client(
-        base_url=config.base_url,
-        transport=transport,
-        headers=headers,
+    with _client(
+        config.base_url,
+        transport,
         # A model on this computer is reached directly: a proxy set in the
         # environment must not carry "stayed on this computer" elsewhere.
         trust_env=not is_loopback(config.base_url),
@@ -217,7 +252,9 @@ def _post(
             if remaining <= 0.05:
                 raise ProviderError(FailureKind.TIMEOUT, config.name)
             try:
-                response = client.post(path, json=payload, timeout=remaining)
+                response = client.post(
+                    path, json=payload, headers=headers, timeout=remaining
+                )
             except httpx.TimeoutException as exc:
                 raise ProviderError(FailureKind.TIMEOUT, config.name) from exc
             except httpx.HTTPError as exc:
@@ -376,14 +413,14 @@ def responses_json_call(
     parts: list[str] = []
     if cancelled():
         raise ProviderError(FailureKind.CANCELLED)
-    with httpx.Client(
-        base_url=config.base_url,
-        transport=transport,
-        headers={"Authorization": f"Bearer {key}"},
-    ) as client:
+    with _client(config.base_url, transport) as client:
         try:
             with client.stream(
-                "POST", "/responses", json=payload, timeout=deadline - started
+                "POST",
+                "/responses",
+                json=payload,
+                headers={"Authorization": f"Bearer {key}"},
+                timeout=deadline - started,
             ) as response:
                 failure = _status_failure(config, response.status_code)
                 if failure is not None:
