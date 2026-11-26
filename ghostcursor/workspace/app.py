@@ -21,6 +21,7 @@ import json
 import math
 import os
 import re
+from dataclasses import replace
 import secrets
 import socket
 import subprocess
@@ -269,6 +270,7 @@ class App:
         self._codes: dict[str, float] = {}  # one-time launch codes -> expiry
         self._rating: str | None = None  # Right/Wrong on the pointer shown
         self._speaker = None  # read-aloud voice, made on first use
+        self.skill_repair = None  # an offered skill update, awaiting the person's OK
         self._codes_lock = threading.Lock()
         self.busy = ""
         self._claim = threading.Lock()
@@ -849,6 +851,9 @@ class App:
             "autostart": autostart_on(),
             "read_aloud": settings.read_aloud(),
             "skills": _skill_names(self.skills_dir),
+            "skill_repair": None
+            if self.skill_repair is None
+            else {"skill": self.skill_repair["skill"], "changes": self.skill_repair["changes"]},
             "autostart_possible": _packaged_exe() is not None,
             # Scrub private details before a cloud model: the person's
             # switch, or forced on by the organisation (never forced off).
@@ -906,7 +911,18 @@ class App:
             if plan is None:
                 raise ValueError("no such skill")
             ws._propose(plan)
+            ws.active_skill = task_skills._slug(str(body.get("name", "")))
             return {"steps": len(plan.steps)}
+        if action == "skill_repair":  # the person's OK (or no) to update a skill
+            from ghostcursor.workspace import task_skills
+
+            repair, self.skill_repair = self.skill_repair, None
+            if repair is None:
+                raise ValueError("nothing to update")
+            if body.get("apply") is True:
+                task_skills.save_skill(repair["skill"], repair["plan"], dest_dir=self.skills_dir)
+                return {"updated": len(repair["changes"])}
+            return {"updated": 0}
         if action == "skill_delete":
             from ghostcursor.workspace import task_skills
 
@@ -1903,6 +1919,7 @@ class App:
         from ghostcursor.harness.teach_live import run_model_teach
 
         outcome: list = []
+        used: list = []
         code = run_model_teach(
             self.ws.goal,
             hwnds,
@@ -1915,8 +1932,41 @@ class App:
             act=act,
             deny=deny,
             rated=self._take_rating,
+            used=used,
         )
+        self._offer_skill_repair(step, plan, used)
         return self.ws.record_teach(step, outcome, code)
+
+    def _offer_skill_repair(self, start, plan, used) -> None:
+        """A replayed skill whose recorded control now has another name (the
+        app renamed or moved it, and Teach found it anyway): offer to update
+        the skill. Nothing is saved without the person's OK."""
+
+        skill = getattr(self.ws, "active_skill", "")
+        if not skill or not used:
+            return
+        from ghostcursor.harness.watch import CONTENT_TYPES
+
+        steps = list(self.ws.plan.steps) if self.ws.plan else []
+        changes = []
+        for number, name, kind in used:
+            index = start - 1 + number - 1
+            # A list item's or link's "new name" is content (a new mail subject),
+            # not a rename: those are never written into a skill.
+            if not 0 <= index < len(steps) or not name or kind in CONTENT_TYPES:
+                continue
+            match = _RECORDED.fullmatch(steps[index].instruction)
+            if match and match.group("name") != name and match.group("kind") == kind:
+                old = match.group("name")
+                steps[index] = replace(
+                    steps[index],
+                    instruction=steps[index].instruction.replace(f'"{old}"', f'"{name}"', 1),
+                )
+                changes.append({"step": index + 1, "old": old, "new": name})
+        if changes:
+            from ghostcursor.providers import TeachPlan
+
+            self.skill_repair = {"skill": skill, "changes": changes, "plan": TeachPlan(tuple(steps))}
 
     def speak(self, text) -> None:
         """Read a reply aloud when the person turned that on (on this PC,
@@ -2268,6 +2318,10 @@ def open_window(url: str, *, docked: bool = False) -> None:
                 win32gui.MoveWindow(new.pop(), left, top, width, height, True)
             break
         time.sleep(0.05)
+
+
+#: A step Watch me recorded: Click "Name" (Type), or Click into "Name" (Type) and type.
+_RECORDED = re.compile(r'Click (?:into )?"(?P<name>[^"]*)" \((?P<kind>\w+)\)(?: and type)?')
 
 
 def _skill_names(skills_dir) -> list[str]:

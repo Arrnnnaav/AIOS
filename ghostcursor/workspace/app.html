@@ -1101,6 +1101,7 @@ function renderPlan() {
     acts.append(show, ed, dr); body.append(acts); li.append(body); ol.append(li);
   });
   root.append(ol);
+  if (S.skill_repair) root.append(repairCard());
   root.append(skillsCard());
   if (S.plan_memories.length) root.append(el("div", "note", "Made with what Orbyn remembers: " + S.plan_memories.join(" · ")));
   const row = el("div", "addrow"); const inp = el("input"); inp.placeholder = "Add a step…"; inp.maxLength = 300;
@@ -1702,6 +1703,20 @@ async function openVideo() {
   setTab("chat");
   const r = await act("plan_from_video", { note: (note || "").trim() });
   if (r) { toast(r.steps + " step(s) from the video: check them, then Guide me from step 1", true); setTab("plan"); }
+}
+
+// A replayed skill found a renamed control: offer to update it (never automatic).
+function repairCard() {
+  const r = S.skill_repair;
+  const card = el("div", "mem"); card.style.marginTop = "12px";
+  const meta = el("div", "meta"); meta.append(el("span", "kind", "update this skill?")); card.append(meta);
+  card.append(el("div", "", "While guiding, the app's controls had new names. Update the skill " + r.skill.replace(/-/g, " ") + " so it matches?"));
+  for (const c of r.changes) card.append(el("div", "note", "Step " + c.step + ": \u201c" + c.old + "\u201d is now \u201c" + c.new + "\u201d"));
+  const row = el("div", "sheetrow");
+  const yes = el("button", "pill go", "Update the skill"); yes.onclick = () => act("skill_repair", { apply: true }, "Skill updated");
+  const no = el("button", "secondary", "Keep it as it was"); no.onclick = () => act("skill_repair", { apply: false });
+  row.append(yes, no); card.append(row);
+  return card;
 }
 
 function skillsCard() {

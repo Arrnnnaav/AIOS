@@ -665,6 +665,10 @@ class ModelTeachSession:
                     else settle_why
                 )
                 self.completed.append((self.step + 1, why))
+                if self._chosen is not None:  # which control did it, for skill repair
+                    used = getattr(self, "used", [])
+                    used.append((self.step + 1, self._chosen.name, self._chosen.control_type))
+                    self.used = used
                 self._advance()
                 return self.tick(frame)
             current = resolve(self._chosen, frame)

@@ -872,6 +872,7 @@ class Workspace:
         """A new revision recording the digest of the brief it was made from
         (provenance; Teach does not re-check it). The brief records it."""
 
+        self.active_skill = ""  # a plan from anywhere else is not a saved skill
         self.proposal = PlanProposal(
             plan,
             self._brief_sha256(),

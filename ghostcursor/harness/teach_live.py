@@ -461,6 +461,7 @@ def run_model_teach(
     speak: bool = False,
     speaker=None,
     rated=lambda: None,
+    used: list | None = None,
 ) -> int:
     """``sketch`` (prototype) draws each step as a hand-drawn circle with an
     arrow from the previous step's control (harness/sketch.py). ``speak``
@@ -640,6 +641,8 @@ def run_model_teach(
             win32gui.DestroyWindow(banner)
         if outcome is not None:
             outcome.extend(session.completed)
+        if used is not None:  # (step, control name, type) per step done: local only
+            used.extend(getattr(session, "used", []))
         if act:  # D183: an honest local record of what Act did (no screen text)
             _audit(bindings, session.completed, code)
     return code
