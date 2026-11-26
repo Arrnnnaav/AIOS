@@ -88,7 +88,8 @@ def main(argv: list[str]) -> int:
             check("the bar window exists", bool(bars))
             if bars:
                 left, top, right, bottom = win32gui.GetWindowRect(bars[0])
-                check("the bar has a size", right - left > 200 and bottom - top > 30)
+                # At rest the bar is the tucked pill at the top edge (it opens on hover).
+                check("the bar rests as a pill", right - left > 60 and 0 < bottom - top < 20)
 
             with urllib.request.urlopen(url, timeout=20) as response:
                 page = response.read().decode("utf-8")
