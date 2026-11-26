@@ -871,7 +871,11 @@ class Workspace:
         if verb in ("edit", "add") and not 0 < len(text) <= MAX_INSTRUCTION_CHARS:
             raise ValueError(f"a step is 1 to {MAX_INSTRUCTION_CHARS} characters")
         if verb == "edit":
-            steps[number - 1] = replace(steps[number - 1], instruction=text)
+            # New wording is a new step: the old hidden action and text
+            # must not run under words the person wrote (rule 2).
+            steps[number - 1] = replace(
+                steps[number - 1], instruction=text, action="click", text=""
+            )
         elif verb == "drop":
             del steps[number - 1]
         elif verb == "add":

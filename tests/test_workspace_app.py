@@ -2818,3 +2818,17 @@ def test_a_poll_never_rebuilds_a_tab_over_what_the_person_is_typing(tmp_path):
     )
     assert result.returncode == 0, result.stdout + result.stderr
 
+
+
+def test_the_plan_tab_shows_what_each_step_types_or_presses(tmp_path):
+    # Audit 26 Nov: the page listed only each step's wording.
+    from ghostcursor.providers import ExpectedChange, PlanStep, TeachPlan
+
+    app = App("show", make_workspace=lambda: Workspace("show", Gateway(), Brain(tmp_path / "b.sqlite"), root=tmp_path / "r"))
+    try:
+        app.ws._propose(TeachPlan((
+            PlanStep("Tidy the draft", ExpectedChange.CHOSEN_STATE_CHANGES, "keys", "alt+s"),
+        )))
+        assert app.state()["plan"]["steps"] == ["Tidy the draft [presses alt+s]"]
+    finally:
+        app.close()

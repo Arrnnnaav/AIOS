@@ -178,3 +178,16 @@ def test_an_unscreened_handoff_says_so(tmp_path):
     other.gateway.injection_risk = lambda s: None  # Jev unavailable
     handoff.receive(other, text)
     assert any("could not be checked" in t.text for t in other.turns)
+
+
+
+def test_a_received_step_that_types_or_presses_keys_is_pointed_out(tmp_path):
+    import json
+
+    ws, text = _sent(tmp_path)
+    data = json.loads(text)
+    data["plan"][0].update(action="keys", text="alt+s")
+    receiver = _ws(tmp_path, "receiver")
+    shown = handoff.receive(receiver, json.dumps(data))
+    notes = " ".join(t.text for t in receiver.turns)
+    assert "press keys" in notes and "presses alt+s" in receiver.proposal.as_text()

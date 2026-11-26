@@ -580,3 +580,20 @@ def test_a_failed_reply_says_why_in_plain_words():
     assert "ChatGPT plan" in why_unavailable(spent)
     assert "Setup" in why_unavailable(ProviderError(FailureKind.NOT_CONFIGURED, "x"))
     assert "limit" in why_unavailable(ProviderError(FailureKind.RATE_LIMITED, "x"))
+
+
+
+def test_rewording_a_step_drops_its_old_hidden_action(tmp_path):
+    # Audit 26 Nov (BLOCKING): an edited step kept its old type/keys action.
+    from dataclasses import replace
+
+    from ghostcursor.providers import ExpectedChange, PlanStep, TeachPlan
+    from ghostcursor.workspace.contracts import PlanProposal
+
+    ws = Workspace("edit", FakeGateway(), Brain(tmp_path / "b.sqlite"), root=tmp_path / "r")
+    typed = PlanStep("Type the reply", ExpectedChange.CHOSEN_STATE_CHANGES, "type", "rm -rf ~\n")
+    ws._propose(TeachPlan((typed,)))
+    proposal = ws.edit_plan("edit", ["1", "Click", "Save"])
+    step = proposal.plan.steps[0]
+    assert (step.instruction, step.action, step.text) == ("Click Save", "click", "")
+    assert "types" not in proposal.as_text()

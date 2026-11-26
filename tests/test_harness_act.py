@@ -1078,3 +1078,33 @@ def test_perform_without_a_bound_window_sends_nothing(window):
             click=lambda x, y: sent.append((x, y)), send=sent.append,
         )
     assert sent == []
+
+
+
+@pytest.mark.parametrize("chord", ["alt+s", "ctrl+m", "ctrl+a", "backspace", "ctrl+s", "space", "ctrl+j", "f5"])
+def test_every_key_chord_and_a_clipboard_paste_ask_first(chord):
+    # Audit 26 Nov (BLOCKING): a short list of risky chords let Alt+S send a
+    # mail in Outlook and Ctrl+M press Enter in a terminal without asking.
+    from ghostcursor.harness.teach import needs_confirm
+
+    plain = _c(1, "Message body", "Edit")
+    assert needs_confirm(PlanStep("Tidy the draft", E.CHOSEN_STATE_CHANGES, "keys", chord), plain)
+    assert needs_confirm(PlanStep("Fill it in", E.CHOSEN_STATE_CHANGES, "paste"), plain)
+    assert not needs_confirm(PlanStep("Fill it in", E.CHOSEN_STATE_CHANGES, "type", "Hello"), plain)
+
+
+def test_approval_shows_what_each_step_types_or_presses():
+    # Audit 26 Nov (BLOCKING): approval listed only each step's wording.
+    plan = TeachPlan((
+        PlanStep("Add a closing line", E.CHOSEN_STATE_CHANGES, "type", "Best,\nSam"),
+        PlanStep("Tidy the draft", E.CHOSEN_STATE_CHANGES, "keys", "alt+s"),
+        PlanStep("Click Save", E.CHOSEN_STATE_CHANGES),
+    ))
+    session = ModelTeachSession(
+        "x", FakeGateway(plan, [_choice("c1")]), SyncSlot(), clock=lambda: 0.0, plan=plan,
+        act=lambda step, target: "ok",
+    )
+    shown = session.tick(_frame([_c(1)]))
+    assert shown.phase is Phase.APPROVE
+    assert 'types "Best, Sam" (with a line break)' in shown.message
+    assert "presses alt+s" in shown.message and "3. Click Save" in shown.message

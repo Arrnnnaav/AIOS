@@ -148,6 +148,25 @@ class PlanStep:
     #: what to type for "type"; a key chord such as "ctrl+s" for "keys"
     text: str = ""
 
+    def effect(self) -> str:
+        """What Act does beyond the click, in words, so the person approves
+        what will be typed or pressed, not only the step's wording (rule 2)."""
+
+        shown = " ".join(self.text.replace("\r", "\n").split("\n"))
+        shown = shown if len(shown) <= 120 else shown[:119] + "\u2026"
+        line_break = " (with a line break)" if "\n" in self.text or "\r" in self.text else ""
+        return {
+            "type": f'types "{shown}"{line_break}',
+            "paste_text": f'pastes "{shown}"{line_break}',
+            "keys": f"presses {self.text}",
+            "paste": "pastes what is on your clipboard",
+            "copy": "copies the selection",
+        }.get(self.action, "")
+
+    def describe(self) -> str:
+        effect = self.effect()
+        return f"{self.instruction} [{effect}]" if effect else self.instruction
+
 
 @dataclass(frozen=True)
 class TeachPlan:

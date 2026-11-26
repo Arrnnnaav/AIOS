@@ -186,8 +186,19 @@ def receive(ws, text: str) -> str:
     # the user if its goal or a step reads like an instruction to the assistant
     # rather than a task; it is never auto-run regardless, this just warns.
     screen = " ".join(
-        [received["goal"]] + [s.instruction for s in received["plan"].steps]
+        [received["goal"]]
+        + [f"{s.instruction} {s.text}" for s in received["plan"].steps]
     )
+    acting = [
+        n
+        for n, s in enumerate(received["plan"].steps, start=1)
+        if s.action in ("type", "paste", "paste_text", "keys")
+    ]
+    if acting:
+        lines.append(
+            "[note] Step(s) " + ", ".join(map(str, acting)) + " type, paste or "
+            "press keys; read what each does (shown in brackets) before Act."
+        )
     check = getattr(ws.gateway, "injection_risk", None)
     risk = check(screen) if check else 0.0
     if risk is None:

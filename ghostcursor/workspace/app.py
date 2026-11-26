@@ -772,7 +772,7 @@ class App:
             if proposal is None
             else {
                 "revision": proposal.revision,
-                "steps": [s.instruction for s in proposal.plan.steps],
+                "steps": [s.describe() for s in proposal.plan.steps],
             },
             "memories": self.memories,
             "company_brain_available": ws.knowledge is not None,

@@ -60,27 +60,6 @@ HIGH_RISK = re.compile(
     re.IGNORECASE,
 )
 
-_CTRL, _ALT, _DEL, _ENTER, _F4 = 0x11, 0x12, 0x2E, 0x0D, 0x73
-
-
-def _risky_chord(chord: str) -> bool:
-    """Judged on key codes, as act.chord_events sends them, so no spelling
-    ("control+w", "f4+alt") or order slips past: a chord that closes or
-    quits (Alt+F4, Ctrl+W/Q/F4), deletes (Del) or submits (Enter)."""
-
-    from ghostcursor.harness.act import vk_of
-
-    try:
-        vks = {vk_of("".join(n.split())) for n in chord.split("+")}
-    except ValueError:
-        return False  # unknown key: chord_events refuses it, nothing is sent
-    return (
-        {_ALT, _F4} <= vks
-        or (_CTRL in vks and bool(vks & {ord("W"), ord("Q"), _F4}))
-        or bool(vks & {_DEL, _ENTER})
-    )
-
-
 def _unsendable_chord(plan) -> str:
     """Why a "keys" step of the plan could never be sent (an unknown key,
     the Windows key, Alt+Tab, ESC), or "". Checked when the plan is shown,
@@ -100,8 +79,10 @@ def _unsendable_chord(plan) -> str:
 
 def needs_confirm(step, current) -> bool:
     """Rule 2: ask before a risky step. The control's CURRENT name (an app
-    may relabel it after the gate), the instruction, a chord that closes or
-    deletes, or typed text whose newline would submit or send."""
+    may relabel it after the gate), the instruction, any key chord (Alt+S
+    sends mail in Outlook, Ctrl+M is Enter in a terminal: no short list of
+    chords is safe), pasting the user's own clipboard (it may hold a
+    password), or typed text whose newline would submit or send."""
 
     action = getattr(step, "action", "click")
     text = getattr(step, "text", "") or ""
@@ -109,9 +90,9 @@ def needs_confirm(step, current) -> bool:
         getattr(step, "instruction", "") or ""
     ):
         return True
-    if action == "keys":
-        return _risky_chord(text)
-    return action in ("type", "paste", "paste_text") and ("\n" in text or "\r" in text)
+    if action in ("keys", "paste"):
+        return True
+    return action in ("type", "paste_text") and ("\n" in text or "\r" in text)
 
 
 CHOOSE_QUESTION = (
@@ -440,10 +421,12 @@ class ModelTeachSession:
 
     def _instruction(self) -> str:
         step = self.plan.steps[self.step]
-        return (
-            f"Step {self.step + 1}/{len(self.plan.steps)} (suggested): "
-            f"{step.instruction}"
+        shown = (
+            step.describe()
+            if self.act is not None and hasattr(step, "describe")
+            else step.instruction
         )
+        return f"Step {self.step + 1}/{len(self.plan.steps)} (suggested): {shown}"
 
     def _failed(self, error: BaseException) -> None:
         if isinstance(error, ProviderError) and error.kind in (
@@ -488,8 +471,8 @@ class ModelTeachSession:
                 self._block(bad)
                 return Display(self.phase, self.message)
             if not confirm:
-                steps = "; ".join(
-                    f"{n}. {s.instruction}"
+                steps = "; ".join(  # with what each step types or presses
+                    f"{n}. {s.describe() if hasattr(s, 'describe') else s.instruction}"
                     for n, s in enumerate(self.plan.steps, start=1)
                 )
                 return Display(self.phase, f"Approve to let Orbyn do: {steps}")
@@ -557,10 +540,16 @@ class ModelTeachSession:
                     self._risk_ok = True  # the user said yes to this control
                 confirm = False
             else:
+                ask = (  # Act: the press DOES the step, so say that plainly
+                    "Orbyn will do exactly this when you press Done (or Enter in "
+                    "the console); ESC stops"
+                    if self.act is not None
+                    else "press Enter in the Orbyn console to show it"
+                )
                 return Display(
                     self.phase,
-                    f"{self._instruction()} -- this control can change or lose "
-                    "data; press Enter in the Orbyn console to show it",
+                    f"{self._instruction()} -- this can change, send or lose "
+                    f"data; {ask}",
                 )
 
         if self.phase is Phase.SHOWING:

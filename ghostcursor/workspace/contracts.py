@@ -250,7 +250,7 @@ class PlanProposal:
 
     def as_text(self) -> str:
         lines = [
-            f"{n}. {s.instruction}" for n, s in enumerate(self.plan.steps, start=1)
+            f"{n}. {s.describe()}" for n, s in enumerate(self.plan.steps, start=1)
         ]
         return (
             f"[plan r{self.revision}, a proposal {self.digest()[:12]}]\n"
