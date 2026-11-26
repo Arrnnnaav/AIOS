@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from ghostcursor.workspace import app as appmod
-from ghostcursor.workspace.app import App, make_server
+from ghostcursor.workspace.app import USED_LINK, App, make_server
 
 _ = appmod  # used by the single-instance guard test below
 from ghostcursor.workspace.brain import Brain
@@ -2863,8 +2863,10 @@ def test_without_edge_the_page_opens_with_a_one_time_code(served, monkeypatch):
     assert len(opened) == 1 and "secret-token" not in opened[0] and "?c=" in opened[0]
     first = urllib.request.urlopen(opened[0], timeout=5)
     assert first.status == 200 and b"secret-token" in first.read()
-    with pytest.raises(urllib.error.HTTPError):
+    with pytest.raises(urllib.error.HTTPError) as used:
         urllib.request.urlopen(opened[0], timeout=5)  # used once: dead in the history
+    assert used.value.code == 410 and b"already used" in used.value.read()
+    assert b"secret-token" not in USED_LINK
     code = app.launch_code()
     app.clock = lambda: time.time() + 3600
     assert not app.use_launch_code(code)  # and it expires

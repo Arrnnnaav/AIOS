@@ -1167,3 +1167,78 @@ def test_a_console_window_is_a_command_line_whatever_runs_in_it():
     assert is_terminal("psql.exe", 7, class_of=lambda w: "CASCADIA_HOSTING_WINDOW_CLASS")
     assert not is_terminal("notepad.exe", 7, class_of=lambda w: "Notepad")
     assert not is_terminal("python.exe", 7, class_of=lambda w: (_ for _ in ()).throw(OSError()))
+
+
+
+@pytest.mark.interactive
+def test_a_paste_is_acknowledged_when_an_app_reads_the_text():
+    """Delayed rendering on the real clipboard: another process reading the
+    text is the acknowledgement, and the user's clipboard comes back at once
+    (the user's own clipboard is saved and put back by the test)."""
+
+    import subprocess
+    import sys
+    import time
+
+    saved = act.get_clipboard_text()
+    try:
+        act.set_clipboard_text("the user's own text")
+        offer = act.DelayedPaste("Orbyn's text")
+        offer.sent()
+        read = subprocess.run(
+            [sys.executable, "-c", "import win32clipboard as c;c.OpenClipboard();print(c.GetClipboardData(c.CF_UNICODETEXT));c.CloseClipboard()"],
+            capture_output=True, text=True, timeout=20,
+        )
+        assert read.stdout.strip() == "Orbyn's text"
+        started = time.monotonic()
+        assert offer.restore_after_paste("the user's own text", 5) is True
+        assert time.monotonic() - started < 1.0  # no guessed wait
+        assert act.get_clipboard_text() == "the user's own text"
+        # Nobody pastes, and a clipboard watcher (here Remote Desktop's
+        # sync) reading it is not the app being pasted into: the timed restore.
+        quiet = act.DelayedPaste("unread", target_pid=-1)
+        quiet.sent()
+        assert quiet.restore_after_paste("the user's own text", 0.3) is False
+        assert act.get_clipboard_text() == "the user's own text"
+    finally:
+        act.set_clipboard_text(saved)
+
+
+def test_a_terminal_inside_an_editor_is_a_command_line(monkeypatch):
+    # FOLLOWUPS: VS Code's terminal runs inside code.exe; its control says so.
+    from ghostcursor.harness import teach_live
+    from ghostcursor.harness.binding import is_terminal
+
+    assert is_terminal("code.exe", None, control="Terminal 1, powershell")
+    assert is_terminal("idea64.exe", None, control="Terminal: Local")
+    assert not is_terminal("code.exe", None, control="Editor content")
+    sent = []
+    monkeypatch.setattr(act, "perform", lambda *a, **kw: sent.append(a) or "ok")
+    with pytest.raises(PermissionError, match="command line"):
+        teach_live._live_perform(
+            PlanStep("Run it", E.CHOSEN_STATE_CHANGES, "type", "npm test"),
+            _c(1, "Terminal 1, powershell", "Edit"), 9, "code.exe",
+        )
+    assert sent == []
+
+
+def test_only_the_app_being_pasted_into_acknowledges_a_paste():
+    # A clipboard watcher (Remote Desktop's sync read every new clipboard on
+    # this PC) must not end the wait; the target app's own read does.
+    offer = act.DelayedPaste.__new__(act.DelayedPaste)
+    offer.target_pid = 4242
+    pids = {11: 4242, 12: 9999}
+
+    def owner(window, out):
+        out._obj.value = pids.get(window, 0)
+        return 1
+
+    real = act._user32.GetWindowThreadProcessId
+    try:
+        act._user32.GetWindowThreadProcessId = owner
+        assert offer._is_target(11)
+        assert not offer._is_target(12) and not offer._is_target(0)
+    finally:
+        act._user32.GetWindowThreadProcessId = real
+    offer.target_pid = None  # no target known: any read counts
+    assert offer._is_target(0)

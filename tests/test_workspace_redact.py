@@ -402,3 +402,13 @@ def test_review_26_nov_quoted_short_and_spoken_secrets_are_hidden():
     assert "two words" not in out and json.loads(out)
     for text in ("Spinning: on", "compass: north", "The password is incorrect.", "Password is required"):
         assert redact.scrub(text)[0] == text, text
+
+
+def test_a_value_that_is_itself_a_secret_assignment_does_not_hide_the_real_one():
+    # Review 26 Nov: "pin:password\"=api_key" left api_key visible.
+    for text, secret in (
+        ('pin:password"=api_key', "api_key"),
+        ('api_key=pwd\\"=PASSWD', "PASSWD"),
+    ):
+        assert redact.scrub(text)[0].endswith("[KEY_1]") and secret not in redact.scrub(text)[0], text
+    assert redact.scrub("pass=token123")[0] == "pass=[KEY_1]"  # a value that only starts like a name
