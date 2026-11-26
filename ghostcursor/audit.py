@@ -37,6 +37,9 @@ EVENTS = {
     "egress": {"provider", "model", "failure", "images"},
     "team_publish": {"facts", "skills", "agents"},
     "team_sync": {"outcome", "facts", "skills", "agents"},
+    # Right/Wrong on a guided step of a TEAM skill (owner-written, so its
+    # name is not the person's content); feeds the owner's playbook report.
+    "teach_rating": {"skill", "step", "verdict", "app", "control_type"},
 }
 MAX_FIELD = 80
 GENESIS = "0" * 64

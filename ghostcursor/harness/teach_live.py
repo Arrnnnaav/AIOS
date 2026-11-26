@@ -462,6 +462,7 @@ def run_model_teach(
     speaker=None,
     rated=lambda: None,
     used: list | None = None,
+    skill: str = "",
 ) -> int:
     """``sketch`` (prototype) draws each step as a hand-drawn circle with an
     arrow from the previous step's control (harness/sketch.py). ``speak``
@@ -584,6 +585,17 @@ def run_model_teach(
                     control_type=shown_target.control_type,
                     step=session.step + 1,
                 )
+                if skill.startswith("team-"):  # a company playbook: the owner sees where people get stuck
+                    from ghostcursor import audit
+
+                    audit.record(
+                        "teach_rating",
+                        skill=skill,
+                        step=session.step + 1,
+                        verdict=verdict,
+                        app=apps_by_label.get(shown_target.window, ""),
+                        control_type=shown_target.control_type,
+                    )
                 if verdict == "wrong" and session.reject((shown_target.window, shown_target.runtime_id)):
                     say("Looking again without that control.")
             frame = observer.latest()  # one frame per tick, for Teach and the sketch

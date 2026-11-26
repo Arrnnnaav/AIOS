@@ -1724,12 +1724,29 @@ function skillsCard() {
   const meta = el("div", "meta"); meta.append(el("span", "kind", "your skills")); card.append(meta);
   if (!(S.skills || []).length) { card.append(el("div", "note", "Save a plan as a skill to use it again, or press Watch me do it to make one by doing the task once.")); return card; }
   for (const name of S.skills) {
-    const row = el("div", "meta"); row.append(el("span", "", name.replace(/-/g, " ")));
+    const row = el("div", "meta");
+    const team = name.startsWith("team-");
+    row.append(el("span", "", (team ? name.slice(5) : name).replace(/-/g, " ")));
+    if (team) { const chip = el("span", "chip", "from your team"); chip.style.marginLeft = "6px"; row.append(chip); }
     const use = el("button", "secondary", "Use"); use.style.marginLeft = "auto"; use.disabled = !!S.busy;
     use.onclick = () => act("skill_use", { name }, "Skill loaded as the plan");
     const del = el("button", "secondary", "Delete"); del.style.marginLeft = "6px"; del.disabled = !!S.busy;
     del.onclick = async () => { if (await askConfirm("Delete the skill " + name.replace(/-/g, " ") + "?", "Delete")) act("skill_delete", { name }, "Skill deleted"); };
     row.append(use, del); card.append(row);
+  }
+  if (S.team_owner) {
+    const stuck = el("button", "secondary", "Where people get stuck"); stuck.style.marginTop = "8px";
+    stuck.onclick = async () => {
+      const r = await act("playbook_report", {});
+      if (!r) return;
+      const sheet = $("sheet"); sheet.replaceChildren();
+      sheet.append(el("h3", "", "Team playbooks: where people get stuck"));
+      if (!r.rows.length) sheet.append(el("p", "note", "No ratings shared yet. Staff press Right or Wrong while a team skill guides them; with ShareAudit on, the counts arrive here (no names, no screen text)."));
+      for (const x of r.rows) sheet.append(el("div", "", x.skill.replace(/^team-/, "").replace(/-/g, " ") + " \u00b7 step " + x.step + ": " + x.wrong + " wrong, " + x.right + " right (" + x.pcs + " PC" + (x.pcs === 1 ? "" : "s") + ")"));
+      const close = el("button", "secondary", "Close"); close.onclick = () => sheet.close(); sheet.append(close);
+      sheet.showModal();
+    };
+    card.append(stuck);
   }
   return card;
 }

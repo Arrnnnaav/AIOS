@@ -851,6 +851,7 @@ class App:
             "autostart": autostart_on(),
             "read_aloud": settings.read_aloud(),
             "skills": _skill_names(self.skills_dir),
+            "team_owner": _team_role() == "owner",
             "skill_repair": None
             if self.skill_repair is None
             else {"skill": self.skill_repair["skill"], "changes": self.skill_repair["changes"]},
@@ -923,6 +924,13 @@ class App:
                 task_skills.save_skill(repair["skill"], repair["plan"], dest_dir=self.skills_dir)
                 return {"updated": len(repair["changes"])}
             return {"updated": 0}
+        if action == "playbook_report":  # the owner's view: where people get stuck
+            from ghostcursor.workspace import team
+
+            if team.role() != "owner":
+                raise ValueError("only the team owner sees the playbook report")
+            rows = team.playbook_report()
+            return {"rows": [{k: r[k] for k in ("skill", "step", "right", "wrong", "pcs")} for r in rows[:50]]}
         if action == "skill_delete":
             from ghostcursor.workspace import task_skills
 
@@ -1933,6 +1941,7 @@ class App:
             deny=deny,
             rated=self._take_rating,
             used=used,
+            skill=getattr(self.ws, "active_skill", "") if step == 1 else "",
         )
         self._offer_skill_repair(step, plan, used)
         return self.ws.record_teach(step, outcome, code)
@@ -2322,6 +2331,15 @@ def open_window(url: str, *, docked: bool = False) -> None:
 
 #: A step Watch me recorded: Click "Name" (Type), or Click into "Name" (Type) and type.
 _RECORDED = re.compile(r'Click (?:into )?"(?P<name>[^"]*)" \((?P<kind>\w+)\)(?: and type)?')
+
+
+def _team_role() -> str:
+    try:
+        from ghostcursor.workspace import team
+
+        return team.role()
+    except Exception:  # noqa: BLE001 - no team policy readable: solo
+        return "solo"
 
 
 def _skill_names(skills_dir) -> list[str]:

@@ -392,6 +392,34 @@ def report(folder: Path | None = None) -> list[dict]:
     return rows
 
 
+def playbook_report(folder: Path | None = None) -> list[dict]:
+    """Where people get stuck in the team's playbooks: per team skill and
+    step, how many guided pointers people rated right and wrong, across
+    every shared audit log, most-wrong first. Counts only, as recorded."""
+
+    folder = folder or _folder() / "audit"
+    counts: dict[tuple[str, int], dict] = {}
+    for path in sorted(folder.glob("*.jsonl")):
+        for raw in path.read_bytes().splitlines():
+            try:
+                entry = json.loads(raw)
+            except ValueError:
+                continue
+            if not isinstance(entry, dict) or entry.get("event") != "teach_rating":
+                continue
+            skill, step, verdict = entry.get("skill"), entry.get("step"), entry.get("verdict")
+            if not isinstance(skill, str) or not isinstance(step, int) or verdict not in ("right", "wrong"):
+                continue
+            row = counts.setdefault((skill, step), {"skill": skill, "step": step, "right": 0, "wrong": 0, "pcs": set()})
+            row[verdict] += 1
+            row["pcs"].add(path.stem)
+    rows = []
+    for row in counts.values():
+        row["pcs"] = len(row["pcs"])
+        rows.append(row)
+    return sorted(rows, key=lambda r: (-r["wrong"], r["skill"], r["step"]))
+
+
 def main(argv=None) -> int:
     from ghostcursor.workspace.knowledge import Knowledge
     from ghostcursor.workspace.session import default_root
@@ -410,6 +438,13 @@ def main(argv=None) -> int:
                 print(f"{r['pc']}  {', '.join(r['users']) or '-'}  last {when}  chain {chain}  "
                       f"approvals {r['approvals']}  steps {r['done']} done / {r['refused']} refused / "
                       f"{r['failed']} failed  model requests {r['requests']}")
+            return 0
+        if command == "playbooks":  # where people get stuck in the team's skills
+            rows = playbook_report()
+            for r in rows:
+                print(f"{r['skill']} step {r['step']}: {r['wrong']} wrong, {r['right']} right on {r['pcs']} PC(s)")
+            if not rows:
+                print("No ratings shared yet (staff rate guided steps; ShareAudit carries them here).")
             return 0
         if command == "status":
             print(
