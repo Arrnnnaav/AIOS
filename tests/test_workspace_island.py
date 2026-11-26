@@ -584,3 +584,35 @@ def test_the_reply_scrollbar_shows_only_when_the_text_overflows():
     finally:
         win32gui.DestroyWindow(island.hwnd)
 
+
+
+def test_a_click_just_after_a_peek_is_left_to_the_app_below():
+    """The bar comes out under a resting pointer; a click meant for the app's
+    own top strip a moment later must not press Open, Ask or Quit. Stop is
+    never ignored (rule 4)."""
+
+    import win32con
+    import win32gui
+
+    app = StubApp()
+    now = [100.0]
+    opened = []
+    island = Island(app, "http://127.0.0.1:1/?t=local", opened.append, clock=lambda: now[0])
+    try:
+        island.show(automatic=True)  # peeked out
+        for action in (ID_OPEN, ID_ASK, ID_QUIT):
+            _wnd_proc(island.hwnd, win32con.WM_COMMAND, action, 0)
+        assert not island.asking and not island.closed and app.actions == []
+        _wnd_proc(island.hwnd, win32con.WM_COMMAND, ID_STOP, 0)
+        assert app.stop.is_set()  # Stop always works
+        now[0] += island_module.CLICK_GRACE_S + 0.01
+        _wnd_proc(island.hwnd, win32con.WM_COMMAND, ID_ASK, 0)
+        assert island.asking  # a deliberate click a moment later works
+        island.fold()
+        island.hide()
+        island.show()  # brought out on purpose (shortcut, result): no grace
+        _wnd_proc(island.hwnd, win32con.WM_COMMAND, ID_ASK, 0)
+        assert island.asking
+    finally:
+        if win32gui.IsWindow(island.hwnd):
+            win32gui.DestroyWindow(island.hwnd)

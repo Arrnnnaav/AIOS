@@ -3022,8 +3022,9 @@ from 1053b54. Still open:
   connections. Review of 55a9b8b..1c180fc: no blocking finding; fixed: no
   peek over full-screen apps, pill kept on a display change, Stop and
   click-through pinned by tests (D018 7/7). Hermetic 1584 passed.
-  Left (minor): the bar comes out where a click meant for an app's top strip
-  can land on Open/Quit after a peek; why_unavailable matches "usage_limit"
+  Fixed after: for 0.6 s after the bar peeks out under the pointer, Ask,
+  Open and Quit ignore clicks (meant for the app's top strip); Stop never
+  does (D018 4/4). Left (minor): why_unavailable matches "usage_limit"
   as text, not a parsed code; the Settings gear's aria-controls names a
   region, not a tabpanel; hover, DPI and full-screen behaviour were checked
   on this desktop by screenshot only (not on a second display).

@@ -56,6 +56,10 @@ TUCKED = (110, 6)
 PEEK_DWELL_S = 0.2
 #: The bar tucks away once the pointer has been off it this long.
 TUCK_AFTER_S = 0.8
+#: After the bar peeks out under a resting pointer, Ask, Open and Quit ignore
+#: clicks this long: a click meant for the app's own top strip (tabs, a
+#: title bar) must not land on them. Stop is never ignored (rule 4).
+CLICK_GRACE_S = 0.6
 PILL = win32api.RGB(92, 100, 114)
 MAX_TRANSCRIPT = 20_000
 HINT = (
@@ -406,6 +410,8 @@ def _wnd_proc(hwnd, msg, wparam, lparam):
             and win32api.HIWORD(wparam) == win32con.BN_CLICKED
         ):
             action = win32api.LOWORD(wparam)
+            if action in (ID_ASK, ID_OPEN, ID_QUIT) and island.just_peeked():
+                return 0  # meant for the app under the bar, not for Orbyn
             if action == ID_OPEN:
                 island.open()
             elif action == ID_ASK:
@@ -649,6 +655,7 @@ class Island:
         for hidden in (self.stop_button, self.send_button, self.hide_button):
             win32gui.ShowWindow(hidden, win32con.SW_HIDE)  # tucking is automatic now
         self._hover_since = self._left_since = None
+        self._shown_at = 0.0
         self._resize(False)  # initial placement must respect a top/side taskbar
         self.hidden, self.peek_armed = True, True
         self._tuck()  # at rest: a pill at the top edge, not a bar over the page
@@ -825,10 +832,16 @@ class Island:
         )
         win32gui.InvalidateRect(self.hwnd, None, True)
 
+    def just_peeked(self):
+        """The bar came out by itself under the pointer a moment ago."""
+
+        return self.auto_revealed and self.clock() - self._shown_at < CLICK_GRACE_S
+
     def show(self, *, automatic=False):
         was_tucked = self.hidden
         self.hidden = False
         self.auto_revealed = automatic
+        self._shown_at = self.clock()
         self._hover_since = self._left_since = None
         if was_tucked:
             style = win32gui.GetWindowLong(self.hwnd, win32con.GWL_EXSTYLE)
