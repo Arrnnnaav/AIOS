@@ -315,7 +315,7 @@ def why_unavailable(exc) -> str:
     """What the person can do when no model answered, in plain words."""
 
     detail = str(exc)
-    if "usage_limit" in detail:
+    if exc.kind.value == "rate_limited" and "usage_limit" in detail:
         return (
             "your ChatGPT plan has used up its allowance for apps like Orbyn; it "
             "resets on OpenAI's schedule. Until then another model answers if one "
