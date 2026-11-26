@@ -78,3 +78,13 @@ def list_skills(*, dest_dir: Path | None = None) -> list[str]:
     if not directory.exists():
         return []
     return sorted(p.stem for p in directory.glob("*.json"))
+
+
+def delete_skill(name: str, *, dest_dir: Path | None = None) -> bool:
+    """Remove a saved skill. Returns whether one was there."""
+
+    path = _dir(dest_dir) / f"{_slug(name)}.json"
+    if not path.exists():
+        return False
+    path.unlink()
+    return True

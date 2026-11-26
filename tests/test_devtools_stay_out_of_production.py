@@ -115,7 +115,7 @@ _MEASURED_INVENTORY = {
     # product were removed, so these are the counts that remain.
     "ghostcursor": 16,
     "ghostcursor/evaluation": 3,  # safety, teach_replay
-    "ghostcursor/harness": 12,
+    "ghostcursor/harness": 14,  # + ratings, watch (26-27 Nov)
     "ghostcursor/overlay": 4,
     "ghostcursor/perception": 3,  # uia, appinfo
     "ghostcursor/providers": 10,
@@ -142,7 +142,7 @@ def test_the_production_module_set_matches_the_measured_inventory():
         "the scanned production set no longer matches the measured inventory. "
         f"missing/changed: {set(_MEASURED_INVENTORY.items()) ^ set(counted.items())}"
     )
-    assert sum(_MEASURED_INVENTORY.values()) == len(modules) == 86
+    assert sum(_MEASURED_INVENTORY.values()) == len(modules) == 88
 
     for required in (
         "ghostcursor/agent_server.py",

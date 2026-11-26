@@ -892,13 +892,13 @@ function openFileAsk(offered) {
 
 function renderLive() {
   const busy = S.busy;
-  $("liveLabel").textContent = { Guiding: "Guiding you", Pointing: "Point at it", Listening: "Listening", Thinking: "Thinking", Researching: "Researching the web", Planning: "Drafting a plan" }[busy] || busy;
+  $("liveLabel").textContent = { Watching: "Watching you", Guiding: "Guiding you", Pointing: "Point at it", Listening: "Listening", Thinking: "Thinking", Researching: "Researching the web", Planning: "Drafting a plan" }[busy] || busy;
   const last = S.status.length ? S.status[S.status.length - 1] : "";
   const hint = { Pointing: "Hover the mouse over what you mean, then press Enter here.", Listening: "Press Enter to start, Enter again when you're done." }[busy];
   $("liveStatus").textContent = (busy === "Pointing" || busy === "Listening") && !last.startsWith("Marked") ? hint : last.replace(/^\[[a-z_]+\]\s*/, "");
   for (const id of ["rightBtn", "wrongBtn"]) $(id).hidden = busy !== "Guiding";
   const done = $("doneBtn");
-  const label = { Guiding: "Step done", Acting: "Approve", Pointing: "That's it", Listening: "Start / end" }[busy];
+  const label = { Watching: "Done", Guiding: "Step done", Acting: "Approve", Pointing: "That's it", Listening: "Start / end" }[busy];
   done.hidden = !label;
   if (label) { done.textContent = label + " "; done.append(el("kbd", "", "Enter")); }
 }
@@ -1048,7 +1048,11 @@ function renderPlan() {
   explore.disabled = !!S.busy || !S.goal;
   explore.onclick = () => act("ideate", {}, "Approaches ready");
   head.append(h);
-  if (S.plan) head.append(explore, regen);
+  if (S.plan) {
+    const keep = el("button", "secondary", "Save as skill"); keep.disabled = !!S.busy;
+    keep.onclick = async () => { const name = await askText("Name this skill (for example: Weekly report export)"); if (name && name.trim()) act("skill_save", { name: name.trim() }, "Saved as a skill"); };
+    head.append(explore, regen, keep);
+  }
   root.append(head);
   if (S.ideas.length) {
     const ideas = el("div", "ideas");
@@ -1075,14 +1079,15 @@ function renderPlan() {
     const file = el("input"); file.type = "file"; file.accept = ".json"; file.hidden = true;
     file.onchange = async () => { const f = file.files[0]; if (f) act("handoff_import", { data: await f.text() }, "Handoff opened"); };
     const open = el("button", "secondary", "Open a teammate's handoff"); open.disabled = !!S.busy; open.onclick = () => file.click();
-    row.append(open); b.append(row, file); root.append(b); return;
+    const watchBtn = el("button", "secondary", "Watch me do it"); watchBtn.disabled = !!S.busy; watchBtn.onclick = openWatch;
+    row.append(watchBtn, open); b.append(row, file); root.append(b); root.append(skillsCard()); return;
   }
   const ol = el("ol", "steps");
   S.plan.steps.forEach((text, i) => {
     const li = el("li", "step"); li.append(el("div", "num", String(i + 1)));
     const body = el("div", "text");
     if (editing === i) {
-      const inp = el("input"); inp.value = text; inp.maxLength = 300;
+      const inp = el("input"); inp.value = text.replace(/ \[[^\]]*\]$/, ""); inp.maxLength = 300;
       inp.onkeydown = (e) => { if (e.key === "Enter" && !imeEnter(e)) { editing = null; act("plan_edit", { verb: "edit", args: [String(i + 1), inp.value] }); } if (e.key === "Escape") { editing = null; renderPlan(); } };
       body.append(inp); setTimeout(() => inp.focus());
     } else body.append(document.createTextNode(text));
@@ -1094,6 +1099,7 @@ function renderPlan() {
     acts.append(show, ed, dr); body.append(acts); li.append(body); ol.append(li);
   });
   root.append(ol);
+  root.append(skillsCard());
   if (S.plan_memories.length) root.append(el("div", "note", "Made with what Orbyn remembers: " + S.plan_memories.join(" · ")));
   const row = el("div", "addrow"); const inp = el("input"); inp.placeholder = "Add a step…"; inp.maxLength = 300;
   const add = el("button", "secondary", "Add"); add.onclick = () => inp.value.trim() && act("plan_edit", { verb: "add", args: [inp.value] });
@@ -1662,6 +1668,33 @@ function openPoint() {
   });
 }
 
+// Watch me, then repeat: Orbyn notes which controls you click (names only,
+// no screenshots, nothing typed) and the clicks become the plan.
+function openWatch() {
+  const sel = el("select"); [["300", "5 min"], ["600", "10 min"], ["1200", "20 min"]].forEach(([v, t]) => { const o = el("option", "", t); o.value = v; sel.append(o); });
+  sel.value = "600";
+  windowSheet("Watch me do it", "Choose the windows you will work in, then do the task once. Orbyn notes each control you click (its name, on this computer; nothing you type). Press Done when finished; ESC stops.", "Start watching", sel, async (wins) => {
+    setTab("chat");
+    const r = await act("watch", { windows: wins, seconds: Number(sel.value) });
+    if (r && r.steps) { toast(r.steps + " step(s) recorded: review them, then Save as skill", true); setTab("plan"); }
+    else if (r) toast("Nothing was recorded.");
+  });
+}
+function skillsCard() {
+  const card = el("div", "mem"); card.style.marginTop = "12px";
+  const meta = el("div", "meta"); meta.append(el("span", "kind", "your skills")); card.append(meta);
+  if (!(S.skills || []).length) { card.append(el("div", "note", "Save a plan as a skill to use it again, or press Watch me do it to make one by doing the task once.")); return card; }
+  for (const name of S.skills) {
+    const row = el("div", "meta"); row.append(el("span", "", name.replace(/-/g, " ")));
+    const use = el("button", "secondary", "Use"); use.style.marginLeft = "auto"; use.disabled = !!S.busy;
+    use.onclick = () => act("skill_use", { name }, "Skill loaded as the plan");
+    const del = el("button", "secondary", "Delete"); del.style.marginLeft = "6px"; del.disabled = !!S.busy;
+    del.onclick = async () => { if (await askConfirm("Delete the skill " + name.replace(/-/g, " ") + "?", "Delete")) act("skill_delete", { name }, "Skill deleted"); };
+    row.append(use, del); card.append(row);
+  }
+  return card;
+}
+
 function openTeach(step, doIt) {
   const sel = el("select"); [["300", "5 min"], ["600", "10 min"], ["1200", "20 min"]].forEach(([v, t]) => { const o = el("option", "", t); o.value = v; sel.append(o); });
   const title = (doIt ? "Do it for me from step " : "Guide me from step ") + step;
@@ -1714,7 +1747,7 @@ addEventListener("pagehide", () => {
 });
 document.addEventListener("keydown", (e) => {
   if (!S || !S.busy) { if (e.key === "Escape") closeSheet(); return; }
-  if (e.key === "Enter" && !$("ask").open && ["Guiding", "Acting", "Pointing", "Listening"].includes(S.busy)) { e.preventDefault(); api("signal").catch(() => {}); }
+  if (e.key === "Enter" && !$("ask").open && ["Watching", "Guiding", "Acting", "Pointing", "Listening"].includes(S.busy)) { e.preventDefault(); api("signal").catch(() => {}); }
   if (e.key === "Escape") api("stop").catch(() => {});
 });
 

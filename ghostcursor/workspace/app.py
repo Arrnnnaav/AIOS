@@ -848,6 +848,7 @@ class App:
             "companion_idle": self.companion_idle,
             "autostart": autostart_on(),
             "read_aloud": settings.read_aloud(),
+            "skills": _skill_names(self.skills_dir),
             "autostart_possible": _packaged_exe() is not None,
             # Scrub private details before a cloud model: the person's
             # switch, or forced on by the organisation (never forced off).
@@ -886,6 +887,31 @@ class App:
             return {}
         if action == "today":  # asked for, never polled: it may reach the calendar and mail
             return self.today()
+        if action == "watch":  # Watch me, then repeat: record the clicks as a plan
+            hwnds = self.hwnds(body.get("windows", []))
+            seconds = min(max(int(_whole(body.get("seconds", 600))), 30), 1800)
+            steps = self.run("Watching", lambda: self._watch(hwnds, seconds))
+            return {"steps": steps}
+        if action == "skill_save":  # keep the current plan as a reusable skill
+            from ghostcursor.workspace import task_skills
+
+            if ws.plan is None:
+                raise ValueError("no plan to save yet")
+            path = task_skills.save_skill(str(body.get("name", "")), ws.plan, dest_dir=self.skills_dir)
+            return {"name": path.stem}
+        if action == "skill_use":  # a saved skill becomes the plan (approve as usual)
+            from ghostcursor.workspace import task_skills
+
+            plan = task_skills.load_skill(str(body.get("name", "")), dest_dir=self.skills_dir)
+            if plan is None:
+                raise ValueError("no such skill")
+            ws._propose(plan)
+            return {"steps": len(plan.steps)}
+        if action == "skill_delete":
+            from ghostcursor.workspace import task_skills
+
+            task_skills.delete_skill(str(body.get("name", "")), dest_dir=self.skills_dir)
+            return {}
         if action == "rate_step":  # the person's verdict on the pointer shown
             verdict = str(body.get("verdict", ""))
             if verdict not in ("right", "wrong"):
@@ -1916,6 +1942,32 @@ class App:
         ][-5:]
         return out
 
+    def _watch(self, hwnds, seconds) -> int:
+        """Bind the chosen windows, watch the person's clicks until Done, ESC,
+        Stop or the time limit, and make them the plan. Returns the steps."""
+
+        from ghostcursor.harness.binding import bind
+        from ghostcursor.harness.teach_live import Observer, _escape_pressed
+        from ghostcursor.harness.watch import watch
+
+        observer = Observer(bind(hwnds))
+        observer.start()
+        try:
+            self.say("Watching: do the task in the chosen windows, then press Done. ESC stops.")
+            plan = watch(
+                observer,
+                time.monotonic() + seconds,
+                done=self.signalled,
+                stop=lambda: _escape_pressed() or self.stop.is_set(),
+                say=self.say,
+            )
+        finally:
+            observer.stop()
+        if plan is None:
+            return 0
+        self.ws._propose(plan)
+        return len(plan.steps)
+
     def _take_rating(self):
         verdict, self._rating = self._rating, None
         return verdict
@@ -2163,6 +2215,15 @@ def open_window(url: str, *, docked: bool = False) -> None:
                 win32gui.MoveWindow(new.pop(), left, top, width, height, True)
             break
         time.sleep(0.05)
+
+
+def _skill_names(skills_dir) -> list[str]:
+    from ghostcursor.workspace import task_skills
+
+    try:
+        return task_skills.list_skills(dest_dir=skills_dir)[:50]
+    except OSError:
+        return []
 
 
 def _startup_link() -> Path:
