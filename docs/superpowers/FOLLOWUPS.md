@@ -3086,3 +3086,18 @@ from 1053b54. Still open:
   and a bare shell name without "Terminal"; if an app keeps the clipboard
   open past the restore's retries, Orbyn's text stays on it; the 410 page
   answers any code, used or mistyped.
+- 26-27 Nov, new features: Right/Wrong on Teach's pointer (Wrong looks
+  again without that control; verdicts kept locally as counted evidence,
+  ratings.py); Today card (events, unread mail, research finished in a
+  day; fetched on open) and read replies aloud; Watch me, then repeat
+  (clicks on observed controls become a plan and a skill; nothing typed is
+  recorded; checked live on Notepad); Follow a how-to (a help page or pasted
+  steps becomes a plan; live: a support.microsoft.com page became three
+  control steps and pasted Notepad steps put the pointer on View in 0.9 s);
+  New chat, Start with Windows, "answered by" under replies. Reviews found
+  no blocking findings; their points are fixed. Hermetic 1631 passed.
+  Left: a frame read just before a menu opened can match a click to the
+  control underneath (Watch me); the choice is checked against the offered
+  ids by the gateway only, not again in the session; a verdict is written
+  on the tick thread (one small append); dependency vulnerability scan not
+  run (the audit tool could not be fetched here).
