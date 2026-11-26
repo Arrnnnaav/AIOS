@@ -1342,10 +1342,10 @@ function renderBrain() {
   aloudSw.style.marginLeft = "auto"; aloudSw.append(document.createTextNode(S.read_aloud ? "On" : "Off"), el("i"));
   aloudSw.onclick = () => act("read_aloud", { on: !S.read_aloud }, S.read_aloud ? "Replies stay silent" : "Replies are read aloud");
   aloudMeta.append(aloudSw);
-  aloudCard.append(aloudMeta, el("div", "", "Say each chat reply with Windows\u2019 own aloudCard."),
+  aloudCard.append(aloudMeta, el("div", "", "Say each chat reply with Windows\u2019 own voice."),
     el("div", "note", "Spoken on this computer; nothing is sent anywhere. Off by default."));
   aloudCard.style.marginTop = "8px"; root.append(aloudCard);
-  const ratedCard = el("div", "mem"); const ratedMeta = el("div", "meta"); ratedMeta.append(el("span", "kind", "guided steps you ratedCard"));
+  const ratedCard = el("div", "mem"); const ratedMeta = el("div", "meta"); ratedMeta.append(el("span", "kind", "guided steps you rated"));
   ratedCard.append(ratedMeta); ratedCard.style.marginTop = "8px"; root.append(ratedCard);
   api("teach_ratings").then((r) => {
     const apps = Object.entries(r.apps || {});

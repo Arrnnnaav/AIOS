@@ -86,3 +86,13 @@ def test_the_page_rates_only_while_guiding(tmp_path):
     finally:
         app.busy = ""
         app.close()
+
+
+
+def test_a_late_wrong_never_rejects_the_next_pointer():
+    plan = TeachPlan((PlanStep("Click Insert", E.CHOSEN_STATE_CHANGES),))
+    session = ModelTeachSession("x", FakeGateway(plan, [_choice("c1")]), SyncSlot(), clock=lambda: 0.0, plan=plan)
+    frame = _frame([_c(1, "Insert"), _c(2, "Insert Picture")])
+    shown = session.tick(frame)
+    assert session.reject(("w9", (9,))) is False  # not the control on screen
+    assert session.reject((shown.target.window, shown.target.runtime_id)) is True

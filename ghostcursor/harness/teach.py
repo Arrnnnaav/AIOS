@@ -413,12 +413,16 @@ class ModelTeachSession:
         else:
             self.phase, self.message = Phase.CHOOSING, f"re-looking ({reason})"
 
-    def reject(self) -> bool:
+    def reject(self, seen=None) -> bool:
         """The person says the control shown is the wrong one: never offer it
-        again for this step and look again. True if there was one shown."""
+        again for this step and look again. True if there was one shown.
+        SEEN, the (window, runtime id) the person was looking at, must still
+        be the one shown: a late press never rejects the next step's control."""
 
         if self.phase is not Phase.SHOWING or self._chosen is None or self.act is not None:
             return False  # Act has already acted by the time it shows; Teach only
+        if seen is not None and seen != (self._chosen.window, self._chosen.runtime_id):
+            return False
         rejected = getattr(self, "_rejected", set())
         rejected.add((self._chosen.window, self._chosen.runtime_id))
         self._rejected = rejected

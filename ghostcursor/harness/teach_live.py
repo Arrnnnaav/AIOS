@@ -583,7 +583,7 @@ def run_model_teach(
                     control_type=shown_target.control_type,
                     step=session.step + 1,
                 )
-                if verdict == "wrong" and session.reject():
+                if verdict == "wrong" and session.reject((shown_target.window, shown_target.runtime_id)):
                     say("Looking again without that control.")
             frame = observer.latest()  # one frame per tick, for Teach and the sketch
             display = session.tick(frame, confirm=done)

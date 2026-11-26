@@ -49,8 +49,8 @@ def test_clicks_on_observed_controls_become_steps_in_order():
     frame = _frame([insert, title])
     plan, said = _run([None, (20, 20), (20, 20), None, (20, 20), None, (50, 110), None, (900, 900), None], frame)
     steps = plan.steps
-    assert [s.instruction for s in steps] == ['Click "Insert" (TabItem)', 'Type in "Title" (Edit)']
-    assert steps[1].action == "none" and steps[1].text == ""  # nothing typed is recorded
+    assert [s.instruction for s in steps] == ['Click "Insert" (TabItem)', 'Click into "Title" (Edit) and type']
+    assert steps[1].action == "click" and steps[1].text == ""  # nothing typed is recorded
     assert steps[1].expected_change is E.FOCUS_MOVES_TO_CHOSEN
     assert "Step 2" in said[-1]
 
@@ -95,3 +95,21 @@ def test_the_page_records_saves_uses_and_deletes_a_skill(tmp_path, monkeypatch):
         assert app.state()["skills"] == []
     finally:
         app.close()
+
+
+
+def test_a_content_name_is_kept_short_with_private_details_hidden():
+    step = step_for(_c(1, "Invoice from ana@acme.com about the March payroll run for everyone", "ListItem"))
+    assert "ana@acme.com" not in step.instruction and len(step.instruction) < 80
+
+
+def test_watching_ends_at_the_deadline():
+    frame = _frame([_c(1, "Insert", "TabItem", rect=(10, 10, 60, 30))])
+    now = [0.0]
+
+    def sleep(_):
+        now[0] += 1.0
+
+    plan = watch(Observer(frame), 3.0, done=lambda: False, stop=lambda: False, say=lambda m: None,
+                 button=lambda: False, cursor=lambda: (0, 0), clock=lambda: now[0], sleep=sleep)
+    assert plan is None and now[0] >= 3.0

@@ -20,6 +20,9 @@ from ghostcursor.providers.schemas import MAX_INSTRUCTION_CHARS, MAX_PLAN_STEPS
 
 #: Controls a click types into: the step asks the person to type, Orbyn never does.
 TEXT_FIELDS = ("Edit", "Document", "ComboBox")
+#: Controls whose name is often content (a mail subject, a chat line, a file
+#: name): kept short and with private details hidden before they are saved.
+CONTENT_TYPES = ("ListItem", "DataItem", "TreeItem", "Hyperlink", "Text")
 POLL_S = 0.015
 VK_LBUTTON = 0x01
 
@@ -42,16 +45,19 @@ def _cursor() -> tuple[int, int]:
 def step_for(control) -> PlanStep:
     """The plan step one recorded click becomes."""
 
-    name = " ".join((control.name or "").split())[:80] or f"the {control.control_type}"
     kind = control.control_type
+    name = " ".join((control.name or "").split())
+    if kind in CONTENT_TYPES:
+        from ghostcursor import redact, settings
+
+        name = redact.scrub(name[:40], terms=settings.private_terms())[0]
+    name = name[:80] or f"the {kind}"
     if kind in TEXT_FIELDS:
-        text = f'Type in "{name}" ({kind})'
-        # action "none": Act clicks into it and leaves the typing to the person
+        # A click into the field: Act puts the caret there (the focus moving
+        # is the step done); what to type is never recorded, so the person types.
+        text = f'Click into "{name}" ({kind}) and type'
         return PlanStep(
-            text[:MAX_INSTRUCTION_CHARS],
-            ExpectedChange.FOCUS_MOVES_TO_CHOSEN,
-            "none",
-            "",
+            text[:MAX_INSTRUCTION_CHARS], ExpectedChange.FOCUS_MOVES_TO_CHOSEN, "click", ""
         )
     text = f'Click "{name}" ({kind})'
     return PlanStep(
