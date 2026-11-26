@@ -155,14 +155,13 @@ def text_events(text: str) -> list[_INPUT]:
     return events
 
 
-def _open_clipboard(c, tries: int = 5, owner=None):
+def _open_clipboard(c, tries: int = 5):
     """OpenClipboard, retrying briefly: another process may hold it for a
-    moment. Raises OSError if it stays locked. ``owner`` becomes the
-    clipboard's owner (delayed rendering needs one)."""
+    moment. Raises OSError if it stays locked."""
 
     for _ in range(tries):
         try:
-            c.OpenClipboard(owner) if owner else c.OpenClipboard()
+            c.OpenClipboard()
             return
         except Exception:
             time.sleep(0.02)
@@ -256,139 +255,6 @@ def restore_clipboard_text(text, ours: int, sequence=None) -> bool:
         return True
     finally:
         c.CloseClipboard()
-
-
-class DelayedPaste:
-    """Orbyn's text offered on the clipboard by delayed rendering: Windows
-    asks Orbyn for it (WM_RENDERFORMAT) at the moment an app pastes, which
-    is the paste's acknowledgement; the user's clipboard then goes back at
-    once instead of after a guessed wait. Checked on this PC 26 Nov: another
-    process's read raised the request and it does not move the clipboard's
-    change counter. Only a request from the app being pasted into counts
-    (``target_pid``): on this PC Remote Desktop's clipboard sync (msrdc.exe)
-    read every new clipboard at once, which must not end the wait. Without
-    the app's own request the restore waits ``wait_s`` as before."""
-
-    CLASS = "OrbynDelayedPaste"
-    _registered = False
-
-    def __init__(self, text: str, target_pid: int | None = None):
-        self.text = text
-        self.target_pid = target_pid
-        self.ours = 0
-        self._sent_at = None
-        self._rendered_after_send = threading.Event()
-        self._ready = threading.Event()
-        self._done = threading.Event()
-        self._error = None
-        self._thread = threading.Thread(target=self._run, name="OrbynDelayedPaste", daemon=True)
-        self._thread.start()
-        if not self._ready.wait(2) or self._error is not None:
-            self.close()
-            raise OSError("the clipboard is held by another program")
-
-    def _proc(self, hwnd, msg, wparam, lparam):
-        import win32clipboard as c
-        import win32con
-        import win32gui
-
-        if msg == win32con.WM_RENDERFORMAT and wparam == c.CF_UNICODETEXT:
-            reader = _user32.GetOpenClipboardWindow()
-            c.SetClipboardData(c.CF_UNICODETEXT, self.text)  # Windows holds it open
-            if self._sent_at is not None and self._is_target(reader):
-                self._rendered_after_send.set()
-            return 0
-        if msg == win32con.WM_RENDERALLFORMATS:
-            return 0  # leaving: Orbyn's text is not left behind on purpose
-        return win32gui.DefWindowProc(hwnd, msg, wparam, lparam)
-
-    def _run(self):
-        import win32api
-        import win32clipboard as c
-        import win32gui
-
-        try:
-            module = win32api.GetModuleHandle(None)
-            if not DelayedPaste._registered:
-                wc = win32gui.WNDCLASS()
-                wc.lpszClassName = self.CLASS
-                wc.lpfnWndProc = lambda *a: _delayed_proc(*a)
-                wc.hInstance = module
-                win32gui.RegisterClass(wc)
-                DelayedPaste._registered = True
-            hwnd = win32gui.CreateWindowEx(0, self.CLASS, "", 0, 0, 0, 0, 0, -3, None, module, None)
-            _delayed_by_hwnd[hwnd] = self
-            _open_clipboard(c, owner=hwnd)
-            try:
-                c.EmptyClipboard()
-                _set_delayed(c.CF_UNICODETEXT)
-                for name, value in _PRIVATE_FORMATS:
-                    c.SetClipboardData(c.RegisterClipboardFormat(name), value)
-            finally:
-                c.CloseClipboard()
-            self.ours = clipboard_sequence()
-        except Exception as exc:  # noqa: BLE001 - reported to the caller
-            self._error = exc
-            self._ready.set()
-            return
-        self._ready.set()
-        try:
-            while not self._done.is_set():
-                win32gui.PumpWaitingMessages()
-                self._done.wait(0.005)
-        finally:
-            _delayed_by_hwnd.pop(hwnd, None)
-            win32gui.DestroyWindow(hwnd)
-
-    def _is_target(self, reader: int) -> bool:
-        if self.target_pid is None:
-            return True
-        if not reader:
-            return False  # a reader with no window cannot be told apart
-        pid = wintypes.DWORD()
-        _user32.GetWindowThreadProcessId(reader, ctypes.byref(pid))
-        return pid.value == self.target_pid
-
-    def sent(self) -> None:
-        """Ctrl+V has gone out: a render request from now on is the paste."""
-
-        self._sent_at = time.monotonic()
-
-    def restore_after_paste(self, saved, wait_s: float, sequence=None) -> bool:
-        """Wait for the paste (at most WAIT_S), then put the user's clipboard
-        back unless they copied something since. Returns whether the paste
-        was acknowledged."""
-
-        acknowledged = self._rendered_after_send.wait(wait_s)
-        try:
-            _quietly(restore_clipboard_text, saved, self.ours, sequence)
-        finally:
-            self.close()
-        return acknowledged
-
-    def close(self) -> None:
-        self._done.set()
-
-
-_delayed_by_hwnd: dict = {}
-
-
-def _delayed_proc(hwnd, msg, wparam, lparam):
-    offer = _delayed_by_hwnd.get(hwnd)
-    if offer is not None:
-        return offer._proc(hwnd, msg, wparam, lparam)
-    import win32gui
-
-    return win32gui.DefWindowProc(hwnd, msg, wparam, lparam)
-
-
-def _set_delayed(fmt: int) -> None:
-    """SetClipboardData with no data: Windows asks the owner when an app
-    reads it (delayed rendering). pywin32 refuses a NULL handle."""
-
-    _user32.SetClipboardData.argtypes = [ctypes.c_uint, ctypes.c_void_p]
-    _user32.SetClipboardData.restype = ctypes.c_void_p
-    _user32.SetClipboardData(fmt, None)
 
 
 def clipboard_sequence() -> int:
@@ -617,7 +483,11 @@ def perform(
     if action == "none":
         return "nothing to do"
     for pending in _restoring:  # a paste still restoring finishes first, so a
-        pending.join()  # later paste never reads Orbyn's own text as the user's
+        # later paste never reads Orbyn's own text as the user's. Bounded:
+        # the session reads ESC between tries (rule 4; review 26 Nov).
+        pending.join(0.05)
+        if pending.is_alive():
+            raise UserBusy("Orbyn is finishing the last paste")
     if action == "type_focused":
         # Dictation (D188): type into the field the user clicked, where the
         # user left the caret. Never clicks (a click would move the caret);
@@ -671,19 +541,6 @@ def perform(
         # Orbyn's to paste (from the plan/brief), not read from the screen.
         if not step.text:
             return "nothing to paste"
-        if set_clip is set_clipboard_text:  # the real clipboard: the paste is acknowledged
-            pid = wintypes.DWORD()
-            _user32.GetWindowThreadProcessId(window, ctypes.byref(pid))
-            offer = DelayedPaste(step.text, target_pid=pid.value or -1)
-            try:
-                send(chord_events("ctrl+v"))
-                offer.sent()
-            except BaseException:
-                offer.close()
-                _quietly(restore_clipboard_text, saved, offer.ours, clip_seq)
-                raise
-            later(lambda: offer.restore_after_paste(saved, PASTE_SETTLE_S, clip_seq))
-            return f"pasted {len(step.text)} characters"
         try:
             set_clip(step.text)
             ours = clip_seq()
@@ -692,9 +549,15 @@ def perform(
             _quietly(set_clip, saved)  # always restore, even if the paste raised
             raise
 
-        def restore():  # an injected clipboard (tests): the timed restore
+        def restore():
+            # Off the step, so it costs Stop nothing. A fixed wait, not an
+            # acknowledgement: an app that reads every new clipboard at once
+            # (Remote Desktop's sync did on this PC) would fake one, and the
+            # user's restored clipboard would be pasted (review 26 Nov).
             pause(PASTE_SETTLE_S)
-            if clip_seq() == ours:
+            if set_clip is set_clipboard_text:  # the real clipboard: one held check
+                _quietly(restore_clipboard_text, saved, ours, clip_seq)
+            elif clip_seq() == ours:  # an injected clipboard (tests)
                 _quietly(set_clip, saved)
 
         later(restore)  # off the step, so Stop is read again within D020's 0.5 s

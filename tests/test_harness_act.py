@@ -884,13 +884,24 @@ def test_a_new_step_waits_for_the_last_paste_to_restore():
         pause=lambda s: release.wait(5) if s == act.PASTE_SETTLE_S else None,
     )
     seen = []
-    threading.Timer(0.1, release.set).start()
-    act.perform(
-        PlanStep("Click", E.CHOSEN_STATE_CHANGES),
-        target,
-        click=lambda x, y: seen.append(list(clip_writes)),
-        pause=lambda s: None,
-        check=lambda x, y, window: None, window=7, focus=lambda: 7)
+
+    def click_step():
+        act.perform(
+            PlanStep("Click", E.CHOSEN_STATE_CHANGES),
+            target,
+            click=lambda x, y: seen.append(list(clip_writes)),
+            pause=lambda s: None,
+            check=lambda x, y, window: None, window=7, focus=lambda: 7)
+
+    # Still restoring: the step does not wait unbounded (ESC must be read
+    # between tries, review 26 Nov); it is busy and tried again next tick.
+    with pytest.raises(act.UserBusy):
+        click_step()
+    assert seen == []
+    release.set()
+    for pending in list(act._restoring):
+        pending.join(2)
+    click_step()
     assert seen == [["ours", "PRIOR"]]  # restored before the click went out
 
 
@@ -1170,40 +1181,6 @@ def test_a_console_window_is_a_command_line_whatever_runs_in_it():
 
 
 
-@pytest.mark.interactive
-def test_a_paste_is_acknowledged_when_an_app_reads_the_text():
-    """Delayed rendering on the real clipboard: another process reading the
-    text is the acknowledgement, and the user's clipboard comes back at once
-    (the user's own clipboard is saved and put back by the test)."""
-
-    import subprocess
-    import sys
-    import time
-
-    saved = act.get_clipboard_text()
-    try:
-        act.set_clipboard_text("the user's own text")
-        offer = act.DelayedPaste("Orbyn's text")
-        offer.sent()
-        read = subprocess.run(
-            [sys.executable, "-c", "import win32clipboard as c;c.OpenClipboard();print(c.GetClipboardData(c.CF_UNICODETEXT));c.CloseClipboard()"],
-            capture_output=True, text=True, timeout=20,
-        )
-        assert read.stdout.strip() == "Orbyn's text"
-        started = time.monotonic()
-        assert offer.restore_after_paste("the user's own text", 5) is True
-        assert time.monotonic() - started < 1.0  # no guessed wait
-        assert act.get_clipboard_text() == "the user's own text"
-        # Nobody pastes, and a clipboard watcher (here Remote Desktop's
-        # sync) reading it is not the app being pasted into: the timed restore.
-        quiet = act.DelayedPaste("unread", target_pid=-1)
-        quiet.sent()
-        assert quiet.restore_after_paste("the user's own text", 0.3) is False
-        assert act.get_clipboard_text() == "the user's own text"
-    finally:
-        act.set_clipboard_text(saved)
-
-
 def test_a_terminal_inside_an_editor_is_a_command_line(monkeypatch):
     # FOLLOWUPS: VS Code's terminal runs inside code.exe; its control says so.
     from ghostcursor.harness import teach_live
@@ -1220,25 +1197,3 @@ def test_a_terminal_inside_an_editor_is_a_command_line(monkeypatch):
             _c(1, "Terminal 1, powershell", "Edit"), 9, "code.exe",
         )
     assert sent == []
-
-
-def test_only_the_app_being_pasted_into_acknowledges_a_paste():
-    # A clipboard watcher (Remote Desktop's sync read every new clipboard on
-    # this PC) must not end the wait; the target app's own read does.
-    offer = act.DelayedPaste.__new__(act.DelayedPaste)
-    offer.target_pid = 4242
-    pids = {11: 4242, 12: 9999}
-
-    def owner(window, out):
-        out._obj.value = pids.get(window, 0)
-        return 1
-
-    real = act._user32.GetWindowThreadProcessId
-    try:
-        act._user32.GetWindowThreadProcessId = owner
-        assert offer._is_target(11)
-        assert not offer._is_target(12) and not offer._is_target(0)
-    finally:
-        act._user32.GetWindowThreadProcessId = real
-    offer.target_pid = None  # no target known: any read counts
-    assert offer._is_target(0)
