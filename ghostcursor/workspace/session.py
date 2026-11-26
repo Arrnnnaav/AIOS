@@ -596,6 +596,9 @@ class Workspace:
 
         context = self._context(message, cancelled)
         self._say("user", message)
+        # The suggestion needs only the message, so Jev answers it while the
+        # model writes the reply (it added 0.65 s after it, measured 26 Nov).
+        route = self._ahead(lambda: self._check(message, ())[0])
         envelope = Envelope(
             task="discuss",
             trusted={"goal": self.goal, "message": message},
@@ -614,7 +617,12 @@ class Workspace:
             reply = f"(no reply: {why_unavailable(exc)})"
             self._say("assistant", reply)  # show the failure, don't vanish silently
             return reply
-        self.suggestion, candidates = self._check(message, answer.memories)
+        self.suggestion = route()
+        candidates = (
+            self._check(message, answer.memories, route=False)[1]
+            if answer.memories
+            else ()
+        )
         for kind, text, confidence in candidates:
             # origin is what the model claims; the Brain's rule checks the
             # words against the user's own turn before anything is durable.
@@ -629,16 +637,40 @@ class Workspace:
         self._say("assistant", answer.reply)
         return answer.reply
 
-    def _check(self, message: str, candidates) -> tuple[str, tuple]:
-        """One Jev request: a suggestion for what the message asks, and a
-        verdict per memory candidate that can only lower it -- a confident
-        secret is dropped, anything not lasting stays session-scoped. Without
-        Jev, nothing changes."""
+    @staticmethod
+    def _ahead(job, wait_s: float = 5.0):
+        """Run JOB on a thread now; the returned call waits for its answer
+        (at most WAIT_S) and gives "" if it failed or took longer."""
+
+        import threading
+
+        box = {"value": ""}
+
+        def run():
+            try:
+                box["value"] = job()
+            except Exception:  # noqa: BLE001 - a suggestion is optional
+                pass
+
+        thread = threading.Thread(target=run, name="orbyn-jev-ahead", daemon=True)
+        thread.start()
+
+        def result():
+            thread.join(wait_s)
+            return box["value"]
+
+        return result
+
+    def _check(self, message: str, candidates, *, route: bool = True) -> tuple[str, tuple]:
+        """One Jev request: a suggestion for what the message asks (unless
+        ``route`` is off), and a verdict per memory candidate that can only
+        lower it -- a confident secret is dropped, anything not lasting stays
+        session-scoped. Without Jev, nothing changes."""
 
         judge = getattr(self.gateway, "judge", None)
         if judge is None:
             return "", candidates
-        questions = {"route": (ROUTE_QUESTION, ROUTES)}
+        questions = {"route": (ROUTE_QUESTION, ROUTES)} if route else {}
         tainted = {}
         for n, (_kind, text, _confidence) in enumerate(candidates):
             tainted[f"memory_{n}"] = Tainted.of("model_memory", text)
@@ -661,8 +693,12 @@ class Workspace:
         def sure(verdict):
             return verdict.probabilities.get(verdict.choice, 0.0) >= CHECK_FLOOR
 
-        route = verdicts["route"]
-        suggestion = route.choice if sure(route) and route.choice != "chat" else ""
+        verdict = verdicts.get("route")
+        suggestion = (
+            verdict.choice
+            if verdict is not None and sure(verdict) and verdict.choice != "chat"
+            else ""
+        )
         kept = []
         for n, (kind, text, confidence) in enumerate(candidates):
             verdict = verdicts[f"memory_{n}"]
