@@ -266,6 +266,8 @@ class App:
         self.signal = threading.Event()  # Enter / "Done" from the page
         self.stop = threading.Event()  # the page's Stop button
         self.status: deque[str] = deque(maxlen=40)
+        self._codes: dict[str, float] = {}  # one-time launch codes -> expiry
+        self._codes_lock = threading.Lock()
         self.busy = ""
         self._claim = threading.Lock()
         self.windows: list = []  # the last bindable list; the page sees indexes
@@ -701,6 +703,24 @@ class App:
         future.add_done_callback(done)
         return jid
 
+    #: A launch code opens the page once, within this many seconds.
+    LAUNCH_CODE_S = 60
+
+    def launch_code(self) -> str:
+        """A one-time code for opening the page in a browser that keeps its
+        history (no Edge): the URL it leaves behind no longer opens anything,
+        unlike the page token."""
+
+        code = secrets.token_urlsafe(24)
+        with self._codes_lock:
+            self._codes[code] = self.clock() + self.LAUNCH_CODE_S
+        return code
+
+    def use_launch_code(self, code: str) -> bool:
+        with self._codes_lock:
+            until = self._codes.pop(code, None)
+        return until is not None and self.clock() <= until
+
     def say(self, line: str) -> None:
         line = str(line)
         # The whole plan is shown before approval (rule 2): never cut it.
@@ -850,6 +870,8 @@ class App:
         ws = self.ws
         text = body.get("text")
         text = text.strip() if isinstance(text, str) else ""
+        if action == "launch_code":
+            return {"code": self.launch_code()}
         if action == "state":
             self.seen = time.monotonic()
             return self.state()
@@ -1902,10 +1924,14 @@ def make_server(app: App, token: str, port: int = 0) -> ThreadingHTTPServer:
         def do_GET(self):
             path, _, query = self.path.partition("?")
             given = query[2:] if query.startswith("t=") else ""
+            code = query[2:] if query.startswith("c=") else ""
             if (
                 path != "/"
                 or not self._allowed()
-                or not hmac.compare_digest(given.encode(), token.encode())
+                or not (
+                    hmac.compare_digest(given.encode(), token.encode())
+                    or (code and app.use_launch_code(code))
+                )
             ):
                 return self._send(404, b"", "text/plain")
             page = PAGE.read_text(encoding="utf-8").replace("__TOKEN__", token)
@@ -1996,7 +2022,14 @@ def open_window(url: str, *, docked: bool = False) -> None:
     if not EDGE.exists():
         import webbrowser
 
-        webbrowser.open(url)
+        # Another browser keeps the address in its history and session
+        # restore: open it with a one-time code, never the page token.
+        try:
+            code = _post(url, "launch_code", {})["code"]
+        except Exception:  # noqa: BLE001 - say so rather than leak the token
+            _notice("Orbyn could not open its window; install Microsoft Edge or try again.")
+            return
+        webbrowser.open(url.split("?", 1)[0] + "?c=" + code)
         return
     import win32api
     import win32gui
