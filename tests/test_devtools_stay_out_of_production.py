@@ -113,7 +113,7 @@ def _dynamic_devtool_references(source: str):
 _MEASURED_INVENTORY = {
     # D193 retired the per-app plugin system: 92 modules unreachable from the
     # product were removed, so these are the counts that remain.
-    "ghostcursor": 16,
+    "ghostcursor": 17,  # + loopback (27 Nov)
     "ghostcursor/evaluation": 3,  # safety, teach_replay
     "ghostcursor/harness": 14,  # + ratings, watch (26-27 Nov)
     "ghostcursor/overlay": 4,
@@ -142,7 +142,7 @@ def test_the_production_module_set_matches_the_measured_inventory():
         "the scanned production set no longer matches the measured inventory. "
         f"missing/changed: {set(_MEASURED_INVENTORY.items()) ^ set(counted.items())}"
     )
-    assert sum(_MEASURED_INVENTORY.values()) == len(modules) == 88
+    assert sum(_MEASURED_INVENTORY.values()) == len(modules) == 89
 
     for required in (
         "ghostcursor/agent_server.py",

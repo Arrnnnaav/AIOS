@@ -1663,6 +1663,10 @@ class App:
             if not text:
                 raise ValueError("ask a question")
             return {"answer": self.run("Researching", lambda: ws.research(text))}
+        if action == "plan_from_video":  # a tutorial the person plays becomes the plan
+            note = str(body.get("note", ""))[:300]
+            steps = self.run("Hearing the video", lambda: self._from_video(note))
+            return {"steps": steps, "from": "the video you played"}
         if action == "plan_from_guide":  # a how-to becomes the plan (D193 harness)
             from ghostcursor.workspace import research
 
@@ -1957,6 +1961,39 @@ class App:
             if j.get("state") == "finished" and (j.get("ended") or 0) >= day_ago
         ][-5:]
         return out
+
+    def _from_video(self, note: str, record=None, transcribe=None) -> int:
+        """Hear what this PC plays (a tutorial video), transcribe it here with
+        Whisper, and plan from the transcript as from a written how-to. The
+        audio never leaves the computer and is not kept; only the steps go to
+        the model, as data."""
+
+        from ghostcursor.harness.teach_live import _escape_pressed
+
+        if record is None:
+            from ghostcursor.loopback import record
+        if transcribe is None:
+            from ghostcursor.listen import transcribe
+        aborted = []
+
+        def stop():
+            if _escape_pressed() or self.stop.is_set():
+                aborted.append(True)
+                return True
+            return self.signalled()
+
+        self.say("Play the tutorial now. Press Done when its steps are over; ESC stops.")
+        samples = record(stop, max_seconds=900)
+        if aborted:
+            raise ValueError("Stopped; nothing was heard or kept.")
+        self.say("Writing down what the video said (on this computer)...")
+        transcript = transcribe(samples)
+        if len(transcript.split()) < 8:
+            raise ValueError("Too little speech was heard: play the video with sound, then try again")
+        plan = self.ws.plan_from_guide(transcript, "the video you played", note)
+        if plan is None:
+            raise ValueError("No plan: the model is not available.")
+        return len(plan.steps)
 
     def _watch(self, hwnds, seconds) -> int:
         """Bind the chosen windows, watch the person's clicks until Done, ESC,
