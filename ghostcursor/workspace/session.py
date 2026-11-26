@@ -1081,6 +1081,30 @@ class Workspace:
             )
         return self.discuss(fallback or arg)  # chat / remember-without-a-brain
 
+    #: The goal a how-to becomes, as Orbyn's fixed words: the page itself is
+    #: never trusted (it rides OUTLINE, tainted and scrubbed).
+    GUIDE_NEED = (
+        "Turn the numbered or written steps of the how-to in OBSERVED_DATA into "
+        "one plan step per control the person must use, in order (a menu path "
+        "such as File > Options > Advanced is one step per item), so Orbyn can "
+        "point at each one on their screen"
+    )
+
+    def plan_from_guide(self, material: str, source: str, note: str = ""):
+        """A how-to (a help page, a manual section, pasted steps) becomes the
+        plan, to be shown with Guide me or done with Do it for me after the
+        usual approval. NOTE is the person's own words about what they want."""
+
+        if not str(material).strip():
+            raise ValueError("that page has no text to follow")
+        need = self.GUIDE_NEED + (f". The person wants: {note.strip()[:300]}" if note.strip() else "")
+        plan = self._plan_for(need, outline=str(material))
+        if plan is None:
+            return None
+        self._say("user", f"Guide me through the how-to from {source}" + (f": {note.strip()[:300]}" if note.strip() else ""))
+        self._propose(plan)
+        return plan
+
     def _plan_for(self, need: str, outline: str = ""):
         """A TeachPlan toward an arbitrary need (not the session goal), with any
         matching app skill as guidance. None if no model answers. Shared by the

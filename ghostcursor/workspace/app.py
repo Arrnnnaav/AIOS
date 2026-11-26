@@ -1663,6 +1663,22 @@ class App:
             if not text:
                 raise ValueError("ask a question")
             return {"answer": self.run("Researching", lambda: ws.research(text))}
+        if action == "plan_from_guide":  # a how-to becomes the plan (D193 harness)
+            from ghostcursor.workspace import research
+
+            note = str(body.get("note", ""))[:300]
+            if body.get("url"):
+                page = self.handle("read_link", {"url": body.get("url")})
+                material, source = page["material"], page["name"]
+            else:
+                material = str(body.get("material", ""))
+                source = str(body.get("name", "pasted steps"))[:120] or "pasted steps"
+                if not material.strip() or len(material) > MAX_FILE_CHARS:
+                    raise ValueError("paste the steps, or a web address that starts with https://")
+            plan = self.run("Planning", lambda: ws.plan_from_guide(material, source, note))
+            if plan is None:
+                raise ValueError("No plan: the model is not available.")
+            return {"steps": len(plan.steps), "from": source}
         if action == "read_link":  # one page the person named; read-only
             from urllib.parse import urlsplit
 

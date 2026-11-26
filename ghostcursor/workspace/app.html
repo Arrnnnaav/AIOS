@@ -1080,7 +1080,8 @@ function renderPlan() {
     file.onchange = async () => { const f = file.files[0]; if (f) act("handoff_import", { data: await f.text() }, "Handoff opened"); };
     const open = el("button", "secondary", "Open a teammate's handoff"); open.disabled = !!S.busy; open.onclick = () => file.click();
     const watchBtn = el("button", "secondary", "Watch me do it"); watchBtn.disabled = !!S.busy; watchBtn.onclick = openWatch;
-    row.append(watchBtn, open); b.append(row, file); root.append(b); root.append(skillsCard()); return;
+    const howto = el("button", "secondary", "Follow a how-to"); howto.disabled = !!S.busy; howto.onclick = openHowTo;
+    row.append(howto, watchBtn, open); b.append(row, file); root.append(b); root.append(skillsCard()); return;
   }
   const ol = el("ol", "steps");
   S.plan.steps.forEach((text, i) => {
@@ -1680,6 +1681,18 @@ function openWatch() {
     else if (r) toast("Nothing was recorded.");
   });
 }
+// Any how-to becomes a live walkthrough: a help page or pasted steps turn
+// into a plan of real controls, shown on screen with Guide me.
+async function openHowTo() {
+  const where = await askText("Paste the web address of a how-to (https://...), or paste its steps here. Orbyn reads it on this computer; only the steps go to your model, as text it treats as data, never as instructions.");
+  if (!where || !where.trim()) return;
+  const text = where.trim();
+  const body = /^https:\/\/\S+$/.test(text) ? { url: text } : { material: text, name: "pasted steps" };
+  setTab("plan");
+  const r = await act("plan_from_guide", body);
+  if (r) toast(r.steps + " step(s) from " + r.from + ": check them, then Show me or Guide me from step 1", true);
+}
+
 function skillsCard() {
   const card = el("div", "mem"); card.style.marginTop = "12px";
   const meta = el("div", "meta"); meta.append(el("span", "kind", "your skills")); card.append(meta);
