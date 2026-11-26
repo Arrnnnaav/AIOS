@@ -916,7 +916,8 @@ class Island:
         if self.hidden and not hovered:
             self.peek_armed = True
         rested = hovered and now - self._hover_since >= PEEK_DWELL_S
-        if self.hidden and (expanded or (rested and self.peek_armed)):
+        # Never peek out over a full-screen app (work running still shows Stop).
+        if self.hidden and (expanded or (rested and self.peek_armed and not self.covered)):
             self.show(automatic=True)
         elif (
             not self.hidden
@@ -1066,6 +1067,10 @@ class Island:
         return ASKING if self.asking else EXPANDED if expanded else COMPACT
 
     def _resize(self, expanded):
+        if self.hidden:  # a display or scaling change while tucked: stay a pill
+            self.expanded = expanded
+            self._tuck()
+            return
         old_width = (
             win32gui.GetWindowRect(self.hwnd)[2] - win32gui.GetWindowRect(self.hwnd)[0]
         )

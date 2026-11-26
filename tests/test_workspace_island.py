@@ -126,6 +126,9 @@ def test_island_hide_recall_and_result_auto_reveal():
         app.busy = "Researching"
         island.tick()
         assert not island.hidden and island.auto_revealed
+        # Stop is on the bar and the bar takes clicks again (rule 4).
+        assert win32gui.IsWindowVisible(island.stop_button)
+        assert not win32gui.GetWindowLong(island.hwnd, win32con.GWL_EXSTYLE) & win32con.WS_EX_TRANSPARENT
         island.hide()
         assert not island.hidden  # the Stop surface cannot be tucked away
         app.busy = ""
@@ -213,6 +216,7 @@ def test_island_bounds_on_real_and_emulated_monitor_layouts(monkeypatch):
     import win32gui
 
     island = Island(StubApp(), "http://127.0.0.1:1/?t=local", lambda url: None)
+    island.show()  # the bar's bounds; the tucked pill is placed by _tuck
     real_monitor = win32api.MonitorFromWindow(island.hwnd, win32con.MONITOR_DEFAULTTONEAREST)
     primary = win32api.GetMonitorInfo(real_monitor)["Work"]
     layouts = [primary, (-1920, -120, 0, 960), (primary[2], primary[1], primary[2] + 1920, primary[1] + 1080)]
@@ -422,6 +426,17 @@ def test_a_hidden_bar_peeks_when_the_pointer_comes_to_it(monkeypatch):
         time.sleep(island_module.TUCK_AFTER_S + 0.05)
         island.tick()
         assert island.hidden  # then tucks away
+        island._resize(False)  # a display change while tucked keeps the pill
+        assert win32gui.GetWindowRect(island.hwnd)[3] - win32gui.GetWindowRect(island.hwnd)[1] == island_module.scaled(island_module.TUCKED)[1]
+        island.covered = True  # a full-screen app in front: no peek over it
+        monkeypatch.setattr(island_module, "_fullscreen", lambda: True)
+        island.tick()
+        assert island.peek_armed  # the pointer is away: a rest on the pill would peek
+        pointer[0] = on_pill
+        island.tick()
+        time.sleep(PEEK_DWELL_S + 0.05)
+        island.tick()
+        assert island.hidden
     finally:
         island.hotkey_available = registered
         win32gui.DestroyWindow(island.hwnd)

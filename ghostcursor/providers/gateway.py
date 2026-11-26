@@ -587,8 +587,10 @@ class Gateway:
         if FailureKind.RATE_LIMITED in kinds:
             # Why each one declined (an error code or HTTP status, no content),
             # so the person can be told what to do about it.
-            why = "; ".join(
-                str(f) for f in failures if f.kind is not FailureKind.NOT_CONFIGURED
+            why = "; ".join(  # provider, kind and an error code or HTTP status
+                str(f)
+                for f in failures
+                if f.kind in (FailureKind.RATE_LIMITED, FailureKind.UNAVAILABLE)
             )
             raise ProviderError(
                 FailureKind.RATE_LIMITED, f"every {purpose} provider declined ({why})"
