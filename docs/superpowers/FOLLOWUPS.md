@@ -3028,3 +3028,22 @@ from 1053b54. Still open:
   as text, not a parsed code; the Settings gear's aria-controls names a
   region, not a tabpanel; hover, DPI and full-screen behaviour were checked
   on this desktop by screenshot only (not on a second display).
+- 26 Nov, speed and the Act flow. Measured, then changed: model calls keep
+  their connections alive per provider (a TLS handshake cost about 0.4 s
+  per request: OpenAI 777 -> 314 ms, NVIDIA 405 -> 38 ms, Jev 662 -> 283 ms;
+  keys per request, no cookies kept); chat asks Jev's suggestion while the
+  reply is written and checks memories only when there are some (a turn
+  3.0-3.6 s -> 2.2-2.3 s); deep research answers three sub-questions at once
+  (five in a row took 71 of 76 s); the page checks state every 150 ms while
+  Orbyn works (a state read costs about 2 ms). Timings are from terminal
+  runs on this PC, not captured files.
+  End-to-end Act audit: two BLOCKING, fixed in 46df136 (D018 8/8): approval
+  showed only each step's wording, not what it types or presses, and only a
+  few chords asked first (Alt+S sends mail in Outlook, Ctrl+M is Enter in a
+  terminal); now every step shows its effect wherever approval is asked,
+  every key chord and clipboard paste asks first, and rewording a step drops
+  its old hidden action. The approval line is no longer cut at 300
+  characters. Left from the audit (minor): terminals stay bindable for Act
+  (typing without Enter cannot run a command; Enter and chords now ask);
+  without Edge the page URL with its token lands in the default browser's
+  history; a handoff's injection screen now reads step text too.
