@@ -122,7 +122,7 @@ def test_user_drives_the_workspace_with_no_model(tmp_path):
 
     # asking things when nothing is set up -> clear messages, never a crash
     assert "ask what" in ws.ask("   ", "material")
-    assert "not available" in ws.ask("real question", "some material")
+    assert "no model answered" in ws.ask("real question", "some material")
     assert "no plan" in ws.critique()
     assert "no plan" in ws.todos_from_plan()
     assert "no Company Brain" in ws.related("anything")
