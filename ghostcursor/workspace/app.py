@@ -1765,6 +1765,12 @@ class App:
             seconds = teach_seconds([str(body.get("seconds", 300))])
             if seconds is None:
                 raise ValueError("seconds must be a number from 1 to 3600")
+            if not ws.goal.strip():
+                # A plan received from a teammate brings their goal only as
+                # data; the goal Orbyn works toward is the person's own words.
+                raise ValueError(
+                    "Say in Chat what you want to get done first; then start this plan"
+                )
             hwnds = self.hwnds(body.get("windows", []))
             plan = ws.teach_plan(step)
             typed = [str(d) for d in body.get("deny", []) if str(d).strip()]

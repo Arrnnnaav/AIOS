@@ -191,3 +191,17 @@ def test_a_received_step_that_types_or_presses_keys_is_pointed_out(tmp_path):
     shown = handoff.receive(receiver, json.dumps(data))
     notes = " ".join(t.text for t in receiver.turns)
     assert "press keys" in notes and "presses alt+s" in receiver.proposal.as_text()
+
+
+def test_a_received_plan_in_a_fresh_workspace_asks_for_a_goal_before_teach(tmp_path):
+    # FOLLOWUPS (D181): Teach ran with an empty goal after a received plan.
+    from ghostcursor.workspace.app import App
+
+    _, text = _sent(tmp_path)
+    app = App("fresh", make_workspace=lambda: _ws(tmp_path, "fresh"))
+    try:
+        app.handle("handoff_import", {"data": text})
+        with pytest.raises(ValueError, match="what you want to get done"):
+            app.handle("act", {"step": 1, "windows": []})
+    finally:
+        app.close()

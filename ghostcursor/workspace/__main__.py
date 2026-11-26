@@ -929,6 +929,9 @@ def main(argv: list[str] | None = None) -> int:
                 if not parts or not parts[0].isdigit():
                     print(f"usage: {command} <step> [seconds]")
                     continue
+                if not workspace.goal.strip():
+                    print("Say what you want to get done first (type it here); then run the plan.")
+                    continue
                 try:
                     plan = workspace.teach_plan(int(parts[0]))
                 except ValueError as exc:

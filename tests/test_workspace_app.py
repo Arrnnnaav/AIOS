@@ -2735,6 +2735,7 @@ def test_act_from_the_page_keeps_the_agents_deny_list_and_never_runs_with_none(
     seen = []
     monkeypatch.setattr(app, "hwnds", lambda numbers: [1])
     monkeypatch.setattr(app.ws, "teach_plan", lambda step: "plan")
+    monkeypatch.setattr(type(app.ws), "goal", property(lambda self: "file the report"))
     monkeypatch.setattr(app, "_teach", lambda *a: seen.append(a[-1]) or 0)
     call(port, "/api/act", {"step": 1, "windows": [0], "deny": []})
     app.ws.active_deny = ("archive",)
