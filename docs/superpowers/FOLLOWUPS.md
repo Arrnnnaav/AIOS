@@ -3047,3 +3047,22 @@ from 1053b54. Still open:
   (typing without Enter cannot run a command; Enter and chords now ask);
   without Edge the page URL with its token lands in the default browser's
   history; a handoff's injection screen now reads step text too.
+- 26 Nov, remaining items closed: Act refuses typing, pasting and key
+  presses in command lines (by program and by console window class; clicks
+  stay); the paste restore checks the clipboard counter while holding the
+  clipboard open (an ANSI read does not move the counter, checked here) and
+  waits 1 s off the step; without Edge the page opens with a one-time,
+  60-second launch code instead of the page token; redaction also hides
+  quoted values with spaces, values of 3+ characters, pass/pin/passphrase/
+  passcode/credentials names and "the password is X" in a sentence (the
+  Company Brain now refuses to keep such a password); Teach and Act ask for
+  the person's own goal when a received plan left none; the plan-limit
+  message keys on the error kind. Tier-1 review of 6fc5248..7a7ab75: no
+  blocking finding; its terminal and launch-code points are fixed. D018
+  13/13. Hermetic 1610 passed.
+  Left, accepted or needing the owner or a live desktop: made-up inputs such
+  as `pin:password"=api_key` can leave a later name's value visible; IDE
+  terminals (code.exe) cannot be told apart by program; a reloaded launch
+  link shows a 404; paste_text still has no paste acknowledgement; live
+  counted Teach/Act runs; a second display; app signing and an update
+  channel; provider contracts.
