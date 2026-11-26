@@ -730,7 +730,8 @@ def test_a_whole_step_with_a_held_key_stays_inside_the_stop_budget():
         send=lambda e: None,
         check=lambda x, y, window: None,
         set_clip=lambda t: None,
-        get_clip=lambda: None, window=7, focus=lambda: 7)
+        get_clip=lambda: None, window=7, focus=lambda: 7,
+        later=lambda job: None)  # the restore runs off the step: not in its budget
     assert sum(pauses) < 0.5  # D020: Stop reaches a running Act within 0.5 s
 
 
@@ -880,7 +881,7 @@ def test_a_new_step_waits_for_the_last_paste_to_restore():
         target,
         get_clip=lambda: "PRIOR",
         set_clip=clip_writes.append,
-        pause=lambda s: release.wait(5) if s == 0.2 else None,
+        pause=lambda s: release.wait(5) if s == act.PASTE_SETTLE_S else None,
     )
     seen = []
     threading.Timer(0.1, release.set).start()

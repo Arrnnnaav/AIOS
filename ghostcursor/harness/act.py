@@ -42,7 +42,7 @@ INPUT_SIGNATURE = 0x4E42524F
 #: button (Aside's check, minus its hook). A whole perform() -- this wait, the
 #: 0.15 s focus pause and paste_text's two clipboard opens (0.1 s each at
 #: worst) -- stays under D020's 0.5 s; a longer hold retries on the next tick.
-#: paste_text's 0.2 s wait and restore run after perform() returns.
+#: paste_text's restore wait (PASTE_SETTLE_S) and restore run after perform() returns.
 MAX_HELD_WAIT_S = 0.1
 _VK_ESCAPE = 0x1B
 _KEYUP, _UNICODE = 0x0002, 0x0004
@@ -303,6 +303,11 @@ def click_at(x: int, y: int) -> None:
     _send(events)
 
 
+#: How long a paste_text waits before putting the user's clipboard back
+#: (was 0.2 s: a slow app could read the restored clipboard instead).
+PASTE_SETTLE_S = 1.0
+
+
 class UserBusy(PermissionError):
     """The user is holding a key or mouse button; try the step again later."""
 
@@ -541,9 +546,10 @@ def perform(
             raise
 
         def restore():
-            pause(0.2)  # ponytail: fixed wait for the app to read the clipboard
-            #            before we restore; a slow app could miss it -- raise it
-            #            if that shows up, or gate restore on a paste ack.
+            # Off the step, so it costs Stop nothing: long enough that a slow
+            # app reads Orbyn's text, not the user's restored clipboard (which
+            # may hold a password). ponytail: fixed, no paste acknowledgement.
+            pause(PASTE_SETTLE_S)
             if set_clip is set_clipboard_text:  # the real clipboard: one held check
                 _quietly(restore_clipboard_text, saved, ours, clip_seq)
             elif clip_seq() == ours:  # an injected clipboard (tests)
