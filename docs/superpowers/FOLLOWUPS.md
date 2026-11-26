@@ -3101,3 +3101,19 @@ from 1053b54. Still open:
   ids by the gateway only, not again in the session; a verdict is written
   on the tick thread (one small append); dependency vulnerability scan not
   run (the audit tool could not be fetched here).
+- 27 Nov, the further ideas, built: Follow a video (WASAPI loopback of what
+  the PC plays, transcribed here with Whisper, planned like a how-to; live:
+  a spoken tutorial became the right two-step plan in 32.7 s); skills that
+  repair themselves (a renamed recorded control is offered as an update,
+  saved only on OK); company playbooks (team skills marked as the team's;
+  ratings on synced team skills go to the owner's "where people get stuck"
+  through ShareAudit); run history and Undo (a drafted undo plan, approved
+  like any plan). Review: one BLOCKING, fixed -- a personal skill named
+  "Team ..." could carry the person's words to the owner; only skills the
+  verified bundle installed count now, and personal saves may not use the
+  prefix. The loopback struct packing bug (a 440 Hz tone read as 240 Hz)
+  was found and fixed by a live check. D018 9/9 and 4/4. Hermetic 1647.
+  Left: loopback hears everything the PC plays, including a call in
+  progress (process-only capture is the upgrade); a "rename" is any
+  same-type control that did the step, not checked by automation id; the
+  undo plan cannot know which steps changed anything.
