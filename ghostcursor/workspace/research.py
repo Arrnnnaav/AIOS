@@ -52,6 +52,10 @@ MAX_PAGE_CHARS = 40_000
 MAX_PAGE_BYTES = MAX_PAGE_CHARS * 16
 FETCH_DEADLINE_S = 20.0
 MAX_CLAIMS = 8
+#: Deep research answers this many sub-questions at once: one after another,
+#: five took 71 of a 76 s run (measured 26 Nov 2026).
+PARALLEL_PARTS = 3
+_TRACE_LOCK = __import__("threading").Lock()
 BLOCKED_HOSTS = (
     "facebook.com",
     "twitter.com",
@@ -742,8 +746,8 @@ def research(
         try:
             path = trace_path or _trace_path()
             path.parent.mkdir(parents=True, exist_ok=True)
-            with path.open("a", encoding="utf-8", newline="\n") as handle:
-                handle.write(trace.as_json() + "\n")
+            with _TRACE_LOCK, path.open("a", encoding="utf-8", newline="\n") as handle:
+                handle.write(trace.as_json() + "\n")  # one whole line per research
         except OSError:
             pass
     return graph, trace
@@ -844,16 +848,28 @@ def deep_research(
         subquestions = plan_research(question, gateway)
     except ProviderError:
         subquestions = (question,)  # plan unavailable -> one pass on the whole
-    graphs, filed = [], 0
+    from concurrent.futures import ThreadPoolExecutor
+
     cancelled = research_kw.get("cancelled", lambda: False)
-    for sub in subquestions:
-        if cancelled():  # a background job's Stop lands between sub-questions too
-            break
-        graph, _trace = research(sub, gateway, **research_kw)
-        graphs.append(graph)
-        if file_to_brain and knowledge is not None and scope is not None:
+
+    skipped = object()
+
+    def part(sub):
+        if cancelled():  # Stop: a part not started yet never starts
+            return skipped
+        return research(sub, gateway, **research_kw)[0]
+
+    with ThreadPoolExecutor(max_workers=PARALLEL_PARTS, thread_name_prefix="orbyn-research") as pool:
+        found = list(pool.map(part, subquestions))
+    # In the planned order, and only the parts that ran: Stop keeps what came back.
+    done = [(sub, g) for sub, g in zip(subquestions, found) if g is not skipped]
+    graphs, filed = [g for _, g in done], 0
+    if file_to_brain and knowledge is not None and scope is not None:
+        for graph in graphs:  # filed one at a time, on this thread
             filed += _file_cited_claims(graph, knowledge, scope)
-    return DeepResearchReport(question, tuple(subquestions), tuple(graphs), filed)
+    return DeepResearchReport(
+        question, tuple(sub for sub, _ in done), tuple(graphs), filed
+    )
 
 
 def evidence_view(graph: EvidenceGraph) -> str:
